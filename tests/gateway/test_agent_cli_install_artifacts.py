@@ -1,0 +1,661 @@
+"""
+test_agent_cli_install_artifacts.py — Verify all install/verify script artifacts exist.
+
+These tests do NOT require any agent CLI (claude, codex, opencode, etc.) to be installed.
+They verify that all expected files and scripts exist with correct permissions.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+from pathlib import Path
+
+import pytest
+
+ATELIER_ROOT = Path(__file__).parent.parent.parent
+SCRIPTS = ATELIER_ROOT / "scripts"
+INTEGRATIONS = ATELIER_ROOT / "integrations"
+DOCS_HOSTS = ATELIER_ROOT / "docs" / "hosts"
+MAKEFILE = ATELIER_ROOT / "Makefile"
+
+
+def is_executable(path: Path) -> bool:
+    return bool(path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+
+
+# ---------------------------------------------------------------------------
+# 1. All per-host install scripts exist and are executable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_install_script_exists(host: str) -> None:
+    script = SCRIPTS / f"install_{host}.sh"
+    assert script.exists(), f"Missing: scripts/install_{host}.sh"
+    assert is_executable(script), f"Not executable: scripts/install_{host}.sh"
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_verify_script_exists(host: str) -> None:
+    script = SCRIPTS / f"verify_{host}.sh"
+    assert script.exists(), f"Missing: scripts/verify_{host}.sh"
+    assert is_executable(script), f"Not executable: scripts/verify_{host}.sh"
+
+
+# ---------------------------------------------------------------------------
+# 2. Wrapper script
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_stdio_wrapper_exists() -> None:
+    wrapper = SCRIPTS / "atelier_mcp_stdio.sh"
+    assert wrapper.exists(), "Missing: scripts/atelier_mcp_stdio.sh"
+    assert is_executable(wrapper), "Not executable: scripts/atelier_mcp_stdio.sh"
+
+
+def test_mcp_stdio_wrapper_content() -> None:
+    wrapper = SCRIPTS / "atelier_mcp_stdio.sh"
+    content = wrapper.read_text()
+    assert "mcp_server" in content, "Wrapper must invoke mcp_server"
+    assert "ATELIER_ROOT" in content, "Wrapper must set ATELIER_ROOT"
+    # Must not print to stdout in the wrapper itself (only exec)
+    assert "exec " in content, "Wrapper should use exec to replace the process"
+
+
+# ---------------------------------------------------------------------------
+# 3. Unified scripts
+# ---------------------------------------------------------------------------
+
+
+def test_install_agent_clis_script_exists() -> None:
+    script = SCRIPTS / "install_agent_clis.sh"
+    assert script.exists()
+    assert is_executable(script)
+
+
+def test_verify_agent_clis_script_exists() -> None:
+    script = SCRIPTS / "verify_agent_clis.sh"
+    assert script.exists()
+    assert is_executable(script)
+
+
+def test_install_agent_clis_references_all_hosts() -> None:
+    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    for host in ["claude", "codex", "opencode", "copilot", "gemini"]:
+        assert host in content, f"install_agent_clis.sh missing reference to {host}"
+
+
+def test_verify_agent_clis_references_all_hosts() -> None:
+    content = (SCRIPTS / "verify_agent_clis.sh").read_text()
+    for host in ["claude", "codex", "opencode", "copilot", "gemini"]:
+        assert host in content, f"verify_agent_clis.sh missing reference to {host}"
+
+
+# ---------------------------------------------------------------------------
+# 4. Makefile targets
+# ---------------------------------------------------------------------------
+
+
+def test_makefile_has_install_agent_clis() -> None:
+    content = MAKEFILE.read_text()
+    assert "install-agent-clis:" in content
+
+
+def test_makefile_has_verify_agent_clis() -> None:
+    content = MAKEFILE.read_text()
+    assert "verify-agent-clis:" in content
+
+
+@pytest.mark.parametrize("host", ["claude", "codex", "opencode", "copilot", "gemini"])
+def test_makefile_has_install_target(host: str) -> None:
+    content = MAKEFILE.read_text()
+    assert f"install-{host}:" in content, f"Makefile missing install-{host} target"
+
+
+@pytest.mark.parametrize("host", ["claude", "codex", "opencode", "copilot", "gemini"])
+def test_makefile_has_verify_target(host: str) -> None:
+    content = MAKEFILE.read_text()
+    # verify-opencode uses a different name to avoid conflicting with old target
+    if host == "opencode":
+        assert "verify-opencode" in content
+    else:
+        assert f"verify-{host}:" in content, f"Makefile missing verify-{host} target"
+
+
+# ---------------------------------------------------------------------------
+# 5. Host install docs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        "claude-code-install.md",
+        "codex-install.md",
+        "opencode-install.md",
+        "copilot-install.md",
+        "gemini-cli-install.md",
+        "all-agent-clis.md",
+    ],
+)
+def test_host_install_doc_exists(doc: str) -> None:
+    path = DOCS_HOSTS / doc
+    assert path.exists(), f"Missing host install doc: docs/hosts/{doc}"
+    content = path.read_text()
+    assert len(content) > 100, f"Host install doc too short: {doc}"
+
+
+# ---------------------------------------------------------------------------
+# 6. integrations/ per-host install.sh and verify.sh symlinks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_integrations_install_symlink(host: str) -> None:
+    link = INTEGRATIONS / host / "install.sh"
+    assert link.exists(), f"Missing integrations/{host}/install.sh"
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_integrations_verify_symlink(host: str) -> None:
+    link = INTEGRATIONS / host / "verify.sh"
+    assert link.exists(), f"Missing integrations/{host}/verify.sh"
+
+
+# ---------------------------------------------------------------------------
+# 7. Example configs have correct structure
+# ---------------------------------------------------------------------------
+
+
+def test_opencode_example_has_mcp_key() -> None:
+    example = INTEGRATIONS / "opencode" / "opencode.atelier.example.json"
+    if not example.exists():
+        pytest.skip("opencode example config not found")
+    data = json.loads(example.read_text())
+    assert "mcp" in data, "opencode example must have 'mcp' key"
+    assert "atelier" in data["mcp"], "opencode example must have 'mcp.atelier' key"
+
+
+def test_gemini_example_has_mcp_servers_key() -> None:
+    example = INTEGRATIONS / "gemini" / "settings.atelier.example.json"
+    if not example.exists():
+        pytest.skip("gemini example config not found")
+    data = json.loads(example.read_text())
+    assert "mcpServers" in data, "gemini example must have 'mcpServers' key"
+    assert "atelier" in data["mcpServers"], "gemini example must have 'mcpServers.atelier' key"
+
+
+def test_copilot_example_has_servers_key() -> None:
+    example = INTEGRATIONS / "copilot" / "mcp.atelier.example.json"
+    if not example.exists():
+        pytest.skip("copilot mcp example config not found")
+    data = json.loads(example.read_text())
+    assert "servers" in data, "copilot example must have 'servers' key"
+    assert "atelier" in data["servers"], "copilot example must have 'servers.atelier'"
+
+
+def test_codex_example_has_mcp_servers_key() -> None:
+    example = INTEGRATIONS / "codex" / "mcp.atelier.example.json"
+    if not example.exists():
+        pytest.skip("codex mcp example config not found")
+    data = json.loads(example.read_text())
+    assert "mcpServers" in data, "codex example must have 'mcpServers' key"
+    assert "atelier" in data["mcpServers"], "codex example must have 'mcpServers.atelier'"
+
+
+# ---------------------------------------------------------------------------
+# 9. Codex AGENTS.atelier.md
+# ---------------------------------------------------------------------------
+
+
+def test_codex_agents_atelier_md_mentions_mcp() -> None:
+    agents_md = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
+    if not agents_md.exists():
+        pytest.skip("codex/AGENTS.atelier.md not found")
+    content = agents_md.read_text()
+    assert "mcp" in content.lower() or "MCP" in content, "AGENTS.atelier.md should mention MCP"
+
+
+# ---------------------------------------------------------------------------
+# 10. Copilot instructions mention atelier
+# ---------------------------------------------------------------------------
+
+
+def test_copilot_instructions_mention_atelier() -> None:
+    instructions = INTEGRATIONS / "copilot" / "COPILOT_INSTRUCTIONS.atelier.md"
+    if not instructions.exists():
+        pytest.skip("copilot/COPILOT_INSTRUCTIONS.atelier.md not found")
+    content = instructions.read_text()
+    assert (
+        "atelier" in content.lower() or "Atelier" in content
+    ), "Copilot instructions must reference Atelier"
+
+
+# ---------------------------------------------------------------------------
+# 11. README mentions install-agent-clis
+# ---------------------------------------------------------------------------
+
+
+def test_readme_mentions_install_agent_clis() -> None:
+    readme = ATELIER_ROOT / "README.md"
+    if not readme.exists():
+        pytest.skip("README.md not found")
+    content = readme.read_text()
+    assert "install-agent-clis" in content, "README.md should mention install-agent-clis"
+
+
+# ---------------------------------------------------------------------------
+# 12. Each install script has --dry-run support
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_install_script_has_dry_run(host: str) -> None:
+    script = SCRIPTS / f"install_{host}.sh"
+    content = script.read_text()
+    assert "--dry-run" in content, f"scripts/install_{host}.sh missing --dry-run support"
+
+
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "gemini"])
+def test_install_script_has_print_only(host: str) -> None:
+    script = SCRIPTS / f"install_{host}.sh"
+    content = script.read_text()
+    assert "--print-only" in content, f"scripts/install_{host}.sh missing --print-only support"
+
+
+# ---------------------------------------------------------------------------
+# 13. Each install script gracefully skips if CLI absent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "host,cli",
+    [
+        ("codex", "codex"),
+        ("opencode", "opencode"),
+        ("copilot", "code"),
+        ("gemini", "gemini"),
+    ],
+)
+def test_install_script_handles_missing_cli(host: str, cli: str) -> None:
+    script = SCRIPTS / f"install_{host}.sh"
+    content = script.read_text()
+    assert "exit 0" in content, f"scripts/install_{host}.sh should exit 0 when CLI absent"
+    assert cli in content, f"scripts/install_{host}.sh should check for '{cli}' CLI"
+
+
+# ---------------------------------------------------------------------------
+# 14. Claude plugin package structure
+# ---------------------------------------------------------------------------
+
+
+def test_makefile_has_claude_plugin_targets() -> None:
+    content = MAKEFILE.read_text()
+    for target in ("install-claude:", "verify-claude:"):
+        assert target in content, f"Makefile missing target: {target}"
+
+
+# ---------------------------------------------------------------------------
+# 15. New canonical plugin location: integrations/claude/plugin/
+# ---------------------------------------------------------------------------
+
+CLAUDE_PLUGIN_NEW = INTEGRATIONS / "claude" / "plugin"
+
+
+def test_new_claude_plugin_dir_exists() -> None:
+    assert CLAUDE_PLUGIN_NEW.is_dir(), "integrations/claude/plugin/ directory must exist"
+
+
+def test_new_claude_plugin_json_name() -> None:
+    plugin_json = CLAUDE_PLUGIN_NEW / ".claude-plugin" / "plugin.json"
+    assert plugin_json.exists(), "integrations/claude/plugin/.claude-plugin/plugin.json must exist"
+    data = json.loads(plugin_json.read_text())
+    assert (
+        data.get("name") == "atelier"
+    ), f"plugin.json name should be 'atelier', got: {data.get('name')}"
+
+
+def test_new_claude_plugin_json_has_no_commands_key() -> None:
+    plugin_json = CLAUDE_PLUGIN_NEW / ".claude-plugin" / "plugin.json"
+    if not plugin_json.exists():
+        pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
+    data = json.loads(plugin_json.read_text())
+    assert (
+        "commands" not in data
+    ), "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
+
+
+def test_new_claude_plugin_json_author_is_object() -> None:
+    """author must be an object like {"name": "..."} — Claude Code install rejects a plain string."""
+    plugin_json = CLAUDE_PLUGIN_NEW / ".claude-plugin" / "plugin.json"
+    if not plugin_json.exists():
+        pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
+    data = json.loads(plugin_json.read_text())
+    assert isinstance(data.get("author"), dict), (
+        'plugin.json \'author\' must be an object like {"name": "Beseam"}, '
+        f"got: {data.get('author')!r}"
+    )
+
+
+def test_new_claude_plugin_json_no_manifest_keys() -> None:
+    """agents/skills/hooks/mcp are auto-discovered from directory structure.
+    Declaring them in plugin.json causes 'Invalid input' errors during install."""
+    plugin_json = CLAUDE_PLUGIN_NEW / ".claude-plugin" / "plugin.json"
+    if not plugin_json.exists():
+        pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
+    data = json.loads(plugin_json.read_text())
+    for forbidden in ("agents", "skills", "hooks", "mcp"):
+        assert forbidden not in data, (
+            f"plugin.json must NOT declare '{forbidden}' — Claude Code auto-discovers from "
+            f"directory structure; listing it causes install validation errors"
+        )
+
+
+@pytest.mark.parametrize(
+    "skill_name",
+    ["status", "context", "savings", "benchmark", "analyze-failures", "evals", "settings"],
+)
+def test_new_claude_plugin_user_skill_exists(skill_name: str) -> None:
+    # Phase H consolidation: All skills unified in ./integrations/skills/
+    skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
+    assert skill_file.exists(), (
+        f"integrations/skills/{skill_name}/SKILL.md must exist "
+        f"(all hosts now use unified skills)"
+    )
+
+
+@pytest.mark.parametrize(
+    "skill_name",
+    ["status", "context", "savings", "benchmark", "analyze-failures", "evals", "settings"],
+)
+def test_new_claude_plugin_skill_has_description(skill_name: str) -> None:
+    # Phase H consolidation: All skills unified in ./integrations/skills/
+    skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
+    if not skill_file.exists():
+        pytest.skip(f"skill file not found: {skill_name}")
+    content = skill_file.read_text()
+    assert (
+        "description:" in content
+    ), f"skills/{skill_name}/SKILL.md must have 'description:' in frontmatter"
+
+
+def test_new_claude_plugin_has_agents() -> None:
+    agents_dir = CLAUDE_PLUGIN_NEW / "agents"
+    assert agents_dir.is_dir(), "integrations/claude/plugin/agents/ directory must exist"
+    for name in ("code.md", "explore.md", "review.md", "repair.md"):
+        assert (agents_dir / name).exists(), f"integrations/claude/plugin/agents/{name} must exist"
+
+
+def test_new_claude_plugin_mcp_uses_plugin_root_var() -> None:
+    mcp_json = CLAUDE_PLUGIN_NEW / ".mcp.json"
+    assert mcp_json.exists(), "integrations/claude/plugin/.mcp.json must exist"
+    content = mcp_json.read_text()
+    assert (
+        "CLAUDE_PLUGIN_ROOT" in content
+    ), ".mcp.json must use ${CLAUDE_PLUGIN_ROOT} so it works after marketplace install"
+
+
+def test_new_claude_plugin_hooks_enabled() -> None:
+    """Hooks must be active (no enabled:false disabling them)."""
+    hooks_json = CLAUDE_PLUGIN_NEW / "hooks" / "hooks.json"
+    if not hooks_json.exists():
+        pytest.skip("integrations/claude/plugin/hooks/hooks.json not found")
+    data = json.loads(hooks_json.read_text())
+    hooks_map = data.get("hooks", {})
+    assert isinstance(hooks_map, dict), "hooks should be a dict of event→groups"
+    for event, groups in hooks_map.items():
+        for group in groups:
+            assert group.get("enabled", True) is not False, (
+                f"Hook group for event '{event}' is disabled (enabled:false). "
+                f"Remove the 'enabled' field or set it to true: {group}"
+            )
+
+
+@pytest.mark.parametrize("script", ["pre_tool_use.py", "post_tool_use_failure.py", "stop.py"])
+def test_new_claude_plugin_hook_scripts_exist(script: str) -> None:
+    """Python hook scripts must be present in the hooks/ directory."""
+    hook_file = CLAUDE_PLUGIN_NEW / "hooks" / script
+    assert hook_file.exists(), (
+        f"integrations/claude/plugin/hooks/{script} must exist — "
+        "it is referenced by hooks.json and required for Atelier hook functionality."
+    )
+
+
+def test_new_claude_plugin_has_mcp_wrapper() -> None:
+    wrapper = CLAUDE_PLUGIN_NEW / "servers" / "atelier-mcp-wrapper.js"
+    assert wrapper.exists(), "integrations/claude/plugin/servers/atelier-mcp-wrapper.js must exist"
+
+
+def test_new_claude_plugin_settings_uses_supported_keys() -> None:
+    """Plugin settings.json may only use keys supported by Claude Code: `agent` and `subagentStatusLine`.
+
+    Per https://code.claude.com/docs/en/plugins-reference — "Default
+    configuration applied when the plugin is enabled. Only the agent and
+    subagentStatusLine keys are currently supported".
+    """
+    settings = CLAUDE_PLUGIN_NEW / "settings.json"
+    assert settings.exists(), "integrations/claude/plugin/settings.json must exist"
+    data = json.loads(settings.read_text())
+    allowed = {"agent", "subagentStatusLine"}
+    extra = set(data.keys()) - allowed
+    assert not extra, (
+        f"settings.json contains unsupported keys: {extra}. "
+        f"Only {allowed} are honored by Claude Code."
+    )
+    assert data.get("agent") == "atelier:code", (
+        "settings.json must set `agent` to 'atelier:code' so it appears as "
+        "the default agent for the atelier plugin."
+    )
+
+
+def test_new_claude_plugin_subagent_statusline_wired() -> None:
+    """settings.json must wire subagentStatusLine to scripts/statusline.sh."""
+    settings = CLAUDE_PLUGIN_NEW / "settings.json"
+    if not settings.exists():
+        pytest.skip("settings.json missing")
+    data = json.loads(settings.read_text())
+    sl = data.get("subagentStatusLine")
+    assert isinstance(sl, dict), "subagentStatusLine must be a dict"
+    assert sl.get("type") == "command", "subagentStatusLine.type must be 'command'"
+    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get(
+        "command", ""
+    ), "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+
+
+def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
+    """scripts/statusline.sh must exist and be executable."""
+    script = CLAUDE_PLUGIN_NEW / "scripts" / "statusline.sh"
+    assert script.exists(), (
+        "integrations/claude/plugin/scripts/statusline.sh must exist — "
+        "wired by settings.json subagentStatusLine."
+    )
+    assert os.access(script, os.X_OK), f"{script} must be executable (chmod +x)"
+
+
+def test_new_claude_plugin_stop_hook_uses_valid_decision() -> None:
+    """stop.py must NOT emit `decision: "ask"` — only "block" is a valid Stop decision.
+
+    For non-blocking display, use `systemMessage` instead.
+    """
+    stop_py = (CLAUDE_PLUGIN_NEW / "hooks" / "stop.py").read_text()
+    assert '"decision": "ask"' not in stop_py and "'decision': 'ask'" not in stop_py, (
+        'stop.py emits invalid `decision: "ask"`. Stop hooks only accept '
+        '`decision: "block"`. Use `systemMessage` for non-blocking display.'
+    )
+
+
+# ---------------------------------------------------------------------------
+# 16. Repo-root marketplace.json for 'claude plugin marketplace add .'
+# ---------------------------------------------------------------------------
+
+
+def test_root_marketplace_json_exists() -> None:
+    mktplace = INTEGRATIONS / "claude" / "plugin" / ".claude-plugin" / "marketplace.json"
+    assert (
+        mktplace.exists()
+    ), "integrations/claude/plugin/.claude-plugin/marketplace.json must exist"
+
+
+def test_root_marketplace_json_name() -> None:
+    mktplace = INTEGRATIONS / "claude" / "plugin" / ".claude-plugin" / "marketplace.json"
+    if not mktplace.exists():
+        pytest.skip(".claude-plugin/marketplace.json not found")
+    data = json.loads(mktplace.read_text())
+    assert (
+        data.get("name") == "atelier"
+    ), f"root marketplace.json name should be 'atelier', got: {data.get('name')}"
+
+
+def test_root_marketplace_json_source_points_to_new_plugin() -> None:
+    mktplace = INTEGRATIONS / "claude" / "plugin" / ".claude-plugin" / "marketplace.json"
+    if not mktplace.exists():
+        pytest.skip(".claude-plugin/marketplace.json not found")
+    data = json.loads(mktplace.read_text())
+    plugins = data.get("plugins", [])
+    assert len(plugins) >= 1, "root marketplace.json must declare at least one plugin"
+    source = plugins[0].get("source", "")
+    assert (
+        "integrations/claude/plugin" in source or source == "./"
+    ), f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
+
+
+# ---------------------------------------------------------------------------
+# 17. New Makefile targets
+# ---------------------------------------------------------------------------
+
+
+def test_makefile_has_claude_targets() -> None:
+    content = MAKEFILE.read_text()
+    for target in ("install-claude:", "verify-claude:"):
+        assert target in content, f"Makefile missing target: {target}"
+
+
+def test_makefile_has_claude_plugin_dev_targets() -> None:
+    content = MAKEFILE.read_text()
+    for target in ("install-claude-plugin-dev:", "verify-claude-plugin-dev:"):
+        assert target in content, f"Makefile missing target: {target}"
+
+
+# ---------------------------------------------------------------------------
+# 18. New scripts exist and are executable
+# ---------------------------------------------------------------------------
+
+
+def test_install_claude_script_exists() -> None:
+    script = SCRIPTS / "install_claude.sh"
+    assert script.exists(), "Missing: scripts/install_claude.sh"
+    assert is_executable(script), "Not executable: scripts/install_claude.sh"
+
+
+def test_verify_claude_plugin_dev_script_exists() -> None:
+    script = SCRIPTS / "verify_claude_plugin_dev.sh"
+    assert script.exists(), "Missing: scripts/verify_claude_plugin_dev.sh"
+    assert is_executable(script), "Not executable: scripts/verify_claude_plugin_dev.sh"
+
+
+def test_verify_claude_script_exists() -> None:
+    script = SCRIPTS / "verify_claude.sh"
+    assert script.exists(), "Missing: scripts/verify_claude.sh"
+    assert is_executable(script), "Not executable: scripts/verify_claude.sh"
+
+
+def test_install_claude_uses_new_plugin_path() -> None:
+    script = SCRIPTS / "install_claude.sh"
+    content = script.read_text()
+    assert (
+        "integrations/claude/plugin" in content
+    ), "install_claude.sh must reference integrations/claude/plugin"
+
+
+# ---------------------------------------------------------------------------
+# 19. Docs use correct /atelier:skill namespacing (not /atelier-skill)
+# ---------------------------------------------------------------------------
+
+
+def test_docs_use_atelier_colon_not_dash_for_skills() -> None:
+    doc = DOCS_HOSTS / "claude-code-install.md"
+    if not doc.exists():
+        pytest.skip("claude-code-install.md not found")
+    content = doc.read_text()
+    # /atelier:status is correct; /atelier-status is the old commands-based name
+    assert (
+        "/atelier:status" in content
+    ), "claude-code-install.md must document /atelier:status (colon, not dash)"
+    # Ensure the wrong form is not present (unless it's mentioned as a legacy note)
+    # We allow it if explicitly labelled as deprecated/old
+    bad_uses = [
+        line
+        for line in content.splitlines()
+        if "/atelier-status" in line
+        and "deprecated" not in line.lower()
+        and "old" not in line.lower()
+    ]
+    assert (
+        not bad_uses
+    ), f"claude-code-install.md uses /atelier-status (dash) without deprecated label: {bad_uses}"
+
+
+def test_docs_mention_three_install_modes() -> None:
+    doc = DOCS_HOSTS / "claude-code-install.md"
+    if not doc.exists():
+        pytest.skip("claude-code-install.md not found")
+    content = doc.read_text()
+    assert "marketplace" in content.lower(), "docs must mention marketplace install mode"
+    assert (
+        "dev" in content.lower() or "plugin-dir" in content.lower()
+    ), "docs must mention dev mode (--plugin-dir)"
+    assert (
+        "mcp-only" in content.lower() or "mcp only" in content.lower()
+    ), "docs must mention MCP-only fallback mode"
+
+
+# ---------------------------------------------------------------------------
+# Universal status helper + per-host atelier identity artifacts
+# ---------------------------------------------------------------------------
+
+
+def test_codex_agents_atelier_md_has_persona() -> None:
+    f = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
+    assert f.exists(), "Missing: integrations/codex/AGENTS.atelier.md"
+    content = f.read_text()
+    assert "atelier:code" in content, "codex AGENTS.atelier.md must declare atelier:code persona"
+
+
+def test_gemini_atelier_md_exists() -> None:
+    f = INTEGRATIONS / "gemini" / "GEMINI.atelier.md"
+    assert f.exists(), "Missing: integrations/gemini/GEMINI.atelier.md"
+    assert "atelier:code" in f.read_text()
+
+
+def test_gemini_atelier_commands_dir_has_toml() -> None:
+    cmd_dir = INTEGRATIONS / "gemini" / "commands" / "atelier"
+    assert cmd_dir.is_dir(), "Missing: integrations/gemini/commands/atelier/"
+    tomls = list(cmd_dir.glob("*.toml"))
+    assert len(tomls) >= 2, "expected >=2 atelier slash command TOMLs"
+    for t in tomls:
+        text = t.read_text()
+        assert "description" in text and "prompt" in text, f"{t.name} missing description or prompt"
+
+
+def test_opencode_atelier_agent_exists() -> None:
+    f = INTEGRATIONS / "opencode" / "agents" / "atelier.md"
+    assert f.exists(), "Missing: integrations/opencode/agents/atelier.md"
+    text = f.read_text()
+    assert "atelier:code" in text
+    assert "---" in text, "opencode agent must have frontmatter"
+
+
+def test_copilot_atelier_chatmode_exists() -> None:
+    f = INTEGRATIONS / "copilot" / "chatmodes" / "atelier.chatmode.md"
+    assert f.exists(), "Missing: integrations/copilot/chatmodes/atelier.chatmode.md"
+    text = f.read_text()
+    assert "atelier:code" in text
+    assert "description:" in text, "chatmode must have description: frontmatter"
+
+
+def test_makefile_has_atelier_status_target() -> None:
+    content = MAKEFILE.read_text()
+    assert "install-atelier-status:" in content
+    assert "atelier-status:" in content

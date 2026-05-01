@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# install_gemini.sh — Install Atelier into Gemini CLI
+#
+# What it does:
+#   Merges atelier MCP entry into ~/.gemini/settings.json
+#   Uses absolute paths (required by Gemini CLI)
+#
+# Options:
+#   --dry-run      Print what would happen, touch nothing
+#   --print-only   Print config snippet for manual install, touch nothing
+#   --workspace DIR  Workspace root for ATELIER_WORKSPACE_ROOT (default: cwd)
+#   --strict       Exit nonzero if 'gemini' CLI not on PATH
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
+
+DRY_RUN=false
+PRINT_ONLY=false
+STRICT=false
+WORKSPACE="${PWD}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)    DRY_RUN=true ;;
+        --print-only) PRINT_ONLY=true ;;
+        --strict)     STRICT=true ;;
+        --workspace)  WORKSPACE="$2"; shift ;;
+        *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+
+info()  { echo "[atelier:gemini] $*"; }
+warn()  { echo "[atelier:gemini] WARN: $*" >&2; }
+run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+backup_file() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
+        run "cp '$f' '$bk'"
+        info "backed up $f → $bk"
+    fi
+}
+
+# ---- check CLI --------------------------------------------------------------
+if ! command -v gemini &>/dev/null; then
+    if $STRICT; then
+        echo "[atelier:gemini] ERROR: 'gemini' CLI not found. Install from https://ai.google.dev/gemini-api/docs/gemini-cli" >&2
+        exit 1
+    fi
+    warn "'gemini' CLI not found — SKIPPING."
+    warn "Install Gemini CLI: npm install -g @google/generative-ai then run: make install-gemini"
+    exit 2
+fi
+info "Found Gemini CLI: $(gemini --version 2>/dev/null || echo 'version unknown')"
+
+# ---- print-only mode --------------------------------------------------------
+if $PRINT_ONLY; then
+    echo ""
+    echo "=== Atelier Gemini CLI — Manual Install ==="
+    echo ""
+    echo "Merge into ~/.gemini/settings.json:"
+    cat <<JSON
+{
+  "mcpServers": {
+    "atelier": {
+      "command": "${ATELIER_WRAPPER}",
+      "args": [],
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
+        "ATELIER_STORE_ROOT": "${WORKSPACE}/.atelier"
+      }
+    }
+  }
+}
+JSON
+    echo ""
+    echo "Note: Gemini CLI requires absolute paths. The paths above are resolved at install time."
+    exit 0
+fi
+
+# ---- merge ~/.gemini/settings.json ------------------------------------------
+GEMINI_DIR="${HOME}/.gemini"
+SETTINGS="${GEMINI_DIR}/settings.json"
+NEW_ENTRY=$(cat <<JSON
+{
+  "mcpServers": {
+    "atelier": {
+      "command": "${ATELIER_WRAPPER}",
+      "args": [],
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
+        "ATELIER_STORE_ROOT": "${WORKSPACE}/.atelier"
+      }
+    }
+  }
+}
+JSON
+)
+
+run "mkdir -p '$GEMINI_DIR'"
+
+if [ -f "$SETTINGS" ]; then
+    backup_file "$SETTINGS"
+    if $DRY_RUN; then
+        echo "  [dry-run] merge atelier into $SETTINGS"
+    else
+        python3 - <<PYEOF
+import json
+with open('$SETTINGS') as f:
+    existing = json.load(f)
+new_entry = json.loads('''$NEW_ENTRY''')
+existing.setdefault("mcpServers", {}).update(new_entry["mcpServers"])
+with open('$SETTINGS', 'w') as f:
+    json.dump(existing, f, indent=2)
+    f.write('\n')
+print("[atelier:gemini] merged atelier entry into $SETTINGS")
+PYEOF
+    fi
+else
+    if $DRY_RUN; then
+        echo "  [dry-run] create $SETTINGS"
+    else
+        echo "$NEW_ENTRY" > "$SETTINGS"
+        info "created $SETTINGS"
+    fi
+fi
+
+# ---- install custom slash commands -----------------------------------------
+CMD_SRC="${SCRIPT_DIR}/commands/atelier"
+CMD_DEST="${GEMINI_DIR}/commands/atelier"
+if [ -d "$CMD_SRC" ]; then
+    info "Installing custom commands → $CMD_DEST"
+    run "mkdir -p '$CMD_DEST'"
+    run "cp -f '$CMD_SRC'/*.toml '$CMD_DEST/'"
+    info "commands installed: /atelier:status, /atelier:context"
+fi
+
+# ---- install GEMINI.md context (atelier persona) ----------------------------
+GEMINI_MD_SRC="${SCRIPT_DIR}/GEMINI.atelier.md"
+GEMINI_MD_DEST="${WORKSPACE}/GEMINI.atelier.md"
+if [ -f "$GEMINI_MD_SRC" ] && [ ! -f "$GEMINI_MD_DEST" ]; then
+    run "cp '$GEMINI_MD_SRC' '$GEMINI_MD_DEST'"
+    info "created $GEMINI_MD_DEST (atelier persona context)"
+elif [ -f "$GEMINI_MD_DEST" ]; then
+    info "$GEMINI_MD_DEST already exists — not overwriting"
+fi
+
+info "Done. Restart Gemini CLI and verify: make verify-gemini"
+info "Note: Gemini CLI uses absolute paths — do not move atelier after installing."
+info "Tip: run 'atelier-status' in any shell to see current run state."

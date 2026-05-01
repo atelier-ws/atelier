@@ -1,0 +1,1 @@
+../../scripts/verify_claude.sh

@@ -1,0 +1,8 @@
+{
+  "id": "shopify-product-identity",
+  "title": "Shopify Product Identity",
+  "domain": "beseam.shopify.publish",
+  "content": "Canonical Shopify product identity uses GID, not handle or PDP URL.",
+  "status": "validated",
+  "source": "seed"
+}

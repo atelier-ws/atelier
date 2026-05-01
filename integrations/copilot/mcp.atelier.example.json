@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "atelier": {
+      "type": "stdio",
+      "command": "<ATELIER_ROOT>/scripts/atelier_mcp_stdio.sh",
+      "args": [],
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "<WORKSPACE_ROOT>"
+      }
+    }
+  }
+}

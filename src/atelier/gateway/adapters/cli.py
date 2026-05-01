@@ -1,0 +1,2347 @@
+"""CLI for the Atelier reasoning runtime.
+
+Designed to be readable when piped into another tool. All commands that
+return data accept ``--json`` to emit machine-parseable output.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC
+from importlib import resources
+from pathlib import Path
+from typing import Any
+
+import click
+import yaml
+
+from atelier.core.foundation.extractor import extract_candidate
+from atelier.core.foundation.metrics import summarize
+from atelier.core.foundation.models import (
+    ReasonBlock,
+    Rubric,
+    Trace,
+    to_jsonable,
+)
+from atelier.core.foundation.plan_checker import check_plan
+from atelier.core.foundation.renderer import (
+    render_block_markdown,
+    render_context_for_agent,
+    render_plan_check,
+    render_rubric_result,
+)
+from atelier.core.foundation.retriever import TaskContext, retrieve
+from atelier.core.foundation.rubric_gate import run_rubric
+from atelier.core.foundation.store import ReasoningStore
+
+DEFAULT_ROOT = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+
+
+# --------------------------------------------------------------------------- #
+# Helpers                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _load_store(root: Path) -> ReasoningStore:
+    store = ReasoningStore(root)
+    if not store.db_path.exists():
+        raise click.ClickException(f"No atelier store at {root}. Run `atelier init` first.")
+    return store
+
+
+def _core_runtime(root: Path) -> Any:
+    from atelier.core.runtime import AtelierRuntimeCore
+
+    return AtelierRuntimeCore(root)
+
+
+def _emit(data: Any, *, as_json: bool) -> None:
+    if as_json:
+        click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    else:
+        click.echo(data)
+
+
+def _seed_resources() -> tuple[list[Path], list[Path]]:
+    """Return (block_files, rubric_files) bundled with the package."""
+    blocks_dir = resources.files("atelier") / "infra" / "seed_blocks"
+    rubrics_dir = resources.files("atelier") / "core" / "rubrics"
+    block_files = sorted(Path(str(p)) for p in blocks_dir.iterdir() if p.name.endswith(".yaml"))
+    rubric_files = sorted(Path(str(p)) for p in rubrics_dir.iterdir() if p.name.endswith(".yaml"))
+    return block_files, rubric_files
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def _load_domain_manager(root: Path) -> Any:
+    from atelier.core.domains import DomainManager
+
+    return DomainManager(root)
+
+
+# --------------------------------------------------------------------------- #
+# CLI                                                                         #
+# --------------------------------------------------------------------------- #
+
+
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--root",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_ROOT,
+    show_default=True,
+    help="Atelier runtime data directory.",
+)
+@click.pass_context
+def cli(ctx: click.Context, root: Path) -> None:
+    """Atelier — Beseam Reasoning Runtime."""
+    ctx.ensure_object(dict)
+    ctx.obj["root"] = root
+
+
+# ----- init ---------------------------------------------------------------- #
+
+
+@cli.command()
+@click.option("--seed/--no-seed", default=True, help="Import bundled seed blocks and rubrics.")
+@click.pass_context
+def init(ctx: click.Context, seed: bool) -> None:
+    """Initialize the runtime store at --root."""
+    root: Path = ctx.obj["root"]
+    store = ReasoningStore(root)
+    store.init()
+    click.echo(f"initialized atelier store at {store.root}")
+    if seed:
+        block_files, rubric_files = _seed_resources()
+        n_b = 0
+        for path in block_files:
+            data = _load_yaml(path)
+            if "id" not in data:
+                data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
+            block = ReasonBlock.model_validate(data)
+            store.upsert_block(block)
+            n_b += 1
+        n_r = 0
+        for path in rubric_files:
+            data = _load_yaml(path)
+            rubric = Rubric.model_validate(data)
+            store.upsert_rubric(rubric)
+            n_r += 1
+        click.echo(f"seeded {n_b} reasonblocks and {n_r} rubrics")
+
+
+# ----- add-block ----------------------------------------------------------- #
+
+
+@cli.command("add-block")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.pass_context
+def add_block(ctx: click.Context, path: Path) -> None:
+    """Add or update a ReasonBlock from a YAML file."""
+    store = _load_store(ctx.obj["root"])
+    data = _load_yaml(path)
+    if "id" not in data:
+        data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
+    block = ReasonBlock.model_validate(data)
+    store.upsert_block(block)
+    click.echo(f"upserted {block.id}")
+
+
+@cli.group("domain")
+def domain_group() -> None:
+    """Manage Atelier internal domain bundles."""
+
+
+@domain_group.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON.")
+@click.pass_context
+def domain_list(ctx: click.Context, as_json: bool) -> None:
+    """List available domain bundles (built-in + user)."""
+    manager = _load_domain_manager(ctx.obj["root"])
+    refs = manager.list_bundles()
+    payload = [r.model_dump(mode="json") for r in refs]
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    if not payload:
+        click.echo("(no domain bundles)")
+        return
+    for item in payload:
+        click.echo(f"{item['bundle_id']}\t{item['domain']}\t{item['description'][:60]}")
+
+
+@domain_group.command("info")
+@click.argument("bundle_id")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON.")
+@click.pass_context
+def domain_info(ctx: click.Context, bundle_id: str, as_json: bool) -> None:
+    """Show details for a domain bundle."""
+    manager = _load_domain_manager(ctx.obj["root"])
+    result = manager.info(bundle_id)
+    if result is None:
+        raise click.ClickException(f"domain bundle not found: {bundle_id}")
+    if as_json:
+        _emit(result, as_json=True)
+        return
+    click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@cli.group("capability")
+def capability_group() -> None:
+    """Inspect Atelier core capabilities."""
+
+
+@capability_group.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON.")
+@click.pass_context
+def capability_list(ctx: click.Context, as_json: bool) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.capability_list()
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    for item in payload:
+        click.echo(f"{item['id']}\t{item['description']}")
+
+
+@capability_group.command("status")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON.")
+@click.pass_context
+def capability_status(ctx: click.Context, as_json: bool) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.capability_status()
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+# ----- search -------------------------------------------------------------- #
+
+
+@cli.command()
+@click.argument("query_parts", nargs=-1)
+@click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON.")
+@click.pass_context
+def search(ctx: click.Context, query_parts: tuple[str, ...], limit: int, as_json: bool) -> None:
+    """Search procedures. Supports legacy mode and `search smart <query>`."""
+    if not query_parts:
+        raise click.ClickException("query is required")
+
+    if query_parts[0] == "smart":
+        smart_query = " ".join(query_parts[1:]).strip()
+        if not smart_query:
+            raise click.ClickException("smart search query is required")
+        rt = _core_runtime(ctx.obj["root"])
+        payload = rt.smart_search(smart_query, limit=limit)
+        _emit(payload, as_json=True)
+        return
+
+    query = " ".join(query_parts).strip()
+    store = _load_store(ctx.obj["root"])
+    blocks = store.search_blocks(query, limit=limit)
+    if as_json:
+        _emit([to_jsonable(b) for b in blocks], as_json=True)
+        return
+    if not blocks:
+        click.echo("(no matches)")
+        return
+    for b in blocks:
+        click.echo(f"{b.id}\t{b.domain}\t{b.title}")
+
+
+# ----- context ------------------------------------------------------------- #
+
+
+@cli.command()
+@click.option("--task", required=True, help="Task description.")
+@click.option("--domain", default=None)
+@click.option("--file", "files", multiple=True, help="File path likely to be edited.")
+@click.option("--tool", "tools", multiple=True, help="Tool the agent expects to use.")
+@click.option("--error", "errors", multiple=True, help="Known error message.")
+@click.option("--limit", default=5, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def context(
+    ctx: click.Context,
+    task: str,
+    domain: str | None,
+    files: tuple[str, ...],
+    tools: tuple[str, ...],
+    errors: tuple[str, ...],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """Render the reasoning-context block to inject into an agent prompt."""
+    store = _load_store(ctx.obj["root"])
+    tctx = TaskContext(
+        task=task, domain=domain, files=list(files), tools=list(tools), errors=list(errors)
+    )
+    scored = retrieve(store, tctx, limit=limit)
+    if as_json:
+        _emit(
+            {
+                "matched": [
+                    {"id": s.block.id, "score": s.score, "breakdown": s.breakdown} for s in scored
+                ],
+                "context": render_context_for_agent([s.block for s in scored]),
+            },
+            as_json=True,
+        )
+        return
+    click.echo(render_context_for_agent([s.block for s in scored]))
+
+
+# ----- check-plan ---------------------------------------------------------- #
+
+
+@cli.command("check-plan")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Read JSON payload from file. Use '-' for stdin.",
+)
+@click.option("--task", default=None)
+@click.option("--domain", default=None)
+@click.option("--step", "steps", multiple=True, help="Plan step (repeatable).")
+@click.option("--file", "files", multiple=True)
+@click.option("--tool", "tools", multiple=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def check_plan_cmd(
+    ctx: click.Context,
+    input_path: Path | None,
+    task: str | None,
+    domain: str | None,
+    steps: tuple[str, ...],
+    files: tuple[str, ...],
+    tools: tuple[str, ...],
+    as_json: bool,
+) -> None:
+    """Validate a proposed agent plan."""
+    store = _load_store(ctx.obj["root"])
+    if input_path is not None:
+        raw = sys.stdin.read() if str(input_path) == "-" else input_path.read_text("utf-8")
+        payload = json.loads(raw)
+        task = payload.get("task", task)
+        domain = payload.get("domain", domain)
+        plan = list(payload.get("plan", steps))
+        files = tuple(payload.get("files", files))
+        tools = tuple(payload.get("tools", tools))
+    else:
+        plan = list(steps)
+    if not task or not plan:
+        raise click.ClickException("--task and at least one --step (or --input) required")
+
+    result = check_plan(
+        store, task=task, plan=plan, domain=domain, files=list(files), tools=list(tools)
+    )
+    if as_json:
+        _emit(to_jsonable(result), as_json=True)
+    else:
+        click.echo(render_plan_check(result))
+    sys.exit(0 if result.status != "blocked" else 2)
+
+
+# ----- rescue -------------------------------------------------------------- #
+
+
+@cli.command()
+@click.option("--task", required=True)
+@click.option("--error", required=True)
+@click.option("--domain", default=None)
+@click.option("--file", "files", multiple=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def rescue(
+    ctx: click.Context,
+    task: str,
+    error: str,
+    domain: str | None,
+    files: tuple[str, ...],
+    as_json: bool,
+) -> None:
+    """Suggest a rescue procedure for a repeated failure."""
+    from atelier.gateway.adapters.runtime import ReasoningRuntime
+
+    rt = ReasoningRuntime(ctx.obj["root"])
+    result = rt.rescue_failure(task=task, error=error, files=list(files), domain=domain)
+    if as_json:
+        _emit(to_jsonable(result), as_json=True)
+        return
+    click.echo(result.rescue)
+    if result.matched_blocks:
+        click.echo("matched blocks: " + ", ".join(result.matched_blocks))
+
+
+# ----- record-trace -------------------------------------------------------- #
+
+
+@cli.command("record-trace")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(path_type=Path),
+    default="-",
+    show_default=True,
+    help="Trace JSON file. Use '-' for stdin.",
+)
+@click.pass_context
+def record_trace(ctx: click.Context, input_path: Path | str) -> None:
+    """Record an observable trace."""
+    store = _load_store(ctx.obj["root"])
+    raw = sys.stdin.read() if str(input_path) == "-" else Path(input_path).read_text("utf-8")
+    data = json.loads(raw)
+    if "id" not in data:
+        data["id"] = Trace.make_id(data.get("task", "untitled"), data.get("agent", "agent"))
+    trace = Trace.model_validate(data)
+    store.record_trace(trace)
+    click.echo(trace.id)
+
+
+# ----- extract-block ------------------------------------------------------- #
+
+
+@cli.command("extract-block")
+@click.argument("trace_id")
+@click.option("--save", is_flag=True, help="Persist the candidate block.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def extract_block_cmd(ctx: click.Context, trace_id: str, save: bool, as_json: bool) -> None:
+    """Extract a candidate ReasonBlock from a trace."""
+    store = _load_store(ctx.obj["root"])
+    trace = store.get_trace(trace_id)
+    if trace is None:
+        raise click.ClickException(f"trace not found: {trace_id}")
+    candidate = extract_candidate(trace)
+    if save:
+        store.upsert_block(candidate.block)
+    payload = {
+        "block": to_jsonable(candidate.block),
+        "confidence": candidate.confidence,
+        "reasons": candidate.reasons,
+        "saved": save,
+    }
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"candidate: {candidate.block.id} (confidence={candidate.confidence:.2f})")
+    for r in candidate.reasons:
+        click.echo(f"  - {r}")
+    click.echo(render_block_markdown(candidate.block))
+
+
+# ----- list-blocks --------------------------------------------------------- #
+
+
+@cli.command("list-blocks")
+@click.option("--domain", default=None)
+@click.option("--include-deprecated", is_flag=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def list_blocks_cmd(
+    ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool
+) -> None:
+    """List ReasonBlocks."""
+    store = _load_store(ctx.obj["root"])
+    blocks = store.list_blocks(domain=domain, include_deprecated=include_deprecated)
+    if as_json:
+        _emit([to_jsonable(b) for b in blocks], as_json=True)
+        return
+    summary = summarize(store)
+    click.echo(
+        f"# {len(blocks)} blocks shown "
+        f"(active={summary.blocks_active}, "
+        f"deprecated={summary.blocks_deprecated}, "
+        f"quarantined={summary.blocks_quarantined})"
+    )
+    for b in blocks:
+        click.echo(f"{b.status[:1].upper()} {b.id}\t{b.domain}\t{b.title}")
+
+
+# ----- deprecate / quarantine --------------------------------------------- #
+
+
+@cli.command()
+@click.argument("block_id")
+@click.pass_context
+def deprecate(ctx: click.Context, block_id: str) -> None:
+    """Mark a block as deprecated."""
+    store = _load_store(ctx.obj["root"])
+    if not store.update_block_status(block_id, "deprecated"):
+        raise click.ClickException(f"block not found: {block_id}")
+    click.echo(f"deprecated {block_id}")
+
+
+@cli.command()
+@click.argument("block_id")
+@click.pass_context
+def quarantine(ctx: click.Context, block_id: str) -> None:
+    """Quarantine a block (will not be retrieved)."""
+    store = _load_store(ctx.obj["root"])
+    if not store.update_block_status(block_id, "quarantined"):
+        raise click.ClickException(f"block not found: {block_id}")
+    click.echo(f"quarantined {block_id}")
+
+
+# ----- run-rubric (handy for manual gate calls) --------------------------- #
+
+
+@cli.command("run-rubric")
+@click.argument("rubric_id")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(path_type=Path),
+    default="-",
+    show_default=True,
+    help="JSON object mapping check_name -> bool. Use '-' for stdin.",
+)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def run_rubric_cmd(
+    ctx: click.Context, rubric_id: str, input_path: Path | str, as_json: bool
+) -> None:
+    """Evaluate a rubric against a checks JSON object."""
+    store = _load_store(ctx.obj["root"])
+    rubric = store.get_rubric(rubric_id)
+    if rubric is None:
+        raise click.ClickException(f"rubric not found: {rubric_id}")
+    raw = sys.stdin.read() if str(input_path) == "-" else Path(input_path).read_text("utf-8")
+    checks = json.loads(raw)
+    result = run_rubric(rubric, checks)
+    if as_json:
+        _emit(to_jsonable(result), as_json=True)
+    else:
+        click.echo(render_rubric_result(result))
+    sys.exit(0 if result.status != "blocked" else 2)
+
+
+# ----- task (prompt synthesis for opencode / Codex / Claude) -------------- #
+
+
+_TASK_PROMPT_TEMPLATE = """\
+You are a coding agent with the **Atelier reasoning runtime** wired in via MCP.
+You MUST follow this loop. Do not skip steps.
+
+# Task
+{task}
+
+{domain_line}{files_line}{tools_line}
+# Pre-fetched reasoning context
+The following ReasonBlocks were retrieved for this task. Use them to draft a plan
+that does NOT trigger their dead ends.
+
+{context}
+
+# Required workflow
+
+1. **Confirm context.** If the task is unclear, call `atelier_get_reasoning_context`
+   with refined `task`, `files`, `errors`. Otherwise proceed.
+
+2. **Draft a concrete plan** as 3-8 short imperative steps.
+
+3. **Validate the plan** by calling `atelier_check_plan` with this exact JSON shape:
+   ```json
+   {{
+     "task": "{task_escaped}",
+     "domain": {domain_json},
+     "plan": ["step 1", "step 2", "..."],
+     "files": {files_json},
+     "tools": {tools_json}
+   }}
+   ```
+   - If `status == "blocked"`, do NOT edit code. Replace your plan with `suggested_plan`
+     from the response, then call `atelier_check_plan` again.
+   - If `status == "warn"`, address every warning in the next plan revision.
+   - Only proceed to step 4 once `status == "ok"`.
+
+4. **Implement** the plan. Keep edits minimal and aligned with the validated plan.
+
+5. **Failure rescue.** If the same command, test, or tool call fails twice with the
+   same error signature, call `atelier_rescue_failure` with `task`, `error`, `files`,
+   and a list of `recent_actions`. Apply the suggested rescue before re-running.
+
+6. **Rubric gate.** Before declaring success on a high-risk domain
+   (`beseam.shopify.publish`, `beseam.pdp.schema`, `beseam.catalog.fix`,
+   `beseam.tracker.classification`), call `atelier_run_rubric_gate` with the
+   matching rubric_id and a `checks` object mapping every required check name
+   to `true` / `false` / `null` (unknown).
+
+7. **Record trace.** At task completion call `atelier_record_trace` with:
+   ```json
+   {{
+     "agent": "opencode",
+     "domain": {domain_json},
+     "task": "{task_escaped}",
+     "status": "success | failed | partial",
+     "files_touched": ["..."],
+     "tools_called": [{{"name": "tool_name", "args_hash": "", "count": 1}}],
+     "commands_run": ["..."],
+     "errors_seen": ["..."],
+     "diff_summary": "one sentence",
+     "output_summary": "one sentence",
+     "validation_results": [{{"name": "test_x", "passed": true, "detail": ""}}]
+   }}
+   ```
+   NEVER store secrets, API keys, tokens, or hidden chain-of-thought in the trace.
+
+# Hard rules
+- Do not ignore `high`-severity Atelier warnings.
+- Do not bypass `atelier_check_plan` by editing first.
+- Do not invent plan steps that contradict matched ReasonBlocks.
+
+Begin.
+"""
+
+
+def _json_arg(value: list[str] | str | None) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+@cli.command()
+@click.argument("task_description", nargs=-1, required=True)
+@click.option("--domain", default=None, help="Domain hint (e.g. beseam.shopify.publish).")
+@click.option("--file", "files", multiple=True, help="File path likely to be edited.")
+@click.option("--tool", "tools", multiple=True, help="Tool the agent expects to use.")
+@click.option("--error", "errors", multiple=True, help="Known error message.")
+@click.option("--limit", default=5, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope instead of prompt text.")
+@click.pass_context
+def task(
+    ctx: click.Context,
+    task_description: tuple[str, ...],
+    domain: str | None,
+    files: tuple[str, ...],
+    tools: tuple[str, ...],
+    errors: tuple[str, ...],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """Synthesize a full agent prompt that auto-invokes the Atelier loop.
+
+    Pipe the output into opencode/codex/claude:
+
+        atelier task "Fix Shopify publish validation" --domain beseam.shopify.publish | opencode run -
+    """
+    store = _load_store(ctx.obj["root"])
+    task_str = " ".join(task_description).strip()
+    if not task_str:
+        raise click.ClickException("task description is required")
+
+    tctx = TaskContext(
+        task=task_str,
+        domain=domain,
+        files=list(files),
+        tools=list(tools),
+        errors=list(errors),
+    )
+    scored = retrieve(store, tctx, limit=limit)
+    context_text = render_context_for_agent([s.block for s in scored]) or "(no matched blocks)"
+
+    domain_line = f"Domain hint: `{domain}`\n\n" if domain else ""
+    files_line = "Likely files: " + ", ".join(f"`{f}`" for f in files) + "\n\n" if files else ""
+    tools_line = "Likely tools: " + ", ".join(f"`{t}`" for t in tools) + "\n\n" if tools else ""
+
+    prompt = _TASK_PROMPT_TEMPLATE.format(
+        task=task_str,
+        task_escaped=task_str.replace('"', '\\"'),
+        domain_line=domain_line,
+        files_line=files_line,
+        tools_line=tools_line,
+        context=context_text,
+        domain_json=_json_arg(domain),
+        files_json=_json_arg(list(files)),
+        tools_json=_json_arg(list(tools)),
+    )
+
+    if as_json:
+        _emit(
+            {
+                "task": task_str,
+                "domain": domain,
+                "files": list(files),
+                "tools": list(tools),
+                "matched": [
+                    {"id": s.block.id, "score": s.score, "title": s.block.title} for s in scored
+                ],
+                "prompt": prompt,
+            },
+            as_json=True,
+        )
+        return
+    click.echo(prompt)
+
+
+# ----- agent host importers ------------------------------------------------- #
+# Each sub-group follows the same pattern:
+#   atelier <host> import [--path PATH]
+#
+# Data model (all three hosts):
+#   - RawArtifact  : full redacted session file(s) stored under .atelier/raw/
+#   - Trace        : compact curated summary with raw_artifact_ids linkback
+#
+# Nothing is thrown away except secrets/PII stripped by Atelier's redactor.
+# --------------------------------------------------------------------------- #
+
+
+@cli.group()
+def copilot() -> None:
+    """Copilot session-state integration (~/.copilot/session-state/)."""
+
+
+@copilot.command("import")
+@click.option(
+    "--path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override sessions root (default: ~/.copilot/session-state).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Force re-import all sessions, ignoring timestamp dedup.",
+)
+@click.pass_context
+def copilot_import(ctx: click.Context, path: Path | None, force: bool) -> None:
+    """Import Copilot sessions into the Atelier store (loss-preserving)."""
+    from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter
+
+    store = _load_store(ctx.obj["root"])
+    importer = CopilotImporter(store)
+    count = importer.import_all(path, force=force)
+    click.echo(f"imported {count} copilot sessions")
+
+
+# ----- claude --------------------------------------------------------------- #
+
+
+@cli.group()
+def claude() -> None:
+    """Claude Code session integration (~/.claude/projects/)."""
+
+
+@claude.command("import")
+@click.option(
+    "--path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override sessions root (default: ~/.claude/projects/).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Force re-import all sessions, ignoring timestamp dedup.",
+)
+@click.pass_context
+def claude_import(ctx: click.Context, path: Path | None, force: bool) -> None:
+    """Import Claude Code sessions into the Atelier store (loss-preserving)."""
+    from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
+
+    store = _load_store(ctx.obj["root"])
+    importer = ClaudeImporter(store)
+    count = importer.import_all(path, force=force)
+    click.echo(f"imported {count} claude sessions")
+
+
+# ----- codex ---------------------------------------------------------------- #
+
+
+@cli.group()
+def codex() -> None:
+    """Codex session integration (~/.codex/sessions/)."""
+
+
+@codex.command("import")
+@click.option(
+    "--path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override sessions root (default: ~/.codex/sessions/).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Force re-import all sessions, ignoring timestamp dedup.",
+)
+@click.pass_context
+def codex_import(ctx: click.Context, path: Path | None, force: bool) -> None:
+    """Import Codex sessions into the Atelier store (loss-preserving)."""
+    from atelier.gateway.hosts.session_parsers.codex import CodexImporter
+
+    store = _load_store(ctx.obj["root"])
+    importer = CodexImporter(store)
+    count = importer.import_all(path, force=force)
+    click.echo(f"imported {count} codex sessions")
+
+
+# ----- opencode ------------------------------------------------------------- #
+
+
+@cli.group()
+def opencode() -> None:
+    """OpenCode session integration (~/.local/share/opencode/opencode.db)."""
+
+
+@opencode.command("import")
+@click.option(
+    "--path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override DB path (default: ~/.local/share/opencode/opencode.db/).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Force re-import all sessions, ignoring timestamp dedup.",
+)
+@click.pass_context
+def opencode_import(ctx: click.Context, path: Path | None, force: bool) -> None:
+    """Import OpenCode sessions into the Atelier store (loss-preserving)."""
+    from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
+
+    store = _load_store(ctx.obj["root"])
+    importer = OpenCodeImporter(store)
+    count = importer.import_all(path, force=force)
+    click.echo(f"imported {count} opencode sessions")
+
+
+# --------------------------------------------------------------------------- #
+# V2: Ledger / Monitor / Compress / Env / Failure / Eval / Smart / Savings   #
+# --------------------------------------------------------------------------- #
+
+
+def _ledger_dir(root: Path) -> Path:
+    return Path(root) / "runs"
+
+
+def _latest_ledger_path(root: Path) -> Path | None:
+    runs = _ledger_dir(root)
+    if not runs.is_dir():
+        return None
+    paths = sorted(runs.glob("*.json"))
+    return paths[-1] if paths else None
+
+
+def _ledger_path(root: Path, run_id: str | None) -> Path:
+    if run_id:
+        return _ledger_dir(root) / f"{run_id}.json"
+    latest = _latest_ledger_path(root)
+    if latest is None:
+        raise click.ClickException("no run ledger found. Pass --run-id or record one first.")
+    return latest
+
+
+# ----- ledger ------------------------------------------------------------- #
+
+
+@cli.group()
+def ledger() -> None:
+    """Manage run ledgers."""
+
+
+@ledger.command("show")
+@click.option("--run-id", default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def ledger_show(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    path = _ledger_path(ctx.obj["root"], run_id)
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    if as_json:
+        _emit(snap, as_json=True)
+        return
+    click.echo(f"run_id: {snap.get('run_id')}")
+    click.echo(f"status: {snap.get('status')}")
+    click.echo(f"task: {snap.get('task', '')}")
+    click.echo(f"domain: {snap.get('domain', '')}")
+    click.echo(f"events: {len(snap.get('events', []))}")
+    click.echo(f"errors_seen: {len(snap.get('errors_seen', []))}")
+    click.echo(f"current_blockers: {snap.get('current_blockers', [])}")
+
+
+@ledger.command("reset")
+@click.option("--run-id", default=None)
+@click.confirmation_option(prompt="Delete this ledger snapshot?")
+@click.pass_context
+def ledger_reset(ctx: click.Context, run_id: str | None) -> None:
+    path = _ledger_path(ctx.obj["root"], run_id)
+    path.unlink(missing_ok=True)
+    click.echo(f"removed {path}")
+
+
+@ledger.command("update")
+@click.option("--run-id", default=None)
+@click.option("--field", "field_name", required=True)
+@click.option("--value", required=True, help="Value (use JSON literal for lists/dicts).")
+@click.pass_context
+def ledger_update(ctx: click.Context, run_id: str | None, field_name: str, value: str) -> None:
+    path = _ledger_path(ctx.obj["root"], run_id)
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        parsed: Any = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value
+    snap[field_name] = parsed
+    path.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    click.echo(f"updated {field_name}")
+
+
+@ledger.command("summarize")
+@click.option("--run-id", default=None)
+@click.pass_context
+def ledger_summarize(ctx: click.Context, run_id: str | None) -> None:
+    from atelier.infra.runtime.context_compressor import ContextCompressor
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    path = _ledger_path(ctx.obj["root"], run_id)
+    led = RunLedger.load(path)
+    state = ContextCompressor().compress(led)
+    click.echo(state.to_prompt_block())
+
+
+# ----- monitor-event ------------------------------------------------------ #
+
+
+@cli.command("monitor-event")
+@click.option("--run-id", default=None)
+@click.option("--monitor", required=True)
+@click.option("--severity", type=click.Choice(["low", "medium", "high"]), default="medium")
+@click.option("--message", required=True)
+@click.pass_context
+def monitor_event(
+    ctx: click.Context,
+    run_id: str | None,
+    monitor: str,
+    severity: str,
+    message: str,
+) -> None:
+    """Append a monitor alert to a run ledger snapshot."""
+    path = _ledger_path(ctx.obj["root"], run_id)
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    events = snap.setdefault("events", [])
+    from datetime import datetime
+
+    events.append(
+        {
+            "kind": "monitor_alert",
+            "at": datetime.now(UTC).isoformat(),
+            "summary": f"[{severity}] {monitor}: {message}",
+            "payload": {"monitor": monitor, "severity": severity},
+        }
+    )
+    if severity == "high":
+        snap["current_blockers"] = [f"[{monitor}] {message}"]
+    path.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    click.echo(f"recorded monitor_alert for {monitor}")
+
+
+# ----- compress-context --------------------------------------------------- #
+
+
+@cli.command("compress-context")
+@click.option("--run-id", default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def compress_context_cmd(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    """Compress a run ledger into a small state packet."""
+    from atelier.infra.runtime.context_compressor import ContextCompressor
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    path = _ledger_path(ctx.obj["root"], run_id)
+    led = RunLedger.load(path)
+    state = ContextCompressor().compress(led)
+    if as_json:
+        _emit(
+            {
+                "environment_id": state.environment_id,
+                "files_changed": state.files_changed,
+                "error_fingerprints": state.error_fingerprints,
+                "high_severity_alerts": state.high_severity_alerts,
+                "current_blocker": state.current_blocker,
+                "tool_call_count": state.tool_call_count,
+                "total_tool_output_chars": state.total_tool_output_chars,
+                "preserved": {
+                    "latest_error": (
+                        state.error_fingerprints[-1] if state.error_fingerprints else None
+                    ),
+                    "active_rubrics": led.active_rubrics,
+                    "active_reasonblocks": led.active_reasonblocks,
+                    "next_required_validation": led.next_required_validation,
+                },
+            },
+            as_json=True,
+        )
+        return
+    click.echo(state.to_prompt_block())
+
+
+# ----- env ---------------------------------------------------------------- #
+
+
+@cli.group()
+def env() -> None:
+    """Inspect Beseam reasoning environments."""
+
+
+def _all_environments() -> list[Any]:
+    from atelier.core.foundation.environments import load_packaged_environments
+
+    return load_packaged_environments()
+
+
+@env.command("list")
+@click.option("--json", "as_json", is_flag=True)
+def env_list(as_json: bool) -> None:
+    envs = _all_environments()
+    if as_json:
+        _emit([to_jsonable(e) for e in envs], as_json=True)
+        return
+    for e in envs:
+        click.echo(f"{e.id}\t{e.domain}\t{e.description.strip()[:60]}")
+
+
+@env.command("show")
+@click.argument("env_id")
+@click.option("--json", "as_json", is_flag=True)
+def env_show(env_id: str, as_json: bool) -> None:
+    envs = {e.id: e for e in _all_environments()}
+    if env_id not in envs:
+        raise click.ClickException(f"environment not found: {env_id}")
+    e = envs[env_id]
+    if as_json:
+        _emit(to_jsonable(e), as_json=True)
+        return
+    click.echo(f"# {e.id}")
+    click.echo(f"domain: {e.domain}")
+    click.echo(f"description: {e.description.strip()}")
+    if e.forbidden:
+        click.echo("forbidden:")
+        for p in e.forbidden:
+            click.echo(f"  - {p}")
+    if e.required:
+        click.echo("required:")
+        for p in e.required:
+            click.echo(f"  - {p}")
+    if e.escalate:
+        click.echo("escalate:")
+        for p in e.escalate:
+            click.echo(f"  - {p}")
+    if e.high_risk_tools:
+        click.echo("high_risk_tools:")
+        for p in e.high_risk_tools:
+            click.echo(f"  - {p}")
+    if e.rubric_id:
+        click.echo(f"rubric_id: {e.rubric_id}")
+    if e.related_blocks:
+        click.echo("related_blocks:")
+        for p in e.related_blocks:
+            click.echo(f"  - {p}")
+
+
+@env.command("context")
+@click.argument("env_id")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def env_context(ctx: click.Context, env_id: str, as_json: bool) -> None:
+    """Render env context: ReasonBlocks + rubric checks for injection."""
+    store = _load_store(ctx.obj["root"])
+    envs = {e.id: e for e in _all_environments()}
+    if env_id not in envs:
+        raise click.ClickException(f"environment not found: {env_id}")
+    e = envs[env_id]
+    blocks = []
+    for bid in e.related_blocks:
+        b = store.get_block(bid)
+        if b is not None:
+            blocks.append(b)
+    rubric = store.get_rubric(e.rubric_id) if e.rubric_id else None
+    payload = {
+        "environment": to_jsonable(e),
+        "blocks": [to_jsonable(b) for b in blocks],
+        "rubric": to_jsonable(rubric) if rubric else None,
+    }
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    from atelier.core.foundation.renderer import render_context_for_agent
+
+    click.echo(f"## Environment {e.id}")
+    click.echo(e.description.strip())
+    if blocks:
+        click.echo(render_context_for_agent(blocks))
+    if rubric:
+        click.echo(f"## Required rubric: {rubric.id}")
+        for c in rubric.required_checks:
+            click.echo(f"- [ ] {c}")
+
+
+@env.command("validate")
+@click.argument("env_id")
+def env_validate(env_id: str) -> None:
+    """Validate an environment YAML by id."""
+    envs = {e.id: e for e in _all_environments()}
+    if env_id not in envs:
+        raise click.ClickException(f"environment not found: {env_id}")
+    e = envs[env_id]
+    issues = []
+    if not e.required:
+        issues.append("no required checks")
+    if e.rubric_id is None:
+        issues.append("no rubric_id")
+    if not e.related_blocks:
+        issues.append("no related_blocks")
+    if issues:
+        for i in issues:
+            click.echo(f"warn: {i}")
+    click.echo(f"ok {env_id}")
+
+
+# ----- failure ------------------------------------------------------------ #
+
+
+@cli.group()
+def failure() -> None:
+    """Failure cluster management."""
+
+
+def _failure_state_path(root: Path) -> Path:
+    return Path(root) / "failure_clusters.json"
+
+
+def _load_failure_state(root: Path) -> dict[str, dict[str, Any]]:
+    path = _failure_state_path(root)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_failure_state(root: Path, state: dict[str, dict[str, Any]]) -> None:
+    path = _failure_state_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+@failure.command("list")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def failure_list(ctx: click.Context, as_json: bool) -> None:
+    from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+    runs = _ledger_dir(ctx.obj["root"])
+    clusters = FailureAnalyzer(runs).analyze()
+    state = _load_failure_state(ctx.obj["root"])
+    if as_json:
+        _emit(
+            [
+                {**to_jsonable(c), "status": state.get(c.id, {}).get("status", "open")}
+                for c in clusters
+            ],
+            as_json=True,
+        )
+        return
+    if not clusters:
+        click.echo("(no failure clusters)")
+        return
+    for c in clusters:
+        st = state.get(c.id, {}).get("status", "open")
+        click.echo(f"{c.id}\t{st}\t{c.severity}\t{c.domain}\t{c.fingerprint[:60]}")
+
+
+@failure.command("show")
+@click.argument("cluster_id")
+@click.pass_context
+def failure_show(ctx: click.Context, cluster_id: str) -> None:
+    from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+    clusters = {c.id: c for c in FailureAnalyzer(_ledger_dir(ctx.obj["root"])).analyze()}
+    if cluster_id not in clusters:
+        raise click.ClickException(f"cluster not found: {cluster_id}")
+    state = _load_failure_state(ctx.obj["root"])
+    payload = to_jsonable(clusters[cluster_id])
+    payload["status"] = state.get(cluster_id, {}).get("status", "open")
+    _emit(payload, as_json=True)
+
+
+@failure.command("accept")
+@click.argument("cluster_id")
+@click.pass_context
+def failure_accept(ctx: click.Context, cluster_id: str) -> None:
+    state = _load_failure_state(ctx.obj["root"])
+    state.setdefault(cluster_id, {})["status"] = "accepted"
+    _save_failure_state(ctx.obj["root"], state)
+    click.echo(f"accepted {cluster_id}")
+
+
+@failure.command("reject")
+@click.argument("cluster_id")
+@click.pass_context
+def failure_reject(ctx: click.Context, cluster_id: str) -> None:
+    state = _load_failure_state(ctx.obj["root"])
+    state.setdefault(cluster_id, {})["status"] = "rejected"
+    _save_failure_state(ctx.obj["root"], state)
+    click.echo(f"rejected {cluster_id}")
+
+
+@cli.command("analyze-failures")
+@click.option(
+    "--since", default=None, help="ISO timestamp or shorthand like '7d' (filter by mtime)."
+)
+@click.option("--trace", "trace_id", default=None, help="Single ledger run id to analyze.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def analyze_failures_cmd(
+    ctx: click.Context, since: str | None, trace_id: str | None, as_json: bool
+) -> None:
+    from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+    runs = _ledger_dir(ctx.obj["root"])
+    fa = FailureAnalyzer(runs)
+    snaps = fa.load_snapshots()
+
+    if trace_id:
+        snaps = [s for s in snaps if s.get("run_id") == trace_id]
+
+    if since:
+        from datetime import datetime, timedelta
+
+        cutoff: datetime | None = None
+        if since.endswith("d") and since[:-1].isdigit():
+            cutoff = datetime.now(UTC) - timedelta(days=int(since[:-1]))
+        else:
+            try:
+                cutoff = datetime.fromisoformat(since)
+            except ValueError:
+                cutoff = None
+        if cutoff is not None:
+            kept = []
+            for s in snaps:
+                ts = s.get("updated_at") or s.get("created_at")
+                if not ts:
+                    continue
+                try:
+                    if datetime.fromisoformat(ts) >= cutoff:
+                        kept.append(s)
+                except ValueError:
+                    continue
+            snaps = kept
+
+    from atelier.core.improvement.failure_analyzer import analyze_failures
+
+    clusters = analyze_failures(snaps)
+    if as_json:
+        _emit([to_jsonable(c) for c in clusters], as_json=True)
+        return
+    for c in clusters:
+        click.echo(f"{c.id}\t{c.severity}\t{c.domain}\t{c.fingerprint[:60]}")
+
+
+# ----- eval --------------------------------------------------------------- #
+
+
+def _eval_dir(root: Path) -> Path:
+    return Path(root) / "evals"
+
+
+def _load_eval(root: Path, case_id: str) -> dict[str, Any] | None:
+    p = _eval_dir(root) / f"{case_id}.json"
+    if not p.exists():
+        return None
+    data: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
+    return data
+
+
+def _save_eval(root: Path, case: dict[str, Any]) -> Path:
+    d = _eval_dir(root)
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{case['id']}.json"
+    p.write_text(json.dumps(case, indent=2), encoding="utf-8")
+    return p
+
+
+@cli.group(name="eval")
+def eval_() -> None:  # name with trailing underscore to avoid python builtin
+    """Evaluation case management."""
+
+
+# Click v8 needs explicit name binding because eval is reserved-ish.
+eval_.name = "eval"
+
+
+@eval_.command("list")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def eval_list(ctx: click.Context, as_json: bool) -> None:
+    d = _eval_dir(ctx.obj["root"])
+    cases = []
+    if d.is_dir():
+        for p in sorted(d.glob("*.json")):
+            cases.append(json.loads(p.read_text(encoding="utf-8")))
+    if as_json:
+        _emit(cases, as_json=True)
+        return
+    for c in cases:
+        click.echo(
+            f"{c.get('id')}\t{c.get('status', 'draft')}\t{c.get('domain', '')}\t{c.get('description', '')[:60]}"
+        )
+
+
+@eval_.command("show")
+@click.argument("case_id")
+@click.pass_context
+def eval_show(ctx: click.Context, case_id: str) -> None:
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    _emit(case, as_json=True)
+
+
+@eval_.command("promote")
+@click.argument("case_id")
+@click.pass_context
+def eval_promote(ctx: click.Context, case_id: str) -> None:
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    case["status"] = "active"
+    _save_eval(ctx.obj["root"], case)
+    click.echo(f"promoted {case_id}")
+
+
+@eval_.command("deprecate")
+@click.argument("case_id")
+@click.pass_context
+def eval_deprecate(ctx: click.Context, case_id: str) -> None:
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    case["status"] = "deprecated"
+    _save_eval(ctx.obj["root"], case)
+    click.echo(f"deprecated {case_id}")
+
+
+@eval_.command("run")
+@click.option("--domain", default=None)
+@click.option("--case", "case_id", default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def eval_run(ctx: click.Context, domain: str | None, case_id: str | None, as_json: bool) -> None:
+    """Run deterministic eval cases (plan-check based)."""
+    store = _load_store(ctx.obj["root"])
+    d = _eval_dir(ctx.obj["root"])
+    cases: list[dict[str, Any]] = []
+    if case_id:
+        c = _load_eval(ctx.obj["root"], case_id)
+        if c is None:
+            raise click.ClickException(f"eval case not found: {case_id}")
+        cases = [c]
+    elif d.is_dir():
+        for p in sorted(d.glob("*.json")):
+            cases.append(json.loads(p.read_text(encoding="utf-8")))
+    if domain:
+        cases = [c for c in cases if c.get("domain") == domain]
+
+    results: list[dict[str, Any]] = []
+    for c in cases:
+        plan = c.get("plan") or []
+        result = check_plan(
+            store,
+            task=c.get("task", c.get("description", "eval")),
+            plan=plan,
+            domain=c.get("domain"),
+        )
+        expected = c.get("expected_status", "pass")
+        passed = result.status == expected
+        results.append(
+            {"id": c["id"], "expected": expected, "got": result.status, "passed": passed}
+        )
+    if as_json:
+        _emit(results, as_json=True)
+    else:
+        for r in results:
+            click.echo(
+                f"{r['id']}\t{'PASS' if r['passed'] else 'FAIL'}\texpected={r['expected']}\tgot={r['got']}"
+            )
+
+
+@cli.command("eval-from-cluster")
+@click.argument("cluster_id")
+@click.pass_context
+def eval_from_cluster(ctx: click.Context, cluster_id: str) -> None:
+    """Generate a draft eval from an accepted FailureCluster."""
+    from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+    state = _load_failure_state(ctx.obj["root"])
+    if state.get(cluster_id, {}).get("status") != "accepted":
+        raise click.ClickException(f"cluster not accepted: {cluster_id}")
+    clusters = {c.id: c for c in FailureAnalyzer(_ledger_dir(ctx.obj["root"])).analyze()}
+    if cluster_id not in clusters:
+        raise click.ClickException(f"cluster not found: {cluster_id}")
+    c = clusters[cluster_id]
+    case = {
+        "id": f"eval_from_{cluster_id}",
+        "domain": c.domain,
+        "description": f"Replay of {c.fingerprint[:60]}",
+        "task": f"Replay failure cluster {cluster_id}",
+        "plan": [c.suggested_rubric_check or "no-op"],
+        "expected_status": "blocked",
+        "expected_warnings_contain": [],
+        "expected_dead_ends": [],
+        "status": "draft",
+        "source_trace_ids": list(c.trace_ids),
+    }
+    p = _save_eval(ctx.obj["root"], case)
+    click.echo(f"saved draft eval at {p}")
+
+
+# ----- smart tools (shadow mode) ------------------------------------------ #
+
+
+def _smart_state_path(root: Path) -> Path:
+    return Path(root) / "smart_state.json"
+
+
+def _load_smart_state(root: Path) -> dict[str, Any]:
+    p = _smart_state_path(root)
+    if not p.exists():
+        return {"mode": "shadow", "cache": {}, "savings": {"calls_avoided": 0, "tokens_saved": 0}}
+    data: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
+    return data
+
+
+def _save_smart_state(root: Path, state: dict[str, Any]) -> None:
+    p = _smart_state_path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+@cli.group("tool-mode")
+def tool_mode() -> None:
+    """Smart tool mode (shadow|suggest|replace)."""
+
+
+@tool_mode.command("show")
+@click.pass_context
+def tool_mode_show(ctx: click.Context) -> None:
+    s = _load_smart_state(ctx.obj["root"])
+    click.echo(s.get("mode", "shadow"))
+
+
+@tool_mode.command("set")
+@click.argument("mode", type=click.Choice(["shadow", "suggest", "replace"]))
+@click.pass_context
+def tool_mode_set(ctx: click.Context, mode: str) -> None:
+    s = _load_smart_state(ctx.obj["root"])
+    s["mode"] = mode
+    _save_smart_state(ctx.obj["root"], s)
+    click.echo(f"tool_mode={mode}")
+
+
+@cli.command("smart-read")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--max-lines", default=80, show_default=True)
+@click.pass_context
+def smart_read(ctx: click.Context, path: Path, max_lines: int) -> None:
+    """Read a file with summarization and related-ReasonBlock attachment."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    summary = lines[:max_lines]
+    truncated = len(lines) > max_lines
+
+    store = _load_store(ctx.obj["root"])
+    related = store.search_blocks(path.name, limit=3)
+
+    s = _load_smart_state(ctx.obj["root"])
+    cache = s.setdefault("cache", {})
+    key = f"read:{path}"
+    if key in cache:
+        s["savings"]["calls_avoided"] = int(s["savings"].get("calls_avoided", 0)) + 1
+    cache[key] = {"lines": len(lines)}
+    _save_smart_state(ctx.obj["root"], s)
+
+    payload = {
+        "path": str(path),
+        "lines_total": len(lines),
+        "lines_returned": len(summary),
+        "truncated": truncated,
+        "summary": "\n".join(summary),
+        "related_blocks": [{"id": b.id, "title": b.title} for b in related],
+        "mode": s.get("mode", "shadow"),
+    }
+    _emit(payload, as_json=True)
+
+
+@cli.command("smart-search")
+@click.argument("query")
+@click.option("--limit", default=10, show_default=True)
+@click.pass_context
+def smart_search(ctx: click.Context, query: str, limit: int) -> None:
+    store = _load_store(ctx.obj["root"])
+    s = _load_smart_state(ctx.obj["root"])
+    cache = s.setdefault("cache", {})
+    key = f"search:{query}"
+    if key in cache:
+        s["savings"]["calls_avoided"] = int(s["savings"].get("calls_avoided", 0)) + 1
+        s["savings"]["tokens_saved"] = int(s["savings"].get("tokens_saved", 0)) + 200
+    blocks = store.search_blocks(query, limit=limit)
+    cache[key] = {"hits": len(blocks)}
+    _save_smart_state(ctx.obj["root"], s)
+    _emit([{"id": b.id, "title": b.title, "domain": b.domain} for b in blocks], as_json=True)
+
+
+@cli.group("read")
+def read_group() -> None:
+    """Read commands."""
+
+
+@read_group.command("smart")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--max-lines", default=120, show_default=True)
+@click.pass_context
+def read_smart(ctx: click.Context, path: Path, max_lines: int) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.smart_read(path, max_lines=max_lines)
+    _emit(payload, as_json=True)
+
+
+@cli.group("edit")
+def edit_group() -> None:
+    """Edit commands."""
+
+
+@edit_group.command("smart")
+@click.option(
+    "--input",
+    "input_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="JSON file with edits: [{path, find, replace}, ...]",
+)
+@click.pass_context
+def edit_smart(ctx: click.Context, input_path: Path) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise click.ClickException("edit smart input must be a JSON list")
+    result = rt.smart_edit([p for p in payload if isinstance(p, dict)])
+    _emit(result, as_json=True)
+
+
+@cli.group("memory")
+def memory_group() -> None:
+    """Session memory operations."""
+
+
+@memory_group.command("summarize")
+@click.option("--run-id", default=None)
+@click.pass_context
+def memory_summarize(ctx: click.Context, run_id: str | None) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.summarize_memory(run_id=run_id)
+    _emit(payload, as_json=True)
+
+
+@cli.group("sql")
+def sql_group() -> None:
+    """SQL helpers."""
+
+
+@sql_group.command("inspect")
+@click.option("--sql", "sql_text", default=None, help="Inline SQL text to inspect.")
+@click.option(
+    "--file",
+    "file_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Optional SQL file path.",
+)
+@click.pass_context
+def sql_inspect(ctx: click.Context, sql_text: str | None, file_path: Path | None) -> None:
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.sql_inspect(sql=sql_text, file_path=str(file_path) if file_path else None)
+    _emit(payload, as_json=True)
+
+
+@cli.command("cached-grep")
+@click.argument("pattern")
+@click.option("--path", "search_path", default=".", show_default=True)
+@click.pass_context
+def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
+    """Cache-aware grep. Returns cached result on repeated queries."""
+    from atelier.core.foundation.redaction import assert_safe_grep_args
+
+    try:
+        assert_safe_grep_args(pattern, search_path)
+    except ValueError as exc:
+        _emit({"error": str(exc)}, as_json=True)
+        ctx.exit(2)
+        return
+    s = _load_smart_state(ctx.obj["root"])
+    cache = s.setdefault("cache", {})
+    key = f"grep:{pattern}:{search_path}"
+    if key in cache:
+        s["savings"]["calls_avoided"] = int(s["savings"].get("calls_avoided", 0)) + 1
+        _save_smart_state(ctx.obj["root"], s)
+        _emit({"cached": True, **cache[key]}, as_json=True)
+        return
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["grep", "-rn", "--", pattern, search_path],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        out = proc.stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        out = f"(grep failed: {exc})"
+    payload = {"cached": False, "output": out[:8000]}
+    cache[key] = payload
+    _save_smart_state(ctx.obj["root"], s)
+    _emit(payload, as_json=True)
+
+
+# ----- savings + benchmark ----------------------------------------------- #
+
+
+@cli.command("savings")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def savings_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
+    from atelier.infra.runtime.cost_tracker import CostTracker
+
+    s = _load_smart_state(ctx.obj["root"])
+    sav = s.get("savings", {})
+    runs = _ledger_dir(ctx.obj["root"])
+    bad_plans_blocked = 0
+    rescue_events = 0
+    rubric_failures = 0
+    if runs.is_dir():
+        for p in runs.glob("*.json"):
+            try:
+                snap = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            for ev in snap.get("events", []):
+                kind = ev.get("kind")
+                if kind == "monitor_alert":
+                    sev = (ev.get("payload") or {}).get("severity")
+                    if sev == "high":
+                        rescue_events += 1
+                if kind == "rubric_run" and (ev.get("payload") or {}).get("status") == "blocked":
+                    rubric_failures += 1
+    tracker = CostTracker(ctx.obj["root"])
+    cost_summary = tracker.total_savings()
+    payload = {
+        "calls_avoided": int(sav.get("calls_avoided", 0)),
+        "tokens_saved": int(sav.get("tokens_saved", 0)),
+        "bad_plans_blocked": bad_plans_blocked,
+        "rescue_events": rescue_events,
+        "rubric_failures_caught": rubric_failures,
+        "cost": {
+            "operations_tracked": cost_summary["operations_tracked"],
+            "total_calls": cost_summary["total_calls"],
+            "would_have_cost_usd": cost_summary["would_have_cost_usd"],
+            "actually_cost_usd": cost_summary["actually_cost_usd"],
+            "saved_usd": cost_summary["saved_usd"],
+            "saved_pct": cost_summary["saved_pct"],
+        },
+    }
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        for k, v in payload.items():
+            if isinstance(v, dict):
+                click.echo(f"{k}:")
+                for k2, v2 in v.items():
+                    click.echo(f"  {k2}: {v2}")
+            else:
+                click.echo(f"{k}: {v}")
+
+
+@cli.command("savings-detail")
+@click.option("--json", "as_json", is_flag=True)
+@click.option("--limit", default=20, show_default=True, help="Top N operations.")
+@click.pass_context
+def savings_detail(ctx: click.Context, as_json: bool, limit: int) -> None:
+    """Per-operation cost-delta breakdown (last_cost - new_cost, baseline %)."""
+    from atelier.infra.runtime.cost_tracker import CostTracker
+
+    tracker = CostTracker(ctx.obj["root"])
+    summary = tracker.total_savings()
+    rows = summary["per_operation"][:limit]
+    if as_json:
+        _emit(
+            {
+                "summary": {k: v for k, v in summary.items() if k != "per_operation"},
+                "operations": rows,
+            },
+            as_json=True,
+        )
+        return
+    click.echo(
+        f"Tracked operations: {summary['operations_tracked']}  "
+        f"calls={summary['total_calls']}  "
+        f"saved=${summary['saved_usd']:.4f} ({summary['saved_pct']}%)"
+    )
+    click.echo("-" * 92)
+    click.echo(
+        f"{'op_key':18} {'calls':>5} {'baseline$':>10} "
+        f"{'last$':>10} {'now$':>10} {'d_last$':>10} {'d_base$':>10} {'%down':>6}  domain"
+    )
+    click.echo("-" * 92)
+    for r in rows:
+        click.echo(
+            f"{r['op_key']:18} {r['calls_count']:>5} "
+            f"{r['baseline_cost_usd']:>10.4f} {r['last_cost_usd']:>10.4f} "
+            f"{r['current_cost_usd']:>10.4f} {r['delta_vs_last_usd']:>10.4f} "
+            f"{r['delta_vs_base_usd']:>10.4f} {r['pct_vs_base']:>6.1f}  "
+            f"{r.get('domain', '-')}"
+        )
+
+
+@cli.command("savings-reset")
+@click.pass_context
+def savings_reset(ctx: click.Context) -> None:
+    s = _load_smart_state(ctx.obj["root"])
+    s["savings"] = {"calls_avoided": 0, "tokens_saved": 0}
+    _save_smart_state(ctx.obj["root"], s)
+    from atelier.infra.runtime.cost_tracker import save_cost_history
+
+    save_cost_history(ctx.obj["root"], {"operations": {}})
+    click.echo("savings reset (cache + cost history)")
+
+
+@cli.command("benchmark")
+@click.argument("action", required=False)
+@click.option(
+    "--prompt",
+    "prompts",
+    multiple=True,
+    help="Prompts to benchmark (repeat). Defaults to 5 built-in tasks.",
+)
+@click.option("--model", default="claude-sonnet-4.6", show_default=True)
+@click.option("--rounds", default=3, show_default=True, help="How many rounds per prompt.")
+@click.option(
+    "--input",
+    "inputs",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Benchmark report JSON inputs for compare/report/export.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write report/export output to this path.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "markdown", "csv"]),
+    default="json",
+    show_default=True,
+)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark(
+    ctx: click.Context,
+    action: str | None,
+    prompts: tuple[str, ...],
+    model: str,
+    rounds: int,
+    inputs: tuple[Path, ...],
+    output_path: Path | None,
+    output_format: str,
+    as_json: bool,
+) -> None:
+    """Run, compare, render, or export Atelier runtime benchmarks.
+
+    Backward compatibility:
+    - ``atelier benchmark --prompt ...`` still runs the benchmark directly.
+    - ``atelier benchmark run --prompt ...`` is the new explicit form.
+    """
+    from atelier.infra.runtime.benchmarking import (
+        benchmark_report_path,
+        compare_runtime_reports,
+        export_runtime_report,
+        load_runtime_report,
+        render_runtime_report,
+        run_runtime_benchmark,
+    )
+
+    selected_action = action or "run"
+    if selected_action == "run":
+        report = run_runtime_benchmark(
+            root=ctx.obj["root"],
+            prompts=prompts,
+            model=model,
+            rounds=rounds,
+        )
+        if output_path is not None:
+            export_runtime_report(report, output_path=output_path, output_format=output_format)
+        if as_json:
+            _emit(report, as_json=True)
+            return
+        click.echo(render_runtime_report(report))
+        click.echo(f"saved report: {benchmark_report_path(ctx.obj['root'])}")
+        return
+
+    if selected_action == "compare":
+        if len(inputs) < 2:
+            raise click.ClickException("benchmark compare requires at least two --input reports")
+        comparison = compare_runtime_reports(list(inputs))
+        _emit(comparison, as_json=True)
+        return
+
+    if selected_action == "report":
+        if len(inputs) != 1:
+            raise click.ClickException("benchmark report requires exactly one --input report")
+        report = load_runtime_report(inputs[0])
+        if as_json:
+            _emit(report, as_json=True)
+            return
+        click.echo(render_runtime_report(report))
+        return
+
+    if selected_action == "export":
+        if len(inputs) != 1 or output_path is None:
+            raise click.ClickException("benchmark export requires one --input report and --output")
+        report = load_runtime_report(inputs[0])
+        exported = export_runtime_report(
+            report, output_path=output_path, output_format=output_format
+        )
+        _emit({"output": str(exported), "format": output_format}, as_json=True)
+        return
+
+    raise click.ClickException("benchmark action must be one of: run, compare, report, export")
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _run_benchmark_core(
+    *,
+    root: Path,
+    prompts: tuple[str, ...],
+    model: str,
+    rounds: int,
+) -> dict[str, Any]:
+    from atelier.infra.runtime.benchmarking import run_runtime_benchmark
+
+    report = run_runtime_benchmark(root=root, prompts=prompts, model=model, rounds=rounds)
+    return {"suite": "core", "report": report}
+
+
+def _run_benchmark_hosts(*, workspace: str | None = None) -> dict[str, Any]:
+    script = _repo_root() / "scripts" / "verify_agent_clis.sh"
+    cmd = ["bash", str(script)]
+    if workspace:
+        cmd.extend(["--workspace", workspace])
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return {
+        "suite": "hosts",
+        "exit_code": proc.returncode,
+        "status": "pass" if proc.returncode == 0 else "fail",
+        "command": " ".join(cmd),
+        "output": output.strip(),
+    }
+
+
+def _run_benchmark_packs(*, root: Path, host: str) -> dict[str, Any]:
+    manager = _load_domain_manager(root)
+    bundle_ids = [ref.bundle_id for ref in manager.list_bundles()]
+
+    results: list[dict[str, Any]] = []
+    failures: list[dict[str, str]] = []
+    for bundle_id in bundle_ids:
+        try:
+            info = manager.info(bundle_id) or {}
+            results.append(
+                {"bundle_id": bundle_id, "domain": info.get("domain", ""), "status": "ok"}
+            )
+        except Exception as exc:
+            failures.append({"bundle_id": bundle_id, "error": str(exc)})
+
+    return {
+        "suite": "domains",
+        "host": host,
+        "domains_total": len(bundle_ids),
+        "domains_benchmarked": len(results),
+        "results": results,
+        "failures": failures,
+    }
+
+
+@cli.command("benchmark-core")
+@click.option(
+    "--prompt",
+    "prompts",
+    multiple=True,
+    help="Prompts to benchmark (repeat). Defaults to built-in runtime tasks.",
+)
+@click.option("--model", default="claude-sonnet-4.6", show_default=True)
+@click.option("--rounds", default=3, show_default=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_core(
+    ctx: click.Context,
+    prompts: tuple[str, ...],
+    model: str,
+    rounds: int,
+    as_json: bool,
+) -> None:
+    """Phase T3: benchmark core runtime behavior."""
+    payload = _run_benchmark_core(root=ctx.obj["root"], prompts=prompts, model=model, rounds=rounds)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo("core benchmark complete")
+    click.echo(f"tasks: {len(payload['report'].get('tasks', []))}")
+
+
+@cli.command("benchmark-hosts")
+@click.option("--workspace", default=None, help="Optional workspace path passed to verify scripts.")
+@click.option("--json", "as_json", is_flag=True)
+def benchmark_hosts(workspace: str | None, as_json: bool) -> None:
+    """Phase T3: benchmark/verify host integration readiness."""
+    payload = _run_benchmark_hosts(workspace=workspace)
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        click.echo(payload["output"])
+    if payload["exit_code"] != 0:
+        raise click.ClickException("host benchmark/verification failed")
+
+
+@cli.command("benchmark-host")
+@click.option("--workspace", default=None, help="Optional workspace path passed to verify scripts.")
+@click.option("--json", "as_json", is_flag=True)
+def benchmark_host(workspace: str | None, as_json: bool) -> None:
+    """Benchmark/verify host integration readiness (alias for benchmark-hosts)."""
+    payload = _run_benchmark_hosts(workspace=workspace)
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        click.echo(payload["output"])
+    if payload["exit_code"] != 0:
+        raise click.ClickException("host benchmark/verification failed")
+
+
+@cli.command("benchmark-runtime")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON output path.",
+)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_runtime(ctx: click.Context, output_path: Path | None, as_json: bool) -> None:
+    """Emit runtime capability efficiency metrics."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.benchmark_runtime_metrics()
+    if output_path is not None:
+        rt.export_benchmark_runtime(output_path)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@cli.command("benchmark-packs")
+@click.option("--host", default="codex", show_default=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_packs(ctx: click.Context, host: str, as_json: bool) -> None:
+    """Phase T3: benchmark official/installed packs."""
+    payload = _run_benchmark_packs(root=ctx.obj["root"], host=host)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(
+        f"domain benchmark complete: {payload['domains_benchmarked']}/{payload['domains_total']} domains"
+    )
+    if payload["failures"]:
+        click.echo("failures:")
+        for item in payload["failures"]:
+            click.echo(f"  - {item.get('bundle_id', item.get('pack_id', '?'))}: {item['error']}")
+
+
+@cli.command("benchmark-full")
+@click.option(
+    "--prompt",
+    "prompts",
+    multiple=True,
+    help="Prompts to benchmark for the core suite (repeat).",
+)
+@click.option("--model", default="claude-sonnet-4.6", show_default=True)
+@click.option("--rounds", default=3, show_default=True)
+@click.option("--host", default="codex", show_default=True)
+@click.option(
+    "--workspace", default=None, help="Optional workspace path passed to host verify scripts."
+)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_full(
+    ctx: click.Context,
+    prompts: tuple[str, ...],
+    model: str,
+    rounds: int,
+    host: str,
+    workspace: str | None,
+    as_json: bool,
+) -> None:
+    """Phase T3: run core + hosts + packs benchmark suite."""
+    core_payload = _run_benchmark_core(
+        root=ctx.obj["root"], prompts=prompts, model=model, rounds=rounds
+    )
+    hosts_payload = _run_benchmark_hosts(workspace=workspace)
+    packs_payload = _run_benchmark_packs(root=ctx.obj["root"], host=host)
+
+    payload = {
+        "suite": "full",
+        "core": core_payload,
+        "hosts": hosts_payload,
+        "packs": packs_payload,
+        "status": (
+            "pass" if hosts_payload["exit_code"] == 0 and not packs_payload["failures"] else "warn"
+        ),
+    }
+
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        click.echo("full benchmark suite complete")
+        click.echo(f"core tasks: {len(core_payload['report'].get('tasks', []))}")
+        click.echo(f"host verification status: {hosts_payload['status']}")
+        click.echo(
+            f"domain coverage: {packs_payload['domains_benchmarked']}/{packs_payload['domains_total']}"
+        )
+
+    if hosts_payload["exit_code"] != 0:
+        raise click.ClickException("full benchmark failed in host verification")
+
+
+@cli.group("service")
+def service_group() -> None:
+    """Production service commands."""
+
+
+@service_group.command("start")
+@click.option("--host", default=None, help="Bind host (overrides ATELIER_SERVICE_HOST).")
+@click.option("--port", default=None, type=int, help="Bind port (overrides ATELIER_SERVICE_PORT).")
+@click.option("--reload", is_flag=True, default=False, help="Enable uvicorn auto-reload.")
+def service_start(host: str | None, port: int | None, reload: bool) -> None:
+    """Start the Atelier HTTP service API."""
+    try:
+        from atelier.core.service.api import main as service_main
+    except ImportError as exc:
+        raise click.ClickException(
+            "FastAPI/uvicorn not installed. Run: uv add 'atelier[api]'"
+        ) from exc
+    service_main(host=host, port=port, reload=reload)
+
+
+@service_group.command("config")
+def service_config() -> None:
+    """Print current service configuration (no secret values)."""
+    import json
+
+    from atelier.core.service.config import cfg
+
+    click.echo(json.dumps(cfg.as_dict(), indent=2))
+
+
+# --------------------------------------------------------------------------- #
+# Worker group (P6)                                                           #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("worker")
+def worker_group() -> None:
+    """Worker/job queue commands."""
+
+
+@worker_group.command("start")
+@click.pass_context
+def worker_start(ctx: click.Context) -> None:
+    """Start the background worker loop (Postgres required)."""
+    try:
+        from atelier.core.service.worker import Worker
+    except ImportError as exc:
+        raise click.ClickException("Worker dependencies not available.") from exc
+
+    from atelier.infra.storage import create_store
+
+    root = ctx.obj["root"]
+    store = create_store(root)
+    if not hasattr(store, "claim_job"):
+        click.echo(
+            "No production job queue configured (SQLite mode). "
+            "Set ATELIER_STORAGE_BACKEND=postgres and ATELIER_DATABASE_URL to enable workers."
+        )
+        return
+    worker = Worker(store=store)
+    click.echo("Worker started. Press Ctrl+C to stop.")
+    worker.run()
+
+
+@worker_group.command("run-once")
+@click.pass_context
+def worker_run_once(ctx: click.Context) -> None:
+    """Claim and process one pending job then exit."""
+    try:
+        from atelier.core.service.worker import Worker
+    except ImportError as exc:
+        raise click.ClickException("Worker dependencies not available.") from exc
+
+    from atelier.infra.storage import create_store
+
+    root = ctx.obj["root"]
+    store = create_store(root)
+    if not hasattr(store, "claim_job"):
+        click.echo("no production queue configured — SQLite mode")
+        return
+    worker = Worker(store=store)
+    processed = worker.run_once()
+    if processed:
+        click.echo(f"processed job: {processed}")
+    else:
+        click.echo("no pending jobs")
+
+
+# ----- openmemory (P7) ------------------------------------------------------ #
+
+
+@cli.group("openmemory")
+def openmemory_group() -> None:
+    """OpenMemory interoperability commands (optional, disabled by default)."""
+
+
+@openmemory_group.command("status")
+def openmemory_status() -> None:
+    """Show OpenMemory integration status and available tools."""
+    from atelier.gateway.integrations import openmemory as om
+
+    enabled = om.is_enabled()
+    import os
+
+    server_name = os.environ.get("ATELIER_OPENMEMORY_MCP_SERVER_NAME", "openmemory")
+    click.echo(f"enabled: {enabled}")
+    click.echo(f"server_name: {server_name}")
+    if enabled:
+        tools = om.list_available_memory_tools()
+        click.echo(f"available_tools: {tools or '(none — server unavailable)'}")
+    else:
+        click.echo("available_tools: (disabled)")
+        click.echo("hint: set ATELIER_OPENMEMORY_ENABLED=true to enable")
+
+
+@openmemory_group.command("link-trace")
+@click.argument("trace_id")
+@click.option("--context-id", default=None, help="OpenMemory context ID.")
+def openmemory_link_trace(trace_id: str, context_id: str | None) -> None:
+    """Link an Atelier trace-id to an OpenMemory context pointer."""
+    from atelier.gateway.integrations import openmemory as om
+
+    result = om.maybe_link_trace_to_memory_context(trace_id, context_id)
+    click.echo(json.dumps(result, indent=2))
+
+
+@openmemory_group.command("fetch-context")
+@click.argument("task_description")
+@click.option("--project-id", default=None, help="OpenMemory project ID.")
+def openmemory_fetch_context(task_description: str, project_id: str | None) -> None:
+    """Fetch memory context for a task from OpenMemory."""
+    from atelier.gateway.integrations import openmemory as om
+
+    result = om.maybe_fetch_memory_context_for_task(task_description, project_id)
+    click.echo(json.dumps(result, indent=2))
+
+
+# --------------------------------------------------------------------------- #
+# V3 capability commands                                                      #
+# --------------------------------------------------------------------------- #
+
+
+@cli.command("detect-loop")
+@click.option("--run-id", default=None, help="Specific run ID. Defaults to latest.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def detect_loop_cmd(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    """Detect loops, repeated failures, and dead-end trajectories in a run ledger."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.loop_report(run_id=run_id)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"loop_detected: {payload['loop_detected']}")
+    click.echo(f"severity: {payload['severity']}")
+    click.echo(f"loop_types: {', '.join(payload['loop_types']) or 'none'}")
+    click.echo(f"prior_attempts: {payload['prior_attempts']}")
+    if payload["rescue_strategies"]:
+        click.echo("rescue_strategies:")
+        for s in payload["rescue_strategies"]:
+            click.echo(f"  - {s}")
+
+
+@cli.command("loop-report")
+@click.option("--run-id", default=None, help="Specific run ID. Defaults to latest.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def loop_report_cmd(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    """Full loop analysis: signature, severity, alerts, rescue strategies."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.loop_report(run_id=run_id)
+    _emit(payload, as_json=True) if as_json else click.echo(json.dumps(payload, indent=2))
+
+
+@cli.command("tool-report")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def tool_report_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Tool usage + savings summary including redundancy analysis."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.tool_report()
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    metrics = payload.get("metrics", {})
+    click.echo(f"total_tool_calls: {metrics.get('total_tool_calls', 0)}")
+    click.echo(f"avoided_tool_calls: {metrics.get('avoided_tool_calls', 0)}")
+    click.echo(f"token_savings: {metrics.get('token_savings', 0)}")
+    click.echo(f"cache_hit_rate: {metrics.get('cache_hit_rate', 0)}")
+    recs = payload.get("recommendations", [])
+    if recs:
+        click.echo("recommendations:")
+        for r in recs:
+            click.echo(f"  - {r}")
+
+
+@cli.command("diff-context")
+@click.argument("files", nargs=-1, required=True)
+@click.option("--lines", default=5, show_default=True, help="Lines of context around diffs.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def diff_context_cmd(ctx: click.Context, files: tuple[str, ...], lines: int, as_json: bool) -> None:
+    """Show git diff context for given source files."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.diff_context(list(files), lines=lines)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    for entry in payload.get("diffs", []):
+        click.echo(f"## {entry['path']}")
+        click.echo(entry.get("diff", "(no changes)"))
+
+
+@cli.command("test-context")
+@click.argument("files", nargs=-1, required=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def test_context_cmd(ctx: click.Context, files: tuple[str, ...], as_json: bool) -> None:
+    """Find test files related to the given source files."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.test_context(list(files))
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    for entry in payload.get("test_contexts", []):
+        click.echo(f"{entry['path']}: {', '.join(entry['test_files']) or '(none found)'}")
+
+
+@cli.command("module-summary")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def module_summary_cmd(ctx: click.Context, path: Path, as_json: bool) -> None:
+    """Concise module-level summary: exports, symbols, imports, test files."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.module_summary(path)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"path: {payload['path']}")
+    click.echo(f"language: {payload['language']}")
+    click.echo(f"exports: {', '.join(payload['exports'][:20]) or '(none)'}")
+    click.echo(f"imports: {', '.join(payload['imports'][:10]) or '(none)'}")
+    click.echo(f"test_files: {', '.join(payload['test_files']) or '(none found)'}")
+    click.echo(f"lines_total: {payload['lines_total']}")
+
+
+@cli.command("symbol-search")
+@click.argument("query")
+@click.option("--limit", default=20, show_default=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def symbol_search_cmd(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
+    """Search for a symbol across all semantically cached files."""
+    rt = _core_runtime(ctx.obj["root"])
+    results = rt.symbol_search(query, limit=limit)
+    if as_json:
+        _emit(results, as_json=True)
+        return
+    if not results:
+        click.echo("(no matches)")
+        return
+    for r in results:
+        click.echo(f"{r['path']}:{r['lineno']}  [{r['kind']}]  {r['signature']}")
+
+
+@cli.command("context-report")
+@click.option("--run-id", default=None, help="Specific run ID. Defaults to latest.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def context_report_cmd(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    """Compression + provenance report for a run ledger."""
+    rt = _core_runtime(ctx.obj["root"])
+    payload = rt.context_report(run_id=run_id)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"chars_before: {payload['chars_before']}")
+    click.echo(f"chars_after: {payload['chars_after']}")
+    click.echo(f"reduction_pct: {payload['reduction_pct']}%")
+    click.echo(f"preserved_facts: {len(payload['preserved_facts'])}")
+    for fact in payload["preserved_facts"][:10]:
+        click.echo(f"  + {fact}")
+    dropped = payload.get("dropped", [])
+    if dropped:
+        click.echo("dropped:")
+        for d in dropped:
+            click.echo(f"  - {d['kind']} ({d['count']}): {d['reason']}")
+
+
+# --------------------------------------------------------------------------- #
+
+
+def main() -> None:
+    cli(obj={})
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,17 @@
+dataset_name: swe_bench_verified
+split: test
+task_limit: 100
+agent_host: mock
+model: mock-1
+modes:
+  - vanilla
+  - atelier_forced_workflow
+  - atelier_full_runtime
+  - atelier_warm_reasonblocks
+warm_reasonblocks_path: benchmarks/swe/calibration/verified_warm_blocks.json
+attempts_per_task: 1
+max_turns: 40
+max_cost_usd: 8.0
+timeout_seconds: 1200
+output_dir: benchmarks/swe/outputs/verified_100
+seed: 7

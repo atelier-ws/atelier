@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "atelier": {
+      "command": "atelier-mcp",
+      "args": ["--root", "${workspaceRoot}/.atelier"],
+      "env": {
+        "ATELIER_ROOT": "${workspaceRoot}/.atelier"
+      }
+    }
+  }
+}

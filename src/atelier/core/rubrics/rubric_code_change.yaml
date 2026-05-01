@@ -1,0 +1,16 @@
+id: rubric_code_change
+domain: coding
+required_checks:
+  - relevant_reasonblocks_checked
+  - plan_checked
+  - tests_identified
+  - validation_command_run
+  - risky_files_reviewed
+block_if_missing:
+  - plan_checked
+warning_checks:
+  - lint_clean
+  - typecheck_clean
+escalation_conditions:
+  - destructive_action_proposed
+  - production_secret_touched

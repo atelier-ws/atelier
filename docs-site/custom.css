@@ -1,0 +1,51 @@
+:root {
+  --ifm-color-primary: #ff6041;
+  --ifm-color-primary-dark: #e8553a;
+  --ifm-color-primary-darker: #d44d34;
+  --ifm-color-primary-darkest: #af3f2b;
+  --ifm-color-primary-light: #ff7a60;
+  --ifm-color-primary-lighter: #ff9a82;
+  --ifm-color-primary-lightest: #ffd2c7;
+  --ifm-code-font-size: 95%;
+  /* Homepage hero */
+  --hero-bg: #ffffff;
+  --hero-text: #1a1a1a;
+  --hero-subtext: #666666;
+  /* Feature cards */
+  --card-bg: #f9f9f9;
+  --card-border: #e5e5e5;
+  --card-title: #1a1a1a;
+  --card-text: #666666;
+}
+
+html[data-theme='dark'] {
+  --hero-bg: #0a0a0a;
+  --hero-text: #fafafa;
+  --hero-subtext: #a1a1aa;
+  --card-bg: #18181b;
+  --card-border: #27272a;
+  --card-title: #fafafa;
+  --card-text: #a1a1aa;
+}
+
+.navbar {
+  border-bottom: 1px solid #ff604133;
+}
+
+.navbar__title {
+  color: #ff6041 !important;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.footer {
+  border-top: 1px solid #27272a;
+}
+
+html[data-theme='light'] .footer {
+  border-top: 1px solid #e5e5e5;
+}
+
+.table-of-contents__link--active {
+  color: #ff6041;
+}

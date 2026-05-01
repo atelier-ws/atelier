@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "atelier": {
+            "command": "uv",
+            "args": [
+                "run",
+                "--project",
+                "${HOME}/Projects/leanchain/e-commerce/atelier",
+                "atelier-mcp"
+            ],
+            "env": {
+                "ATELIER_STORE_ROOT": "${HOME}/Projects/leanchain/e-commerce/.atelier"
+            }
+        }
+    }
+}

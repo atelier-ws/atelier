@@ -1,0 +1,193 @@
+# ---------------------------------------------------------------------------
+# Atelier — Model Pricing Configuration
+# ---------------------------------------------------------------------------
+# All prices are in USD per 1 Million tokens.
+#
+# Sections:
+#   [models.<model_id>]     per-model pricing (input / output / cache_read)
+#   [default]               fallback when a model is not listed
+#
+# How to use:
+#   • Edit this file to add new models or update prices.
+#   • All capabilities read pricing through atelier.core.capabilities.pricing.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Anthropic — Claude family
+# ---------------------------------------------------------------------------
+
+[models."claude-opus-4-5"]
+input      = 15.00
+output     = 75.00
+cache_read =  1.50
+
+[models."claude-opus-4"]
+input      = 15.00
+output     = 75.00
+cache_read =  1.50
+
+[models."claude-sonnet-4-5"]
+input      = 3.00
+output     = 15.00
+cache_read =  0.30
+
+[models."claude-sonnet-4"]
+input      = 3.00
+output     = 15.00
+cache_read =  0.30
+
+[models."claude-haiku-4-5"]
+input      = 0.80
+output     = 4.00
+cache_read =  0.08
+
+[models."claude-haiku-4"]
+input      = 0.80
+output     = 4.00
+cache_read =  0.08
+
+[models."claude-3-5-sonnet-20241022"]
+input      = 3.00
+output     = 15.00
+cache_read =  0.30
+
+[models."claude-3-5-haiku-20241022"]
+input      = 0.80
+output     = 4.00
+cache_read =  0.08
+
+[models."claude-3-opus-20240229"]
+input      = 15.00
+output     = 75.00
+cache_read =  1.50
+
+# ---------------------------------------------------------------------------
+# OpenAI — GPT family
+# ---------------------------------------------------------------------------
+
+[models."gpt-4o"]
+input      = 2.50
+output     = 10.00
+cache_read =  0.25
+
+[models."gpt-4o-mini"]
+input      = 0.15
+output     = 0.60
+cache_read =  0.075
+
+[models."gpt-4-turbo"]
+input      = 10.00
+output     = 30.00
+cache_read =  1.00
+
+[models."gpt-4"]
+input      = 30.00
+output     = 60.00
+cache_read =  3.00
+
+[models."gpt-3.5-turbo"]
+input      = 0.50
+output     = 1.50
+cache_read =  0.05
+
+[models."o3"]
+input      =  2.00
+output     =  8.00
+cache_read =  0.50
+
+[models."o3-mini"]
+input      =  1.10
+output     =  4.40
+cache_read =  0.55
+
+[models."o1"]
+input      = 15.00
+output     = 60.00
+cache_read =  7.50
+
+[models."o1-mini"]
+input      =  3.00
+output     = 12.00
+cache_read =  1.50
+
+# ---------------------------------------------------------------------------
+# Google — Gemini family
+# ---------------------------------------------------------------------------
+
+[models."gemini-2.5-pro"]
+input      = 1.25
+output     = 5.00
+cache_read = 0.31
+
+[models."gemini-2.5-flash"]
+input      = 0.15
+output     = 0.60
+cache_read = 0.04
+
+[models."gemini-2.0-flash"]
+input      = 0.10
+output     = 0.40
+cache_read = 0.025
+
+[models."gemini-1.5-pro"]
+input      = 1.25
+output     = 5.00
+cache_read = 0.31
+
+[models."gemini-1.5-flash"]
+input      = 0.075
+output     = 0.30
+cache_read = 0.019
+
+# ---------------------------------------------------------------------------
+# Meta — Llama family (self-hosted / Groq / Together)
+# ---------------------------------------------------------------------------
+
+[models."llama-3.3-70b"]
+input      = 0.59
+output     = 0.79
+cache_read = 0.00
+
+[models."llama-3.1-405b"]
+input      = 2.00
+output     = 2.00
+cache_read = 0.00
+
+[models."llama-3.1-70b"]
+input      = 0.59
+output     = 0.79
+cache_read = 0.00
+
+[models."llama-3.1-8b"]
+input      = 0.05
+output     = 0.08
+cache_read = 0.00
+
+# ---------------------------------------------------------------------------
+# Mistral / Codestral
+# ---------------------------------------------------------------------------
+
+[models."mistral-large"]
+input      = 2.00
+output     = 6.00
+cache_read = 0.00
+
+[models."mistral-small"]
+input      = 0.20
+output     = 0.60
+cache_read = 0.00
+
+[models."codestral"]
+input      = 0.20
+output     = 0.60
+cache_read = 0.00
+
+# ---------------------------------------------------------------------------
+# Default — used when the model id is not found above.
+# Set to a mid-range "sonnet-class" price so estimates are conservative.
+# ---------------------------------------------------------------------------
+
+[default]
+input      = 3.00
+output     = 15.00
+cache_read =  0.30

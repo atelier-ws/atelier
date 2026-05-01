@@ -1,0 +1,13 @@
+{
+  "task": "Update Shopify product description and republish",
+  "domain": "beseam.shopify.publish",
+  "plan": [
+    "Load Shopify Product GID from catalog ingest record",
+    "Update product description using GID",
+    "Publish to sales channels using GID",
+    "Re-fetch product by GID and verify changes",
+    "Run post-publish verification"
+  ],
+  "files": [],
+  "tools": ["shopify.product.update", "shopify.publish"]
+}

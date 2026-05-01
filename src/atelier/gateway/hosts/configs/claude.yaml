@@ -1,0 +1,93 @@
+host_id: claude
+name: Claude Code Plugin
+version: 1.0.0
+description: Integration with Anthropic Claude Code plugin for enhanced code reasoning and analysis
+platforms:
+  - macos
+  - linux
+  - windows
+
+detection:
+  command: claude --version
+  config_path: ~/.claude/config.json
+  env_var: CLAUDE_API_KEY
+
+recommended_packs:
+  - atelier-pack-coding-general
+  - atelier-pack-ai-referral
+  - atelier-pack-audit-service
+
+mcp:
+  servers:
+    - name: atelier
+      command: atelier
+      args: ["mcp", "--host", "claude"]
+      env:
+        ATELIER_ROOT: "~/.atelier"
+
+installation:
+  macos: |
+    # Install Atelier
+    brew install atelier
+    
+    # Setup Claude integration
+    atelier host setup claude
+    
+    # Verify installation
+    atelier host info claude
+    
+    # Add to Claude's MCP config
+    echo 'Claude desktop config updated automatically'
+
+  linux: |
+    # Install Atelier
+    sudo apt-get install atelier  # or your distro's package manager
+    
+    # Setup Claude integration
+    atelier host setup claude
+    
+    # Verify installation
+    atelier host info claude
+    
+    # Add to Claude's MCP config
+    echo 'Claude desktop config updated automatically'
+
+  windows: |
+    # Install Atelier via choco or manual installation
+    choco install atelier
+    
+    # Setup Claude integration
+    atelier host setup claude
+    
+    # Verify installation
+    atelier host info claude
+    
+    # Add to Claude's MCP config
+    echo "Claude desktop config updated automatically"
+
+prompt_templates:
+  - name: pack-context
+    template: |
+      You have access to Atelier pack: {pack.name}
+      
+      Available ReasonBlocks ({pack.reasonblocks_count}):
+      {pack.reasonblocks}
+      
+      Available Rubrics ({pack.rubrics_count}):
+      {pack.rubrics}
+      
+      This pack provides structured reasoning patterns and quality gates for: {pack.domain}
+      
+  - name: task-recommendation
+    template: |
+      Based on the task, I recommend using pack '{pack.recommended_pack}' which specializes in {pack.domain}.
+      The pack includes {pack.reasonblocks_count} reasoning patterns and {pack.rubrics_count} quality checks.
+      
+  - name: error-recovery
+    template: |
+      When encountering errors, consult the ReasonBlock '{block.name}' from pack '{pack.name}'.
+      
+      Situation: {block.situation}
+      Triggers: {block.triggers}
+      Procedure: {block.procedure}
+      Verification steps: {block.verification}

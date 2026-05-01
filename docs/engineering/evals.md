@@ -1,0 +1,110 @@
+# Evals
+
+Atelier includes an eval system for tracking known-good agent behaviors and catching regressions.
+
+## What Evals Are
+
+An eval case is a recorded scenario: given this task + domain + plan, the expected outcome is X. Evals are created from real traces (via `eval-from-cluster`) or manually.
+
+Evals are different from unit tests: they test agent-facing behavior (plan check, context retrieval, rubric gating) rather than internal logic. The pytest suite (`make test`) tests internal logic.
+
+## Creating Evals
+
+### From a failure cluster
+
+```bash
+# 1. Identify a failure cluster
+uv run atelier failure list
+
+# 2. Create an eval case from it
+uv run atelier eval-from-cluster CLUSTER_ID --save
+```
+
+### Manually
+
+```bash
+uv run atelier eval list         # see existing format
+# then add via service API or direct store manipulation
+```
+
+## Running Evals
+
+```bash
+uv run atelier eval run [--domain TEXT] [--eval-id ID]
+```
+
+Or via the benchmark command (runs all active evals):
+
+```bash
+uv run atelier benchmark
+uv run atelier benchmark --json
+```
+
+## Eval Lifecycle
+
+```
+candidate → active → deprecated
+```
+
+| State        | Description                                |
+| ------------ | ------------------------------------------ |
+| `candidate`  | Extracted from a cluster, not yet verified |
+| `active`     | Promoted, counts toward benchmark          |
+| `deprecated` | Retired, no longer runs                    |
+
+Promote an eval case:
+
+```bash
+uv run atelier eval promote EVAL_ID
+```
+
+Deprecate when a pattern is no longer relevant:
+
+```bash
+uv run atelier eval deprecate EVAL_ID
+```
+
+## Eval Format
+
+Eval cases are stored in `.atelier/evals/` as JSON files:
+
+```json
+{
+  "id": "eval_shopify_handle_deadend",
+  "domain": "beseam.shopify.publish",
+  "task": "Publish Shopify product",
+  "plan_steps": ["Parse product handle from PDP URL", "Update metafields"],
+  "expected_check_plan_status": "blocked",
+  "expected_warnings_include": ["dead end: product handle from pdp"],
+  "status": "active",
+  "created_at": "2026-04-21T00:00:00Z"
+}
+```
+
+## Benchmark Output
+
+```bash
+uv run atelier benchmark
+```
+
+Example output:
+
+```
+eval suite: 12 active cases
+  ✓ eval_shopify_handle_deadend       (check-plan: blocked ✓)
+  ✓ eval_pdp_schema_gid_required      (check-plan: blocked ✓)
+  ✓ eval_shopify_gid_plan_passes      (check-plan: pass ✓)
+  ...
+
+12/12 passed
+```
+
+Failed evals indicate a regression in block/rubric/environment data or the runtime logic.
+
+## Makefile
+
+```bash
+make verify   # includes eval run via pytest
+```
+
+The pytest suite in `tests/test_golden_fixtures.py` covers golden fixture scenarios that overlap with evals.

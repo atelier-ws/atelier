@@ -1,0 +1,43 @@
+id: env_coding_general
+domain: coding
+description: >
+  Default operating law for general code-change work inside Beseam. Not
+  domain-specific, but encodes the baseline reliability rules that
+  apply to every code change: read first, search before create, run
+  tests, do not silently delete, do not bypass gates.
+
+triggers:
+  - refactor
+  - implement
+  - bug fix
+  - code change
+  - new feature
+  - rewrite
+
+forbidden:
+  - delete without backup
+  - rewrite working module without staged plan
+  - skip running tests
+  - bypass pre-commit
+  - ignore lint errors with blanket disable
+
+required:
+  - read_existing_implementation
+  - tests_run_locally
+  - typecheck_passed
+  - changes_minimal_to_intent
+
+escalate:
+  - tests_failed_after_fix
+  - public_api_changed_without_migration_plan
+
+high_risk_tools:
+  - fs.delete
+  - fs.bulk_write
+  - git.reset
+  - git.clean
+
+rubric_id: rubric_code_change
+
+related_blocks:
+  - 09-repeated-failure-loop
