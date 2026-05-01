@@ -1,6 +1,6 @@
 # Atelier Python SDK
 
-The Python SDK in `atelier.sdk` is the embeddable contract for OpenHands, SWE-agent, LangGraph workers, service backends, and custom hosts that want Atelier without shelling out.
+The Python SDK in `atelier.sdk` is the embeddable contract for service backends and custom hosts that want Atelier without shelling out.
 
 The SDK now routes through one runtime orchestrator (`AtelierRuntimeCore`) that manages capability execution centrally.
 
@@ -79,14 +79,7 @@ trace = client.traces.record(
 
 ## Adapter Integration
 
-The SDK is the base for host middleware in `src/atelier/adapters/`:
-
-- `OpenHandsAdapter`
-- `SWEAgentAdapter`
-- `AiderAdapter`
-- `ContinueAdapter`
-- `LangGraphAdapter`
-
+For custom host middleware, the SDK can be extended via `src/atelier/adapters/`.
 Each adapter supports `shadow`, `suggest`, and `enforce` modes.
 
 ## Capability-Aligned Operations

@@ -1,4 +1,4 @@
-.PHONY: install \
+.PHONY: install uninstall status verify verify-install \
 	test test-fast test-cov security-test \
 	lint fmt format typecheck \
 	verify verify-local verify-mcp \
@@ -18,8 +18,17 @@
 # Installation                                                                #
 # --------------------------------------------------------------------------- #
 
-install: ## Install all dependencies (uv sync --all-extras)
+install: ## Install all dependencies + Atelier into agent CLIs + init runtime
+	@echo "[atelier] Installing Python dependencies..."
 	uv sync --all-extras
+	@echo "[atelier] Installing into agent CLIs..."
+	bash scripts/install_agent_clis.sh || true
+	@echo "[atelier] Linking atelier-status CLI..."
+	@mkdir -p $(HOME)/.local/bin
+	@ln -sf $(CURDIR)/bin/atelier-status $(HOME)/.local/bin/atelier-status || true
+	@echo "[atelier] Initializing runtime store..."
+	uv run atelier init || true
+	@echo "[atelier] Installation complete! Run 'atelier-status' to verify."
 
 # --------------------------------------------------------------------------- #
 # Testing                                                                     #
@@ -121,6 +130,38 @@ install-atelier-status: ## Symlink bin/atelier-status into ~/.local/bin
 
 atelier-status: ## Run the universal Atelier status helper for the current workspace
 	@bash $(CURDIR)/bin/atelier-status
+
+uninstall: ## Uninstall Atelier from all agent CLIs and remove generated files
+	@echo "[atelier] Removing symlink from ~/.local/bin..."
+	@rm -f $(HOME)/.local/bin/atelier-status
+	@echo "[atelier] Uninstalling from Claude Code..."
+	@bash $(CURDIR)/scripts/uninstall_claude.sh || true
+	@echo "[atelier] Uninstalling from Codex CLI..."
+	@bash $(CURDIR)/scripts/uninstall_codex.sh || true
+	@echo "[atelier] Uninstalling from opencode..."
+	@bash $(CURDIR)/scripts/uninstall_opencode.sh || true
+	@echo "[atelier] Uninstalling from VS Code Copilot..."
+	@bash $(CURDIR)/scripts/uninstall_copilot.sh || true
+	@echo "[atelier] Uninstalling from Gemini CLI..."
+	@bash $(CURDIR)/scripts/uninstall_gemini.sh || true
+	@echo "[atelier] Uninstall complete."
+
+status: ## Show Atelier installation status across all agent CLIs
+	@bash $(CURDIR)/scripts/status.sh
+
+verify-install: ## Verify Atelier installation across all agent CLIs
+	@echo "=== Verifying Atelier Installation ==="
+	@echo ""
+	@echo "Running verify-agent-clis..."
+	@bash $(CURDIR)/scripts/verify_agent_clis.sh || true
+	@echo ""
+	@echo "Running verify-local..."
+	@bash $(CURDIR)/scripts/verify_atelier_local.sh || true
+	@echo ""
+	@echo "Running verify-mcp..."
+	@bash $(CURDIR)/scripts/verify_atelier_mcp_stdio.sh || true
+	@echo ""
+	@echo "=== Verification complete! ==="
 
 # --------------------------------------------------------------------------- #
 # Demo targets (use a throw-away tmp root to avoid polluting .atelier)        #

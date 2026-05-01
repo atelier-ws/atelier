@@ -2253,7 +2253,7 @@ name = "tree-sitter-languages"
 version = "1.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tree-sitter", marker = "python_full_version < '3.15'" },
+    { name = "tree-sitter" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/24/6c/c310e958296ce12076bec846c0bb779bc114897b33901c4c51c09bb6b695/tree_sitter_languages-1.10.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:7eb7d7542b2091c875fe52719209631fca36f8c10fa66970d2c576ae6a1b8289", size = 8884893, upload-time = "2024-02-04T10:28:14.963Z" },
