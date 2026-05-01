@@ -1,6 +1,6 @@
 # Failure Cluster Authoring
 
-Atelier's Failure Analyzer groups similar agent errors into "Clusters." When authoring community packs, you can provide pre-defined failure clusters and associated rescue procedures.
+Atelier's Failure Analyzer groups similar agent errors into "Clusters." When authoring configuration bundles, you can provide pre-defined failure clusters and associated rescue procedures.
 
 ## Defining a Failure Cluster
 
@@ -17,7 +17,7 @@ rescue_block_id: block_react_deps_array
 
 1. **Be specific**: Use tight regex signatures to avoid false positives.
 2. **Always link a rescue**: A cluster should always point to a `ReasonBlock` that explains how to fix the issue.
-3. **Distribute via local paths**: Add clusters to an internal pack and install it via `atelier pack install ./my-pack` or `private://pack-id` on all target machines.
+3. **Distribute via local paths**: Add clusters to a local bundle and install it via `atelier pack install ./my-bundle` on all target machines.
 
 ```bash
 atelier pack create my-failure-clusters --type reasonblocks

@@ -1,41 +1,36 @@
 # Atelier Integrations
 
-Atelier is the runtime layer that sits between hosts, memory systems, and domain tools. It is not the IDE, not the agent, and not the memory system.
+Atelier is the reasoning runtime layer that sits between agent hosts and their environments.
+It is not the IDE, not the agent, and not the memory system.
 
-## Host Categories
+## Supported Hosts
 
-### Agent CLIs and IDEs
+| Host                | Install path          | Interface             | Guide                            |
+| ------------------- | --------------------- | --------------------- | -------------------------------- |
+| **Claude Code**     | MCP + skills + agents | MCP stdio             | [claude-code-install.md](../hosts/claude-code-install.md) |
+| **Codex CLI**       | MCP + AGENTS.md       | MCP stdio             | [codex-install.md](../hosts/codex-install.md) |
+| **VS Code Copilot** | MCP + instructions    | MCP stdio             | [copilot-install.md](../hosts/copilot-install.md) |
+| **opencode**        | `opencode.jsonc`      | MCP stdio             | [opencode-install.md](../hosts/opencode-install.md) |
+| **Gemini CLI**      | settings + MCP        | MCP stdio             | [gemini-cli-install.md](../hosts/gemini-cli-install.md) |
 
-- Claude Code
-- Codex CLI
-- VS Code Copilot
-- opencode
-- Gemini CLI
+## Memory Systems
 
-These hosts typically integrate through MCP plus host-specific install artifacts.
+| System              | Module                                             | Notes                                           |
+| ------------------- | -------------------------------------------------- | ----------------------------------------------- |
+| OpenMemory          | `src/atelier/integrations/memory/openmemory.py`    | No-op unless `ATELIER_OPENMEMORY_ENABLED=true`  |
+| Mem0                | `src/atelier/integrations/memory/mem0.py`          | Optional, external                              |
+| Generic vector      | `src/atelier/integrations/memory/generic_vector_memory.py` | OpenAI-compatible embedding endpoint   |
 
-### Embedded Python Hosts
-
-- OpenHands via `OpenHandsAdapter`
-- SWE-agent via `SWEAgentAdapter`
-- Aider via `AiderAdapter`
-- Continue.dev via `ContinueAdapter`
-- LangGraph via `LangGraphAdapter`
-
-These hosts integrate through `atelier.sdk` and the adapter layer in `src/atelier/adapters/`.
-
-### Memory Systems
-
-- OpenMemory via `src/atelier/integrations/memory/openmemory.py`
-- Mem0 via `src/atelier/integrations/memory/mem0.py`
-- Generic vector memory via `src/atelier/integrations/memory/generic_vector_memory.py`
-
-Memory remains facts. Atelier remains reasoning.
+Memory is facts. Atelier handles procedural reasoning. They complement, not duplicate, each other.
 
 ## Safe Modes
 
-All ecosystem adapters support:
+All host integrations support:
 
-- `shadow`: observe and report only
-- `suggest`: return warnings and rescue guidance
-- `enforce`: block bad plans or failed rubric gates
+| Mode       | Behaviour                                    |
+| ---------- | -------------------------------------------- |
+| `shadow`   | Observe and record; never block              |
+| `suggest`  | Return warnings and rescue guidance          |
+| `enforce`  | Block plans that fail rubric gates (exit 2)  |
+
+Default for all supported hosts: `suggest`.

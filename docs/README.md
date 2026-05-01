@@ -1,6 +1,7 @@
 # Atelier Docs
 
-Atelier is a reasoning/procedure/runtime layer for AI agents. Not memory. Not a vector DB. A structured procedure store that agents query before and after complex tasks.
+Atelier is a reasoning and procedure runtime for AI agents. Not memory. Not a vector DB.
+A structured procedure store that agents query before and after complex tasks.
 
 ## By Audience
 
@@ -11,16 +12,18 @@ Atelier is a reasoning/procedure/runtime layer for AI agents. Not memory. Not a 
 | [quickstart.md](quickstart.md)     | 5-minute tutorial: init, check-plan, trace, extract |
 | [installation.md](installation.md) | Requirements, backends, env vars                    |
 
-### Connecting an AI Agent Host
+### Connecting an Agent Host
 
-| Doc                                                                      | Host                                |
-| ------------------------------------------------------------------------ | ----------------------------------- |
-| [hosts/claude-code.md](hosts/claude-code.md)                             | Claude Code / Claude (Anthropic)    |
-| [hosts/copilot.md](hosts/copilot.md)                                     | GitHub Copilot (VS Code)            |
-| [hosts/codex.md](hosts/codex.md)                                         | OpenAI Codex                        |
-| [hosts/opencode.md](hosts/opencode.md)                                   | opencode (Sourcegraph)              |
-| [hosts/gemini-cli.md](hosts/gemini-cli.md)                               | Gemini CLI (Google)                 |
-| [copy-paste/copilot-instructions.md](copy-paste/copilot-instructions.md) | Copilot instructions block (no MCP) |
+| Doc                                                                      | Host                        |
+| ------------------------------------------------------------------------ | --------------------------- |
+| [hosts/claude-code.md](hosts/claude-code.md)                             | Claude Code (Anthropic)     |
+| [hosts/copilot.md](hosts/copilot.md)                                     | VS Code Copilot             |
+| [hosts/codex.md](hosts/codex.md)                                         | Codex CLI (OpenAI)          |
+| [hosts/opencode.md](hosts/opencode.md)                                   | opencode                    |
+| [hosts/gemini-cli.md](hosts/gemini-cli.md)                               | Gemini CLI (Google)         |
+| [copy-paste/copilot-instructions.md](copy-paste/copilot-instructions.md) | Copilot instructions (no MCP)|
+
+→ Full matrix: [integrations/host-matrix.md](integrations/host-matrix.md)
 
 ### Understanding the CLI
 
@@ -28,35 +31,41 @@ Atelier is a reasoning/procedure/runtime layer for AI agents. Not memory. Not a 
 | ---------------- | ------------------------------------------------ |
 | [cli.md](cli.md) | Full command reference, exit codes, trace schema |
 
-### Pack System
+### Configuration Bundles
 
-| Doc                  | What it covers                                         |
-| -------------------- | ------------------------------------------------------ |
-| [packs.md](packs.md) | Pack format, CLI commands, official packs, authoring   |
+| Doc                  | What it covers                              |
+| -------------------- | ------------------------------------------- |
+| [packs.md](packs.md) | Bundle format, CLI commands, local-only     |
+
+### Authoring Content
+
+| Doc                                                                            | What it covers               |
+| ------------------------------------------------------------------------------ | ---------------------------- |
+| [authoring/reasonblock-authoring.md](authoring/reasonblock-authoring.md)       | ReasonBlock format           |
+| [authoring/rubric-authoring.md](authoring/rubric-authoring.md)                 | Rubric format                |
+| [authoring/environment-authoring.md](authoring/environment-authoring.md)       | Environment format           |
+| [authoring/failure-cluster-authoring.md](authoring/failure-cluster-authoring.md) | Failure cluster format     |
 
 ### Engineering & Architecture
 
-| Doc                                                        | What it covers                                |
-| ---------------------------------------------------------- | --------------------------------------------- |
-| [engineering/architecture.md](engineering/architecture.md) | System diagram, data models, information flow |
-| [engineering/storage.md](engineering/storage.md)           | SQLite vs PostgreSQL, schema, backups         |
-| [engineering/service.md](engineering/service.md)           | HTTP service, all endpoints, auth             |
-| [engineering/mcp.md](engineering/mcp.md)                   | MCP server, all tools, remote mode            |
-| [engineering/workers.md](engineering/workers.md)           | Background workers                            |
-| [engineering/security.md](engineering/security.md)         | Threat model, controls, OWASP checklist       |
-| [engineering/evals.md](engineering/evals.md)               | Eval system, benchmark, lifecycle             |
-| [engineering/dogfooding.md](engineering/dogfooding.md)     | Verified scenarios, expected outputs          |
-| [engineering/phase-t-hardening.md](engineering/phase-t-hardening.md) | Phase T1-T6 execution commands and reports |
-| [engineering/contributing.md](engineering/contributing.md) | Dev setup, style, PR guidelines               |
-| [production-readiness.md](production-readiness.md) | Production deployment and operations checklist |
+| Doc                                                              | What it covers                                       |
+| ---------------------------------------------------------------- | ---------------------------------------------------- |
+| [architecture/runtime.md](architecture/runtime.md)               | Runtime diagram, components, interfaces              |
+| [engineering/storage.md](engineering/storage.md)                 | SQLite vs PostgreSQL, schema, backups                |
+| [engineering/service.md](engineering/service.md)                 | HTTP service, all endpoints, auth                    |
+| [engineering/mcp.md](engineering/mcp.md)                         | MCP server, all tools, remote mode                   |
+| [engineering/security.md](engineering/security.md)               | Threat model, controls, OWASP checklist              |
+| [engineering/evals.md](engineering/evals.md)                     | Eval system, benchmark, lifecycle                    |
+| [engineering/contributing.md](engineering/contributing.md)       | Dev setup, style, PR guidelines                      |
+| [production-readiness.md](production-readiness.md)               | Production deployment and operations checklist       |
 
-### Operations / DevOps
+### Operations
 
-| Doc                                                | What it covers          |
-| -------------------------------------------------- | ----------------------- |
-| [engineering/service.md](engineering/service.md)   | HTTP service deployment |
-| [engineering/security.md](engineering/security.md) | Auth, redaction, OWASP  |
-| [troubleshooting.md](troubleshooting.md)           | Known issues and fixes  |
+| Doc                                                | What it covers         |
+| -------------------------------------------------- | ---------------------- |
+| [troubleshooting.md](troubleshooting.md)           | Known issues and fixes |
+| [engineering/service.md](engineering/service.md)   | HTTP service ops       |
+| [engineering/security.md](engineering/security.md) | Auth, redaction, OWASP |
 
 ## Quick Reference
 
