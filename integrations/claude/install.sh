@@ -1,0 +1,1 @@
+../../scripts/install_claude.sh

@@ -1,0 +1,91 @@
+#!/bin/bash
+# Pre-commit hook — Fast quality checks (≤5 seconds)
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Cross-platform file size function
+get_file_size() {
+    local file=$1
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        stat -f%z "$file" 2>/dev/null
+    else
+        stat -c%s "$file" 2>/dev/null
+    fi
+}
+
+# Determine files to check
+if [ -n "$1" ]; then
+    FILES_TO_CHECK=("$@")
+    IS_STAGED_CHECK=0
+    echo "📁 Checking ${#FILES_TO_CHECK[@]} provided files..."
+else
+    mapfile -t FILES_TO_CHECK < <(git diff --cached --name-only --diff-filter=ACM)
+    IS_STAGED_CHECK=1
+    echo "📁 Checking ${#FILES_TO_CHECK[@]} staged files..."
+fi
+
+if [ ${#FILES_TO_CHECK[@]} -eq 0 ]; then
+    echo "✅ No files to check."
+    exit 0
+fi
+
+if [ ${#FILES_TO_CHECK[@]} -le 10 ]; then
+    for file in "${FILES_TO_CHECK[@]}"; do
+        echo "   - $file"
+    done
+fi
+
+# Filter Python files
+PYTHON_FILES=()
+for file in "${FILES_TO_CHECK[@]}"; do
+    if [[ "$file" == *.py ]] && [[ "$file" != __pycache__/* ]]; then
+        PYTHON_FILES+=("$file")
+    fi
+done
+
+# 1. Code formatting
+if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
+    echo "📝 Running code formatting..."
+    uv run ruff check --fix "${PYTHON_FILES[@]}"
+    uv run python -m black "${PYTHON_FILES[@]}"
+fi
+
+# 2. Check for modifications after formatting
+mapfile -t MODIFIED_FILES < <(git diff --name-only -- "${FILES_TO_CHECK[@]}")
+if [ ${#MODIFIED_FILES[@]} -gt 0 ]; then
+    echo -e "\n\033[1;31m================================================================================\033[0m"
+    echo -e "\033[1;31m❌  FORMATTING REQUIRED\033[0m"
+    echo -e "\n📝  Some files were automatically formatted during pre-commit checks."
+    echo -e "    \033[1;33mPlease stage these changes and try again:\033[0m"
+    echo -e "\033[1;31m================================================================================\033[0m"
+    for file in "${MODIFIED_FILES[@]}"; do
+        echo "    - $file"
+    done
+    echo -e "\033[1;31m================================================================================\033[0m\n"
+    exit 1
+fi
+
+# 3. Large file detection
+echo "📏 Checking for large files..."
+MAX_SIZE=$((10 * 1024 * 1024)) # 10 MB
+LARGE_FILES=()
+for file in "${FILES_TO_CHECK[@]}"; do
+    if [ -f "$file" ] && [ "$(get_file_size "$file")" -gt "$MAX_SIZE" ]; then
+        LARGE_FILES+=("$file")
+    fi
+done
+
+if [ ${#LARGE_FILES[@]} -gt 0 ]; then
+    echo -e "\033[1;31m❌ Large files detected\033[0m" (>10MB):"
+    for f in "${LARGE_FILES[@]}"; do
+        echo "   - $f"
+    done
+    echo "Consider using Git LFS or removing these files."
+    echo "Use 'git commit --no-verify' to bypass."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed successfully!"
+exit 0

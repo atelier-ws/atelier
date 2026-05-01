@@ -1,0 +1,13 @@
+{
+  "name": "check_plan",
+  "arguments": {
+    "task": "Update Shopify product description and republish",
+    "domain": "beseam.shopify.publish",
+    "plan": [
+      "Parse product handle from the PDP URL",
+      "Look up product by handle"
+    ],
+    "files": [],
+    "tools": ["shopify.product.update"]
+  }
+}

@@ -1,0 +1,143 @@
+"""ContextCompressionCapability — token-budget-aware context compression."""
+
+from __future__ import annotations
+
+import contextlib
+from typing import TYPE_CHECKING, Any
+
+from .deduplication import deduplicate_tool_outputs
+from .models import CompressionResult, DroppedContext
+from .scoring import score_events
+
+if TYPE_CHECKING:
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+# Approximate chars-per-token ratio
+_CHARS_PER_TOKEN = 4
+
+
+class ContextCompressionCapability:
+    """
+    Intelligent context compression using TF-IDF event scoring,
+    recency weighting, and semantic deduplication.
+
+    Strategies applied in order:
+    1. Semantic deduplication (collapse near-identical events)
+    2. TF-IDF + recency scoring (rank remaining events by importance)
+    3. Budget-aware truncation (keep highest-scoring events up to token budget)
+    """
+
+    def compress_with_provenance(
+        self,
+        ledger: RunLedger,
+        *,
+        token_budget: int = 8000,
+    ) -> CompressionResult:
+        """
+        Compress the ledger's context and return a full provenance record.
+
+        Args:
+            ledger:       The run ledger to compress.
+            token_budget: Maximum allowed tokens after compression.
+        """
+        raw_events: list[Any] = []
+        with contextlib.suppress(Exception):
+            raw_events = list(getattr(ledger, "events", []) or [])
+
+        # Normalise LedgerEvent Pydantic models to plain dicts
+        events: list[dict[str, Any]] = [_normalise_event(ev) for ev in raw_events]
+
+        chars_before = sum(
+            len(str(ev.get("summary", ""))) + len(str(ev.get("payload", ""))) for ev in events
+        )
+
+        # Step 1: Deduplicate near-identical outputs
+        events_deduped, dropped_events = deduplicate_tool_outputs(events)
+        dropped: list[DroppedContext] = [
+            DroppedContext(
+                kind=str(ev.get("kind", "unknown")),
+                summary=str(ev.get("summary", ""))[:200],
+                original_chars=len(str(ev.get("summary", ""))),
+            )
+            for ev in dropped_events
+        ]
+
+        # Step 2: Score remaining events
+        scored = score_events(events_deduped)
+        scored.sort(key=lambda x: x.score, reverse=True)
+
+        # Step 3: Greedy token-budget selection (keep highest-scoring until budget used)
+        budget_chars = token_budget * _CHARS_PER_TOKEN
+        selected: list[dict[str, Any]] = []
+        used_chars = 0
+        budget_dropped: list[DroppedContext] = []
+
+        for es in scored:
+            ev = es.event
+            ev_chars = len(str(ev.get("summary", ""))) + len(str(ev.get("payload", "")))
+            if used_chars + ev_chars <= budget_chars:
+                selected.append(ev)
+                used_chars += ev_chars
+            else:
+                budget_dropped.append(
+                    DroppedContext(
+                        kind=str(ev.get("kind", "unknown")),
+                        summary=str(ev.get("summary", ""))[:200],
+                        original_chars=ev_chars,
+                    )
+                )
+
+        dropped += budget_dropped
+
+        chars_after = used_chars
+        reduction_pct = (
+            round(100.0 * (chars_before - chars_after) / chars_before, 1)
+            if chars_before > 0
+            else 0.0
+        )
+        token_savings = (chars_before - chars_after) // _CHARS_PER_TOKEN
+
+        # Build preserved_facts from selected events (highest importance first)
+        preserved_facts = [
+            f"[{ev.get('kind', '?')}] {str(ev.get('summary', ''))[:200]}" for ev in selected[:20]
+        ]
+
+        return CompressionResult(
+            chars_before=chars_before,
+            chars_after=chars_after,
+            reduction_pct=reduction_pct,
+            preserved_facts=preserved_facts,
+            dropped=dropped,
+            token_savings=token_savings,
+        )
+
+    def context_report(self, ledger: RunLedger) -> dict[str, Any]:
+        """Return a dict summary of current context compression state."""
+        result = self.compress_with_provenance(ledger)
+        return result.to_dict()
+
+    # Legacy alias
+    def compress(self, ledger: RunLedger) -> dict[str, Any]:
+        """Legacy single-pass compress; returns same dict as context_report."""
+        return self.context_report(ledger)
+
+
+def _normalise_event(ev: Any) -> dict[str, Any]:
+    """Convert a LedgerEvent Pydantic model or plain dict to a plain dict."""
+    if isinstance(ev, dict):
+        import typing
+
+        return typing.cast(dict[str, Any], ev)
+    import typing
+
+    # Pydantic model — use model_dump if available (Pydantic v2), else __dict__
+    if hasattr(ev, "model_dump"):
+        return typing.cast(dict[str, Any], ev.model_dump())
+    if hasattr(ev, "dict"):
+        return typing.cast(dict[str, Any], ev.dict())
+    # Fallback: attribute access via known LedgerEvent fields
+    return {
+        "kind": getattr(ev, "kind", "unknown"),
+        "summary": getattr(ev, "summary", ""),
+        "payload": getattr(ev, "payload", {}),
+    }

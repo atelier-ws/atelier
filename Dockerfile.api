@@ -1,0 +1,31 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    ln -s /root/.local/bin/uv /usr/local/bin/uv
+
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --extra api --no-dev
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    ATELIER_SERVICE_HOST=0.0.0.0 \
+    ATELIER_SERVICE_PORT=8787 \
+    ATELIER_REQUIRE_AUTH=false \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8787
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
+    CMD curl -fsS http://127.0.0.1:8787/health || exit 1
+
+CMD ["atelier", "service", "start", "--host", "0.0.0.0", "--port", "8787"]

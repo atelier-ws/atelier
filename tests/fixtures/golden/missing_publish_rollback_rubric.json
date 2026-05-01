@@ -1,0 +1,10 @@
+{
+  "rubric_id": "rubric_shopify_publish",
+  "checks_completed": [
+    "product_identity_uses_gid",
+    "pre_publish_snapshot_exists",
+    "write_result_checked",
+    "post_publish_refetch_done"
+  ],
+  "checks_missing": ["post_publish_audit_passed", "rollback_available"]
+}

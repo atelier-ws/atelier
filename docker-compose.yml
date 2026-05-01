@@ -1,0 +1,53 @@
+services:
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["atelier", "init"]
+    volumes:
+      - ./.atelier:/app/.atelier
+    environment:
+      - ATELIER_ROOT=/app/.atelier
+
+  service:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command:
+      ["atelier", "service", "start", "--host", "0.0.0.0", "--port", "8787"]
+    ports:
+      - "8787:8787"
+    environment:
+      - ATELIER_SERVICE_HOST=0.0.0.0
+      - ATELIER_SERVICE_PORT=8787
+      - ATELIER_REQUIRE_AUTH=false
+      - ATELIER_ROOT=/app/.atelier
+    volumes:
+      - ./.atelier:/app/.atelier
+      - ./integrations:/app/integrations:ro
+      - ./src:/app/src
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3125:3125"
+    restart: unless-stopped
+    depends_on:
+      service:
+        condition: service_started
+
+  docs:
+    build:
+      context: .
+      dockerfile: docs-site/Dockerfile
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./docs:/docs
+    restart: unless-stopped

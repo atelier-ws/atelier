@@ -1,0 +1,15 @@
+bundle_id: swe.general
+domain: swe.general
+description: >
+  General-purpose reasoning blocks, rubrics, and prompts for software
+  engineering workflows. Improves plan quality and failure recovery
+  across code generation, debugging, and refactoring tasks.
+author: Beseam
+
+reasonblocks:
+  - reasonblocks/general_coding.yaml
+
+rubrics: []
+environments: []
+evals: []
+benchmarks: []

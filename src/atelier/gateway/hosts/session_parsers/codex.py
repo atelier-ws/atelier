@@ -1,0 +1,548 @@
+"""Codex session importer for Atelier.
+
+Converts ~/.codex/sessions/<year>/<month>/<day>/<rollout-ts-uuid>.jsonl
+into redacted RawArtifacts + curated Atelier Traces.
+
+Session layout::
+
+    ~/.codex/sessions/
+        2026/
+            04/
+                30/
+                    rollout-2026-04-30T12-58-46-019ddee8-....jsonl
+
+Codex JSONL comes in two formats depending on CLI version:
+
+**Format A - event_msg wrapper** (VSCode extension / older CLI):
+
+- ``{"type":"session_meta","payload":{"id":"...","cwd":"...","timestamp":"..."}}``
+- ``{"type":"event_msg","payload":{"type":"user_message","message":"..."}}``
+- ``{"type":"event_msg","payload":{"type":"exec_command_end","command":[...],...}}``
+- ``{"type":"event_msg","payload":{"type":"patch_apply_end","changes":{path:diff},...}}``
+- ``{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"..."}}``
+
+**Format B - flat** (CLI TUI / newer builds, no event_msg wrapper):
+
+- ``{"id":"...","timestamp":"...","instructions":"..."}``  ← session meta, no "type"
+- ``{"type":"message","role":"user","content":[{"type":"input_text","text":"..."}]}``
+- ``{"type":"function_call","name":"apply_patch","arguments":"..."}``
+- ``{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"...\\",...}"}``
+- ``{"type":"function_call_output","call_id":"...","output":"..."}``
+
+Lookup path::
+
+    agent → curated Trace (fast, retrieval-friendly)
+    human → RawArtifact content (full redacted JSONL for audit)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import traceback as _traceback
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from atelier.core.foundation.models import (
+    RawArtifact,
+    ToolCall,
+    Trace,
+)
+from atelier.core.foundation.redaction import redact
+from atelier.core.foundation.store import ReasoningStore
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _parse_ts(val: Any) -> datetime:
+    if not val:
+        return _utcnow()
+    try:
+        if isinstance(val, (int, float)):
+            return datetime.fromtimestamp(float(val), tz=UTC)
+        dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except (ValueError, OSError):
+        return _utcnow()
+
+
+def _command_str(cmd: Any) -> str:
+    """Normalise a Codex command field (list or str) to a readable string.
+
+    Format A: command is a list like ["/usr/bin/zsh", "-lc", "<actual cmd>"].
+    The last element is the human-readable command.
+    """
+    if isinstance(cmd, list):
+        return str(cmd[-1]) if cmd else ""
+    return str(cmd)
+
+
+# Prefixes that mark system-injected content blocks to skip for task extraction
+_SYSTEM_CONTENT_PREFIXES = (
+    "<user_instructions>",
+    "<environment_context>",
+    "<permissions instructions>",
+    "<permissions_instructions>",
+    "# AGENTS.md instructions",
+    "AGENTS.md instructions",
+    "<local-command",
+    "<ide_",
+    "<thinking>",
+)
+
+# Regex for "## My request for Codex:" style headers (Format A IDE context)
+_REQUEST_HEADER_RE = re.compile(
+    r"#+\s*(My request for Codex|My request|Request|Task|Prompt)[^:\n]*:\s*\n+(.+?)(?=\n#+\s|\Z)",
+    re.IGNORECASE | re.DOTALL,
+)
+_CAPTURE_HEADER_RE = re.compile(r"#+\s*(my request|request|task)[^:\n]*:", re.IGNORECASE)
+
+
+def _extract_codex_task_from_message(msg: str) -> str:
+    """Extract the user's actual task from a Codex user message string.
+
+    Handles:
+    - Clean messages (Format B, newer CLI): returned as-is.
+    - IDE-context messages with "## My request for Codex:" header (Format A).
+    """
+    msg = msg.strip()
+    if not msg:
+        return ""
+
+    # Skip system-injected messages
+    lower = msg.lower()
+    if any(msg.startswith(p) for p in _SYSTEM_CONTENT_PREFIXES):
+        return ""
+    if re.search(r"<\s*(local-command\w*|ide_\w*|thinking)\b", msg, re.IGNORECASE):
+        return ""
+
+    # Try to extract from "## My request for Codex:" header
+    md_match = _REQUEST_HEADER_RE.search(msg)
+    if md_match:
+        return md_match.group(2).strip()[:200]
+
+    # Fallback: line-by-line capture after a request header
+    if "## " in msg and any(k in lower for k in ("my request", "request for codex")):
+        lines = msg.split("\n")
+        capture = False
+        captured: list[str] = []
+        for ln in lines:
+            if _CAPTURE_HEADER_RE.search(ln):
+                capture = True
+                continue
+            if capture:
+                if ln.strip().startswith("##") or ln.strip().startswith("```"):
+                    break
+                if ln.strip():
+                    captured.append(ln.strip())
+        if captured:
+            return " ".join(captured)[:200]
+
+    # For very long messages that look like system prompts, skip them
+    if len(msg) > 3000 and ("<INSTRUCTIONS>" in msg or "# E-commerce Platform" in msg):
+        return ""
+
+    return msg[:200]
+
+
+def _files_from_patch(patch_text: str) -> list[str]:
+    """Extract file paths from a Codex apply_patch diff string.
+
+    Looks for lines like:
+        *** Update File: /absolute/path/to/file.py
+        *** Add File: /absolute/path/to/new_file.py
+        *** Delete File: /absolute/path/to/old_file.py
+    """
+    files: list[str] = []
+    for ln in patch_text.splitlines():
+        m = re.match(
+            r"^\*\*\*\s+(?:Update|Add|Delete|Move|Rename)\s+File:\s+(.+)$", ln, re.IGNORECASE
+        )
+        if m:
+            files.append(m.group(1).strip())
+    return files
+
+
+# ---------------------------------------------------------------------------
+# Session discovery
+# ---------------------------------------------------------------------------
+
+
+def find_codex_sessions(root: Path | None = None) -> Iterator[Path]:
+    """Yield every Codex session JSONL file under *root*."""
+    if root is None:
+        root = Path("~/.codex/sessions").expanduser()
+    if not root.is_dir():
+        return
+    yield from sorted(root.rglob("*.jsonl"))
+
+
+# ---------------------------------------------------------------------------
+# Importer
+# ---------------------------------------------------------------------------
+
+
+class CodexImporter:
+    """Loss-preserving importer for Codex sessions.
+
+    Handles both the legacy event_msg-wrapped format (Format A) and the
+    flat object format produced by the Codex TUI (Format B).
+
+    For every ``.jsonl`` session file:
+
+    1. Write a **redacted raw artifact** into
+       ``<store_root>/raw/codex/<date_path>/<filename>``.
+    2. Parse the *original* (pre-redaction) file into a compact ``Trace``
+       so that task / command extraction is not impacted by redaction
+       truncating chain-of-thought blocks.
+
+    Nothing is thrown away beyond what Atelier's redactor strips.
+    """
+
+    def __init__(self, store: ReasoningStore) -> None:
+        self.store = store
+
+    def import_all(self, root: Path | None = None, *, force: bool = False) -> int:
+        """Import all sessions.  Returns the number successfully imported."""
+        count = 0
+        skipped = 0
+        for jsonl_path in find_codex_sessions(root):
+            try:
+                if self.import_session(jsonl_path, force=force):
+                    count += 1
+                else:
+                    skipped += 1
+            except Exception as exc:
+                _traceback.print_exc()
+                print(f"[atelier] skipping codex session {jsonl_path.name}: {exc}")
+        if skipped > 0:
+            print(f"[atelier] {skipped} sessions already imported (skipped by dedup)")
+        return count
+
+    def import_session(self, jsonl_path: Path, *, force: bool = False) -> bool:
+        """Import a single Codex JSONL file.  Returns True on success."""
+        stem = jsonl_path.stem  # e.g. rollout-2026-04-30T12-58-46-019ddee8-...
+        parts = stem.split("-")
+        session_id = "-".join(parts[-5:]) if len(parts) >= 5 else stem
+
+        # ── Timestamp-based dedup check — BEFORE reading the file ──────────
+        # Stat is cheap (metadata only); reading can be 10-50 MB per session.
+        artifact_id = f"codex-{session_id}"
+        file_mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=UTC)
+        if not force:
+            existing = self.store.get_raw_artifact(artifact_id)
+            if existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
+                return False  # unchanged, skip
+
+        codex_root = Path("~/.codex/sessions").expanduser()
+        try:
+            rel = jsonl_path.relative_to(codex_root)
+        except ValueError:
+            rel = Path(jsonl_path.name)
+        content_path = f"raw/codex/{rel}"
+
+        raw_content = jsonl_path.read_text(encoding="utf-8")
+        redacted = redact(raw_content)
+
+        # ── Step 1: write redacted raw artifact ──────────────────────────────
+        artifact = RawArtifact(
+            id=artifact_id,
+            source="codex",
+            source_session_id=session_id,
+            kind="session.jsonl",
+            relative_path=jsonl_path.name,
+            content_path=content_path,
+            sha256_original=_sha256(raw_content),
+            sha256_redacted=_sha256(redacted),
+            byte_count_original=len(raw_content.encode("utf-8")),
+            byte_count_redacted=len(redacted.encode("utf-8")),
+            created_at=_utcnow(),
+            source_file_mtime=file_mtime,
+        )
+        self.store.record_raw_artifact(artifact, redacted)
+
+        # ── Step 2: detect format and build curated Trace ─────────────────────
+        # Parse from RAW content (not redacted) so task extraction isn't
+        # truncated by chain-of-thought redaction. Only the stored artifact
+        # is redacted; the Trace fields carry only non-sensitive summaries.
+        fmt = _detect_format(raw_content)
+        if fmt == "flat":
+            trace = self._parse_flat(session_id, raw_content, artifact.id)
+        else:
+            trace = self._parse_event_msg(session_id, raw_content, artifact.id)
+
+        # write_json=False: the raw JSONL is already stored as a RawArtifact;
+        # there is no need to mirror the compact Trace JSON to disk too.
+        self.store.record_trace(trace, write_json=False)
+
+        # ── Step 3: reconstruct fully populated RunLedger ────────────────────
+        # Skip if ledger reconstruction fails - don't crash the main import
+        try:
+            from atelier.core.service.config import cfg
+            from atelier.gateway.integrations.ledger_reconstructor import LedgerReconstructor
+
+            recon = LedgerReconstructor(root=Path(cfg.atelier_root))
+            led = recon.reconstruct(
+                source="codex",
+                session_id=session_id,
+                raw_content=raw_content,
+                task=trace.task,
+            )
+            led.persist()
+        except Exception as e:
+            print(f"[atelier] failed to reconstruct ledger for {session_id}: {e}")
+
+        return True
+
+    # ------------------------------------------------------------------
+    # Format detection
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Format A: event_msg-wrapped (VSCode extension / older CLI)
+    # ------------------------------------------------------------------
+
+    def _parse_event_msg(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
+        tools_called: dict[str, int] = {}
+        files_touched: set[str] = set()
+        commands_run: list[str] = []
+        reasoning_snippets: list[str] = []
+        task = "untitled codex session"
+        created_at = _utcnow()
+
+        for line in raw_content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            ev_type = ev.get("type", "")
+
+            if ev_type == "session_meta":
+                payload = ev.get("payload") or {}
+                ts = payload.get("timestamp")
+                if ts:
+                    created_at = _parse_ts(ts)
+
+            elif ev_type == "event_msg":
+                payload = ev.get("payload") or {}
+                ptype = payload.get("type", "")
+
+                if ptype == "user_message":
+                    extracted = _extract_codex_task_from_message(str(payload.get("message", "")))
+                    if extracted and task == "untitled codex session":
+                        task = extracted
+
+                elif ptype == "exec_command_end":
+                    cmd = _command_str(payload.get("command", ""))
+                    if cmd:
+                        commands_run.append(cmd[:200])
+                        tools_called["shell"] = tools_called.get("shell", 0) + 1
+
+                elif ptype == "patch_apply_end":
+                    # changes = {absolute_path: {"type":"update","unified_diff":"..."}}
+                    changes: dict[str, Any] = payload.get("changes") or {}
+                    for fpath in changes:
+                        files_touched.add(str(fpath))
+                    if changes:
+                        tools_called["patch"] = tools_called.get("patch", 0) + 1
+
+                elif ptype == "mcp_tool_call_end":
+                    invocation = payload.get("invocation") or {}
+                    tool_name = invocation.get("tool", "mcp")
+                    tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
+
+            elif ev_type == "response_item":
+                # Newer CLI still wraps in event_msg but also emits response_item
+                payload = ev.get("payload") or {}
+                ptype = payload.get("type", "")
+
+                # Extract reasoning content from reasoning response items
+                if ptype == "reasoning":
+                    reasoning_text = str(payload.get("summary") or payload.get("text") or "")
+                    if reasoning_text:
+                        reasoning_snippets.append(reasoning_text[:500])
+
+                if ptype == "function_call":
+                    name = payload.get("name", "")
+                    tools_called[name] = tools_called.get(name, 0) + 1
+                    args_str = payload.get("arguments", "{}")
+                    try:
+                        args: dict[str, Any] = json.loads(args_str)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    if name == "apply_patch":
+                        patch_text = args.get("patch", "")
+                        for fp in _files_from_patch(patch_text):
+                            files_touched.add(fp)
+                    elif name in ("exec_command", "shell_command"):
+                        cmd = str(args.get("cmd") or args.get("command") or "")
+                        if cmd:
+                            commands_run.append(cmd[:200])
+
+                elif ptype == "custom_tool_call":
+                    name = payload.get("name", "custom_tool")
+                    tools_called[name] = tools_called.get(name, 0) + 1
+                    if name == "apply_patch":
+                        patch_text = str(payload.get("input", ""))
+                        for fp in _files_from_patch(patch_text):
+                            files_touched.add(fp)
+
+        # ── Build Trace with reasoning ───────────────────────────────────────────────
+        return Trace(
+            id=f"codex-{session_id}",
+            run_id=session_id,
+            agent="codex",
+            domain="coding",
+            task=task,
+            status="success",
+            files_touched=sorted(files_touched),
+            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
+            commands_run=commands_run,
+            errors_seen=[],
+            validation_results=[],
+            raw_artifact_ids=[artifact_id],
+            reasoning=reasoning_snippets,
+            created_at=created_at,
+        )
+
+    # ------------------------------------------------------------------
+    # Format B: flat objects (Codex TUI / newer builds)
+    # ------------------------------------------------------------------
+
+    def _parse_flat(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
+        tools_called: dict[str, int] = {}
+        files_touched: set[str] = set()
+        commands_run: list[str] = []
+        reasoning_snippets: list[str] = []
+        task = "untitled codex session"
+        created_at = _utcnow()
+        first_ts_set = False
+
+        for line in raw_content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            ev_type = ev.get("type")
+
+            # Extract reasoning block (Format B)
+            if ev_type == "reasoning":
+                reasoning_text = str(ev.get("summary") or ev.get("text") or "")
+                if reasoning_text:
+                    reasoning_snippets.append(reasoning_text[:500])
+
+            # Session meta: flat object with no "type" field
+            if ev_type is None and "id" in ev and "timestamp" in ev and not first_ts_set:
+                created_at = _parse_ts(ev.get("timestamp"))
+                first_ts_set = True
+                continue
+
+            if ev_type == "message":
+                ts = ev.get("timestamp")
+                if ts and not first_ts_set:
+                    created_at = _parse_ts(ts)
+                    first_ts_set = True
+
+                if ev.get("role") == "user":
+                    # Extract task from content blocks
+                    for blk in ev.get("content") or []:
+                        if not isinstance(blk, dict):
+                            continue
+                        btype = blk.get("type", "")
+                        if btype not in ("input_text", "text"):
+                            continue
+                        text = str(blk.get("text", "")).strip()
+                        extracted = _extract_codex_task_from_message(text)
+                        if extracted and task == "untitled codex session":
+                            task = extracted
+                            break
+
+            elif ev_type == "function_call":
+                name = str(ev.get("name") or ev.get("function", {}).get("name", "unknown"))
+                tools_called[name] = tools_called.get(name, 0) + 1
+
+                args_raw = ev.get("arguments", "{}")
+                if isinstance(args_raw, dict):
+                    args: dict[str, Any] = args_raw
+                else:
+                    try:
+                        args = json.loads(str(args_raw))
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+
+                if name == "apply_patch":
+                    patch_text = str(args.get("patch", ""))
+                    for fp in _files_from_patch(patch_text):
+                        files_touched.add(fp)
+                elif name in ("exec_command", "shell_command"):
+                    cmd = str(args.get("cmd") or args.get("command") or "")
+                    if cmd:
+                        commands_run.append(cmd[:200])
+
+        return Trace(
+            id=f"codex-{session_id}",
+            run_id=session_id,
+            agent="codex",
+            domain="coding",
+            task=task,
+            status="success",
+            files_touched=sorted(files_touched),
+            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
+            commands_run=commands_run,
+            errors_seen=[],
+            validation_results=[],
+            raw_artifact_ids=[artifact_id],
+            reasoning=reasoning_snippets,
+            created_at=created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Format detection
+# ---------------------------------------------------------------------------
+
+
+def _detect_format(raw_content: str) -> str:
+    """Return 'event_msg' or 'flat' based on the first parseable event."""
+    for line in raw_content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ev_type = ev.get("type")
+        if ev_type == "session_meta":
+            return "event_msg"
+        if ev_type in ("message", "reasoning", "function_call", "function_call_output"):
+            return "flat"
+        if ev_type is None and "id" in ev and "timestamp" in ev:
+            # Flat format: first line is session meta without "type"
+            return "flat"
+        # Unknown type — assume event_msg format
+        return "event_msg"
+    return "event_msg"

@@ -1,0 +1,183 @@
+/* Local Hack Nerd Font - shipped with app */
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Dark theme base with Hack Nerd Font */
+body {
+  background-color: #0a0a0a;
+  color: #e5e5e5;
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #171717;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #404040;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #404040 #171717;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection color */
+::selection {
+  background-color: rgba(255, 96, 65, 0.2);
+  color: #e5e5e5;
+}
+
+/* Focus outline for accessibility */
+:focus-visible {
+  outline: 2px solid #ff6041;
+  outline-offset: 2px;
+}
+
+/* Input/Select dark theme fixes */
+input,
+select,
+textarea {
+  background-color: #171717;
+  border-color: #404040;
+  color: #e5e5e5;
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #737373;
+}
+
+/* Code blocks - terminal style with Nerd Font */
+code,
+pre {
+  background-color: #0a0a0a;
+  border: 1px solid #262626;
+  color: #e5e5e5;
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Links */
+a {
+  color: #ff6041;
+}
+
+a:hover {
+  color: #ff8566;
+}
+
+/* Table styles */
+table {
+  border-color: #262626;
+}
+
+th,
+td {
+  border-color: #262626;
+}
+
+/* Button base for dark theme */
+button {
+  color: #e5e5e5;
+  border-color: #404040;
+}
+
+button:hover {
+  background-color: #404040;
+}
+
+/* Remove white flash on page load */
+#root {
+  background-color: #0a0a0a;
+}
+
+/* Remove box-shadow globally - use borders instead */
+* {
+  box-shadow: none !important;
+}
+
+/* Terminal-style borders for cards */
+.terminal-card {
+  border: 1px solid #262626;
+  background: #0f0f0f;
+}
+
+.terminal-card:hover {
+  border-color: #404040;
+}
+
+/* Status indicator styles */
+.status-active::before {
+  content: '● ';
+  color: #10b981;
+}
+
+.status-inactive::before {
+  content: '◦ ';
+  color: #6b7280;
+}
+
+.status-error::before {
+  content: '✗ ';
+  color: #ef4444;
+}
+
+.status-warning::before {
+  content: '⚠ ';
+  color: #f59e0b;
+}

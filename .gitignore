@@ -1,0 +1,253 @@
+# ============================================
+# Atelier - Git Ignore
+# ============================================
+
+# -----------------------
+# Python
+# -----------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+sdist/
+
+# Type checking
+.mypy_cache/
+.pytype/
+
+# -----------------------
+# Virtual Environments & uv
+# -----------------------
+.venv/
+venv/
+venv39/
+.uv-cache/
+
+# -----------------------
+# Testing & Coverage
+# -----------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+cover/
+coverage.xml
+.nyc_output/
+.tox/
+.nox/
+
+# Ruff
+.ruff_cache/
+
+# -----------------------
+# IDE & Editor
+# -----------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spell
+
+# Claude Code
+.codex/
+.claude/
+.claude-plugin/
+
+# Claude Desktop
+.claude/
+
+# OpenCode
+.opencode/
+
+# Gemini CLI
+.geminit/
+.gemini/
+
+# Github copilot
+.github/
+
+# VSCode test
+.vscode-test/
+
+# -----------------------
+# OS Files
+# -----------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+
+# -----------------------
+# Runtime & Temp
+# -----------------------
+# Atelier runtime data
+.atelier/
+
+# Logs
+logs/
+*.log
+
+# Temp files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.old
+*.new.json
+*.new.js
+
+# Backup files
+*.backup
+*.checkpoint
+deleted/*.bk/
+deleted/*
+
+# -----------------------
+# Docker & Compose
+# -----------------------
+.dockerignore
+
+# -----------------------
+# Node / Frontend (if applicable)
+# -----------------------
+node_modules/
+.npm
+.eslintcache
+.stylelintcache
+.next/
+.cache
+.parcel-cache/
+
+# -----------------------
+# Project-Specific
+# -----------------------
+# Coverage/test outputs
+benchmark_results/
+eval_results/
+
+# Scripts output
+outputs/
+results/
+
+# Database dumps
+*.sql
+*.sqlite3
+dump.rdb
+*.rdb
+
+# Secrets (local dev)
+.secrets/
+*.local
+.env
+.env.local
+.env.*.local
+
+# OpenAPI client generation
+frontend/src/services/stub/
+
+# -----------------------
+# MCP & Agent Configs (runtime-generated)
+# -----------------------
+.mcp.json
+.mcp.json.runtime
+opencode.jsonc*
+.codex/config.toml
+.gemini/settings.json
+.augment/
+.kilo/
+.kilocode/
+.clinerules/
+.agents/
+
+# -----------------------
+# Build Outputs
+# -----------------------
+bin/
+build/Release/
+
+# -----------------------
+# Documentation Site
+# -----------------------
+docs-site/node_modules/
+docs-site/.docusaurus/
+docs-site/build/
+
+# -----------------------
+# Start Master Aggregated Rules (Global Union)
+# -----------------------
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Snowpack / Vite / Parcel
+.cache
+.parcel-cache/
+.webassets-cache
+
+# Next.js
+.next/
+out/
+.nuxt/
+dist/
+.nuxt/
+dist-ssr
+
+# Gatsby
+.grunt/
+.bower_components/
+.gatsby/
+
+# Node artifacts
+jspm_packages/
+web_modules/
+node_modules/
+
+# Bundle outputs
+*.tgz
+yarn-integrity
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite config timestamp
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Serverless
+.serverless/
+.fusebox/
+.dynamodb/
+.firebase/
+
+# TernJS
+.tern-port/
+
+# SvelteKit
+.svelte-kit/
+
+# VitePress
+.vitepress/cache/
+.vitepress/dist/
+
+# -----------------------
+# END Master Aggregated Rules (Global Union)
+# -----------------------
