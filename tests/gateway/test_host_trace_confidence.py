@@ -263,3 +263,57 @@ def test_mcp_server_downgrades_full_live_without_hooks(tmp_path: Path) -> None:
         assert (
             "hooks" in stored_trace.missing_surfaces
         ), "hooks must appear in missing_surfaces after downgrade"
+
+
+def test_mcp_server_record_trace_accepts_string_tool_names(tmp_path: Path) -> None:
+    """MCP callers may send tools_called as simple names."""
+    import os
+
+    os.environ["ATELIER_ROOT"] = str(tmp_path)
+    (tmp_path / "blocks").mkdir(parents=True, exist_ok=True)
+
+    import unittest.mock as mock
+
+    with (
+        mock.patch("atelier.gateway.adapters.mcp_server._runtime") as mock_rt,
+        mock.patch("atelier.gateway.adapters.mcp_server._get_ledger") as mock_led,
+        mock.patch("atelier.gateway.adapters.mcp_server._get_realtime_context") as mock_rtc,
+    ):
+        fake_store = mock.MagicMock()
+        fake_rt = mock.MagicMock()
+        fake_rt.store = fake_store
+        mock_rt.return_value = fake_rt
+
+        fake_ledger = mock.MagicMock()
+        fake_ledger.run_id = "run-test-002"
+        mock_led.return_value = fake_ledger
+
+        mock_rtc.return_value = mock.MagicMock()
+
+        from atelier.gateway.adapters.mcp_server import tool_record_trace
+
+        tool_record_trace(
+            {
+                "agent": "codex",
+                "domain": "coding",
+                "task": "record simple tool names",
+                "status": "success",
+                "tools_called": ["sed", {"tool": "pytest", "count": "2"}],
+                "validation_results": [
+                    "pytest passed",
+                    {"check": "compile", "status": "pass", "output": "ok"},
+                ],
+            }
+        )
+
+        assert fake_store.record_trace.called
+        stored_trace = fake_store.record_trace.call_args[0][0]
+        assert [tool.name for tool in stored_trace.tools_called] == ["sed", "pytest"]
+        assert [tool.args_hash for tool in stored_trace.tools_called] == ["", ""]
+        assert [tool.count for tool in stored_trace.tools_called] == [1, 2]
+        assert [result.name for result in stored_trace.validation_results] == [
+            "pytest passed",
+            "compile",
+        ]
+        assert [result.passed for result in stored_trace.validation_results] == [True, True]
+        assert [result.detail for result in stored_trace.validation_results] == ["", "ok"]
