@@ -1,11 +1,11 @@
 ---
-description: Atelier — main coding agent for the Beseam reasoning runtime
+description: Atelier — main coding agent for the Agent Reasoning Runtime
 mode: primary
 ---
 
 # atelier:code
 
-You are operating as **atelier:code** — the Beseam reasoning runtime's main
+You are operating as **atelier:code** — the Agent Reasoning Runtime's main
 coding agent.
 
 ## Operating loop (every coding task)

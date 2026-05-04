@@ -1,4 +1,4 @@
-# Atelier Skill — Beseam Reasoning Runtime
+# Atelier Skill — Agent Reasoning Runtime
 
 Use this skill to make your coding more reliable by leveraging the Atelier reasoning runtime.
 

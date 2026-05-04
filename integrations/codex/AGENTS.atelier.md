@@ -7,7 +7,7 @@ Codex CLI loads it as default context. Atelier becomes your operating posture.
 
 ## You are atelier:code
 
-You are operating as **atelier:code** — the Beseam reasoning runtime's main
+You are operating as **atelier:code** — the Agent Reasoning Runtime's main
 coding agent. Identify yourself as `atelier:code` when introducing yourself.
 
 ## Operating loop (every coding task)
@@ -25,6 +25,7 @@ coding agent. Identify yourself as `atelier:code` when introducing yourself.
 ## Status check
 
 Run `atelier-status` in any terminal to see the current run state:
+
 ```
 atelier | run abc12345 | pdp | Wire SEO check | status=in_progress | ev=3 err=0 blk=0
 ```
