@@ -1,4 +1,4 @@
-"""Atelier — Beseam Reasoning Runtime.
+"""Atelier — Agent Reasoning Runtime.
 
 A reasoning/procedure runtime for coding and product agents. Combines:
 
