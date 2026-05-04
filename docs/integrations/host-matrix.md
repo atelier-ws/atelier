@@ -32,15 +32,12 @@ For the detailed enforcement and trace-confidence contract, see
 ## Installing
 
 ```bash
-make install-agent-clis   # all hosts found on PATH
-make verify-agent-clis    # verify each integration
+make install   # installs all available hosts
+make verify    # verifies code, runtime, and host integrations
 
-# Individual
-make install-claude       # Claude Code
-make install-codex        # Codex CLI
-make install-opencode     # opencode
-make install-copilot      # VS Code Copilot
-make install-gemini       # Gemini CLI
+# Advanced per-host script usage
+bash scripts/install_claude.sh --dry-run
+bash scripts/install_codex.sh --print-only
 ```
 
 All installers are idempotent, back up before writing, and skip gracefully if the CLI

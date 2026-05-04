@@ -4,34 +4,34 @@ Canonical adapter configs and install/verify scripts for every supported agent C
 
 ## Supported Hosts
 
-| Host            | Dir         | Support level      | Install script        |
-| --------------- | ----------- | ------------------ | --------------------- |
-| Claude Code     | `claude/`   | Full plugin        | `claude/install.sh`   |
-| Codex           | `codex/`    | Skills + MCP       | `codex/install.sh`    |
-| opencode        | `opencode/` | MCP config         | `opencode/install.sh` |
-| VS Code Copilot | `copilot/`  | MCP + instructions | `copilot/install.sh`  |
-| Gemini CLI      | `gemini/`   | MCP config         | `gemini/install.sh`   |
+| Host            | Dir         | Support level      | Script                        |
+| --------------- | ----------- | ------------------ | ----------------------------- |
+| Claude Code     | `claude/`   | Full plugin        | `scripts/install_claude.sh`   |
+| Codex           | `codex/`    | Skills + MCP       | `scripts/install_codex.sh`    |
+| opencode        | `opencode/` | MCP config         | `scripts/install_opencode.sh` |
+| VS Code Copilot | `copilot/`  | MCP + instructions | `scripts/install_copilot.sh`  |
+| Gemini CLI      | `gemini/`   | MCP config         | `scripts/install_gemini.sh`   |
 
 ## Quick Install
 
 From the `atelier/` directory:
 
 ```bash
-# Install into all available agent CLIs (gracefully skips missing ones)
-make install-agent-clis
+# Install deps, all available agent CLIs, status helper, and runtime store
+make install
 
-# Verify all integrations
-make verify-agent-clis
+# Verify code, runtime smoke tests, and integrations
+make verify
 ```
 
-## Per-host
+## Per-host advanced scripts
 
 ```bash
-make install-claude    && make verify-claude
-make install-codex     && make verify-codex
-make install-opencode  && make verify-opencode
-make install-copilot   && make verify-copilot
-make install-gemini    && make verify-gemini
+bash scripts/install_claude.sh --dry-run
+bash scripts/install_codex.sh --print-only
+bash scripts/install_opencode.sh --strict
+bash scripts/install_copilot.sh --workspace /path/to/workspace
+bash scripts/install_gemini.sh
 ```
 
 ## Installer contract

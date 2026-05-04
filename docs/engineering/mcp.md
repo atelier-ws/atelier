@@ -181,7 +181,7 @@ environment variables (`env = "..."`) and are never persisted by Atelier.
 
 ```bash
 # Quick verify (tools/list)
-cd atelier && make verify-mcp
+cd atelier && bash scripts/verify_atelier_mcp_stdio.sh
 
 # Manual test
 echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | uv run atelier-mcp

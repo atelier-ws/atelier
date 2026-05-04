@@ -5,10 +5,8 @@ This checklist is the release gate for Atelier Phase D hardening.
 ## Deployment Checklist
 
 - `uv sync --all-extras` completed in a clean environment.
-- `make verify` passes (ruff, black --check, mypy --strict, pytest).
-- `make verify-local` passes.
-- `make verify-mcp` passes.
-- `make phase-t-hardening` passes and writes a report under `.atelier/reports/phase_t/`.
+- `make verify` passes (ruff, black --check, mypy --strict, pytest, runtime smoke tests, host checks).
+- `make benchmark` passes when benchmark evidence is required for the release.
 - Service config reviewed with `uv run atelier service config`.
 - `ATELIER_REQUIRE_AUTH=true` for non-local environments.
 - `ATELIER_API_KEY` set for service environments.

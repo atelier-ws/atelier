@@ -17,7 +17,7 @@
 ## Mode 1: Marketplace Install (Recommended)
 
 ```bash
-make install-claude
+make install
 ```
 
 This registers the repo root as a local Claude plugin source (`atelier`), installs
@@ -29,7 +29,7 @@ The script is idempotent — safe to run again after updates.
 ### Verify
 
 ```bash
-make verify-claude
+make verify
 ```
 
 All checks should show `PASS`:
@@ -51,7 +51,7 @@ bash scripts/install_claude.sh --print-only
 For testing plugin changes without a full install:
 
 ```bash
-make verify-claude-plugin-dev   # validate structure + print launch command
+bash scripts/install_claude.sh --print-only
 ```
 
 This prints the command to run:
@@ -68,11 +68,11 @@ files are picked up on restart.
 ## Mode 3: MCP-Only Fallback
 
 ```bash
-make install-claude-mcp
+bash scripts/install_claude.sh --print-only
 ```
 
 > **WARNING**: This is NOT the full plugin. It installs the MCP server entry in
-> `.mcp.json` only. Agents and `/atelier:*` skills are NOT available.
+> `.mcp.json` only if you apply the printed manual steps. Agents and `/atelier:*` skills are NOT available.
 > Use this only when `claude plugin install` is unavailable.
 
 ---
@@ -166,12 +166,12 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 
 | Problem                       | Fix                                                                     |
 | ----------------------------- | ----------------------------------------------------------------------- |
-| Not in `claude plugin list`   | Run `make install-claude`                                               |
+| Not in `claude plugin list`   | Run `make install`                                                      |
 | Plugin listed but not enabled | Run `claude plugin enable atelier@atelier`                              |
 | Validation fails              | Run `claude plugin validate integrations/claude/plugin/`                |
-| MCP tools missing             | Check `.mcp.json` in workspace root; re-run `make install-claude`       |
+| MCP tools missing             | Check `.mcp.json` in workspace root; re-run `make install`              |
 | Hooks firing unexpectedly     | Set `"enabled": false` in `integrations/claude/plugin/hooks/hooks.json` |
-| Want to test without install  | Use dev mode: `make verify-claude-plugin-dev`                           |
+| Want to test without install  | Use `bash scripts/install_claude.sh --print-only`                       |
 
 ## Uninstall
 

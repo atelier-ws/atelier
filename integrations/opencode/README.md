@@ -18,17 +18,13 @@ replace opencode-native file reads, shell search, `rg`, or `grep`. Set
 ## Install
 
 ```bash
-bash integrations/opencode/install.sh
-# or via Makefile:
-make install-opencode
+make install
 ```
 
 ## Verify
 
 ```bash
-bash integrations/opencode/verify.sh
-# or:
-make verify-opencode
+make verify
 ```
 
 ## Source

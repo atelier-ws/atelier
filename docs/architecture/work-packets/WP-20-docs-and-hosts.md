@@ -78,7 +78,7 @@ QUICK_REFERENCE card, and the README.
 
 ```bash
 cd /home/pankaj/Projects/leanchain/e-commerce/atelier
-make verify-agent-clis  # all installed hosts must verify
+make verify  # all installed hosts must verify
 
 # Sidebar registers the new docs (Docusaurus build-check via dry-run)
 cd docs-site && npx docusaurus build --no-minify --out-dir /tmp/docs-build && cd ..

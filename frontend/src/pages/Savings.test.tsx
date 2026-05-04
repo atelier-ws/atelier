@@ -43,7 +43,7 @@ describe("Savings page", () => {
 
     render(<Savings />);
 
-    expect(await screen.findByText("51.9%")).toBeInTheDocument();
+    expect(await screen.findAllByText("51.9%")).toHaveLength(2);
     expect(await screen.findByText("Per-lever savings")).toBeInTheDocument();
     expect(await screen.findByText("Ast Truncation")).toBeInTheDocument();
     expect(

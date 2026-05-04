@@ -5,7 +5,7 @@
 ```bash
 cd atelier
 uv sync --all-extras
-make install-gemini
+make install
 ```
 
 ## Config

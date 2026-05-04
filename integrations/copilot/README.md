@@ -15,23 +15,19 @@ For full plugin features, it also appends Atelier context instructions to your c
 ## Install
 
 ```bash
-bash integrations/copilot/install.sh
-# or via Makefile:
-make install-copilot
+make install
 ```
 
 For manual install (print exact steps):
 
 ```bash
-bash integrations/copilot/install.sh --print-only
+bash scripts/install_copilot.sh --print-only
 ```
 
 ## Verify
 
 ```bash
-bash integrations/copilot/verify.sh
-# or:
-make verify-copilot
+make verify
 ```
 
 ## Source

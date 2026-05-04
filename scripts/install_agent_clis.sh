@@ -93,7 +93,7 @@ for h in "${PASS[@]+"${PASS[@]}"}"; do echo "  OK       $h"; done
 for h in "${SKIP[@]+"${SKIP[@]}"}"; do echo "  SKIPPED  $h (CLI not found)"; done
 for h in "${FAIL[@]+"${FAIL[@]}"}"; do echo "  FAILED   $h"; done
 echo ""
-echo "Next: make verify-agent-clis"
+echo "Next: make verify"
 
 if [ ${#FAIL[@]} -gt 0 ]; then
     exit 1

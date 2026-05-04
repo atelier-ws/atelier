@@ -5,7 +5,7 @@
 ```bash
 cd atelier
 uv sync --all-extras
-make install-codex
+make install
 ```
 
 ## Config
@@ -27,5 +27,5 @@ uv run atelier benchmark --prompt "Fix PDP schema" --json
 
 ## Troubleshooting
 
-- If Codex cannot see the server, re-run `make verify-agent-clis`.
+- If Codex cannot see the server, re-run `make verify`.
 - If the MCP server starts but returns no context, check `ATELIER_ROOT`.
