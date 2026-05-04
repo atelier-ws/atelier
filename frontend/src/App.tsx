@@ -71,7 +71,7 @@ export default function App() {
               ❯ ATELIER
             </h1>
             <p className="text-xs text-neutral-500 font-mono tracking-wide">
-              beseam reasoning runtime
+              Agent Reasoning Runtime
             </p>
           </div>
         </div>

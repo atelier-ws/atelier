@@ -1,4 +1,4 @@
-# Beseam Reasoning Runtime — Codex instructions
+# Agent Reasoning Runtime — Codex instructions
 
 You are coding inside the `atelier/` reasoning runtime, or a repo that has it wired in via MCP. Follow this loop.
 

@@ -5,7 +5,7 @@
 Add this to your repo's `AGENTS.md` (see the [Atelier AGENTS.md](https://github.com/pankaj4u4m/atelier/blob/main/AGENTS.md) for the full template):
 
 ```
-# Beseam Reasoning Runtime
+# Agent Reasoning Runtime
 Before editing code:
 1. Call `get_reasoning_context` with the task, likely files, and known errors.
 2. Draft a plan.

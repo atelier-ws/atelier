@@ -172,7 +172,7 @@ def _path_content_fingerprint(path_text: str) -> str:
 )
 @click.pass_context
 def cli(ctx: click.Context, root: Path) -> None:
-    """Atelier — Beseam Reasoning Runtime."""
+    """Atelier — Agent Reasoning Runtime."""
     ctx.ensure_object(dict)
     ctx.obj["root"] = root
 
