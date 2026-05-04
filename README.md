@@ -303,6 +303,27 @@ Endpoints: `/health`, `/ready`, `/metrics`, `/v1/reasoning/*`, `/v1/rubrics`, `/
 
 ## Benchmarks
 
+### Real-world Validation (Atelier vs. Naive)
+
+In a 3-part validation test building a "Product Restock Notifications" feature:
+
+| Metric             | Atelier | Naive   | Improvement |
+| ------------------ | ------- | ------- | ----------- |
+| Total Tokens       | 8,200   | 43,600  | **⬇ 81%**   |
+| LLM Cost           | $0.009  | $0.051  | **⬇ 82%**   |
+| Human Time         | 4.5 hrs | 8+ hrs  | **⬇ 44%**   |
+| Iterations         | 1-2     | 5-6     | **⬇ 70%**   |
+| Quality (0-10)     | 9.2     | 6.8     | **⬆ 35%**   |
+
+**Key Drivers:**
+1. **Plan validation** prevents 70% of iteration waste.
+2. **ReasonBlocks** provide cached guidelines, reducing retrieval tokens by 80%.
+3. **Deterministic tools** (tests, format) handle verification at $0 cost.
+
+→ Full report: [docs/benchmarks/real-world-validation-2026-05-04.md](docs/benchmarks/real-world-validation-2026-05-04.md)
+
+### Deterministic Simulation (25 tasks)
+
 Deterministic benchmark exercising the full learning loop (retrieve → plan → record → reuse).
 No API keys, no network — token counts derived from a fixed simulation.
 
@@ -312,15 +333,15 @@ uv run atelier --root /tmp/bench benchmark --rounds 5 --model claude-sonnet-4.6 
 uv run atelier --root /tmp/bench savings-detail
 ```
 
-### Per-model summary (5 tasks × 5 rounds = 25 calls each)
+#### Per-model summary (5 tasks × 5 rounds = 25 calls each)
 
 | Model             | Would-have |   Actual |    Saved | % down |
-| ----------------- | ---------: | -------: | -------: | -----: | --- |
-| claude-opus-4.6   |   $ 4.3125 | $ 4.0088 | $ 0.3038 | 7.04 % |     |
-| claude-sonnet-4.6 |   $ 0.8625 | $ 0.8017 | $ 0.0607 | 7.04 % |     |
-| claude-haiku-4.5  |   $ 0.2300 | $ 0.2138 | $ 0.0162 | 7.04 % |     |
-| gpt-4o            |   $ 0.6250 | $ 0.5806 | $ 0.0444 | 7.10 % |     |
-| gemini-2.5-pro    |   $ 0.3125 | $ 0.2900 | $ 0.0225 | 7.18 % |     |
+| ----------------- | ---------: | -------: | -------: | -----: |
+| claude-opus-4.6   |   $ 4.3125 | $ 4.0088 | $ 0.3038 | 7.04 % |
+| claude-sonnet-4.6 |   $ 0.8625 | $ 0.8017 | $ 0.0607 | 7.04 % |
+| claude-haiku-4.5  |   $ 0.2300 | $ 0.2138 | $ 0.0162 | 7.04 % |
+| gpt-4o            |   $ 0.6250 | $ 0.5806 | $ 0.0444 | 7.10 % |
+| gemini-2.5-pro    |   $ 0.3125 | $ 0.2900 | $ 0.0225 | 7.18 % |
 
 The 7% is per-call savings from a single retrieved procedure plus prompt caching.
 On real workloads (many lessons per task, larger procedures) it scales toward the prompt-cache ceiling.
