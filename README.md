@@ -80,18 +80,15 @@ uv run atelier init   # creates .atelier/ and seeds 10 ReasonBlocks + 5 rubrics
 **Install into supported agent CLIs:**
 
 ```bash
-make install-agent-clis   # installs into every CLI found on PATH (skips missing ones)
-make verify-agent-clis    # verifies each host integration
+make install   # deps + every supported CLI found on PATH + runtime init
+make verify    # code checks + runtime smoke tests + host integration verification
 ```
 
-Individual installs:
+For per-host or dry-run installs, use the scripts directly:
 
 ```bash
-make install-claude     # Claude Code   — MCP + skills + agents
-make install-codex      # Codex CLI     — MCP + AGENTS.md
-make install-opencode   # opencode      — MCP config
-make install-copilot    # VS Code Copilot — MCP + instructions
-make install-gemini     # Gemini CLI    — MCP config
+bash scripts/install_claude.sh --dry-run
+bash scripts/install_codex.sh --print-only
 ```
 
 → Full install guide: [docs/installation.md](docs/installation.md)
@@ -316,14 +313,13 @@ Full report: [docs/benchmarks/phase7-2026-04-29.md](docs/benchmarks/phase7-2026-
 
 ```bash
 cd atelier
-make install         # uv sync --all-extras
+make install         # deps + host integrations + status helper + runtime init
 make test            # pytest
 make lint            # ruff check
+make format-check    # black --check
 make typecheck       # mypy --strict
-make verify          # lint + typecheck + tests (CI gate)
+make verify          # code checks + runtime smoke tests + host verification
 make pre-commit      # format + lint + typecheck + tests
-make install-agent-clis  # install into all available agent CLIs
-make verify-agent-clis   # verify all integrations
 ```
 
 → Dev guide: [docs/engineering/contributing.md](docs/engineering/contributing.md)

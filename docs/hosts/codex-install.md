@@ -7,7 +7,7 @@
 ## Quick Install
 
 ```bash
-make install-codex
+make install
 ```
 
 ---
@@ -25,7 +25,7 @@ make install-codex
 ## Verify
 
 ```bash
-make verify-codex
+make verify
 ```
 
 ## First Task
@@ -52,9 +52,9 @@ Or run the Atelier preflight wrapper:
 
 | Problem           | Fix                                                               |
 | ----------------- | ----------------------------------------------------------------- |
-| Skill not found   | Check `.codex/skills/atelier/` — rerun `make install-codex`       |
+| Skill not found   | Check `.codex/skills/atelier/` — rerun `make install`             |
 | MCP tools missing | Check `.codex/mcp.json` — confirm `atelier` entry present         |
-| Wrapper missing   | Re-run `make install-codex` and verify `bin/atelier-codex` exists |
+| Wrapper missing   | Re-run `make install` and verify `bin/atelier-codex` exists       |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 

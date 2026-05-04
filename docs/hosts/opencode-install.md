@@ -7,7 +7,7 @@
 ## Quick Install
 
 ```bash
-make install-opencode
+make install
 ```
 
 ---
@@ -37,7 +37,7 @@ The installer merges an `atelier` entry into the `mcp` key:
 ## Verify
 
 ```bash
-make verify-opencode
+make verify
 ```
 
 ## First Task

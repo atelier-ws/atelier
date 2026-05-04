@@ -156,6 +156,6 @@ pgvector is optional. Without it, all operations work normally — similarity se
 See the main project Makefile for port conflict resolution:
 
 ```bash
-lsof -ti :3123 | xargs kill -9 2>/dev/null || true
+lsof -ti :3125 :8787 | xargs kill -9 2>/dev/null || true
 make start
 ```
