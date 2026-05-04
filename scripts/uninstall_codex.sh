@@ -32,7 +32,15 @@ WORKSPACE="$(cd "$WORKSPACE" && pwd)"
 info()  { echo "[atelier:uninstall:codex] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# Remove .codex/mcp.json entry
+# Remove MCP server via codex CLI
+if command -v codex &>/dev/null; then
+    if codex mcp list 2>/dev/null | grep -q "^atelier "; then
+        run "codex mcp remove atelier"
+        info "Removed atelier MCP server via codex CLI"
+    fi
+fi
+
+# Remove .codex/mcp.json entry (legacy support)
 CODEX_MCP="${WORKSPACE}/.codex/mcp.json"
 if [ -f "$CODEX_MCP" ]; then
     if command -v python3 &> /dev/null; then

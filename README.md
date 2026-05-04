@@ -25,36 +25,47 @@ Atelier sits between agent hosts and their environments, providing:
 
 ## Architecture
 
-```
+```text
 Agent Host (Claude Code / Codex / Copilot / opencode / Gemini CLI)
-        │
-        │  MCP stdio  (or CLI / Python SDK)
-        ▼
+        |
+        |  MCP stdio  (or CLI / Python SDK)
+        v
 Atelier Runtime
-├── ReasonBlock store   (SQLite + FTS5, optional pgvector)
-├── Rubric gates        (domain-specific verification rules)
-├── Run ledger          (per-session execution state)
-├── Failure clusters    (recurring error signatures → rescue procedures)
-├── Context compressor  (ledger summarisation)
-└── Tool cache          (smart_read / smart_search / cached_grep)
-        │
-        ├── Local SQLite (default)
-        └── PostgreSQL   (optional, ATELIER_DATABASE_URL)
+|- ReasonBlock store   (SQLite + FTS5, optional pgvector)
+|- Rubric gates        (domain-specific verification rules)
+|- Run ledger          (per-session execution state)
+|- Failure clusters    (recurring error signatures -> rescue procedures)
+|- Context compressor  (ledger summarisation)
+`- Tool cache          (smart_read / smart_search / cached_grep)
+        |
+        |- Local SQLite (default)
+        `- PostgreSQL   (optional, ATELIER_DATABASE_URL)
 ```
 
 ## Capability Model
 
-| Capability            | MCP Tool                        | CLI Command            |
-| --------------------- | ------------------------------- | ---------------------- |
-| Reasoning reuse       | `atelier_get_reasoning_context` | `context` / `task`     |
-| Plan verification     | `atelier_check_plan`            | `check-plan`           |
-| Failure rescue        | `atelier_rescue_failure`        | `rescue`               |
-| Rubric verification   | `atelier_run_rubric_gate`       | `run-rubric`           |
-| Trace recording       | `atelier_record_trace`          | `record-trace`         |
-| Loop monitoring       | `atelier_monitor_event`         | `monitor event`        |
-| Context compression   | `atelier_compress_context`      | `memory summarize`     |
-| Semantic search       | `atelier_smart_search`          | `search smart`         |
-| Cached file read      | `atelier_smart_read`            | `read smart`           |
+- Reasoning reuse: Atelier augmentation, MCP `atelier_get_reasoning_context`, CLI `context` / `task`
+- Plan verification: Atelier augmentation, MCP `atelier_check_plan`, CLI `check-plan`
+- Failure rescue: Atelier augmentation, MCP `atelier_rescue_failure`, CLI `rescue`
+- Rubric verification: Atelier augmentation, MCP `atelier_run_rubric_gate`, CLI `run-rubric`
+- Trace recording: Atelier augmentation, MCP `atelier_record_trace`, CLI `record-trace`
+- Loop monitoring: Atelier augmentation, MCP `atelier_monitor_event`, CLI `monitor event`
+- Compact lifecycle advise: Atelier augmentation, MCP `atelier_compact_advise`
+- Context compression: Atelier augmentation, MCP `atelier_compress_context`, CLI `memory summarize`
+- Semantic search: Atelier augmentation, MCP `atelier_smart_search`, CLI `search smart`
+- Cached file read: Atelier augmentation, MCP `atelier_smart_read`, CLI `read smart`
+- Token-saving search+read: Atelier augmentation, MCP `atelier_search_read`
+- Deterministic batch edit: Atelier augmentation, MCP `atelier_batch_edit`, CLI `edit smart`
+- Read-only SQL inspect: Atelier augmentation, MCP `atelier_sql_inspect`, CLI `sql inspect`
+- Memory upsert block: Atelier augmentation, MCP `atelier_memory_upsert_block`
+- Memory get block: Atelier augmentation, MCP `atelier_memory_get_block`
+- Archival recall: Atelier augmentation, MCP `atelier_memory_recall`
+- Archival archive: Atelier augmentation, MCP `atelier_memory_archive`
+- Sleeptime summarize: Atelier augmentation, MCP `atelier_memory_summary`
+- Lesson promotion inbox: Atelier augmentation, MCP `atelier_lesson_inbox`
+- Lesson promotion decide: Atelier augmentation, MCP `atelier_lesson_decide`
+- Quality-aware routing: Atelier augmentation, MCP `atelier_route_decide`
+- Verification escalation: Atelier augmentation, MCP `atelier_route_verify`
 
 ## Installation
 
@@ -162,9 +173,22 @@ Stdio JSON-RPC server. Tools available to agents:
 `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment_context`,
 `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`
 
+**V2 — Memory (5):** `atelier_memory_upsert_block`, `atelier_memory_get_block`,
+`atelier_memory_recall`, `atelier_memory_archive`, `atelier_memory_summary`
+
+**V2 — Lesson pipeline (2):** `atelier_lesson_inbox`, `atelier_lesson_decide`
+
+**V2 — Context savings (4):** `atelier_search_read`, `atelier_batch_edit`,
+`atelier_sql_inspect`, `atelier_compact_advise`
+
+**V2 — Routing (2):** `atelier_route_decide`, `atelier_route_verify`
+
 → Full reference: [docs/engineering/mcp.md](docs/engineering/mcp.md)
 
 ## Host Integrations
+
+Atelier runs the same runtime across hosts, but integration and enforcement are host-native per CLI
+surface rather than a single identical plugin model.
 
 | Host                | Interface             | Status       | Install guide                       |
 | ------------------- | --------------------- | ------------ | ----------------------------------- |
@@ -225,16 +249,16 @@ Available clients: `AtelierClient`, `LocalClient`, `RemoteClient`, `MCPClient`,
 
 Key environment variables:
 
-| Variable                  | Default                 | Description                         |
-| ------------------------- | ----------------------- | ----------------------------------- |
-| `ATELIER_ROOT`            | `.atelier`              | Store root directory                |
-| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`              |
-| `ATELIER_DATABASE_URL`    | `""`                    | PostgreSQL DSN (if using postgres)  |
-| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`                 |
-| `ATELIER_SERVICE_URL`     | `http://localhost:8787` | Remote service URL                  |
-| `ATELIER_API_KEY`         | `""`                    | API key for remote service          |
-| `ATELIER_SERVICE_ENABLED` | `false`                 | Enable HTTP service                 |
-| `ATELIER_REQUIRE_AUTH`    | `true`                  | Require API key on HTTP service     |
+| Variable                  | Default                 | Description                        |
+| ------------------------- | ----------------------- | ---------------------------------- |
+| `ATELIER_ROOT`            | `.atelier`              | Store root directory               |
+| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`             |
+| `ATELIER_DATABASE_URL`    | `""`                    | PostgreSQL DSN (if using postgres) |
+| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`                |
+| `ATELIER_SERVICE_URL`     | `http://localhost:8787` | Remote service URL                 |
+| `ATELIER_API_KEY`         | `""`                    | API key for remote service         |
+| `ATELIER_SERVICE_ENABLED` | `false`                 | Enable HTTP service                |
+| `ATELIER_REQUIRE_AUTH`    | `true`                  | Require API key on HTTP service    |
 
 → Full variable reference: [docs/installation.md](docs/installation.md)
 
@@ -276,12 +300,12 @@ uv run atelier --root /tmp/bench savings-detail
 ### Per-model summary (5 tasks × 5 rounds = 25 calls each)
 
 | Model             | Would-have |   Actual |    Saved | % down |
-| ----------------- | ---------: | -------: | -------: | -----: |
-| claude-opus-4.6   |   $ 4.3125 | $ 4.0088 | $ 0.3038 | 7.04 % |
-| claude-sonnet-4.6 |   $ 0.8625 | $ 0.8017 | $ 0.0607 | 7.04 % |
-| claude-haiku-4.5  |   $ 0.2300 | $ 0.2138 | $ 0.0162 | 7.04 % |
-| gpt-4o            |   $ 0.6250 | $ 0.5806 | $ 0.0444 | 7.10 % |
-| gemini-2.5-pro    |   $ 0.3125 | $ 0.2900 | $ 0.0225 | 7.18 % |
+| ----------------- | ---------: | -------: | -------: | -----: | --- |
+| claude-opus-4.6   |   $ 4.3125 | $ 4.0088 | $ 0.3038 | 7.04 % |     |
+| claude-sonnet-4.6 |   $ 0.8625 | $ 0.8017 | $ 0.0607 | 7.04 % |     |
+| claude-haiku-4.5  |   $ 0.2300 | $ 0.2138 | $ 0.0162 | 7.04 % |     |
+| gpt-4o            |   $ 0.6250 | $ 0.5806 | $ 0.0444 | 7.10 % |     |
+| gemini-2.5-pro    |   $ 0.3125 | $ 0.2900 | $ 0.0225 | 7.18 % |     |
 
 The 7% is per-call savings from a single retrieved procedure plus prompt caching.
 On real workloads (many lessons per task, larger procedures) it scales toward the prompt-cache ceiling.
@@ -306,22 +330,22 @@ make verify-agent-clis   # verify all integrations
 
 ## Repository Layout
 
-| Path             | Purpose                                                       |
-| ---------------- | ------------------------------------------------------------- |
-| `src/atelier/`   | Core engine: models, store, runtime, CLI, MCP server, service |
-| `tests/`         | pytest suite                                                  |
-| `docs/`          | Documentation                                                 |
-| `integrations/`  | Host adapter configs and install/verify scripts               |
-| `frontend/`      | React + Vite dashboard                                        |
+| Path            | Purpose                                                       |
+| --------------- | ------------------------------------------------------------- |
+| `src/atelier/`  | Core engine: models, store, runtime, CLI, MCP server, service |
+| `tests/`        | pytest suite                                                  |
+| `docs/`         | Documentation                                                 |
+| `integrations/` | Host adapter configs and install/verify scripts               |
+| `frontend/`     | React + Vite dashboard                                        |
 
 ## Docs Index
 
-| Document                                              | For whom      | Content                                                |
-| ----------------------------------------------------- | ------------- | ------------------------------------------------------ |
-| **[AGENT_README.md](AGENT_README.md)**                | Coding agents | Decision trees, workflows, JSON tool specs, hard rules |
-| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**          | Developers    | One-page cheat sheet: skills, agents, tools, commands  |
-| **[docs/](docs/README.md)**                           | Everyone      | Full documentation index                               |
-| **[docs/installation.md](docs/installation.md)**      | New users     | Setup, backends, env vars                              |
-| **[docs/quickstart.md](docs/quickstart.md)**          | New users     | 5-minute tutorial                                      |
-| **[docs/engineering/](docs/engineering/)**            | Contributors  | Architecture, security, storage, service, MCP          |
-| **[docs/hosts/](docs/hosts/)**                        | Integrators   | Per-host install, verify, uninstall, troubleshooting   |
+| Document                                         | For whom      | Content                                                |
+| ------------------------------------------------ | ------------- | ------------------------------------------------------ |
+| **[AGENT_README.md](AGENT_README.md)**           | Coding agents | Decision trees, workflows, JSON tool specs, hard rules |
+| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**     | Developers    | One-page cheat sheet: skills, agents, tools, commands  |
+| **[docs/](docs/README.md)**                      | Everyone      | Full documentation index                               |
+| **[docs/installation.md](docs/installation.md)** | New users     | Setup, backends, env vars                              |
+| **[docs/quickstart.md](docs/quickstart.md)**     | New users     | 5-minute tutorial                                      |
+| **[docs/engineering/](docs/engineering/)**       | Contributors  | Architecture, security, storage, service, MCP          |
+| **[docs/hosts/](docs/hosts/)**                   | Integrators   | Per-host install, verify, uninstall, troubleshooting   |

@@ -38,7 +38,7 @@ uv run atelier-mcp
 
 | Tool                            | Description                                          |
 | ------------------------------- | ---------------------------------------------------- |
-| `atelier_get_reasoning_context` | Get context prompt for a task (blocks + environment) |
+| `atelier_get_reasoning_context` | Get context prompt for a task (blocks + scoped memory) |
 | `atelier_check_plan`            | Validate a plan against dead ends and constraints    |
 | `atelier_rescue_failure`        | Get rescue procedure for a repeated failure          |
 | `atelier_run_rubric_gate`       | Run a rubric gate and get pass/blocked result        |
@@ -58,10 +58,42 @@ uv run atelier-mcp
 | `atelier_smart_read`              | Read file with smart truncation (FTS-aware) |
 | `atelier_smart_search`            | Search files with result caching            |
 | `atelier_cached_grep`             | Grep with injection guard and caching       |
+| `atelier_memory_upsert_block`     | Create or update an editable memory block   |
+| `atelier_memory_get_block`        | Fetch one editable memory block             |
+| `atelier_memory_archive`          | Archive long-term memory text               |
+| `atelier_memory_recall`           | Recall relevant archival memory passages    |
+| `atelier_sql_inspect`             | Read-only deterministic SQL introspection   |
 
 ## Tool Schemas
 
 Tools accept and return JSON. Key patterns:
+
+### `atelier_get_reasoning_context`
+
+```json
+{
+  "task": "Wire scoped recall into context injection",
+  "domain": "coding",
+  "files": ["src/atelier/gateway/adapters/mcp_server.py"],
+  "agent_id": "atelier:code",
+  "recall": true
+}
+```
+
+`agent_id` is optional. When it is present and `recall` is not false, the tool recalls up to three
+archival passages for that agent and appends them under a `<memory>` section. Recalled passages are
+strictly scoped: a passage must belong to the requested `agent_id` or carry the explicit
+`agent:any` tag for global lessons.
+
+Returns:
+
+```json
+{
+  "context": "<reasoning_procedures>...</reasoning_procedures>\n<memory>...</memory>\n",
+  "recalled_passages": [{"id": "pas-...", "source": "trace", "score": 0.4}],
+  "tokens_breakdown": {"reasonblocks": 180, "memory": 42, "total": 222}
+}
+```
 
 ### `atelier_check_plan`
 
@@ -109,6 +141,41 @@ Returns: `{"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]}`
 ```
 
 Returns: `{"status": "pass"|"blocked", "failed_checks": [...]}`
+
+### `atelier_sql_inspect`
+
+```json
+{
+  "connection_alias": "atelier_local",
+  "sql": "SELECT id, title FROM tasks ORDER BY id",
+  "params": [],
+  "row_limit": 200
+}
+```
+
+Returns:
+
+```json
+{
+  "columns": [{"name": "id", "type": "INTEGER"}, {"name": "title", "type": "TEXT"}],
+  "rows": [{"id": 1, "title": "First"}],
+  "row_count": 1,
+  "truncated": false,
+  "took_ms": 12
+}
+```
+
+Alias configuration is loaded from `.atelier/sql_aliases.toml`:
+
+```toml
+[aliases.atelier_local]
+backend = "sqlite"
+env = "ATELIER_LOCAL_SQLITE"
+allow_writes = false
+```
+
+Only aliases present in this file are reachable. Connection strings should be provided by
+environment variables (`env = "..."`) and are never persisted by Atelier.
 
 ## Verifying the MCP Server
 

@@ -14,10 +14,10 @@ make verify-agent-clis     # verify all installed hosts
 | Host            | Support Level                              | Install                 | Verify                         |
 | --------------- | ------------------------------------------ | ----------------------- | ------------------------------ |
 | Claude Code     | Full plugin (skills, commands, hooks, MCP) | `make install-claude`   | `make verify-claude`           |
-| Codex CLI       | Skills + AGENTS.md + MCP config            | `make install-codex`    | `make verify-codex`            |
-| opencode        | MCP config                                 | `make install-opencode` | `make verify-opencode-install` |
-| VS Code Copilot | MCP config + instructions                  | `make install-copilot`  | `make verify-copilot`          |
-| Gemini CLI      | MCP config (global, absolute paths)        | `make install-gemini`   | `make verify-gemini`           |
+| Codex CLI       | Skills + subagents + MCP + wrapper         | `make install-codex`    | `make verify-codex`            |
+| opencode        | MCP + workspace agent profile              | `make install-opencode` | `make verify-opencode`         |
+| VS Code Copilot | MCP + instructions + chat mode + tasks     | `make install-copilot`  | `make verify-copilot`          |
+| Gemini CLI      | MCP + custom command presets               | `make install-gemini`   | `make verify-gemini`           |
 
 ---
 
@@ -62,6 +62,7 @@ All install scripts:
 - [opencode-install.md](opencode-install.md)
 - [copilot-install.md](copilot-install.md)
 - [gemini-cli-install.md](gemini-cli-install.md)
+- [host-capability-matrix.md](host-capability-matrix.md)
 
 ---
 

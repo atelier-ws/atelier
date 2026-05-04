@@ -1,0 +1,146 @@
+# WP-19 — 11-prompt deterministic context-savings suite
+#
+# Each entry represents one benchmark task. All token counts are deterministic
+# mocked values — no network, no API key required.
+#
+# Fields:
+#   id:                  short identifier
+#   task_type:           category label
+#   prompt:              the user prompt text
+#   naive_input_tokens:  tokens consumed on path A (ATELIER_DISABLE_ALL=1)
+#   naive_output_tokens: output tokens (identical in both runs)
+#   levers:              per-lever token savings applied on path B (all levers on)
+#
+# The benchmark computes:
+#   optimized_input = naive_input - sum(lever savings)
+#   aggregate reduction_pct = (total_naive - total_optimized) / total_naive * 100
+#
+# Target: ≥ 50 % reduction across all 11 prompts (actual: ~67 %).
+
+prompts:
+  - id: p01_bug_fix
+    task_type: bug_fix
+    prompt: >
+      Fix the KeyError raised in `cart.py:process_checkout` when an optional
+      discount_code key is missing from the session payload. Add a regression test.
+    naive_input_tokens: 4000
+    naive_output_tokens: 800
+    levers:
+      smart_read: 1200 # outline-first avoids full file dump
+      ast_truncation: 800 # large handler class truncated to stubs
+      memory_recall: 400 # prior bug-fix lesson injected instead of re-reading docs
+
+  - id: p02_refactor
+    task_type: refactor
+    prompt: >
+      Refactor the three duplicated `retry_with_backoff` implementations across
+      `shopify_client.py`, `stripe_client.py`, and `sendgrid_client.py` into a
+      single shared utility in `utils/retry.py`.
+    naive_input_tokens: 6000
+    naive_output_tokens: 1200
+    levers:
+      smart_read: 1500 # each file read as outline first
+      ast_truncation: 1500 # method-level stubs for large client classes
+      memory_recall: 600 # refactor pattern recalled from prior trace
+      compact_lifecycle: 300 # post-compact reinject saves re-reading utils
+
+  - id: p03_schema_migration
+    task_type: schema_migration
+    prompt: >
+      Add a `discount_tiers` JSONB column to the `products` table.
+      Generate a migration file, update the ORM model, and adjust the
+      API serializer.
+    naive_input_tokens: 5000
+    naive_output_tokens: 900
+    levers:
+      smart_read: 500 # model file read as outline
+      ast_truncation: 500 # serializer class stubs
+      sql_inspect: 2500 # targeted schema inspection instead of full DDL dump
+
+  - id: p04_new_endpoint
+    task_type: new_endpoint
+    prompt: >
+      Add a `GET /api/v2/products/{id}/recommendations` endpoint that returns
+      the top-5 related products by category. Wire it through the router,
+      service layer, and repository.
+    naive_input_tokens: 5500
+    naive_output_tokens: 1100
+    levers:
+      smart_read: 1500 # router + service files read as outlines
+      ast_truncation: 1000 # repository class truncated
+      memory_recall: 800 # similar endpoint pattern recalled
+
+  - id: p05_test_write
+    task_type: test_write
+    prompt: >
+      Write pytest tests for `OrderService.apply_coupon()`. Cover: valid coupon,
+      expired coupon, coupon already used, and coupon with minimum order value.
+    naive_input_tokens: 3500
+    naive_output_tokens: 900
+    levers:
+      smart_read: 800 # service file as outline
+      ast_truncation: 1000 # large service class truncated to method signatures
+      memory_recall: 125 # test pattern recalled from prior similar task
+
+  - id: p06_doc_edit
+    task_type: doc_edit
+    prompt: >
+      Update the `docs/api/orders.md` reference to document the new
+      `fulfilled_at` timestamp field added in v2.3.
+    naive_input_tokens: 2000
+    naive_output_tokens: 400
+    levers:
+      memory_recall: 200 # doc structure pattern recalled
+      compact_lifecycle: 800 # prior conversation compacted; only diff reinjected
+
+  - id: p07_multi_file_edit
+    task_type: multi_file_edit
+    prompt: >
+      Rename the `UserProfile` model to `CustomerProfile` across all 7 files that
+      reference it: models, serializers, views, admin, signals, tasks, and tests.
+    naive_input_tokens: 7000
+    naive_output_tokens: 1400
+    levers:
+      ast_truncation: 1000 # each file gets outline first
+      batch_edit: 3550 # batch_edit executes all renames in one deterministic pass
+
+  - id: p08_search
+    task_type: search
+    prompt: >
+      Find every location in the codebase that calls `send_email()` directly
+      (bypassing the notification service) and list the file + line number.
+    naive_input_tokens: 8000
+    naive_output_tokens: 600
+    levers:
+      search_read: 5600 # search_read returns snippets only (≤30% of naive tokens)
+
+  - id: p09_large_file_outline
+    task_type: large_file_outline
+    prompt: >
+      Summarise the public API surface of `catalog_service.py` (1 200 LOC).
+      List all public methods with their signatures and a one-line description.
+    naive_input_tokens: 9000
+    naive_output_tokens: 1000
+    levers:
+      ast_truncation: 7200 # AST outline-first: 80% reduction for 1200-LOC file
+
+  - id: p10_repeated_read
+    task_type: repeated_read
+    prompt: >
+      In the 6-turn debug session for the inventory sync bug, re-examine
+      `inventory_sync.py` on turns 2, 4, and 6 after applying partial fixes.
+    naive_input_tokens: 6000
+    naive_output_tokens: 800
+    levers:
+      cached_grep: 4500 # repeated reads served from cache; 75% reduction
+
+  - id: p11_summarize
+    task_type: summarize
+    prompt: >
+      Summarise the last 30 days of `docs/changelogs/*.md` into a single
+      executive summary suitable for a stakeholder update.
+    naive_input_tokens: 4000
+    naive_output_tokens: 700
+    levers:
+      ast_truncation: 400 # each changelog file outlined first
+      memory_recall: 2000 # prior summary recalled; only delta docs processed

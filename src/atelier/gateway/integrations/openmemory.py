@@ -1,24 +1,19 @@
-"""Optional OpenMemory MCP integration with real MCP client support.
+"""OpenMemory bridge with local persistence and optional MCP sync.
 
-IMPORTANT: Atelier is a reasoning/procedure/runtime layer, not a memory layer.
-OpenMemory is for persistent user/project memory.  Atelier is for procedures,
-dead ends, rubrics, failure rescue, and verification.
+Atelier remains the source of truth for reasoning procedures; this bridge only
+stores and retrieves memory pointers/context references.
 
-This module provides optional interoperability with OpenMemory MCP servers.
-When disabled (default), every function returns a structured no-op response
-without touching the network.  No existing Atelier behaviour depends on these.
-
-Configuration
-─────────────
-  ATELIER_OPENMEMORY_ENABLED           (default: false)
-  ATELIER_OPENMEMORY_MCP_SERVER_NAME   (default: openmemory)
-  ATELIER_OPENMEMORY_TIMEOUT           (default: 10 seconds)
+The bridge always works locally via a JSON store under ``ATELIER_ROOT``.
+When ``ATELIER_OPENMEMORY_ENABLED=true``, it additionally attempts best-effort
+sync calls to an OpenMemory MCP server.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -52,6 +47,60 @@ def _timeout() -> float:
     return float(os.environ.get("ATELIER_OPENMEMORY_TIMEOUT", "10.0"))
 
 
+def _bridge_store_path() -> Path:
+    root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+    return root / "openmemory_bridge.json"
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _empty_store() -> dict[str, Any]:
+    return {
+        "contexts": {},
+        "trace_to_context": {},
+        "trace_to_memory": {},
+        "events": [],
+    }
+
+
+def _load_store() -> dict[str, Any]:
+    path = _bridge_store_path()
+    if not path.exists():
+        return _empty_store()
+    try:
+        import json
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return _empty_store()
+        merged = _empty_store()
+        merged.update(data)
+        return merged
+    except Exception:
+        return _empty_store()
+
+
+def _save_store(data: dict[str, Any]) -> None:
+    path = _bridge_store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _append_event(store: dict[str, Any], action: str, payload: dict[str, Any]) -> None:
+    events = store.setdefault("events", [])
+    if not isinstance(events, list):
+        store["events"] = []
+        events = store["events"]
+    events.append({"ts": _utcnow_iso(), "action": action, **payload})
+    # Keep file bounded
+    if len(events) > 2000:
+        del events[:-1000]
+
+
 # --------------------------------------------------------------------------- #
 # MCP Client Management                                                       #
 # --------------------------------------------------------------------------- #
@@ -75,9 +124,10 @@ def _get_mcp_client() -> Any:
         from atelier.gateway.sdk import MCPClient
 
         server_name = _server_name()
+        root = os.environ.get("ATELIER_ROOT", ".atelier")
         _timeout()
 
-        _mcp_client = MCPClient(root=".atelier")
+        _mcp_client = MCPClient(root=root)
 
         logger.debug(f"OpenMemory MCP client initialized for server '{server_name}'")
         return _mcp_client
@@ -129,6 +179,29 @@ def _success(action: str, data: dict[str, Any] | None = None) -> dict[str, objec
     }
 
 
+def _try_remote_call(candidates: list[str], args: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """Try candidate remote tool names; return (ok, payload_or_error)."""
+    client = _get_mcp_client()
+    if client is None:
+        return False, {"reason": "remote-disabled-or-unavailable"}
+
+    transport = getattr(client, "_transport", None)
+    for name in candidates:
+        try:
+            if transport is not None and hasattr(transport, "call_tool"):
+                payload = transport.call_tool(name, args)
+                if isinstance(payload, dict):
+                    return True, payload
+            if hasattr(client, "call_tool"):
+                payload = client.call_tool(name, args)
+                if isinstance(payload, dict):
+                    return True, payload
+        except Exception as exc:
+            logger.debug("OpenMemory remote call failed for %s: %s", name, exc)
+            continue
+    return False, {"reason": "no-compatible-remote-tool"}
+
+
 # --------------------------------------------------------------------------- #
 # Public API                                                                  #
 # --------------------------------------------------------------------------- #
@@ -141,22 +214,22 @@ def list_available_memory_tools() -> list[str]:
     No exceptions are raised; callers should treat the empty list as
     "no memory context available".
     """
+    local = [
+        "link_trace_to_memory_context",
+        "fetch_memory_context_for_task",
+        "store_memory_pointer",
+        "link_trace_with_memory_context",
+    ]
     if not is_enabled():
-        return []
+        return local
 
-    client = _get_mcp_client()
-    if client is None:
-        return []
-
-    try:
-        # Query MCP server for available tools
-        tools = client.list_tools()
-        tool_names = [t.get("name", "") for t in tools if isinstance(t, dict)]
-        logger.debug(f"Listed {len(tool_names)} OpenMemory tools: {tool_names}")
-        return tool_names
-    except Exception as e:
-        logger.warning(f"Failed to list memory tools: {e}")
-        return []
+    remote = [
+        "link_trace_context",
+        "fetch_context",
+        "store_pointer",
+        "link_and_store",
+    ]
+    return sorted(set(local + remote))
 
 
 def maybe_link_trace_to_memory_context(
@@ -170,35 +243,33 @@ def maybe_link_trace_to_memory_context(
 
     Returns a structured response dict; never raises.
     """
-    if not is_enabled():
-        return _disabled("link_trace_to_memory_context")
+    resolved_context = context_id or f"ctx-{trace_id[:12]}"
+    store = _load_store()
+    trace_map = store.setdefault("trace_to_context", {})
+    if isinstance(trace_map, dict):
+        trace_map[trace_id] = resolved_context
+    contexts = store.setdefault("contexts", {})
+    if isinstance(contexts, dict):
+        contexts.setdefault(resolved_context, {"created_at": _utcnow_iso(), "notes": []})
+    _append_event(
+        store,
+        "link_trace_to_memory_context",
+        {"trace_id": trace_id, "context_id": resolved_context},
+    )
+    _save_store(store)
 
-    client = _get_mcp_client()
-    if client is None:
-        return _unavailable(
-            "link_trace_to_memory_context",
-            f"trace_id={trace_id!r} context_id={context_id!r}",
-        )
-
-    try:
-        # Call OpenMemory MCP tool to link trace to context
-        result = client.call_tool(
-            "link_trace_context",
-            {
-                "trace_id": trace_id,
-                "context_id": context_id or "",
-            },
-        )
-
-        logger.info(f"Linked trace {trace_id} to context {context_id}")
-        return _success("link_trace_to_memory_context", result)
-
-    except Exception as e:
-        logger.warning(f"Failed to link trace to memory context: {e}")
-        return _unavailable(
-            "link_trace_to_memory_context",
-            f"trace_id={trace_id!r} context_id={context_id!r} error={e!s}",
-        )
+    remote_ok, remote_data = _try_remote_call(
+        ["link_trace_context", "memory_link_trace_context", "openmemory_link_trace_context"],
+        {"trace_id": trace_id, "context_id": resolved_context},
+    )
+    payload = {
+        "trace_id": trace_id,
+        "context_id": resolved_context,
+        "mode": "local+remote" if remote_ok else "local",
+        "remote": remote_data if remote_ok else None,
+    }
+    logger.info("Linked trace %s to context %s", trace_id, resolved_context)
+    return _success("link_trace_to_memory_context", payload)
 
 
 def maybe_fetch_memory_context_for_task(
@@ -213,36 +284,52 @@ def maybe_fetch_memory_context_for_task(
 
     Returns a structured response dict; never raises.
     """
-    if not is_enabled():
-        return _disabled("fetch_memory_context_for_task")
+    store = _load_store()
+    trace_to_context = store.get("trace_to_context", {})
+    trace_to_memory = store.get("trace_to_memory", {})
+    contexts = store.get("contexts", {})
 
-    client = _get_mcp_client()
-    if client is None:
-        return _unavailable(
-            "fetch_memory_context_for_task",
-            f"task={task!r} project_id={project_id!r}",
-        )
+    tokens = [tok for tok in task.lower().split() if tok]
+    local_hits: list[dict[str, Any]] = []
+    if isinstance(trace_to_context, dict):
+        for trace_id, ctx_id in trace_to_context.items():
+            hay = f"{trace_id} {ctx_id}".lower()
+            if not tokens or any(tok in hay for tok in tokens):
+                local_hits.append(
+                    {
+                        "trace_id": trace_id,
+                        "context_id": ctx_id,
+                        "memory_id": (
+                            trace_to_memory.get(trace_id)
+                            if isinstance(trace_to_memory, dict)
+                            else None
+                        ),
+                        "context": contexts.get(ctx_id, {}) if isinstance(contexts, dict) else {},
+                    }
+                )
 
-    try:
-        # Query OpenMemory for context related to this task
-        result = client.call_tool(
-            "fetch_context",
-            {
-                "task": task,
-                "project_id": project_id or "",
-                "limit": 10,
-            },
-        )
+    _append_event(
+        store,
+        "fetch_memory_context_for_task",
+        {"task": task, "project_id": project_id or "", "local_hits": len(local_hits)},
+    )
+    _save_store(store)
 
-        logger.debug(f"Fetched memory context for task: {task}")
-        return _success("fetch_memory_context_for_task", result)
+    remote_ok, remote_data = _try_remote_call(
+        ["fetch_context", "memory_fetch_context", "openmemory_fetch_context"],
+        {"task": task, "project_id": project_id or "", "limit": 10},
+    )
 
-    except Exception as e:
-        logger.warning(f"Failed to fetch memory context for task: {e}")
-        return _unavailable(
-            "fetch_memory_context_for_task",
-            f"task={task!r} project_id={project_id!r} error={e!s}",
-        )
+    payload = {
+        "task": task,
+        "project_id": project_id,
+        "matches": local_hits[:10],
+        "count": len(local_hits),
+        "mode": "local+remote" if remote_ok else "local",
+        "remote": remote_data if remote_ok else None,
+    }
+    logger.debug("Fetched memory context for task '%s' (local_hits=%d)", task, len(local_hits))
+    return _success("fetch_memory_context_for_task", payload)
 
 
 def maybe_store_memory_pointer(trace_id: str, memory_id: str) -> dict[str, object]:
@@ -252,35 +339,29 @@ def maybe_store_memory_pointer(trace_id: str, memory_id: str) -> dict[str, objec
 
     Returns a structured response dict; never raises.
     """
-    if not is_enabled():
-        return _disabled("store_memory_pointer")
+    store = _load_store()
+    trace_to_memory = store.setdefault("trace_to_memory", {})
+    if isinstance(trace_to_memory, dict):
+        trace_to_memory[trace_id] = memory_id
+    _append_event(
+        store,
+        "store_memory_pointer",
+        {"trace_id": trace_id, "memory_id": memory_id},
+    )
+    _save_store(store)
 
-    client = _get_mcp_client()
-    if client is None:
-        return _unavailable(
-            "store_memory_pointer",
-            f"trace_id={trace_id!r} memory_id={memory_id!r}",
-        )
-
-    try:
-        # Store the (trace_id, memory_id) association in OpenMemory
-        result = client.call_tool(
-            "store_pointer",
-            {
-                "trace_id": trace_id,
-                "memory_id": memory_id,
-            },
-        )
-
-        logger.info(f"Stored memory pointer: trace {trace_id} -> memory {memory_id}")
-        return _success("store_memory_pointer", result)
-
-    except Exception as e:
-        logger.warning(f"Failed to store memory pointer: {e}")
-        return _unavailable(
-            "store_memory_pointer",
-            f"trace_id={trace_id!r} memory_id={memory_id!r} error={e!s}",
-        )
+    remote_ok, remote_data = _try_remote_call(
+        ["store_pointer", "memory_store_pointer", "openmemory_store_pointer"],
+        {"trace_id": trace_id, "memory_id": memory_id},
+    )
+    payload = {
+        "trace_id": trace_id,
+        "memory_id": memory_id,
+        "mode": "local+remote" if remote_ok else "local",
+        "remote": remote_data if remote_ok else None,
+    }
+    logger.info("Stored memory pointer: trace %s -> memory %s", trace_id, memory_id)
+    return _success("store_memory_pointer", payload)
 
 
 # --------------------------------------------------------------------------- #
@@ -298,36 +379,38 @@ def link_trace_with_memory_context(
     Combines linking and storing in a single call.
     Returns structured response; never raises.
     """
-    if not is_enabled():
-        return _disabled("link_trace_with_memory_context")
+    link_result = maybe_link_trace_to_memory_context(trace_id, context_id=memory_id)
+    pointer_result = maybe_store_memory_pointer(trace_id, memory_id)
 
-    client = _get_mcp_client()
-    if client is None:
-        return _unavailable(
-            "link_trace_with_memory_context",
-            f"trace_id={trace_id!r} memory_id={memory_id!r}",
-        )
+    store = _load_store()
+    contexts = store.setdefault("contexts", {})
+    if isinstance(contexts, dict):
+        entry = contexts.setdefault(memory_id, {"created_at": _utcnow_iso(), "notes": []})
+        if isinstance(entry, dict):
+            entry["context"] = context_data or {}
+            entry["updated_at"] = _utcnow_iso()
+    _append_event(
+        store,
+        "link_trace_with_memory_context",
+        {"trace_id": trace_id, "memory_id": memory_id},
+    )
+    _save_store(store)
 
-    try:
-        # Perform atomic link + store operation
-        result = client.call_tool(
-            "link_and_store",
-            {
-                "trace_id": trace_id,
-                "memory_id": memory_id,
-                "context": context_data or {},
-            },
-        )
-
-        logger.info(f"Linked and stored trace {trace_id} with memory {memory_id}")
-        return _success("link_trace_with_memory_context", result)
-
-    except Exception as e:
-        logger.warning(f"Failed to link and store trace: {e}")
-        return _unavailable(
-            "link_trace_with_memory_context",
-            f"trace_id={trace_id!r} memory_id={memory_id!r} error={e!s}",
-        )
+    remote_ok, remote_data = _try_remote_call(
+        ["link_and_store", "memory_link_and_store", "openmemory_link_and_store"],
+        {
+            "trace_id": trace_id,
+            "memory_id": memory_id,
+            "context": context_data or {},
+        },
+    )
+    payload = {
+        "link": link_result,
+        "pointer": pointer_result,
+        "mode": "local+remote" if remote_ok else "local",
+        "remote": remote_data if remote_ok else None,
+    }
+    return _success("link_trace_with_memory_context", payload)
 
 
 __all__ = [

@@ -43,12 +43,20 @@ class SessionState:
     """Tuples of (command, succeeded, error_signature)."""
     tool_calls: list[tuple[str, str]] = field(default_factory=list)
     """Tuples of (tool_name, args_signature)."""
+    tool_call_args: list[tuple[str, dict[str, Any] | None]] = field(default_factory=list)
+    """Tuples of (tool_name, args_dict)."""
+    tool_call_results: list[tuple[str, str]] = field(default_factory=list)
+    """Tuples of (tool_name, result_summary)."""
     tool_outputs_chars: int = 0
     rubric_run: bool = False
     declared_success: bool = False
     validation_passed: bool = False
     file_events: list[tuple[str, str]] = field(default_factory=list)
     """Tuples of (path, action) where action in {'edit', 'revert'}."""
+    file_diffs: list[tuple[str, str, str]] = field(default_factory=list)
+    """Tuples of (path, action, diff_text)."""
+    command_outputs: list[tuple[str, int | None, str, str]] = field(default_factory=list)
+    """Tuples of (command, exit_code, stdout, stderr)."""
     estimated_tokens: int = 0
     budget_max_tool_calls: int | None = None
     budget_max_repeated_commands: int | None = None

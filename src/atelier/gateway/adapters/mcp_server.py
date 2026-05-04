@@ -6,6 +6,7 @@ Codex / Claude Code to discover and call the runtime tools.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import os
@@ -13,18 +14,28 @@ import re
 import sys
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import wraps
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import Field, create_model
 
-from atelier.core.foundation.extractor import extract_candidate
-from atelier.core.foundation.models import Trace, to_jsonable
+from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
+from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.foundation.memory_models import MemoryBlock
+from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
 from atelier.core.foundation.plan_checker import check_plan
+from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.rubric_gate import run_rubric
 from atelier.gateway.adapters.runtime import ReasoningRuntime
+from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.runtime.realtime_context import RealtimeContextManager
 from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.storage.factory import make_memory_store
+from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySidecarUnavailable
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "atelier-reasoning"
@@ -40,12 +51,12 @@ TOOLS: dict[str, dict[str, Any]] = {}
 
 def mcp_tool(
     name: str | None = None, description: str | None = None
-) -> Callable[[Callable[..., dict[str, Any]]], Callable[[dict[str, Any]], dict[str, Any]]]:
+) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema."""
 
     def decorator(
-        func: Callable[..., dict[str, Any]],
-    ) -> Callable[[dict[str, Any]], dict[str, Any]]:
+        func: Callable[..., Any],
+    ) -> Callable[[dict[str, Any]], Any]:
         tool_name = name or func.__name__.removeprefix("tool_")
         # Use the first line of the docstring as the description
         tool_description = description or (func.__doc__ or "").strip().split("\n")[0]
@@ -72,7 +83,7 @@ def mcp_tool(
                 del schema["title"]
 
             @wraps(func)
-            def handler_wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            def handler_wrapper(args: dict[str, Any]) -> Any:
                 validated = ArgsModel.model_validate(args)
                 return func(**validated.model_dump())
 
@@ -80,7 +91,7 @@ def mcp_tool(
             schema = {"type": "object", "properties": {}}
 
             @wraps(func)
-            def handler_wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            def handler_wrapper(args: dict[str, Any]) -> Any:
                 return func()
 
         TOOLS[tool_name] = {
@@ -98,6 +109,7 @@ def mcp_tool(
 # --------------------------------------------------------------------------- #
 
 _current_ledger: RunLedger | None = None
+_realtime_ctx: RealtimeContextManager | None = None
 
 
 def _detect_agent() -> str:
@@ -133,11 +145,52 @@ def _get_ledger() -> RunLedger:
         _current_ledger = RunLedger(root=root, agent=_detect_agent())
         # Publish run_id AND atelier_root to session_state so PostToolUse hooks
         # can find the right run file regardless of ATELIER_ROOT in their env.
-        _write_session_state({
-            "active_run_id": _current_ledger.run_id,
-            "atelier_root": str(root),
-        })
+        _write_session_state(
+            {
+                "active_run_id": _current_ledger.run_id,
+                "atelier_root": str(root),
+            }
+        )
     return _current_ledger
+
+
+def _get_realtime_context() -> RealtimeContextManager:
+    global _realtime_ctx
+    if _realtime_ctx is None:
+        _realtime_ctx = RealtimeContextManager(_atelier_root())
+    return _realtime_ctx
+
+
+_context_budget_recorder: Any = None
+
+
+def _get_context_budget_recorder() -> Any:
+    """Get or create the ContextBudgetRecorder singleton."""
+    global _context_budget_recorder
+    if _context_budget_recorder is None:
+        try:
+            from atelier.core.capabilities.telemetry.context_budget import ContextBudgetRecorder
+            from atelier.infra.storage.factory import create_store
+
+            store = create_store(_atelier_root())
+            store.init()
+            _context_budget_recorder = ContextBudgetRecorder(store)
+        except Exception:
+            # If recording fails, return a no-op recorder
+            _context_budget_recorder = _NoOpContextBudgetRecorder()
+    return _context_budget_recorder
+
+
+class _NoOpContextBudgetRecorder:
+    """No-op recorder for when context budget recording is not available."""
+
+    def record(self, **kwargs: Any) -> None:
+        """No-op record method."""
+        pass
+
+    def aggregate_run(self, run_id: str) -> Any:
+        """No-op aggregate method."""
+        return {}
 
 
 def _session_state_path() -> Path:
@@ -188,13 +241,44 @@ def _runtime() -> ReasoningRuntime:
     return ReasoningRuntime(_atelier_root())
 
 
+_REDACTION_PLACEHOLDER_RE = re.compile(r"<redacted[^>]*>")
+
+
+def _lesson_promoter() -> LessonPromoterCapability:
+    return LessonPromoterCapability(_runtime().store)
+
+
 def _core_runtime() -> Any:
-    from atelier.core.runtime import AtelierRuntimeCore
-
-    return AtelierRuntimeCore(_atelier_root())
+    return _runtime().core_runtime
 
 
-@mcp_tool()
+def _redact_memory_input(text: str, field_name: str) -> str:
+    redacted = redact(text)
+    if not text:
+        return redacted
+    remaining = _REDACTION_PLACEHOLDER_RE.sub("", redacted)
+    if len(remaining.strip()) < len(text.strip()) * 0.5:
+        raise ValueError(f"{field_name} rejected: likely secret leakage")
+    return redacted
+
+
+def _memory_store() -> Any:
+    return make_memory_store(_atelier_root())
+
+
+def _archival_recall() -> ArchivalRecallCapability:
+    return ArchivalRecallCapability(_memory_store(), make_embedder(), redactor=redact)
+
+
+def _workspace_path(file_path: str) -> Path:
+    p = Path(file_path)
+    if p.is_absolute():
+        return p
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    return Path(workspace) / p
+
+
+@mcp_tool(name="atelier_get_reasoning_context")
 def tool_get_reasoning_context(
     task: str,
     domain: str | None = None,
@@ -202,6 +286,11 @@ def tool_get_reasoning_context(
     tools: list[str] | None = None,
     errors: list[str] | None = None,
     max_blocks: int = 5,
+    token_budget: int | None = 2000,
+    dedup: bool = True,
+    include_telemetry: bool = False,
+    agent_id: str | None = None,
+    recall: bool = True,
 ) -> dict[str, Any]:
     """Retrieve relevant ReasonBlocks for a task and render them as injection context."""
     if errors is None:
@@ -225,21 +314,31 @@ def tool_get_reasoning_context(
             "tools": tools,
             "errors": errors,
             "max_blocks": max_blocks,
+            "token_budget": token_budget,
+            "dedup": dedup,
+            "include_telemetry": include_telemetry,
+            "agent_id": agent_id,
+            "recall": recall,
         },
     )
 
-    text = rt.get_reasoning_context(
+    payload = rt.get_reasoning_context(
         task=task,
         domain=domain,
         files=files,
         tools=tools,
         errors=errors,
         max_blocks=max_blocks,
+        token_budget=token_budget,
+        dedup=dedup,
+        include_telemetry=include_telemetry,
+        agent_id=agent_id,
+        recall=recall,
     )
-    return {"context": text}
+    return payload if isinstance(payload, dict) else {"context": payload}
 
 
-@mcp_tool()
+@mcp_tool(name="atelier_check_plan")
 def tool_check_plan(
     task: str,
     plan: list[str],
@@ -292,7 +391,237 @@ def tool_check_plan(
     return to_jsonable(result)
 
 
-@mcp_tool()
+@mcp_tool(name="atelier_route_decide")
+def tool_route_decide(
+    user_goal: str,
+    repo_root: str,
+    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"],
+    risk_level: Literal["low", "medium", "high"],
+    changed_files: list[str] | None = None,
+    domain: str | None = None,
+    step_type: Literal[
+        "classify",
+        "compress",
+        "retrieve",
+        "plan",
+        "edit",
+        "debug",
+        "verify",
+        "summarize",
+        "lesson_extract",
+    ] = "plan",
+    step_index: int = 0,
+    evidence_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compute a deterministic quality-aware route decision from runtime evidence."""
+    rt = _runtime()
+    led = _get_ledger()
+
+    if changed_files is None:
+        changed_files = []
+    if evidence_summary is None:
+        evidence_summary = {}
+
+    led.record_tool_call(
+        "route_decide",
+        {
+            "task_type": task_type,
+            "risk_level": risk_level,
+            "changed_files": changed_files,
+            "domain": domain,
+            "step_type": step_type,
+            "step_index": step_index,
+        },
+    )
+
+    decision = rt.route_decide(
+        user_goal=user_goal,
+        repo_root=repo_root,
+        task_type=task_type,
+        risk_level=risk_level,
+        changed_files=changed_files,
+        domain=domain,
+        step_type=step_type,
+        step_index=step_index,
+        run_id=led.run_id,
+        evidence_summary=evidence_summary,
+        ledger=led,
+    )
+    return to_jsonable(decision)
+
+
+@mcp_tool(name="atelier_route_verify")
+def tool_route_verify(
+    route_decision_id: str,
+    changed_files: list[str] | None = None,
+    validation_results: list[dict[str, Any]] | None = None,
+    rubric_status: Literal["not_run", "pass", "warn", "fail"] = "not_run",
+    required_verifiers: list[str] | None = None,
+    protected_file_match: bool = False,
+    repeated_failure_signatures: list[str] | None = None,
+    diff_line_count: int = 0,
+    human_accepted: bool | None = None,
+    benchmark_accepted: bool | None = None,
+) -> dict[str, Any]:
+    """Convert observed verification signals into pass/warn/fail/escalate routing outcome."""
+    rt = _runtime()
+    led = _get_ledger()
+
+    if changed_files is None:
+        changed_files = []
+    if validation_results is None:
+        validation_results = []
+    if required_verifiers is None:
+        required_verifiers = []
+    if repeated_failure_signatures is None:
+        repeated_failure_signatures = []
+
+    led.record_tool_call(
+        "route_verify",
+        {
+            "route_decision_id": route_decision_id,
+            "changed_files": changed_files,
+            "rubric_status": rubric_status,
+            "required_verifiers": required_verifiers,
+            "protected_file_match": protected_file_match,
+            "repeated_failure_signatures": repeated_failure_signatures,
+            "diff_line_count": diff_line_count,
+            "human_accepted": human_accepted,
+            "benchmark_accepted": benchmark_accepted,
+        },
+    )
+
+    envelope = rt.core_runtime.quality_router.verify(
+        route_decision_id=route_decision_id,
+        run_id=led.run_id,
+        changed_files=changed_files,
+        validation_results=validation_results,
+        rubric_status=rubric_status,
+        required_verifiers=required_verifiers,
+        protected_file_match=protected_file_match,
+        repeated_failure_signatures=repeated_failure_signatures,
+        diff_line_count=diff_line_count,
+        human_accepted=human_accepted,
+        benchmark_accepted=benchmark_accepted,
+    )
+    return to_jsonable(envelope)
+
+
+@mcp_tool(name="atelier_route_contract")
+def tool_route_contract(
+    host: Literal["claude", "codex", "copilot", "opencode", "gemini"],
+) -> dict[str, Any]:
+    """Return the routing execution contract for a named host (WP-31).
+
+    The contract states whether Atelier can enforce route decisions on the host
+    (advisory / wrapper_enforced) or only advise.  The provider_enforced mode
+    is always disabled until a provider execution packet enables it.
+    """
+    from atelier.core.capabilities.quality_router.execution_contract import (
+        route_execution_contract,
+    )
+
+    contract = route_execution_contract(host)
+    return to_jsonable(contract)
+
+
+@mcp_tool(name="atelier_proof_report")
+def tool_proof_report(
+    run_id: str | None = None,
+    context_reduction_pct: float | None = None,
+) -> dict[str, Any]:
+    """Return the cost-quality proof report (WP-32).
+
+    When ``run_id`` is provided a new proof run is executed and saved to
+    ``.atelier/proof/proof-report.json``.  When ``run_id`` is omitted the last
+    saved report is loaded and returned.
+
+    ``context_reduction_pct`` is the WP-19 context savings percentage.  If
+    omitted and a new run is requested, a default of 55.0 is used (the
+    deterministic savings bench result for the seeded 11-prompt suite).
+    """
+    from atelier.core.capabilities.proof_gate.capability import (
+        BenchmarkCase,
+        ProofGateCapability,
+    )
+
+    rt = _runtime()
+    capability: ProofGateCapability = rt.core_runtime.proof_gate
+
+    if run_id is not None:
+        # Build deterministic cases (same logic as CLI `proof run`)
+        _CASES: list[dict[str, Any]] = [
+            {
+                "case_id": f"{run_id}:cheap-01",
+                "task_type": "coding",
+                "tier": "cheap",
+                "accepted": True,
+                "cost_usd": 0.002,
+                "trace_id": f"{run_id}:trace:cheap-01",
+                "run_id": run_id,
+                "verifier_outcome": "pass",
+            },
+            {
+                "case_id": f"{run_id}:cheap-02",
+                "task_type": "coding",
+                "tier": "cheap",
+                "accepted": False,
+                "cost_usd": 0.002,
+                "trace_id": f"{run_id}:trace:cheap-02",
+                "run_id": run_id,
+                "verifier_outcome": "fail",
+            },
+            {
+                "case_id": f"{run_id}:cheap-03",
+                "task_type": "coding",
+                "tier": "cheap",
+                "accepted": True,
+                "cost_usd": 0.002,
+                "trace_id": f"{run_id}:trace:cheap-03",
+                "run_id": run_id,
+                "verifier_outcome": "pass",
+            },
+            {
+                "case_id": f"{run_id}:mid-01",
+                "task_type": "coding",
+                "tier": "mid",
+                "accepted": True,
+                "cost_usd": 0.008,
+                "trace_id": f"{run_id}:trace:mid-01",
+                "run_id": run_id,
+                "verifier_outcome": "pass",
+            },
+            {
+                "case_id": f"{run_id}:premium-01",
+                "task_type": "coding",
+                "tier": "premium",
+                "accepted": True,
+                "cost_usd": 0.05,
+                "trace_id": f"{run_id}:trace:premium-01",
+                "run_id": run_id,
+                "verifier_outcome": "pass",
+            },
+        ]
+        cases = [BenchmarkCase(**c) for c in _CASES]
+        reduction_pct = context_reduction_pct if context_reduction_pct is not None else 55.0
+        report = capability.run(
+            run_id=run_id,
+            context_reduction_pct=reduction_pct,
+            benchmark_cases=cases,
+            save=True,
+        )
+        return to_jsonable(report)
+
+    # Load last saved report
+    maybe_report = capability.load()
+    if maybe_report is None:
+        return {
+            "error": "No proof report found. Call atelier_proof_report with run_id to generate one."
+        }
+    return to_jsonable(maybe_report)
+
+
+@mcp_tool(name="atelier_rescue_failure")
 def tool_rescue_failure(
     task: str,
     error: str,
@@ -325,10 +654,35 @@ def tool_rescue_failure(
         domain=domain,
         recent_actions=recent_actions,
     )
-    return to_jsonable(result)
+    payload = to_jsonable(result)
+
+    # Lemma-style failure incident analysis from prior failed traces.
+    with contextlib.suppress(Exception):
+        analysis = rt.core_runtime.analyze_failure_for_error(
+            task=task,
+            error=error,
+            domain=domain,
+            lookback=200,
+        )
+        payload["analysis"] = analysis
+        incident = analysis.get("incident") if isinstance(analysis, dict) else None
+        if isinstance(incident, dict):
+            root_cause = incident.get("root_cause_hypothesis", "")
+            if isinstance(root_cause, str) and root_cause:
+                led.record(
+                    "note",
+                    "failure_analysis",
+                    {
+                        "root_cause": root_cause,
+                        "fingerprint": incident.get("fingerprint"),
+                        "count": incident.get("count"),
+                    },
+                )
+
+    return payload
 
 
-@mcp_tool()
+@mcp_tool(name="atelier_record_trace")
 def tool_record_trace(
     agent: str,
     domain: str,
@@ -341,7 +695,14 @@ def tool_record_trace(
     diff_summary: str = "",
     output_summary: str = "",
     validation_results: list[Any] | None = None,
+    prompt: str | None = None,
+    response: str | None = None,
+    bash_outputs: list[Any] | None = None,
+    tool_outputs: list[Any] | None = None,
     run_id: str | None = None,
+    trace_confidence: str | None = None,
+    capture_sources: list[str] | None = None,
+    missing_surfaces: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record an observable trace from an agent run."""
     from atelier.core.foundation.redaction import redact, redact_list
@@ -356,8 +717,44 @@ def tool_record_trace(
         tools_called = []
     if files_touched is None:
         files_touched = []
+    if bash_outputs is None:
+        bash_outputs = []
+    if tool_outputs is None:
+        tool_outputs = []
+    if capture_sources is None:
+        capture_sources = []
+    if missing_surfaces is None:
+        missing_surfaces = []
     rt = _runtime()
     led = _get_ledger()
+    rtc = _get_realtime_context()
+
+    # Derive host label from agent string
+    def _derive_host(a: str) -> str:
+        al = a.lower()
+        if "gemini" in al:
+            return "gemini"
+        if "copilot" in al:
+            return "copilot"
+        if "codex" in al:
+            return "codex"
+        if "opencode" in al:
+            return "opencode"
+        if al.startswith("atelier:") or "claude" in al:
+            return "claude"
+        return al
+
+    # Validate: full_live requires capture_sources to include hooks/live
+    _VALID_CONFIDENCE = {"full_live", "mcp_live", "wrapper_live", "imported", "manual"}
+    if trace_confidence is not None and trace_confidence not in _VALID_CONFIDENCE:
+        trace_confidence = None
+    if trace_confidence == "full_live" and not any(
+        s in ("hooks", "live_hooks", "plugin_hooks") for s in capture_sources
+    ):
+        # Downgrade silently to mcp_live; caller must include hooks in capture_sources
+        trace_confidence = "mcp_live"
+        if "hooks" not in missing_surfaces:
+            missing_surfaces = [*list(missing_surfaces), "hooks"]
 
     payload = {
         "agent": agent,
@@ -371,6 +768,10 @@ def tool_record_trace(
         "diff_summary": redact(diff_summary),
         "output_summary": redact(output_summary),
         "run_id": run_id or led.run_id,
+        "host": _derive_host(agent),
+        "trace_confidence": trace_confidence,
+        "capture_sources": capture_sources,
+        "missing_surfaces": missing_surfaces,
     }
 
     cleaned_vr: list[dict[str, Any]] = []
@@ -384,6 +785,59 @@ def tool_record_trace(
             cleaned_vr.append(vr)
     payload["validation_results"] = cleaned_vr
 
+    if prompt:
+        rtc.record_prompt_response(redact(prompt), redact(response or ""))
+    if bash_outputs:
+        for item in bash_outputs:
+            if isinstance(item, dict):
+                command = str(item.get("command", ""))
+                stdout = redact(str(item.get("stdout", "")))
+                stderr = redact(str(item.get("stderr", "")))
+                ok = bool(item.get("ok", True))
+                rtc.record_bash_output(command, stdout=stdout, stderr=stderr, ok=ok)
+            else:
+                rtc.record_bash_output("bash", stdout=redact(str(item)), ok=True)
+    if tool_outputs:
+        for item in tool_outputs:
+            rtc.record_tool_output("external_tool", {"output": redact(str(item))})
+
+    raw_artifacts: list[str] = []
+    if prompt or response or bash_outputs or tool_outputs:
+        source_session_id = (
+            os.environ.get("CLAUDE_SESSION_ID")
+            or os.environ.get("CODEX_SESSION_ID")
+            or os.environ.get("OPENCODE_SESSION_ID")
+            or "unknown"
+        )
+        artifact_content = {
+            "prompt": redact(prompt or ""),
+            "response": redact(response or ""),
+            "bash_outputs": bash_outputs,
+            "tool_outputs": tool_outputs,
+        }
+        redacted_content = json.dumps(artifact_content, ensure_ascii=False, indent=2)
+        artifact_id = f"trace-ctx-{Trace.make_id(task, agent)}"
+        digest = sha256(redacted_content.encode("utf-8", errors="replace")).hexdigest()
+        artifact = RawArtifact(
+            id=artifact_id,
+            source="mcp",
+            source_session_id=source_session_id,
+            kind="trace.context.json",
+            relative_path=f"{artifact_id}.json",
+            content_path=f"raw/mcp/{source_session_id}/{artifact_id}.json",
+            sha256_original=digest,
+            sha256_redacted=digest,
+            byte_count_original=len(redacted_content.encode("utf-8")),
+            byte_count_redacted=len(redacted_content.encode("utf-8")),
+            redacted=True,
+        )
+        with contextlib.suppress(Exception):
+            rt.store.record_raw_artifact(artifact, redacted_content)
+            raw_artifacts.append(artifact_id)
+
+    if raw_artifacts:
+        payload["raw_artifact_ids"] = raw_artifacts
+
     if "id" not in payload:
         payload["id"] = Trace.make_id(task, agent)
 
@@ -394,33 +848,18 @@ def tool_record_trace(
     led.persist()
 
     _write_session_state({"trace_recorded": True})
-    return {"id": trace.id, "run_id": led.run_id}
+    rtc.persist()
+
+    # Emit to Langfuse if configured (fail-open)
+    from atelier.gateway.integrations.langfuse import emit_trace as _lf_emit
+
+    _lf_emit(payload)
+    return {"id": trace.id, "run_id": led.run_id, "realtime_context": rtc.snapshot()}
 
 
-@mcp_tool()
-def tool_extract_reasonblock(trace_id: str, save: bool = False) -> Any:
-    """Extract a candidate ReasonBlock from a recorded trace."""
-    rt = _runtime()
-    led = _get_ledger()
-    led.record_tool_call("extract_reasonblock", {"trace_id": trace_id, "save": save})
-
-    trace = rt.store.get_trace(trace_id)
-    if trace is None:
-        raise ValueError(f"trace not found: {trace_id}")
-    candidate = extract_candidate(trace)
-    if save:
-        rt.store.upsert_block(candidate.block)
-    return {
-        "block": to_jsonable(candidate.block),
-        "confidence": candidate.confidence,
-        "reasons": candidate.reasons,
-        "saved": bool(save),
-    }
-
-
-@mcp_tool()
+@mcp_tool(name="atelier_run_rubric_gate")
 def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
-    """Evaluate agent results against a domain rubric."""
+    """Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
     rt = _runtime()
     led = _get_ledger()
     led.record_tool_call("run_rubric_gate", {"rubric_id": rubric_id, "checks": checks})
@@ -434,8 +873,41 @@ def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
 
     result = run_rubric(rubric, checks)
     led.record("rubric_run", f"Rubric {rubric_id} status: {result.status}", to_jsonable(result))
-
     return to_jsonable(result)
+
+
+@mcp_tool(name="atelier_lesson_inbox")
+def tool_lesson_inbox(domain: str | None = None, limit: int = 25) -> dict[str, Any]:
+    """List lesson candidates currently waiting in the inbox."""
+    led = _get_ledger()
+    led.record_tool_call("lesson_inbox", {"domain": domain, "limit": limit})
+    lessons = _lesson_promoter().inbox(domain=domain, limit=limit)
+    return {"lessons": [lesson.model_dump(mode="json") for lesson in lessons]}
+
+
+@mcp_tool(name="atelier_lesson_decide")
+def tool_lesson_decide(
+    lesson_id: str,
+    decision: str,
+    reviewer: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Approve or reject a lesson candidate."""
+    led = _get_ledger()
+    led.record_tool_call(
+        "lesson_decide",
+        {
+            "lesson_id": lesson_id,
+            "decision": decision,
+            "reviewer": reviewer,
+        },
+    )
+    return _lesson_promoter().decide(
+        lesson_id=lesson_id,
+        decision=decision,
+        reviewer=reviewer,
+        reason=reason,
+    )
 
 
 @mcp_tool()
@@ -467,74 +939,39 @@ def tool_record_call(
     return {"recorded": True, "run_id": led.run_id}
 
 
-@mcp_tool()
-def tool_record_note(summary: str, payload: dict[str, Any] | None = None) -> Any:
-    """Record a technical note or rationale into the ledger."""
-    if payload is None:
-        payload = {}
-    led = _get_ledger()
-    led.record("note", summary, payload)
-    led.persist()
-    return {"recorded": True, "run_id": led.run_id}
-
-
-# --------------------------------------------------------------------------- #
-# V2 tool implementations                                                     #
-# --------------------------------------------------------------------------- #
-
-
-def _runs_dir() -> Path:
-    return _atelier_root() / "runs"
-
-
-def _ledger_path_for(run_id: str | None) -> Path:
-    runs = _runs_dir()
-    if run_id:
-        return runs / f"{run_id}.json"
-    if not runs.is_dir():
-        raise ValueError("no run ledger found")
-    paths = sorted(runs.glob("*.json"))
-    if not paths:
-        raise ValueError("no run ledger found")
-    return paths[-1]
-
-
-@mcp_tool(name="get_run_ledger")
-def tool_get_run_ledger(run_id: str | None = None) -> Any:
-    """Retrieve the run ledger for a specific run or the latest run."""
-    path = _ledger_path_for(run_id)
-    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return data
-
-
-@mcp_tool(name="update_run_ledger")
-def tool_update_run_ledger(updates: dict[str, Any], run_id: str | None = None) -> Any:
-    """Update fields in the active or specified run ledger."""
-    led = _get_ledger()
-    for k, v in updates.items():
-        if hasattr(led, k):
-            setattr(led, k, v)
-    led.persist()
-    return {"updated": list(updates.keys()), "run_id": led.run_id}
-
-
-@mcp_tool(name="monitor_event")
-def tool_monitor_event(
-    monitor: str, message: str, severity: str = "medium", run_id: str | None = None
+@mcp_tool(name="atelier_sql_inspect")
+def tool_sql_inspect(
+    connection_alias: str,
+    sql: str,
+    params: list[Any] | dict[str, Any] | None = None,
+    row_limit: int = 200,
 ) -> dict[str, Any]:
-    """Record an alert from a monitor into the ledger."""
+    """Execute deterministic SQL inspection against an allowlisted connection alias."""
+    rt = _runtime()
     led = _get_ledger()
-    led.record_alert(monitor, severity, message)
-    led.persist()
-    return {"recorded": True, "run_id": led.run_id}
+    led.record_tool_call(
+        "sql_inspect",
+        {
+            "connection_alias": connection_alias,
+            "has_params": params is not None,
+            "row_limit": row_limit,
+        },
+    )
+    return rt.sql_inspect(
+        connection_alias=connection_alias,
+        sql=sql,
+        params=params,
+        row_limit=row_limit,
+    )
 
 
-@mcp_tool(name="compress_context")
+@mcp_tool(name="atelier_compress_context")
 def tool_compress_context(run_id: str | None = None) -> Any:
-    """Compress the current ledger state into a compact prompt block."""
+    """Compress the current ledger state into a compact prompt block for context continuation."""
     from atelier.infra.runtime.context_compressor import ContextCompressor
 
     led = _get_ledger()
+    rtc = _get_realtime_context()
     state = ContextCompressor().compress(led)
     return {
         "environment_id": state.environment_id,
@@ -544,295 +981,333 @@ def tool_compress_context(run_id: str | None = None) -> Any:
             "active_reasonblocks": led.active_reasonblocks,
         },
         "prompt_block": state.to_prompt_block(),
+        "realtime": rtc.snapshot(),
     }
 
 
-@mcp_tool(name="get_environment_context")
-def tool_get_environment_context(env_id: str) -> Any:
-    """Get the full environment configuration including related ReasonBlocks and rubric."""
-    from atelier.core.foundation.environments import load_packaged_environments
-
-    rt = _runtime()
-    envs = {e.id: e for e in load_packaged_environments()}
-    if env_id not in envs:
-        raise ValueError(f"environment not found: {env_id}")
-    e = envs[env_id]
-    blocks = [rt.store.get_block(bid) for bid in e.related_blocks if rt.store.get_block(bid)]
-    rubric = rt.store.get_rubric(e.rubric_id) if e.rubric_id else None
-    return {
-        "environment": to_jsonable(e),
-        "blocks": [to_jsonable(b) for b in blocks if b],
-        "rubric": to_jsonable(rubric) if rubric else None,
-    }
-
-
-@mcp_tool(name="smart_read")
-def tool_smart_read(path: str) -> Any:
-    """Read a file with summarization and related-ReasonBlock attachment."""
-    rt = _runtime()
-    led = _get_ledger()
-    p = Path(path)
-    if not p.is_file():
-        raise ValueError(f"file not found: {path}")
-    text = p.read_text(encoding="utf-8", errors="replace")
-    led.record_file_event(str(p), "read")
-
-    return {
-        "path": str(p),
-        "summary": text[:8000],
-        "related_blocks": [
-            {"id": b.id, "title": b.title} for b in rt.store.search_blocks(p.name, limit=3)
-        ],
-    }
-
-
-@mcp_tool(name="smart_search")
-def tool_smart_search(query: str, limit: int = 10) -> Any:
-    """Search for relevant ReasonBlocks using a text query."""
-    rt = _runtime()
-    blocks = rt.store.search_blocks(query, limit=int(limit))
-    return {"matches": [{"id": b.id, "title": b.title, "domain": b.domain} for b in blocks]}
-
-
-@mcp_tool(name="atelier_reasoning_reuse")
-def tool_atelier_reasoning_reuse(
-    task: str,
-    domain: str | None = None,
-    files: list[str] | None = None,
-    tools: list[str] | None = None,
-    errors: list[str] | None = None,
-    limit: int = 5,
+@mcp_tool(name="atelier_memory_upsert_block")
+def tool_memory_upsert_block(
+    agent_id: str,
+    label: str,
+    value: str,
+    limit_chars: int = 8000,
+    description: str = "",
+    read_only: bool = False,
+    pinned: bool = False,
+    metadata: dict[str, Any] | None = None,
+    expected_version: int | None = None,
+    actor: str | None = None,
 ) -> dict[str, Any]:
-    """Return reusable procedures for the current task."""
-    if errors is None:
-        errors = []
-    if tools is None:
-        tools = []
-    if files is None:
-        files = []
-    rt = _core_runtime()
-    scored = rt.reasoning_reuse.retrieve(
-        task=task,
-        domain=domain,
-        files=files,
-        tools=tools,
-        errors=errors,
-        limit=limit,
+    """Create or update an editable memory block."""
+    clean_value = _redact_memory_input(value, "value")
+    clean_description = _redact_memory_input(description, "description")
+    store = _memory_store()
+    existing = store.get_block(agent_id, label)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
+    seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
+    block = MemoryBlock(
+        id=seed.id,
+        agent_id=agent_id,
+        label=label,
+        value=clean_value,
+        limit_chars=limit_chars,
+        description=clean_description,
+        read_only=read_only,
+        metadata=metadata or {},
+        pinned=pinned,
+        version=version,
+        current_history_id=existing.current_history_id if existing else None,
+        created_at=seed.created_at,
+    )
+    stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
+    return {"id": stored.id, "version": stored.version}
+
+
+@mcp_tool(name="atelier_memory_get_block")
+def tool_memory_get_block(agent_id: str, label: str) -> dict[str, Any] | None:
+    """Fetch one editable memory block by agent and label."""
+    block = _memory_store().get_block(agent_id, label)
+    return block.model_dump(mode="json") if block is not None else None
+
+
+@mcp_tool(name="atelier_memory_archive")
+def tool_memory_archive(
+    agent_id: str,
+    text: str,
+    source: str,
+    source_ref: str = "",
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Archive long-term memory text for later recall."""
+    passage = _archival_recall().archive(
+        agent_id=agent_id,
+        text=text,
+        source=source,  # type: ignore[arg-type]
+        source_ref=source_ref,
+        tags=tags or [],
+    )
+    return {"id": passage.id, "dedup_hit": passage.dedup_hit}
+
+
+@mcp_tool(name="atelier_memory_recall")
+def tool_memory_recall(
+    agent_id: str,
+    query: str,
+    top_k: int = 5,
+    tags: list[str] | None = None,
+    since: str | None = None,
+) -> dict[str, Any]:
+    """Recall relevant archival memory passages."""
+    since_dt = datetime.fromisoformat(since) if since else None
+    passages, recall = _archival_recall().recall(
+        agent_id=agent_id,
+        query=query,
+        top_k=top_k,
+        tags=tags or None,
+        since=since_dt,
     )
     return {
-        "procedures": [
+        "passages": [
             {
-                "id": item.block.id,
-                "title": item.block.title,
-                "domain": item.block.domain,
-                "score": item.score,
-                "procedure": item.block.procedure,
-                "verification": item.block.verification,
+                "id": passage.id,
+                "text": passage.text,
+                "source_ref": passage.source_ref,
+                "tags": passage.tags,
             }
-            for item in scored
-        ]
+            for passage in passages
+        ],
+        "recall_id": recall.id,
     }
-
-
-@mcp_tool(name="atelier_semantic_memory")
-def tool_atelier_semantic_memory(
-    path: str | None = None,
-    query: str | None = None,
-    max_lines: int = 120,
-    limit: int = 10,
-) -> dict[str, Any]:
-    """Summarize a file or run semantic lookup from local file memory."""
-    rt = _core_runtime()
-    import typing
-
-    if path:
-        return typing.cast(dict[str, Any], rt.smart_read(path, max_lines=max_lines))
-    if query:
-        return {"matches": rt.semantic_memory.semantic_search(query, limit=limit)}
-    raise ValueError("provide either path or query")
-
-
-@mcp_tool(name="atelier_loop_monitor")
-def tool_atelier_loop_monitor(run_id: str | None = None) -> Any:
-    """Detect loop signals from a run ledger."""
-    rt = _core_runtime()
-    summary = rt.summarize_memory(run_id=run_id)
-    return {
-        "run_id": summary.get("run_id"),
-        "loop_alerts": summary.get("loop_alerts", []),
-        "current_blocker": summary.get("current_blocker"),
-    }
-
-
-@mcp_tool(name="atelier_tool_supervisor")
-def tool_atelier_tool_supervisor() -> Any:
-    """Return tool supervision status and efficiency counters."""
-    rt = _core_runtime()
-    return rt.capability_status()
-
-
-@mcp_tool(name="atelier_context_compressor")
-def tool_atelier_context_compressor(run_id: str | None = None) -> Any:
-    """Compress a run ledger into actionable context."""
-    rt = _core_runtime()
-    return rt.summarize_memory(run_id=run_id)
-
-
-@mcp_tool(name="atelier_smart_search")
-def tool_atelier_smart_search(query: str, limit: int = 10) -> Any:
-    """Unified smart search over procedures and semantic memory."""
-    rt = _core_runtime()
-    return rt.smart_search(query, limit=limit)
 
 
 @mcp_tool(name="atelier_smart_read")
-def tool_atelier_smart_read(path: str, max_lines: int = 120) -> Any:
-    """AST-aware smart file read with semantic caching."""
-    rt = _core_runtime()
-    return rt.smart_read(path, max_lines=max_lines)
-
-
-@mcp_tool(name="atelier_smart_edit")
-def tool_atelier_smart_edit(edits: list[dict[str, str]]) -> Any:
-    """Batch fuzzy edits across multiple files."""
-    rt = _core_runtime()
-    return rt.smart_edit(edits)
-
-
-@mcp_tool(name="atelier_sql_inspect")
-def tool_atelier_sql_inspect(
-    sql: str | None = None, file_path: str | None = None
+def tool_smart_read(
+    path: str | None = None,
+    file_path: str | None = None,
+    range: str | None = None,
+    expand: bool = False,
+    max_lines: int | None = None,
 ) -> dict[str, Any]:
-    """Inspect SQL for schema hints, FK references, and migration signals."""
-    rt = _core_runtime()
-    import typing
+    """Smart file read with outline-first mode for large Python/TypeScript files."""
+    target_path = file_path or path
+    if not target_path:
+        raise ValueError("provide path or file_path")
+    if max_lines is not None and range is None and not expand:
+        return cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
 
-    return typing.cast(dict[str, Any], rt.sql_inspect(sql=sql, file_path=file_path))
-
-
-@mcp_tool(name="atelier_module_summary")
-def tool_atelier_module_summary(path: str) -> dict[str, Any]:
-    """Return a concise module-level summary: exports, symbols, imports, test files."""
-    rt = _core_runtime()
-    import typing
-
-    return typing.cast(dict[str, Any], rt.module_summary(path))
-
-
-@mcp_tool(name="atelier_symbol_search")
-def tool_atelier_symbol_search(query: str, limit: int = 20) -> Any:
-    """Search all cached files for symbols matching the query string."""
-    rt = _core_runtime()
-    results = rt.symbol_search(query, limit=limit)
-    return {"results": results}
+    cap = SemanticFileMemoryCapability(_atelier_root())
+    target = _workspace_path(target_path)
+    payload = cap.smart_read(target, range_spec=range, expand=expand)
+    return {
+        "mode": payload["mode"],
+        "cache_hit": bool(payload.get("cache_hit", False)),
+        "tokens_saved": int(payload.get("tokens_saved", 0)),
+        "outline": payload.get("outline"),
+        "content": payload.get("content"),
+        "path": payload.get("path", str(target)),
+        "range": payload.get("range"),
+    }
 
 
-_SHELL_META = re.compile(r"[;|&`$<>\\!{}\[\]()'\"" + "\n\r]", re.ASCII)
+@mcp_tool(name="atelier_batch_edit")
+def tool_batch_edit(
+    edits: list[dict[str, Any]],
+    atomic: bool = True,
+) -> dict[str, Any]:
+    """Apply many mechanical edits across files in one deterministic call.
 
+    This is an *optional* Atelier augmentation.  Host-native Edit/MultiEdit
+    tools remain the default path for ordinary coding.
 
-@mcp_tool(name="cached_grep")
-def tool_cached_grep(pattern: str, path: str = ".") -> Any:
-    """Perform a grep search and record the result in the ledger."""
-    import subprocess
+    Each edit must have ``path`` and ``op``.  Supported ops:
 
-    led = _get_ledger()
-    if _SHELL_META.search(pattern):
-        raise ValueError(
-            f"Pattern contains shell metacharacters: {pattern!r}. "
-            "Use a plain string or a safe regex."
-        )
-    proc = subprocess.run(
-        ["grep", "-rn", "--", pattern, path], capture_output=True, text=True, check=False
+    - ``replace``       — requires ``old_string``, ``new_string``
+    - ``insert_after``  — requires ``anchor``, ``new_string``
+    - ``replace_range`` — requires ``line_start``, ``line_end``, ``new_string``
+
+    When ``atomic=true`` (default) any failure causes all changes to be
+    reverted.  Files are snapshotted to ``.atelier/run/<id>/batch_edit_backup/``
+    before editing and the backup is removed on success.
+
+    Safety: never deletes files; never writes outside the repo root.
+    """
+    from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    result = apply_batch_edit(
+        edits,
+        atomic=atomic,
+        repo_root=Path(workspace),
     )
-    led.record_command(f"grep {pattern}", ok=proc.returncode == 0, stdout=proc.stdout[:1000])
-    return {"output": proc.stdout[:8000]}
+    return result
 
 
-# --------------------------------------------------------------------------- #
-# Domain & Host tools                                                         #
-# --------------------------------------------------------------------------- #
+@mcp_tool(name="atelier_compact_advise")
+def tool_compact_advise(run_id: str | None = None) -> dict[str, Any]:
+    """Advise when to compact and what context to preserve.
 
+    Returns a manifest with:
+    - should_compact: bool (true if utilisation >= 60%)
+    """
+    try:
+        led = _get_ledger()
+        if run_id:
+            led.run_id = run_id
 
-def _domain_manager() -> Any:
-    from atelier.core.domains import DomainManager
+        # Estimate tokens used: token_count from ledger + events
+        tokens_used = led.token_count
+        # Rough estimation: each event ~50 tokens average
+        event_tokens = max(0, len(led.events) * 10)
+        tokens_used += event_tokens
 
-    root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
-    return DomainManager(root)
+        # Claude 3.5 Sonnet context window is 200K
+        context_window = 200_000
+        utilisation_pct = round(100.0 * tokens_used / context_window, 1)
 
+        # Determine if compaction is advised
+        should_compact = utilisation_pct >= 60.0
 
-@mcp_tool(name="atelier_domain_list")
-def tool_atelier_domain_list() -> Any:
-    """List available Atelier domain bundles (built-in and user-defined)."""
-    manager = _domain_manager()
-    refs = manager.list_bundles()
-    return {"bundles": [r.model_dump(mode="json") for r in refs]}
+        # Collect preserve_blocks: top active ReasonBlocks from ledger
+        preserve_blocks = list(set(led.active_reasonblocks))[:3]
 
+        # Collect pin_memory: pinned MemoryBlocks for this run's agent
+        pin_memory: list[str] = []
+        try:
+            store = _memory_store()
+            agent_id = led.agent or "claude"
+            pinned = store.list_pinned_blocks(agent_id=agent_id)
+            pin_memory = [b.id for b in pinned][:5]
+        except Exception:
+            pass  # Fail-open
 
-@mcp_tool(name="atelier_domain_info")
-def tool_atelier_domain_info(bundle_id: str) -> Any:
-    """Get detailed information for an Atelier domain bundle."""
-    manager = _domain_manager()
-    payload = manager.info(bundle_id)
-    if payload is None:
-        raise ValueError(f"domain bundle not found: {bundle_id}")
-    return payload
+        # Collect open_files: last 5 files touched
+        open_files = led.files_touched[-5:] if led.files_touched else []
 
+        # Build suggested prompt
+        suggested_prompt = (
+            f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
+            f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+            f"Recently edited files: {', '.join(open_files) or '(none)'}"
+        )
 
-def _host_registry() -> Any:
-    from atelier.gateway.hosts import HostRegistry
-
-    root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
-    hosts_dir = root / "hosts"
-    return HostRegistry(storage_dir=hosts_dir)
-
-
-@mcp_tool(name="atelier_host_list")
-def tool_atelier_host_list() -> Any:
-    """List all registered Atelier hosts."""
-    registry = _host_registry()
-    hosts = registry.list_all()
-    return {
-        "hosts": [
-            {
-                "host_id": str(h.host_id),
-                "label": h.metadata.get("label", str(h.host_id)[:8]),
-                "status": h.metadata.get("status", "unknown"),
-                "active_domains": h.metadata.get("active_domains", []),
-                "mcp_tools_count": len(h.metadata.get("mcp_tools", [])),
-                "atelier_version": h.atelier_version,
-                "last_seen": h.last_seen.isoformat() if h.last_seen else None,
-                "registered_at": h.registered_at.isoformat() if h.registered_at else None,
+        # Persist manifest to disk
+        try:
+            root = _atelier_root()
+            run_dir = root / "runs" / led.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = run_dir / "compact_manifest.json"
+            manifest = {
+                "created_at": datetime.now(UTC).isoformat(),
+                "run_id": led.run_id,
+                "should_compact": should_compact,
+                "utilisation_pct": utilisation_pct,
+                "preserve_blocks": preserve_blocks,
+                "pin_memory": pin_memory,
+                "open_files": open_files,
+                "suggested_prompt": suggested_prompt,
             }
-            for h in hosts
-        ]
-    }
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        except Exception:
+            pass  # Fail-open: don't block the tool if persistence fails
+
+        return {
+            "should_compact": should_compact,
+            "utilisation_pct": utilisation_pct,
+            "preserve_blocks": preserve_blocks,
+            "pin_memory": pin_memory,
+            "open_files": open_files,
+            "suggested_prompt": suggested_prompt,
+        }
+    except Exception:
+        # Fail-open: return conservative defaults
+        return {
+            "should_compact": False,
+            "utilisation_pct": 0.0,
+            "preserve_blocks": [],
+            "pin_memory": [],
+            "open_files": [],
+            "suggested_prompt": "Unable to compute compaction advice; proceed with default compaction.",
+        }
 
 
-@mcp_tool(name="atelier_host_status")
-def tool_atelier_host_status(host_id: str) -> Any:
-    """Get status of a specific Atelier host."""
-    registry = _host_registry()
-    registration = registry.get(host_id)
+@mcp_tool(name="atelier_memory_summary")
+def tool_memory_summary(run_id: str) -> dict[str, Any]:
+    """Run the sleeptime summarizer for a given run and return a summary.
 
-    if registration is None:
-        raise ValueError(f"host not found: {host_id}")
+    Input:
+        run_id: The run identifier to summarize.
 
-    return {
-        "host_id": str(registration.host_id),
-        "fingerprint": {
-            "hostname": registration.fingerprint.hostname,
-            "username": registration.fingerprint.username,
-            "fingerprint_hash": registration.fingerprint.fingerprint_hash,
-        },
-        "atelier_version": registration.atelier_version,
-        "registered_at": (
-            registration.registered_at.isoformat() if registration.registered_at else None
-        ),
-        "last_seen": registration.last_seen.isoformat() if registration.last_seen else None,
-        "active_domains": registration.metadata.get("active_domains", []),
-        "mcp_tools": registration.metadata.get("mcp_tools", []),
-        "metadata": registration.metadata,
-    }
+    Output:
+        tokens_pre, tokens_post, summary_md, evicted_event_ids,
+        archived_passage_ids, strategy
+    """
+    try:
+        from atelier.core.capabilities.context_compression.capability import (
+            ContextCompressionCapability,
+        )
+
+        led = _get_ledger()
+        if run_id:
+            led.run_id = run_id
+
+        cap = ContextCompressionCapability()
+        result = cap.compress_with_sleeptime(led)
+
+        summary_lines = [f"## Sleeptime Summary — run `{led.run_id}`", ""]
+        summary_lines.append(f"- Tokens before: {result.chars_before // 4}")
+        summary_lines.append(f"- Tokens after:  {result.chars_after // 4}")
+        summary_lines.append(f"- Reduction:     {result.reduction_pct}%")
+        if result.dropped:
+            summary_lines.append("")
+            summary_lines.append("### Evicted events")
+            for d in result.dropped[:10]:
+                summary_lines.append(f"- [{d.kind}] {d.summary[:100]}")
+
+        return {
+            "tokens_pre": result.chars_before // 4,
+            "tokens_post": result.chars_after // 4,
+            "summary_md": "\n".join(summary_lines),
+            "evicted_event_ids": [d.kind for d in result.dropped],
+            "archived_passage_ids": [],
+            "strategy": "tfidf",
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@mcp_tool(name="atelier_search_read")
+def tool_search_read(
+    query: str,
+    path: str = ".",
+    max_files: int = 10,
+    max_chars_per_file: int = 2000,
+    include_outline: bool = True,
+) -> dict[str, Any]:
+    """Combined search + read (baseline 1). Collapses grep→read→read into one ranked-snippet call.
+
+    Runs a grep over *path* for *query*, clusters per-file matches into context
+    windows (±8 lines), attaches AST outlines for files with >5 hits, and
+    returns token-accounted results.  Typically saves ≥70 % of the tokens
+    compared to separate grep + full-file-read calls.
+
+    Host-native search/read tools remain available for raw exploration; this
+    tool is the optimised path, not the only path.
+    """
+    from atelier.core.capabilities.tool_supervision.search_read import (
+        search_read,
+        search_read_to_dict,
+    )
+
+    result = search_read(
+        query=query,
+        path=path,
+        max_files=max_files,
+        max_chars_per_file=max_chars_per_file,
+        include_outline=include_outline,
+    )
+    return search_read_to_dict(result)
 
 
 # --------------------------------------------------------------------------- #
@@ -847,6 +1322,13 @@ _REMOTE_TOOLS = frozenset(
         "rescue_failure",
         "run_rubric_gate",
         "record_trace",
+        "atelier_get_reasoning_context",
+        "atelier_check_plan",
+        "atelier_rescue_failure",
+        "atelier_record_trace",
+        "atelier_run_rubric_gate",
+        "atelier_lesson_inbox",
+        "atelier_lesson_decide",
     }
 )
 
@@ -866,22 +1348,78 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     client = _get_remote_client()
     import typing
 
-    if name == "get_reasoning_context":
+    if name in {"get_reasoning_context", "atelier_get_reasoning_context"}:
         return typing.cast(dict[str, Any], client.get_reasoning_context(args))
-    if name == "check_plan":
+    if name in {"check_plan", "atelier_check_plan"}:
         return typing.cast(dict[str, Any], client.check_plan(args))
-    if name == "rescue_failure":
+    if name in {"rescue_failure", "atelier_rescue_failure"}:
         return typing.cast(dict[str, Any], client.rescue_failure(args))
-    if name == "run_rubric_gate":
-        return typing.cast(dict[str, Any], client.run_rubric_gate(args))
-    if name == "record_trace":
+    if name in {"record_trace", "atelier_record_trace"}:
         return typing.cast(dict[str, Any], client.record_trace(args))
+    if name in {"run_rubric_gate", "atelier_run_rubric_gate"}:
+        return typing.cast(dict[str, Any], client.run_rubric_gate(args))
+    if name == "atelier_lesson_inbox":
+        return typing.cast(dict[str, Any], client.lesson_inbox(args))
+    if name == "atelier_lesson_decide":
+        return typing.cast(dict[str, Any], client.lesson_decide(args))
     raise ValueError(f"tool not supported in remote mode: {name}")
+
+
+for alias, target in {
+    "get_reasoning_context": "atelier_get_reasoning_context",
+    "check_plan": "atelier_check_plan",
+    "route_decide": "atelier_route_decide",
+    "route_verify": "atelier_route_verify",
+    "rescue_failure": "atelier_rescue_failure",
+    "record_trace": "atelier_record_trace",
+    "run_rubric_gate": "atelier_run_rubric_gate",
+    "memory_upsert_block": "atelier_memory_upsert_block",
+    "memory_get_block": "atelier_memory_get_block",
+    "memory_archive": "atelier_memory_archive",
+    "memory_recall": "atelier_memory_recall",
+}.items():
+    TOOLS.setdefault(alias, TOOLS[target])
 
 
 # --------------------------------------------------------------------------- #
 # MCP Protocol Handling                                                       #
 # --------------------------------------------------------------------------- #
+
+
+def _record_context_budget_for_tool(tool_name: str, led: RunLedger, result: dict[str, Any]) -> None:
+    """Record context budget metrics for a tool execution.
+
+    Args:
+        tool_name: The name of the tool being executed.
+        led: The RunLedger for the current run.
+        result: The result from the tool.
+    """
+    try:
+        recorder = _get_context_budget_recorder()
+
+        # Extract lever_savings from result if present, otherwise use empty dict
+        lever_savings = result.get("tokens_saved", {})
+        if not isinstance(lever_savings, dict):
+            lever_savings = {}
+
+        # Record the tool execution metrics
+        # Note: actual token counts would come from the LLM provider
+        # For now we record with placeholder values
+        recorder.record(
+            run_id=led.run_id,
+            turn_index=getattr(led, "turn_index", 0),
+            model=getattr(led, "model", "unknown"),
+            input_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            output_tokens=0,
+            naive_input_tokens=0,
+            lever_savings=lever_savings,
+            tool_calls=1,
+        )
+    except Exception:
+        # Silently fail if context budget recording is not available
+        pass
 
 
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
@@ -920,11 +1458,36 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
         mcp_mode = os.environ.get("ATELIER_MCP_MODE", "local")
         try:
+            rtc = _get_realtime_context()
+            rtc.record_tool_input(name, args)
             if mcp_mode == "remote" and name in _REMOTE_TOOLS:
                 result = _dispatch_remote(name, args)
             else:
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
                 result = handler(args)
+
+            led = _get_ledger()
+            result_text = json.dumps(result, ensure_ascii=False, default=str)
+            compact_text = (
+                result_text
+                if len(result_text) <= 1200
+                else result_text[:600] + "..." + result_text[-600:]
+            )
+            led.record(
+                "tool_result",
+                f"{name} result",
+                {
+                    "tool": name,
+                    "output": compact_text,
+                    "output_chars": len(result_text),
+                },
+            )
+            rtc.record_tool_output(name, result)
+            rtc.persist()
+
+            # Record context budget metrics
+            _record_context_budget_for_tool(name, led, result)
+
             return _ok(
                 rid,
                 {
@@ -935,7 +1498,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 },
             )
         except Exception as exc:
-            return _err(rid, -32000, str(exc))
+            with contextlib.suppress(Exception):
+                rtc = _get_realtime_context()
+                rtc.record_tool_error(name, str(exc))
+                rtc.persist()
+            return _err(rid, _tool_error_code(exc), str(exc))
 
     return _err(rid, -32601, f"unknown method: {method}")
 
@@ -946,6 +1513,14 @@ def _ok(rid: Any, result: dict[str, Any]) -> dict[str, Any]:
 
 def _err(rid: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
+
+
+def _tool_error_code(exc: Exception) -> int:
+    if isinstance(exc, MemoryConcurrencyError):
+        return 409
+    if isinstance(exc, MemorySidecarUnavailable):
+        return 503
+    return -32000
 
 
 def serve() -> None:

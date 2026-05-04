@@ -76,6 +76,41 @@ uv run atelier init
 
 **Note:** pgvector is an enhancement. The system works without it. Do not add pgvector just to have vectors — add it only when you have 100+ blocks and FTS quality is insufficient.
 
+## Letta sidecar (optional)
+
+Use the Letta sidecar when memory needs outgrow the local runtime: multi-agent systems at scale,
+more than 10k archival passages, or an organization-wide vector store shared across workspaces.
+Atelier vendors Letta as an optional client only; SQLite remains the default local memory path.
+
+Minimal docker-compose service:
+
+```yaml
+services:
+  letta:
+    image: letta/letta:latest
+    ports:
+      - "8283:8283"
+    environment:
+      LETTA_SERVER_PASSWORD: change-me
+    volumes:
+      - letta-data:/root/.letta
+
+volumes:
+  letta-data:
+```
+
+Enable the client with:
+
+```bash
+ATELIER_LETTA_URL=http://localhost:8283 \
+ATELIER_LETTA_API_KEY=change-me \
+uv run atelier init
+```
+
+If the sidecar is down or unavailable, Atelier falls back to `SqliteMemoryStore` transparently.
+Install the client with `atelier[memory]`; install a local server separately with
+`atelier[memory-server]` only when you want Atelier to manage that process.
+
 ## Choosing a Backend
 
 | Situation                   | Recommendation                         |
@@ -111,3 +146,4 @@ pg_dump atelier > atelier_backup.sql
 | `ATELIER_VECTOR_SEARCH_ENABLED` | `false`                  | Enable pgvector        |
 | `ATELIER_EMBEDDING_DIM`         | `1536`                   | Embedding dimension    |
 | `ATELIER_EMBEDDING_MODEL`       | `text-embedding-3-small` | Embedding model        |
+| `ATELIER_LETTA_URL`             | `""`                     | Optional Letta sidecar |

@@ -38,7 +38,7 @@ Use these instead of restating prior reasoning in chat.
   environment by domain prefix and returns rules, forbidden phrases,
   required validations, attached procedures.
 
-## Smart tools (default mode = shadow)
+## Smart tools (default-on cache)
 
 - `atelier_smart_read({ path, max_bytes? })` — caches reads and tracks
   per-call savings.
@@ -46,14 +46,15 @@ Use these instead of restating prior reasoning in chat.
 - `atelier_cached_grep({ pattern, path?, args? })` — wraps `grep`/`rg`
   with caching and command-injection rejection.
 
-In `shadow` (default), these record counters but behave identically to
-the native tools. Switch to `on` only after observing the savings
-reports.
+These are default-on Atelier augmentations for bounded, repeated context
+reads/searches. Native `Read`, shell `rg`, `grep`, and direct repository search
+remain available when exact raw output is needed. Set
+`ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.
 
 ## Hard rules (additive to workflow.md)
 
 6. Do not omit `atelier_get_run_ledger` when resuming a run mid-stream.
 7. Do not store hidden chain-of-thought in
    `atelier_update_run_ledger` payloads — only observable facts.
-8. Do not enable smart tools beyond `shadow` without explicit user
-   approval.
+8. Do not remove host-native read/search tools; smart tools are an augmentation,
+   not a replacement.

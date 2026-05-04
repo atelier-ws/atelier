@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from atelier.infra.memory_bridges.letta_adapter import LettaAdapter, LettaMemoryStore
 from atelier.infra.memory_bridges.openmemory import OpenMemoryAdapter
 
-__all__ = ["OpenMemoryAdapter"]
+__all__ = ["LettaAdapter", "LettaMemoryStore", "OpenMemoryAdapter"]

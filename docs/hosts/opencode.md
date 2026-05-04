@@ -1,56 +1,46 @@
 # opencode Integration
 
-Atelier integrates with opencode via its native MCP support.
+Atelier integrates with opencode through workspace MCP config plus a workspace-local Atelier agent profile.
 
 ## Setup
 
-1. Install Atelier:
+```bash
+cd atelier
+uv sync --all-extras
+make install-opencode
+make verify-opencode
+```
 
-   ```bash
-   cd atelier && uv sync && uv run atelier init
-   ```
+## Installed Artifacts
 
-2. The MCP config is already in `opencode/opencode.json`. Reference it from your opencode config:
+- `opencode.jsonc` (or `opencode.json`) with merged `mcp.atelier`
+- `.opencode/agents/atelier.md`
+- `default_agent: "atelier"` in workspace config
 
-   ```bash
-   # Option A: copy to your home opencode config
-   cp atelier/opencode/opencode.json ~/.config/opencode/opencode.json
-
-   # Option B: use workspace-local config (opencode reads opencode.json from cwd)
-   cp atelier/opencode/opencode.json ./opencode.json
-   ```
-
-## MCP Config
-
-`opencode/opencode.json`:
+## MCP Config Shape
 
 ```json
 {
+  "default_agent": "atelier",
   "mcp": {
     "atelier": {
       "type": "local",
-      "command": ["uv", "run", "--project", "./atelier", "atelier-mcp"],
+      "command": ["<atelier_repo>/scripts/atelier_mcp_stdio.sh"],
       "environment": {
-        "ATELIER_WORKSPACE_ROOT": "."
+        "ATELIER_WORKSPACE_ROOT": "<workspace>"
       }
     }
   }
 }
 ```
 
-Note: `"type": "local"` is opencode's MCP server type. The command is relative to the workspace root (`.`).
+## MCP Tools
 
-## MCP Tools Available
+Canonical names:
 
-**V1 (core):** `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_run_rubric_gate`, `atelier_record_trace`, `atelier_search`
+- `get_reasoning_context`, `check_plan`, `rescue_failure`, `run_rubric_gate`, `record_trace`
+- `get_run_ledger`, `update_run_ledger`, `monitor_event`, `compress_context`
+- `get_environment`, `get_environment_context`
+- `atelier_smart_search`, `atelier_smart_read`, `atelier_smart_edit`, `atelier_sql_inspect`, `atelier_bash_intercept`
 
-**V2 (extended):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment`, `atelier_get_environment_context`, `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`
-
-## Verify
-
-After setup, run opencode and check the MCP server is connected:
-
-```bash
-opencode mcp list
-# should show: atelier (connected)
-```
+Compatibility aliases are also available for prefixed names like `atelier_check_plan`.

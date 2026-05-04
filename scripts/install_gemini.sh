@@ -132,7 +132,7 @@ else
 fi
 
 # ---- install custom slash commands -----------------------------------------
-CMD_SRC="${SCRIPT_DIR}/commands/atelier"
+CMD_SRC="${ATELIER_REPO}/integrations/gemini/commands/atelier"
 CMD_DEST="${GEMINI_DIR}/commands/atelier"
 if [ -d "$CMD_SRC" ]; then
     info "Installing custom commands → $CMD_DEST"
@@ -142,7 +142,7 @@ if [ -d "$CMD_SRC" ]; then
 fi
 
 # ---- install GEMINI.md context (atelier persona) ----------------------------
-GEMINI_MD_SRC="${SCRIPT_DIR}/GEMINI.atelier.md"
+GEMINI_MD_SRC="${ATELIER_REPO}/integrations/gemini/GEMINI.atelier.md"
 GEMINI_MD_DEST="${WORKSPACE}/GEMINI.atelier.md"
 if [ -f "$GEMINI_MD_SRC" ] && [ ! -f "$GEMINI_MD_DEST" ]; then
     run "cp '$GEMINI_MD_SRC' '$GEMINI_MD_DEST'"
@@ -151,6 +151,69 @@ elif [ -f "$GEMINI_MD_DEST" ]; then
     info "$GEMINI_MD_DEST already exists — not overwriting"
 fi
 
-info "Done. Restart Gemini CLI and verify: make verify-gemini"
+# ── Post-install verification (replaces verify_gemini.sh) ──
+info "Running post-install verification..."
+VFAIL=0
+vpass() { info "PASS: $*"; }
+vfail() { echo "[atelier:gemini] FAIL: $*" >&2; VFAIL=1; }
+
+SETTINGS_FILE="${HOME}/.gemini/settings.json"
+if [ ! -f "$SETTINGS_FILE" ]; then
+    vfail "missing ${SETTINGS_FILE}"
+else
+    HAS=$(python3 - <<PYEOF
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print('yes' if 'atelier' in d.get('mcpServers', {}) else 'no')
+except Exception:
+    print('parse-error')
+PYEOF
+)
+    if [ "$HAS" = "yes" ]; then
+        vpass "settings.json contains atelier MCP entry"
+    elif [ "$HAS" = "parse-error" ]; then
+        vfail "settings.json parse error: $SETTINGS_FILE"
+    else
+        vfail "settings.json missing atelier MCP entry"
+    fi
+
+    WRAPPER=$(python3 - <<PYEOF
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print(d.get('mcpServers', {}).get('atelier', {}).get('command', ''))
+except Exception:
+    print('')
+PYEOF
+)
+    if [ -n "$WRAPPER" ] && [ -x "$WRAPPER" ]; then
+        vpass "atelier wrapper command is executable: $WRAPPER"
+    else
+        vfail "atelier wrapper command missing or not executable in settings.json"
+    fi
+fi
+
+CMD_DIR="${HOME}/.gemini/commands/atelier"
+if [ -d "$CMD_DIR" ] && [ -f "$CMD_DIR/status.toml" ] && [ -f "$CMD_DIR/context.toml" ]; then
+    vpass "Gemini custom commands installed: $CMD_DIR"
+else
+    vfail "Gemini custom commands missing in $CMD_DIR"
+fi
+
+GEMINI_MD="${WORKSPACE}/GEMINI.atelier.md"
+if [ -f "$GEMINI_MD" ]; then
+    vpass "workspace GEMINI context installed: $GEMINI_MD"
+else
+    vfail "workspace GEMINI context missing: $GEMINI_MD"
+fi
+
+if [ "$VFAIL" -ne 0 ]; then
+    echo "[atelier:gemini] ERROR: post-install verification failed." >&2
+    exit 1
+fi
+info "All post-install checks passed"
+
+info "Done. Restart Gemini CLI — /atelier:status, /atelier:context are available."
 info "Note: Gemini CLI uses absolute paths — do not move atelier after installing."
 info "Tip: run 'atelier-status' in any shell to see current run state."

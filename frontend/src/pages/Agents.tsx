@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "../api";
 
 interface AgentDef {
   id: string;
@@ -82,19 +83,54 @@ const AGENTS: AgentDef[] = [
   },
 ];
 
-const MONITOR_ALERTS = [
-  { name: "SecondGuessing", desc: "Agent is re-deriving what the ledger already records" },
-  { name: "Thrashing", desc: "Rapid tool/vacillation without progress" },
-  { name: "BudgetExhaustion", desc: "Approaching token/cost limit" },
-  { name: "RepeatedFailure", desc: "Same error signature seen 2+ times" },
-  { name: "WrongDirection", desc: "Agent heading toward a known dead end" },
-];
-
 export default function Agents() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [skills, setSkills] = useState<any[] | null>(null);
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .skills()
+      .then(setSkills)
+      .catch((e) => console.error("Failed to load skills:", e));
+  }, []);
 
   return (
     <div className="space-y-8 text-sm">
+      {/* Feature Info */}
+      <div>
+        <button onClick={() => setInfoOpen(!infoOpen)} className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1">
+          <span>{infoOpen ? "▼" : "▶"}</span> about
+        </button>
+        {infoOpen && <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+        <div className="flex items-start gap-4">
+          <div className="text-3xl flex-shrink-0">🤖</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                Agent Definitions
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                stable
+              </span>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500 mb-3">
+              Native Integration Rules
+            </p>
+            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+              4 agents shipped inside the Claude Code plugin. Each has its own system prompt, toolset, and rules. Agents follow the Standing Loop — retrieve context, draft plan, validate, implement, rescue, rubric gate, and trace.
+            </p>
+            <div className="text-xs text-emerald-300/90 space-y-1">
+              <p>✓ Prevents re-derivation and thrashing</p>
+              <p>✓ Automatic rescue on repeated failures</p>
+              <p>✓ Deterministic plan validation</p>
+            </div>
+          </div>
+        </div>
+        </section>}
+      </div>
+
       {/* Header */}
       <section className="border border-neutral-800 p-5 bg-neutral-900/30">
         <h1 className="text-lg font-mono font-bold text-neutral-200">Agent Definitions</h1>
@@ -126,39 +162,32 @@ export default function Agents() {
         ))}
       </section>
 
-      {/* Monitor Alerts */}
+      {/* Skills Section */}
       <section>
         <h2 className="text-xs uppercase tracking-widest text-neutral-500 mb-4 font-mono">
-          Monitor Alert Types (repair agent triggers)
+          Skills
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {MONITOR_ALERTS.map((m) => (
-            <div key={m.name} className="border border-neutral-800 p-3 bg-neutral-900/30">
-              <div className="text-xs font-bold text-amber-400 font-mono">{m.name}</div>
-              <div className="text-[11px] text-neutral-400 mt-1">{m.desc}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Standing Loop */}
-      <section className="border border-neutral-800 p-5 bg-neutral-900/30">
-        <h2 className="text-xs uppercase tracking-widest text-neutral-500 mb-4 font-mono">The Standing Loop (atelier:code)</h2>
-        <div className="space-y-2">
-          {[
-            "1. Retrieve context — get_reasoning_context with task, files, domain, errors",
-            "2. Draft plan — 3–8 imperative steps",
-            "3. Validate plan — check_plan (exit 2 = blocked → use suggested_plan)",
-            "4. Implement — keep edits aligned with validated plan",
-            "5. Rescue repeated failures — rescue_failure after 2 same errors",
-            "6. Rubric gate — run_rubric_gate on high-risk domains",
-            "7. Record trace — record_trace with observable summary",
-          ].map((step, i) => (
-            <div key={i} className="flex items-start gap-3 text-xs text-neutral-300 font-mono">
-              <span className="text-[10px] px-1.5 bg-neutral-800 text-neutral-400 shrink-0 mt-0.5">{i + 1}</span>
-              <span className="leading-relaxed">{step}</span>
-            </div>
-          ))}
+        <p className="text-xs text-neutral-400 mb-3">
+          11 common skills available to all agent hosts. Click to expand and
+          see full documentation.
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {skills && skills.length > 0 ? (
+            skills.map((s) => (
+              <SkillCard
+                key={s.name}
+                skill={{
+                  name: s.name,
+                  desc: s.description,
+                  icon: "✓",
+                }}
+                isExpanded={expandedSkill === s.name}
+                onToggle={() => setExpandedSkill(expandedSkill === s.name ? null : s.name)}
+              />
+            ))
+          ) : (
+            <div className="text-neutral-500 text-xs">Loading skills...</div>
+          )}
         </div>
       </section>
     </div>
@@ -253,6 +282,73 @@ function AgentCard({
               {agent.file}
             </code>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SkillCard({
+  skill,
+  isExpanded,
+  onToggle,
+}: {
+  skill: { name: string; desc: string; icon: string };
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const toggle = async () => {
+    if (isExpanded) {
+      onToggle();
+      return;
+    }
+    if (content) {
+      onToggle();
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/skills?name=${skill.name}`);
+      const data = await response.json();
+      const skillData = data.length > 0 ? data[0] : null;
+      if (skillData) {
+        setContent(skillData.content);
+        onToggle();
+      }
+    } catch (e) {
+      console.error("Failed to load skill:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="border border-neutral-800 p-2 bg-neutral-900/30 flex flex-col gap-2">
+      <button
+        onClick={toggle}
+        className="flex items-start gap-2 w-full text-left"
+      >
+        <span className="mt-0.5">{skill.icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-mono font-medium text-neutral-200 truncate">
+            {skill.name}
+          </div>
+          <div className="text-[10px] text-neutral-500 leading-tight">
+            {skill.desc}
+          </div>
+        </div>
+        <span className="text-neutral-600">
+          {loading ? "..." : isExpanded ? "−" : "+"}
+        </span>
+      </button>
+      {isExpanded && content && (
+        <div className="mt-1 pt-2 border-t border-neutral-800">
+          <pre className="text-neutral-400 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto bg-neutral-950/50 p-2 text-[10px]">
+            {content}
+          </pre>
         </div>
       )}
     </div>

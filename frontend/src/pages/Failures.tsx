@@ -12,17 +12,46 @@ export default function Failures() {
 
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!items) return <div className="text-neutral-500">Loading…</div>;
-  if (items.length === 0)
-    return (
-      <div className="text-neutral-500 text-center py-12">
-        <div className="text-4xl mb-4">✅</div>
-        <p className="text-lg">No failure clusters detected</p>
-        <p className="text-sm text-neutral-600 mt-2">Your agents are running smoothly!</p>
-      </div>
-    );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      {/* Feature Info */}
+      <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+        <div className="flex items-start gap-4">
+          <div className="text-3xl flex-shrink-0">🚨</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                Failure Analyzer
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                stable
+              </span>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500 mb-3">
+              Recurring Error Detection & Rescue
+            </p>
+            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+              Clusters traces by error signature. Detects repeated failures and generates rescue procedures automatically. Surfaces top failure patterns for visibility.
+            </p>
+            <div className="text-xs text-emerald-300/90 space-y-1">
+              <p>✓ Stops agents from retrying known dead-end paths</p>
+              <p>✓ Auto-generates rescue blocks from failure clusters</p>
+              <p>✓ Quantifies failure impact across the system</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Failure Clusters */}
+      {items.length === 0 ? (
+        <div className="text-neutral-500 text-center py-12">
+          <div className="text-4xl mb-4">✅</div>
+          <p className="text-lg">No failure clusters detected</p>
+          <p className="text-sm text-neutral-600 mt-2">Your agents are running smoothly!</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
       {items.map((c, i) => {
         const isExpanded = expandedId === c.id;
         const severityColor =
@@ -168,6 +197,8 @@ export default function Failures() {
           </div>
         );
       })}
+    </div>
+      )}
     </div>
   );
 }

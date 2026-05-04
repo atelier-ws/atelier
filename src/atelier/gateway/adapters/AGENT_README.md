@@ -22,7 +22,28 @@ Host-facing integration surfaces for CLI, MCP, service, and embedded runtime ada
 ## Capability-driven tools and commands
 
 - CLI: `capability list/status`, `memory summarize`, `read smart`, `edit smart`, `sql inspect`, `benchmark-runtime`, `benchmark-host`
-- MCP: `atelier_reasoning_reuse`, `atelier_semantic_memory`, `atelier_loop_monitor`, `atelier_tool_supervisor`, `atelier_context_compressor`, `atelier_smart_search`, `atelier_smart_read`, `atelier_smart_edit`, `atelier_sql_inspect`
+- MCP (Core-6): `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_record_trace`, `atelier_run_rubric_gate`, `atelier_compress_context`
+
+## MCP Tool Surface (Core-6)
+
+| Tool | Namespace | Purpose |
+|---|---|---|
+| `atelier_get_reasoning_context` | brain | Retrieves curated reasoning context from the ledger |
+| `atelier_check_plan` | brain | Validates a plan against rubrics before execution |
+| `atelier_rescue_failure` | brain | Suggests recovery for a failed step |
+| `atelier_run_rubric_gate` | brain | Evaluates rubric checks, returns pass/warn/blocked/fail |
+| `atelier_record_trace` | capture | Records trace + realtime prompt/response/bash compaction + optional Langfuse emit |
+| `atelier_compress_context` | infra | Returns compact ledger prompt block plus realtime context snapshot |
+
+Remote mode (`ATELIER_MCP_MODE=remote`) routes the first 5 tools through `remote_client.py`; `compress_context` is always local.
+
+`atelier_rescue_failure` now enriches responses with failure-cluster analysis (`analysis`) derived from historical failed traces.
+
+## OpenMemory CLI Notes
+
+- `atelier openmemory status` always shows local bridge tools.
+- `ATELIER_OPENMEMORY_ENABLED=true` switches mode to local + remote sync.
+- Disabled remote mode still keeps local persistence available.
 
 ## Where to look next
 

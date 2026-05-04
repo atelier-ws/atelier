@@ -9,7 +9,7 @@ from typing import Any
 
 from atelier.infra.runtime.cost_tracker import CostTracker, estimate_cost
 from atelier.infra.runtime.run_ledger import RunLedger
-from atelier.infra.storage import create_store
+from atelier.infra.storage.factory import create_store
 
 
 def default_tasks() -> list[tuple[str, str]]:

@@ -1,4 +1,4 @@
-"""Tests for domain bundle MCP tools and CLI integration (replaces Phase D.3/D.4 pack tests)."""
+"""Regression tests for the reduced MCP tool surface."""
 
 from __future__ import annotations
 
@@ -11,14 +11,59 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
-class TestMCPDomainTools:
-    """Test MCP domain tool registration and schemas."""
+class TestMCPTools:
+    """Test MCP tool registration and schemas."""
 
-    def test_mcp_server_has_domain_tools(self) -> None:
+    def test_removed_tools_absent(self) -> None:
         from atelier.gateway.adapters import mcp_server
 
-        assert "atelier_domain_list" in mcp_server.TOOLS
-        assert "atelier_domain_info" in mcp_server.TOOLS
+        removed = {
+            "atelier_domain_list",
+            "atelier_domain_info",
+            "atelier_host_list",
+            "atelier_host_status",
+            "atelier_smart_search",
+            "atelier_search",
+            "atelier_smart_edit",
+            "atelier_symbol_search",
+            "atelier_extract_reasonblock",
+            "atelier_record_call",
+            "atelier_record_note",
+            "atelier_get_run_ledger",
+            "atelier_update_run_ledger",
+            "atelier_monitor_event",
+            "atelier_get_environment",
+            "atelier_cached_grep",
+            "atelier_status",
+            "atelier_reasoning_reuse",
+            "atelier_semantic_memory",
+            "atelier_loop_monitor",
+            "atelier_tool_supervisor",
+            "atelier_context_compressor",
+            "atelier_bash_intercept",
+            "atelier_module_summary",
+        }
+        for name in removed:
+            assert name not in mcp_server.TOOLS
+
+    def test_core_tools_present(self) -> None:
+        from atelier.gateway.adapters import mcp_server
+
+        expected = {
+            "atelier_get_reasoning_context",
+            "atelier_check_plan",
+            "atelier_rescue_failure",
+            "atelier_record_trace",
+            "atelier_run_rubric_gate",
+            "atelier_compress_context",
+            "atelier_sql_inspect",
+            "atelier_memory_upsert_block",
+            "atelier_memory_get_block",
+            "atelier_memory_archive",
+            "atelier_memory_recall",
+            "atelier_smart_read",
+        }
+        assert expected.issubset(set(mcp_server.TOOLS.keys()))
 
     def test_mcp_server_no_pack_tools(self) -> None:
         from atelier.gateway.adapters import mcp_server
@@ -27,29 +72,6 @@ class TestMCPDomainTools:
         assert "atelier_pack_install" not in mcp_server.TOOLS
         assert "atelier_pack_info" not in mcp_server.TOOLS
         assert "atelier_pack_validate" not in mcp_server.TOOLS
-
-    def test_mcp_host_tools_still_present(self) -> None:
-        from atelier.gateway.adapters import mcp_server
-
-        assert "atelier_host_list" in mcp_server.TOOLS
-        assert "atelier_host_status" in mcp_server.TOOLS
-
-    def test_mcp_domain_list_schema(self) -> None:
-        from atelier.gateway.adapters import mcp_server
-
-        tool = mcp_server.TOOLS["atelier_domain_list"]
-        assert callable(tool["handler"])
-        assert tool["description"]
-        assert tool["inputSchema"]["type"] == "object"
-
-    def test_mcp_domain_info_schema(self) -> None:
-        from atelier.gateway.adapters import mcp_server
-
-        tool = mcp_server.TOOLS["atelier_domain_info"]
-        assert callable(tool["handler"])
-        schema = tool["inputSchema"]
-        assert "bundle_id" in schema["required"]
-        assert "bundle_id" in schema["properties"]
 
     def test_all_tools_have_handlers(self) -> None:
         from atelier.gateway.adapters import mcp_server
@@ -75,43 +97,16 @@ class TestMCPDomainTools:
                     assert isinstance(schema["required"], list)
 
 
-class TestMCPDomainToolHandlers:
-    """Functional tests for domain MCP tool handlers."""
+class TestMCPToolHandlers:
+    """Functional tests for Core-6 MCP handlers."""
 
-    def test_mcp_domain_list_handler_returns_bundles(self) -> None:
-        from atelier.gateway.adapters.mcp_server import tool_atelier_domain_list
+    def test_core_six_all_have_handlers(self) -> None:
+        from atelier.gateway.adapters.mcp_server import TOOLS
 
-        result = tool_atelier_domain_list({})
-        assert isinstance(result, dict)
-        assert "bundles" in result
-        assert isinstance(result["bundles"], list)
-
-    def test_mcp_domain_list_contains_swe_general(self) -> None:
-        from atelier.gateway.adapters.mcp_server import tool_atelier_domain_list
-
-        result = tool_atelier_domain_list({})
-        ids = {item["bundle_id"] for item in result["bundles"]}
-        assert "swe.general" in ids
-
-    def test_mcp_domain_info_handler_returns_bundle_info(self) -> None:
-        from atelier.gateway.adapters.mcp_server import tool_atelier_domain_info
-
-        result = tool_atelier_domain_info({"bundle_id": "swe.general"})
-        assert isinstance(result, dict)
-        assert result["bundle_id"] == "swe.general"
-
-    def test_mcp_domain_info_raises_for_unknown(self) -> None:
-        from atelier.gateway.adapters.mcp_server import tool_atelier_domain_info
-
-        with pytest.raises(ValueError, match="not found"):
-            tool_atelier_domain_info({"bundle_id": "does.not.exist"})
-
-    def test_mcp_host_list_handler_signature(self) -> None:
-        from atelier.gateway.adapters.mcp_server import tool_atelier_host_list
-
-        result = tool_atelier_host_list({})
-        assert isinstance(result, dict)
-        assert "hosts" in result
+        for tool_name in TOOLS:
+            assert callable(TOOLS[tool_name]["handler"])
+            assert TOOLS[tool_name]["description"]
+            assert "inputSchema" in TOOLS[tool_name]
 
 
 if __name__ == "__main__":

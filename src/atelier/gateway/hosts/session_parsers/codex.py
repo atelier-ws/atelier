@@ -44,9 +44,11 @@ import traceback as _traceback
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from atelier.core.foundation.models import (
+    CommandRecord,
+    FileEditRecord,
     RawArtifact,
     ToolCall,
     Trace,
@@ -319,8 +321,10 @@ class CodexImporter:
 
     def _parse_event_msg(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
         tools_called: dict[str, int] = {}
+        tool_args: dict[str, dict[str, Any] | None] = {}
         files_touched: set[str] = set()
-        commands_run: list[str] = []
+        file_diffs: dict[str, str] = {}  # path → diff text
+        commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
         task = "untitled codex session"
         created_at = _utcnow()
@@ -354,14 +358,29 @@ class CodexImporter:
                 elif ptype == "exec_command_end":
                     cmd = _command_str(payload.get("command", ""))
                     if cmd:
-                        commands_run.append(cmd[:200])
+                        exit_code = payload.get("exit_code")
+                        stdout = str(payload.get("stdout") or "")[:1024]
+                        stderr = str(payload.get("stderr") or "")[:1024]
+                        commands_run.append(
+                            CommandRecord(
+                                command=cmd[:200],
+                                exit_code=exit_code,
+                                stdout=stdout,
+                                stderr=stderr,
+                            )
+                        )
                         tools_called["shell"] = tools_called.get("shell", 0) + 1
 
                 elif ptype == "patch_apply_end":
                     # changes = {absolute_path: {"type":"update","unified_diff":"..."}}
                     changes: dict[str, Any] = payload.get("changes") or {}
-                    for fpath in changes:
+                    for fpath, change_data in changes.items():
                         files_touched.add(str(fpath))
+                        diff_text = ""
+                        if isinstance(change_data, dict):
+                            diff_text = str(change_data.get("unified_diff") or "")[:4096]
+                        if diff_text:
+                            file_diffs[str(fpath)] = diff_text
                     if changes:
                         tools_called["patch"] = tools_called.get("patch", 0) + 1
 
@@ -389,10 +408,15 @@ class CodexImporter:
                         args: dict[str, Any] = json.loads(args_str)
                     except (json.JSONDecodeError, TypeError):
                         args = {}
+                    tool_args[name] = args
                     if name == "apply_patch":
                         patch_text = args.get("patch", "")
                         for fp in _files_from_patch(patch_text):
                             files_touched.add(fp)
+                        if patch_text:
+                            # Store the full patch as diff for each file
+                            for fp in _files_from_patch(patch_text):
+                                file_diffs[fp] = patch_text[:4096]
                     elif name in ("exec_command", "shell_command"):
                         cmd = str(args.get("cmd") or args.get("command") or "")
                         if cmd:
@@ -405,6 +429,17 @@ class CodexImporter:
                         patch_text = str(payload.get("input", ""))
                         for fp in _files_from_patch(patch_text):
                             files_touched.add(fp)
+                        if patch_text:
+                            for fp in _files_from_patch(patch_text):
+                                file_diffs[fp] = patch_text[:4096]
+
+        # Build enriched files_touched
+        files_enriched: list[str | FileEditRecord] = []
+        for f in sorted(files_touched):
+            if f in file_diffs:
+                files_enriched.append(FileEditRecord(path=f, diff=file_diffs[f], event="edit"))
+            else:
+                files_enriched.append(f)
 
         # ── Build Trace with reasoning ───────────────────────────────────────────────
         return Trace(
@@ -414,9 +449,12 @@ class CodexImporter:
             domain="coding",
             task=task,
             status="success",
-            files_touched=sorted(files_touched),
-            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
-            commands_run=commands_run,
+            files_touched=cast(Any, files_enriched),
+            tools_called=[
+                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n))
+                for n, c in tools_called.items()
+            ],
+            commands_run=cast(Any, commands_run),
             errors_seen=[],
             validation_results=[],
             raw_artifact_ids=[artifact_id],
@@ -430,8 +468,10 @@ class CodexImporter:
 
     def _parse_flat(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
         tools_called: dict[str, int] = {}
+        tool_args: dict[str, dict[str, Any] | None] = {}
         files_touched: set[str] = set()
-        commands_run: list[str] = []
+        file_diffs: dict[str, str] = {}
+        commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
         task = "untitled codex session"
         created_at = _utcnow()
@@ -492,15 +532,27 @@ class CodexImporter:
                         args = json.loads(str(args_raw))
                     except (json.JSONDecodeError, TypeError):
                         args = {}
+                tool_args[name] = args
 
                 if name == "apply_patch":
                     patch_text = str(args.get("patch", ""))
                     for fp in _files_from_patch(patch_text):
                         files_touched.add(fp)
+                    if patch_text:
+                        for fp in _files_from_patch(patch_text):
+                            file_diffs[fp] = patch_text[:4096]
                 elif name in ("exec_command", "shell_command"):
                     cmd = str(args.get("cmd") or args.get("command") or "")
                     if cmd:
                         commands_run.append(cmd[:200])
+
+        # Build enriched files_touched
+        files_enriched: list[str | FileEditRecord] = []
+        for f in sorted(files_touched):
+            if f in file_diffs:
+                files_enriched.append(FileEditRecord(path=f, diff=file_diffs[f], event="edit"))
+            else:
+                files_enriched.append(f)
 
         return Trace(
             id=f"codex-{session_id}",
@@ -509,9 +561,12 @@ class CodexImporter:
             domain="coding",
             task=task,
             status="success",
-            files_touched=sorted(files_touched),
-            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
-            commands_run=commands_run,
+            files_touched=cast(Any, files_enriched),
+            tools_called=[
+                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n))
+                for n, c in tools_called.items()
+            ],
+            commands_run=cast(Any, commands_run),
             errors_seen=[],
             validation_results=[],
             raw_artifact_ids=[artifact_id],

@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import contextlib
 
-from .models import ImportInfo, SymbolInfo
+from .models import FileOutline, ImportInfo, SymbolInfo, SymbolOutline
 
 
 def _estimate_complexity(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
@@ -294,3 +294,68 @@ def _python_full_ast(source: str) -> tuple[list[SymbolInfo], list[ImportInfo], s
 def _ast_truncated_source(source: str, *, max_body_lines: int = 3) -> str:
     """Legacy alias for stub_function_bodies."""
     return stub_function_bodies(source, max_body_lines=max_body_lines)
+
+
+def outline(path: str, source: str) -> FileOutline:
+    """Return a compact Python outline (classes/functions/methods + imports)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return FileOutline(
+            path=path, lang="python", loc=len(source.splitlines()), symbols=[], imports=[]
+        )
+
+    imports: list[str] = []
+    symbols: list[SymbolOutline] = []
+
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append(alias.name)
+            continue
+
+        if isinstance(node, ast.ImportFrom):
+            if node.module:
+                imports.append(node.module)
+            continue
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            symbols.append(
+                SymbolOutline(
+                    name=node.name,
+                    kind="function",
+                    start_line=node.lineno,
+                    end_line=getattr(node, "end_lineno", node.lineno),
+                )
+            )
+            continue
+
+        if isinstance(node, ast.ClassDef):
+            symbols.append(
+                SymbolOutline(
+                    name=node.name,
+                    kind="class",
+                    start_line=node.lineno,
+                    end_line=getattr(node, "end_lineno", node.lineno),
+                )
+            )
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    symbols.append(
+                        SymbolOutline(
+                            name=f"{node.name}.{item.name}",
+                            kind="method",
+                            start_line=item.lineno,
+                            end_line=getattr(item, "end_lineno", item.lineno),
+                        )
+                    )
+
+    unique_imports = sorted(dict.fromkeys(imports))
+    symbols.sort(key=lambda sym: (sym.start_line, sym.end_line, sym.name))
+    return FileOutline(
+        path=path,
+        lang="python",
+        loc=len(source.splitlines()),
+        symbols=symbols,
+        imports=unique_imports,
+    )

@@ -25,3 +25,8 @@ coding agent.
 Run `atelier-status` in any terminal to see the current run state.
 
 All tools are available via MCP server name `atelier`.
+
+`smart_read`, `smart_search`, and `cached_grep` are default-on Atelier
+augmentations for repeated context reads/searches. Keep opencode's native file
+read, repository search, shell `rg`, and `grep` available for exact raw access.
+Set `ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.

@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 from typing import Any
 
 from .indexer import FileIndex
-from .models import SemanticSummary
+from .models import FileOutline, SemanticSummary
 from .python_ast import analyze_python, stub_function_bodies
+from .python_ast import outline as python_outline
 from .search import SymbolIndex
 from .typescript_ast import analyze_typescript
+from .typescript_ast import outline as typescript_outline
 
 try:
     from git import Repo
@@ -58,16 +62,172 @@ class SemanticFileMemoryCapability:
     # Core summarisation
     # ------------------------------------------------------------------
 
-    def summarize_file(self, path: str | Path, *, max_lines: int = 120) -> SemanticSummary:
+    @staticmethod
+    def _effective_loc(source: str, language: str) -> int:
+        """Count effective LOC (exclude blank + comment-only lines)."""
+        if language == "python":
+            return sum(
+                1
+                for line in source.splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            )
+
+        if language in {"typescript", "javascript"}:
+            count = 0
+            in_block_comment = False
+            for raw in source.splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+
+                if in_block_comment:
+                    end_idx = line.find("*/")
+                    if end_idx < 0:
+                        continue
+                    line = line[end_idx + 2 :].strip()
+                    in_block_comment = False
+                    if not line:
+                        continue
+
+                if line.startswith("//"):
+                    continue
+
+                if line.startswith("/*"):
+                    end_idx = line.find("*/", 2)
+                    if end_idx < 0:
+                        in_block_comment = True
+                        continue
+                    trailing = line[end_idx + 2 :].strip()
+                    if not trailing:
+                        continue
+                    line = trailing
+
+                if line:
+                    count += 1
+            return count
+
+        return sum(1 for line in source.splitlines() if line.strip())
+
+    @staticmethod
+    def _parse_range_spec(range_spec: str, total_lines: int) -> tuple[int, int]:
+        """Parse line range forms like 42-118 or L42-L118."""
+        s = range_spec.strip()
+        m = re.fullmatch(r"L?(\d+)\s*-\s*L?(\d+)", s, flags=re.IGNORECASE)
+        if m is None:
+            raise ValueError("range must be in form 'start-end' or 'Lstart-Lend'")
+        start = int(m.group(1))
+        end = int(m.group(2))
+        if start < 1 or end < 1:
+            raise ValueError("range lines must be >= 1")
+        if start > end:
+            raise ValueError("range start must be <= end")
+        return min(start, total_lines), min(end, total_lines)
+
+    @staticmethod
+    def _token_savings(full_text: str, returned_text: str) -> int:
+        full_tokens = max(1, len(full_text) // 4)
+        returned_tokens = max(1, len(returned_text) // 4)
+        return max(0, full_tokens - returned_tokens)
+
+    def _outline_for(
+        self, path: Path, source: str, language: str, *, effective_loc: int
+    ) -> FileOutline:
+        if language == "python":
+            base = python_outline(str(path), source)
+        else:
+            lang = "javascript" if language == "javascript" else "typescript"
+            base = typescript_outline(str(path), source, lang=lang)
+        return base.model_copy(update={"loc": effective_loc})
+
+    def smart_read(
+        self,
+        path: str | Path,
+        *,
+        range_spec: str | None = None,
+        expand: bool = False,
+        outline_threshold: int = 200,
+    ) -> dict[str, Any]:
+        """Read file in full/range/outline mode with token-savings accounting."""
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"file not found: {file_path}")
+
+        source = file_path.read_text(encoding="utf-8", errors="replace")
+        lines = source.splitlines()
+        language = self._language_for(file_path)
+        effective_loc = self._effective_loc(source, language)
+
+        cache_hit = self._index.get(file_path) is not None
+        if not cache_hit:
+            self.summarize_file(file_path, cache_enabled=True)
+
+        result: dict[str, Any] = {
+            "path": str(file_path),
+            "language": language,
+            "loc": effective_loc,
+            "cache_hit": cache_hit,
+        }
+
+        if range_spec:
+            start, end = self._parse_range_spec(range_spec, len(lines))
+            content = "\n".join(lines[start - 1 : end])
+            result.update(
+                {
+                    "mode": "range",
+                    "range": f"{start}-{end}",
+                    "content": content,
+                    "tokens_saved": self._token_savings(source, content),
+                }
+            )
+            return result
+
+        if (
+            not expand
+            and effective_loc > outline_threshold
+            and language in {"python", "typescript", "javascript"}
+        ):
+            outline = self._outline_for(
+                file_path,
+                source,
+                language,
+                effective_loc=effective_loc,
+            )
+            outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False)
+            result.update(
+                {
+                    "mode": "outline",
+                    "outline": outline.model_dump(mode="json"),
+                    "tokens_saved": self._token_savings(source, outline_json),
+                }
+            )
+            return result
+
+        result.update(
+            {
+                "mode": "full",
+                "content": source,
+                "tokens_saved": self._token_savings(source, source),
+            }
+        )
+        return result
+
+    def summarize_file(
+        self,
+        path: str | Path,
+        *,
+        max_lines: int = 120,
+        cache_enabled: bool = True,
+    ) -> SemanticSummary:
         """Analyse a file and cache the result (by SHA-256 content hash)."""
         file_path = Path(path)
         if not file_path.is_file():
             raise FileNotFoundError(f"file not found: {file_path}")
 
         # Serve from cache if unchanged
-        cached = self._index.get(file_path)
-        if cached:
-            return self._entry_to_summary(cached)
+        if cache_enabled:
+            cached = self._index.get(file_path)
+            if cached:
+                return self._entry_to_summary(cached)
 
         source = file_path.read_text(encoding="utf-8", errors="replace")
         lines = source.splitlines()
@@ -158,7 +318,9 @@ class SemanticFileMemoryCapability:
             "git_last_commit": git_last_commit,
             "git_last_author_date": git_last_author_date,
         }
-        self._index.put(file_path, payload)
+        if cache_enabled:
+            self._index.put(file_path, payload)
+            return self._entry_to_summary(self._index.get(file_path) or payload)
         return self._entry_to_summary(payload)
 
     @staticmethod

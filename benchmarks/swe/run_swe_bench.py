@@ -1,10 +1,11 @@
 """``atelier-bench swe`` — Click command group entry point.
 
 Subcommands:
-    run        run the harness end-to-end against a config
-    evaluate   shell out to the official swebench evaluator (or mock)
-    report     re-render report.md/json from existing metrics
-    show-modes print the mode matrix
+    run                     run the harness end-to-end against a config
+    evaluate                shell out to the official swebench evaluator (or mock)
+    report                  re-render report.md/json from existing metrics
+    show-modes              print the mode matrix
+    measure-context-savings run the WP-19 11-prompt savings benchmark
 """
 
 from __future__ import annotations
@@ -50,17 +51,13 @@ cli.add_command(swe)
 
 
 @swe.command("run")
-@click.option(
-    "--config", "config_path", required=True, type=click.Path(exists=True, dir_okay=False)
-)
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True, dir_okay=False))
 @click.option("--out", "out_override", default=None, type=click.Path(file_okay=False))
 def cmd_run(config_path: str, out_override: str | None) -> None:
     """Execute the configured benchmark and write predictions + metrics."""
     cfg = load_config(config_path)
     if cfg.warm_required_but_missing():
-        raise click.ClickException(
-            "warm_reasonblocks_path is required when modes include atelier_warm_reasonblocks"
-        )
+        raise click.ClickException("warm_reasonblocks_path is required when modes include atelier_warm_reasonblocks")
     out_dir = Path(out_override or cfg.output_dir) / time.strftime("%Y%m%dT%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -103,9 +100,7 @@ def cmd_run(config_path: str, out_override: str | None) -> None:
                     patch_text = ""
                     if m.patch_path:
                         patch_text = Path(m.patch_path).read_text()
-                    preds.append(
-                        (task.instance_id, f"{cfg.agent_host}:{cfg.model}:{mode.value}", patch_text)
-                    )
+                    preds.append((task.instance_id, f"{cfg.agent_host}:{cfg.model}:{mode.value}", patch_text))
         write_metrics(rows, out_dir / f"metrics_{mode.value}.jsonl")
         export_predictions(preds, out_dir / f"predictions_{mode.value}.jsonl")
         click.echo(f"[swe] mode={mode.value} attempts={len(rows)} -> {out_dir}")
@@ -120,9 +115,7 @@ def cmd_run(config_path: str, out_override: str | None) -> None:
 
 @swe.command("evaluate")
 @click.option("--run-dir", "run_dir", required=True, type=click.Path(exists=True, file_okay=False))
-@click.option(
-    "--mode", default=None, help="Evaluate a single mode; default: every predictions_*.jsonl"
-)
+@click.option("--mode", default=None, help="Evaluate a single mode; default: every predictions_*.jsonl")
 @click.option("--mock/--official", default=False, help="Force the dependency-free mock evaluator")
 def cmd_evaluate(run_dir: str, mode: str | None, mock: bool) -> None:
     """Run the official SWE-bench evaluator on the predictions files."""
@@ -183,6 +176,46 @@ def cmd_show_modes() -> None:
             f"forced={list(spec.forced_steps)} "
             f"runtime={spec.enable_run_ledger} warm={spec.requires_warm_blocks}"
         )
+
+
+# ----------------------- measure-context-savings -------------------------- #
+
+
+@swe.command("measure-context-savings")
+@click.option(
+    "--suite",
+    "suite_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to prompts YAML (default: benchmarks/swe/prompts_11.yaml)",
+)
+@click.option("--json", "emit_json", is_flag=True, default=False, help="Emit JSON output")
+def cmd_measure_context_savings(suite_path: str | None, emit_json: bool) -> None:
+    """Run the WP-19 11-prompt context-savings benchmark.
+
+    Measures the token reduction achieved by all V2 Atelier levers
+    (smart_read, AST truncation, memory recall, compact lifecycle,
+    batch_edit, search_read, sql_inspect, cached_grep) against the
+    vanilla baseline (ATELIER_DISABLE_ALL=1).
+
+    Exits with code 1 when the aggregate reduction is below 50 %.
+    """
+    from benchmarks.swe.savings_bench import run_savings_bench, _build_text_report
+    from pathlib import Path as _Path
+
+    kw: dict[str, Any] = {}
+    if suite_path is not None:
+        kw["suite_path"] = _Path(suite_path)
+
+    result = run_savings_bench(**kw)
+
+    if emit_json:
+        click.echo(json.dumps(result.to_dict(), indent=2))
+    else:
+        click.echo(_build_text_report(result))
+
+    if result.reduction_pct < 50.0:
+        raise click.ClickException(f"context savings {result.reduction_pct:.2f}% is below the 50% CI gate")
 
 
 def main() -> None:  # console-script entry point

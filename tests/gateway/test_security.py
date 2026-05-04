@@ -23,7 +23,6 @@ from atelier.core.foundation.redaction import (
     redact_failure_cluster,
 )
 from atelier.gateway.adapters.cli import cli
-from atelier.gateway.adapters.mcp_server import tool_cached_grep
 
 # ---------------------------------------------------------------------------
 # Redaction primitives
@@ -147,9 +146,10 @@ def test_assert_safe_grep_args_accepts_clean_args() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_cached_grep_rejects_injection() -> None:
-    with pytest.raises(ValueError):
-        tool_cached_grep({"pattern": "foo; rm -rf /", "path": "."})
+def test_mcp_cached_grep_removed_from_core_six_surface() -> None:
+    from atelier.gateway.adapters import mcp_server
+
+    assert "atelier_cached_grep" not in mcp_server.TOOLS
 
 
 def test_cli_cached_grep_rejects_injection(tmp_path: Path) -> None:

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
+from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
     FailureCluster,
     PlanCheckResult,
@@ -26,10 +28,30 @@ if TYPE_CHECKING:
     from atelier.gateway.sdk.remote import RemoteClient
 
 
+class ReasoningContextRecalledPassage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    source: str
+    score: float
+
+
+class ReasoningContextTokenBreakdown(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reasonblocks: int
+    memory: int
+    total: int
+
+
 class ReasoningContextResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     context: str
+    tokens_used: int | None = None
+    tokens_saved_vs_naive: int | None = None
+    recalled_passages: builtins.list[ReasoningContextRecalledPassage] = Field(default_factory=list)
+    tokens_breakdown: ReasoningContextTokenBreakdown | None = None
 
 
 class TraceRecordResult(BaseModel):
@@ -38,10 +60,53 @@ class TraceRecordResult(BaseModel):
     id: str
 
 
+class MemoryUpsertBlockResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    version: int
+
+
+class MemoryArchiveResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    dedup_hit: bool = False
+
+
+class MemoryRecallPassage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    text: str
+    source_ref: str = ""
+    tags: builtins.list[str] = Field(default_factory=list)
+
+
+class MemoryRecallResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    passages: builtins.list[MemoryRecallPassage] = Field(default_factory=list)
+    recall_id: str
+
+
 class FailureAnalysisResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     clusters: builtins.list[FailureCluster] = Field(default_factory=list)
+
+
+class LessonInboxResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lessons: builtins.list[LessonCandidate] = Field(default_factory=list)
+
+
+class LessonDecisionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lesson: LessonCandidate
+    promotion: LessonPromotion | None = None
 
 
 class EvalRecord(BaseModel):
@@ -81,15 +146,9 @@ class ReasonBlockClient:
         self._client = client
 
     def list(
-        self,
-        *,
-        domain: str | None = None,
-        include_deprecated: bool = False,
+        self, *, domain: str | None = None, include_deprecated: bool = False
     ) -> builtins.list[ReasonBlock]:
-        return self._client._list_reasonblocks(
-            domain=domain,
-            include_deprecated=include_deprecated,
-        )
+        return self._client._list_reasonblocks(domain=domain, include_deprecated=include_deprecated)
 
     def search(self, query: str, *, limit: int = 20) -> builtins.list[ReasonBlock]:
         return self._client._search_reasonblocks(query=query, limit=limit)
@@ -123,8 +182,9 @@ class TraceClient:
         domain: str,
         task: str,
         status: TraceStatus,
-        files_touched: builtins.list[str] | None = None,
-        commands_run: builtins.list[str] | None = None,
+        files_touched: builtins.list[str | dict[str, Any]] | None = None,
+        commands_run: builtins.list[str | dict[str, Any]] | None = None,
+        tools_called: builtins.list[dict[str, Any]] | None = None,
         errors_seen: builtins.list[str] | None = None,
         diff_summary: str = "",
         output_summary: str = "",
@@ -137,6 +197,7 @@ class TraceClient:
             status=status,
             files_touched=files_touched,
             commands_run=commands_run,
+            tools_called=tools_called,
             errors_seen=errors_seen,
             diff_summary=diff_summary,
             output_summary=output_summary,
@@ -147,11 +208,7 @@ class TraceClient:
         return self._client._get_trace(trace_id)
 
     def list(
-        self,
-        *,
-        domain: str | None = None,
-        status: str | None = None,
-        limit: int = 50,
+        self, *, domain: str | None = None, status: str | None = None, limit: int = 50
     ) -> builtins.list[Trace]:
         return self._client._list_traces(domain=domain, status=status, limit=limit)
 
@@ -172,11 +229,7 @@ class EvalClient:
         return self._client._list_evals(domain=domain)
 
     def run(
-        self,
-        *,
-        case_id: str | None = None,
-        domain: str | None = None,
-        limit: int = 50,
+        self, *, case_id: str | None = None, domain: str | None = None, limit: int = 50
     ) -> EvalRunResult:
         return self._client._run_evals(case_id=case_id, domain=domain, limit=limit)
 
@@ -187,6 +240,93 @@ class SavingsClient:
 
     def summary(self) -> SavingsSummary:
         return self._client.get_savings()
+
+
+class MemoryClient:
+    def __init__(self, client: AtelierClient) -> None:
+        self._client = client
+
+    def upsert_block(
+        self,
+        *,
+        agent_id: str,
+        label: str,
+        value: str,
+        limit_chars: int = 8000,
+        description: str = "",
+        read_only: bool = False,
+        pinned: bool = False,
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
+        actor: str | None = None,
+    ) -> MemoryUpsertBlockResult:
+        return self._client.memory_upsert_block(
+            agent_id=agent_id,
+            label=label,
+            value=value,
+            limit_chars=limit_chars,
+            description=description,
+            read_only=read_only,
+            pinned=pinned,
+            metadata=metadata,
+            expected_version=expected_version,
+            actor=actor,
+        )
+
+    def get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
+        return self._client.memory_get_block(agent_id=agent_id, label=label)
+
+    def archive(
+        self,
+        *,
+        agent_id: str,
+        text: str,
+        source: str,
+        source_ref: str = "",
+        tags: builtins.list[str] | None = None,
+    ) -> MemoryArchiveResult:
+        return self._client.memory_archive(
+            agent_id=agent_id,
+            text=text,
+            source=source,
+            source_ref=source_ref,
+            tags=tags,
+        )
+
+    def recall(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        top_k: int = 5,
+        tags: builtins.list[str] | None = None,
+        since: str | None = None,
+    ) -> MemoryRecallResult:
+        return self._client.memory_recall(
+            agent_id=agent_id,
+            query=query,
+            top_k=top_k,
+            tags=tags,
+            since=since,
+        )
+
+
+class LessonClient:
+    def __init__(self, client: AtelierClient) -> None:
+        self._client = client
+
+    def inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
+        return self._client.lesson_inbox(domain=domain, limit=limit)
+
+    def decide(
+        self, *, lesson_id: str, decision: str, reviewer: str, reason: str
+    ) -> LessonDecisionResult:
+        return self._client.lesson_decide(
+            lesson_id=lesson_id,
+            decision=decision,
+            reviewer=reviewer,
+            reason=reason,
+        )
 
 
 class AtelierClient(ABC):
@@ -200,6 +340,8 @@ class AtelierClient(ABC):
         self.failures = FailureAnalyzerClient(self)
         self.evals = EvalClient(self)
         self.savings = SavingsClient(self)
+        self.memory = MemoryClient(self)
+        self.lessons = LessonClient(self)
 
     @classmethod
     def local(cls, *, root: str = ".atelier") -> LocalClient:
@@ -280,8 +422,9 @@ class AtelierClient(ABC):
         domain: str,
         task: str,
         status: TraceStatus,
-        files_touched: builtins.list[str] | None = None,
-        commands_run: builtins.list[str] | None = None,
+        files_touched: builtins.list[str | dict[str, Any]] | None = None,
+        commands_run: builtins.list[str | dict[str, Any]] | None = None,
+        tools_called: builtins.list[dict[str, Any]] | None = None,
         errors_seen: builtins.list[str] | None = None,
         diff_summary: str = "",
         output_summary: str = "",
@@ -291,15 +434,72 @@ class AtelierClient(ABC):
 
     @abstractmethod
     def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        limit: int = 100,
+        self, *, domain: str | None = None, limit: int = 100
     ) -> FailureAnalysisResult:
         raise NotImplementedError
 
     @abstractmethod
     def get_savings(self) -> SavingsSummary:
+        raise NotImplementedError
+
+    @abstractmethod
+    def memory_upsert_block(
+        self,
+        *,
+        agent_id: str,
+        label: str,
+        value: str,
+        limit_chars: int = 8000,
+        description: str = "",
+        read_only: bool = False,
+        pinned: bool = False,
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
+        actor: str | None = None,
+    ) -> MemoryUpsertBlockResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def memory_archive(
+        self,
+        *,
+        agent_id: str,
+        text: str,
+        source: str,
+        source_ref: str = "",
+        tags: builtins.list[str] | None = None,
+    ) -> MemoryArchiveResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def memory_recall(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        top_k: int = 5,
+        tags: builtins.list[str] | None = None,
+        since: str | None = None,
+    ) -> MemoryRecallResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def lesson_inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
+        raise NotImplementedError
+
+    @abstractmethod
+    def lesson_decide(
+        self,
+        *,
+        lesson_id: str,
+        decision: str,
+        reviewer: str,
+        reason: str,
+    ) -> LessonDecisionResult:
         raise NotImplementedError
 
     @abstractmethod

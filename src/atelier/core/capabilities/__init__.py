@@ -1,17 +1,9 @@
-"""Atelier core capabilities for compounding reasoning runtime."""
+"""Atelier core capabilities package."""
 
-from atelier.core.capabilities.budget_optimizer import (
-    BudgetPlan,
-    ContextBlock,
-    PromptBudgetOptimizer,
-)
-from atelier.core.capabilities.context_compression import ContextCompressionCapability
-from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-from atelier.core.capabilities.reasoning_reuse import ReasoningReuseCapability
-from atelier.core.capabilities.registry import CapabilityNode, CapabilityRegistry
-from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
-from atelier.core.capabilities.telemetry import TelemetryEvent, TelemetrySubstrate
-from atelier.core.capabilities.tool_supervision import ToolSupervisionCapability
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     "BudgetPlan",
@@ -19,11 +11,73 @@ __all__ = [
     "CapabilityRegistry",
     "ContextBlock",
     "ContextCompressionCapability",
+    "FailureAnalysisCapability",
+    "LessonPromoterCapability",
     "LoopDetectionCapability",
     "PromptBudgetOptimizer",
+    "ProofGateCapability",
+    "QualityRouterCapability",
     "ReasoningReuseCapability",
     "SemanticFileMemoryCapability",
     "TelemetryEvent",
     "TelemetrySubstrate",
     "ToolSupervisionCapability",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    mapping = {
+        "BudgetPlan": ("atelier.core.capabilities.budget_optimizer", "BudgetPlan"),
+        "ContextBlock": ("atelier.core.capabilities.budget_optimizer", "ContextBlock"),
+        "PromptBudgetOptimizer": (
+            "atelier.core.capabilities.budget_optimizer",
+            "PromptBudgetOptimizer",
+        ),
+        "QualityRouterCapability": (
+            "atelier.core.capabilities.quality_router.capability",
+            "QualityRouterCapability",
+        ),
+        "ContextCompressionCapability": (
+            "atelier.core.capabilities.context_compression",
+            "ContextCompressionCapability",
+        ),
+        "FailureAnalysisCapability": (
+            "atelier.core.capabilities.failure_analysis",
+            "FailureAnalysisCapability",
+        ),
+        "LessonPromoterCapability": (
+            "atelier.core.capabilities.lesson_promotion",
+            "LessonPromoterCapability",
+        ),
+        "LoopDetectionCapability": (
+            "atelier.core.capabilities.loop_detection",
+            "LoopDetectionCapability",
+        ),
+        "ReasoningReuseCapability": (
+            "atelier.core.capabilities.reasoning_reuse",
+            "ReasoningReuseCapability",
+        ),
+        "ProofGateCapability": (
+            "atelier.core.capabilities.proof_gate.capability",
+            "ProofGateCapability",
+        ),
+        "CapabilityNode": ("atelier.core.capabilities.registry", "CapabilityNode"),
+        "CapabilityRegistry": ("atelier.core.capabilities.registry", "CapabilityRegistry"),
+        "SemanticFileMemoryCapability": (
+            "atelier.core.capabilities.semantic_file_memory",
+            "SemanticFileMemoryCapability",
+        ),
+        "TelemetryEvent": ("atelier.core.capabilities.telemetry", "TelemetryEvent"),
+        "TelemetrySubstrate": (
+            "atelier.core.capabilities.telemetry",
+            "TelemetrySubstrate",
+        ),
+        "ToolSupervisionCapability": (
+            "atelier.core.capabilities.tool_supervision",
+            "ToolSupervisionCapability",
+        ),
+    }
+    if name not in mapping:
+        raise AttributeError(name)
+    module_name, symbol = mapping[name]
+    return getattr(import_module(module_name), symbol)

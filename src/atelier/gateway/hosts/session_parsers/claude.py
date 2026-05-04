@@ -37,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import (
+    CommandRecord,
+    FileEditRecord,
     RawArtifact,
     ToolCall,
     Trace,
@@ -191,9 +193,14 @@ class ClaudeImporter:
 
         # ── Step 2: build curated Trace from the redacted JSONL ──────────────
         tools_called: dict[str, int] = {}
-        files_touched: set[str] = set()
+        tool_args: dict[str, dict[str, Any] | None] = {}
+        tool_results: dict[str, str] = {}
+        pending_tool_uses: dict[str, dict[str, Any]] = {}
+        file_index_by_tool_use_id: dict[str, int] = {}
+        command_index_by_tool_use_id: dict[str, int] = {}
+        files_touched: list[str | FileEditRecord] = []
         errors_seen: set[str] = set()
-        commands_run: list[str] = []
+        commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
         task = "untitled claude session"
         title = ""
@@ -252,6 +259,48 @@ class ClaudeImporter:
                         and len(text) > 5
                     ):
                         task = text[:200]
+                if isinstance(content, list):
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") != "tool_result":
+                            continue
+                        tool_use_id = str(block.get("tool_use_id") or "")
+                        if not tool_use_id:
+                            continue
+                        pending = pending_tool_uses.get(tool_use_id) or {}
+                        name = str(pending.get("name") or block.get("name") or "unknown")
+                        result_text = _tool_result_text(block.get("content"))
+                        if result_text:
+                            tool_results[name] = result_text[:200]
+                        if name == "Bash":
+                            idx = command_index_by_tool_use_id.get(tool_use_id)
+                            if idx is not None:
+                                stdout, stderr = _tool_result_streams(
+                                    block.get("content"),
+                                    is_error=bool(block.get("is_error")),
+                                )
+                                command = str((pending.get("input") or {}).get("command") or "")[
+                                    :200
+                                ]
+                                commands_run[idx] = CommandRecord(
+                                    command=command,
+                                    exit_code=block.get("exit_code"),
+                                    stdout=stdout,
+                                    stderr=stderr,
+                                )
+                        elif name in {"Write", "Edit", "MultiEdit"}:
+                            idx = file_index_by_tool_use_id.get(tool_use_id)
+                            if idx is not None:
+                                inp = pending.get("input") or {}
+                                path = str(inp.get("file_path") or inp.get("path") or "")
+                                diff = _infer_file_edit_diff(name, inp, result_text)
+                                if diff:
+                                    files_touched[idx] = FileEditRecord(
+                                        path=path,
+                                        diff=diff[:4096],
+                                        event="edit",
+                                    )
 
             elif ev_type == "assistant":
                 msg = ev.get("message") or {}
@@ -268,17 +317,37 @@ class ClaudeImporter:
 
                     if block_type != "tool_use":
                         continue
-                    name = block.get("name", "unknown")
+                    name = str(block.get("name", "unknown"))
                     tools_called[name] = tools_called.get(name, 0) + 1
                     inp = block.get("input") or {}
+                    if not isinstance(inp, dict):
+                        inp = {}
+                    tool_args[name] = inp or tool_args.get(name)
+                    tool_use_id = str(block.get("id") or "")
+                    if tool_use_id:
+                        pending_tool_uses[tool_use_id] = {"name": name, "input": inp}
                     if name in _FILE_TOOLS:
                         fp = inp.get("file_path") or inp.get("path")
                         if fp:
-                            files_touched.add(str(fp))
+                            fp_str = str(fp)
+                            if name in {"Write", "Edit", "MultiEdit"}:
+                                diff = _infer_file_edit_diff(name, inp)
+                                if diff:
+                                    files_touched.append(
+                                        FileEditRecord(path=fp_str, diff=diff[:4096], event="edit")
+                                    )
+                                else:
+                                    files_touched.append(fp_str)
+                            else:
+                                files_touched.append(fp_str)
+                            if tool_use_id:
+                                file_index_by_tool_use_id[tool_use_id] = len(files_touched) - 1
                     elif name == "Bash":
-                        cmd = inp.get("command")
+                        cmd = str(inp.get("command") or "").strip()
                         if cmd:
-                            commands_run.append(str(cmd)[:200])
+                            commands_run.append(cmd[:200])
+                            if tool_use_id:
+                                command_index_by_tool_use_id[tool_use_id] = len(commands_run) - 1
 
         # Use AI title as task if we couldn't extract a clean user message
         if task == "untitled claude session" and title:
@@ -291,8 +360,17 @@ class ClaudeImporter:
             domain="coding",
             task=task,
             status="success",
-            files_touched=sorted(files_touched),
-            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
+            files_touched=files_touched,
+            tools_called=[
+                ToolCall(
+                    name=n,
+                    args_hash="",
+                    count=c,
+                    args=tool_args.get(n),
+                    result_summary=tool_results.get(n, "")[:200],
+                )
+                for n, c in tools_called.items()
+            ],
             commands_run=commands_run,
             errors_seen=sorted(errors_seen),
             validation_results=[],
@@ -378,4 +456,135 @@ def _extract_user_text(content: Any) -> str:
                     else:
                         parts.append(str(t))
         return " ".join(parts).strip()
+    return ""
+
+
+def _tool_result_text(content: Any) -> str:
+    """Flatten Claude tool-result content into plain text."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, dict):
+        if "stdout" in content or "stderr" in content:
+            stdout = _tool_result_text(content.get("stdout"))
+            stderr = _tool_result_text(content.get("stderr"))
+            return "\n".join(part for part in (stdout, stderr) if part).strip()
+        for key in ("text", "content", "output", "value"):
+            if key in content:
+                text = _tool_result_text(content.get(key))
+                if text:
+                    return text
+        return ""
+    if isinstance(content, list):
+        parts = [_tool_result_text(item) for item in content]
+        return "\n".join(part for part in parts if part).strip()
+    return str(content).strip()
+
+
+def _tool_result_streams(content: Any, *, is_error: bool = False) -> tuple[str, str]:
+    """Extract stdout/stderr text from a Claude tool-result block."""
+    if isinstance(content, dict):
+        stdout = _tool_result_text(content.get("stdout"))
+        stderr = _tool_result_text(content.get("stderr"))
+        if stdout or stderr:
+            return stdout[:1024], stderr[:1024]
+        text = _tool_result_text(
+            content.get("content") or content.get("text") or content.get("output")
+        )
+        if text:
+            if is_error:
+                return "", text[:1024]
+            return text[:1024], ""
+        return "", ""
+    if isinstance(content, list):
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if "stdout" in item or "stderr" in item:
+                    stdout_piece = _tool_result_text(item.get("stdout"))
+                    stderr_piece = _tool_result_text(item.get("stderr"))
+                    if stdout_piece:
+                        stdout_parts.append(stdout_piece)
+                    if stderr_piece:
+                        stderr_parts.append(stderr_piece)
+                    continue
+                kind = str(item.get("type", "")).lower()
+                text = _tool_result_text(
+                    item.get("text") or item.get("content") or item.get("output")
+                )
+                if not text:
+                    text = _tool_result_text(item)
+                if not text:
+                    continue
+                if kind in {"stderr", "error", "bash-stderr", "local-command-stderr"}:
+                    stderr_parts.append(text)
+                elif kind in {"stdout", "output", "bash-stdout", "local-command-stdout"}:
+                    stdout_parts.append(text)
+                else:
+                    (stderr_parts if is_error else stdout_parts).append(text)
+            else:
+                text = _tool_result_text(item)
+                if text:
+                    (stderr_parts if is_error else stdout_parts).append(text)
+        return ("\n".join(stdout_parts).strip()[:1024], "\n".join(stderr_parts).strip()[:1024])
+    text = _tool_result_text(content)
+    if not text:
+        return "", ""
+    if is_error:
+        return "", text[:1024]
+    return text[:1024], ""
+
+
+def _looks_like_diff(text: str) -> bool:
+    stripped = text.strip()
+    return bool(stripped) and any(
+        marker in stripped
+        for marker in ("diff --git", "\n--- ", "\n+++ ", "\n@@", "@@", "--- ", "+++ ")
+    )
+
+
+def _infer_file_edit_diff(name: str, inp: dict[str, Any], result_text: str = "") -> str:
+    """Pick the best available diff-like text for a file edit tool."""
+    result_text = result_text.strip()
+    if result_text and _looks_like_diff(result_text):
+        return result_text[:4096]
+    if name == "Write":
+        content = _tool_result_text(inp.get("content"))
+        if content:
+            return content[:4096]
+    elif name == "Edit":
+        path = str(inp.get("file_path") or inp.get("path") or "")
+        old = _tool_result_text(inp.get("old_string"))
+        new = _tool_result_text(inp.get("new_string"))
+        if old or new:
+            return f"--- {path}\n+++ {path}\n- {old}\n+ {new}"[:4096]
+    elif name == "MultiEdit":
+        edits = inp.get("edits")
+        if isinstance(edits, list):
+            chunks: list[str] = []
+            for edit in edits:
+                if not isinstance(edit, dict):
+                    continue
+                path = str(
+                    edit.get("file_path")
+                    or edit.get("path")
+                    or inp.get("file_path")
+                    or inp.get("path")
+                    or ""
+                )
+                old = _tool_result_text(edit.get("old_string"))
+                new = _tool_result_text(edit.get("new_string"))
+                if old or new:
+                    chunks.append(f"--- {path}\n+++ {path}\n- {old}\n+ {new}")
+            if chunks:
+                return "\n".join(chunks)[:4096]
+    if result_text:
+        return result_text[:4096]
+    if inp:
+        try:
+            return json.dumps(inp, ensure_ascii=False, sort_keys=True)[:4096]
+        except TypeError:
+            return str(inp)[:4096]
     return ""

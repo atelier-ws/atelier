@@ -61,6 +61,27 @@ def render_block_markdown(block: ReasonBlock) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_block_for_agent(block: ReasonBlock) -> str:
+    """Render one compact ReasonBlock for agent-context injection."""
+    out: list[str] = []
+    out.append(f"Procedure: {block.title}  [{block.id}]")
+    out.append(f"Use when: {block.situation}")
+    if block.dead_ends:
+        out.append("Avoid:")
+        for d in block.dead_ends:
+            out.append(f"  - {d}")
+    out.append("Do:")
+    for step in block.procedure:
+        out.append(f"  - {step}")
+    if block.verification:
+        out.append("Validate:")
+        for v in block.verification:
+            out.append(f"  - {v}")
+    if block.when_not_to_apply:
+        out.append(f"Skip when: {block.when_not_to_apply}")
+    return "\n".join(out)
+
+
 def render_context_for_agent(blocks: list[ReasonBlock], *, max_blocks: int = 5) -> str:
     """Compact context block for injection into agent prompts.
 
@@ -73,21 +94,7 @@ def render_context_for_agent(blocks: list[ReasonBlock], *, max_blocks: int = 5) 
     out = ["<reasoning_procedures>"]
     for block in blocks[:max_blocks]:
         out.append("")
-        out.append(f"Procedure: {block.title}  [{block.id}]")
-        out.append(f"Use when: {block.situation}")
-        if block.dead_ends:
-            out.append("Avoid:")
-            for d in block.dead_ends:
-                out.append(f"  - {d}")
-        out.append("Do:")
-        for step in block.procedure:
-            out.append(f"  - {step}")
-        if block.verification:
-            out.append("Validate:")
-            for v in block.verification:
-                out.append(f"  - {v}")
-        if block.when_not_to_apply:
-            out.append(f"Skip when: {block.when_not_to_apply}")
+        out.append(render_block_for_agent(block))
     out.append("</reasoning_procedures>")
     return "\n".join(out) + "\n"
 

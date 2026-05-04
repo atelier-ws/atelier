@@ -55,6 +55,35 @@ def _active_run_id() -> str | None:
     return _read_session_state().get("active_run_id")
 
 
+def _cache_bash_invocation(
+    command: str,
+    stdout: str,
+    stderr: str,
+    return_code: int | None,
+) -> None:
+    """Record Bash output in the shared tool-supervision cache."""
+    if os.environ.get("ATELIER_CACHE_DISABLED") == "1":
+        return
+    try:
+        from atelier.core.capabilities.tool_supervision import ToolSupervisionCapability
+
+        cap = ToolSupervisionCapability(_atelier_root())
+        key = f"Bash:{json.dumps({'command': command}, sort_keys=True)[:100]}"
+        cap.observe(
+            key,
+            {
+                "command": command,
+                "stdout": stdout[:_MAX_OUTPUT_BYTES] if stdout else "",
+                "stderr": stderr[:_MAX_OUTPUT_BYTES] if stderr else "",
+                "return_code": return_code,
+            },
+            cache_hit=False,
+            tool_name="Bash",
+        )
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # RunLedger event writer
 # ---------------------------------------------------------------------------
@@ -146,18 +175,22 @@ def main() -> int:
 
     stdout: str = tool_response.get("stdout", "") or ""
     stderr: str = tool_response.get("stderr", "") or ""
-    # Claude Code may return exit code in different fields
-    return_code: int | None = (
-        tool_response.get("returnCode")
-        or tool_response.get("return_code")
-        or tool_response.get("exitCode")
-    )
+    # Claude Code may return exit code in different fields; use explicit None
+    # check so that 0 (success) is not treated as falsy and discarded.
+    _rc = tool_response.get("returnCode")
+    if _rc is None:
+        _rc = tool_response.get("return_code")
+    if _rc is None:
+        _rc = tool_response.get("exitCode")
+    return_code: int | None = int(_rc) if _rc is not None else None
 
     try:
         run_id = _active_run_id()
         if not run_id:
+            _cache_bash_invocation(command, stdout, stderr, return_code)
             return 0
         _append_command_result_event(run_id, command, stdout, stderr, return_code)
+        _cache_bash_invocation(command, stdout, stderr, return_code)
     except Exception:
         pass  # fail-open: never block the agent
 

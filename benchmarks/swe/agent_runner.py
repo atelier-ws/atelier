@@ -152,7 +152,7 @@ def build_agent(cfg: BenchConfig) -> Agent:
 
 def summarize_workflow(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Pull Atelier-specific counters out of an event list."""
-    out = {
+    out: dict[str, Any] = {
         "monitor_events": 0,
         "compression_events": 0,
         "reasonblocks_retrieved": 0,

@@ -1,34 +1,32 @@
-# Optional Integrations (Legacy)
+# Gateway Integrations
 
-The `integrations/` module provides opt-in third-party integrations. Most host-specific logic has been moved to `atelier.hosts.host_adapters`.
+## Purpose
 
-## Structure
+Keep lightweight integration helpers used by gateway adapters and runtime wiring.
 
-### Still in this module:
-- `openmemory.py` — OpenMemory interoperability wrapper (no duplicate exists elsewhere)
-- `ledger_reconstructor.py` — Ledger reconstruction utilities
-- `_session_parser.py` — Shared session parsing logic (duplicate: also in hosts/host_adapters/)
+## Entry Points
 
-### Moved to other modules:
-- ✗ `claude.py` → `atelier.hosts.host_adapters.claude`
-- ✗ `codex.py` → `atelier.hosts.host_adapters.codex`
-- ✗ `copilot.py` → `atelier.hosts.host_adapters.copilot`
-- ✗ `opencode.py` → `atelier.hosts.host_adapters.opencode`
-- ✗ `memory/` → `atelier.memory_bridges`
+- `openmemory.py` — OpenMemory bridge with local persistence and optional remote sync.
+- `ledger_reconstructor.py` — rebuild helper logic for runtime ledgers.
+- `_session_parser.py` — shared session parsing utilities.
+- `langfuse.py` — Optional Langfuse observability integration for trace recording.
 
-## Backward Compatibility
+## Langfuse Integration
 
-The following imports are maintained for compatibility:
-```python
-from atelier.integrations.memory import GenericVectorMemoryAdapter  # Routes to memory_bridges
-```
+Enabled by setting `ATELIER_LANGFUSE_ENABLED=1` (or `true`/`yes`) plus `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`. Optionally set `LANGFUSE_HOST` (defaults to `https://cloud.langfuse.com`).
 
-## Deprecation Path
+- `emit_trace(payload)` — emits an `atelier.{domain}` trace to Langfuse. Fail-open: any error is silently swallowed so the core loop is never broken.
+- `health_check()` — returns a diagnostic dict for health endpoints.
+- Hooked into `atelier_record_trace` in `mcp_server.py` after the local ledger write.
 
-- `atelier.integrations.claude`, `.codex`, `.copilot`, `.opencode` — **Deprecated**, use `atelier.hosts.host_adapters`
-- `atelier.integrations.memory.*` — **Deprecated**, use `atelier.memory_bridges`
+## OpenMemory Contract
 
-## Related
+- Local bridge is always available and writes events under `.atelier/openmemory`.
+- Remote sync is best-effort and gated by `ATELIER_OPENMEMORY_ENABLED=true`.
+- Public functions return stable payloads with `ok`, `action`, and `data`.
 
-- `atelier.hosts` — Unified host integration point (hosts/host_adapters/)
-- `atelier.memory_bridges` — Memory interoperability adapters
+## Where To Look Next
+
+- `src/atelier/infra/memory_bridges/openmemory.py`
+- `src/atelier/gateway/adapters/cli.py`
+- `src/atelier/gateway/adapters/mcp_server.py`

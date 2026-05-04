@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import ReasonBlock
-from atelier.core.foundation.retriever import ScoredBlock, TaskContext, retrieve
+from atelier.core.foundation.retriever import (
+    ScoredBlock,
+    TaskContext,
+    deduplicate_by_reasonblock,
+    pack_by_reasonblock_token_budget,
+    retrieve,
+)
 from atelier.core.foundation.store import ReasoningStore
 
 from .dead_ends import DeadEndTracker
@@ -31,10 +37,8 @@ except Exception:  # pragma: no cover - optional dependency fallback
     HNSW: Any = None  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
-# Token budget: estimated chars per token (GPT-4 ~3.7 chars/token)
-# We budget per procedure block to avoid context-window blowout
+# Token budget for compact injected procedure blocks.
 # ---------------------------------------------------------------------------
-_CHARS_PER_TOKEN = 4
 _DEFAULT_TOKEN_BUDGET = 2000  # max tokens of injected procedures
 
 # ---------------------------------------------------------------------------
@@ -137,22 +141,6 @@ def _jaccard(a: list[str], b: list[str]) -> float:
     if not sa or not sb:
         return 0.0
     return len(sa & sb) / len(sa | sb)
-
-
-def _estimate_tokens(block: ReasonBlock) -> int:
-    """Rough token count for a procedure block."""
-    text = " ".join(
-        filter(
-            None,
-            [
-                block.title,
-                block.situation,
-                " ".join(block.procedure),
-                " ".join(block.triggers),
-            ],
-        )
-    )
-    return max(1, len(text) // _CHARS_PER_TOKEN)
 
 
 def _hash_vector(tokens: list[str], *, dim: int = _VECTOR_DIM) -> list[float]:
@@ -272,7 +260,8 @@ class ReasoningReuseCapability:
         tools: list[str] | None = None,
         errors: list[str] | None = None,
         limit: int = 5,
-        token_budget: int = _DEFAULT_TOKEN_BUDGET,
+        token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
+        dedup: bool = True,
     ) -> list[Any]:
         """
         Rank blocks using Reciprocal Rank Fusion of BM25 + FTS + base retriever.
@@ -326,7 +315,13 @@ class ReasoningReuseCapability:
         fts_rank: dict[str, int] = {b.id: rank for rank, b in enumerate(fts_blocks)}
 
         # Base retriever scoring (domain / trigger matching)
-        learned = retrieve(self._store, ctx, limit=max(limit * 3, 20))
+        learned = retrieve(
+            self._store,
+            ctx,
+            limit=max(limit * 3, 20),
+            dedup=dedup,
+            token_budget=token_budget,
+        )
         base_scores: dict[str, float] = {item.block.id: item.score for item in learned}
         base_ranked = sorted(base_scores.items(), key=lambda x: x[1], reverse=True)
         base_rank: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked)}
@@ -387,12 +382,15 @@ class ReasoningReuseCapability:
         self._apply_ann_reranking(results, query_tokens=query_tokens)
         results.sort(key=lambda r: r.final_score, reverse=True)
 
-        # MMR diversity selection — avoids injecting near-duplicate procedures
-        selected: list[_HybridResult] = []
-        token_used = 0
-        candidates = list(results)
+        if dedup:
+            results = deduplicate_by_reasonblock(results, lambda item: item.block)
 
-        while candidates and len(selected) < limit:
+        # MMR diversity selection — covers different procedures after exact near-dup filtering.
+        selected: list[_HybridResult] = []
+        candidates = list(results)
+        selection_pool_limit = len(results) if token_budget is not None else limit
+
+        while candidates and len(selected) < selection_pool_limit:
             if not selected:
                 best = candidates.pop(0)
             else:
@@ -412,12 +410,14 @@ class ReasoningReuseCapability:
                         best_idx = idx
                 best = candidates.pop(best_idx)
 
-            # Token budget gate
-            block_tokens = _estimate_tokens(best.block)
-            if token_used + block_tokens > token_budget and selected:
-                break
-            token_used += block_tokens
             selected.append(best)
+
+        selected = pack_by_reasonblock_token_budget(
+            selected,
+            lambda item: item.block,
+            limit=limit,
+            token_budget=token_budget,
+        )
 
         for picked in selected:
             self._adaptive_priors.observe(picked.block.domain, picked.success_score)
@@ -544,6 +544,8 @@ class ReasoningReuseCapability:
         tools: list[str] | None = None,
         errors: list[str] | None = None,
         limit: int = 5,
+        token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
+        dedup: bool = True,
     ) -> list[ScoredBlock]:
         """Return ScoredBlock list for engine.get_reasoning_context."""
         ranked = self.rank_reusable_procedures(
@@ -553,6 +555,8 @@ class ReasoningReuseCapability:
             tools=tools,
             errors=errors,
             limit=limit,
+            token_budget=token_budget,
+            dedup=dedup,
         )
         return [
             ScoredBlock(
@@ -580,6 +584,8 @@ class ReasoningReuseCapability:
         tools: list[str] | None = None,
         errors: list[str] | None = None,
         max_blocks: int = 5,
+        token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
+        dedup: bool = True,
     ) -> dict[str, Any]:
         """Return structured injection payload for engine.inject_reasoning."""
         ranked = self.rank_reusable_procedures(
@@ -589,6 +595,8 @@ class ReasoningReuseCapability:
             tools=tools,
             errors=errors,
             limit=max_blocks,
+            token_budget=token_budget,
+            dedup=dedup,
         )
 
         procedures: list[dict[str, Any]] = []

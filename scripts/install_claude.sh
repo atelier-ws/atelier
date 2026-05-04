@@ -98,15 +98,103 @@ JSON
     exit 0
 fi
 
+# ── Structural validation (replaces verify_claude_plugin_dev.sh) ──
+info "Running structural validation on plugin package at ${PLUGIN_DIR}"
+
+STRUCT_FAIL=0
+struct_pass() { info "PASS: $*"; }
+struct_fail() { echo "[atelier:claude] FAIL: $*" >&2; STRUCT_FAIL=1; }
+
+# 1. Plugin directory exists
+if [ -d "${PLUGIN_DIR}" ]; then
+    struct_pass "plugin directory exists: integrations/claude/plugin/"
+else
+    struct_fail "plugin directory missing: ${PLUGIN_DIR}"
+fi
+
+# 2. plugin.json exists and has name=atelier
+PLUGIN_JSON="${PLUGIN_DIR}/.claude-plugin/plugin.json"
+if [ -f "${PLUGIN_JSON}" ]; then
+    NAME=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
+    if [ "$NAME" = "atelier" ]; then
+        struct_pass "plugin.json valid (name=atelier)"
+    else
+        struct_fail "plugin.json name unexpected: '${NAME}'"
+    fi
+else
+    struct_fail "plugin.json missing: ${PLUGIN_JSON}"
+fi
+
+# 3. plugin.json must NOT declare agents/skills/hooks/mcp (auto-discovered), author must be object
+if [ -f "${PLUGIN_JSON}" ]; then
+    HAS_FORBIDDEN=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); bad=[k for k in ('agents','skills','hooks','mcp') if k in d]; print(','.join(bad) if bad else 'none')" 2>/dev/null || echo "error")
+    AUTHOR_TYPE=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(type(d.get('author')).__name__)" 2>/dev/null || echo "error")
+    if [ "$HAS_FORBIDDEN" = "none" ]; then
+        struct_pass "plugin.json has no forbidden keys (agents/skills/hooks/mcp are auto-discovered)"
+    else
+        struct_fail "plugin.json declares '${HAS_FORBIDDEN}' — remove these; they cause install validation errors"
+    fi
+    if [ "$AUTHOR_TYPE" = "dict" ]; then
+        struct_pass "plugin.json author is an object"
+    else
+        struct_fail "plugin.json author must be an object like {\"name\": \"Beseam\"}, got type: ${AUTHOR_TYPE}"
+    fi
+fi
+
+# 4. Agent files exist
+for agent in code explore review repair; do
+    AGENT_FILE="${PLUGIN_DIR}/agents/${agent}.md"
+    if [ -f "${AGENT_FILE}" ]; then
+        struct_pass "agent exists: agents/${agent}.md"
+    else
+        struct_fail "agent missing: ${AGENT_FILE}"
+    fi
+done
+
+# 5. hooks.json exists
+HOOKS_JSON="${PLUGIN_DIR}/hooks/hooks.json"
+if [ -f "${HOOKS_JSON}" ]; then
+    struct_pass "hooks/hooks.json exists"
+else
+    struct_fail "hooks/hooks.json missing: ${HOOKS_JSON}"
+fi
+
+# 6. .mcp.json exists and uses CLAUDE_PLUGIN_ROOT
+MCP_JSON="${PLUGIN_DIR}/.mcp.json"
+if [ -f "${MCP_JSON}" ]; then
+    if grep -q 'CLAUDE_PLUGIN_ROOT' "${MCP_JSON}"; then
+        struct_pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT} (safe for marketplace install)"
+    else
+        struct_fail ".mcp.json does not use \${CLAUDE_PLUGIN_ROOT} — absolute paths will break marketplace install"
+    fi
+else
+    struct_fail ".mcp.json missing: ${MCP_JSON}"
+fi
+
+# 7. MCP wrapper exists
+WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
+if [ -f "${WRAPPER}" ]; then
+    struct_pass "MCP wrapper exists: servers/atelier-mcp-wrapper.js"
+else
+    struct_fail "MCP wrapper missing: ${WRAPPER}"
+fi
+
+if [ "$STRUCT_FAIL" -ne 0 ]; then
+    echo "[atelier:claude] ERROR: Structural validation failed. Fix the above issues before installing." >&2
+    exit 1
+fi
+info "Structural validation passed"
+
+# ── Claude CLI validation ──
 if $DRY_RUN; then
     echo "  [dry-run] claude plugin validate ${PLUGIN_DIR}"
 else
-    info "Validating plugin package at ${PLUGIN_DIR}"
+    info "Validating plugin package with Claude CLI at ${PLUGIN_DIR}"
     if ! claude plugin validate "${PLUGIN_DIR}" 2>&1 | grep -q "Validation passed"; then
         echo "[atelier:claude] ERROR: Plugin validation failed. Run: claude plugin validate ${PLUGIN_DIR}" >&2
         exit 1
     fi
-    info "Plugin package valid"
+    info "Plugin package valid (Claude CLI)"
 fi
 
 if $DRY_RUN; then

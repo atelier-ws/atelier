@@ -8,8 +8,8 @@
 	init-runtime mcp \
 	swe-bench-lite-20 swe-bench-lite-100 swe-bench-verified-100 \
 	swe-bench-report swe-bench-evaluate swe-bench-show-modes \
+	bench-savings proof-cost-quality \
 	benchmark-core benchmark-hosts benchmark-packs benchmark-full \
-	phase-t1 phase-t2 phase-t3 phase-t4 phase-t5 phase-t6 phase-t-hardening \
 	clean \
 	help
 .PHONY: import-copilot import-claude import-codex import-opencode import-all-sessions
@@ -86,12 +86,6 @@ install-agent-clis: ## Install Atelier into all available agent CLIs
 install-claude: ## Install Atelier into Claude Code (plugin + agents + skills + MCP)
 	bash scripts/install_claude.sh
 
-install-claude-plugin-dev: ## Validate plugin structure and print the dev-mode launch command
-	bash scripts/verify_claude_plugin_dev.sh
-
-verify-claude-plugin-dev: ## Verify Atelier dev plugin is wired correctly in Claude Code
-	bash scripts/verify_claude_plugin_dev.sh
-
 install-codex: ## Install Atelier into Codex CLI (skills + MCP config)
 	bash scripts/install_codex.sh
 
@@ -109,18 +103,6 @@ verify-agent-clis: ## Verify Atelier installation across all available agent CLI
 
 verify-claude: ## Verify Atelier installation in Claude Code (plugin list + MCP)
 	bash scripts/verify_claude.sh
-
-verify-codex: ## Verify Atelier installation in Codex CLI
-	bash scripts/verify_codex.sh
-
-verify-opencode: ## Verify Atelier install config for opencode
-	bash scripts/verify_opencode.sh
-
-verify-copilot: ## Verify Atelier installation in VS Code Copilot
-	bash scripts/verify_copilot.sh
-
-verify-gemini: ## Verify Atelier installation in Gemini CLI
-	bash scripts/verify_gemini.sh
 
 install-atelier-status: ## Symlink bin/atelier-status into ~/.local/bin
 	@mkdir -p $(HOME)/.local/bin
@@ -228,6 +210,16 @@ swe-bench-evaluate: ## Score predictions in a run dir: make swe-bench-evaluate D
 
 swe-bench-show-modes: ## Print the harness mode matrix
 	uv run atelier-bench swe show-modes
+
+bench-savings: ## WP-19: run 11-prompt context-savings benchmark (must be ≥50%)
+	@LOCAL=1 uv run python -m benchmarks.swe.savings_bench --json
+
+proof-cost-quality: ## WP-32: run cost-quality proof gate tests and generate proof-report.json
+	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py \
+	                     tests/gateway/test_cli_proof_gate.py -v
+	LOCAL=1 uv run atelier --root .atelier proof run --run-id wp32-proof --json
+	@test -s .atelier/proof/proof-report.json && echo "[proof] proof-report.json written" || (echo "[proof] ERROR: proof-report.json is empty or missing" && exit 1)
+	@LOCAL=1 uv run python -c "import json; r=json.load(open('.atelier/proof/proof-report.json')); assert r['status'] in ('pass', 'fail'), f'unexpected status: {r[\"status\"]}'; print(f'[proof] status={r[\"status\"]}')"
 
 # --------------------------------------------------------------------------- #
 # Phase T benchmark suite                                                     #

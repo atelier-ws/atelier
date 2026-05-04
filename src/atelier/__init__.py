@@ -11,7 +11,9 @@ failures, validation results, and reusable lessons — never hidden chain-of-tho
 or user preferences.
 """
 
-from atelier.core import service
+from importlib import import_module
+from typing import Any
+
 from atelier.core.foundation.models import (
     FailureCluster,
     PlanCheckResult,
@@ -21,11 +23,22 @@ from atelier.core.foundation.models import (
     RubricResult,
     Trace,
 )
-from atelier.gateway import hosts, integrations, sdk
-from atelier.gateway.sdk import AtelierClient, LocalClient, MCPClient, RemoteClient
-from atelier.infra import storage
 
 __version__ = "0.1.0"
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"hosts", "integrations", "sdk"}:
+        return import_module(f"atelier.gateway.{name}")
+    if name in {"AtelierClient", "LocalClient", "MCPClient", "RemoteClient"}:
+        mod = import_module("atelier.gateway.sdk")
+        return getattr(mod, name)
+    if name == "storage":
+        return import_module("atelier.infra.storage")
+    if name == "service":
+        return import_module("atelier.core.service")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "AtelierClient",

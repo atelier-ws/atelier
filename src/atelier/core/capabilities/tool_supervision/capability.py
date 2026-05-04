@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import time
 from collections import defaultdict
@@ -58,6 +59,7 @@ _TOOL_COSTS: dict[str, int] = {
 }
 
 _TOKEN_SAVINGS_PER_CACHE_HIT = 200  # estimated tokens saved per avoided call
+_DEFAULT_CACHE_TTL_SECONDS = 600
 
 _TOOL_CALL_COUNTER = (
     Counter(
@@ -101,6 +103,10 @@ def _content_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
+def _cache_disabled_by_env() -> bool:
+    return os.environ.get("ATELIER_CACHE_DISABLED") == "1"
+
+
 class ToolSupervisionCapability:
     """
     Monitors tool usage with:
@@ -114,12 +120,22 @@ class ToolSupervisionCapability:
     - Accurate retries_prevented counter (circuit breaker fires)
     """
 
-    def __init__(self, root: Path, *, model: str = "") -> None:
-        self._store = SupervisionStore(Path(root))
+    def __init__(
+        self,
+        root: Path,
+        *,
+        model: str = "",
+        cache_enabled: bool = True,
+        cache_ttl_seconds: int = _DEFAULT_CACHE_TTL_SECONDS,
+    ) -> None:
+        self._root = Path(root)
+        self._store = SupervisionStore(self._root)
         self._circuit = CircuitBreaker()
         self._pybreakers: dict[str, Any] = {}
         self._anomaly = ToolAnomalyDetector()
         self._model = model or active_model()
+        self._cache_enabled = bool(cache_enabled) and not _cache_disabled_by_env()
+        self._cache_ttl_seconds = max(0, int(cache_ttl_seconds))
         self._total_calls = 0
         self._avoided_calls = 0
         self._retries_prevented = 0  # circuit-breaker-prevented calls
@@ -129,6 +145,10 @@ class ToolSupervisionCapability:
         self._tool_call_counts: dict[str, int] = defaultdict(int)
         # Content-hash → cache key reverse index (in-memory only)
         self._hash_index: dict[str, str] = {}
+
+    @property
+    def cache_enabled(self) -> bool:
+        return self._cache_enabled
 
     # ------------------------------------------------------------------
     # Core observe/get API
@@ -191,7 +211,8 @@ class ToolSupervisionCapability:
             if pybreaker is not None:
                 self._record_pybreaker_success(tool)
 
-        if cache_hit:
+        effective_cache_hit = bool(cache_hit and self._cache_enabled)
+        if effective_cache_hit:
             self._avoided_calls += 1
             savings = _estimate_cost(tool)
             self._token_savings += savings
@@ -199,14 +220,15 @@ class ToolSupervisionCapability:
             self._chars_saved += savings * 4
 
         # Cache the result and update content-hash index
-        self._set_cached_with_retry(key, result)
-        content_hash = _content_hash(result)
-        self._hash_index[content_hash] = key
+        if self._cache_enabled:
+            self._set_cached_with_retry(key, result)
+            content_hash = _content_hash(result)
+            self._hash_index[content_hash] = key
 
         if _TOOL_CALL_COUNTER is not None:
             _TOOL_CALL_COUNTER.labels(
                 tool=tool,
-                cache_hit=str(bool(cache_hit)).lower(),
+                cache_hit=str(effective_cache_hit).lower(),
                 failed=str(bool(failed)).lower(),
             ).inc()
 
@@ -219,6 +241,8 @@ class ToolSupervisionCapability:
         Falls back to content-hash lookup so semantically identical
         results are found even under different cache keys.
         """
+        if not self._cache_enabled:
+            return None
         result = self._get_cached_with_retry(cache_key)
         if result is not None:
             return result
@@ -232,7 +256,7 @@ class ToolSupervisionCapability:
         reraise=True,
     )
     def _set_cached_with_retry(self, key: str, payload: dict[str, Any]) -> None:
-        self._store.set_cached(key, payload)
+        self._store.set_cached(key, payload, git_head=self._git_head())
 
     @retry(
         stop=stop_after_attempt(3),
@@ -240,7 +264,11 @@ class ToolSupervisionCapability:
         reraise=True,
     )
     def _get_cached_with_retry(self, key: str) -> dict[str, Any] | None:
-        return self._store.get_cached(key)
+        return self._store.get_cached(
+            key,
+            ttl_seconds=self._cache_ttl_seconds,
+            git_head=self._git_head(),
+        )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -258,6 +286,20 @@ class ToolSupervisionCapability:
             breaker = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name=f"tool:{tool}")
             self._pybreakers[tool] = breaker
         return breaker
+
+    def _git_head(self) -> str:
+        workspace = self._root.parent if self._root.name == ".atelier" else self._root
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(workspace), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except Exception:
+            return ""
+        return result.stdout.strip() if result.returncode == 0 else ""
 
     def _record_pybreaker_failure(self, tool: str) -> None:
         breaker = self._get_pybreaker(tool)
@@ -294,6 +336,8 @@ class ToolSupervisionCapability:
             "total_tool_calls": self._total_calls,
             "avoided_tool_calls": self._avoided_calls,
             "cache_hit_rate": cache_hit_rate,
+            "cache_enabled": self._cache_enabled,
+            "cache_ttl_seconds": self._cache_ttl_seconds,
             "token_savings": self._token_savings,
             "usd_savings": round(self._usd_savings, 6),
             "model": self._model,

@@ -1,65 +1,48 @@
 # Codex Integration
 
-Atelier integrates with Codex (OpenAI CLI) via:
-
-1. An MCP server (all V1 + V2 tools)
-2. Four skill packs that auto-trigger on task start, plan check, failure, and trace record
-3. Reasoning block references for copy-paste into prompts
+Atelier integrates with Codex via workspace-local MCP config, skill packs, a preflight wrapper, and reusable task templates.
 
 ## Setup
 
 ```bash
-# 1. Install the engine
-cd atelier && uv sync && uv run atelier init
-
-# 2. Copy the Codex skill pack to your Codex config directory
-cp -r atelier/codex-plugin/skills ~/.codex/skills/
-cp atelier/codex-plugin/mcp.json ~/.codex/mcp.json
+cd atelier
+uv sync --all-extras
+make install-codex
+make verify-codex
 ```
 
-Or if keeping everything in the workspace:
+## Installed Artifacts
+
+- `.codex/skills/atelier/`
+- `.codex/mcp.json`
+- `AGENTS.atelier.md`
+- `bin/atelier-codex`
+- `.codex/tasks/preflight.md`
+- `.codex/tasks/review-repair.md`
+
+## Wrapper Flow
 
 ```bash
-# Set CODEX_MCP_CONFIG to point at the workspace mcp.json
-export CODEX_MCP_CONFIG=./atelier/codex-plugin/mcp.json
+./bin/atelier-codex --task "Fix checkout price mismatch" --domain beseam.shopify.publish
 ```
 
-## MCP Config
+The wrapper enforces:
 
-`codex-plugin/mcp.json`:
+1. `context`
+2. `check-plan`
+3. Optional rubric gate via `--rubric`
 
-```json
-{
-  "mcpServers": {
-    "atelier": {
-      "command": "atelier-mcp",
-      "args": ["--root", "${workspaceRoot}/.atelier"],
-      "env": {
-        "ATELIER_ROOT": "${workspaceRoot}/.atelier"
-      }
-    }
-  }
-}
-```
+## MCP Tools
 
-## Skill Packs
+Canonical names:
 
-| Skill                  | Purpose                                          |
-| ---------------------- | ------------------------------------------------ |
-| `atelier-task`         | Start of every coding task — full reasoning loop |
-| `atelier-check-plan`   | Validate a plan before executing                 |
-| `atelier-rescue`       | Failure rescue flow                              |
-| `atelier-record-trace` | End-of-task trace recording                      |
+- `get_reasoning_context`, `check_plan`, `rescue_failure`, `run_rubric_gate`, `record_trace`
+- `get_run_ledger`, `update_run_ledger`, `monitor_event`, `compress_context`
+- `get_environment`, `get_environment_context`
+- `atelier_smart_search`, `atelier_smart_read`, `atelier_smart_edit`, `atelier_sql_inspect`, `atelier_bash_intercept`
 
-## MCP Tools Available
-
-**V1 (core):** `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_run_rubric_gate`, `atelier_record_trace`, `atelier_search`
-
-**V2 (extended):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment`, `atelier_get_environment_context`, `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`
+Compatibility aliases are also available for host prompts that use prefixed names (`atelier_check_plan`, `atelier_get_reasoning_context`, etc.).
 
 ## References
 
-The `codex-plugin/references/` directory contains copy-paste text blocks for manually injecting Atelier context into Codex prompts when not using MCP:
-
-- `codex-plugin/references/reasoning-loop.md`
-- `codex-plugin/references/shopify-publish.md`
+Codex task and reference templates live under `integrations/codex/`.

@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import logging
 from typing import TYPE_CHECKING, Any
 
 from .deduplication import deduplicate_tool_outputs
 from .models import CompressionResult, DroppedContext
 from .scoring import score_events
+from .sleeptime import SleeptimeChunk, local_summarize
 
 if TYPE_CHECKING:
     from atelier.infra.runtime.run_ledger import RunLedger
 
 # Approximate chars-per-token ratio
 _CHARS_PER_TOKEN = 4
+_log = logging.getLogger(__name__)
 
 
 class ContextCompressionCapability:
@@ -110,6 +114,118 @@ class ContextCompressionCapability:
             dropped=dropped,
             token_savings=token_savings,
         )
+
+    def compress_with_sleeptime(
+        self,
+        ledger: RunLedger,
+        *,
+        token_budget: int = 8000,
+        agent_id: str = "atelier",
+    ) -> CompressionResult:
+        """Like ``compress_with_provenance`` but also:
+
+        * Converts each evicted event into a ``SleeptimeChunk`` paraphrase.
+        * Archives each chunk as an ``ArchivalPassage`` in the memory store.
+        * Writes a ``RunMemoryFrame`` row with tokens_pre/post and strategy.
+
+        The original ``compress_with_provenance`` is unchanged.
+        """
+        result = self.compress_with_provenance(ledger, token_budget=token_budget)
+
+        raw_events: list[Any] = []
+        with contextlib.suppress(Exception):
+            raw_events = list(getattr(ledger, "events", []) or [])
+        events: list[dict[str, Any]] = [_normalise_event(ev) for ev in raw_events]
+
+        # Re-derive the dropped event dicts (same order as compress_with_provenance)
+        _events_deduped, dropped_raw = deduplicate_tool_outputs(events)
+        scored = score_events(_events_deduped)
+        scored.sort(key=lambda x: x.score, reverse=True)
+        budget_chars = token_budget * _CHARS_PER_TOKEN
+        used = 0
+        budget_dropped_raw: list[dict[str, Any]] = []
+        for es in scored:
+            ev = es.event
+            ev_chars = len(str(ev.get("summary", ""))) + len(str(ev.get("payload", "")))
+            if used + ev_chars <= budget_chars:
+                used += ev_chars
+            else:
+                budget_dropped_raw.append(ev)
+
+        all_dropped_events = dropped_raw + budget_dropped_raw
+
+        # Use Letta delegate if available; else local deterministic summariser
+        chunks: list[SleeptimeChunk] = []
+        strategy = "tfidf"
+        try:
+            from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
+
+            if LettaAdapter.is_available():
+                adapter = LettaAdapter()
+                if hasattr(adapter, "summarize_run"):
+                    raw_chunks = adapter.summarize_run(all_dropped_events)
+                    chunks = [SleeptimeChunk(**c) if isinstance(c, dict) else c for c in raw_chunks]
+                    strategy = "letta_summarizer"
+                else:
+                    chunks = local_summarize(all_dropped_events)
+                    strategy = "tfidf"
+            else:
+                chunks = local_summarize(all_dropped_events)
+        except Exception as exc:  # pragma: no cover
+            _log.warning("Sleeptime Letta delegate failed, using local: %s", exc)
+            chunks = local_summarize(all_dropped_events)
+
+        # Archive each chunk as an ArchivalPassage
+        archived_ids: list[str] = []
+        try:
+            import os
+            from pathlib import Path
+
+            from atelier.core.foundation.memory_models import ArchivalPassage
+            from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+
+            root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+            store = SqliteMemoryStore(root)
+            run_id = getattr(ledger, "run_id", "unknown")
+            for chunk in chunks:
+                dedup_hash = hashlib.sha1(chunk.paraphrase.encode()).hexdigest()
+                passage = ArchivalPassage(
+                    agent_id=agent_id,
+                    text=chunk.paraphrase,
+                    source="block_evict",
+                    source_ref=f"run:{run_id}",
+                    dedup_hash=dedup_hash,
+                )
+                saved = store.insert_passage(passage)
+                archived_ids.append(saved.id)
+        except Exception as exc:  # pragma: no cover
+            _log.warning("Failed to archive sleeptime passages: %s", exc)
+
+        # Write RunMemoryFrame
+        try:
+            import os
+            from pathlib import Path
+
+            from atelier.core.foundation.memory_models import RunMemoryFrame
+            from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+
+            root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+            store = SqliteMemoryStore(root)
+            run_id = getattr(ledger, "run_id", "unknown")
+            frame = RunMemoryFrame(
+                run_id=run_id,
+                pinned_blocks=[],
+                recalled_passages=[],
+                summarized_events=[c.paraphrase for c in chunks],
+                tokens_pre_summary=result.chars_before // _CHARS_PER_TOKEN,
+                tokens_post_summary=result.chars_after // _CHARS_PER_TOKEN,
+                compaction_strategy=strategy,  # type: ignore[arg-type]
+            )
+            store.write_run_frame(frame)
+        except Exception as exc:  # pragma: no cover
+            _log.warning("Failed to write RunMemoryFrame: %s", exc)
+
+        return result
 
     def context_report(self, ledger: RunLedger) -> dict[str, Any]:
         """Return a dict summary of current context compression state."""
