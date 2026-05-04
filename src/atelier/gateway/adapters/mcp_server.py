@@ -729,6 +729,75 @@ def tool_record_trace(
     led = _get_ledger()
     rtc = _get_realtime_context()
 
+    def _redact_json_strings(value: Any) -> Any:
+        if isinstance(value, str):
+            return redact(value)
+        if isinstance(value, list):
+            return [_redact_json_strings(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): _redact_json_strings(item) for key, item in value.items()}
+        return value
+
+    def _normalize_tool_calls(items: list[Any]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, str):
+                normalized.append({"name": redact(item), "args_hash": "", "count": 1})
+                continue
+            if isinstance(item, dict):
+                raw_count = item.get("count") or 1
+                with contextlib.suppress(TypeError, ValueError):
+                    raw_count = int(raw_count)
+                if not isinstance(raw_count, int):
+                    raw_count = 1
+                tool_call = {
+                    "name": redact(str(item.get("name") or item.get("tool") or "unknown")),
+                    "args_hash": redact(str(item.get("args_hash") or "")),
+                    "count": raw_count,
+                }
+                if "args" in item:
+                    tool_call["args"] = _redact_json_strings(item["args"])
+                if isinstance(item.get("result_summary"), str):
+                    tool_call["result_summary"] = redact(item["result_summary"])
+                normalized.append(tool_call)
+                continue
+            normalized.append({"name": redact(str(item)), "args_hash": "", "count": 1})
+        return normalized
+
+    def _coerce_validation_passed(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"pass", "passed", "success", "successful", "ok", "true"}:
+                return True
+            if lowered in {"fail", "failed", "failure", "error", "errored", "false"}:
+                return False
+        return False
+
+    def _normalize_validation_results(items: list[Any]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("check") or "validation"
+                detail = item.get("detail") or item.get("output") or ""
+                passed = item.get("passed")
+                if passed is None:
+                    passed = item.get("status")
+                normalized.append(
+                    {
+                        "name": redact(str(name)),
+                        "passed": _coerce_validation_passed(passed),
+                        "detail": redact(str(detail)),
+                    }
+                )
+                continue
+            text = redact(str(item))
+            lowered = text.lower()
+            passed = not any(token in lowered for token in ("fail", "error", "not run"))
+            normalized.append({"name": text, "passed": passed, "detail": ""})
+        return normalized
+
     # Derive host label from agent string
     def _derive_host(a: str) -> str:
         al = a.lower()
@@ -762,7 +831,7 @@ def tool_record_trace(
         "task": redact(task),
         "status": status,
         "files_touched": redact_list([str(v) for v in files_touched]),
-        "tools_called": tools_called,
+        "tools_called": _normalize_tool_calls(tools_called),
         "commands_run": redact_list([str(v) for v in commands_run]),
         "errors_seen": redact_list([str(v) for v in errors_seen]),
         "diff_summary": redact(diff_summary),
@@ -774,16 +843,7 @@ def tool_record_trace(
         "missing_surfaces": missing_surfaces,
     }
 
-    cleaned_vr: list[dict[str, Any]] = []
-    for vr in validation_results:
-        if isinstance(vr, dict):
-            vr2 = dict(vr)
-            if isinstance(vr2.get("detail"), str):
-                vr2["detail"] = redact(vr2["detail"])
-            cleaned_vr.append(vr2)
-        else:
-            cleaned_vr.append(vr)
-    payload["validation_results"] = cleaned_vr
+    payload["validation_results"] = _normalize_validation_results(validation_results)
 
     if prompt:
         rtc.record_prompt_response(redact(prompt), redact(response or ""))
