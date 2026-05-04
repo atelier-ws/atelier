@@ -26,6 +26,8 @@ from typing import Any
 import yaml
 
 from atelier.core.foundation.models import (
+    CommandRecord,
+    FileEditRecord,
     RawArtifact,
     ToolCall,
     Trace,
@@ -45,6 +47,55 @@ def _utcnow() -> datetime:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _text_from_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (dict, list)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+    return str(value).strip()
+
+
+def _extract_first_text(
+    payload: dict[str, Any],
+    keys: tuple[str, ...],
+    *,
+    limit: int | None = None,
+) -> str:
+    for key in keys:
+        if key not in payload:
+            continue
+        text = _text_from_value(payload.get(key))
+        if text:
+            return text[:limit] if limit is not None else text
+    return ""
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_workspace_dt(val: Any) -> datetime:
@@ -193,9 +244,13 @@ class CopilotImporter:
 
         # ── Step 2: build curated Trace from redacted events ─────────────────
         tools_called: dict[str, int] = {}
-        files_touched: set[str] = set()
+        tool_args: dict[str, dict[str, Any] | None] = {}
+        tool_results: dict[str, str] = {}
+        files_touched: dict[str, FileEditRecord | None] = {}
         errors_seen: set[str] = set()
-        commands_run: list[str] = []
+        commands_run: list[str | CommandRecord] = []
+        command_indices: dict[str, list[int]] = {}
+        command_tools: dict[str, str] = {}
         validation_results: list[ValidationResult] = []
         reasoning_snippets: list[str] = []
         task = str(workspace_data.get("summary") or "untitled copilot session")
@@ -226,9 +281,13 @@ class CopilotImporter:
             self._process_event(
                 ev,
                 tools_called,
+                tool_args,
+                tool_results,
                 files_touched,
                 errors_seen,
                 commands_run,
+                command_indices,
+                command_tools,
                 validation_results,
                 task,
             )
@@ -240,8 +299,20 @@ class CopilotImporter:
             domain="coding",
             task=task,
             status="success",
-            files_touched=sorted(files_touched),
-            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
+            files_touched=[
+                record if record is not None else path
+                for path, record in sorted(files_touched.items())
+            ],
+            tools_called=[
+                ToolCall(
+                    name=n,
+                    args_hash="",
+                    count=c,
+                    args=tool_args.get(n),
+                    result_summary=tool_results.get(n, ""),
+                )
+                for n, c in tools_called.items()
+            ],
             commands_run=commands_run,
             errors_seen=sorted(errors_seen),
             validation_results=validation_results,
@@ -278,9 +349,13 @@ class CopilotImporter:
         self,
         ev: dict[str, Any],
         tools_called: dict[str, int],
-        files_touched: set[str],
+        tool_args: dict[str, dict[str, Any] | None],
+        tool_results: dict[str, str],
+        files_touched: dict[str, FileEditRecord | None],
         errors_seen: set[str],
-        commands_run: list[str],
+        commands_run: list[str | CommandRecord],
+        command_indices: dict[str, list[int]],
+        command_tools: dict[str, str],
         validation_results: list[ValidationResult],
         task: str,
     ) -> None:
@@ -291,32 +366,101 @@ class CopilotImporter:
         if etype == "tool.execution_start":
             name = data.get("toolName")
             if name:
+                name = str(name)
                 tools_called[name] = tools_called.get(name, 0) + 1
 
+                args = _as_dict(data.get("arguments"))
+                tool_args[name] = args or None
+
                 # Extract files/commands from arguments
-                args = data.get("arguments", {})
-                if name in ("edit", "create", "create_thunk", "view"):
+                if name in ("edit", "create", "create_thunk"):
                     path = args.get("path") or args.get("file_path") or args.get("filePath")
                     if path:
-                        files_touched.add(str(path))
+                        path_str = str(path)
+                        diff_text = _extract_first_text(
+                            args,
+                            ("diff", "patch", "changes", "content", "contents", "input", "text"),
+                            limit=4096,
+                        )
+                        files_touched[path_str] = FileEditRecord(
+                            path=path_str,
+                            diff=diff_text,
+                            event="create" if name.startswith("create") else "edit",
+                        )
+                        tool_results[name] = (
+                            diff_text[:200]
+                            if diff_text
+                            else _extract_first_text(
+                                args, ("path", "file_path", "filePath"), limit=200
+                            )
+                        )
+                elif name == "view":
+                    path = args.get("path") or args.get("file_path") or args.get("filePath")
+                    if path:
+                        files_touched.setdefault(str(path), None)
                 elif name in ("bash", "read_bash"):
-                    cmd = args.get("command")
+                    cmd = _extract_first_text(args, ("command", "cmd"), limit=None)
                     if cmd:
-                        commands_run.append(str(cmd)[:200])
+                        display_cmd = cmd[:200]
+                        idx = len(commands_run)
+                        commands_run.append(display_cmd)
+                        indices = command_indices.setdefault(cmd, [])
+                        if cmd != display_cmd:
+                            command_indices.setdefault(display_cmd, indices)
+                        indices.append(idx)
+                        command_tools[cmd] = name
+                        command_tools[display_cmd] = name
                 elif name in ("glob", "grep", "rg"):
-                    pattern = args.get("pattern") or args.get("query")
-                    if pattern and len(str(pattern)) < 100:
-                        files_touched.add(f"{name}:{pattern}")
+                    pattern = _extract_first_text(args, ("pattern", "query"), limit=100)
+                    if pattern:
+                        files_touched.setdefault(f"{name}:{pattern}", None)
 
         elif etype == "tool_call":
             name = data.get("name")
             if name:
+                name = str(name)
                 tools_called[name] = tools_called.get(name, 0) + 1
+                args = _as_dict(data.get("arguments") or data.get("input"))
+                if args:
+                    tool_args[name] = args
+                result_summary = _extract_first_text(
+                    data, ("result_summary", "summary", "output", "result"), limit=200
+                )
+                if result_summary:
+                    tool_results[name] = result_summary
 
         elif etype == "command_result":
-            cmd = data.get("command")
+            cmd = _extract_first_text(data, ("command", "cmd"), limit=None)
             if cmd:
-                commands_run.append(str(cmd))
+                stdout = _extract_first_text(data, ("stdout", "output", "result"), limit=4096)
+                stderr = _extract_first_text(data, ("stderr", "error", "err"), limit=4096)
+                exit_code = data.get("exit_code")
+                if exit_code is None:
+                    exit_code = data.get("code")
+                record = CommandRecord(
+                    command=cmd,
+                    exit_code=_int_or_none(exit_code),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                command_match_indices = command_indices.get(cmd)
+                if not command_match_indices:
+                    command_match_indices = command_indices.get(cmd[:200])
+                if command_match_indices:
+                    idx = command_match_indices.pop(0)
+                    commands_run[idx] = record
+                    if not command_match_indices:
+                        command_indices.pop(cmd, None)
+                        command_indices.pop(cmd[:200], None)
+                else:
+                    commands_run.append(record)
+                tool_name = command_tools.get(cmd) or command_tools.get(cmd[:200])
+                if tool_name:
+                    tool_results[tool_name] = _extract_first_text(
+                        {"stdout": stdout, "stderr": stderr, "output": stdout},
+                        ("stdout", "stderr", "output"),
+                        limit=200,
+                    )
             if not data.get("ok"):
                 sig = data.get("error_signature")
                 if sig:
@@ -325,7 +469,27 @@ class CopilotImporter:
         elif etype in ("file_edit", "file_revert"):
             path = data.get("path")
             if path:
-                files_touched.add(str(path))
+                path_str = str(path)
+                diff_text = _extract_first_text(
+                    data,
+                    (
+                        "diff",
+                        "patch",
+                        "changes",
+                        "content",
+                        "contents",
+                        "input",
+                        "text",
+                        "output",
+                        "result",
+                    ),
+                    limit=4096,
+                )
+                files_touched[path_str] = FileEditRecord(
+                    path=path_str,
+                    diff=diff_text,
+                    event="revert" if etype == "file_revert" else "edit",
+                )
 
         elif etype == "test_result":
             name = data.get("test_id")

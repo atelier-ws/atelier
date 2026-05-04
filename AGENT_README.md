@@ -79,7 +79,7 @@ Are you editing code?
    })
    → Apply rescue before retrying
 
-6. IF domain in [beseam.shopify.publish, beseam.pdp.schema, 
+6. IF domain in [beseam.shopify.publish, beseam.pdp.schema,
                  beseam.catalog.fix, beseam.tracker.classification]:
    call atelier_run_rubric_gate({
      rubric_id: "rubric_shopify_publish" | ...,
@@ -172,7 +172,7 @@ DO NOT:
 
 ```
 1. call atelier_get_run_ledger({run_id: "" | "specific_id"})
-   → Extract: current_plan, verified_facts, hypotheses_tried, 
+   → Extract: current_plan, verified_facts, hypotheses_tried,
               hypotheses_rejected, errors
 
 2. Form ONE new hypothesis not in hypotheses_tried or rejected
@@ -375,17 +375,147 @@ DO NOT:
     {
       "name": "atelier_smart_read",
       "input": {"file_path": "string"},
-      "output": {"content": "string", "cache_hit": "bool", "tokens_saved": "int"}
+      "output": {"content": "string", "cache_hit": "bool", "tokens_saved": "int"},
+      "boundary": "Atelier augmentation — host-native Read stays the raw-access fallback"
     },
     {
       "name": "atelier_smart_search",
       "input": {"query": "string", "path": "string"},
-      "output": {"results": ["string"], "cache_hit": "bool", "calls_avoided": "int"}
+      "output": {"results": ["string"], "cache_hit": "bool", "calls_avoided": "int"},
+      "boundary": "Atelier augmentation — host-native search/grep stays available"
     },
     {
       "name": "atelier_cached_grep",
       "input": {"pattern": "string", "path": "string"},
-      "output": {"matches": ["string"], "cache_hit": "bool"}
+      "output": {"matches": ["string"], "cache_hit": "bool"},
+      "boundary": "Atelier augmentation — host-native grep stays available"
+    }
+  ]
+}
+```
+
+### V2 MEMORY TOOLS (5 Tools)
+
+```json
+{
+  "v2_memory_tools": [
+    {
+      "name": "atelier_memory_upsert_block",
+      "input": {"agent_id": "string", "label": "string", "value": "string", "pinned": "bool (optional)", "read_only": "bool (optional)", "description": "string (optional)"},
+      "output": {"id": "string", "version": "int"},
+      "use_when": "Store a persistent fact or value in the agent's memory block",
+      "example": "atelier_memory_upsert_block({agent_id: 'atelier:code', label: 'last_gid', value: 'gid://shopify/Product/12345'})"
+    },
+    {
+      "name": "atelier_memory_get_block",
+      "input": {"agent_id": "string", "label": "string"},
+      "output": {"MemoryBlock": {"id", "agent_id", "label", "value", "pinned", "read_only", "version", "updated_at"}},
+      "use_when": "Retrieve a specific named memory block"
+    },
+    {
+      "name": "atelier_memory_recall",
+      "input": {"agent_id": "string", "query": "string", "top_k": "int (optional)", "tags": ["string"] "(optional)"},
+      "output": {"passages": [{"id", "text", "score", "source_ref"}], "recall_id": "string"},
+      "use_when": "FTS + vector semantic search over archival memory",
+      "example": "atelier_memory_recall({agent_id: 'atelier:code', query: 'Shopify product GID pattern', top_k: 5})"
+    },
+    {
+      "name": "atelier_memory_archive",
+      "input": {"agent_id": "string", "text": "string", "source": "string", "source_ref": "string (optional)", "tags": ["string"] "(optional)"},
+      "output": {"id": "string", "dedup_hit": "bool"},
+      "use_when": "Persist a text passage to archival memory (dedup guard included)"
+    },
+    {
+      "name": "atelier_memory_summary",
+      "input": {"run_id": "string"},
+      "output": {"tokens_pre": "int", "tokens_post": "int", "summary_md": "string", "evicted_event_ids": ["string"]},
+      "use_when": "Summarize and compact the run's sleeptime memory (reduces context window)"
+    }
+  ]
+}
+```
+
+### V2 LESSON PIPELINE TOOLS (2 Tools)
+
+```json
+{
+  "v2_lesson_tools": [
+    {
+      "name": "atelier_lesson_inbox",
+      "input": { "domain": "string (optional)", "limit": "int (optional)" },
+      "output": ["LessonCandidate"],
+      "use_when": "List pending lesson candidates awaiting promote/reject decision",
+      "example": "atelier_lesson_inbox({domain: 'beseam.shopify.publish', limit: 10})"
+    },
+    {
+      "name": "atelier_lesson_decide",
+      "input": {
+        "lesson_id": "string",
+        "decision": "approve|reject",
+        "reviewer": "string",
+        "reason": "string"
+      },
+      "output": { "status": "string", "promotion_id": "string (optional)" },
+      "use_when": "Approve or reject a lesson candidate; approved lessons become ReasonBlocks"
+    }
+  ]
+}
+```
+
+### V2 CONTEXT-SAVINGS TOOLS (4 Tools)
+
+```json
+{
+  "v2_context_savings_tools": [
+    {
+      "name": "atelier_search_read",
+      "input": {"query": "string", "path": "string (optional)", "max_files": "int (optional)", "max_chars_per_file": "int (optional)"},
+      "output": {"matches": [{"path", "line_start", "line_end", "snippet", "lang_outline?"}], "total_chars": "int", "cache_hit": "bool"},
+      "use_when": "Token-saving combined search + read for repeated context gathering",
+      "boundary": "Atelier augmentation — host shell/search stays available for raw access",
+      "example": "atelier_search_read({query: 'publish_product function', path: 'src/'})"
+    },
+    {
+      "name": "atelier_batch_edit",
+      "input": {"edits": [{"path": "string", "old_string": "string|null", "range": "{start,end}|null", "new_string": "string", "fuzzy": "bool (optional)"}]},
+      "output": {"applied": [{"path", "hunk"}], "failed": [{"path", "error"}]},
+      "use_when": "Apply multiple deterministic edits in one call; host-native Edit/MultiEdit remains default",
+      "boundary": "Atelier augmentation — optional batch executor; never intercepts host edit tools"
+    },
+    {
+      "name": "atelier_sql_inspect",
+      "input": {"connection_alias": "string", "sql": "string"},
+      "output": {"rows": ["..."], "columns": ["string"], "affected": "int", "truncated": "bool"},
+      "use_when": "Read-only SQL schema/data introspection; never an interactive DB client or migration tool",
+      "boundary": "Atelier augmentation — read-only inspection only"
+    },
+    {
+      "name": "atelier_compact_advise",
+      "input": {"run_id": "string"},
+      "output": {"should_compact": "bool", "preserve_blocks": ["string"], "pin_memory": ["string"], "suggested_prompt": "string"},
+      "use_when": "Get advice before triggering host-native /compact — Atelier preserves runtime facts for re-injection",
+      "boundary": "Host-native /compact stays owned by the host; Atelier only advises and reinjects facts"
+    }
+  ]
+}
+```
+
+### V2 ROUTING TOOLS (2 Tools)
+
+```json
+{
+  "v2_routing_tools": [
+    {
+      "name": "atelier_route_decide",
+      "input": {"agent_request": "AgentRequest", "policy": "ContextBudgetPolicy"},
+      "output": {"RouteDecision": {"model", "tier", "budget_tokens", "rationale"}},
+      "use_when": "Quality-aware model routing — select best model/tier for task within cost budget"
+    },
+    {
+      "name": "atelier_route_verify",
+      "input": {"route_decision_id": "string", "validation_results": ["..."], "changed_files": ["string"], "rubric_status": "string"},
+      "output": {"VerificationEnvelope": {"verified", "escalated", "reason"}},
+      "use_when": "Verification-gated escalation — promote to higher-tier model when output quality is insufficient"
     }
   ]
 }
@@ -533,3 +663,11 @@ uv run atelier run-rubric -h
 - **Quick reference card:** [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - **Architecture:** [atelier/docs/](docs/)
 - **Installation:** [atelier/README.md](README.md)
+
+## 🛠 V2 IMPLEMENTATION (For coordinator + subagents)
+
+If you are dispatched to extend Atelier itself (memory, lessons, context savings) read:
+
+1. [docs/architecture/IMPLEMENTATION_PLAN_V2.md](docs/architecture/IMPLEMENTATION_PLAN_V2.md) — vision, three pillars, success metrics
+2. [docs/architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL.md](docs/architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL.md) — every new model + DDL
+3. [docs/architecture/work-packets/INDEX.md](docs/architecture/work-packets/INDEX.md) — pick one packet, follow the standing loop, mark `done`

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-plugin.json",
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "AI reasoning/procedure/runtime layer for agentic workflows",
+  "keywords": [
+    "smart_read",
+    "smart_search",
+    "cached_grep",
+    "tool-cache"
+  ],
+  "author": {
+    "name": "Atelier Team"
+  }
+}

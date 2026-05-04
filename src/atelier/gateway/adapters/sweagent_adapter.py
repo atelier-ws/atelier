@@ -25,6 +25,7 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -123,8 +124,8 @@ class SWEAgentAdapter(AgentAdapter):
             domain=domain or self.default_domain or "Agent.sweagent",
             task=task,
             status=safe_status,
-            files_touched=files_touched,
-            commands_run=commands_run,
+            files_touched=cast(Any, files_touched),
+            commands_run=cast(Any, commands_run),
             errors_seen=errors_seen,
             diff_summary=diff_summary,
         )

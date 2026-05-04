@@ -16,6 +16,10 @@ from atelier.core.foundation.store import ReasoningStore
 class SQLiteStore(ReasoningStore):
     """SQLite-backed store (extends ReasoningStore with storage-layer helpers)."""
 
+    def init(self) -> None:
+        """Create core and V2 tables idempotently."""
+        super().init()
+
     def health_check(self) -> dict[str, Any]:
         """Return basic health information."""
         try:

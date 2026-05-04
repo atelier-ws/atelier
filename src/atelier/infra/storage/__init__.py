@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
-from atelier.core.foundation.store import ReasoningStore
-from atelier.infra.storage.factory import create_store
+from typing import Any
 
-__all__ = ["ReasoningStore", "create_store"]
+__all__ = ["ReasoningStore", "create_store", "make_memory_store"]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "ReasoningStore":
+        from atelier.core.foundation.store import ReasoningStore
+
+        return ReasoningStore
+    if name == "create_store":
+        from atelier.infra.storage.factory import create_store
+
+        return create_store
+    if name == "make_memory_store":
+        from atelier.infra.storage.factory import make_memory_store
+
+        return make_memory_store
+    raise AttributeError(name)

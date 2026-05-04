@@ -40,9 +40,8 @@ class RemoteClient:
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
-        self._base = (
-            base_url or os.environ.get("ATELIER_SERVICE_URL", "http://localhost:8787")
-        ).rstrip("/")
+        base = base_url or os.environ.get("ATELIER_SERVICE_URL") or "http://localhost:8787"
+        self._base = base.rstrip("/")
         # Never log or expose the key.
         self._api_key: str | None = api_key or os.environ.get("ATELIER_API_KEY") or None
         self._timeout = timeout
@@ -106,3 +105,17 @@ class RemoteClient:
 
     def record_trace(self, args: dict[str, Any]) -> dict[str, Any]:
         return self._post("/v1/traces", args)
+
+    def lesson_inbox(self, args: dict[str, Any]) -> dict[str, Any]:
+        domain = args.get("domain")
+        limit = args.get("limit")
+        query: list[str] = []
+        if domain:
+            query.append(f"domain={domain}")
+        if limit is not None:
+            query.append(f"limit={int(limit)}")
+        suffix = f"?{'&'.join(query)}" if query else ""
+        return self._get(f"/v1/lessons/inbox{suffix}")
+
+    def lesson_decide(self, args: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/v1/lessons/decide", args)

@@ -35,8 +35,10 @@ from pydantic import BaseModel
 
 from atelier.core.foundation.environments import load_environments_from_dir
 from atelier.core.foundation.models import (
+    CommandRecord,
     Environment,
     FailureCluster,
+    FileEditRecord,
     ReasonBlock,
     Rubric,
     Trace,
@@ -194,14 +196,22 @@ def _approx_tokens(text: str) -> int:
     return max(1, len(text) // CHARS_PER_TOKEN)
 
 
+def _trace_file_path(item: str | FileEditRecord) -> str:
+    return item if isinstance(item, str) else item.path
+
+
+def _trace_command_text(item: str | CommandRecord) -> str:
+    return item if isinstance(item, str) else item.command
+
+
 def _trace_raw_tokens(trace: Trace) -> int:
     """Estimate uncompressed observable tokens for a trace."""
     parts: list[str] = [
         trace.task,
         trace.diff_summary,
         trace.output_summary,
-        *trace.files_touched,
-        *trace.commands_run,
+        *(_trace_file_path(item) for item in trace.files_touched),
+        *(_trace_command_text(item) for item in trace.commands_run),
         *trace.errors_seen,
     ]
     parts.extend(t.name for t in trace.tools_called)
@@ -214,8 +224,8 @@ def _trace_compressed_tokens(trace: Trace) -> int:
 
     Heuristic: collapse repeated commands / files / tool calls.
     """
-    unique_files = {*trace.files_touched}
-    unique_cmds = {*trace.commands_run}
+    unique_files = {_trace_file_path(item) for item in trace.files_touched}
+    unique_cmds = {_trace_command_text(item) for item in trace.commands_run}
     unique_tools = {t.name for t in trace.tools_called}
     unique_errors = {*trace.errors_seen}
     parts = [

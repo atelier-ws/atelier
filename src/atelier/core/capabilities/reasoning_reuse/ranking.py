@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
+
+import tiktoken
+from datasketch import MinHash, MinHashLSH
 
 from .bm25 import bm25_score, build_idf, tokenise
 from .dead_ends import DeadEndTracker
@@ -14,6 +18,14 @@ _W_BM25 = 0.45
 _W_RECENCY = 0.25
 _W_SUCCESS = 0.20
 _W_BASE = 0.10
+_DEFAULT_TOKEN_BUDGET = 2000
+_DEDUP_THRESHOLD = 0.75
+_MINHASH_PERMUTATIONS = 128
+_MIN_DEDUP_TOKENS = 5
+
+
+def _count_tokens(text: str) -> int:
+    return len(tiktoken.get_encoding("cl100k_base").encode(text))
 
 
 def _recency_score(last_used_ts: float, now_ts: float, *, half_life_days: float = 7.0) -> float:
@@ -31,6 +43,86 @@ def _success_score(success_rate: float, reuse_count: int) -> float:
     return numerator / denominator
 
 
+def _as_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
+    if isinstance(value, str) and value:
+        return [value]
+    return []
+
+
+def _signature_tokens(block: dict[str, Any]) -> set[str]:
+    parts = [*_as_list(block.get("dead_ends")), *_as_list(block.get("procedure"))]
+    return set(re.findall(r"[a-z0-9]+", " ".join(parts).lower()))
+
+
+def _minhash(tokens: set[str]) -> MinHash:
+    signature = MinHash(num_perm=_MINHASH_PERMUTATIONS)
+    for token in sorted(tokens):
+        signature.update(token.encode("utf-8"))
+    return signature
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def _dedupe_ranked(
+    ranked: list[RankedProcedure],
+    blocks_by_id: dict[str, dict[str, Any]],
+    *,
+    threshold: float = _DEDUP_THRESHOLD,
+) -> list[RankedProcedure]:
+    if len(ranked) < 2:
+        return ranked
+    lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
+    kept: list[RankedProcedure] = []
+    kept_tokens: dict[str, set[str]] = {}
+    for item in ranked:
+        block = blocks_by_id.get(item.block_id, {})
+        tokens = _signature_tokens(block)
+        if len(tokens) < _MIN_DEDUP_TOKENS:
+            kept.append(item)
+            continue
+        signature = _minhash(tokens)
+        matches = lsh.query(signature)
+        if any(_jaccard(tokens, kept_tokens[key]) >= threshold for key in matches):
+            continue
+        key = f"{len(kept)}:{item.block_id}"
+        lsh.insert(key, signature)
+        kept_tokens[key] = tokens
+        kept.append(item)
+    return kept
+
+
+def _pack_ranked(
+    ranked: list[RankedProcedure],
+    *,
+    limit: int,
+    token_budget: int | None,
+) -> list[RankedProcedure]:
+    packed: list[RankedProcedure] = []
+    tokens_used = 0
+    for item in ranked:
+        if len(packed) >= limit:
+            break
+        item_tokens = _count_tokens(f"{item.title}\n{item.snippet}")
+        if token_budget is not None and token_budget >= 0:
+            if tokens_used + item_tokens > token_budget and packed:
+                continue
+            if token_budget == 0 and not packed:
+                break
+        packed.append(item)
+        tokens_used += item_tokens
+    return packed
+
+
 def rank_blocks(
     query: str,
     blocks: list[dict[str, Any]],
@@ -39,6 +131,8 @@ def rank_blocks(
     now_ts: float = 0.0,
     domain_filter: str = "",
     limit: int = 5,
+    dedup: bool = True,
+    token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
 ) -> list[RankedProcedure]:
     """
     Rank procedure blocks against a query using a hybrid scoring model.
@@ -50,6 +144,8 @@ def rank_blocks(
         now_ts:           Current Unix timestamp (0 = disabled recency scoring).
         domain_filter:    If set, prefer blocks from this domain.
         limit:            Maximum results to return.
+        dedup:            Drop near-duplicate procedure blocks by MinHash LSH.
+        token_budget:     Greedy token budget for ranked snippets; None disables it.
 
     Returns:
         List of :class:`RankedProcedure` sorted by score descending.
@@ -131,4 +227,7 @@ def rank_blocks(
         )
 
     ranked.sort(key=lambda r: r.score, reverse=True)
-    return ranked[:limit]
+    blocks_by_id = {str(block.get("id", block.get("block_id", ""))): block for block in blocks}
+    if dedup:
+        ranked = _dedupe_ranked(ranked, blocks_by_id)
+    return _pack_ranked(ranked, limit=limit, token_budget=token_budget)

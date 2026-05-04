@@ -1,8 +1,37 @@
 const BASE = "/api";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new ApiError(
+      res.status,
+      detail ? `${res.status} ${detail}` : `${res.status} ${res.statusText}`,
+    );
+  }
   return res.json();
 }
 
@@ -32,8 +61,23 @@ export interface PlanRecord {
 
 export interface ToolCall {
   name: string;
+  args_hash: string;
+  count: number;
   args?: Record<string, unknown>;
   result_summary?: string;
+}
+
+export interface CommandRecord {
+  command: string;
+  exit_code?: number | null;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface FileEditRecord {
+  path: string;
+  diff?: string;
+  event?: string;
 }
 
 export interface RepeatedFailure {
@@ -54,9 +98,9 @@ export interface Trace {
   domain?: string;
   task: string;
   status: string;
-  files_touched: string[];
+  files_touched: (string | FileEditRecord)[];
   tools_called: ToolCall[];
-  commands_run: string[];
+  commands_run: (string | CommandRecord)[];
   errors_seen: string[];
   repeated_failures: RepeatedFailure[];
   diff_summary?: string;
@@ -175,6 +219,26 @@ export interface SavingsSummary {
   per_operation: SavingsPerOp[];
 }
 
+export interface SavingsByDay {
+  day: string;
+  naive: number;
+  actual: number;
+}
+
+export interface SavingsSummaryV2 {
+  window_days: number;
+  total_naive_tokens: number;
+  total_actual_tokens: number;
+  reduction_pct: number;
+  per_lever: Record<string, number>;
+  by_day: SavingsByDay[];
+  saved_usd?: number;
+  saved_pct?: number;
+  would_have_cost_usd?: number;
+  actually_cost_usd?: number;
+  total_calls?: number;
+}
+
 export interface CallEntry {
   run_id: string;
   domain?: string;
@@ -218,6 +282,47 @@ export interface Skill {
   content: string;
 }
 
+export interface MemoryBlock {
+  id: string;
+  agent_id: string;
+  label: string;
+  value: string;
+  limit_chars: number;
+  description: string;
+  read_only: boolean;
+  metadata: Record<string, unknown>;
+  pinned: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryUpsertBlockResult {
+  id: string;
+  version: number;
+}
+
+export interface MemoryRecallPassage {
+  id: string;
+  text: string;
+  source_ref: string;
+  tags: string[];
+}
+
+export interface MemoryRecallResult {
+  passages: MemoryRecallPassage[];
+  recall_id: string;
+}
+
+export interface RunInspectorData {
+  run_id: string;
+  pinned_blocks: string[];
+  recalled_passages: Array<{ id: string; source_ref: string }>;
+  summarized_events_count: number;
+  tokens_pre: number | null;
+  tokens_post: number | null;
+}
+
 export const api = {
   overview: () => get<OverviewStats>("/overview"),
   plans: (limit = 50) => get<PlanRecord[]>(`/plans?limit=${limit}`),
@@ -230,6 +335,8 @@ export const api = {
   blocks: () => get<ReasonBlock[]>("/blocks"),
   block: (id: string) => get<ReasonBlock>(`/blocks/${id}`),
   savings: () => get<SavingsSummary>("/savings"),
+  savingsSummary: (windowDays = 14) =>
+    get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
@@ -237,4 +344,29 @@ export const api = {
   hosts: () => get<HostAdapter[]>("/hosts"),
   skills: () => get<Skill[]>("/skills"),
   skill: (name: string) => get<Skill>(`/skills/${name}`),
+  memoryBlocks: (agentId?: string, label?: string) => {
+    const params = new URLSearchParams();
+    if (agentId) params.set("agent_id", agentId);
+    if (label) params.set("label", label);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return get<MemoryBlock[] | MemoryBlock>(`/v1/memory/blocks${suffix}`);
+  },
+  memoryUpsertBlock: (payload: {
+    agent_id: string;
+    label: string;
+    value: string;
+    expected_version: number;
+    pinned: boolean;
+    description?: string;
+    read_only?: boolean;
+    limit_chars?: number;
+    actor?: string;
+  }) => post<MemoryUpsertBlockResult>("/v1/memory/blocks", payload),
+  memoryRecall: (payload: {
+    agent_id: string;
+    query: string;
+    top_k?: number;
+    tags?: string[];
+    since?: string;
+  }) => post<MemoryRecallResult>("/v1/memory/recall", payload),
 };

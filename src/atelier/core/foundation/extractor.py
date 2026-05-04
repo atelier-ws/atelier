@@ -15,7 +15,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from atelier.core.foundation.models import ReasonBlock, Trace, slugify
+from atelier.core.foundation.models import (
+    CommandRecord,
+    FileEditRecord,
+    ReasonBlock,
+    Trace,
+    slugify,
+)
 
 
 @dataclass
@@ -85,7 +91,8 @@ def _derive_triggers(trace: Trace) -> list[str]:
 def _derive_file_patterns(trace: Trace) -> list[str]:
     out: list[str] = []
     for f in trace.files_touched:
-        parts = f.split("/")
+        path = _trace_file_path(f)
+        parts = path.split("/")
         pattern = "/".join(parts[:-1]) + "/**" if len(parts) >= 2 else parts[0]
         if pattern not in out:
             out.append(pattern)
@@ -109,10 +116,18 @@ def _derive_procedure(trace: Trace) -> list[str]:
     if trace.diff_summary:
         steps.append(f"Apply change: {trace.diff_summary}")
     for cmd in trace.commands_run:
-        steps.append(f"Run: {cmd}")
+        steps.append(f"Run: {_trace_command_text(cmd)}")
     if trace.output_summary:
         steps.append(f"Confirm: {trace.output_summary}")
     return steps[:8]
+
+
+def _trace_file_path(item: str | FileEditRecord) -> str:
+    return item if isinstance(item, str) else item.path
+
+
+def _trace_command_text(item: str | CommandRecord) -> str:
+    return item if isinstance(item, str) else item.command
 
 
 def _derive_verification(trace: Trace) -> list[str]:

@@ -1,260 +1,321 @@
-import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
+import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
 
 const sidebars: SidebarsConfig = {
   docs: [
     {
-      type: 'doc',
-      id: 'README',
-      label: 'Home',
+      type: "doc",
+      id: "README",
+      label: "Home",
     },
     {
-      type: 'doc',
-      id: 'quickstart',
+      type: "doc",
+      id: "quickstart",
     },
     {
-      type: 'doc',
-      id: 'installation',
+      type: "doc",
+      id: "installation",
     },
+
     {
-      type: 'doc',
-      id: 'open-source-strategy',
-    },
-    {
-      label: 'Getting Started',
-      type: 'category',
+      label: "Getting Started",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'cli',
+          type: "doc",
+          id: "cli",
         },
         {
-          type: 'doc',
-          id: 'packs',
+          type: "doc",
+          id: "packs",
         },
         {
-          type: 'doc',
-          id: 'production-readiness',
+          type: "doc",
+          id: "production-readiness",
         },
       ],
     },
     {
-      label: 'Integration',
-      type: 'category',
+      label: "Integration",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'integration-codex',
+          type: "doc",
+          id: "integration-codex",
         },
         {
-          type: 'doc',
-          id: 'integration-claude-code',
+          type: "doc",
+          id: "integration-claude-code",
         },
       ],
     },
     {
-      label: 'Hosts',
-      type: 'category',
+      label: "Hosts",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'hosts/all-agent-clis',
+          type: "doc",
+          id: "hosts/all-agent-clis",
         },
         {
-          type: 'doc',
-          id: 'hosts/claude-code',
+          type: "doc",
+          id: "hosts/claude-code",
         },
         {
-          type: 'doc',
-          id: 'hosts/claude-code-install',
+          type: "doc",
+          id: "hosts/claude-code-install",
         },
         {
-          type: 'doc',
-          id: 'hosts/codex',
+          type: "doc",
+          id: "hosts/codex",
         },
         {
-          type: 'doc',
-          id: 'hosts/codex-install',
+          type: "doc",
+          id: "hosts/codex-install",
         },
         {
-          type: 'doc',
-          id: 'hosts/copilot',
+          type: "doc",
+          id: "hosts/copilot",
         },
         {
-          type: 'doc',
-          id: 'hosts/copilot-install',
+          type: "doc",
+          id: "hosts/copilot-install",
         },
         {
-          type: 'doc',
-          id: 'hosts/gemini-cli',
+          type: "doc",
+          id: "hosts/gemini-cli",
         },
         {
-          type: 'doc',
-          id: 'hosts/gemini-cli-install',
+          type: "doc",
+          id: "hosts/gemini-cli-install",
         },
         {
-          type: 'doc',
-          id: 'hosts/opencode',
+          type: "doc",
+          id: "hosts/opencode",
         },
         {
-          type: 'doc',
-          id: 'hosts/opencode-install',
+          type: "doc",
+          id: "hosts/opencode-install",
         },
       ],
     },
     {
-      label: 'Architecture',
-      type: 'category',
+      label: "Architecture",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'architecture/ecosystem',
+          type: "doc",
+          id: "architecture/runtime",
+        },
+        {
+          type: "doc",
+          id: "architecture/cost-performance-runtime",
+          label: "Cost & Performance — routing, budgets, evals",
+        },
+        {
+          label: "V2 Plan",
+          type: "category",
+          items: [
+            {
+              type: "doc",
+              id: "architecture/IMPLEMENTATION_PLAN_V2",
+              label: "V2 Plan — overview",
+            },
+            {
+              type: "doc",
+              id: "architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL",
+              label: "V2 Plan — data model",
+            },
+            {
+              type: "doc",
+              id: "architecture/work-packets/INDEX",
+              label: "V2 Plan — work-packets",
+            },
+          ],
         },
       ],
     },
     {
-      label: 'Engineering',
-      type: 'category',
+      label: "Engineering",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'engineering/architecture',
+          type: "doc",
+          id: "engineering/architecture",
         },
         {
-          type: 'doc',
-          id: 'engineering/contributing',
+          type: "doc",
+          id: "engineering/contributing",
         },
         {
-          type: 'doc',
-          id: 'engineering/deployment-modes',
+          type: "doc",
+          id: "engineering/deployment-modes",
         },
         {
-          type: 'doc',
-          id: 'engineering/dogfooding',
+          type: "doc",
+          id: "engineering/dogfooding",
         },
         {
-          type: 'doc',
-          id: 'engineering/evals',
+          type: "doc",
+          id: "engineering/evals",
         },
         {
-          type: 'doc',
-          id: 'engineering/mcp',
+          type: "doc",
+          id: "engineering/mcp",
         },
         {
-          type: 'doc',
-          id: 'engineering/security',
+          type: "doc",
+          id: "engineering/phase-t-hardening",
         },
         {
-          type: 'doc',
-          id: 'engineering/service',
+          type: "doc",
+          id: "engineering/security",
         },
         {
-          type: 'doc',
-          id: 'engineering/storage',
+          type: "doc",
+          id: "engineering/service",
         },
         {
-          type: 'doc',
-          id: 'engineering/workers',
+          type: "doc",
+          id: "engineering/storage",
+        },
+        {
+          type: "doc",
+          id: "engineering/workers",
         },
       ],
     },
     {
-      label: 'Community',
-      type: 'category',
+      label: "Authoring",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'community/reasonblock-authoring',
+          type: "doc",
+          id: "authoring/reasonblock-authoring",
         },
         {
-          type: 'doc',
-          id: 'community/rubric-authoring',
+          type: "doc",
+          id: "authoring/rubric-authoring",
         },
         {
-          type: 'doc',
-          id: 'community/environment-authoring',
+          type: "doc",
+          id: "authoring/environment-authoring",
         },
         {
-          type: 'doc',
-          id: 'community/failure-cluster-authoring',
+          type: "doc",
+          id: "authoring/failure-cluster-authoring",
         },
       ],
     },
     {
-      label: 'Benchmarks',
-      type: 'category',
+      label: "Core",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'benchmarks/beseam',
+          type: "doc",
+          id: "core/benchmarking",
         },
         {
-          type: 'doc',
-          id: 'benchmarks/custom',
+          type: "doc",
+          id: "core/capabilities",
         },
         {
-          type: 'doc',
-          id: 'benchmarks/phase7-2026-04-29',
+          type: "doc",
+          id: "core/context-compression",
         },
         {
-          type: 'doc',
-          id: 'benchmarks/sdk-benchmark',
+          type: "doc",
+          id: "core/loop-detection",
+        },
+        {
+          type: "doc",
+          id: "core/reasoning-reuse",
+        },
+        {
+          type: "doc",
+          id: "core/runtime",
+        },
+        {
+          type: "doc",
+          id: "core/semantic-memory",
+        },
+        {
+          type: "doc",
+          id: "core/tool-supervision",
         },
       ],
     },
     {
-      label: 'SDK',
-      type: 'category',
+      label: "Benchmarks",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'sdk/cli',
+          type: "doc",
+          id: "benchmarks/beseam",
         },
         {
-          type: 'doc',
-          id: 'sdk/mcp',
+          type: "doc",
+          id: "benchmarks/custom",
         },
         {
-          type: 'doc',
-          id: 'sdk/python',
+          type: "doc",
+          id: "benchmarks/phase7-2026-04-29",
+        },
+        {
+          type: "doc",
+          id: "benchmarks/sdk-benchmark",
         },
       ],
     },
     {
-      label: 'Integrations',
-      type: 'category',
+      label: "SDK",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'integrations/README',
-          label: 'Overview',
+          type: "doc",
+          id: "sdk/cli",
         },
         {
-          type: 'doc',
-          id: 'integrations/continue',
+          type: "doc",
+          id: "sdk/mcp",
         },
         {
-          type: 'doc',
-          id: 'integrations/host-matrix',
-        },
-        {
-          type: 'doc',
-          id: 'integrations/memory-interop',
+          type: "doc",
+          id: "sdk/python",
         },
       ],
     },
     {
-      label: 'Copy-Paste',
-      type: 'category',
+      label: "Integrations",
+      type: "category",
       items: [
         {
-          type: 'doc',
-          id: 'copy-paste/copilot-instructions',
+          type: "doc",
+          id: "integrations/README",
+          label: "Overview",
+        },
+        {
+          type: "doc",
+          id: "integrations/host-matrix",
+        },
+        {
+          type: "doc",
+          id: "integrations/memory-interop",
         },
       ],
     },
     {
-      type: 'doc',
-      id: 'troubleshooting',
+      label: "Copy-Paste",
+      type: "category",
+      items: [
+        {
+          type: "doc",
+          id: "copy-paste/copilot-instructions",
+        },
+      ],
+    },
+    {
+      type: "doc",
+      id: "troubleshooting",
     },
   ],
 };

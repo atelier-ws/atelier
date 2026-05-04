@@ -29,6 +29,9 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0"]
+memory = ["letta-client>=1.7.12"]
+memory-server = ["letta>=0.16.7"]
+embeddings = ["sentence-transformers>=2.7"]
 api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
@@ -99,6 +102,13 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "atelier.core.service.api",
+    "atelier.gateway.adapters.http_api",
+]
+disable_error_code = ["untyped-decorator"]
 
 [dependency-groups]
 dev = [

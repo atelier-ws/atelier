@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Atelier: Reasoning Context",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "atelier",
+        "--root",
+        ".atelier",
+        "context",
+        "--task",
+        "${input:atelierTask}",
+        "--json"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Atelier: Check Plan",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "atelier",
+        "--root",
+        ".atelier",
+        "check-plan",
+        "--task",
+        "${input:atelierTask}",
+        "--step",
+        "${input:atelierStep1}",
+        "--step",
+        "${input:atelierStep2}",
+        "--json"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "atelierTask",
+      "type": "promptString",
+      "description": "Atelier task description"
+    },
+    {
+      "id": "atelierStep1",
+      "type": "promptString",
+      "description": "Plan step 1"
+    },
+    {
+      "id": "atelierStep2",
+      "type": "promptString",
+      "description": "Plan step 2"
+    }
+  ]
+}

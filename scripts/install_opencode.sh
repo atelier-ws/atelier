@@ -147,5 +147,84 @@ else
     warn "agent source missing: $AGENT_SRC"
 fi
 
-info "Done. Restart opencode and verify: make verify-opencode"
+# ── Post-install verification (replaces verify_opencode.sh) ──
+info "Running post-install verification..."
+VFAIL=0
+vpass() { info "PASS: $*"; }
+vfail() { echo "[atelier:opencode] FAIL: $*" >&2; VFAIL=1; }
+
+# Find config file
+OC_FILE=""
+for f in "${WORKSPACE}/opencode.jsonc" "${WORKSPACE}/opencode.json"; do
+    [ -f "$f" ] && OC_FILE="$f" && break
+done
+
+if [ -z "$OC_FILE" ]; then
+    vfail "opencode config not found (tried opencode.jsonc, opencode.json)"
+else
+    HAS=$(python3 - <<PYEOF
+import json, re
+with open('$OC_FILE') as f:
+    content = f.read()
+stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
+try:
+    d = json.loads(stripped)
+    print('yes' if 'atelier' in d.get('mcp', {}) else 'no')
+except Exception:
+    print('parse-error')
+PYEOF
+)
+    if [ "$HAS" = "yes" ]; then
+        vpass "opencode config contains atelier MCP entry ($OC_FILE)"
+    elif [ "$HAS" = "parse-error" ]; then
+        vfail "opencode config parse error: $OC_FILE"
+    else
+        vfail "opencode config missing atelier entry"
+    fi
+
+    DEFAULT_AGENT=$(python3 - <<PYEOF
+import json, re
+with open('$OC_FILE') as f:
+    content = f.read()
+stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
+try:
+    d = json.loads(stripped)
+    print(d.get('default_agent', ''))
+except Exception:
+    print('')
+PYEOF
+)
+    if [ "$DEFAULT_AGENT" = "atelier" ]; then
+        vpass "opencode default_agent = atelier"
+    else
+        vfail "opencode default_agent is '$DEFAULT_AGENT' (expected 'atelier')"
+    fi
+fi
+
+AGENT_FILE="${WORKSPACE}/.opencode/agents/atelier.md"
+if [ -f "$AGENT_FILE" ]; then
+    vpass "opencode atelier agent installed: $AGENT_FILE"
+else
+    vfail "opencode atelier agent missing: $AGENT_FILE"
+fi
+
+if [ -x "${ATELIER_WRAPPER}" ]; then
+    vpass "atelier_mcp_stdio.sh exists and is executable"
+else
+    vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
+fi
+
+if [ -x "${ATELIER_REPO}/bin/atelier-status" ]; then
+    vpass "bin/atelier-status helper exists"
+else
+    vfail "bin/atelier-status missing or not executable"
+fi
+
+if [ "$VFAIL" -ne 0 ]; then
+    echo "[atelier:opencode] ERROR: post-install verification failed." >&2
+    exit 1
+fi
+info "All post-install checks passed"
+
+info "Done. Restart opencode — /atelier:status, /atelier:context are available."
 info "Tip: run 'atelier-status' in any shell to see current run state."

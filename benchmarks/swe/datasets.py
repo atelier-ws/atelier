@@ -54,7 +54,7 @@ _MOCK_TASKS: list[dict[str, Any]] = [
         "repo": "mock/calc",
         "base_commit": "deadbeef",
         "problem_statement": (
-            "Function `add(a, b)` returns `a - b` instead of `a + b`. " "Fix it in calc.py."
+            "Function `add(a, b)` returns `a - b` instead of `a + b`. Fix it in calc.py."
         ),
         "hints_text": "tests in tests/test_calc.py",
         # gold patch present so eval can use it; agent never sees this field.
@@ -101,7 +101,7 @@ def _load_huggingface(
     name: str, split: str, limit: int, ids: list[str] | None
 ) -> list[dict[str, Any]]:
     try:
-        from datasets import load_dataset  # type: ignore[import-not-found]
+        from datasets import load_dataset
     except ImportError:
         return []
     hf_name = {

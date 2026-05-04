@@ -5,6 +5,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from atelier.core.foundation.models import Trace
 from atelier.core.runtime import AtelierRuntimeCore
 from atelier.gateway.adapters.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
@@ -47,10 +48,15 @@ def test_semantic_memory_read_and_search(tmp_path: Path) -> None:
 
     assert first["language"] == "python"
     assert "alpha" in first["symbols"]
+    assert "token_metrics" in first
+    assert "saved_tokens" in first["token_metrics"]
     assert second["cached"] is True
 
     matches = rt.smart_search("alpha", limit=5)
     assert "semantic" in matches
+    assert "glob" in matches
+    assert "snippets" in matches
+    assert "ranked" in matches
 
 
 def test_loop_detection_and_context_compression(tmp_path: Path) -> None:
@@ -67,6 +73,48 @@ def test_loop_detection_and_context_compression(tmp_path: Path) -> None:
     summary = rt.summarize_memory(run_id=ledger.run_id)
     assert summary["run_id"] == ledger.run_id
     assert "loop_alerts" in summary
+
+
+def test_failure_analysis_clusters_and_matches(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    _init_root(root)
+    rt = AtelierRuntimeCore(root)
+
+    rt.store.record_trace(
+        Trace(
+            id=Trace.make_id("Fix auth", "codex"),
+            agent="codex",
+            domain="coding",
+            task="Fix auth",
+            status="failed",
+            errors_seen=["AssertionError: expected 200 got 500"],
+            commands_run=["pytest -q"],
+        )
+    )
+    rt.store.record_trace(
+        Trace(
+            id=Trace.make_id("Fix auth retry", "codex"),
+            agent="codex",
+            domain="coding",
+            task="Fix auth retry",
+            status="failed",
+            errors_seen=["AssertionError: expected 201 got 500"],
+            commands_run=["pytest -q"],
+        )
+    )
+
+    report = rt.analyze_failures(domain="coding", lookback=50, min_cluster_size=1)
+    assert report["total_failed_traces"] >= 2
+    assert report["cluster_count"] >= 1
+
+    matched = rt.analyze_failure_for_error(
+        task="Fix auth endpoint",
+        error="AssertionError: expected 204 got 500",
+        domain="coding",
+        lookback=50,
+    )
+    assert "matched" in matched
+    assert "suggested_fixes" in matched.get("incident", {}) or "suggested_fixes" in matched
 
 
 def test_tool_supervision_and_smart_edit(tmp_path: Path) -> None:
@@ -90,6 +138,32 @@ def test_tool_supervision_and_smart_edit(tmp_path: Path) -> None:
     )
     assert result["applied"] == 1
     assert file_path.read_text(encoding="utf-8") == "hello atelier"
+
+
+def test_smart_edit_fuzzy_and_bash_intercept(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    _init_root(root)
+    rt = AtelierRuntimeCore(root)
+
+    file_path = tmp_path / "fuzzy.txt"
+    file_path.write_text("publish_product_by_gid\n", encoding="utf-8")
+
+    # trailing whitespace variant matches through whitespace-flex regex path
+    result = rt.smart_edit(
+        [
+            {
+                "path": str(file_path),
+                "find": "publish_product_by_gid ",
+                "replace": "publish_product_by_id",
+            }
+        ]
+    )
+    assert result["applied"] == 1
+    assert "publish_product_by_id" in file_path.read_text(encoding="utf-8")
+
+    intercept = rt.bash_intercept("rg publish")
+    assert intercept["intercepted"] is True
+    assert intercept["suggestion"]["tool"] == "atelier_cached_grep"
 
 
 def test_sql_inspect_and_runtime_benchmark_metrics(tmp_path: Path) -> None:

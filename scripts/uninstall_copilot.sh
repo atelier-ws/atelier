@@ -33,23 +33,23 @@ run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
 # Remove MCP server entry from .vscode/mcp.json
 VSCODE_MCP="${WORKSPACE}/.vscode/mcp.json"
-if [ -f "$VSCODE_MCP" ]; then
+if [ -f "$VSCODE_MCP" ] && grep -q "atelier" "$VSCODE_MCP"; then
     if command -v python3 &> /dev/null; then
-        run "python3 -c '
+        python3 -c "
 import json
-import sys
-path = \"$VSCODE_MCP\"
+path = '$VSCODE_MCP'
 try:
-    with open(path, \"r\") as f:
+    with open(path, 'r') as f:
         data = json.load(f)
-    if \"mcpServers\" in data and \"atelier\" in data[\"mcpServers\"]:
-        del data[\"mcpServers\"][\"atelier\"]
-        with open(path, \"w\") as f:
+    # VS Code Copilot uses 'servers' key (not 'mcpServers')
+    if 'servers' in data and 'atelier' in data['servers']:
+        del data['servers']['atelier']
+        with open(path, 'w') as f:
             json.dump(data, f, indent=2)
-        print(\"Removed atelier from .vscode/mcp.json\")
+        print('Removed atelier from .vscode/mcp.json')
 except Exception as e:
-    print(f\"Warning: {e}\", file=sys.stderr)
-'"
+    print(f'Warning: {e}', file=sys.stderr)
+" || true
     else
         echo "[atelier:uninstall:copilot] WARN: python3 not found, skipping .vscode/mcp.json cleanup"
     fi
@@ -58,27 +58,39 @@ fi
 # Remove atelier context from .github/copilot-instructions.md
 COPILOT_INSTR="${WORKSPACE}/.github/copilot-instructions.md"
 if [ -f "$COPILOT_INSTR" ]; then
-    # Check if it contains atelier content and remove it
-    if grep -q "atelier" "$COPILOT_INSTR" 2>/dev/null; then
-        # Remove the atelier section (between "<!-- atelier:" and "-->")
-        run "python3 -c '
+    # Check if it ONLY contains Atelier content (no other content)
+    if grep -q "Atelier" "$COPILOT_INSTR" 2>/dev/null; then
+        # Backup then remove the file entirely
+        run "cp '$COPILOT_INSTR' '${COPILOT_INSTR}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
+        run "rm -f '$COPILOT_INSTR'"
+        info "Removed .github/copilot-instructions.md (Atelier-only file)"
+    else
+        # Try to remove just atelier section if there's other content
+        if grep -q "atelier" "$COPILOT_INSTR" 2>/dev/null; then
+            run "python3 -c '
 import re
 path = \"$COPILOT_INSTR\"
 try:
     with open(path, \"r\") as f:
         content = f.read()
-    # Remove atelier comments and content
-    new_content = re.sub(r\"<!--\s*atelier:[^-->]*-->\", \"\", content)
-    new_content = re.sub(r\"<!--\s*atelier[\s\S]*?-->\", \"\", new_content)
-    # Clean up extra blank lines
-    new_content = re.sub(r\"\n{3,}\", \"\n\", new_content)
+    # Remove atelier section (from ## to next ## or end)
+    new_content = re.sub(r\"##\s*Atelier[^\\n]*\\n[\\s\\S]*?(?=\\n##|\$)\", \"\", content)
+    new_content = re.sub(r\"\\n{3,}\", \"\\n\", new_content).strip()
     with open(path, \"w\") as f:
-        f.write(new_content.strip() + \"\n\")
+        f.write(new_content + \"\\n\")
     print(\"Removed atelier section from .github/copilot-instructions.md\")
 except Exception as e:
     print(f\"Warning: {e}\", file=sys.stderr)
 '"
+        fi
     fi
+fi
+
+# Remove .github/chatmodes/atelier.chatmode.md if exists
+CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
+if [ -f "$CHATMODE" ]; then
+    run "rm -f '$CHATMODE'"
+    info "Removed .github/chatmodes/atelier.chatmode.md"
 fi
 
 info "Done."

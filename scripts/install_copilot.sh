@@ -4,6 +4,7 @@
 # What it does:
 #   1. Writes/merges .vscode/mcp.json with atelier server entry
 #   2. Appends atelier context to .github/copilot-instructions.md
+#   3. Merges Atelier task presets into .vscode/tasks.json
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
@@ -179,5 +180,112 @@ else
     warn "chat mode source missing: $CHATMODE_SRC"
 fi
 
-info "Done. Reload VS Code window and verify: make verify-copilot"
+# ---- merge .vscode/tasks.json ----------------------------------------------
+TASKS_SRC="${ATELIER_REPO}/integrations/copilot/tasks.json"
+TASKS_DEST="${WORKSPACE}/.vscode/tasks.json"
+
+if [ -f "$TASKS_SRC" ]; then
+    if [ -f "$TASKS_DEST" ]; then
+        backup_file "$TASKS_DEST"
+        if $DRY_RUN; then
+            echo "  [dry-run] merge Atelier task presets into $TASKS_DEST"
+        else
+            python3 - <<PYEOF
+import json
+from pathlib import Path
+
+dest = Path('$TASKS_DEST')
+src = Path('$TASKS_SRC')
+existing = json.loads(dest.read_text(encoding='utf-8'))
+incoming = json.loads(src.read_text(encoding='utf-8'))
+
+existing.setdefault('version', '2.0.0')
+existing_tasks = existing.setdefault('tasks', [])
+existing_inputs = existing.setdefault('inputs', [])
+
+existing_labels = {str(t.get('label')) for t in existing_tasks if isinstance(t, dict)}
+for task in incoming.get('tasks', []):
+    if task.get('label') not in existing_labels:
+        existing_tasks.append(task)
+
+existing_input_ids = {str(i.get('id')) for i in existing_inputs if isinstance(i, dict)}
+for item in incoming.get('inputs', []):
+    if item.get('id') not in existing_input_ids:
+        existing_inputs.append(item)
+
+dest.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
+print('[atelier:copilot] merged Atelier task presets into ' + str(dest))
+PYEOF
+        fi
+    else
+        run "cp '$TASKS_SRC' '$TASKS_DEST'"
+        info "created VS Code tasks preset: $TASKS_DEST"
+    fi
+else
+    warn "task preset source missing: $TASKS_SRC"
+fi
+
+# ── Post-install verification (replaces verify_copilot.sh) ──
+info "Running post-install verification..."
+VFAIL=0
+vpass() { info "PASS: $*"; }
+vfail() { echo "[atelier:copilot] FAIL: $*" >&2; VFAIL=1; }
+
+MCP_JSON="${WORKSPACE}/.vscode/mcp.json"
+if [ -f "$MCP_JSON" ]; then
+    HAS=$(python3 -c "
+import json
+d = json.load(open('$MCP_JSON'))
+servers = d.get('servers', d.get('mcpServers', {}))
+print('yes' if 'atelier' in servers else 'no')
+" 2>/dev/null || echo "error")
+    if [ "$HAS" = "yes" ]; then
+        vpass ".vscode/mcp.json contains atelier server entry"
+    else
+        vfail ".vscode/mcp.json missing atelier entry"
+    fi
+else
+    vfail ".vscode/mcp.json missing"
+fi
+
+INSTRUCTIONS="${WORKSPACE}/.github/copilot-instructions.md"
+if [ -f "$INSTRUCTIONS" ] && grep -q -i "atelier" "$INSTRUCTIONS" 2>/dev/null; then
+    vpass "copilot-instructions.md references Atelier"
+else
+    vfail "copilot-instructions.md missing or no Atelier reference"
+fi
+
+if [ -x "${ATELIER_WRAPPER}" ]; then
+    vpass "atelier_mcp_stdio.sh exists and is executable"
+else
+    vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
+fi
+
+CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
+if [ -f "$CHATMODE" ]; then
+    vpass "Copilot chat mode installed: $CHATMODE"
+else
+    vfail "Copilot chat mode missing: $CHATMODE"
+fi
+
+TASKS_JSON="${WORKSPACE}/.vscode/tasks.json"
+if [ -f "$TASKS_JSON" ] && grep -q "Atelier: Check Plan" "$TASKS_JSON" 2>/dev/null; then
+    vpass "Atelier VS Code task presets installed in .vscode/tasks.json"
+else
+    vfail ".vscode/tasks.json missing Atelier task presets"
+fi
+
+if [ -x "${ATELIER_REPO}/bin/atelier-status" ]; then
+    vpass "bin/atelier-status helper exists"
+else
+    vfail "bin/atelier-status missing or not executable"
+fi
+
+if [ "$VFAIL" -ne 0 ]; then
+    echo "[atelier:copilot] ERROR: post-install verification failed." >&2
+    exit 1
+fi
+info "All post-install checks passed"
+
+info "Done. Reload VS Code window — Atelier skills and tasks are available."
 info "Tip: run 'atelier-status' in any shell to see current run state."

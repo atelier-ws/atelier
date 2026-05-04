@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -58,11 +59,38 @@ def test_memory_summarize_search_smart_and_sql_inspect(tmp_path: Path) -> None:
     search_payload = json.loads(out)
     assert "matches" in search_payload
 
-    sql = "select * from catalog.products join sales.orders on products.id = orders.product_id"
-    code, out = _invoke(root, "sql", "inspect", "--sql", sql)
+    db_path = tmp_path / "cli_sqlite.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE items(id INTEGER PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO items(name) VALUES('cli')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    alias_file = root / "sql_aliases.toml"
+    alias_file.write_text(
+        (
+            "[aliases.cli_local]\n"
+            'backend = "sqlite"\n'
+            f'dsn = "{db_path}"\n'
+            "allow_writes = false\n"
+        ),
+        encoding="utf-8",
+    )
+
+    code, out = _invoke(
+        root,
+        "sql",
+        "inspect",
+        "--alias",
+        "cli_local",
+        "--sql",
+        "select id, name from items order by id",
+    )
     assert code == 0, out
     sql_payload = json.loads(out)
-    assert "tables" in sql_payload
+    assert "columns" in sql_payload
 
 
 def test_read_smart_and_edit_smart(tmp_path: Path) -> None:

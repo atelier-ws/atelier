@@ -5,6 +5,7 @@ from __future__ import annotations
 import urllib.parse
 from typing import Any, Protocol, cast
 
+from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
     FailureCluster,
     PlanCheckResult,
@@ -21,6 +22,11 @@ from atelier.gateway.sdk.client import (
     AtelierClient,
     EvalRunResult,
     FailureAnalysisResult,
+    LessonDecisionResult,
+    LessonInboxResult,
+    MemoryArchiveResult,
+    MemoryRecallResult,
+    MemoryUpsertBlockResult,
     ReasoningContextResult,
     SavingsSummary,
     TraceRecordResult,
@@ -47,8 +53,11 @@ class _ServiceClient(Protocol):
     ) -> dict[str, Any]: ...
     def get_savings(self) -> dict[str, Any]: ...
     def _get(self, path: str) -> dict[str, Any]: ...
+    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]: ...
     def list_evals(self, *, domain: str | None = None) -> dict[str, Any]: ...
     def run_evals(self, *, domain: str | None = None, limit: int = 50) -> dict[str, Any]: ...
+    def lesson_inbox(self, args: dict[str, Any]) -> dict[str, Any]: ...
+    def lesson_decide(self, args: dict[str, Any]) -> dict[str, Any]: ...
 
 
 class RemoteClient(AtelierClient):
@@ -84,6 +93,11 @@ class RemoteClient(AtelierClient):
         tools: list[str] | None = None,
         errors: list[str] | None = None,
         max_blocks: int = 5,
+        token_budget: int | None = 2000,
+        dedup: bool = True,
+        include_telemetry: bool = False,
+        agent_id: str | None = None,
+        recall: bool = True,
     ) -> ReasoningContextResult:
         payload = self._ensure_ok(
             self._client.get_reasoning_context(
@@ -94,6 +108,11 @@ class RemoteClient(AtelierClient):
                     "tools": tools or [],
                     "errors": errors or [],
                     "max_blocks": max_blocks,
+                    "token_budget": token_budget,
+                    "dedup": dedup,
+                    "include_telemetry": include_telemetry,
+                    "agent_id": agent_id,
+                    "recall": recall,
                 }
             )
         )
@@ -158,8 +177,9 @@ class RemoteClient(AtelierClient):
         domain: str,
         task: str,
         status: TraceStatus,
-        files_touched: list[str] | None = None,
-        commands_run: list[str] | None = None,
+        files_touched: list[str | dict[str, Any]] | None = None,
+        commands_run: list[str | dict[str, Any]] | None = None,
+        tools_called: list[dict[str, Any]] | None = None,
         errors_seen: list[str] | None = None,
         diff_summary: str = "",
         output_summary: str = "",
@@ -174,6 +194,7 @@ class RemoteClient(AtelierClient):
                     "status": status,
                     "files_touched": files_touched or [],
                     "commands_run": commands_run or [],
+                    "tools_called": tools_called or [],
                     "errors_seen": errors_seen or [],
                     "diff_summary": diff_summary,
                     "output_summary": output_summary,
@@ -199,6 +220,118 @@ class RemoteClient(AtelierClient):
     def get_savings(self) -> SavingsSummary:
         payload = self._ensure_ok(self._client.get_savings())
         return SavingsSummary.model_validate(payload)
+
+    def lesson_inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
+        payload = self._ensure_ok(self._client.lesson_inbox({"domain": domain, "limit": limit}))
+        return LessonInboxResult.model_validate(payload)
+
+    def lesson_decide(
+        self,
+        *,
+        lesson_id: str,
+        decision: str,
+        reviewer: str,
+        reason: str,
+    ) -> LessonDecisionResult:
+        payload = self._ensure_ok(
+            self._client.lesson_decide(
+                {
+                    "lesson_id": lesson_id,
+                    "decision": decision,
+                    "reviewer": reviewer,
+                    "reason": reason,
+                }
+            )
+        )
+        return LessonDecisionResult.model_validate(payload)
+
+    def memory_upsert_block(
+        self,
+        *,
+        agent_id: str,
+        label: str,
+        value: str,
+        limit_chars: int = 8000,
+        description: str = "",
+        read_only: bool = False,
+        pinned: bool = False,
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
+        actor: str | None = None,
+    ) -> MemoryUpsertBlockResult:
+        payload = self._ensure_ok(
+            self._client._post(
+                "/v1/memory/blocks",
+                {
+                    "agent_id": agent_id,
+                    "label": label,
+                    "value": value,
+                    "limit_chars": limit_chars,
+                    "description": description,
+                    "read_only": read_only,
+                    "pinned": pinned,
+                    "metadata": metadata or {},
+                    "expected_version": expected_version,
+                    "actor": actor,
+                },
+            )
+        )
+        return MemoryUpsertBlockResult.model_validate(payload)
+
+    def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
+        payload = self._ensure_ok(
+            self._client._get(
+                "/v1/memory/blocks"
+                f"?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
+            )
+        )
+        return MemoryBlock.model_validate(payload) if payload else None
+
+    def memory_archive(
+        self,
+        *,
+        agent_id: str,
+        text: str,
+        source: str,
+        source_ref: str = "",
+        tags: list[str] | None = None,
+    ) -> MemoryArchiveResult:
+        payload = self._ensure_ok(
+            self._client._post(
+                "/v1/memory/archive",
+                {
+                    "agent_id": agent_id,
+                    "text": text,
+                    "source": source,
+                    "source_ref": source_ref,
+                    "tags": tags or [],
+                },
+            )
+        )
+        return MemoryArchiveResult.model_validate(payload)
+
+    def memory_recall(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        top_k: int = 5,
+        tags: list[str] | None = None,
+        since: str | None = None,
+    ) -> MemoryRecallResult:
+        payload = self._ensure_ok(
+            self._client._post(
+                "/v1/memory/recall",
+                {
+                    "agent_id": agent_id,
+                    "query": query,
+                    "top_k": top_k,
+                    "tags": tags or [],
+                    "since": since,
+                },
+            )
+        )
+        return MemoryRecallResult.model_validate(payload)
 
     def _list_reasonblocks(
         self,

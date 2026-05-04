@@ -25,10 +25,18 @@ from typing import Any
 
 from atelier.core.foundation.models import (
     BlockStatus,
+    CommandRecord,
+    FileEditRecord,
     ReasonBlock,
     Rubric,
+    ToolCall,
     Trace,
     to_jsonable,
+)
+from atelier.infra.storage.migrations import (
+    V2_REQUIRED_TABLES,
+    postgres_migration_scripts,
+    postgres_vector_script,
 )
 
 # --------------------------------------------------------------------------- #
@@ -376,14 +384,55 @@ class PostgresStore:
         """Create tables and (optionally) enable pgvector."""
         with self._connect() as conn:
             conn.execute(SCHEMA_DDL)
+            for sql in postgres_migration_scripts():
+                conn.execute(sql)
             if self._vector_search:
-                dim_ddl = VECTOR_EXTENSION_DDL.format(dim=self._embedding_dim)
-                try:
-                    conn.execute(dim_ddl)
-                except Exception:
-                    # pgvector may not be available — silently skip
-                    pass
+                self.ensure_vector_index(conn)
+            self.verify_v2_schema(conn)
             conn.commit()
+
+    def ensure_vector_index(self, conn: Any | None = None) -> bool:
+        """Best-effort pgvector setup for archival passage embeddings."""
+
+        owns_connection = conn is None
+        active_conn = conn or self._connect()
+        try:
+            try:
+                active_conn.execute(postgres_vector_script(dim=self._embedding_dim))
+                if owns_connection:
+                    active_conn.commit()
+                return True
+            except Exception:
+                if owns_connection:
+                    active_conn.rollback()
+                return False
+        finally:
+            if owns_connection:
+                active_conn.close()
+
+    def verify_v2_schema(self, conn: Any | None = None) -> bool:
+        """Return True when every V2 base table exists in Postgres."""
+
+        owns_connection = conn is None
+        active_conn = conn or self._connect()
+        try:
+            rows = active_conn.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = ANY(%s)
+                """,
+                (list(V2_REQUIRED_TABLES),),
+            ).fetchall()
+            found = {row[0] for row in rows}
+            missing = set(V2_REQUIRED_TABLES) - found
+            if missing:
+                raise RuntimeError(f"missing V2 tables: {', '.join(sorted(missing))}")
+            return True
+        finally:
+            if owns_connection:
+                active_conn.close()
 
     def health_check(self) -> dict[str, Any]:
         """Return basic health information."""
@@ -776,29 +825,95 @@ class PostgresStore:
     def _row_to_trace(self, row: Any) -> Trace:
         """Convert a Postgres row to a Trace."""
         d = dict(row)
+
+        # Deserialize JSONB fields
+        raw_tools = d.get("tools_called")
+        if isinstance(raw_tools, str):
+            raw_tools = json.loads(raw_tools)
+        raw_tools = raw_tools or []
+
+        raw_files = d.get("files_touched")
+        if isinstance(raw_files, str):
+            raw_files = json.loads(raw_files)
+        raw_files = raw_files or []
+
+        raw_commands = d.get("commands_run")
+        if isinstance(raw_commands, str):
+            raw_commands = json.loads(raw_commands)
+        raw_commands = raw_commands or []
+
+        raw_errors = d.get("errors_seen")
+        if isinstance(raw_errors, str):
+            raw_errors = json.loads(raw_errors)
+        raw_errors = raw_errors or []
+
+        raw_repeated = d.get("repeated_failures")
+        if isinstance(raw_repeated, str):
+            raw_repeated = json.loads(raw_repeated)
+        raw_repeated = raw_repeated or []
+
+        raw_validation = d.get("validation_results")
+        if isinstance(raw_validation, str):
+            raw_validation = json.loads(raw_validation)
+        raw_validation = raw_validation or []
+
+        # Build typed tool calls
+        tools_called: list[ToolCall] = []
+        for item in raw_tools:
+            if isinstance(item, dict):
+                tools_called.append(
+                    ToolCall(
+                        name=item.get("name", ""),
+                        args_hash=item.get("args_hash", ""),
+                        count=item.get("count", 1),
+                        args=item.get("args"),
+                        result_summary=item.get("result_summary", ""),
+                    )
+                )
+
+        # Build typed file records (backward compat: plain strings or dicts)
+        files_touched: list[str | FileEditRecord] = []
+        for item in raw_files:
+            if isinstance(item, dict):
+                files_touched.append(
+                    FileEditRecord(
+                        path=item.get("path", ""),
+                        diff=item.get("diff", ""),
+                        event=item.get("event", "edit"),
+                    )
+                )
+            else:
+                files_touched.append(str(item))
+
+        # Build typed command records (backward compat: plain strings or dicts)
+        commands_run: list[str | CommandRecord] = []
+        for item in raw_commands:
+            if isinstance(item, dict):
+                commands_run.append(
+                    CommandRecord(
+                        command=item.get("command", ""),
+                        exit_code=item.get("exit_code"),
+                        stdout=item.get("stdout", ""),
+                        stderr=item.get("stderr", ""),
+                    )
+                )
+            else:
+                commands_run.append(str(item))
+
         return Trace(
             id=d.get("run_id") or str(d.get("id", "")),
             agent=d["agent"],
             domain=d["domain"],
             task=d["task"],
             status=d["status"],
-            files_touched=(
-                json.loads(d["files_touched"])
-                if isinstance(d["files_touched"], str)
-                else d.get("files_touched", [])
-            ),
-            commands_run=(
-                json.loads(d["commands_run"])
-                if isinstance(d["commands_run"], str)
-                else d.get("commands_run", [])
-            ),
-            errors_seen=(
-                json.loads(d["errors_seen"])
-                if isinstance(d["errors_seen"], str)
-                else d.get("errors_seen", [])
-            ),
+            files_touched=files_touched,
+            tools_called=tools_called,
+            commands_run=commands_run,
+            errors_seen=raw_errors,
+            repeated_failures=raw_repeated,
             diff_summary=d.get("diff_summary") or "",
             output_summary=d.get("output_summary") or "",
+            validation_results=raw_validation,
         )
 
     def _row_to_rubric(self, row: Any) -> Rubric:

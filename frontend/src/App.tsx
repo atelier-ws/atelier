@@ -1,16 +1,12 @@
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 import Overview from "./pages/Overview";
 import Traces from "./pages/Traces";
-import Failures from "./pages/Failures";
-import Environments from "./pages/Environments";
-import Blocks from "./pages/Blocks";
+import Learnings from "./pages/Learnings";
 import Savings from "./pages/Savings";
-import Rubrics from "./pages/Rubrics";
-import Integrations from "./pages/Integrations";
+import Host from "./pages/Host";
 import Agents from "./pages/Agents";
-import Plans from "./pages/Plans";
-
-const BRAND = "#ff6041";
+import Tools from "./pages/Tools";
+import Memory from "./pages/Memory";
 
 const tabs = [
   {
@@ -20,28 +16,16 @@ const tabs = [
     description: "Stats & features",
   },
   {
-    to: "/blocks",
-    label: "Blocks",
-    icon: "🧠",
-    description: "Reusable procedures",
-  },
-  {
-    to: "/traces",
-    label: "Traces",
+    to: "/trace",
+    label: "Trace",
     icon: "📇",
     description: "Execution artifacts",
   },
   {
-    to: "/rubrics",
-    label: "Rubrics",
-    icon: "📏",
-    description: "Domain verification gates",
-  },
-  {
-    to: "/agents",
-    label: "Agents",
-    icon: "🤖",
-    description: "Agent definitions & modes",
+    to: "/learnings",
+    label: "Learnings",
+    icon: "🧠",
+    description: "Blocks, plans, failures, domain laws",
   },
   {
     to: "/savings",
@@ -50,44 +34,40 @@ const tabs = [
     description: "Cost & tokens",
   },
   {
-    to: "/failures",
-    label: "Failures",
-    icon: "🚨",
-    description: "Error clusters",
+    to: "/memory",
+    label: "Memory",
+    icon: "💾",
+    description: "Core blocks and archival recall",
   },
   {
-    to: "/environments",
-    label: "Env",
-    icon: "🌐",
-    description: "Domain configs",
+    to: "/agents",
+    label: "Agents",
+    icon: "🤖",
+    description: "Agent definitions, skills & modes",
   },
   {
-    to: "/integrations",
-    label: "Integrations",
-    icon: "🧩",
-    description: "MCP & host adapters",
+    to: "/tools",
+    label: "Tools",
+    icon: "🔌",
+    description: "MCP tools & capabilities",
+  },
+  {
+    to: "/host",
+    label: "Host",
+    icon: "🖥️",
+    description: "Host adapters & MCP configs",
   },
 ];
 
 export default function App() {
   return (
-    <div
-      className="min-h-full flex flex-col bg-neutral-950 text-neutral-200"
-      style={{
-        fontFamily:
-          "'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace",
-        background: "linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%)",
-      }}
-    >
+    <div className="min-h-full flex flex-col bg-neutral-950 text-neutral-200 font-mono bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
       {/* Header: modern terminal prompt style */}
       <header className="border-b border-neutral-800 px-6 py-4 bg-gradient-to-r from-neutral-950 to-neutral-900/50">
         <div className="flex items-center gap-3">
           <span className="text-2xl">⚙️</span>
           <div>
-            <h1
-              className="text-lg font-bold tracking-wide"
-              style={{ color: BRAND }}
-            >
+            <h1 className="text-lg font-bold tracking-wide text-[#ff6041]">
               ❯ ATELIER
             </h1>
             <p className="text-xs text-neutral-500 font-mono tracking-wide">
@@ -106,14 +86,9 @@ export default function App() {
             className={({ isActive }) =>
               `px-4 py-2 text-xs transition flex items-center gap-1.5 whitespace-nowrap font-bold border-b-2 ${
                 isActive
-                  ? "text-white bg-neutral-900/30"
+                  ? "bg-neutral-900/30 border-b-[#ff6041] text-[#ff6041]"
                   : "border-b-transparent text-neutral-500 hover:text-neutral-300"
               }`
-            }
-            style={({ isActive }) =>
-              isActive 
-                ? { borderBottomColor: BRAND, color: BRAND }
-                : {}
             }
             title={t.description}
           >
@@ -128,15 +103,15 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
           <Route path="/overview" element={<Overview />} />
-          <Route path="/blocks" element={<Blocks />} />
-          <Route path="/traces" element={<Traces />} />
-          <Route path="/rubrics" element={<Rubrics />} />
-          <Route path="/agents" element={<Agents />} />
+          <Route path="/trace" element={<Traces />} />
+          <Route path="/traces" element={<Navigate to="/trace" replace />} />
+          <Route path="/learnings" element={<Learnings />} />
+          <Route path="/learnings/:section" element={<Learnings />} />
           <Route path="/savings" element={<Savings />} />
-          <Route path="/plans" element={<Plans />} />
-          <Route path="/failures" element={<Failures />} />
-          <Route path="/environments" element={<Environments />} />
-          <Route path="/integrations" element={<Integrations />} />
+          <Route path="/memory" element={<Memory />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/tools" element={<Tools />} />
+          <Route path="/host" element={<Host />} />
         </Routes>
       </main>
     </div>

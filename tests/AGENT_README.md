@@ -7,6 +7,8 @@ Targeted validation for Atelier runtime, adapters, domain bundles, SDK, and host
 ## Key Files
 
 - `test_sdk.py` — SDK surface
+- `gateway/test_mcp_tool_handlers.py` — MCP protocol, tool registry, compatibility aliases, smart tool payloads
+- `core/test_capabilities_runtime_core.py` — runtime capability behavior for smart search/read/edit/sql/bash intercept
 - `test_domains.py` — domain bundle system: DomainManager, DomainLoader, CLI `domain list/info`
 - `test_phase_d3_d4.py` — MCP domain tools (`atelier_domain_list`, `atelier_domain_info`), pack tools absent
 - `test_adapters.py` — host adapter scaffolds

@@ -5,6 +5,8 @@
 #   1. Copies skills into <workspace>/.codex/skills/atelier/
 #   2. Writes/merges .codex/mcp.json with atelier MCP entry
 #   3. Writes AGENTS.atelier.md to workspace root (context instructions)
+#   4. Installs atelier-codex wrapper into <workspace>/bin/
+#   5. Installs reusable task templates into <workspace>/.codex/tasks/
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
@@ -85,6 +87,11 @@ JSON
     echo ""
     echo "3. Copy AGENTS.atelier.md to your workspace root:"
     echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${WORKSPACE}/AGENTS.atelier.md'"
+    echo ""
+    echo "4. Install wrapper + task templates:"
+    echo "   cp '${ATELIER_REPO}/bin/atelier-codex' '${WORKSPACE}/bin/atelier-codex'"
+    echo "   chmod +x '${WORKSPACE}/bin/atelier-codex'"
+    echo "   cp '${ATELIER_REPO}/integrations/codex/tasks/'*.md '${WORKSPACE}/.codex/tasks/'"
     exit 0
 fi
 
@@ -96,10 +103,23 @@ run "mkdir -p '$SKILLS_DEST'"
 run "cp -r '$SKILLS_SRC/.' '$SKILLS_DEST/'"
 info "skills installed"
 
-# ---- merge .codex/mcp.json --------------------------------------------------
-CODEX_DIR="${WORKSPACE}/.codex"
-MCP_JSON="${CODEX_DIR}/mcp.json"
-NEW_ENTRY=$(cat <<JSON
+# ---- register MCP server using codex CLI ----------------------------------
+# Codex CLI uses 'codex mcp add' instead of reading from mcp.json
+if command -v codex &>/dev/null; then
+    info "Registering MCP server with codex CLI..."
+    # Check if already installed
+    if codex mcp list 2>/dev/null | grep -q "^atelier "; then
+        info "atelier MCP already registered"
+    else
+        run "codex mcp add atelier -- '${ATELIER_WRAPPER}' --env 'ATELIER_WORKSPACE_ROOT=${WORKSPACE}'"
+        info "atelier MCP registered"
+    fi
+else
+    # Fallback to mcp.json (older Codex versions)
+    warn "codex CLI not found, falling back to mcp.json"
+    CODEX_DIR="${WORKSPACE}/.codex"
+    MCP_JSON="${CODEX_DIR}/mcp.json"
+    NEW_ENTRY=$(cat <<JSON
 {
   "mcpServers": {
     "atelier": {
@@ -112,14 +132,13 @@ NEW_ENTRY=$(cat <<JSON
   }
 }
 JSON
-)
+    )
+    run "mkdir -p '$CODEX_DIR'"
 
-run "mkdir -p '$CODEX_DIR'"
-
-if [ -f "$MCP_JSON" ]; then
-    backup_file "$MCP_JSON"
-    if $DRY_RUN; then
-        echo "  [dry-run] merge atelier entry into $MCP_JSON"
+    if [ -f "$MCP_JSON" ]; then
+        backup_file "$MCP_JSON"
+        if $DRY_RUN; then
+            echo "  [dry-run] merge atelier entry into $MCP_JSON"
     else
         python3 - <<PYEOF
 import json
@@ -141,6 +160,7 @@ else
         info "created $MCP_JSON"
     fi
 fi
+fi
 
 # ---- AGENTS.atelier.md -------------------------------------------------------
 AGENTS_FILE="${WORKSPACE}/AGENTS.atelier.md"
@@ -151,4 +171,106 @@ else
     info "AGENTS.atelier.md already exists — not overwriting"
 fi
 
-info "Done. Restart Codex and verify: make verify-codex"
+# ---- wrapper + task templates ---------------------------------------------
+WRAPPER_SRC="${ATELIER_REPO}/bin/atelier-codex"
+WRAPPER_DEST_DIR="${WORKSPACE}/bin"
+WRAPPER_DEST="${WRAPPER_DEST_DIR}/atelier-codex"
+if [ -f "$WRAPPER_SRC" ]; then
+    if [ "$(realpath "$WRAPPER_SRC")" = "$(realpath "$WRAPPER_DEST")" ]; then
+        info "wrapper already in place: $WRAPPER_DEST"
+    else
+        run "mkdir -p '$WRAPPER_DEST_DIR'"
+        run "cp '$WRAPPER_SRC' '$WRAPPER_DEST'"
+        run "chmod +x '$WRAPPER_DEST'"
+        info "installed wrapper: $WRAPPER_DEST"
+    fi
+else
+    warn "wrapper source missing: $WRAPPER_SRC"
+fi
+
+TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
+TASKS_DEST_DIR="${WORKSPACE}/.codex/tasks"
+if [ -d "$TASKS_SRC_DIR" ]; then
+    run "mkdir -p '$TASKS_DEST_DIR'"
+    run "cp '$TASKS_SRC_DIR'/*.md '$TASKS_DEST_DIR/'"
+    info "installed task templates: $TASKS_DEST_DIR"
+else
+    warn "task template directory missing: $TASKS_SRC_DIR"
+fi
+
+# ── Post-install verification (replaces verify_codex.sh) ──
+info "Running post-install verification..."
+VFAIL=0
+vpass() { info "PASS: $*"; }
+vfail() { echo "[atelier:codex] FAIL: $*" >&2; VFAIL=1; }
+
+SKILLS_DIR="${WORKSPACE}/.codex/skills/atelier"
+if [ -d "$SKILLS_DIR" ]; then
+    COUNT=$(ls "$SKILLS_DIR" 2>/dev/null | wc -l)
+    vpass "skills installed: $SKILLS_DIR ($COUNT items)"
+else
+    vfail "skills dir missing: $SKILLS_DIR"
+fi
+
+if command -v codex &>/dev/null; then
+    if codex mcp list 2>/dev/null | grep -q "^atelier "; then
+        vpass "atelier MCP server registered (via codex mcp list)"
+    elif [ -f "${WORKSPACE}/.codex/mcp.json" ]; then
+        HAS=$(python3 -c "
+import json
+d = json.load(open('${WORKSPACE}/.codex/mcp.json'))
+servers = d.get('mcpServers', d.get('servers', {}))
+print('yes' if 'atelier' in servers else 'no')
+" 2>/dev/null || echo "error")
+        if [ "$HAS" = "yes" ]; then
+            vpass ".codex/mcp.json contains atelier server entry"
+        else
+            vfail ".codex/mcp.json missing atelier entry"
+        fi
+    else
+        vfail "atelier MCP not registered"
+    fi
+else
+    vpass "codex CLI not on PATH — skipping MCP registration check"
+fi
+
+if [ -x "${ATELIER_WRAPPER}" ]; then
+    vpass "atelier_mcp_stdio.sh exists and is executable"
+else
+    vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
+fi
+
+AGENTS_MD="${WORKSPACE}/AGENTS.atelier.md"
+if [ -f "$AGENTS_MD" ] && grep -q "atelier:code" "$AGENTS_MD" 2>/dev/null; then
+    vpass "AGENTS.atelier.md present with atelier:code persona"
+else
+    vfail "AGENTS.atelier.md missing or has no atelier:code persona"
+fi
+
+WRAPPER_BIN="${WORKSPACE}/bin/atelier-codex"
+if [ -x "$WRAPPER_BIN" ]; then
+    vpass "Codex preflight wrapper installed: $WRAPPER_BIN"
+else
+    vfail "Codex preflight wrapper missing or not executable: $WRAPPER_BIN"
+fi
+
+TASKS_DIR="${WORKSPACE}/.codex/tasks"
+if [ -d "$TASKS_DIR" ] && [ -f "$TASKS_DIR/preflight.md" ]; then
+    vpass "Codex task templates installed: $TASKS_DIR"
+else
+    vfail "Codex task templates missing in $TASKS_DIR"
+fi
+
+if [ -x "${ATELIER_REPO}/bin/atelier-status" ]; then
+    vpass "bin/atelier-status helper exists"
+else
+    vfail "bin/atelier-status missing or not executable"
+fi
+
+if [ "$VFAIL" -ne 0 ]; then
+    echo "[atelier:codex] ERROR: post-install verification failed." >&2
+    exit 1
+fi
+info "All post-install checks passed"
+
+info "Done. Restart Codex — /atelier:status, /atelier:context, etc. are available."

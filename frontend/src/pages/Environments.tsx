@@ -12,16 +12,45 @@ export default function Environments() {
 
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!items) return <div className="text-neutral-500">Loading…</div>;
-  if (items.length === 0)
-    return (
-      <div className="text-neutral-500 text-center py-12">
-        <div className="text-4xl mb-4">🌐</div>
-        <p className="text-lg">No environments configured</p>
-      </div>
-    );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      {/* Feature Info */}
+      <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+        <div className="flex items-start gap-4">
+          <div className="text-3xl flex-shrink-0">🌐</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                Reasoning Environments
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                stable
+              </span>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500 mb-3">
+              Context-Aware Configurations
+            </p>
+            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+              Per-domain environment bindings store domain-specific config: API endpoints, required tools, and linked rubric IDs. Retrieved at runtime to scope agent context precisely.
+            </p>
+            <div className="text-xs text-emerald-300/90 space-y-1">
+              <p>✓ Consistent context across agent sessions</p>
+              <p>✓ Environment-specific rubric auto-binding</p>
+              <p>✓ Reduces context bloat with targeted config</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Environments List */}
+      {items.length === 0 ? (
+        <div className="text-neutral-500 text-center py-12">
+          <div className="text-4xl mb-4">🌐</div>
+          <p className="text-lg">No environments configured</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
       {items.map((e, i) => {
         const details = e.environment.details as Record<string, unknown> | undefined;
         const isExpanded = expandedId === e.environment.id;
@@ -223,6 +252,8 @@ export default function Environments() {
           </div>
         );
       })}
+    </div>
+      )}
     </div>
   );
 }

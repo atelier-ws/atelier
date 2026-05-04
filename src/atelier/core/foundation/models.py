@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 BlockStatus = Literal["active", "deprecated", "quarantined"]
 TraceStatus = Literal["success", "failed", "partial"]
+TraceConfidence = Literal["full_live", "mcp_live", "wrapper_live", "imported", "manual"]
 PlanStatus = Literal["pass", "warn", "blocked"]
 Severity = Literal["low", "medium", "high"]
 
@@ -105,6 +106,27 @@ class ToolCall(BaseModel):
     name: str
     args_hash: str
     count: int = 1
+    args: dict[str, Any] | None = None
+    result_summary: str = ""
+
+
+class CommandRecord(BaseModel):
+    """A recorded shell command with its output."""
+
+    model_config = ConfigDict(extra="forbid")
+    command: str
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+
+
+class FileEditRecord(BaseModel):
+    """A recorded file edit with its diff."""
+
+    model_config = ConfigDict(extra="forbid")
+    path: str
+    diff: str = ""
+    event: str = "edit"  # "edit" | "create" | "delete" | "revert"
 
 
 class RepeatedFailure(BaseModel):
@@ -137,9 +159,9 @@ class Trace(BaseModel):
     domain: str
     task: str
     status: TraceStatus
-    files_touched: list[str] = Field(default_factory=list)
+    files_touched: list[str | FileEditRecord] = Field(default_factory=list)
     tools_called: list[ToolCall] = Field(default_factory=list)
-    commands_run: list[str] = Field(default_factory=list)
+    commands_run: list[str | CommandRecord] = Field(default_factory=list)
     errors_seen: list[str] = Field(default_factory=list)
     repeated_failures: list[RepeatedFailure] = Field(default_factory=list)
     diff_summary: str = ""
@@ -147,6 +169,10 @@ class Trace(BaseModel):
     validation_results: list[ValidationResult] = Field(default_factory=list)
     reasoning: list[str] = Field(default_factory=list)
     raw_artifact_ids: list[str] = Field(default_factory=list)
+    host: str | None = None
+    trace_confidence: TraceConfidence | None = None
+    capture_sources: list[str] = Field(default_factory=list)
+    missing_surfaces: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
 
     @classmethod

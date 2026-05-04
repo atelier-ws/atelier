@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from atelier.core.foundation.store import ReasoningStore
-from atelier.gateway.adapters.runtime import ReasoningRuntime
+
+if TYPE_CHECKING:
+    from atelier.gateway.adapters.runtime import ReasoningRuntime
 
 
 @pytest.fixture()
@@ -26,6 +29,7 @@ def seeded_runtime(tmp_path: Path) -> Iterator[ReasoningRuntime]:
     import yaml
 
     from atelier.core.foundation.models import ReasonBlock, Rubric
+    from atelier.gateway.adapters.runtime import ReasoningRuntime
 
     rt = ReasoningRuntime(root=tmp_path / "atelier")
     blocks_dir = resources.files("atelier") / "infra" / "seed_blocks"

@@ -75,7 +75,7 @@ def test_mcp_local_mode_still_works(
     st = SQLiteStore(tmp_path / ".atelier")
     st.init()
 
-    resp = _call_tool("get_reasoning_context", {"task": "deploy the app"})
+    resp = _call_tool("atelier_get_reasoning_context", {"task": "deploy the app"})
     assert resp["result"]["content"][0]["type"] == "text"
     text = resp["result"]["content"][0]["text"]
     payload = json.loads(text)
@@ -102,8 +102,8 @@ def test_tools_list_returns_all_tools(local_mode: None) -> None:
     tools = {t["name"] for t in resp["result"]["tools"]}
     for remote_tool in _REMOTE_TOOLS:
         assert remote_tool in tools
-    assert "atelier_domain_list" in tools
-    assert "atelier_domain_info" in tools
+    assert "atelier_get_reasoning_context" in tools
+    assert "atelier_compress_context" in tools
 
 
 # --------------------------------------------------------------------------- #
@@ -125,7 +125,7 @@ def test_remote_check_plan_same_shape(remote_mode: None, monkeypatch: pytest.Mon
 
     m._remote_client = client
 
-    resp = _call_tool("check_plan", {"task": "deploy", "plan": ["step 1"]})
+    resp = _call_tool("atelier_check_plan", {"task": "deploy", "plan": ["step 1"]})
     assert resp is not None
     assert "result" in resp
     payload = json.loads(resp["result"]["content"][0]["text"])
@@ -143,7 +143,7 @@ def test_remote_get_reasoning_context_same_shape(
 
     m._remote_client = client
 
-    resp = _call_tool("get_reasoning_context", {"task": "publish product"})
+    resp = _call_tool("atelier_get_reasoning_context", {"task": "publish product"})
     assert "result" in resp
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert payload["context"] == "Here are the relevant procedures."
@@ -158,7 +158,7 @@ def test_remote_record_trace_same_shape(remote_mode: None, monkeypatch: pytest.M
     m._remote_client = client
 
     resp = _call_tool(
-        "record_trace",
+        "atelier_record_trace",
         {"agent": "test", "domain": "e2e", "task": "deploy", "status": "success"},
     )
     assert "result" in resp

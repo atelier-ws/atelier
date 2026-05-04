@@ -33,3 +33,9 @@ atelier | run abc12345 | pdp | Wire SEO check | status=in_progress | ev=3 err=0 
 
 All tools are available via MCP server name `atelier`. See
 `atelier/codex-plugin/references/v2-tools.md` for the full reference.
+
+`smart_read`, `smart_search`, and `cached_grep` are default-on Atelier
+augmentations for repeated file reads and searches. Prefer them for bounded,
+cacheable context; keep native `Read`, shell `rg`, `grep`, and direct file
+access available when exact raw output is needed. Set
+`ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.

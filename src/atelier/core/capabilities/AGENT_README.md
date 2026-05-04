@@ -12,6 +12,7 @@ Runtime-managed capability layer for compounding reasoning behavior.
 - `loop_detection/` - repeated-failure and trajectory loop detection
 - `tool_supervision/` - redundancy tracking and tool efficiency metrics
 - `context_compression/` - ledger context compaction for next-step prompts
+- `failure_analysis/` - failure clustering, root-cause hypotheses, and fix suggestions
 
 ## Key Contracts
 

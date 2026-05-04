@@ -20,14 +20,16 @@ Or via CLI::
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
 from atelier.core.foundation.extractor import extract_candidate
 from atelier.core.foundation.models import (
     ReasonBlock,
@@ -68,7 +70,7 @@ from atelier.core.service.schemas import (
 from atelier.core.service.telemetry import emit_audit
 from atelier.gateway.hosts import HostRegistry, HostStatus
 from atelier.infra.runtime.cost_tracker import CostTracker, load_cost_history
-from atelier.infra.storage import create_store
+from atelier.infra.storage.factory import create_store
 
 # --------------------------------------------------------------------------- #
 # Store factory — lazily created per-app instance                            #
@@ -108,6 +110,96 @@ def _runtime(store: Any) -> Any:
     rt.core_runtime.store = store
     rt.store = store
     return rt
+
+
+def _normalize_lever(operation: str) -> str:
+    """Map call operation names to stable savings lever keys."""
+    op = (operation or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+    if "search_read" in op or "smart_read" in op:
+        return "search_read"
+    if "batch_edit" in op:
+        return "batch_edit"
+    if "ast" in op and ("trunc" in op or "outline" in op):
+        return "ast_truncation"
+    if "sleep" in op:
+        return "sleeptime"
+    if "cache" in op:
+        return "cached_read"
+    if "recall" in op:
+        return "scoped_recall"
+    if "compact" in op:
+        return "compact_lifecycle"
+    if "reasonblock" in op or "reason_block" in op or "inject" in op:
+        return "reasonblock_inject"
+    return op
+
+
+def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
+    """Build token-savings summary for API/dashboard rendering."""
+    history = load_cost_history(root)
+    ops = history.get("operations", {}) if isinstance(history, dict) else {}
+    today = datetime.now(UTC).date()
+    window_days = max(1, min(window_days, 30))
+    start_day = today - timedelta(days=window_days - 1)
+
+    by_day_seed: dict[str, dict[str, int | str]] = {}
+    for i in range(window_days):
+        day = (start_day + timedelta(days=i)).isoformat()
+        by_day_seed[day] = {"day": day, "naive": 0, "actual": 0}
+
+    total_naive = 0
+    total_actual = 0
+    per_lever: defaultdict[str, int] = defaultdict(int)
+
+    for entry in ops.values() if isinstance(ops, dict) else []:
+        calls = entry.get("calls", []) if isinstance(entry, dict) else []
+        for call in calls:
+            if not isinstance(call, dict):
+                continue
+            input_tokens = int(call.get("input_tokens", 0) or 0)
+            output_tokens = int(call.get("output_tokens", 0) or 0)
+            cache_read_tokens = int(call.get("cache_read_tokens", 0) or 0)
+            actual = input_tokens + output_tokens
+            naive = actual + cache_read_tokens
+
+            total_naive += naive
+            total_actual += actual
+            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(
+                0, naive - actual
+            )
+
+            at_raw = str(call.get("at", ""))
+            try:
+                at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
+            except Exception:
+                at_date = today
+
+            day_key = at_date.isoformat()
+            if day_key in by_day_seed:
+                by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
+                by_day_seed[day_key]["actual"] = int(by_day_seed[day_key]["actual"]) + actual
+
+    reduction_pct = (
+        round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    )
+    sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
+
+    # USD cost savings (from CostTracker baseline comparison).
+    cost_summary = CostTracker(root).total_savings()
+
+    return {
+        "window_days": window_days,
+        "total_naive_tokens": total_naive,
+        "total_actual_tokens": total_actual,
+        "reduction_pct": reduction_pct,
+        "per_lever": sorted_levers,
+        "by_day": list(by_day_seed.values()),
+        "saved_usd": cost_summary["saved_usd"],
+        "saved_pct": cost_summary["saved_pct"],
+        "would_have_cost_usd": cost_summary["would_have_cost_usd"],
+        "actually_cost_usd": cost_summary["actually_cost_usd"],
+        "total_calls": cost_summary["total_calls"],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -422,7 +514,8 @@ def create_app(*, store: Any = None) -> FastAPI:
         """Return available skills with full markdown content (no duplication by source)."""
         from pathlib import Path
 
-        root = Path(__file__).parent.parent.parent.parent
+        # Go up from src/atelier/core/service/api.py to project root (4 levels)
+        root = Path(__file__).parent.parent.parent.parent.parent
         skills: list[dict[str, Any]] = []
 
         # Shared skills - atelier/integrations/skills/
@@ -509,16 +602,57 @@ def create_app(*, store: Any = None) -> FastAPI:
         }
 
     @app.get("/metrics", tags=["ops"])
-    def metrics(_auth: None = Depends(verify_api_key)) -> dict[str, Any]:
+    def metrics(request: Request, _auth: None = Depends(verify_api_key)) -> Any:
+        """Return Prometheus metrics in text format.
+
+        Includes:
+        - Block and trace counts
+        - Context budget and token savings metrics (if prometheus_client is available)
+        """
         st = get_store()
         blocks = st.list_blocks()
         traces = st.list_traces(limit=1000)
-        return {
+
+        # Basic metrics as JSON (for backward compatibility)
+        basic_metrics = {
             "block_count": len(blocks),
             "trace_count": len(traces),
             "success_traces": sum(1 for t in traces if t.status == "success"),
             "failed_traces": sum(1 for t in traces if t.status == "failed"),
         }
+
+        wants_prometheus = request.query_params.get("format") == "prometheus" or (
+            "text/plain" in request.headers.get("accept", "")
+        )
+        if not wants_prometheus:
+            return basic_metrics
+
+        # Try to expose Prometheus metrics in text format
+        try:
+            from prometheus_client import REGISTRY, generate_latest
+
+            # Collect all metrics from the default registry
+            metrics_text = generate_latest(REGISTRY).decode("utf-8")
+
+            # Add basic metrics as comments if Prometheus is available
+            metrics_lines = [
+                "# HELP atelier_basic_metrics Basic Atelier metrics",
+                "# TYPE atelier_basic_metrics gauge",
+                f"atelier_basic_metrics{{type=\"block_count\"}} {basic_metrics['block_count']}",
+                f"atelier_basic_metrics{{type=\"trace_count\"}} {basic_metrics['trace_count']}",
+                f"atelier_basic_metrics{{type=\"success_traces\"}} {basic_metrics['success_traces']}",
+                f"atelier_basic_metrics{{type=\"failed_traces\"}} {basic_metrics['failed_traces']}",
+                "",
+                metrics_text,
+            ]
+
+            # Return as text/plain for Prometheus
+            from fastapi.responses import PlainTextResponse
+
+            return PlainTextResponse("\n".join(metrics_lines))
+        except ImportError:
+            # If Prometheus is not available, return basic metrics as JSON
+            return basic_metrics
 
     # ------------------------------------------------------------------ #
     # Reasoning                                                           #
@@ -539,8 +673,14 @@ def create_app(*, store: Any = None) -> FastAPI:
             tools=req.tools,
             errors=req.errors,
             max_blocks=req.max_blocks,
+            token_budget=req.token_budget,
+            dedup=req.dedup,
+            include_telemetry=req.include_telemetry,
+            agent_id=req.agent_id,
+            recall=req.recall,
         )
-        return ReasoningContextResponse(context=text)
+        payload = text if isinstance(text, dict) else {"context": text}
+        return ReasoningContextResponse.model_validate(payload)
 
     @app.post(
         "/v1/reasoning/check-plan",
@@ -650,9 +790,11 @@ def create_app(*, store: Any = None) -> FastAPI:
         ledger_path = Path(cfg.atelier_root) / "runs" / f"{trace_id}.json"
         if ledger_path.exists():
             from atelier.infra.runtime.run_ledger import RunLedger as _RunLedger
+
             try:
                 led = _RunLedger.load(ledger_path)
                 snap = led.snapshot()
+                summary = led.to_trace_summary()
                 raw_status = snap.get("status", "running")
                 if raw_status in ("complete", "success"):
                     mapped_status = "success"
@@ -667,16 +809,12 @@ def create_app(*, store: Any = None) -> FastAPI:
                     "domain": snap.get("domain") or "",
                     "task": snap.get("task") or "",
                     "status": mapped_status,
-                    "files_touched": snap.get("files_touched", []),
-                    "tools_called": [
-                        {"name": t, "args_hash": "", "count": 1}
-                        for t in snap.get("tools_called", [])
-                    ],
-                    "commands_run": snap.get("commands_run", []),
+                    "files_touched": summary["files_touched"],
+                    "tools_called": summary["tools_called"],
+                    "commands_run": summary["commands_run"],
                     "errors_seen": snap.get("errors_seen", []),
                     "repeated_failures": [
-                        {"signature": f, "count": 1}
-                        for f in snap.get("repeated_failures", [])
+                        {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
                     ],
                     "diff_summary": "",
                     "output_summary": "",
@@ -700,9 +838,27 @@ def create_app(*, store: Any = None) -> FastAPI:
         for key in ("task", "diff_summary", "output_summary"):
             if isinstance(payload.get(key), str):
                 payload[key] = redact(payload[key])
-        for key in ("files_touched", "commands_run", "errors_seen"):
+        for key in ("errors_seen",):
             if isinstance(payload.get(key), list):
                 payload[key] = redact_list([str(v) for v in payload[key]])
+        # Redact string values inside enriched records
+        for key in ("files_touched", "commands_run"):
+            items = payload.get(key)
+            if not isinstance(items, list):
+                continue
+            redacted_items: list[Any] = []
+            for item in items:
+                if isinstance(item, str):
+                    redacted_items.append(redact(item))
+                elif isinstance(item, dict):
+                    # Redact string fields within dicts (CommandRecord, FileEditRecord)
+                    redacted_item = {}
+                    for k, v in item.items():
+                        redacted_item[k] = redact(v) if isinstance(v, str) else v
+                    redacted_items.append(redacted_item)
+                else:
+                    redacted_items.append(item)
+            payload[key] = redacted_items
         if "id" not in payload:
             payload["id"] = Trace.make_id(
                 payload.get("task", "untitled"), payload.get("agent", "agent")
@@ -920,7 +1076,7 @@ def create_app(*, store: Any = None) -> FastAPI:
         st = get_store()
         traces = st.list_traces(domain=req.domain, status="failed", limit=req.limit)
         snapshots = [to_jsonable(t) for t in traces]
-        analyzer = FailureAnalyzer(store=st)  # type: ignore[call-arg]
+        analyzer = FailureAnalyzer(store=st)
         try:
             clusters = analyzer.analyze()
             return {"clusters": [to_jsonable(c) for c in clusters]}
@@ -930,6 +1086,33 @@ def create_app(*, store: Any = None) -> FastAPI:
 
             clusters = _af(snapshots)
             return {"clusters": [to_jsonable(c) for c in clusters]}
+
+    @app.get(
+        "/v1/lessons/inbox",
+        tags=["lessons"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def lesson_inbox(domain: str | None = None, limit: int = 25) -> dict[str, Any]:
+        promoter = LessonPromoterCapability(get_store())
+        lessons = promoter.inbox(domain=domain, limit=limit)
+        return {"lessons": [lesson.model_dump(mode="json") for lesson in lessons]}
+
+    @app.post(
+        "/v1/lessons/decide",
+        tags=["lessons"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def lesson_decide(payload: dict[str, Any]) -> dict[str, Any]:
+        promoter = LessonPromoterCapability(get_store())
+        try:
+            return promoter.decide(
+                lesson_id=str(payload.get("lesson_id", "")),
+                decision=str(payload.get("decision", "")),
+                reviewer=str(payload.get("reviewer", "")),
+                reason=str(payload.get("reason", "")),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # ------------------------------------------------------------------ #
     # Metrics / savings                                                   #
@@ -944,6 +1127,15 @@ def create_app(*, store: Any = None) -> FastAPI:
         root = Path(cfg.atelier_root)
         tracker = CostTracker(root)
         return tracker.total_savings()
+
+    @app.get(
+        "/v1/savings/summary",
+        tags=["metrics"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def savings_summary(window_days: int = 14) -> dict[str, Any]:
+        root = Path(cfg.atelier_root)
+        return _savings_summary_payload(root, window_days=window_days)
 
     # ------------------------------------------------------------------ #
     # Compatibility endpoints (frontend dashboard)                        #
@@ -1005,12 +1197,10 @@ def create_app(*, store: Any = None) -> FastAPI:
                 else:
                     mapped_status = "partial"  # unknown → treat as in-progress
                 tools_called = [
-                    {"name": t, "args_hash": "", "count": 1}
-                    for t in snap.get("tools_called", [])
+                    {"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])
                 ]
                 repeated_failures = [
-                    {"signature": f, "count": 1}
-                    for f in snap.get("repeated_failures", [])
+                    {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
                 ]
                 live.append(
                     {
@@ -1057,6 +1247,12 @@ def create_app(*, store: Any = None) -> FastAPI:
         root = Path(cfg.atelier_root)
         tracker = CostTracker(root)
         return tracker.total_savings()
+
+    @app.get("/savings/summary", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_savings_summary(window_days: int = 14) -> dict[str, Any]:
+        """Compatibility: GET /savings/summary -> maps to /v1/savings/summary."""
+        root = Path(cfg.atelier_root)
+        return _savings_summary_payload(root, window_days=window_days)
 
     @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_calls(limit: int = 200) -> list[dict[str, Any]]:

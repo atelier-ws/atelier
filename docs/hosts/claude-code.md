@@ -85,6 +85,7 @@ What each hook does:
 - **`pre_tool_use.py`** — On Edit/Write to risky paths (`shopify/`, `pdp/`, `catalog/`, etc.), require a recent successful `atelier_check_plan` in session state.
 - **`post_tool_use_failure.py`** — On the second identical Bash failure (same command + error signature), tell the agent to call `atelier_rescue_failure`.
 - **`stop.py`** — On session stop, ensure `atelier_record_trace` was called.
+- **`compact.py`** — On PreCompact/PostCompact, manage context preservation manifest (see section below).
 
 Hook state is kept at `${workspace}/.atelier/session_state.json`. No secrets, no chain-of-thought stored.
 
@@ -97,11 +98,59 @@ To enable hooks, edit `integrations/claude/plugin/hooks/hooks.json`:
 }
 ```
 
+### Context Preservation on Compact (`PreCompact` / `PostCompact`)
+
+When Claude Code compacts the conversation, Atelier preserves critical runtime state:
+
+**Pre-Compact Lifecycle:**
+
+1. Claude Code triggers the `PreCompact` hook (before compaction).
+2. Atelier's `atelier_compact_advise` MCP tool calculates:
+   - **Context utilisation %** (tokens used / 200K context window)
+   - **Should compact** (true if ≥60% utilized)
+   - **Top ReasonBlocks** to preserve (max 3)
+   - **Pinned memory blocks** for the agent
+   - **Recently edited files** (last 5)
+3. The hook persists this manifest to `.atelier/runs/<run_id>/compact_manifest.json`.
+4. The manifest survives the host's compaction.
+
+**Post-Compact Lifecycle:**
+
+1. Claude Code triggers the `PostCompact` hook (after compaction).
+2. The hook reads the persisted manifest.
+3. Atelier records which ReasonBlocks and memory blocks were preserved.
+4. On next `/atelier:context` or reasoning call, Atelier re-injects preserved blocks into the new session.
+
+**Example Manifest:**
+
+```json
+{
+  "created_at": "2026-05-03T17:44:00+00:00",
+  "run_id": "abc123def456",
+  "should_compact": true,
+  "utilisation_pct": 68.5,
+  "preserve_blocks": ["block_auth_001", "block_db_config_002"],
+  "pin_memory": ["mem_api_token_xyz"],
+  "open_files": ["src/auth.py", "src/db.py"],
+  "suggested_prompt": "Compact this conversation. Context utilisation: 68.5%. Preserve: block_auth_001, block_db_config_002."
+}
+```
+
+To enable the compact lifecycle:
+
+```jsonc
+// integrations/claude/plugin/hooks/hooks.json
+{
+  "PreCompact": [{ "matcher": "manual|auto", "enabled": true }],
+  "PostCompact": [{ "matcher": "manual|auto", "enabled": true }]
+}
+```
+
 ## MCP Tools Available
 
 **V1 (core):** `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_run_rubric_gate`, `atelier_record_trace`, `atelier_search`
 
-**V2 (extended):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment`, `atelier_get_environment_context`, `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`
+**V2 (extended):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment`, `atelier_get_environment_context`, `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`, `atelier_compact_advise`
 
 ## Reasoning Loop (Full)
 

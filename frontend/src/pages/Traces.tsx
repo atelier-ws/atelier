@@ -1,5 +1,12 @@
 import { useEffect, useState, useMemo } from "react";
-import { api, type Trace } from "../api";
+import {
+  api,
+  type Trace,
+  type CommandRecord,
+  type FileEditRecord,
+  type ToolCall,
+} from "../api";
+import RunInspectorDrawer from "../components/RunInspectorDrawer";
 
 export default function Traces() {
   const [items, setItems] = useState<Trace[] | null>(null);
@@ -13,6 +20,8 @@ export default function Traces() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [inspectorTrace, setInspectorTrace] = useState<Trace | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -48,18 +57,19 @@ export default function Traces() {
 
   const domains = useMemo(
     () => [...new Set(items?.map((t) => t.domain).filter(Boolean))],
-    [items]
+    [items],
   );
   const hosts = useMemo(
     () => [...new Set(items?.map((t) => extractHost(t.agent)).filter(Boolean))],
-    [items]
+    [items],
   );
   const filtered = useMemo(() => {
     if (!items) return [];
     return items.filter((t) => {
       if (filter !== "all" && t.status !== filter) return false;
       if (domainFilter !== "all" && t.domain !== domainFilter) return false;
-      if (hostFilter !== "all" && extractHost(t.agent) !== hostFilter) return false;
+      if (hostFilter !== "all" && extractHost(t.agent) !== hostFilter)
+        return false;
       return true;
     });
   }, [items, filter, domainFilter, hostFilter]);
@@ -84,8 +94,55 @@ export default function Traces() {
     }
   };
 
+  const openInspector = (trace: Trace) => {
+    setInspectorTrace(trace);
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      {/* Feature Info */}
+      <div>
+        <button
+          onClick={() => setInfoOpen(!infoOpen)}
+          className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1"
+        >
+          <span>{infoOpen ? "▼" : "▶"}</span> about
+        </button>
+        {infoOpen && (
+          <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl flex-shrink-0">📇</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                    Execution Traces
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                    stable
+                  </span>
+                </div>
+                <p className="font-mono text-[11px] text-neutral-500 mb-3">
+                  Observable Run Artifacts
+                </p>
+                <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+                  Records exactly what an agent did: files touched, commands
+                  run, tools called, errors seen. Traces never store
+                  chain-of-thought — only observables. Each trace links to a
+                  RunLedger for full event timeline.
+                </p>
+                <div className="text-xs text-emerald-300/90 space-y-1">
+                  <p>✓ Full audit trail — every agent action recorded</p>
+                  <p>
+                    ✓ Feeds failure analysis and block extraction automatically
+                  </p>
+                  <p>✓ Enables per-domain cost attribution</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+
       {/* Filters */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         {/* Left: status + domain */}
@@ -104,6 +161,7 @@ export default function Traces() {
             </button>
           ))}
           <select
+            aria-label="Filter traces by domain"
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
             className="text-[10px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-400 font-mono"
@@ -142,6 +200,7 @@ export default function Traces() {
             trace={t}
             isExpanded={expandedId === t.id}
             onToggle={() => toggleExpanded(t.id)}
+            onOpenInspector={() => openInspector(t)}
           />
         ))}
         {loading && (
@@ -163,6 +222,12 @@ export default function Traces() {
           </button>
         )}
       </div>
+
+      <RunInspectorDrawer
+        open={Boolean(inspectorTrace)}
+        trace={inspectorTrace}
+        onClose={() => setInspectorTrace(null)}
+      />
     </div>
   );
 }
@@ -171,10 +236,12 @@ function TraceCard({
   trace,
   isExpanded,
   onToggle,
+  onOpenInspector,
 }: {
   trace: Trace;
   isExpanded: boolean;
   onToggle: () => void;
+  onOpenInspector: () => void;
 }) {
   return (
     <div className="border border-neutral-800 bg-neutral-900/50 overflow-hidden transition-all">
@@ -233,7 +300,7 @@ function TraceCard({
       {/* Expanded Content */}
       {isExpanded && (
         <div className="border-t border-neutral-800 bg-neutral-950/50 px-5 py-4">
-          <TraceDetail trace={trace} />
+          <TraceDetail trace={trace} onOpenInspector={onOpenInspector} />
         </div>
       )}
     </div>
@@ -257,7 +324,13 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function TraceDetail({ trace }: { trace: Trace }) {
+function TraceDetail({
+  trace,
+  onOpenInspector,
+}: {
+  trace: Trace;
+  onOpenInspector: () => void;
+}) {
   return (
     <div className="space-y-6 text-sm">
       <header>
@@ -277,6 +350,16 @@ function TraceDetail({ trace }: { trace: Trace }) {
           {trace.run_id && <span>RUN: {trace.run_id}</span>}
           <span>{new Date(trace.created_at).toLocaleString()}</span>
         </div>
+        <div className="mt-3">
+          <button
+            type="button"
+            aria-label="Open run inspector"
+            onClick={onOpenInspector}
+            className="text-[11px] px-2.5 py-1 border border-neutral-700 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50 transition"
+          >
+            Open run inspector
+          </button>
+        </div>
       </header>
 
       {/* Reasoning section - show AI thinking/thought process */}
@@ -289,14 +372,9 @@ function TraceDetail({ trace }: { trace: Trace }) {
           <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-2">
             Tools Used
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div className="space-y-1">
             {trace.tools_called.map((t, i) => (
-              <span
-                key={i}
-                className="text-[11px] px-2 py-0.5 bg-blue-900/30 text-blue-300 border border-blue-800/50"
-              >
-                {t.name} {"count" in t && t.count ? `×${t.count}` : ""}
-              </span>
+              <ToolCallDetail key={i} tool={t} />
             ))}
           </div>
         </div>
@@ -352,7 +430,11 @@ function TraceDetail({ trace }: { trace: Trace }) {
   );
 }
 
-function CommandsSection({ commands }: { commands: string[] }) {
+function CommandsSection({
+  commands,
+}: {
+  commands: (string | CommandRecord)[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const display = expanded ? commands : commands.slice(0, 5);
   return (
@@ -362,15 +444,19 @@ function CommandsSection({ commands }: { commands: string[] }) {
         <span className="text-neutral-600">({commands.length})</span>
       </div>
       <div className="space-y-1">
-        {display.map((c, i) => (
-          <div
-            key={i}
-            className="text-[11px] font-mono text-neutral-300 bg-neutral-900/40 px-2 py-1 border border-neutral-800/50 truncate"
-            title={c}
-          >
-            {c.length > 100 ? c.slice(0, 100) + "..." : c}
-          </div>
-        ))}
+        {display.map((c, i) =>
+          typeof c === "string" ? (
+            <div
+              key={i}
+              className="text-[11px] font-mono text-neutral-300 bg-neutral-900/40 px-2 py-1 border border-neutral-800/50 truncate"
+              title={c}
+            >
+              {c.length > 100 ? c.slice(0, 100) + "..." : c}
+            </div>
+          ) : (
+            <CommandRecordDetail key={i} record={c} />
+          ),
+        )}
       </div>
       {commands.length > 5 && (
         <button
@@ -387,15 +473,17 @@ function CommandsSection({ commands }: { commands: string[] }) {
 function ReasoningSection({ reasoning }: { reasoning: string[] }) {
   const [expanded, setExpanded] = useState(false);
   if (!reasoning || reasoning.length === 0) return null;
-  
+
   const display = expanded ? reasoning : reasoning.slice(0, 3);
   return (
-    <div className="border border-purple-800/50  border border-neutral-800 bg-purple-950/20 p-3">
+    <div className="border border-purple-800/50 bg-purple-950/20 p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] uppercase font-bold tracking-widest text-purple-400">
           AI Reasoning / Thinking
         </div>
-        <span className="text-[9px] text-purple-600">({reasoning.length} blocks)</span>
+        <span className="text-[9px] text-purple-600">
+          ({reasoning.length} blocks)
+        </span>
       </div>
       <div className="space-y-2">
         {display.map((r, i) => (
@@ -412,7 +500,9 @@ function ReasoningSection({ reasoning }: { reasoning: string[] }) {
           onClick={() => setExpanded(!expanded)}
           className="text-[10px] text-purple-400 hover:text-purple-300 mt-2 underline"
         >
-          {expanded ? "Show less" : `Show all ${reasoning.length} reasoning blocks`}
+          {expanded
+            ? "Show less"
+            : `Show all ${reasoning.length} reasoning blocks`}
         </button>
       )}
     </div>
@@ -488,7 +578,7 @@ function ConversationItem({ entry }: { entry: any }) {
 
 function NestedTraceSection({ trace }: { trace: any }) {
   return (
-    <div className="border border-neutral-800  border border-neutral-800 p-4 bg-neutral-900/20">
+    <div className="border border-neutral-800 p-4 bg-neutral-900/20">
       <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-3">
         Nested Run Trace
       </div>
@@ -566,8 +656,8 @@ function Section({
     variant === "warning"
       ? "text-amber-500"
       : variant === "danger"
-      ? "text-red-500"
-      : "text-neutral-500";
+        ? "text-red-500"
+        : "text-neutral-500";
   return (
     <div className="space-y-1.5">
       <div
@@ -720,7 +810,7 @@ function LedgerFetcher({
               <div className="flex justify-between items-center px-3 py-1.5 bg-neutral-900/50 border-b border-neutral-800">
                 <span
                   className={`text-[9px] font-bold uppercase tracking-tighter px-1.5 ${getKindColor(
-                    ev.kind
+                    ev.kind,
                   )}`}
                 >
                   {ev.kind}
@@ -750,7 +840,7 @@ function LedgerFetcher({
 
       {!ledger.hypotheses_tried?.length &&
         !ledger.verified_facts?.length &&
-        !ledger.events?.length && 
+        !ledger.events?.length &&
         !ledgerConversations?.length && (
           <div className="text-xs text-neutral-500 italic">
             No ledger events found.
@@ -763,6 +853,16 @@ function LedgerFetcher({
 function LedgerPayload({ payload }: { payload: any }) {
   const [open, setOpen] = useState(true);
   const isDiffPayload = payload.diff && typeof payload.diff === "string";
+  const isCommandResult =
+    payload.command !== undefined &&
+    (payload.stdout !== undefined || payload.stderr !== undefined);
+  const isSessionStats =
+    payload.event === "Stop" && payload.total_tokens !== undefined;
+  const isSessionStart = payload.event === "SessionStart";
+  const isUserPrompt =
+    payload.event === "UserPromptSubmit" && payload.prompt !== undefined;
+  const isCompact =
+    payload.event === "PreCompact" || payload.event === "PostCompact";
 
   return (
     <div className="mt-2">
@@ -780,6 +880,16 @@ function LedgerPayload({ payload }: { payload: any }) {
               filePath={payload.path}
               event={payload.event}
             />
+          ) : isCommandResult ? (
+            <CommandResultPayload payload={payload} />
+          ) : isSessionStats ? (
+            <SessionStatsPayload payload={payload} />
+          ) : isSessionStart ? (
+            <SessionStartPayload payload={payload} />
+          ) : isUserPrompt ? (
+            <UserPromptPayload payload={payload} />
+          ) : isCompact ? (
+            <CompactPayload payload={payload} />
           ) : (
             <pre className="mt-2 text-[10px] bg-black/60 p-2.5 border border-neutral-800 overflow-auto max-h-48 text-neutral-400 font-mono leading-relaxed">
               {JSON.stringify(payload, null, 2)}
@@ -787,6 +897,139 @@ function LedgerPayload({ payload }: { payload: any }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function CommandResultPayload({ payload }: { payload: any }) {
+  const rc = payload.return_code;
+  const ok = rc === 0;
+  const rcColor =
+    rc === null || rc === undefined
+      ? "text-neutral-500"
+      : ok
+        ? "text-emerald-400"
+        : "text-red-400";
+  return (
+    <div className="mt-2 space-y-1.5">
+      {/* Command */}
+      <pre className="text-[10px] bg-black/60 px-2.5 py-1.5 border border-neutral-800 text-amber-300 font-mono whitespace-pre-wrap break-all">
+        $ {payload.command}
+      </pre>
+      {/* Return code */}
+      <div className={`text-[9px] font-mono font-bold ${rcColor}`}>
+        exit {rc ?? "?"}
+        {payload.truncated ? " · output truncated to 4 KB" : ""}
+      </div>
+      {/* Stdout */}
+      {payload.stdout && (
+        <pre className="text-[9px] bg-black/40 px-2.5 py-1.5 border border-neutral-800/60 text-neutral-300 font-mono overflow-auto max-h-40 whitespace-pre-wrap break-all leading-relaxed">
+          {payload.stdout}
+        </pre>
+      )}
+      {/* Stderr */}
+      {payload.stderr && (
+        <pre className="text-[9px] bg-red-950/20 px-2.5 py-1.5 border border-red-900/40 text-red-300 font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all leading-relaxed">
+          {payload.stderr}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function SessionStatsPayload({ payload }: { payload: any }) {
+  const topTools: [string, number][] = Object.entries(payload.top_tools ?? {});
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
+      <span className="text-neutral-500">input tokens</span>
+      <span className="text-neutral-300">
+        {(payload.input_tokens ?? 0).toLocaleString()}
+      </span>
+      <span className="text-neutral-500">output tokens</span>
+      <span className="text-neutral-300">
+        {(payload.output_tokens ?? 0).toLocaleString()}
+      </span>
+      <span className="text-neutral-500">total tokens</span>
+      <span className="text-neutral-200 font-bold">
+        {(payload.total_tokens ?? 0).toLocaleString()}
+      </span>
+      <span className="text-neutral-500">est. cost</span>
+      <span className="text-amber-300">
+        ~${(payload.est_cost_usd ?? 0).toFixed(4)}
+      </span>
+      <span className="text-neutral-500">tool calls</span>
+      <span className="text-neutral-300">{payload.tool_calls ?? 0}</span>
+      {topTools.length > 0 && (
+        <>
+          <span className="text-neutral-500">top tools</span>
+          <span className="text-neutral-400">
+            {topTools.map(([n, c]) => `${n}×${c}`).join(" · ")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SessionStartPayload({ payload }: { payload: any }) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
+      <span className="text-neutral-500">session_id</span>
+      <span className="text-neutral-300 truncate">
+        {payload.session_id || "—"}
+      </span>
+      <span className="text-neutral-500">source</span>
+      <span className="text-cyan-300">{payload.source || "—"}</span>
+      <span className="text-neutral-500">model</span>
+      <span className="text-violet-300">{payload.model || "—"}</span>
+      {payload.cwd && (
+        <>
+          <span className="text-neutral-500">cwd</span>
+          <span className="text-neutral-400 truncate">{payload.cwd}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function UserPromptPayload({ payload }: { payload: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const prompt: string = payload.prompt ?? "";
+  const short = prompt.slice(0, 300);
+  const needsExpand = prompt.length > 300;
+  return (
+    <div className="mt-2">
+      <pre className="text-[10px] bg-neutral-900/60 px-3 py-2 border-l-2 border-pink-700/60 text-neutral-200 font-mono whitespace-pre-wrap break-words leading-relaxed max-h-48 overflow-auto">
+        {expanded ? prompt : short}
+        {needsExpand && !expanded && "…"}
+      </pre>
+      {needsExpand && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="text-[10px] text-neutral-500 hover:text-neutral-300 underline mt-1"
+        >
+          {expanded ? "collapse" : `show all (${prompt.length} chars)`}
+        </button>
+      )}
+      {payload.truncated && (
+        <div className="text-[9px] text-amber-500 mt-1">
+          prompt truncated to 8 KB
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompactPayload({ payload }: { payload: any }) {
+  const isPost = payload.event === "PostCompact";
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
+      <span className="text-neutral-500">phase</span>
+      <span className={isPost ? "text-emerald-400" : "text-amber-400"}>
+        {isPost ? "completed" : "starting"}
+      </span>
+      <span className="text-neutral-500">trigger</span>
+      <span className="text-neutral-300">{payload.trigger || "—"}</span>
     </div>
   );
 }
@@ -802,8 +1045,12 @@ function DiffViewer({
 }) {
   const [expanded, setExpanded] = useState(false);
   const lines = diff.split("\n");
-  const addedLines = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
-  const removedLines = lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+  const addedLines = lines.filter(
+    (l) => l.startsWith("+") && !l.startsWith("+++"),
+  ).length;
+  const removedLines = lines.filter(
+    (l) => l.startsWith("-") && !l.startsWith("---"),
+  ).length;
 
   return (
     <div className="mt-2 border border-neutral-700 bg-black/30 overflow-hidden">
@@ -813,9 +1060,7 @@ function DiffViewer({
           {filePath && (
             <span className="text-neutral-400 font-mono">{filePath}</span>
           )}
-          {event && (
-            <span className="text-neutral-500">{event}</span>
-          )}
+          {event && <span className="text-neutral-500">{event}</span>}
           {addedLines > 0 && (
             <span className="text-emerald-400">+{addedLines}</span>
           )}
@@ -865,7 +1110,7 @@ function FilesTouchedSection({
   files,
   runId,
 }: {
-  files: string[];
+  files: (string | FileEditRecord)[];
   runId?: string | null;
 }) {
   if (!files || files.length === 0) return null;
@@ -875,24 +1120,39 @@ function FilesTouchedSection({
         Files Touched
       </div>
       <div className="space-y-1">
-        {files.map((f) => (
-          <FileRow key={f} path={f} runId={runId} />
-        ))}
+        {files.map((f) => {
+          const path = typeof f === "string" ? f : f.path;
+          const diff = typeof f === "string" ? undefined : f.diff;
+          return (
+            <FileRow key={path} path={path} runId={runId} inlineDiff={diff} />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function FileRow({ path, runId }: { path: string; runId?: string | null }) {
+function FileRow({
+  path,
+  runId,
+  inlineDiff,
+}: {
+  path: string;
+  runId?: string | null;
+  inlineDiff?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [diffs, setDiffs] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // If we have an inline diff, use it directly without fetching the ledger
+  const hasInlineDiff = !!inlineDiff;
+
   const handleClick = async () => {
-    if (!runId) return;
     setOpen((o) => !o);
-    if (diffs !== null || loading) return;
+    if (hasInlineDiff || diffs !== null || loading) return;
+    if (!runId) return;
     setLoading(true);
     try {
       const ledger = await api.ledger(runId);
@@ -904,7 +1164,7 @@ function FileRow({ path, runId }: { path: string; runId?: string | null }) {
             ev.payload?.diff &&
             (ev.payload?.path === path ||
               ev.payload?.path?.endsWith("/" + path) ||
-              path.endsWith("/" + (ev.payload?.path ?? "").split("/").pop()))
+              path.endsWith("/" + (ev.payload?.path ?? "").split("/").pop())),
         )
         .map((ev) => ev.payload.diff as string);
       setDiffs(collected.length > 0 ? collected : []);
@@ -916,20 +1176,21 @@ function FileRow({ path, runId }: { path: string; runId?: string | null }) {
   };
 
   const filename = path.split("/").pop() ?? path;
+  const canExpand = hasInlineDiff || !!runId;
 
   return (
     <div className="border border-neutral-800/50 overflow-hidden">
       <button
         onClick={handleClick}
-        disabled={!runId}
+        disabled={!canExpand}
         className={`w-full flex items-center justify-between px-2 py-1 text-left transition-colors ${
-          runId
+          canExpand
             ? "hover:bg-neutral-800/40 cursor-pointer"
             : "cursor-default"
         }`}
       >
         <span className="text-[11px] text-neutral-300 font-mono">{path}</span>
-        {runId && (
+        {canExpand && (
           <span className="text-[9px] text-neutral-500 font-mono ml-2 flex-shrink-0">
             {open ? "▲ hide diff" : "▼ diff"}
           </span>
@@ -938,20 +1199,29 @@ function FileRow({ path, runId }: { path: string; runId?: string | null }) {
 
       {open && (
         <div className="border-t border-neutral-800/50">
-          {loading && (
+          {/* Show inline diff directly if available */}
+          {hasInlineDiff && (
+            <SideBySideDiffViewer diff={inlineDiff!} path={path} />
+          )}
+          {/* Otherwise fall back to ledger fetch */}
+          {!hasInlineDiff && loading && (
             <div className="px-3 py-2 text-[11px] text-neutral-500 italic animate-pulse">
               Loading diff…
             </div>
           )}
-          {error && (
+          {!hasInlineDiff && error && (
             <div className="px-3 py-2 text-[11px] text-red-400">{error}</div>
           )}
-          {!loading && !error && diffs !== null && diffs.length === 0 && (
-            <div className="px-3 py-2 text-[11px] text-neutral-500 italic">
-              No diff captured for {filename}.
-            </div>
-          )}
-          {!loading &&
+          {!hasInlineDiff &&
+            !loading &&
+            !error &&
+            diffs !== null &&
+            diffs.length === 0 && (
+              <div className="px-3 py-2 text-[11px] text-neutral-500 italic">
+                No diff captured for {filename}.
+              </div>
+            )}
+          {!hasInlineDiff &&
             diffs &&
             diffs.map((diff, i) => (
               <SideBySideDiffViewer key={i} diff={diff} path={path} />
@@ -966,7 +1236,11 @@ function FileRow({ path, runId }: { path: string; runId?: string | null }) {
 // Side-by-side diff viewer
 // ---------------------------------------------------------------------------
 
-type DiffLine = { lineNo: number | null; content: string; type: "add" | "remove" | "context" | "header" };
+type DiffLine = {
+  lineNo: number | null;
+  content: string;
+  type: "add" | "remove" | "context" | "header";
+};
 
 function parseDiffSides(raw: string): { left: DiffLine[]; right: DiffLine[] } {
   const lines = raw.split("\n");
@@ -982,7 +1256,10 @@ function parseDiffSides(raw: string): { left: DiffLine[]; right: DiffLine[] } {
     } else if (line.startsWith("@@")) {
       // Parse hunk header: @@ -l,s +l,s @@
       const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-      if (m) { leftNo = parseInt(m[1]); rightNo = parseInt(m[2]); }
+      if (m) {
+        leftNo = parseInt(m[1]);
+        rightNo = parseInt(m[2]);
+      }
       left.push({ lineNo: null, content: line, type: "header" });
       right.push({ lineNo: null, content: line, type: "header" });
     } else if (line.startsWith("-")) {
@@ -1004,14 +1281,21 @@ function SideBySideDiffViewer({ diff, path }: { diff: string; path: string }) {
   const [expanded, setExpanded] = useState(true);
   const { left, right } = useMemo(() => parseDiffSides(diff), [diff]);
 
-  const addedCount = right.filter((l) => l.type === "add" && l.content !== "").length;
-  const removedCount = left.filter((l) => l.type === "remove" && l.content !== "").length;
+  const addedCount = right.filter(
+    (l) => l.type === "add" && l.content !== "",
+  ).length;
+  const removedCount = left.filter(
+    (l) => l.type === "remove" && l.content !== "",
+  ).length;
 
   const lineClass = (type: DiffLine["type"], side: "left" | "right") => {
     if (type === "header") return "bg-neutral-900/60 text-neutral-500";
-    if (type === "add" && side === "right") return "bg-emerald-950/40 text-emerald-300";
-    if (type === "remove" && side === "left") return "bg-red-950/40 text-red-300";
-    if (type === "add" || type === "remove") return "bg-transparent text-transparent select-none";
+    if (type === "add" && side === "right")
+      return "bg-emerald-950/40 text-emerald-300";
+    if (type === "remove" && side === "left")
+      return "bg-red-950/40 text-red-300";
+    if (type === "add" || type === "remove")
+      return "bg-transparent text-transparent select-none";
     return "text-neutral-400";
   };
 
@@ -1020,9 +1304,15 @@ function SideBySideDiffViewer({ diff, path }: { diff: string; path: string }) {
       {/* Diff header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-900/40 border-b border-neutral-800/50">
         <div className="flex items-center gap-3 text-[10px] font-mono">
-          <span className="text-neutral-400 truncate max-w-[300px]">{path}</span>
-          {addedCount > 0 && <span className="text-emerald-400">+{addedCount}</span>}
-          {removedCount > 0 && <span className="text-red-400">-{removedCount}</span>}
+          <span className="text-neutral-400 truncate max-w-[300px]">
+            {path}
+          </span>
+          {addedCount > 0 && (
+            <span className="text-emerald-400">+{addedCount}</span>
+          )}
+          {removedCount > 0 && (
+            <span className="text-red-400">-{removedCount}</span>
+          )}
         </div>
         <button
           onClick={() => setExpanded((e) => !e)}
@@ -1079,6 +1369,98 @@ function SideBySideDiffViewer({ diff, path }: { diff: string; path: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Enriched detail components
+// ---------------------------------------------------------------------------
+
+function ToolCallDetail({ tool }: { tool: ToolCall }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails =
+    (tool.args && Object.keys(tool.args).length > 0) || tool.result_summary;
+  return (
+    <div className="border border-neutral-800/50 overflow-hidden">
+      <div className="flex items-center gap-2 px-2 py-1 bg-neutral-900/40">
+        <span className="text-[11px] px-2 py-0.5 bg-blue-900/30 text-blue-300 border border-blue-800/50">
+          {tool.name}
+          {tool.count > 1 ? ` ×${tool.count}` : ""}
+        </span>
+        {hasDetails && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[9px] text-neutral-500 hover:text-neutral-300 underline"
+          >
+            {expanded ? "hide" : "details"}
+          </button>
+        )}
+      </div>
+      {expanded && hasDetails && (
+        <div className="px-2 py-1.5 space-y-1 border-t border-neutral-800/50 bg-neutral-950/40">
+          {tool.args && Object.keys(tool.args).length > 0 && (
+            <div>
+              <div className="text-[9px] uppercase text-neutral-500 font-bold mb-0.5">
+                Args
+              </div>
+              <pre className="text-[10px] bg-black/40 p-1.5 border border-neutral-800/50 overflow-auto max-h-32 text-neutral-300 font-mono whitespace-pre-wrap break-all">
+                {JSON.stringify(tool.args, null, 2).slice(0, 1000)}
+              </pre>
+            </div>
+          )}
+          {tool.result_summary && (
+            <div>
+              <div className="text-[9px] uppercase text-neutral-500 font-bold mb-0.5">
+                Result
+              </div>
+              <pre className="text-[10px] bg-black/40 p-1.5 border border-neutral-800/50 overflow-auto max-h-24 text-emerald-300/80 font-mono whitespace-pre-wrap break-all">
+                {tool.result_summary}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommandRecordDetail({ record }: { record: CommandRecord }) {
+  const [expanded, setExpanded] = useState(false);
+  const rc = record.exit_code;
+  const ok = rc === 0 || rc === null || rc === undefined;
+  return (
+    <div className="border border-neutral-800/50 overflow-hidden">
+      <div
+        className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-neutral-800/30 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <pre className="text-[10px] font-mono text-amber-300 flex-1 truncate">
+          $ {record.command}
+        </pre>
+        <span
+          className={`text-[9px] font-mono font-bold ${ok ? "text-emerald-400" : "text-red-400"}`}
+        >
+          exit {rc ?? "?"}
+        </span>
+        <span className="text-[9px] text-neutral-500">
+          {expanded ? "▲" : "▼"}
+        </span>
+      </div>
+      {expanded && (
+        <div className="border-t border-neutral-800/50 px-2 py-1.5 space-y-1 bg-neutral-950/40">
+          {record.stdout && (
+            <pre className="text-[9px] bg-black/40 p-1.5 border border-neutral-800/50 text-neutral-300 font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all leading-relaxed">
+              {record.stdout}
+            </pre>
+          )}
+          {record.stderr && (
+            <pre className="text-[9px] bg-red-950/20 p-1.5 border border-red-900/40 text-red-300 font-mono overflow-auto max-h-24 whitespace-pre-wrap break-all leading-relaxed">
+              {record.stderr}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Host helpers
 // ---------------------------------------------------------------------------
 
@@ -1095,18 +1477,22 @@ function extractHost(agent: string): string {
 }
 
 const HOST_COLORS: Record<string, string> = {
-  claude:    "bg-violet-900/40 text-violet-300 border-violet-700/50",
-  gemini:    "bg-blue-900/40 text-blue-300 border-blue-700/50",
-  copilot:   "bg-sky-900/40 text-sky-300 border-sky-700/50",
-  codex:     "bg-teal-900/40 text-teal-300 border-teal-700/50",
-  opencode:  "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
+  claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
+  gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
+  copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",
+  codex: "bg-teal-900/40 text-teal-300 border-teal-700/50",
+  opencode: "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
 };
 
 function HostBadge({ agent }: { agent: string }) {
   const host = extractHost(agent);
-  const cls = HOST_COLORS[host] ?? "bg-neutral-800/60 text-neutral-400 border-neutral-700/50";
+  const cls =
+    HOST_COLORS[host] ??
+    "bg-neutral-800/60 text-neutral-400 border-neutral-700/50";
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${cls}`}>
+    <span
+      className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${cls}`}
+    >
       {host}
     </span>
   );

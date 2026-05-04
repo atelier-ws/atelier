@@ -174,6 +174,18 @@ RescueResult(procedure=..., related_blocks=[...], confidence=...)
 - MCP server: stateless — each tool call opens and closes a store connection.
 - HTTP service: stateless FastAPI — store is injected per-request.
 
+## Smart Tool Cache
+
+`smart_read`, `smart_search`, and `cached_grep` are default-on Atelier
+augmentations for repeated, bounded reads/searches. Cache entries use call
+arguments plus content fingerprints where file contents matter, expire after
+600 seconds by default, and are invalidated across git `HEAD` changes when the
+workspace is inside a git repository.
+
+Host-native `Read`, shell `rg`, `grep`, and repository search remain available
+for exact raw access. Set `ATELIER_CACHE_DISABLED=1` to bypass Atelier cache
+reads and writes.
+
 ## Inspirations
 
 | Concept                    | Source              | Atelier equivalent        |

@@ -8,6 +8,7 @@ Atelier handles agent-generated content (plans, traces, errors, diff summaries) 
 2. **Prompt injection** — adversarial content in traces or blocks could influence future agent runs
 3. **Shell injection** — `cached-grep` takes user-supplied patterns that could execute arbitrary commands
 4. **Unauthorized access** — HTTP service must be protected in multi-user environments
+5. **Database misuse** — ad-hoc SQL could mutate data or exceed bounded query behavior
 
 ## Controls
 
@@ -69,6 +70,21 @@ The service binds to `127.0.0.1` by default (not `0.0.0.0`). Change only when ex
 ### No Secret Storage
 
 Atelier never writes `ATELIER_API_KEY`, OpenAI keys, Shopify tokens, or any other credentials to the store. Environment variables are read at startup only.
+
+### SQL Inspect Alias Allowlist + Read-only Gate
+
+`atelier_sql_inspect` and `atelier sql inspect` only connect to aliases declared in
+`.atelier/sql_aliases.toml` under `[aliases.*]`.
+
+- Only listed aliases are reachable.
+- Connection strings should be supplied through environment variables (`env = "..."`).
+- SQL statements are single-statement and read-only by default.
+- Write statements (DML/DDL) are rejected unless that alias sets `allow_writes = true`.
+- Query runtime is bounded per backend: Postgres uses `SET LOCAL statement_timeout = '5s'`;
+	SQLite uses `PRAGMA busy_timeout=5000`.
+
+This keeps SQL introspection deterministic and bounded while preventing accidental write paths in
+the default configuration.
 
 ## OWASP Considerations
 

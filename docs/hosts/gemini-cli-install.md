@@ -1,6 +1,6 @@
 # Installing Atelier into Gemini CLI
 
-**Support level**: MCP config (global `~/.gemini/settings.json`)
+**Support level**: MCP config + custom command presets
 
 ---
 
@@ -14,9 +14,10 @@ make install-gemini
 
 ## What Gets Installed
 
-| Artifact          | Location                           |
-| ----------------- | ---------------------------------- |
-| MCP server config | `~/.gemini/settings.json` (global) |
+| Artifact          | Location                            |
+| ----------------- | ----------------------------------- |
+| MCP server config | `~/.gemini/settings.json` (global)  |
+| Custom commands   | `~/.gemini/commands/atelier/*.toml` |
 
 Gemini CLI requires **absolute paths** — the installer expands them at install time:
 
@@ -56,6 +57,7 @@ use atelier to check this plan
 
 - Gemini CLI connects to Atelier MCP stdio server
 - All Atelier tools (`atelier_check_plan`, `atelier_status`, etc.) are available
+- Custom command presets (`/atelier:status`, `/atelier:context`) are installed
 
 ## Troubleshooting
 
@@ -64,6 +66,24 @@ use atelier to check this plan
 | `~/.gemini/settings.json` not found | `make install-gemini` creates it                          |
 | MCP tools missing                   | Restart gemini CLI; check absolute paths in settings.json |
 | Paths are wrong after repo move     | Re-run `make install-gemini`                              |
+
+## V2 Tools — Memory, Context Savings, and Lesson Pipeline
+
+All V2 tools are available via the Atelier MCP server. These are **Atelier augmentations** — Gemini CLI native tools remain the primary interface.
+
+| Tool                          | Boundary             | Description                                               |
+| ----------------------------- | -------------------- | --------------------------------------------------------- |
+| `atelier_memory_upsert_block` | Atelier augmentation | Store named value in agent memory                         |
+| `atelier_memory_get_block`    | Atelier augmentation | Retrieve named memory block                               |
+| `atelier_memory_recall`       | Atelier augmentation | FTS + vector search over archival memory                  |
+| `atelier_memory_archive`      | Atelier augmentation | Persist text passage to archival memory                   |
+| `atelier_memory_summary`      | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
+| `atelier_search_read`         | Atelier augmentation | Token-saving combined search + read                       |
+| `atelier_batch_edit`          | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
+| `atelier_sql_inspect`         | Atelier augmentation | Read-only SQL schema/data inspection                      |
+| `atelier_compact_advise`      | Atelier augmentation | Advise before context compaction; provides reinject hints |
+| `atelier_lesson_inbox`        | Atelier augmentation | List lesson candidates awaiting decision                  |
+| `atelier_lesson_decide`       | Atelier augmentation | Approve or reject a lesson candidate                      |
 
 ## Uninstall
 

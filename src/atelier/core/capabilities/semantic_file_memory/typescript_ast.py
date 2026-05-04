@@ -7,9 +7,9 @@ handles the vast majority of patterns found in real codebases.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal, cast
 
-from .models import ImportInfo, SymbolInfo
+from .models import FileOutline, ImportInfo, SymbolInfo, SymbolOutline
 
 try:
     from tree_sitter_languages import get_parser
@@ -55,6 +55,16 @@ _RE_IMPORT_FROM = re.compile(
 )
 _RE_REQUIRE = re.compile(r"(?:const|let|var)\s+(\w+)\s*=\s*require\(['\"](.*?)['\"]\)", re.M)
 _RE_JSDOC = re.compile(r"/\*\*([\s\S]*?)\*/", re.M)
+_RE_TOP_LEVEL_CONST_ARROW = re.compile(
+    r"^(?:export\s+)?const\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:\([^)]*\)|\w+)\s*=>",
+    re.M,
+)
+_RE_CLASS_DECL = re.compile(r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)\b", re.M)
+_RE_METHOD_SIG = re.compile(
+    r"^\s*(?:(?:public|private|protected|static|async|override|abstract|readonly)\s+)*"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*(?::\s*[^{}]+)?\s*\{",
+    re.M,
+)
 
 
 def _find_lineno(source: str, match_start: int) -> int:
@@ -339,3 +349,203 @@ def _is_export_node(node: Any, source_bytes: bytes) -> bool:
         current = getattr(current, "parent", None)
     text = _node_text(source_bytes, node)
     return text.lstrip().startswith("export ")
+
+
+def outline(path: str, source: str, *, lang: str = "typescript") -> FileOutline:
+    """Return a compact TS/JS outline (classes/functions/methods + imports)."""
+    parser = _get_ts_parser()
+    if parser is None:
+        return _outline_with_regex(path, source, lang=lang)
+
+    try:
+        source_bytes = source.encode("utf-8", errors="replace")
+        tree = parser.parse(source_bytes)
+    except Exception:
+        return _outline_with_regex(path, source, lang=lang)
+
+    imports: list[str] = []
+    symbols: list[SymbolOutline] = []
+    root = tree.root_node
+
+    for node in root.children:
+        node_type = getattr(node, "type", "")
+        node_text = _node_text(source_bytes, node)
+
+        if node_type == "import_statement":
+            module_match = re.search(r"from\s+['\"](.*?)['\"]", node_text)
+            if module_match:
+                imports.append(module_match.group(1))
+            continue
+
+        if node_type == "function_declaration":
+            fn_name = _child_identifier_text(source_bytes, node, "name")
+            if fn_name:
+                symbols.append(
+                    SymbolOutline(
+                        name=fn_name,
+                        kind="function",
+                        start_line=int(node.start_point[0]) + 1,
+                        end_line=int(node.end_point[0]) + 1,
+                    )
+                )
+            continue
+
+        if node_type == "class_declaration":
+            cls_name = _child_identifier_text(source_bytes, node, "name")
+            if cls_name:
+                symbols.append(
+                    SymbolOutline(
+                        name=cls_name,
+                        kind="class",
+                        start_line=int(node.start_point[0]) + 1,
+                        end_line=int(node.end_point[0]) + 1,
+                    )
+                )
+                body = node.child_by_field_name("body")
+                if body is not None:
+                    for child in body.children:
+                        if getattr(child, "type", "") != "method_definition":
+                            continue
+                        method_name = _method_name(source_bytes, child)
+                        if method_name:
+                            symbols.append(
+                                SymbolOutline(
+                                    name=f"{cls_name}.{method_name}",
+                                    kind="method",
+                                    start_line=int(child.start_point[0]) + 1,
+                                    end_line=int(child.end_point[0]) + 1,
+                                )
+                            )
+            continue
+
+        if node_type in {"lexical_declaration", "variable_declaration"}:
+            const_text = node_text.lstrip()
+            if not const_text.startswith("const "):
+                continue
+            for decl in node.children:
+                if getattr(decl, "type", "") != "variable_declarator":
+                    continue
+                value = decl.child_by_field_name("value")
+                if value is None or getattr(value, "type", "") != "arrow_function":
+                    continue
+                name = _child_identifier_text(source_bytes, decl, "name")
+                if name:
+                    symbols.append(
+                        SymbolOutline(
+                            name=name,
+                            kind="function",
+                            start_line=int(decl.start_point[0]) + 1,
+                            end_line=int(decl.end_point[0]) + 1,
+                        )
+                    )
+
+    symbols.sort(key=lambda sym: (sym.start_line, sym.end_line, sym.name))
+    unique_imports = sorted(dict.fromkeys(imports))
+    norm_lang = cast(
+        Literal["typescript", "tsx", "javascript"],
+        lang if lang in {"typescript", "tsx", "javascript"} else "typescript",
+    )
+    return FileOutline(
+        path=path,
+        lang=norm_lang,
+        loc=len(source.splitlines()),
+        symbols=symbols,
+        imports=unique_imports,
+    )
+
+
+def _child_identifier_text(source_bytes: bytes, node: Any, field: str) -> str:
+    child = node.child_by_field_name(field)
+    if child is None:
+        return ""
+    return _node_text(source_bytes, child).strip()
+
+
+def _method_name(source_bytes: bytes, node: Any) -> str:
+    name = _child_identifier_text(source_bytes, node, "name")
+    if name:
+        return name
+    for child in getattr(node, "children", []):
+        if getattr(child, "type", "") in {
+            "property_identifier",
+            "identifier",
+            "private_property_identifier",
+        }:
+            return _node_text(source_bytes, child).strip()
+    return ""
+
+
+def _outline_with_regex(path: str, source: str, *, lang: str) -> FileOutline:
+    imports: list[str] = []
+    symbols: list[SymbolOutline] = []
+
+    for m in _RE_IMPORT_FROM.finditer(source):
+        imports.append(m.group(5))
+
+    for m in _RE_EXPORT_CLASS.finditer(source):
+        name = m.group(1)
+        lineno = _find_lineno(source, m.start())
+        symbols.append(SymbolOutline(name=name, kind="class", start_line=lineno, end_line=lineno))
+
+    for m in _RE_EXPORT_FUNCTION.finditer(source):
+        name = m.group(1)
+        lineno = _find_lineno(source, m.start())
+        symbols.append(
+            SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno)
+        )
+
+    for m in _RE_TOP_LEVEL_CONST_ARROW.finditer(source):
+        name = m.group(1)
+        lineno = _find_lineno(source, m.start())
+        symbols.append(
+            SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno)
+        )
+
+    # Extract class methods by scanning each class body for balanced braces.
+    for class_match in _RE_CLASS_DECL.finditer(source):
+        class_name = class_match.group(1)
+        open_idx = source.find("{", class_match.end())
+        if open_idx < 0:
+            continue
+
+        depth = 1
+        i = open_idx + 1
+        while i < len(source) and depth > 0:
+            ch = source[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            i += 1
+        if depth != 0:
+            continue
+
+        body = source[open_idx + 1 : i - 1]
+        base_lineno = _find_lineno(source, open_idx)
+        for m in _RE_METHOD_SIG.finditer(body):
+            method_name = m.group(1)
+            if method_name == "constructor":
+                continue
+            method_lineno = base_lineno + body[: m.start()].count("\n")
+            symbols.append(
+                SymbolOutline(
+                    name=f"{class_name}.{method_name}",
+                    kind="method",
+                    start_line=method_lineno,
+                    end_line=method_lineno,
+                )
+            )
+
+    symbols.sort(key=lambda sym: (sym.start_line, sym.end_line, sym.name))
+    unique_imports = sorted(dict.fromkeys(imports))
+    norm_lang = cast(
+        Literal["typescript", "tsx", "javascript"],
+        lang if lang in {"typescript", "tsx", "javascript"} else "typescript",
+    )
+    return FileOutline(
+        path=path,
+        lang=norm_lang,
+        loc=len(source.splitlines()),
+        symbols=symbols,
+        imports=unique_imports,
+    )

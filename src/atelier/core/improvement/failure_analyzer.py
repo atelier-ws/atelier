@@ -18,7 +18,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Literal
 
+from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
 from atelier.core.foundation.models import FailureCluster
+from atelier.core.foundation.store import ReasoningStore
 
 
 def _fingerprint(snapshot: dict[str, Any]) -> str | None:
@@ -152,10 +154,26 @@ def analyze_failures(snapshots: list[dict[str, Any]]) -> list[FailureCluster]:
 
 
 class FailureAnalyzer:
-    def __init__(self, runs_dir: Path) -> None:
-        self.runs_dir = Path(runs_dir)
+    def __init__(
+        self,
+        runs_dir: Path | None = None,
+        *,
+        store: ReasoningStore | None = None,
+        lesson_promoter: LessonPromoterCapability | None = None,
+    ) -> None:
+        self.runs_dir = Path(runs_dir) if runs_dir is not None else None
+        self.store = store
+        self.lesson_promoter = lesson_promoter or (
+            LessonPromoterCapability(store) if store else None
+        )
 
     def load_snapshots(self) -> list[dict[str, Any]]:
+        if self.store is not None:
+            traces = self.store.list_traces(status="failed", limit=500)
+            return [t.model_dump(mode="json") for t in traces]
+
+        if self.runs_dir is None:
+            return []
         if not self.runs_dir.is_dir():
             return []
         snapshots: list[dict[str, Any]] = []
@@ -167,4 +185,8 @@ class FailureAnalyzer:
         return snapshots
 
     def analyze(self) -> list[FailureCluster]:
-        return analyze_failures(self.load_snapshots())
+        clusters = analyze_failures(self.load_snapshots())
+        if self.store is not None and self.lesson_promoter is not None:
+            for trace in self.store.list_traces(status="failed", limit=500):
+                self.lesson_promoter.ingest_trace(trace)
+        return clusters
