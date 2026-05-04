@@ -93,9 +93,9 @@ See `docs/engineering/trace-confidence.md` for the full specification.
 
 ## Install Surface Summary
 
-- Unified installer: `make install-agent-clis`
-- Unified verification: `make verify-agent-clis`
-- Per-host installers: `make install-claude`, `make install-codex`, `make install-copilot`, `make install-opencode`, `make install-gemini`
+- Unified installer: `make install`
+- Unified verification: `make verify`
+- Per-host installers remain available as `scripts/install_<host>.sh` for advanced or dry-run workflows.
 
 ## Host-Specific Limitations
 

@@ -47,7 +47,7 @@ settings.json          defaultAgent hint
 
 | Path                      | Command                                            | Plugin name                   |
 | ------------------------- | -------------------------------------------------- | ----------------------------- |
-| Standard (recommended)    | `make install-claude`                              | `atelier@atelier`             |
+| Standard (recommended)    | `make install`                                     | `atelier@atelier`             |
 | Dev (no install)          | `claude --plugin-dir ./integrations/claude/plugin` | N/A                           |
 
 See [docs/hosts/claude-code-install.md](../../docs/hosts/claude-code-install.md) for full guide.
@@ -55,5 +55,5 @@ See [docs/hosts/claude-code-install.md](../../docs/hosts/claude-code-install.md)
 ## Verify (no claude CLI required)
 
 ```bash
-make verify-claude-plugin-dev
+bash scripts/install_claude.sh --print-only
 ```

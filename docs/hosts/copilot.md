@@ -7,8 +7,8 @@ Atelier integrates with Copilot Chat through workspace MCP config, instruction i
 ```bash
 cd atelier
 uv sync --all-extras
-make install-copilot
-make verify-copilot
+make install
+make verify
 ```
 
 ## Installed Artifacts

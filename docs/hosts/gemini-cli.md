@@ -7,8 +7,8 @@ Atelier integrates with Gemini CLI through global `~/.gemini/settings.json` MCP 
 ```bash
 cd atelier
 uv sync --all-extras
-make install-gemini
-make verify-gemini
+make install
+make verify
 ```
 
 ## Installed Artifacts
@@ -16,12 +16,12 @@ make verify-gemini
 - `~/.gemini/settings.json` (`mcpServers.atelier` merged)
 - `~/.gemini/commands/atelier/status.toml`
 - `~/.gemini/commands/atelier/context.toml`
-- `<workspace>/GEMINI.atelier.md`
+- `~/.gemini/GEMINI.md` (atelier:code persona appended — global context)
 
 ## Notes
 
 - Gemini requires absolute paths in MCP settings.
-- Re-run `make install-gemini` if the Atelier repo path changes.
+- Re-run `make install` if the Atelier repo path changes.
 
 ## MCP Tool Names
 

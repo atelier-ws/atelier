@@ -16,17 +16,13 @@ Support level: **Full plugin** — agents, commands, skills, hooks, and MCP serv
 ## Install
 
 ```bash
-bash integrations/claude/install.sh
-# or via Makefile:
-make install-claude
+make install
 ```
 
 ## Verify
 
 ```bash
-bash integrations/claude/verify.sh
-# or:
-make verify-claude
+make verify
 ```
 
 ## Source

@@ -7,8 +7,8 @@ Atelier integrates with Codex via workspace-local MCP config, skill packs, a pre
 ```bash
 cd atelier
 uv sync --all-extras
-make install-codex
-make verify-codex
+make install
+make verify
 ```
 
 ## Installed Artifacts

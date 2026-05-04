@@ -3,21 +3,21 @@
 Install Atelier into every supported coding agent host in one command:
 
 ```bash
-make install-agent-clis    # install into all CLIs found on PATH
-make verify-agent-clis     # verify all installed hosts
+make install    # install into all CLIs found on PATH
+make verify     # verify code, runtime, and installed hosts
 ```
 
 ---
 
 ## Supported Hosts
 
-| Host            | Support Level                              | Install                 | Verify                         |
-| --------------- | ------------------------------------------ | ----------------------- | ------------------------------ |
-| Claude Code     | Full plugin (skills, commands, hooks, MCP) | `make install-claude`   | `make verify-claude`           |
-| Codex CLI       | Skills + subagents + MCP + wrapper         | `make install-codex`    | `make verify-codex`            |
-| opencode        | MCP + workspace agent profile              | `make install-opencode` | `make verify-opencode`         |
-| VS Code Copilot | MCP + instructions + chat mode + tasks     | `make install-copilot`  | `make verify-copilot`          |
-| Gemini CLI      | MCP + custom command presets               | `make install-gemini`   | `make verify-gemini`           |
+| Host            | Support Level                              | Advanced installer             |
+| --------------- | ------------------------------------------ | ------------------------------ |
+| Claude Code     | Full plugin (skills, commands, hooks, MCP) | `scripts/install_claude.sh`    |
+| Codex CLI       | Skills + subagents + MCP + wrapper         | `scripts/install_codex.sh`     |
+| opencode        | MCP + workspace agent profile              | `scripts/install_opencode.sh`  |
+| VS Code Copilot | MCP + instructions + chat mode + tasks     | `scripts/install_copilot.sh`   |
+| Gemini CLI      | MCP + custom command presets               | `scripts/install_gemini.sh`    |
 
 ---
 
@@ -31,10 +31,10 @@ cd atelier
 uv sync --all-extras
 
 # 3. Install into all available agent CLIs
-make install-agent-clis
+make install
 
 # 4. Verify
-make verify-agent-clis
+make verify
 ```
 
 Hosts whose CLIs are not on PATH are skipped gracefully — this is expected in CI.

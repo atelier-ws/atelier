@@ -7,7 +7,7 @@
 ## Quick Install
 
 ```bash
-make install-copilot
+make install
 ```
 
 ---
@@ -41,7 +41,7 @@ The MCP config registers Atelier as a stdio server:
 ## Verify
 
 ```bash
-make verify-copilot
+make verify
 ```
 
 ## First Task

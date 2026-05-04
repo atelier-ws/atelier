@@ -224,13 +224,11 @@ monitor_alerts          [{type, severity, message}, ...]
 ## 🧪 Testing & Validation
 
 ```
-make verify                    # All: ruff + black + mypy + pytest
-make verify-mcp                # MCP stdio smoke test (5 tools)
-make verify-plugins            # Claude plugin JSON validation
-make verify-claude             # Full Claude Code install check
-make verify-service            # Service health + API
-make verify-postgres           # Postgres storage (if DATABASE_URL set)
-make verify-agent-clis         # All installed CLI hosts
+make install                   # deps + CLI integrations + runtime init
+make verify                    # code checks + runtime smoke tests + host checks
+make status                    # installed host/runtime status
+make service                   # HTTP service
+make mcp                       # MCP stdio server
 
 uv run pytest tests/test_golden_fixtures.py -v    # Golden end-to-end cases
 ```

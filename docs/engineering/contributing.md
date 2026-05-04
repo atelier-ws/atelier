@@ -20,10 +20,11 @@ uv run atelier init
 make verify        # Full gate: ruff + black --check + mypy strict + pytest
 make pre-commit    # Format, lint, typecheck, tests (run before committing)
 make lint          # ruff check (no fix)
-make fmt           # ruff + black format (applies fixes)
+make format-check  # black --check
+make format        # ruff + black format (applies fixes)
 make typecheck     # mypy strict
 make test          # pytest (all tests)
-make test-fast     # pytest -x --no-cov (stop on first failure)
+make test-fast     # pytest -x, skipping slow/Postgres-gated tests
 make test-cov      # pytest with coverage report
 make security-test # Security-focused test cases only
 ```
@@ -76,7 +77,7 @@ Do not run these inside the atelier directory — they are separate test suites.
 ## Never Modify Generated Files
 
 - `src/atelier/adapters/mcp_server.py` tool schemas are generated from Pydantic models — update models, not the generated output
-- `frontend/src/services/stub/` in the e-commerce project is generated from OpenAPI spec — run `make generate-stub` after API changes
+- `frontend/src/services/stub/` in the e-commerce project is generated from OpenAPI spec — regenerate it from the e-commerce repo after API changes
 
 ## Pull Request Guidelines
 

@@ -117,7 +117,7 @@ export default function Host() {
                   </div>
                   <div className="flex items-center gap-2">
                     <code className="text-[10px] bg-neutral-900/20 px-1.5 py-0.5 text-neutral-400 flex-1 truncate">
-                      make install-{h.id}
+                      scripts/install_{h.id}.sh
                     </code>
                     <button
                       onClick={() => installHost(h.id)}
@@ -137,8 +137,8 @@ export default function Host() {
             })}
           </div>
           <div className="mt-4 pt-3 border-t border-neutral-800 flex gap-2 flex-wrap">
-            <QuickAction label="Install All" cmd="make install-agent-clis" />
-            <QuickAction label="Verify All" cmd="make verify-agent-clis" />
+            <QuickAction label="Install" cmd="make install" />
+            <QuickAction label="Verify" cmd="make verify" />
           </div>
         </section>
       </div>

@@ -83,7 +83,8 @@ uv run atelier run-rubric RUBRIC_ID
 ```
 
 ```bash
-make verify        # Full gate (must pass before PR)
-make demo-all      # Run all demos
-make help          # Show all targets
+make install   # Install deps, host integrations, status helper, runtime store
+make verify    # Code checks, runtime smoke tests, host integration checks
+make demo      # Run the blocked-plan demo
+make help      # Show all targets
 ```

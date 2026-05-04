@@ -142,13 +142,29 @@ if [ -d "$CMD_SRC" ]; then
 fi
 
 # ---- install GEMINI.md context (atelier persona) ----------------------------
+# Atelier persona is agent-specific configuration, not project configuration.
+# Install it to ~/.gemini/GEMINI.md (global context) so it applies to all
+# Gemini CLI sessions for this user, without polluting the project repo.
 GEMINI_MD_SRC="${ATELIER_REPO}/integrations/gemini/GEMINI.atelier.md"
-GEMINI_MD_DEST="${WORKSPACE}/GEMINI.atelier.md"
-if [ -f "$GEMINI_MD_SRC" ] && [ ! -f "$GEMINI_MD_DEST" ]; then
-    run "cp '$GEMINI_MD_SRC' '$GEMINI_MD_DEST'"
-    info "created $GEMINI_MD_DEST (atelier persona context)"
-elif [ -f "$GEMINI_MD_DEST" ]; then
-    info "$GEMINI_MD_DEST already exists — not overwriting"
+GLOBAL_GEMINI_MD="${HOME}/.gemini/GEMINI.md"
+
+mkdir -p "${HOME}/.gemini"
+
+if [ -f "$GEMINI_MD_SRC" ]; then
+    if [ ! -f "$GLOBAL_GEMINI_MD" ]; then
+        run "cp '$GEMINI_MD_SRC' '$GLOBAL_GEMINI_MD'"
+        info "created $GLOBAL_GEMINI_MD (atelier persona — global context)"
+    else
+        # Check if atelier persona is already present
+        if grep -q "atelier:code" "$GLOBAL_GEMINI_MD" 2>/dev/null; then
+            info "$GLOBAL_GEMINI_MD already contains atelier persona — not overwriting"
+        else
+            run "cat '$GEMINI_MD_SRC' >> '$GLOBAL_GEMINI_MD'"
+            info "appended atelier persona to $GLOBAL_GEMINI_MD"
+        fi
+    fi
+else
+    warn "atelier persona source missing: $GEMINI_MD_SRC"
 fi
 
 # ── Post-install verification (replaces verify_gemini.sh) ──
@@ -201,11 +217,11 @@ else
     vfail "Gemini custom commands missing in $CMD_DIR"
 fi
 
-GEMINI_MD="${WORKSPACE}/GEMINI.atelier.md"
-if [ -f "$GEMINI_MD" ]; then
-    vpass "workspace GEMINI context installed: $GEMINI_MD"
+GEMINI_MD="${HOME}/.gemini/GEMINI.md"
+if [ -f "$GEMINI_MD" ] && grep -q "atelier:code" "$GEMINI_MD" 2>/dev/null; then
+    vpass "global GEMINI context installed: $GEMINI_MD (contains atelier:code persona)"
 else
-    vfail "workspace GEMINI context missing: $GEMINI_MD"
+    vfail "global GEMINI context missing or no atelier:code persona: $GEMINI_MD"
 fi
 
 if [ "$VFAIL" -ne 0 ]; then

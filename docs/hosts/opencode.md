@@ -7,8 +7,8 @@ Atelier integrates with opencode through workspace MCP config plus a workspace-l
 ```bash
 cd atelier
 uv sync --all-extras
-make install-opencode
-make verify-opencode
+make install
+make verify
 ```
 
 ## Installed Artifacts

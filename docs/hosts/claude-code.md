@@ -13,7 +13,7 @@ Atelier integrates with Claude Code via:
 The `integrations/claude/plugin/` directory is the canonical Claude Code plugin. Install it from the workspace root:
 
 ```bash
-make install-claude
+make install
 ```
 
 Then bootstrap the engine:

@@ -7,7 +7,7 @@
 ## Quick Install
 
 ```bash
-make install-gemini
+make install
 ```
 
 ---
@@ -37,12 +37,12 @@ Gemini CLI requires **absolute paths** — the installer expands them at install
 ```
 
 > **Note**: Do not move the atelier repository after installing. Gemini CLI uses absolute paths.  
-> Re-run `make install-gemini` after any move.
+> Re-run `make install` after any move.
 
 ## Verify
 
 ```bash
-make verify-gemini
+make verify
 ```
 
 ## First Task
@@ -63,9 +63,9 @@ use atelier to check this plan
 
 | Problem                             | Fix                                                       |
 | ----------------------------------- | --------------------------------------------------------- |
-| `~/.gemini/settings.json` not found | `make install-gemini` creates it                          |
+| `~/.gemini/settings.json` not found | `make install` creates it                                 |
 | MCP tools missing                   | Restart gemini CLI; check absolute paths in settings.json |
-| Paths are wrong after repo move     | Re-run `make install-gemini`                              |
+| Paths are wrong after repo move     | Re-run `make install`                                     |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 

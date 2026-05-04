@@ -1,7 +1,7 @@
 # atelier/frontend — Reasoning Dashboard
 
 Vite + React + TypeScript + Tailwind dashboard for the Atelier reasoning
-runtime. Reads from `atelier-api` (FastAPI HTTP wrapper) on port 8124.
+runtime. Reads from `atelier-api` (FastAPI HTTP wrapper) on port 8787.
 
 ## Run (Docker, recommended)
 
@@ -17,7 +17,7 @@ open http://localhost:3125
 ```bash
 cd atelier/frontend
 npm install         # or bun install
-VITE_API_URL=http://localhost:8124 npm run dev
+VITE_API_URL=http://localhost:8787 npm run dev
 ```
 
 ## Pages
