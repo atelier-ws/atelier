@@ -118,6 +118,17 @@ echo '{"product_identity_uses_gid": true, "pre_publish_snapshot_exists": true, "
 
 → Full tutorial: [docs/quickstart.md](docs/quickstart.md)
 
+## Start the Dashboard
+
+Run the API service and React dashboard with Docker Compose:
+
+```bash
+make start
+```
+
+Then open the frontend at [http://localhost:3125](http://localhost:3125).
+The API service runs at [http://localhost:8787](http://localhost:8787).
+
 ## CLI
 
 ```bash
@@ -197,6 +208,13 @@ surface rather than a single identical plugin model.
 
 All installers: idempotent, back up before writing, skip gracefully if CLI is not on PATH.
 Support `--dry-run`, `--print-only`, `--strict`. Never write secrets.
+
+### Claude Code Plugin Example
+
+The Claude Code integration shows Atelier status, active model, cost estimate, and MCP health in
+the terminal status line.
+
+![Claude Code plugin example showing Atelier in the terminal status line](docs/assets/claude-plugin-example.png)
 
 → Details: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
 
