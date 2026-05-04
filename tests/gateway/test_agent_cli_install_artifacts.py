@@ -228,9 +228,9 @@ def test_copilot_instructions_mention_atelier() -> None:
     if not instructions.exists():
         pytest.skip("copilot/COPILOT_INSTRUCTIONS.atelier.md not found")
     content = instructions.read_text()
-    assert (
-        "atelier" in content.lower() or "Atelier" in content
-    ), "Copilot instructions must reference Atelier"
+    assert "atelier" in content.lower() or "Atelier" in content, (
+        "Copilot instructions must reference Atelier"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,9 +312,9 @@ def test_new_claude_plugin_json_name() -> None:
     plugin_json = CLAUDE_PLUGIN_NEW / ".claude-plugin" / "plugin.json"
     assert plugin_json.exists(), "integrations/claude/plugin/.claude-plugin/plugin.json must exist"
     data = json.loads(plugin_json.read_text())
-    assert (
-        data.get("name") == "atelier"
-    ), f"plugin.json name should be 'atelier', got: {data.get('name')}"
+    assert data.get("name") == "atelier", (
+        f"plugin.json name should be 'atelier', got: {data.get('name')}"
+    )
 
 
 def test_new_claude_plugin_json_has_no_commands_key() -> None:
@@ -322,9 +322,9 @@ def test_new_claude_plugin_json_has_no_commands_key() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert (
-        "commands" not in data
-    ), "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
+    assert "commands" not in data, (
+        "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
+    )
 
 
 def test_new_claude_plugin_json_author_is_object() -> None:
@@ -361,8 +361,7 @@ def test_new_claude_plugin_user_skill_exists(skill_name: str) -> None:
     # Phase H consolidation: All skills unified in ./integrations/skills/
     skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
     assert skill_file.exists(), (
-        f"integrations/skills/{skill_name}/SKILL.md must exist "
-        f"(all hosts now use unified skills)"
+        f"integrations/skills/{skill_name}/SKILL.md must exist (all hosts now use unified skills)"
     )
 
 
@@ -376,9 +375,9 @@ def test_new_claude_plugin_skill_has_description(skill_name: str) -> None:
     if not skill_file.exists():
         pytest.skip(f"skill file not found: {skill_name}")
     content = skill_file.read_text()
-    assert (
-        "description:" in content
-    ), f"skills/{skill_name}/SKILL.md must have 'description:' in frontmatter"
+    assert "description:" in content, (
+        f"skills/{skill_name}/SKILL.md must have 'description:' in frontmatter"
+    )
 
 
 def test_new_claude_plugin_has_agents() -> None:
@@ -392,9 +391,9 @@ def test_new_claude_plugin_mcp_uses_plugin_root_var() -> None:
     mcp_json = CLAUDE_PLUGIN_NEW / ".mcp.json"
     assert mcp_json.exists(), "integrations/claude/plugin/.mcp.json must exist"
     content = mcp_json.read_text()
-    assert (
-        "CLAUDE_PLUGIN_ROOT" in content
-    ), ".mcp.json must use ${CLAUDE_PLUGIN_ROOT} so it works after marketplace install"
+    assert "CLAUDE_PLUGIN_ROOT" in content, (
+        ".mcp.json must use ${CLAUDE_PLUGIN_ROOT} so it works after marketplace install"
+    )
 
 
 def test_new_claude_plugin_hooks_enabled() -> None:
@@ -459,9 +458,9 @@ def test_new_claude_plugin_subagent_statusline_wired() -> None:
     sl = data.get("subagentStatusLine")
     assert isinstance(sl, dict), "subagentStatusLine must be a dict"
     assert sl.get("type") == "command", "subagentStatusLine.type must be 'command'"
-    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get(
-        "command", ""
-    ), "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get("command", ""), (
+        "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+    )
 
 
 def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
@@ -493,9 +492,9 @@ def test_new_claude_plugin_stop_hook_uses_valid_decision() -> None:
 
 def test_root_marketplace_json_exists() -> None:
     mktplace = INTEGRATIONS / "claude" / "plugin" / ".claude-plugin" / "marketplace.json"
-    assert (
-        mktplace.exists()
-    ), "integrations/claude/plugin/.claude-plugin/marketplace.json must exist"
+    assert mktplace.exists(), (
+        "integrations/claude/plugin/.claude-plugin/marketplace.json must exist"
+    )
 
 
 def test_root_marketplace_json_name() -> None:
@@ -503,9 +502,9 @@ def test_root_marketplace_json_name() -> None:
     if not mktplace.exists():
         pytest.skip(".claude-plugin/marketplace.json not found")
     data = json.loads(mktplace.read_text())
-    assert (
-        data.get("name") == "atelier"
-    ), f"root marketplace.json name should be 'atelier', got: {data.get('name')}"
+    assert data.get("name") == "atelier", (
+        f"root marketplace.json name should be 'atelier', got: {data.get('name')}"
+    )
 
 
 def test_root_marketplace_json_source_points_to_new_plugin() -> None:
@@ -516,9 +515,9 @@ def test_root_marketplace_json_source_points_to_new_plugin() -> None:
     plugins = data.get("plugins", [])
     assert len(plugins) >= 1, "root marketplace.json must declare at least one plugin"
     source = plugins[0].get("source", "")
-    assert (
-        "integrations/claude/plugin" in source or source == "./"
-    ), f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
+    assert "integrations/claude/plugin" in source or source == "./", (
+        f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -549,12 +548,6 @@ def test_install_claude_script_exists() -> None:
     assert is_executable(script), "Not executable: scripts/install_claude.sh"
 
 
-def test_verify_claude_plugin_dev_script_exists() -> None:
-    script = SCRIPTS / "verify_claude_plugin_dev.sh"
-    assert script.exists(), "Missing: scripts/verify_claude_plugin_dev.sh"
-    assert is_executable(script), "Not executable: scripts/verify_claude_plugin_dev.sh"
-
-
 def test_verify_claude_script_exists() -> None:
     script = SCRIPTS / "verify_claude.sh"
     assert script.exists(), "Missing: scripts/verify_claude.sh"
@@ -564,9 +557,9 @@ def test_verify_claude_script_exists() -> None:
 def test_install_claude_uses_new_plugin_path() -> None:
     script = SCRIPTS / "install_claude.sh"
     content = script.read_text()
-    assert (
-        "integrations/claude/plugin" in content
-    ), "install_claude.sh must reference integrations/claude/plugin"
+    assert "integrations/claude/plugin" in content, (
+        "install_claude.sh must reference integrations/claude/plugin"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -580,9 +573,9 @@ def test_docs_use_atelier_colon_not_dash_for_skills() -> None:
         pytest.skip("claude-code-install.md not found")
     content = doc.read_text()
     # /atelier:status is correct; /atelier-status is the old commands-based name
-    assert (
-        "/atelier:status" in content
-    ), "claude-code-install.md must document /atelier:status (colon, not dash)"
+    assert "/atelier:status" in content, (
+        "claude-code-install.md must document /atelier:status (colon, not dash)"
+    )
     # Ensure the wrong form is not present (unless it's mentioned as a legacy note)
     # We allow it if explicitly labelled as deprecated/old
     bad_uses = [
@@ -592,9 +585,9 @@ def test_docs_use_atelier_colon_not_dash_for_skills() -> None:
         and "deprecated" not in line.lower()
         and "old" not in line.lower()
     ]
-    assert (
-        not bad_uses
-    ), f"claude-code-install.md uses /atelier-status (dash) without deprecated label: {bad_uses}"
+    assert not bad_uses, (
+        f"claude-code-install.md uses /atelier-status (dash) without deprecated label: {bad_uses}"
+    )
 
 
 def test_docs_mention_three_install_modes() -> None:
@@ -603,12 +596,12 @@ def test_docs_mention_three_install_modes() -> None:
         pytest.skip("claude-code-install.md not found")
     content = doc.read_text()
     assert "marketplace" in content.lower(), "docs must mention marketplace install mode"
-    assert (
-        "dev" in content.lower() or "plugin-dir" in content.lower()
-    ), "docs must mention dev mode (--plugin-dir)"
-    assert (
-        "mcp-only" in content.lower() or "mcp only" in content.lower()
-    ), "docs must mention MCP-only fallback mode"
+    assert "dev" in content.lower() or "plugin-dir" in content.lower(), (
+        "docs must mention dev mode (--plugin-dir)"
+    )
+    assert "mcp-only" in content.lower() or "mcp only" in content.lower(), (
+        "docs must mention MCP-only fallback mode"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -35,6 +35,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import (
+    CommandRecord,
+    FileEditRecord,
     RawArtifact,
     ToolCall,
     Trace,
@@ -60,6 +62,17 @@ def _utcnow() -> datetime:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _to_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        return str(value)
 
 
 def _ms_to_dt(ms: int | float | None) -> datetime:
@@ -185,8 +198,10 @@ class OpenCodeImporter:
 
         # ── Step 2: build Trace from the redacted serialisation ───────────────
         tools_called: dict[str, int] = {}
-        files_touched: set[str] = set()
-        commands_run: list[str] = []
+        tool_args: dict[str, dict[str, Any] | None] = {}
+        tool_results: dict[str, str] = {}
+        files_touched: dict[str, FileEditRecord | None] = {}
+        commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
 
         for line in redacted.splitlines():
@@ -197,9 +212,22 @@ class OpenCodeImporter:
                 ev = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            self._process_part(ev, tools_called, files_touched, commands_run, reasoning_snippets)
+            self._process_part(
+                ev,
+                tools_called,
+                tool_args,
+                tool_results,
+                files_touched,
+                commands_run,
+                reasoning_snippets,
+            )
 
         title: str = str(session_row.get("title") or "untitled opencode session")
+
+        touched_files: list[str | FileEditRecord] = []
+        for path in sorted(files_touched):
+            touched_file = files_touched[path]
+            touched_files.append(touched_file if touched_file is not None else path)
 
         trace = Trace(
             id=f"opencode-{session_id}",
@@ -208,8 +236,17 @@ class OpenCodeImporter:
             domain="coding",
             task=title[:200],
             status="success",
-            files_touched=sorted(files_touched),
-            tools_called=[ToolCall(name=n, args_hash="", count=c) for n, c in tools_called.items()],
+            files_touched=touched_files,
+            tools_called=[
+                ToolCall(
+                    name=n,
+                    args_hash="",
+                    count=c,
+                    args=tool_args.get(n),
+                    result_summary=tool_results.get(n, ""),
+                )
+                for n, c in tools_called.items()
+            ],
             commands_run=commands_run,
             errors_seen=[],
             validation_results=[],
@@ -283,8 +320,10 @@ class OpenCodeImporter:
         self,
         ev: dict[str, Any],
         tools_called: dict[str, int],
-        files_touched: set[str],
-        commands_run: list[str],
+        tool_args: dict[str, dict[str, Any] | None],
+        tool_results: dict[str, str],
+        files_touched: dict[str, FileEditRecord | None],
+        commands_run: list[str | CommandRecord],
         reasoning_snippets: list[str],
     ) -> None:
         # Only interested in "part" events
@@ -300,30 +339,59 @@ class OpenCodeImporter:
                 reasoning_snippets.append(reasoning_text[:500])
 
         if ptype == "tool":
-            tool_name: str = data.get("tool", "unknown")
+            tool_name: str = str(data.get("tool", "unknown"))
             tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
 
             state: dict[str, Any] = data.get("state") or {}
             inp: dict[str, Any] = state.get("input") or {}
+            metadata: dict[str, Any] = state.get("metadata") or {}
+
+            if tool_name not in tool_args:
+                tool_args[tool_name] = dict(inp)
+
+            result_summary = _to_text(state.get("output") or metadata.get("output") or "")
+            if result_summary and not tool_results.get(tool_name):
+                tool_results[tool_name] = result_summary[:200]
 
             if tool_name in _FILE_TOOLS:
                 fp = inp.get("filePath") or inp.get("path") or inp.get("file_path")
+                if not fp and isinstance(metadata.get("filediff"), dict):
+                    fp = metadata["filediff"].get("file") or metadata["filediff"].get("path")
                 if fp:
-                    files_touched.add(str(fp))
+                    path = str(fp)
+                    files_touched.setdefault(path, None)
+                    if tool_name in ("write", "edit", "multiedit"):
+                        diff_text = _to_text(metadata.get("diff") or metadata.get("filediff") or "")
+                        if diff_text:
+                            files_touched[path] = FileEditRecord(path=path, diff=diff_text)
 
             elif tool_name in ("glob", "grep", "rg"):
                 pattern = inp.get("pattern") or inp.get("query") or ""
                 if pattern and len(str(pattern)) < 100:
-                    files_touched.add(f"{tool_name}:{pattern}")
+                    files_touched.setdefault(f"{tool_name}:{pattern}", None)
 
             elif tool_name == "bash":
                 cmd = inp.get("command")
                 if cmd:
-                    commands_run.append(str(cmd)[:200])
+                    stdout = _to_text(
+                        metadata.get("stdout")
+                        or metadata.get("output")
+                        or state.get("output")
+                        or ""
+                    )
+                    stderr = _to_text(metadata.get("stderr") or state.get("stderr") or "")
+                    exit_code = metadata.get("exit")
+                    commands_run.append(
+                        CommandRecord(
+                            command=str(cmd),
+                            exit_code=exit_code if isinstance(exit_code, int) else None,
+                            stdout=stdout,
+                            stderr=stderr,
+                        )
+                    )
 
         elif ptype == "patch":
-            # patch parts carry a flat list of affected file paths
             for fp in data.get("files") or []:
-                files_touched.add(str(fp))
+                files_touched.setdefault(str(fp), None)
             if data.get("files"):
                 tools_called["patch"] = tools_called.get("patch", 0) + 1

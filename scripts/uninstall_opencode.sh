@@ -66,4 +66,21 @@ else
     info "No opencode MCP config found, skipping."
 fi
 
+# Also clean up opencode.jsonc in workspace root
+OPENCODE_JSONC="${WORKSPACE}/opencode.jsonc"
+if [ -f "$OPENCODE_JSONC" ] && grep -q "atelier" "$OPENCODE_JSONC" 2>/dev/null; then
+    info "Removing atelier from $OPENCODE_JSONC..."
+    # Backup first
+    run "cp '$OPENCODE_JSONC' '${OPENCODE_JSONC}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
+    # Simple approach: remove the entire file and let install recreate it
+    run "rm -f '$OPENCODE_JSONC'"
+    info "Removed opencode.jsonc (will be recreated on install)"
+fi
+
+# Remove .opencode/agents/atelier.md if exists
+if [ -f "${WORKSPACE}/.opencode/agents/atelier.md" ]; then
+    run "rm -f '${WORKSPACE}/.opencode/agents/atelier.md'"
+    info "Removed .opencode/agents/atelier.md"
+fi
+
 info "Done."

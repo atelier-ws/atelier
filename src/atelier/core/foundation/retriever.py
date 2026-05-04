@@ -23,10 +23,26 @@ Quarantined blocks are excluded. Deprecated blocks are excluded by default.
 from __future__ import annotations
 
 import fnmatch
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import TypeVar
 
+import tiktoken
+from datasketch import MinHash, MinHashLSH
+
+from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
+from atelier.core.foundation.memory_models import ArchivalPassage
 from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.store import ReasoningStore
+
+T = TypeVar("T")
+_DEFAULT_TOKEN_BUDGET = 2000
+_DEDUP_THRESHOLD = 0.75
+_MINHASH_PERMUTATIONS = 128
+_MIN_DEDUP_TOKENS = 5
 
 
 @dataclass
@@ -54,6 +70,164 @@ class ScoredBlock:
     block: ReasonBlock
     score: float
     breakdown: dict[str, float]
+
+
+@dataclass(frozen=True)
+class RecalledPassageSummary:
+    id: str
+    source: str
+    score: float
+
+
+@lru_cache(maxsize=1)
+def _encoding() -> tiktoken.Encoding:
+    return tiktoken.get_encoding("cl100k_base")
+
+
+def count_tokens(text: str) -> int:
+    """Count tokens with the model-agnostic cl100k_base encoding."""
+    return len(_encoding().encode(text))
+
+
+def count_reasonblock_tokens(block: ReasonBlock) -> int:
+    """Count tokens for the compact injected representation of one ReasonBlock."""
+    return count_tokens(render_block_for_agent(block))
+
+
+def passage_in_agent_scope(passage: ArchivalPassage, requested_agent_id: str) -> bool:
+    """Return whether a passage may be injected for the requested agent."""
+    return passage.agent_id == requested_agent_id or "agent:any" in passage.tags
+
+
+def filter_scoped_passages(
+    passages: Sequence[ArchivalPassage], *, requested_agent_id: str
+) -> list[ArchivalPassage]:
+    """Keep only same-agent passages and explicit global lessons."""
+    return [passage for passage in passages if passage_in_agent_scope(passage, requested_agent_id)]
+
+
+def render_memory_for_agent(passages: Sequence[ArchivalPassage]) -> str:
+    """Render recalled archival passages for context injection."""
+    if not passages:
+        return ""
+    out = ["<memory>"]
+    for passage in passages:
+        source = passage.source_ref or passage.source
+        out.append("")
+        out.append(f"Passage: {passage.id}  [{source}]")
+        out.append(passage.text.strip())
+    out.append("</memory>")
+    return "\n".join(out) + "\n"
+
+
+def summarize_recalled_passages(
+    passages: Sequence[ArchivalPassage], *, query: str
+) -> list[dict[str, str | float]]:
+    """Return compact metadata for passages injected into context."""
+    scores = {
+        item.passage.id: item.score
+        for item in rank_archival_passages(
+            query=query, passages=list(passages), top_k=len(passages)
+        )
+    }
+    return [
+        {
+            "id": passage.id,
+            "source": passage.source_ref or passage.source,
+            "score": round(float(scores.get(passage.id, 0.0)), 6),
+        }
+        for passage in passages
+    ]
+
+
+def _dedup_text(block: ReasonBlock) -> str:
+    return " ".join([*block.dead_ends, *block.procedure])
+
+
+def _dedup_tokens(block: ReasonBlock) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", _dedup_text(block).lower()))
+
+
+def _minhash(tokens: set[str]) -> MinHash:
+    signature = MinHash(num_perm=_MINHASH_PERMUTATIONS)
+    for token in sorted(tokens):
+        signature.update(token.encode("utf-8"))
+    return signature
+
+
+def _jaccard_tokens(left: set[str], right: set[str]) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def deduplicate_by_reasonblock(
+    items: Sequence[T],
+    block_getter: Callable[[T], ReasonBlock],
+    *,
+    threshold: float = _DEDUP_THRESHOLD,
+) -> list[T]:
+    """Drop near-duplicate ReasonBlocks, keeping the first/highest-ranked item."""
+    if len(items) < 2:
+        return list(items)
+
+    lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
+    kept: list[T] = []
+    kept_tokens: dict[str, set[str]] = {}
+
+    for item in items:
+        block = block_getter(item)
+        tokens = _dedup_tokens(block)
+        if len(tokens) < _MIN_DEDUP_TOKENS:
+            kept.append(item)
+            continue
+        signature = _minhash(tokens)
+        matches = lsh.query(signature)
+        if any(_jaccard_tokens(tokens, kept_tokens[key]) >= threshold for key in matches):
+            continue
+
+        key = f"{len(kept)}:{block.id}"
+        lsh.insert(key, signature)
+        kept_tokens[key] = tokens
+        kept.append(item)
+
+    return kept
+
+
+def pack_by_reasonblock_token_budget(
+    items: Sequence[T],
+    block_getter: Callable[[T], ReasonBlock],
+    *,
+    limit: int,
+    token_budget: int | None,
+) -> list[T]:
+    """Greedily pack highest-ranked ReasonBlocks until the token budget is reached."""
+    packed: list[T] = []
+    tokens_used = 0
+
+    for item in items:
+        if len(packed) >= limit:
+            break
+        block_tokens = count_reasonblock_tokens(block_getter(item))
+        if token_budget is not None and token_budget >= 0:
+            if tokens_used + block_tokens > token_budget and packed:
+                continue
+            if token_budget == 0 and not packed:
+                break
+        packed.append(item)
+        tokens_used += block_tokens
+
+    return packed
+
+
+def deduplicate_scored_blocks(
+    scored: Sequence[ScoredBlock],
+    *,
+    threshold: float = _DEDUP_THRESHOLD,
+) -> list[ScoredBlock]:
+    return deduplicate_by_reasonblock(scored, lambda item: item.block, threshold=threshold)
 
 
 # --------------------------------------------------------------------------- #
@@ -186,6 +360,8 @@ def retrieve(
     include_deprecated: bool = False,
     vector_scores: dict[str, float] | None = None,
     use_vector_weights: bool | None = None,
+    dedup: bool = True,
+    token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
 ) -> list[ScoredBlock]:
     """Return top-N relevant ReasonBlocks for a task context.
 
@@ -199,6 +375,10 @@ def retrieve(
             Pass pre-computed scores from a vector search; they will be
             incorporated when vector scoring is enabled.
         use_vector_weights: Override the env-var check for weight selection.
+        dedup: Drop near-duplicate blocks using MinHash LSH over dead-ends
+            and procedure text, keeping the highest-ranked block.
+        token_budget: Greedy-pack compact rendered blocks under this token
+            budget. Pass None to disable budget packing.
     """
     candidates: list[ReasonBlock] = []
 
@@ -236,4 +416,11 @@ def retrieve(
     ]
     scored = [s for s in scored if s.score >= min_score]
     scored.sort(key=lambda s: s.score, reverse=True)
-    return scored[:limit]
+    if dedup:
+        scored = deduplicate_scored_blocks(scored)
+    return pack_by_reasonblock_token_budget(
+        scored,
+        lambda item: item.block,
+        limit=limit,
+        token_budget=token_budget,
+    )

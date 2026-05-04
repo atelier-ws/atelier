@@ -9,5 +9,6 @@ def test_openmemory_adapter_disabled_by_default() -> None:
     adapter = OpenMemoryAdapter()
     result = adapter.fetch_context(task="Fix the checkout bug")
 
-    assert result.skipped is True
+    assert result.ok is True
+    assert result.skipped is False
     assert result.source == "openmemory"

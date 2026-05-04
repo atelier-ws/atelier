@@ -65,6 +65,16 @@ if [ -f "$AGENTS_FILE" ]; then
     info "Removed AGENTS.atelier.md"
 fi
 
-# Note: Removing the Claude plugin requires claude CLI which may not be available
-# The user can manually remove it via: claude plugin remove atelier@atelier
-info "Done. If atelier plugin is installed in Claude Code, run: claude plugin remove atelier@atelier"
+# Remove Claude plugin (atelier@atelier)
+if command -v claude &> /dev/null; then
+    if claude plugin list 2>/dev/null | grep -q "atelier@atelier"; then
+        info "Removing Claude plugin atelier@atelier..."
+        claude plugin remove atelier@atelier 2>&1 || warn "Failed to remove plugin (may already be removed)"
+    else
+        info "No atelier plugin found in Claude Code"
+    fi
+else
+    warn "claude CLI not found, skipping plugin removal"
+fi
+
+info "Done."

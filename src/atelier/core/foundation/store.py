@@ -24,6 +24,7 @@ from typing import Any
 
 import yaml
 
+from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import (
     BlockStatus,
     RawArtifact,
@@ -98,6 +99,35 @@ CREATE TABLE IF NOT EXISTS rubrics (
     domain TEXT NOT NULL,
     payload TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS lesson_candidate (
+    id                     TEXT PRIMARY KEY,
+    domain                 TEXT NOT NULL,
+    cluster_fingerprint    TEXT NOT NULL DEFAULT '',
+    kind                   TEXT NOT NULL,
+    target_id              TEXT,
+    proposed_block_json    TEXT,
+    proposed_rubric_check  TEXT,
+    evidence_trace_ids     TEXT NOT NULL,
+    embedding              BLOB,
+    confidence             REAL NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'inbox',
+    reviewer               TEXT,
+    decision_at            TEXT,
+    decision_reason        TEXT NOT NULL DEFAULT '',
+    created_at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_lesson_candidate_domain_status_at
+    ON lesson_candidate(domain, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS lesson_promotion (
+    id                  TEXT PRIMARY KEY,
+    lesson_id           TEXT NOT NULL REFERENCES lesson_candidate(id),
+    published_block_id  TEXT,
+    edited_block_id     TEXT,
+    pr_url              TEXT NOT NULL DEFAULT '',
+    created_at          TEXT NOT NULL
+);
 """
 
 
@@ -136,6 +166,8 @@ class ReasoningStore:
 
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
+            self._apply_v2_migrations(conn)
+            self.verify_v2_schema(conn)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -143,6 +175,36 @@ class ReasoningStore:
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA journal_mode = WAL;")
         return conn
+
+    def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
+        from atelier.infra.storage.migrations import sqlite_migration_scripts
+
+        for sql in sqlite_migration_scripts():
+            conn.executescript(sql)
+
+    def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
+        """Return True when every V2 table exists in SQLite."""
+
+        from atelier.infra.storage.migrations import V2_REQUIRED_TABLES
+
+        owns_connection = conn is None
+        active_conn = conn or self._connect()
+        try:
+            rows = active_conn.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type IN ('table', 'virtual table') AND name IN ({})
+                """.format(",".join("?" for _ in V2_REQUIRED_TABLES)),
+                V2_REQUIRED_TABLES,
+            ).fetchall()
+            found = {row["name"] for row in rows}
+            missing = set(V2_REQUIRED_TABLES) - found
+            if missing:
+                raise RuntimeError(f"missing V2 tables: {', '.join(sorted(missing))}")
+            return True
+        finally:
+            if owns_connection:
+                active_conn.close()
 
     # ----- ReasonBlocks ---------------------------------------------------- #
 
@@ -458,6 +520,162 @@ class ReasoningStore:
             rows = conn.execute(sql, params).fetchall()
         return [Rubric.model_validate_json(r["payload"]) for r in rows]
 
+    # ----- Lessons --------------------------------------------------------- #
+
+    def upsert_lesson_candidate(self, candidate: LessonCandidate) -> None:
+        proposed_block_json = (
+            json.dumps(to_jsonable(candidate.proposed_block), ensure_ascii=False)
+            if candidate.proposed_block is not None
+            else None
+        )
+        embedding_json = (
+            json.dumps(candidate.embedding, ensure_ascii=False) if candidate.embedding else None
+        )
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lesson_candidate (
+                    id, domain, cluster_fingerprint, kind, target_id,
+                    proposed_block_json, proposed_rubric_check, evidence_trace_ids,
+                    embedding, confidence, status, reviewer, decision_at,
+                    decision_reason, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    domain = excluded.domain,
+                    cluster_fingerprint = excluded.cluster_fingerprint,
+                    kind = excluded.kind,
+                    target_id = excluded.target_id,
+                    proposed_block_json = excluded.proposed_block_json,
+                    proposed_rubric_check = excluded.proposed_rubric_check,
+                    evidence_trace_ids = excluded.evidence_trace_ids,
+                    embedding = excluded.embedding,
+                    confidence = excluded.confidence,
+                    status = excluded.status,
+                    reviewer = excluded.reviewer,
+                    decision_at = excluded.decision_at,
+                    decision_reason = excluded.decision_reason
+                """,
+                (
+                    candidate.id,
+                    candidate.domain,
+                    candidate.cluster_fingerprint,
+                    candidate.kind,
+                    candidate.target_id,
+                    proposed_block_json,
+                    candidate.proposed_rubric_check,
+                    json.dumps(candidate.evidence_trace_ids, ensure_ascii=False),
+                    embedding_json,
+                    candidate.confidence,
+                    candidate.status,
+                    candidate.reviewer,
+                    candidate.decision_at.isoformat() if candidate.decision_at else None,
+                    candidate.decision_reason,
+                    candidate.created_at.isoformat(),
+                ),
+            )
+
+    def get_lesson_candidate(self, lesson_id: str) -> LessonCandidate | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM lesson_candidate WHERE id = ?", (lesson_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_lesson_candidate(row)
+
+    def list_lesson_candidates(
+        self,
+        *,
+        domain: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[LessonCandidate]:
+        sql = "SELECT * FROM lesson_candidate WHERE 1=1"
+        params: list[Any] = []
+        if domain:
+            sql += " AND domain = ?"
+            params.append(domain)
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_lesson_candidate(r) for r in rows]
+
+    def upsert_lesson_promotion(self, promotion: LessonPromotion) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lesson_promotion (
+                    id, lesson_id, published_block_id, edited_block_id, pr_url, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    lesson_id = excluded.lesson_id,
+                    published_block_id = excluded.published_block_id,
+                    edited_block_id = excluded.edited_block_id,
+                    pr_url = excluded.pr_url
+                """,
+                (
+                    promotion.id,
+                    promotion.lesson_id,
+                    promotion.published_block_id,
+                    promotion.edited_block_id,
+                    promotion.pr_url,
+                    promotion.created_at.isoformat(),
+                ),
+            )
+
+    def list_lesson_promotions(self, *, limit: int = 100) -> list[LessonPromotion]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM lesson_promotion ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            LessonPromotion(
+                id=r["id"],
+                lesson_id=r["lesson_id"],
+                published_block_id=r["published_block_id"],
+                edited_block_id=r["edited_block_id"],
+                pr_url=r["pr_url"] or "",
+                created_at=datetime.fromisoformat(r["created_at"]),
+            )
+            for r in rows
+        ]
+
+    def _row_to_lesson_candidate(self, row: sqlite3.Row) -> LessonCandidate:
+        proposed_block = None
+        if row["proposed_block_json"]:
+            proposed_block = ReasonBlock.model_validate_json(row["proposed_block_json"])
+        embedding = None
+        if row["embedding"]:
+            raw_embedding = row["embedding"]
+            if isinstance(raw_embedding, bytes):
+                raw_embedding = raw_embedding.decode("utf-8", errors="replace")
+            embedding = json.loads(raw_embedding)
+        decision_at = datetime.fromisoformat(row["decision_at"]) if row["decision_at"] else None
+        return LessonCandidate(
+            id=row["id"],
+            domain=row["domain"],
+            cluster_fingerprint=row["cluster_fingerprint"] or "",
+            kind=row["kind"],
+            target_id=row["target_id"],
+            proposed_block=proposed_block,
+            proposed_rubric_check=row["proposed_rubric_check"],
+            evidence_trace_ids=json.loads(row["evidence_trace_ids"]),
+            embedding=embedding,
+            confidence=float(row["confidence"]),
+            status=row["status"],
+            reviewer=row["reviewer"],
+            decision_at=decision_at,
+            decision_reason=row["decision_reason"] or "",
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
     # ----- File mirrors ---------------------------------------------------- #
 
     def _write_block_markdown(self, block: ReasonBlock) -> None:
@@ -506,3 +724,124 @@ class ReasoningStore:
             self.upsert_rubric(r)
             n += 1
         return n
+
+    # ----- Context Budget -------------------------------------------------- #
+
+    def persist_context_budget(self, record: Any) -> None:
+        """Persist a ContextBudget record to the store.
+
+        Args:
+            record: A ContextBudget instance with run_id, turn_index, model,
+                    token counts, lever_savings dict, and tool_calls count.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO context_budget (
+                    id, run_id, turn_index, model, input_tokens,
+                    cache_read_tokens, cache_write_tokens, output_tokens,
+                    naive_input_tokens, lever_savings_json, tool_calls, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    record.run_id,
+                    record.turn_index,
+                    record.model,
+                    record.input_tokens,
+                    record.cache_read_tokens,
+                    record.cache_write_tokens,
+                    record.output_tokens,
+                    record.naive_input_tokens,
+                    json.dumps(record.lever_savings),
+                    record.tool_calls,
+                    record.created_at.isoformat(),
+                ),
+            )
+            conn.commit()
+
+    def list_context_budgets(self, run_id: str) -> list[Any]:
+        """List all ContextBudget records for a run.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            A list of ContextBudget records (as dicts), ordered by turn_index.
+        """
+        from atelier.core.foundation.savings_models import ContextBudget
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, run_id, turn_index, model, input_tokens,
+                       cache_read_tokens, cache_write_tokens, output_tokens,
+                       naive_input_tokens, lever_savings_json, tool_calls, created_at
+                FROM context_budget
+                WHERE run_id = ?
+                ORDER BY turn_index ASC
+                """,
+                (run_id,),
+            ).fetchall()
+
+        results = []
+        for row in rows:
+            results.append(
+                ContextBudget(
+                    id=row[0],
+                    run_id=row[1],
+                    turn_index=row[2],
+                    model=row[3],
+                    input_tokens=row[4],
+                    cache_read_tokens=row[5],
+                    cache_write_tokens=row[6],
+                    output_tokens=row[7],
+                    naive_input_tokens=row[8],
+                    lever_savings=json.loads(row[9]),
+                    tool_calls=row[10],
+                    created_at=datetime.fromisoformat(row[11]),
+                )
+            )
+
+        return results
+
+    def get_context_budget(self, cb_id: str) -> Any | None:
+        """Get a single ContextBudget record by ID.
+
+        Args:
+            cb_id: The ContextBudget ID.
+
+        Returns:
+            A ContextBudget instance or None if not found.
+        """
+        from atelier.core.foundation.savings_models import ContextBudget
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, run_id, turn_index, model, input_tokens,
+                       cache_read_tokens, cache_write_tokens, output_tokens,
+                       naive_input_tokens, lever_savings_json, tool_calls, created_at
+                FROM context_budget
+                WHERE id = ?
+                """,
+                (cb_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return ContextBudget(
+            id=row[0],
+            run_id=row[1],
+            turn_index=row[2],
+            model=row[3],
+            input_tokens=row[4],
+            cache_read_tokens=row[5],
+            cache_write_tokens=row[6],
+            output_tokens=row[7],
+            naive_input_tokens=row[8],
+            lever_savings=json.loads(row[9]),
+            tool_calls=row[10],
+            created_at=datetime.fromisoformat(row[11]),
+        )

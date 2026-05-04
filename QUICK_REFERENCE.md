@@ -2,7 +2,7 @@
 
 **For developers.** Print this page. Keep it nearby while coding with Atelier.
 
-*For agents/automation, see [AGENT_README.md](AGENT_README.md) instead.*
+_For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
 
 ---
 
@@ -48,18 +48,21 @@ Operations
 **The 11 skills, grouped by use case:**
 
 ### Core Skills (use in order)
+
 - `/atelier:atelier-task` — Start here. Runs full loop: get context → plan → check → implement → rescue → verify → record
 - `/atelier:atelier-check-plan` — Validate your plan BEFORE editing code (blocks until ✅ pass)
 - `/atelier:atelier-rescue` — Stuck on same error? Get recovery procedure
 - `/atelier:atelier-record-trace` — Done? Record what happened for learning
 
 ### Intelligence Skills (as needed)
+
 - `/atelier:status [run_id]` — See your current run: plan, facts, blockers, alerts
 - `/atelier:context <domain>` — Get domain rules, forbidden patterns, key procedures
 - `/atelier:analyze-failures` — Find repeated failures, propose mitigations
 - `/atelier:evals` — Manage test cases (list, run, promote)
 
 ### Operations Skills (occasional use)
+
 - `/atelier:benchmark` — Run eval suite to measure your learning loop
 - `/atelier:savings` — See cost/token savings from using Atelier
 - `/atelier:settings` — Toggle smart-tool mode (off|shadow|on)
@@ -92,7 +95,7 @@ atelier:repair     Repair specialist (on repeated failures)
 └─ Hard rules: No repeated hypotheses, stop after 2 failures
 ```
 
-## 🔧 MCP Tools (14 total)
+## 🔧 MCP Tools (27 total)
 
 ```
 CORE WORKFLOW (5)
@@ -103,7 +106,7 @@ rescue_failure             Get recovery procedure
 record_trace               Save outcome for learning
 run_rubric_gate            Verify high-risk domain before success
 
-EXTENDED (9)
+EXTENDED (9)                                           [Atelier augmentation]
 ─────────────────────────────────────────────────
 extract_reasonblock        Create candidate block from trace
 get_run_ledger             Pull active run's full ledger
@@ -114,7 +117,36 @@ get_environment_context    Fetch domain rules + forbidden phrases
 smart_read                 Cached file reading (shadow mode tracks savings)
 smart_search               Memoized code search
 cached_grep                Grep with smart caching
+
+V2 MEMORY (5)                                          [Atelier augmentation]
+─────────────────────────────────────────────────
+memory_upsert_block        Store named value in agent memory block
+memory_get_block           Retrieve named memory block
+memory_recall              FTS + vector search over archival memory
+memory_archive             Persist text passage to archival memory
+memory_summary             Compact sleeptime memory (reduces context window)
+
+V2 LESSON PIPELINE (2)                                 [Atelier augmentation]
+─────────────────────────────────────────────────
+lesson_inbox               List pending lesson candidates to promote/reject
+lesson_decide              Approve or reject a lesson candidate → ReasonBlock
+
+V2 CONTEXT SAVINGS (4)                                 [Atelier augmentation]
+─────────────────────────────────────────────────
+search_read                Token-saving combined search + read
+batch_edit                 Deterministic multi-file batch edits (optional)
+sql_inspect                Read-only SQL schema/data inspection
+compact_advise             Advise before host-native /compact; reinject facts
+
+V2 ROUTING (2)                                         [Atelier augmentation]
+─────────────────────────────────────────────────
+route_decide               Quality-aware model routing within cost budget
+route_verify               Verification-gated escalation to higher-tier model
 ```
+
+> **Boundary note**: `search_read`, `batch_edit`, `smart_read`, `smart_search`, `cached_grep` are
+> Atelier augmentations. Host-native Read, MultiEdit, shell `rg`/`grep`, and search remain the
+> raw-access fallback. Disable Atelier cache with `ATELIER_CACHE_DISABLED=1`.
 
 ## 🎯 High-Risk Domains (require rubric gate)
 

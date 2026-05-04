@@ -3,7 +3,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel
+
+
+class SymbolOutline(BaseModel):
+    """Outline symbol for class/function/method boundaries."""
+
+    name: str
+    kind: Literal["class", "function", "method"]
+    start_line: int
+    end_line: int
+
+
+class FileOutline(BaseModel):
+    """Compact outline returned for large source files."""
+
+    path: str
+    lang: Literal["python", "typescript", "tsx", "javascript"]
+    loc: int
+    symbols: list[SymbolOutline]
+    imports: list[str]
+    hint: str = "Pass range=L1-L2 or expand=true for full body"
 
 
 @dataclass

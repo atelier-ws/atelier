@@ -7,8 +7,9 @@ read operations like listing ReasonBlocks it falls back to a local store at
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
+from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
     PlanCheckResult,
     RescueResult,
@@ -17,7 +18,16 @@ from atelier.core.foundation.models import (
     ValidationResult,
 )
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.sdk.client import MCPToolTransport, ReasoningContextResult, TraceRecordResult
+from atelier.gateway.sdk.client import (
+    LessonDecisionResult,
+    LessonInboxResult,
+    MCPToolTransport,
+    MemoryArchiveResult,
+    MemoryRecallResult,
+    MemoryUpsertBlockResult,
+    ReasoningContextResult,
+    TraceRecordResult,
+)
 from atelier.gateway.sdk.local import LocalClient
 
 
@@ -29,8 +39,14 @@ class _LoopbackTransport(MCPToolTransport):
             "rescue_failure": mcp_server.tool_rescue_failure,
             "run_rubric_gate": mcp_server.tool_run_rubric_gate,
             "record_trace": mcp_server.tool_record_trace,
+            "atelier_lesson_inbox": mcp_server.tool_lesson_inbox,
+            "atelier_lesson_decide": mcp_server.tool_lesson_decide,
+            "memory_upsert_block": mcp_server.tool_memory_upsert_block,
+            "memory_get_block": mcp_server.tool_memory_get_block,
+            "memory_archive": mcp_server.tool_memory_archive,
+            "memory_recall": mcp_server.tool_memory_recall,
         }
-        return tools[name](arguments)
+        return cast(dict[str, Any], tools[name](arguments))
 
 
 class MCPClient(LocalClient):
@@ -49,6 +65,11 @@ class MCPClient(LocalClient):
         tools: list[str] | None = None,
         errors: list[str] | None = None,
         max_blocks: int = 5,
+        token_budget: int | None = 2000,
+        dedup: bool = True,
+        include_telemetry: bool = False,
+        agent_id: str | None = None,
+        recall: bool = True,
     ) -> ReasoningContextResult:
         payload = self._transport.call_tool(
             "get_reasoning_context",
@@ -59,6 +80,11 @@ class MCPClient(LocalClient):
                 "tools": tools or [],
                 "errors": errors or [],
                 "max_blocks": max_blocks,
+                "token_budget": token_budget,
+                "dedup": dedup,
+                "include_telemetry": include_telemetry,
+                "agent_id": agent_id,
+                "recall": recall,
             },
         )
         return ReasoningContextResult.model_validate(payload)
@@ -85,6 +111,86 @@ class MCPClient(LocalClient):
             },
         )
         return PlanCheckResult.model_validate(payload)
+
+    def memory_upsert_block(
+        self,
+        *,
+        agent_id: str,
+        label: str,
+        value: str,
+        limit_chars: int = 8000,
+        description: str = "",
+        read_only: bool = False,
+        pinned: bool = False,
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
+        actor: str | None = None,
+    ) -> MemoryUpsertBlockResult:
+        payload = self._transport.call_tool(
+            "memory_upsert_block",
+            {
+                "agent_id": agent_id,
+                "label": label,
+                "value": value,
+                "limit_chars": limit_chars,
+                "description": description,
+                "read_only": read_only,
+                "pinned": pinned,
+                "metadata": metadata or {},
+                "expected_version": expected_version,
+                "actor": actor,
+            },
+        )
+        return MemoryUpsertBlockResult.model_validate(payload)
+
+    def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
+        payload = self._transport.call_tool(
+            "memory_get_block",
+            {"agent_id": agent_id, "label": label},
+        )
+        return MemoryBlock.model_validate(payload) if payload is not None else None
+
+    def memory_archive(
+        self,
+        *,
+        agent_id: str,
+        text: str,
+        source: str,
+        source_ref: str = "",
+        tags: list[str] | None = None,
+    ) -> MemoryArchiveResult:
+        payload = self._transport.call_tool(
+            "memory_archive",
+            {
+                "agent_id": agent_id,
+                "text": text,
+                "source": source,
+                "source_ref": source_ref,
+                "tags": tags or [],
+            },
+        )
+        return MemoryArchiveResult.model_validate(payload)
+
+    def memory_recall(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        top_k: int = 5,
+        tags: list[str] | None = None,
+        since: str | None = None,
+    ) -> MemoryRecallResult:
+        payload = self._transport.call_tool(
+            "memory_recall",
+            {
+                "agent_id": agent_id,
+                "query": query,
+                "top_k": top_k,
+                "tags": tags or [],
+                "since": since,
+            },
+        )
+        return MemoryRecallResult.model_validate(payload)
 
     def rescue_failure(
         self,
@@ -121,8 +227,9 @@ class MCPClient(LocalClient):
         domain: str,
         task: str,
         status: TraceStatus,
-        files_touched: list[str] | None = None,
-        commands_run: list[str] | None = None,
+        files_touched: list[str | dict[str, Any]] | None = None,
+        commands_run: list[str | dict[str, Any]] | None = None,
+        tools_called: list[dict[str, Any]] | None = None,
         errors_seen: list[str] | None = None,
         diff_summary: str = "",
         output_summary: str = "",
@@ -137,6 +244,7 @@ class MCPClient(LocalClient):
                 "status": status,
                 "files_touched": files_touched or [],
                 "commands_run": commands_run or [],
+                "tools_called": tools_called or [],
                 "errors_seen": errors_seen or [],
                 "diff_summary": diff_summary,
                 "output_summary": output_summary,
@@ -147,3 +255,32 @@ class MCPClient(LocalClient):
         )
         payload = {"id": str(payload.get("id") or payload.get("run_id") or "")}
         return TraceRecordResult.model_validate(payload)
+
+    def lesson_inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
+        payload = self._transport.call_tool(
+            "atelier_lesson_inbox",
+            {
+                "domain": domain,
+                "limit": limit,
+            },
+        )
+        return LessonInboxResult.model_validate(payload)
+
+    def lesson_decide(
+        self,
+        *,
+        lesson_id: str,
+        decision: str,
+        reviewer: str,
+        reason: str,
+    ) -> LessonDecisionResult:
+        payload = self._transport.call_tool(
+            "atelier_lesson_decide",
+            {
+                "lesson_id": lesson_id,
+                "decision": decision,
+                "reviewer": reviewer,
+                "reason": reason,
+            },
+        )
+        return LessonDecisionResult.model_validate(payload)

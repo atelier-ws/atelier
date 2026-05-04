@@ -48,9 +48,13 @@ A structured procedure store that agents query before and after complex tasks.
 
 ### Engineering & Architecture
 
-| Doc                                                              | What it covers                                       |
-| ---------------------------------------------------------------- | ---------------------------------------------------- |
-| [architecture/runtime.md](architecture/runtime.md)               | Runtime diagram, components, interfaces              |
+| Doc                                                                                                       | What it covers                                                  |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [architecture/runtime.md](architecture/runtime.md)                                                        | Runtime diagram, components, interfaces                         |
+| [architecture/cost-performance-runtime.md](architecture/cost-performance-runtime.md)                      | Quality-aware routing, context budgeting, verification, evals    |
+| [architecture/IMPLEMENTATION_PLAN_V2.md](architecture/IMPLEMENTATION_PLAN_V2.md)                          | **V2 plan**: stateful memory, ReasonBlocks evolution, ≥50% context savings |
+| [architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL.md](architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL.md)    | V2 data model — Pydantic + SQL DDL                             |
+| [architecture/work-packets/INDEX.md](architecture/work-packets/INDEX.md)                                  | V2 work-packets — atomic units for subagents                   |
 | [engineering/storage.md](engineering/storage.md)                 | SQLite vs PostgreSQL, schema, backups                |
 | [engineering/service.md](engineering/service.md)                 | HTTP service, all endpoints, auth                    |
 | [engineering/mcp.md](engineering/mcp.md)                         | MCP server, all tools, remote mode                   |

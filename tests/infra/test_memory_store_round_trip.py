@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock, RunMemoryFrame
+from atelier.infra.memory_bridges.letta_adapter import LettaMemoryStore
+from atelier.infra.storage.memory_store import MemoryStore
+from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+
+
+class _FakeLettaClient:
+    def __init__(self) -> None:
+        self.blocks: dict[str, dict[str, object]] = {}
+
+    def upsert_block(self, payload: dict[str, object]) -> dict[str, object]:
+        self.blocks[str(payload["label"])] = payload
+        return payload
+
+    def get_block(self, *, agent_id: str, label: str) -> dict[str, object] | None:
+        _ = agent_id
+        return self.blocks.get(label)
+
+    def list_blocks(self, *, agent_id: str) -> list[dict[str, object]]:
+        _ = agent_id
+        return list(self.blocks.values())
+
+    def archival_search(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        top_k: int,
+        tags: list[str],
+        since: str | None,
+    ) -> list[dict[str, Any]]:
+        _ = (agent_id, query, tags, since)
+        return [
+            {
+                "id": "pas-letta",
+                "agent_id": "atelier:code",
+                "text": "Letta archival result",
+                "tags": ["letta"],
+                "source": "user",
+                "dedup_hash": "letta-hash",
+            }
+        ][:top_k]
+
+
+@pytest.fixture(params=["sqlite", "letta"])
+def memory_store(request: pytest.FixtureRequest, tmp_path: Path) -> MemoryStore:
+    if request.param == "sqlite":
+        return SqliteMemoryStore(tmp_path / "atelier")
+    return LettaMemoryStore(tmp_path / "atelier", client=_FakeLettaClient())
+
+
+def test_memory_store_core_round_trip(memory_store: MemoryStore) -> None:
+    block = MemoryBlock(
+        agent_id="atelier:code",
+        label="working-style",
+        value="Keep implementation scoped.",
+        pinned=True,
+    )
+
+    stored = memory_store.upsert_block(block, actor="agent:atelier:code", reason="test")
+    fetched = memory_store.get_block("atelier:code", "working-style")
+
+    assert fetched is not None
+    assert fetched.label == stored.label
+    assert fetched.value == stored.value
+    assert memory_store.list_pinned_blocks("atelier:code")[0].label == "working-style"
+    assert memory_store.list_block_history(stored.id)
+
+
+def test_memory_store_passage_and_run_frame_round_trip(memory_store: MemoryStore) -> None:
+    passage = ArchivalPassage(
+        agent_id="atelier:code",
+        text="Memory store persists archival passages.",
+        tags=["memory"],
+        source="user",
+        dedup_hash="passage-hash",
+    )
+    inserted = memory_store.insert_passage(passage)
+    duplicate = memory_store.insert_passage(passage.model_copy(update={"id": "pas-second"}))
+
+    assert inserted.dedup_hit is False
+    assert duplicate.dedup_hit is True
+
+    frame = RunMemoryFrame(
+        run_id="run-1",
+        pinned_blocks=["working-style"],
+        recalled_passages=[inserted.id],
+        summarized_events=[],
+        tokens_pre_summary=100,
+        tokens_post_summary=40,
+        compaction_strategy="none",
+    )
+    memory_store.write_run_frame(frame)
+
+    assert memory_store.get_run_frame("run-1") == frame

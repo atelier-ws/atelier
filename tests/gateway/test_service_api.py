@@ -8,6 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("fastapi", reason="FastAPI API tests require the api extra")
+
 from fastapi.testclient import TestClient
 
 from atelier.core.service.api import create_app

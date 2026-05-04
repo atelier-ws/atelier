@@ -161,7 +161,8 @@ def _ortools_knapsack(
     solver.parameters.max_time_in_seconds = 2.0
     status = solver.solve(cp)
 
-    if status in (_cp_model.OPTIMAL, _cp_model.FEASIBLE):
+    feasible_statuses: set[Any] = {_cp_model.OPTIMAL, _cp_model.FEASIBLE}
+    if status in feasible_statuses:
         selected = [blocks[i] for i in range(n) if solver.value(x[i])]
         return selected, "ortools"
 
