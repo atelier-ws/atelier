@@ -46,14 +46,34 @@ def chat(
 ) -> str | dict[str, Any]:
     """Call Ollama chat and optionally parse a JSON response."""
     options: dict[str, Any] = {}
-    if json_schema is not None:
-        options["format"] = "json"
     try:
-        response = _ollama_module().chat(model=model, messages=messages, options=options)
+        if json_schema is None:
+            response = _ollama_module().chat(model=model, messages=messages, options=options)
+        else:
+            response = _ollama_module().chat(
+                model=model,
+                messages=messages,
+                format="json",
+                options=options,
+            )
+    except TypeError as exc:
+        if json_schema is None:
+            raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
+        try:
+            legacy_options = {**options, "format": "json"}
+            response = _ollama_module().chat(model=model, messages=messages, options=legacy_options)
+        except Exception as exc:  # pragma: no cover - depends on local server
+            raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     except Exception as exc:  # pragma: no cover - depends on local server
         raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
-    message = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", {})
-    content = message.get("content", "") if isinstance(message, dict) else str(message)
+    message = (
+        response.get("message", {})
+        if isinstance(response, dict)
+        else getattr(response, "message", {})
+    )
+    content = (
+        message.get("content", "") if isinstance(message, dict) else getattr(message, "content", "")
+    )
     if json_schema is None:
         return str(content)
     try:

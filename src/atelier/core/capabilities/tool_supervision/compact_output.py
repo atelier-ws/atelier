@@ -103,7 +103,9 @@ def compact(
 ) -> CompactResult:
     """Compact tool output based on token thresholds."""
     original_tokens = _count_tokens(content)
-    hint = recovery_hint or "Re-run the original tool call or request the full output by path/range."
+    hint = (
+        recovery_hint or "Re-run the original tool call or request the full output by path/range."
+    )
     if original_tokens < 500:
         return CompactResult(
             compacted=content,
@@ -116,7 +118,7 @@ def compact(
 
     method: CompactMethod = "deterministic_truncate"
     compacted = deterministic_truncate(content, content_type, budget_tokens)
-    if original_tokens > 2000:
+    if original_tokens > 2000 and content_type != "grep":
         try:
             prompt = f"Recovery hint: {hint}\n\nOutput to summarize:\n{content}"
             compacted = summarize(prompt, max_tokens=budget_tokens)

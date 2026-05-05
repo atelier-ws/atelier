@@ -1,10 +1,8 @@
 # Atelier — Open-Source Reasoning Runtime
 
-**Reduce LLM costs and accelerate agent development through reusable reasoning, context pruning and plan verification.**
+**Reusable engineering judgment for AI-assisted coding.**
 
-An open-source reasoning runtime for coding agents and operational AI systems.
-
-Upgrading from V2? Read the [V2 to V3 migration guide](docs/migrations/v2-to-v3.md).
+Atelier helps make your best engineers’ judgment available to junior engineers and AI agents.
 
 Atelier sits between agent hosts and their environments, providing:
 
@@ -51,6 +49,9 @@ Atelier Runtime
 - Reasoning reuse: Atelier augmentation, MCP `atelier_get_reasoning_context`, CLI `context` / `task`
 - Plan verification: Atelier augmentation, MCP `atelier_check_plan`, CLI `check-plan`
 - Failure rescue: Atelier augmentation, MCP `atelier_rescue_failure`, CLI `rescue`
+- Weekly governance report: MCP `atelier_report`, CLI `report`
+- Style-guide import: CLI `import-style-guide` into the human-reviewed lesson inbox
+- Starter ReasonBlock packs: CLI `init --stack` and `init --list-stacks`
 - Rubric verification: Atelier augmentation, MCP `atelier_run_rubric_gate`, CLI `run-rubric`
 - Trace recording: Atelier augmentation, MCP `atelier_record_trace`, CLI `record-trace`
 - Loop monitoring: Atelier augmentation, MCP `atelier_monitor_event`, CLI `monitor event`
@@ -79,6 +80,7 @@ Atelier Runtime
 cd atelier
 uv sync --all-extras
 uv run atelier init   # creates .atelier/ and seeds 10 ReasonBlocks + 5 rubrics
+uv run atelier init --stack python-fastapi   # optional starter ReasonBlock templates
 ```
 
 **Install into supported agent CLIs:**

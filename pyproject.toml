@@ -82,6 +82,7 @@ packages = ["src/atelier", "benchmarks"]
 "src/atelier/infra/seed_blocks" = "atelier/infra/seed_blocks"
 "src/atelier/core/rubrics" = "atelier/core/rubrics"
 "src/atelier/core/environments" = "atelier/core/environments"
+"templates/reasonblocks" = "atelier/templates/reasonblocks"
 
 [tool.ruff]
 line-length = 100
