@@ -62,7 +62,7 @@ capability to do the same for Python and TypeScript. Tree-sitter is already a de
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_python_outline.py \
                      tests/core/test_typescript_outline.py \
                      tests/infra/test_smart_read_outline_first.py -v

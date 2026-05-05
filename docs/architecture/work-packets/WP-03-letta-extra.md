@@ -84,7 +84,7 @@ this stub.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 
 # Default install (no extra) still works
 LOCAL=1 uv sync && LOCAL=1 uv run pytest tests/core/test_letta_adapter_stub.py -v

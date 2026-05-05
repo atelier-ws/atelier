@@ -51,7 +51,7 @@ were recalled.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier/frontend
+cd /home/pankaj/Projects/leanchain/atelier/frontend
 npm run typecheck -- --noEmit
 npm test -- --watchAll=false src/pages/Memory.test.tsx
 npm test -- --watchAll=false src/components/RunInspectorDrawer.test.tsx

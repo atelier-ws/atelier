@@ -59,7 +59,7 @@ is present. CI must pass in both modes.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_pr_bot_dry_run.py \
                      tests/gateway/test_pr_bot_skipped_when_disabled.py -v
 

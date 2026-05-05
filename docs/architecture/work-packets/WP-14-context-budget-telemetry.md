@@ -55,7 +55,7 @@ benchmark harness (WP-19) and the dashboard (WP-18) have data to read.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_context_budget_recorder.py \
                      tests/infra/test_savings_metric_increments.py -v
 make verify

@@ -53,7 +53,7 @@ batch edits without changing host-native edit behavior.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_fuzzy_match.py \
                      tests/infra/test_batch_edit_fuzzy.py -v
 

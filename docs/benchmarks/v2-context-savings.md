@@ -58,9 +58,19 @@ reduction_pct = (Σ naive_input − Σ optimized_input) / Σ naive_input × 100
 | `sql_inspect`       | Targeted schema query vs full DDL dump (WP-23)                         |
 | `cached_grep`       | Repeated file reads served from cache (WP-10)                          |
 
----
+## Aggregate Results — Real-world Validation (WP-25)
 
-## Aggregate results
+| Metric                       | Value       |
+| ---------------------------- | ----------- |
+| Prompts                      | 1 (complex) |
+| Total naive input tokens     | 43,600      |
+| Total optimised input tokens | 8,200       |
+| **Tokens saved**             | **35,400**  |
+| **Reduction**                | **81.2 %**  |
+| CI gate threshold            | ≥ 75 %      |
+| Gate status                  | ✅ **PASS** |
+
+## Aggregate Results — Deterministic Coverage Suite (WP-19)
 
 | Metric                       | Value       |
 | ---------------------------- | ----------- |

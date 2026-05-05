@@ -65,7 +65,7 @@ where a host only accepts advice.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_routing_execution_contract.py \
                      tests/gateway/test_mcp_route_contract.py -v
 LOCAL=1 uv run atelier route contract --host codex --json | grep -q "mode"
