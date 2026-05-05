@@ -70,7 +70,7 @@ auditable proof report.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py \
                      tests/gateway/test_cli_proof_gate.py -v
 make proof-cost-quality

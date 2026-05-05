@@ -61,7 +61,7 @@ wozcode's 11-prompt suite. Without it the V2 plan is marketing.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/infra/test_context_savings_50pct.py -v
 make bench-savings | tee /tmp/savings.json
 python -c "import json; r=json.load(open('/tmp/savings.json')); assert r['reduction_pct'] >= 50.0"

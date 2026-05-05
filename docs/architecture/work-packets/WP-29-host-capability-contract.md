@@ -56,7 +56,7 @@ what Atelier can enforce in Claude Code, Codex, Copilot, opencode, and Gemini.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_host_capability_contract_docs.py -v
 rg -n "plugin works everywhere|same plugin" README.md docs/hosts docs/integrations integrations && exit 1 || true
 make verify

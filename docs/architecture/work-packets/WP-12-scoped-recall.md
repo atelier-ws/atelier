@@ -51,7 +51,7 @@ leak across agents.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/infra/test_get_reasoning_context_includes_memory.py -v
 make verify
 ```

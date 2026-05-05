@@ -93,7 +93,7 @@ not compete with host-native edit tools for ordinary coding.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_batch_edit_atomicity.py \
                      tests/infra/test_batch_edit_round_trip.py -v
 

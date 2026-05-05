@@ -46,7 +46,7 @@ ATELIER_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/ateli
 uv run pytest
 ```
 
-## Running Backend + Frontend Tests (e-commerce project)
+## Running Backend + Frontend Tests (atelier project)
 
 ```bash
 cd backend && uv run pytest        # Backend unit tests
@@ -77,7 +77,7 @@ Do not run these inside the atelier directory — they are separate test suites.
 ## Never Modify Generated Files
 
 - `src/atelier/adapters/mcp_server.py` tool schemas are generated from Pydantic models — update models, not the generated output
-- `frontend/src/services/stub/` in the e-commerce project is generated from OpenAPI spec — regenerate it from the e-commerce repo after API changes
+- `frontend/src/services/stub/` in the atelier project is generated from OpenAPI spec — regenerate it from the atelier repo after API changes
 
 ## Pull Request Guidelines
 
