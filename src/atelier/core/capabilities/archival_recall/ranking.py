@@ -80,9 +80,7 @@ def rank_archival_passages(
         cosine = 0.0
         if vector_enabled and passage.embedding and passage.embedding_provenance != "legacy_stub":
             try:
-                cosine = max(
-                    0.0, min(1.0, cosine_similarity(query_embedding or [], passage.embedding))
-                )
+                cosine = max(0.0, min(1.0, cosine_similarity(query_embedding or [], passage.embedding)))
             except ValueError:
                 cosine = 0.0
         score = (0.6 * cosine) + (0.4 * bm25_norm.get(passage.id, 0.0))
@@ -95,9 +93,7 @@ def rank_archival_passages(
             )
         )
 
-    ranked.sort(
-        key=lambda item: (item.score, item.bm25_norm, item.passage.created_at), reverse=True
-    )
+    ranked.sort(key=lambda item: (item.score, item.bm25_norm, item.passage.created_at), reverse=True)
     return ranked[:top_k]
 
 

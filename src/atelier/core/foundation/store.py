@@ -359,9 +359,7 @@ class ReasoningStore:
 
     def get_block(self, block_id: str) -> ReasonBlock | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT payload FROM reasonblocks WHERE id = ?", (block_id,)
-            ).fetchone()
+            row = conn.execute("SELECT payload FROM reasonblocks WHERE id = ?", (block_id,)).fetchone()
         if row is None:
             return None
         return ReasonBlock.model_validate_json(row["payload"])
@@ -547,9 +545,7 @@ class ReasoningStore:
 
     def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)
-            ).fetchone()
+            row = conn.execute("SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)).fetchone()
         if row is None:
             return None
         return RawArtifact.model_validate_json(row["payload"])
@@ -622,9 +618,7 @@ class ReasoningStore:
             if candidate.proposed_block is not None
             else None
         )
-        embedding_json = (
-            json.dumps(candidate.embedding, ensure_ascii=False) if candidate.embedding else None
-        )
+        embedding_json = json.dumps(candidate.embedding, ensure_ascii=False) if candidate.embedding else None
         with self._connect() as conn:
             conn.execute(
                 """
@@ -678,9 +672,7 @@ class ReasoningStore:
 
     def get_lesson_candidate(self, lesson_id: str) -> LessonCandidate | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM lesson_candidate WHERE id = ?", (lesson_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM lesson_candidate WHERE id = ?", (lesson_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_lesson_candidate(row)
@@ -795,9 +787,7 @@ class ReasoningStore:
 
     def get_consolidation_candidate(self, candidate_id: str) -> ConsolidationCandidate | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM consolidation_candidate WHERE id = ?", (candidate_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM consolidation_candidate WHERE id = ?", (candidate_id,)).fetchone()
         return self._row_to_consolidation_candidate(row) if row is not None else None
 
     def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:
@@ -836,13 +826,9 @@ class ReasoningStore:
             proposed_rubric_check=row["proposed_rubric_check"],
             evidence_trace_ids=json.loads(row["evidence_trace_ids"]),
             body=row["body"] if "body" in row_keys else "",
-            evidence=(
-                json.loads(row["evidence_json"] or "{}") if "evidence_json" in row_keys else {}
-            ),
+            evidence=(json.loads(row["evidence_json"] or "{}") if "evidence_json" in row_keys else {}),
             embedding=embedding,
-            embedding_provenance=(
-                row["embedding_provenance"] if "embedding_provenance" in row_keys else "legacy_stub"
-            ),
+            embedding_provenance=(row["embedding_provenance"] if "embedding_provenance" in row_keys else "legacy_stub"),
             confidence=float(row["confidence"]),
             status=row["status"],
             reviewer=row["reviewer"],

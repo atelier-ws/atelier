@@ -60,9 +60,7 @@ def test_memory_upsert_and_get_round_trip(mcp_root: Path) -> None:
     )
     assert result["version"] == 1
 
-    block = _payload(
-        _call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "scratch"})
-    )
+    block = _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "scratch"}))
     assert block["id"] == result["id"]
     assert block["value"] == "hello"
     assert block["pinned"] is True
@@ -70,12 +68,7 @@ def test_memory_upsert_and_get_round_trip(mcp_root: Path) -> None:
 
 def test_memory_get_returns_null_on_miss(mcp_root: Path) -> None:
     _ = mcp_root
-    assert (
-        _payload(
-            _call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "missing"})
-        )
-        is None
-    )
+    assert _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "missing"})) is None
 
 
 def test_memory_stale_version_maps_to_409(mcp_root: Path) -> None:
@@ -109,9 +102,7 @@ def test_memory_stale_version_maps_to_409(mcp_root: Path) -> None:
     assert response["error"]["code"] == 409
 
 
-def test_memory_upsert_returns_and_applies_arbitration(
-    monkeypatch: pytest.MonkeyPatch, mcp_root: Path
-) -> None:
+def test_memory_upsert_returns_and_applies_arbitration(monkeypatch: pytest.MonkeyPatch, mcp_root: Path) -> None:
     _ = mcp_root
     first = _payload(
         _call(
@@ -146,15 +137,11 @@ def test_memory_upsert_returns_and_applies_arbitration(
     )
 
     assert result["arbitration"]["op"] == "UPDATE"
-    stored = _payload(
-        _call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "style"})
-    )
+    stored = _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "style"}))
     assert stored["value"] == "prefer compact scoped patches"
 
 
-def test_memory_sidecar_unavailable_maps_to_503(
-    monkeypatch: pytest.MonkeyPatch, mcp_root: Path
-) -> None:
+def test_memory_sidecar_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch, mcp_root: Path) -> None:
     _ = mcp_root
 
     class DownStore:

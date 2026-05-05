@@ -182,11 +182,7 @@ class LettaAdapter:
                 )
         except Exception as exc:
             raise _sidecar_error(exc) from exc
-        raw = (
-            result.get("results", result.get("passages", []))
-            if isinstance(result, dict)
-            else result
-        )
+        raw = result.get("results", result.get("passages", [])) if isinstance(result, dict) else result
         return [self._as_mapping(item) for item in raw or []]
 
     def update_passage_metadata(self, passage_id: str, metadata: dict[str, Any]) -> None:
@@ -265,11 +261,7 @@ class LettaAdapter:
 
     @staticmethod
     def block_to_letta(block: MemoryBlock) -> dict[str, Any]:
-        tags = (
-            list(block.metadata.get("tags", []))
-            if isinstance(block.metadata.get("tags"), list)
-            else []
-        )
+        tags = list(block.metadata.get("tags", [])) if isinstance(block.metadata.get("tags"), list) else []
         if block.pinned and _PINNED_TAG not in tags:
             tags.append(_PINNED_TAG)
         metadata = dict(block.metadata)
@@ -347,20 +339,14 @@ class LettaAdapter:
             embedding=data.get("embedding") if isinstance(data.get("embedding"), list) else None,
             embedding_model=str(data.get("embedding_model", "")),
             embedding_provenance=str(
-                metadata.get(
-                    "atelier_embedding_provenance", data.get("embedding_provenance", "letta")
-                )
+                metadata.get("atelier_embedding_provenance", data.get("embedding_provenance", "letta"))
             ),
             tags=[str(tag) for tag in data.get("tags", [])],
             source=str(metadata.get("atelier_source", data.get("source", "user"))),  # type: ignore[arg-type]
             source_ref=str(metadata.get("atelier_source_ref", data.get("source_ref", ""))),
-            dedup_hash=str(
-                metadata.get("atelier_dedup_hash", data.get("dedup_hash", data.get("id", text)))
-            ),
+            dedup_hash=str(metadata.get("atelier_dedup_hash", data.get("dedup_hash", data.get("id", text)))),
             created_at=(
-                datetime.fromisoformat(str(data["created_at"]))
-                if data.get("created_at")
-                else datetime.now(UTC)
+                datetime.fromisoformat(str(data["created_at"])) if data.get("created_at") else datetime.now(UTC)
             ),
         )
 
@@ -395,13 +381,9 @@ class LettaMemoryStore:
     def upsert_block(self, block: MemoryBlock, *, actor: str, reason: str = "") -> MemoryBlock:
         _ = (actor, reason)
         data = self._adapter.upsert_block(block)
-        return LettaAdapter.letta_to_block(
-            data or LettaAdapter.block_to_letta(block), agent_id=block.agent_id
-        )
+        return LettaAdapter.letta_to_block(data or LettaAdapter.block_to_letta(block), agent_id=block.agent_id)
 
-    def get_block(
-        self, agent_id: str, label: str, *, include_tombstoned: bool = False
-    ) -> MemoryBlock | None:
+    def get_block(self, agent_id: str, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
         data = self._adapter.get_block(agent_id, label)
         if data is not None:
             block = LettaAdapter.letta_to_block(data, agent_id=agent_id)
@@ -410,22 +392,14 @@ class LettaMemoryStore:
             return block
         return None
 
-    def list_blocks(
-        self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500
-    ) -> list[MemoryBlock]:
-        blocks = [
-            LettaAdapter.letta_to_block(item, agent_id=agent_id)
-            for item in self._adapter.list_blocks(agent_id)
-        ]
+    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
+        blocks = [LettaAdapter.letta_to_block(item, agent_id=agent_id) for item in self._adapter.list_blocks(agent_id)]
         if not include_tombstoned:
             blocks = [block for block in blocks if block.deprecated_at is None]
         return blocks[:limit]
 
     def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
-        blocks = [
-            LettaAdapter.letta_to_block(item, agent_id=agent_id)
-            for item in self._adapter.list_blocks(agent_id)
-        ]
+        blocks = [LettaAdapter.letta_to_block(item, agent_id=agent_id) for item in self._adapter.list_blocks(agent_id)]
         pinned = [block for block in blocks if block.pinned]
         return [block for block in pinned if block.deprecated_at is None]
 

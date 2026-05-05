@@ -46,18 +46,14 @@ def summarize_ledger(
     try:
         from pathlib import Path
 
-        backend = _memory_backend(
-            Path(__import__("os").environ.get("ATELIER_ROOT", ".atelier")), prefer=None
-        )
+        backend = _memory_backend(Path(__import__("os").environ.get("ATELIER_ROOT", ".atelier")), prefer=None)
         if backend == "letta":
             from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
 
             chunks = LettaAdapter().summarize_run(dropped_events)
             return [SleeptimeChunk(**chunk) for chunk in chunks]
     except Exception as exc:
-        raise SleeptimeUnavailable(
-            "Ollama and Letta sleeptime summarizers are unavailable"
-        ) from exc
+        raise SleeptimeUnavailable("Ollama and Letta sleeptime summarizers are unavailable") from exc
 
     raise SleeptimeUnavailable("Ollama and Letta sleeptime summarizers are unavailable")
 
@@ -111,9 +107,7 @@ def deterministic_group_summary(
         if kind == group_kind:
             group_events.append(ev)
         else:
-            chunks.append(
-                _emit(group_start, group_start + len(group_events) - 1, group_events, group_kind)
-            )
+            chunks.append(_emit(group_start, group_start + len(group_events) - 1, group_events, group_kind))
             group_start = i
             group_kind = kind
             group_events = [ev]

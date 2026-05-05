@@ -22,9 +22,7 @@ def _block(block_id: str, title: str) -> ReasonBlock:
     )
 
 
-def test_consolidate_writes_duplicate_candidate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_consolidate_writes_duplicate_candidate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = ReasoningStore(tmp_path / "atelier")
     store.init()
     store.upsert_block(_block("rb-one", "Checkout retry timeout"), write_markdown=False)
@@ -46,9 +44,7 @@ def test_consolidate_writes_duplicate_candidate(
     assert set(candidates[0].affected_block_ids) == {"rb-one", "rb-two"}
 
 
-def test_consolidate_dry_run_does_not_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_consolidate_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = ReasoningStore(tmp_path / "atelier")
     store.init()
     store.upsert_block(_block("rb-one", "Checkout retry timeout"), write_markdown=False)

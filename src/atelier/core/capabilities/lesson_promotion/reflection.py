@@ -40,9 +40,7 @@ def fallback_lesson_body(cluster_traces: list[Trace]) -> str:
 
 def draft_lesson_body(cluster_traces: list[Trace]) -> str:
     """Draft a procedural reflection for a promoted lesson cluster."""
-    text = _REFLECTION_PROMPT + "\n\n---\n\n".join(
-        _trace_excerpt(trace) for trace in cluster_traces
-    )
+    text = _REFLECTION_PROMPT + "\n\n---\n\n".join(_trace_excerpt(trace) for trace in cluster_traces)
     try:
         body = summarize(text, max_tokens=220)
     except OllamaUnavailable:
