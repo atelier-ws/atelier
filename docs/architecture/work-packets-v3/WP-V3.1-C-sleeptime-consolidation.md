@@ -6,7 +6,7 @@ boundary: Atelier-core
 owner_agent: atelier:code
 depends_on: [WP-V3.1-A, WP-47]
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-V3.1-C — Sleep-time trace consolidation

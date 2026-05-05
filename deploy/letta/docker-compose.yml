@@ -1,0 +1,19 @@
+services:
+  letta:
+    image: ${LETTA_IMAGE:-letta/letta:latest}
+    container_name: ${LETTA_CONTAINER_NAME:-atelier-letta}
+    ports:
+      - "${LETTA_HOST_PORT:-8283}:8283"
+    environment:
+      LETTA_SERVER_HOST: 0.0.0.0
+      LETTA_SERVER_PORT: "8283"
+    volumes:
+      - letta-data:/root/.letta
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8283/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  letta-data:

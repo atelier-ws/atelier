@@ -1081,8 +1081,36 @@ def tool_memory_upsert_block(
         current_history_id=existing.current_history_id if existing else None,
         created_at=seed.created_at,
     )
-    stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
-    return {"id": stored.id, "version": stored.version}
+    from atelier.core.capabilities.memory_arbitration import arbitrate
+
+    decision = arbitrate(block, store, make_embedder())
+    target = None
+    if decision.target_block_id:
+        for item in store.list_blocks(agent_id, include_tombstoned=True, limit=500):
+            if item.id == decision.target_block_id:
+                target = item
+                break
+
+    if decision.op == "NOOP" and target is not None:
+        stored = target
+    elif decision.op == "UPDATE" and target is not None:
+        stored = store.upsert_block(
+            target.model_copy(update={"value": decision.merged_value or clean_value}),
+            actor=actor or f"agent:{agent_id}",
+            reason=decision.reason,
+        )
+    elif decision.op == "DELETE" and target is not None:
+        store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
+    else:
+        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
+    return {
+        "id": stored.id,
+        "version": stored.version,
+        "arbitration": decision.model_dump(mode="json"),
+    }
 
 
 @mcp_tool(name="atelier_memory_get_block")
@@ -1135,6 +1163,7 @@ def tool_memory_recall(
                 "text": passage.text,
                 "source_ref": passage.source_ref,
                 "tags": passage.tags,
+                "legacy_stub": passage.embedding_provenance == "legacy_stub",
             }
             for passage in passages
         ],
@@ -1368,6 +1397,74 @@ def tool_search_read(
         include_outline=include_outline,
     )
     return search_read_to_dict(result)
+
+
+@mcp_tool(name="atelier_compact_tool_output")
+def tool_compact_tool_output(
+    content: str,
+    content_type: str = "unknown",
+    budget_tokens: int = 500,
+    recovery_hint: str | None = None,
+) -> dict[str, Any]:
+    """Compact large tool output with deterministic or Ollama-backed methods."""
+    from atelier.core.capabilities.tool_supervision.compact_output import compact
+
+    result = compact(
+        content=content,
+        content_type=content_type,
+        budget_tokens=budget_tokens,
+        recovery_hint=recovery_hint,
+    )
+    return result.model_dump(mode="json")
+
+
+@mcp_tool(name="atelier_repo_map")
+def tool_repo_map(
+    seed_files: list[str],
+    budget_tokens: int = 2000,
+    languages: list[str] | None = None,
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a budgeted PageRank repo map from seed files."""
+    _ = languages
+    from atelier.core.capabilities.repo_map import build_repo_map
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    result = build_repo_map(
+        workspace,
+        seed_files=seed_files,
+        budget_tokens=budget_tokens,
+        include_globs=include_globs,
+        exclude_globs=exclude_globs,
+    )
+    return result.model_dump(mode="json")
+
+
+@mcp_tool(name="atelier_consolidation_inbox")
+def tool_consolidation_inbox(limit: int = 25) -> dict[str, Any]:
+    """List pending consolidation candidates."""
+    store = _runtime().store
+    items = store.list_consolidation_candidates(limit=limit)
+    return {"candidates": [item.model_dump(mode="json") for item in items]}
+
+
+@mcp_tool(name="atelier_consolidation_decide")
+def tool_consolidation_decide(
+    id: str,
+    decision: str,
+    reviewer: str = "agent",
+) -> dict[str, Any]:
+    """Apply or reject a consolidation candidate decision."""
+    store = _runtime().store
+    candidate = store.get_consolidation_candidate(id)
+    if candidate is None:
+        raise ValueError(f"consolidation candidate not found: {id}")
+    candidate.decided_at = datetime.now(UTC)
+    candidate.decided_by = reviewer
+    candidate.decision = decision
+    store.upsert_consolidation_candidate(candidate)
+    return candidate.model_dump(mode="json")
 
 
 # --------------------------------------------------------------------------- #

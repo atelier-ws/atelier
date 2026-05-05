@@ -6,7 +6,7 @@ boundary: Cleanup
 owner_agent: atelier:code
 depends_on: []
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-33 — Strip `stub_embedding`

@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+SOURCE_ROOT = Path("src/atelier")
+FORBIDDEN_PROVIDER_IMPORTS = {
+    "anthropic",
+    "google.generativeai",
+    "litellm",
+    "mistralai",
+}
+ALLOWED_PROVIDER_IMPORTS = {
+    "ollama": {Path("src/atelier/infra/internal_llm/ollama_client.py")},
+    "openai": {Path("src/atelier/infra/embeddings/openai_embedder.py")},
+    "httpx": {Path("src/atelier/infra/embeddings/openai_embedder.py")},
+}
+
+
+def _imported_roots(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    roots: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            roots.add(node.module.split(".", 1)[0])
+
+    return roots
+
+
+def test_llm_provider_sdks_are_confined_to_infra_boundaries() -> None:
+    violations: list[str] = []
+
+    for path in SOURCE_ROOT.rglob("*.py"):
+        imports = _imported_roots(path)
+        for provider in FORBIDDEN_PROVIDER_IMPORTS & imports:
+            violations.append(f"{path}: forbidden provider import {provider}")
+        for provider, allowed_paths in ALLOWED_PROVIDER_IMPORTS.items():
+            if provider in imports and path not in allowed_paths:
+                violations.append(
+                    f"{path}: {provider} import must stay in {sorted(allowed_paths)!r}"
+                )
+
+    assert not violations, "\n".join(violations)

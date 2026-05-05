@@ -1,4 +1,9 @@
-"""WP-19 — Deterministic context-savings benchmark.
+"""WP-19 smoke harness for the deprecated V2 context-savings benchmark.
+
+This module is deprecated for measurement. The V2 YAML suite is retained so the
+runner scaffolding and historical traces remain reproducible, but percentage
+claims are no longer asserted here. WP-50's ``savings_replay`` harness is the
+measured V3 source of truth.
 
 Runs an 11-prompt suite in two modes:
 
@@ -17,7 +22,7 @@ Usage (programmatic)::
 
     from benchmarks.swe.savings_bench import run_savings_bench
     result = run_savings_bench(tmp_path)
-    assert result.reduction_pct >= 50.0
+    assert result.reduction_pct >= 0.0
 """
 
 from __future__ import annotations

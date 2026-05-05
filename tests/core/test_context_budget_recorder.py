@@ -132,6 +132,33 @@ def test_context_budget_recorder_aggregate_run(store: ReasoningStore) -> None:
     }
 
 
+def test_context_budget_recorder_compact_method_totals(store: ReasoningStore) -> None:
+    recorder = ContextBudgetRecorder(store)
+
+    recorder.record_compact_tool_output(
+        run_id="test-run-compact",
+        turn_index=0,
+        model="claude-3-opus",
+        method="deterministic_truncate",
+        tokens_in=1000,
+        tokens_out=350,
+    )
+    recorder.record_compact_tool_output(
+        run_id="test-run-compact",
+        turn_index=1,
+        model="claude-3-opus",
+        method="ollama_summary",
+        tokens_in=700,
+        tokens_out=900,
+    )
+
+    savings = recorder.aggregate_run("test-run-compact")
+
+    assert savings.total_tokens_saved == 650
+    assert savings.lever_totals == {"compact_tool_output": 650}
+    assert savings.compact_method_totals == {"deterministic_truncate": 650}
+
+
 def test_context_budget_recorder_aggregate_empty_run(store: ReasoningStore) -> None:
     """Test aggregating metrics for a run with no records."""
     recorder = ContextBudgetRecorder(store)

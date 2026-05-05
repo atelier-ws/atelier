@@ -19,6 +19,7 @@ def _passage(
         agent_id="atelier:code",
         text=text,
         embedding=embedding,
+        embedding_provenance="unit_test" if embedding is not None else "none",
         tags=tags or [],
         source="user",
         dedup_hash=pid,

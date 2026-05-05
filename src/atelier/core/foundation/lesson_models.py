@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -29,7 +29,10 @@ class LessonCandidate(BaseModel):
     proposed_block: ReasonBlock | None = None
     proposed_rubric_check: str | None = None
     evidence_trace_ids: list[str]
+    body: str = ""
+    evidence: dict[str, Any] = Field(default_factory=dict)
     embedding: list[float] | None = None
+    embedding_provenance: str = "legacy_stub"
     confidence: float = Field(ge=0, le=1)
     status: LessonCandidateStatus = "inbox"
     reviewer: str | None = None

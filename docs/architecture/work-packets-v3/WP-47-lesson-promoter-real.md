@@ -6,7 +6,7 @@ boundary: Atelier-core
 owner_agent: atelier:code
 depends_on: [WP-33, WP-36]
 supersedes: [WP-15]
-status: ready
+status: done
 ---
 
 # WP-47 — Lesson promoter on real embeddings + real lesson bodies
