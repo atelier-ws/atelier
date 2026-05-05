@@ -3,16 +3,33 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
 from atelier.core.foundation.models import ReasonBlock, Trace
 from atelier.core.foundation.store import ReasoningStore
+from atelier.infra.storage.vector import generate_embedding
+
+
+class _FixtureEmbedder:
+    dim = 384
+    name = "fixture-hash"
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [generate_embedding(text, dim=self.dim) for text in texts]
 
 
 def _fixture_path() -> Path:
     return Path("tests/fixtures/200_failed_traces.jsonl")
 
 
-def test_lesson_promotion_precision_on_fixture(tmp_path: Path) -> None:
+def test_lesson_promotion_precision_on_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "atelier.core.capabilities.lesson_promotion.capability.draft_lesson_body",
+        lambda traces: "fixture lesson body",
+    )
     store = ReasoningStore(tmp_path / ".atelier")
     store.init()
     # Seed one existing block so edit_block candidates have a meaningful target.
@@ -29,7 +46,7 @@ def test_lesson_promotion_precision_on_fixture(tmp_path: Path) -> None:
         write_markdown=False,
     )
 
-    promoter = LessonPromoterCapability(store)
+    promoter = LessonPromoterCapability(store, embedder=_FixtureEmbedder(), cluster_threshold=0.45)
 
     predicted = 0
     correct = 0
