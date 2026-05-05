@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from atelier.core.capabilities.memory_arbitration import ArbitrationDecision
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 from atelier.infra.storage.memory_store import MemorySidecarUnavailable
@@ -21,7 +22,7 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         }
     )
     assert response is not None
-    return response
+    return cast(dict[str, Any], response)
 
 
 def _payload(response: dict[str, Any]) -> Any:
@@ -106,6 +107,49 @@ def test_memory_stale_version_maps_to_409(mcp_root: Path) -> None:
         },
     )
     assert response["error"]["code"] == 409
+
+
+def test_memory_upsert_returns_and_applies_arbitration(
+    monkeypatch: pytest.MonkeyPatch, mcp_root: Path
+) -> None:
+    _ = mcp_root
+    first = _payload(
+        _call(
+            "atelier_memory_upsert_block",
+            {
+                "agent_id": "atelier:code",
+                "label": "style",
+                "value": "prefer compact patches",
+            },
+        )
+    )
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.memory_arbitration.arbitrate",
+        lambda block, store, embedder: ArbitrationDecision(
+            op="UPDATE",
+            target_block_id=first["id"],
+            merged_value="prefer compact scoped patches",
+            reason="refines existing style memory",
+        ),
+    )
+
+    result = _payload(
+        _call(
+            "atelier_memory_upsert_block",
+            {
+                "agent_id": "atelier:code",
+                "label": "style",
+                "value": "prefer compact scoped edits",
+            },
+        )
+    )
+
+    assert result["arbitration"]["op"] == "UPDATE"
+    stored = _payload(
+        _call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "style"})
+    )
+    assert stored["value"] == "prefer compact scoped patches"
 
 
 def test_memory_sidecar_unavailable_maps_to_503(

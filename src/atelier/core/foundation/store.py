@@ -27,6 +27,7 @@ import yaml
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import (
     BlockStatus,
+    ConsolidationCandidate,
     RawArtifact,
     ReasonBlock,
     Rubric,
@@ -109,7 +110,10 @@ CREATE TABLE IF NOT EXISTS lesson_candidate (
     proposed_block_json    TEXT,
     proposed_rubric_check  TEXT,
     evidence_trace_ids     TEXT NOT NULL,
+    body                   TEXT NOT NULL DEFAULT '',
+    evidence_json          TEXT NOT NULL DEFAULT '{}',
     embedding              BLOB,
+    embedding_provenance   TEXT NOT NULL DEFAULT 'legacy_stub',
     confidence             REAL NOT NULL,
     status                 TEXT NOT NULL DEFAULT 'inbox',
     reviewer               TEXT,
@@ -127,6 +131,46 @@ CREATE TABLE IF NOT EXISTS lesson_promotion (
     edited_block_id     TEXT,
     pr_url              TEXT NOT NULL DEFAULT '',
     created_at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS consolidation_candidate (
+    id                  TEXT PRIMARY KEY,
+    kind                TEXT NOT NULL,
+    affected_block_ids  TEXT NOT NULL,
+    proposed_action     TEXT NOT NULL,
+    proposed_body       TEXT,
+    evidence_json       TEXT NOT NULL DEFAULT '{}',
+    created_at          TEXT NOT NULL,
+    decided_at          TEXT,
+    decided_by          TEXT,
+    decision            TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
+    ON consolidation_candidate(decided_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS benchmark_run (
+    id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    suite TEXT NOT NULL,
+    git_sha TEXT NOT NULL,
+    config_fingerprint TEXT NOT NULL,
+    n_prompts INTEGER NOT NULL DEFAULT 0,
+    median_input_tokens_baseline INTEGER,
+    median_input_tokens_optimized INTEGER,
+    reduction_pct REAL,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_prompt_result (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
+    prompt_id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    baseline_input_tokens INTEGER NOT NULL,
+    optimized_input_tokens INTEGER NOT NULL,
+    reduction_pct REAL NOT NULL,
+    lever_attribution_json TEXT NOT NULL DEFAULT '{}'
 );
 """
 
@@ -166,7 +210,57 @@ class ReasoningStore:
 
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
+            for ddl in (
+                "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE lesson_candidate ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'",
+                "ALTER TABLE lesson_candidate ADD COLUMN embedding_provenance TEXT NOT NULL DEFAULT 'legacy_stub'",
+                "ALTER TABLE archival_passage ADD COLUMN embedding_provenance TEXT NOT NULL DEFAULT 'legacy_stub'",
+                "ALTER TABLE memory_block ADD COLUMN deprecated_at TEXT",
+                "ALTER TABLE memory_block ADD COLUMN deprecated_by_block_id TEXT",
+                "ALTER TABLE memory_block ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT ''",
+            ):
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(ddl)
             self._apply_v2_migrations(conn)
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS consolidation_candidate (
+                    id                  TEXT PRIMARY KEY,
+                    kind                TEXT NOT NULL,
+                    affected_block_ids  TEXT NOT NULL,
+                    proposed_action     TEXT NOT NULL,
+                    proposed_body       TEXT,
+                    evidence_json       TEXT NOT NULL DEFAULT '{}',
+                    created_at          TEXT NOT NULL,
+                    decided_at          TEXT,
+                    decided_by          TEXT,
+                    decision            TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
+                    ON consolidation_candidate(decided_at, created_at DESC);
+                CREATE TABLE IF NOT EXISTS benchmark_run (
+                    id TEXT PRIMARY KEY,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    suite TEXT NOT NULL,
+                    git_sha TEXT NOT NULL,
+                    config_fingerprint TEXT NOT NULL,
+                    n_prompts INTEGER NOT NULL DEFAULT 0,
+                    median_input_tokens_baseline INTEGER,
+                    median_input_tokens_optimized INTEGER,
+                    reduction_pct REAL,
+                    notes TEXT
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_prompt_result (
+                    id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
+                    prompt_id TEXT NOT NULL,
+                    task_type TEXT NOT NULL,
+                    baseline_input_tokens INTEGER NOT NULL,
+                    optimized_input_tokens INTEGER NOT NULL,
+                    reduction_pct REAL NOT NULL,
+                    lever_attribution_json TEXT NOT NULL DEFAULT '{}'
+                );
+                """)
             self.verify_v2_schema(conn)
 
     def _connect(self) -> sqlite3.Connection:
@@ -537,10 +631,11 @@ class ReasoningStore:
                 INSERT INTO lesson_candidate (
                     id, domain, cluster_fingerprint, kind, target_id,
                     proposed_block_json, proposed_rubric_check, evidence_trace_ids,
-                    embedding, confidence, status, reviewer, decision_at,
+                    body, evidence_json, embedding, embedding_provenance,
+                    confidence, status, reviewer, decision_at,
                     decision_reason, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     domain = excluded.domain,
                     cluster_fingerprint = excluded.cluster_fingerprint,
@@ -549,7 +644,10 @@ class ReasoningStore:
                     proposed_block_json = excluded.proposed_block_json,
                     proposed_rubric_check = excluded.proposed_rubric_check,
                     evidence_trace_ids = excluded.evidence_trace_ids,
+                    body = excluded.body,
+                    evidence_json = excluded.evidence_json,
                     embedding = excluded.embedding,
+                    embedding_provenance = excluded.embedding_provenance,
                     confidence = excluded.confidence,
                     status = excluded.status,
                     reviewer = excluded.reviewer,
@@ -565,7 +663,10 @@ class ReasoningStore:
                     proposed_block_json,
                     candidate.proposed_rubric_check,
                     json.dumps(candidate.evidence_trace_ids, ensure_ascii=False),
+                    candidate.body,
+                    json.dumps(candidate.evidence, ensure_ascii=False, sort_keys=True),
                     embedding_json,
+                    candidate.embedding_provenance,
                     candidate.confidence,
                     candidate.status,
                     candidate.reviewer,
@@ -647,7 +748,74 @@ class ReasoningStore:
             for r in rows
         ]
 
+    # ----- Consolidation candidates -------------------------------------- #
+
+    def upsert_consolidation_candidate(self, candidate: ConsolidationCandidate) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO consolidation_candidate (
+                    id, kind, affected_block_ids, proposed_action, proposed_body,
+                    evidence_json, created_at, decided_at, decided_by, decision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    kind = excluded.kind,
+                    affected_block_ids = excluded.affected_block_ids,
+                    proposed_action = excluded.proposed_action,
+                    proposed_body = excluded.proposed_body,
+                    evidence_json = excluded.evidence_json,
+                    decided_at = excluded.decided_at,
+                    decided_by = excluded.decided_by,
+                    decision = excluded.decision
+                """,
+                (
+                    candidate.id,
+                    candidate.kind,
+                    json.dumps(candidate.affected_block_ids, ensure_ascii=False),
+                    candidate.proposed_action,
+                    candidate.proposed_body,
+                    json.dumps(candidate.evidence, ensure_ascii=False, sort_keys=True),
+                    candidate.created_at.isoformat(),
+                    candidate.decided_at.isoformat() if candidate.decided_at else None,
+                    candidate.decided_by,
+                    candidate.decision,
+                ),
+            )
+
+    def list_consolidation_candidates(
+        self, *, pending_only: bool = True, limit: int = 100
+    ) -> list[ConsolidationCandidate]:
+        sql = "SELECT * FROM consolidation_candidate"
+        if pending_only:
+            sql += " WHERE decided_at IS NULL"
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        with self._connect() as conn:
+            rows = conn.execute(sql, (limit,)).fetchall()
+        return [self._row_to_consolidation_candidate(row) for row in rows]
+
+    def get_consolidation_candidate(self, candidate_id: str) -> ConsolidationCandidate | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM consolidation_candidate WHERE id = ?", (candidate_id,)
+            ).fetchone()
+        return self._row_to_consolidation_candidate(row) if row is not None else None
+
+    def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:
+        return ConsolidationCandidate(
+            id=row["id"],
+            kind=row["kind"],
+            affected_block_ids=json.loads(row["affected_block_ids"] or "[]"),
+            proposed_action=row["proposed_action"],
+            proposed_body=row["proposed_body"],
+            evidence=json.loads(row["evidence_json"] or "{}"),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            decided_at=datetime.fromisoformat(row["decided_at"]) if row["decided_at"] else None,
+            decided_by=row["decided_by"],
+            decision=row["decision"],
+        )
+
     def _row_to_lesson_candidate(self, row: sqlite3.Row) -> LessonCandidate:
+        row_keys = set(row.keys())
         proposed_block = None
         if row["proposed_block_json"]:
             proposed_block = ReasonBlock.model_validate_json(row["proposed_block_json"])
@@ -667,7 +835,14 @@ class ReasoningStore:
             proposed_block=proposed_block,
             proposed_rubric_check=row["proposed_rubric_check"],
             evidence_trace_ids=json.loads(row["evidence_trace_ids"]),
+            body=row["body"] if "body" in row_keys else "",
+            evidence=(
+                json.loads(row["evidence_json"] or "{}") if "evidence_json" in row_keys else {}
+            ),
             embedding=embedding,
+            embedding_provenance=(
+                row["embedding_provenance"] if "embedding_provenance" in row_keys else "legacy_stub"
+            ),
             confidence=float(row["confidence"]),
             status=row["status"],
             reviewer=row["reviewer"],

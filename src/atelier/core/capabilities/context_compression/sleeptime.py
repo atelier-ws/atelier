@@ -1,10 +1,13 @@
-"""Local (deterministic) sleeptime summarizer for context compression."""
+"""Sleeptime summarizer for context compression."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from pydantic import BaseModel
+
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, summarize
+from atelier.infra.storage.factory import _memory_backend
 
 
 class SleeptimeChunk(BaseModel):
@@ -15,18 +18,75 @@ class SleeptimeChunk(BaseModel):
     paraphrase: str
 
 
+class SleeptimeUnavailable(RuntimeError):
+    """Raised when neither Ollama nor Letta can summarize evicted events."""
+
+
+def summarize_ledger(
+    dropped_events: list[dict[str, Any]],
+    *,
+    start_index: int = 0,
+) -> list[SleeptimeChunk]:
+    if not dropped_events:
+        return []
+
+    text = _events_text(dropped_events)
+    try:
+        summary = summarize(text, max_tokens=256)
+        return [
+            SleeptimeChunk(
+                start_event_index=start_index,
+                end_event_index=start_index + len(dropped_events) - 1,
+                paraphrase=summary.strip(),
+            )
+        ]
+    except OllamaUnavailable:
+        pass
+
+    try:
+        from pathlib import Path
+
+        backend = _memory_backend(
+            Path(__import__("os").environ.get("ATELIER_ROOT", ".atelier")), prefer=None
+        )
+        if backend == "letta":
+            from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
+
+            chunks = LettaAdapter().summarize_run(dropped_events)
+            return [SleeptimeChunk(**chunk) for chunk in chunks]
+    except Exception as exc:
+        raise SleeptimeUnavailable(
+            "Ollama and Letta sleeptime summarizers are unavailable"
+        ) from exc
+
+    raise SleeptimeUnavailable("Ollama and Letta sleeptime summarizers are unavailable")
+
+
 def local_summarize(
     dropped_events: list[dict[str, Any]],
     *,
     start_index: int = 0,
 ) -> list[SleeptimeChunk]:
-    """Group consecutive same-kind evicted events and emit one chunk per group.
+    """Backward-compatible alias for the real sleeptime summarizer."""
+    return summarize_ledger(dropped_events, start_index=start_index)
 
-    This is fully deterministic (no LLM calls) so CI stays hermetic.
 
-    For each group the paraphrase is:
-        "[<n> <kind>s] " + last_event.summary[:200]
-    """
+def _events_text(dropped_events: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for idx, event in enumerate(dropped_events):
+        kind = str(event.get("kind", "unknown"))
+        summary = str(event.get("summary", ""))
+        payload = str(event.get("payload", ""))[:1000]
+        lines.append(f"[{idx}] kind={kind}\nsummary={summary}\npayload={payload}")
+    return "\n\n".join(lines)
+
+
+def deterministic_group_summary(
+    dropped_events: list[dict[str, Any]],
+    *,
+    start_index: int = 0,
+) -> list[SleeptimeChunk]:
+    """Deterministic test helper; not used as a production fallback."""
     if not dropped_events:
         return []
 
@@ -62,4 +122,10 @@ def local_summarize(
     return chunks
 
 
-__all__ = ["SleeptimeChunk", "local_summarize"]
+__all__ = [
+    "SleeptimeChunk",
+    "SleeptimeUnavailable",
+    "deterministic_group_summary",
+    "local_summarize",
+    "summarize_ledger",
+]

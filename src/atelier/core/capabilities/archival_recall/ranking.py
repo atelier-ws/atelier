@@ -78,7 +78,7 @@ def rank_archival_passages(
     ranked: list[RankedPassage] = []
     for passage in filtered:
         cosine = 0.0
-        if vector_enabled and passage.embedding:
+        if vector_enabled and passage.embedding and passage.embedding_provenance != "legacy_stub":
             try:
                 cosine = max(
                     0.0, min(1.0, cosine_similarity(query_embedding or [], passage.embedding))

@@ -92,3 +92,55 @@ def test_sqlite_memory_store_searches_passages_with_fts_and_tags(tmp_path: Path)
     results = store.search_passages("atelier:code", "catalog PDP", tags=["catalog"])
 
     assert [item.id for item in results] == [wanted.id]
+
+
+def test_sqlite_memory_store_rejects_legacy_stub_vector_shape(tmp_path: Path) -> None:
+    store = SqliteMemoryStore(tmp_path / "atelier")
+    passage = ArchivalPassage(
+        agent_id="atelier:code",
+        text="Legacy vector should not be accepted on new writes.",
+        embedding=[0.0] * 32,
+        embedding_provenance="legacy_stub",
+        tags=["legacy"],
+        source="user",
+        dedup_hash="legacy-vector",
+    )
+
+    with pytest.raises(ValueError, match="legacy stub"):
+        store.insert_passage(passage)
+
+
+def test_sqlite_memory_store_persists_embedding_provenance(tmp_path: Path) -> None:
+    store = SqliteMemoryStore(tmp_path / "atelier")
+    passage = store.insert_passage(
+        ArchivalPassage(
+            agent_id="atelier:code",
+            text="Feature-hashed vector provenance is retained.",
+            embedding=[0.1] * 64,
+            embedding_provenance="local:hashing",
+            tags=["embedding"],
+            source="user",
+            dedup_hash="feature-hash",
+        )
+    )
+
+    fetched = store.search_passages("atelier:code", "feature hashed")[0]
+    assert fetched.id == passage.id
+    assert fetched.embedding_provenance == "local:hashing"
+
+
+def test_sqlite_memory_store_tombstones_blocks(tmp_path: Path) -> None:
+    store = SqliteMemoryStore(tmp_path / "atelier")
+    block = store.upsert_block(
+        MemoryBlock(agent_id="atelier:code", label="preference", value="keep it focused"),
+        actor="agent:atelier:code",
+    )
+
+    store.tombstone_block(block.id, reason="superseded")
+
+    assert store.get_block("atelier:code", "preference") is None
+    assert store.list_blocks("atelier:code") == []
+    tombstoned = store.get_block("atelier:code", "preference", include_tombstoned=True)
+    assert tombstoned is not None
+    assert tombstoned.deprecated_at is not None
+    assert tombstoned.deprecation_reason == "superseded"

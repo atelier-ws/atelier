@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover
+    tomllib = None  # type: ignore[assignment]
 
 from atelier.core.foundation.store import ReasoningStore
 from atelier.infra.storage.memory_store import MemoryStore
@@ -20,19 +26,40 @@ def create_store(root: Path) -> ReasoningStore:
     return ReasoningStore(root)
 
 
-def make_memory_store(root: str | Path, *, prefer: str = "sqlite") -> MemoryStore:
-    """Create the configured MemoryStore implementation."""
-    if prefer == "letta":
-        try:
-            from atelier.infra.memory_bridges.letta_adapter import LettaAdapter, LettaMemoryStore
+def make_memory_store(root: str | Path | None, *, prefer: str | None = None) -> MemoryStore:
+    """Create exactly one configured MemoryStore implementation."""
+    raw_root: str | Path = (
+        root if root is not None else (os.environ.get("ATELIER_ROOT") or ".atelier")
+    )
+    resolved_root = Path(raw_root)
+    backend = _memory_backend(resolved_root, prefer=prefer)
+    logger.info("selected memory backend: %s", backend)
+    if backend == "letta":
+        from atelier.infra.memory_bridges.letta_adapter import LettaMemoryStore
 
-            if LettaAdapter.is_available():
-                return LettaMemoryStore(root)
-        except Exception as exc:
-            logger.warning("falling back to SQLite memory store after Letta init failure: %s", exc)
+        return LettaMemoryStore(resolved_root)
+    if backend != "sqlite":
+        raise ValueError("memory backend must be 'sqlite' or 'letta'")
     from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
-    return SqliteMemoryStore(root)
+    return SqliteMemoryStore(resolved_root)
+
+
+def _memory_backend(root: Path, *, prefer: str | None) -> str:
+    env_backend = os.environ.get("ATELIER_MEMORY_BACKEND", "").strip().lower()
+    if env_backend:
+        return env_backend
+    config_path = root / "config.toml"
+    if config_path.exists() and tomllib is not None:
+        try:
+            data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+            memory = data.get("memory", {}) if isinstance(data, dict) else {}
+            backend = str(memory.get("backend", "")).strip().lower()
+            if backend:
+                return backend
+        except Exception as exc:
+            logger.warning("failed to read memory backend config from %s: %s", config_path, exc)
+    return (prefer or "sqlite").strip().lower()
 
 
 __all__ = ["create_store", "make_memory_store"]

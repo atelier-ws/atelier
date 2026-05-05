@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -122,6 +122,82 @@ class LettaAdapter:
         except Exception as exc:
             raise _sidecar_error(exc) from exc
 
+    def tombstone_block(
+        self,
+        block_id: str,
+        *,
+        deprecated_by_block_id: str | None = None,
+        reason: str = "",
+    ) -> None:
+        metadata = {
+            "atelier_deprecated_at": datetime.now(UTC).isoformat(),
+            "atelier_deprecated_by_block_id": deprecated_by_block_id,
+            "atelier_deprecation_reason": reason,
+        }
+        try:
+            if hasattr(self.client, "tombstone_block"):
+                self.client.tombstone_block(block_id=block_id, metadata=metadata)
+            elif hasattr(self.client, "update_block"):
+                self.client.update_block(block_id=block_id, metadata=metadata)
+            elif hasattr(self.client, "blocks") and hasattr(self.client.blocks, "update"):
+                self.client.blocks.update(block_id=block_id, metadata=metadata)
+            else:
+                raise RuntimeError("Letta client does not expose block tombstone/update")
+        except Exception as exc:
+            raise _sidecar_error(exc) from exc
+
+    def insert_archival(self, passage: ArchivalPassage) -> dict[str, Any]:
+        payload = self.passage_to_letta(passage)
+        try:
+            if hasattr(self.client, "archival_insert"):
+                result = self.client.archival_insert(**payload)
+            elif hasattr(self.client, "archival") and hasattr(self.client.archival, "insert"):
+                result = self.client.archival.insert(**payload)
+            else:
+                raise RuntimeError("Letta client does not expose archival insert")
+        except Exception as exc:
+            raise _sidecar_error(exc) from exc
+        return self._as_mapping(result)
+
+    def list_archival(
+        self,
+        *,
+        agent_id: str,
+        tags: list[str] | None,
+        since: datetime | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        try:
+            if hasattr(self.client, "archival_list"):
+                result = self.client.archival_list(agent_id=agent_id, tags=tags or [], limit=limit)
+            elif hasattr(self.client, "archival") and hasattr(self.client.archival, "list"):
+                result = self.client.archival.list(agent_id=agent_id, tags=tags or [], limit=limit)
+            else:
+                result = self.search_archival(
+                    agent_id=agent_id,
+                    query="",
+                    top_k=limit,
+                    tags=tags,
+                    since=since,
+                )
+        except Exception as exc:
+            raise _sidecar_error(exc) from exc
+        raw = (
+            result.get("results", result.get("passages", []))
+            if isinstance(result, dict)
+            else result
+        )
+        return [self._as_mapping(item) for item in raw or []]
+
+    def update_passage_metadata(self, passage_id: str, metadata: dict[str, Any]) -> None:
+        try:
+            if hasattr(self.client, "archival_update"):
+                self.client.archival_update(passage_id=passage_id, metadata=metadata)
+            elif hasattr(self.client, "archival") and hasattr(self.client.archival, "update"):
+                self.client.archival.update(passage_id=passage_id, metadata=metadata)
+        except Exception as exc:
+            raise _sidecar_error(exc) from exc
+
     def search_archival(
         self,
         *,
@@ -201,6 +277,10 @@ class LettaAdapter:
         metadata["atelier_block_id"] = block.id
         metadata["atelier_description"] = block.description
         metadata["atelier_read_only"] = block.read_only
+        if block.deprecated_at is not None:
+            metadata["atelier_deprecated_at"] = block.deprecated_at.isoformat()
+            metadata["atelier_deprecated_by_block_id"] = block.deprecated_by_block_id
+            metadata["atelier_deprecation_reason"] = block.deprecation_reason
         return {
             "label": block.label,
             "value": block.value,
@@ -223,6 +303,65 @@ class LettaAdapter:
             read_only=bool(metadata.get("atelier_read_only", data.get("read_only", False))),
             metadata=metadata,
             pinned=_PINNED_TAG in tags,
+            deprecated_at=(
+                datetime.fromisoformat(str(metadata["atelier_deprecated_at"]))
+                if metadata.get("atelier_deprecated_at")
+                else None
+            ),
+            deprecated_by_block_id=(
+                str(metadata["atelier_deprecated_by_block_id"])
+                if metadata.get("atelier_deprecated_by_block_id")
+                else None
+            ),
+            deprecation_reason=str(metadata.get("atelier_deprecation_reason", "")),
+        )
+
+    @staticmethod
+    def passage_to_letta(passage: ArchivalPassage) -> dict[str, Any]:
+        metadata = {
+            "atelier_agent_id": passage.agent_id,
+            "atelier_passage_id": passage.id,
+            "atelier_dedup_hash": passage.dedup_hash,
+            "atelier_source": passage.source,
+            "atelier_source_ref": passage.source_ref,
+            "atelier_embedding_provenance": passage.embedding_provenance,
+        }
+        return {
+            "agent_id": passage.agent_id,
+            "text": passage.text,
+            "value": passage.text,
+            "tags": passage.tags,
+            "metadata": metadata,
+        }
+
+    @staticmethod
+    def letta_to_passage(data: dict[str, Any], *, agent_id: str) -> ArchivalPassage | None:
+        text = str(data.get("text", data.get("value", "")))
+        if not text:
+            return None
+        metadata = dict(data.get("metadata") or {})
+        return ArchivalPassage(
+            id=str(metadata.get("atelier_passage_id") or data.get("id") or data.get("passage_id")),
+            agent_id=str(metadata.get("atelier_agent_id") or data.get("agent_id") or agent_id),
+            text=text,
+            embedding=data.get("embedding") if isinstance(data.get("embedding"), list) else None,
+            embedding_model=str(data.get("embedding_model", "")),
+            embedding_provenance=str(
+                metadata.get(
+                    "atelier_embedding_provenance", data.get("embedding_provenance", "letta")
+                )
+            ),
+            tags=[str(tag) for tag in data.get("tags", [])],
+            source=str(metadata.get("atelier_source", data.get("source", "user"))),  # type: ignore[arg-type]
+            source_ref=str(metadata.get("atelier_source_ref", data.get("source_ref", ""))),
+            dedup_hash=str(
+                metadata.get("atelier_dedup_hash", data.get("dedup_hash", data.get("id", text)))
+            ),
+            created_at=(
+                datetime.fromisoformat(str(data["created_at"]))
+                if data.get("created_at")
+                else datetime.now(UTC)
+            ),
         )
 
     @staticmethod
@@ -241,7 +380,7 @@ class LettaAdapter:
 
 
 class LettaMemoryStore:
-    """MemoryStore implementation backed by Letta plus a local SQLite mirror."""
+    """MemoryStore implementation backed by Letta as the single memory primary."""
 
     def __init__(
         self,
@@ -250,18 +389,37 @@ class LettaMemoryStore:
         adapter: LettaAdapter | None = None,
         client: Any | None = None,
     ) -> None:
-        self._local = SqliteMemoryStore(root)
+        self._recall_store = SqliteMemoryStore(root)
         self._adapter = adapter or LettaAdapter(client=client)
 
     def upsert_block(self, block: MemoryBlock, *, actor: str, reason: str = "") -> MemoryBlock:
-        self._adapter.upsert_block(block)
-        return self._local.upsert_block(block, actor=actor, reason=reason)
+        _ = (actor, reason)
+        data = self._adapter.upsert_block(block)
+        return LettaAdapter.letta_to_block(
+            data or LettaAdapter.block_to_letta(block), agent_id=block.agent_id
+        )
 
-    def get_block(self, agent_id: str, label: str) -> MemoryBlock | None:
+    def get_block(
+        self, agent_id: str, label: str, *, include_tombstoned: bool = False
+    ) -> MemoryBlock | None:
         data = self._adapter.get_block(agent_id, label)
         if data is not None:
-            return LettaAdapter.letta_to_block(data, agent_id=agent_id)
-        return self._local.get_block(agent_id, label)
+            block = LettaAdapter.letta_to_block(data, agent_id=agent_id)
+            if block.deprecated_at is not None and not include_tombstoned:
+                return None
+            return block
+        return None
+
+    def list_blocks(
+        self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500
+    ) -> list[MemoryBlock]:
+        blocks = [
+            LettaAdapter.letta_to_block(item, agent_id=agent_id)
+            for item in self._adapter.list_blocks(agent_id)
+        ]
+        if not include_tombstoned:
+            blocks = [block for block in blocks if block.deprecated_at is None]
+        return blocks[:limit]
 
     def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
         blocks = [
@@ -269,17 +427,36 @@ class LettaMemoryStore:
             for item in self._adapter.list_blocks(agent_id)
         ]
         pinned = [block for block in blocks if block.pinned]
-        return pinned or self._local.list_pinned_blocks(agent_id)
+        return [block for block in pinned if block.deprecated_at is None]
 
     def list_block_history(self, block_id: str, *, limit: int = 50) -> list[MemoryBlockHistory]:
-        return self._local.list_block_history(block_id, limit=limit)
+        _ = (block_id, limit)
+        return []
 
     def delete_block(self, block_id: str) -> None:
         self._adapter.delete_block(block_id)
-        self._local.delete_block(block_id)
+
+    def tombstone_block(
+        self,
+        block_id: str,
+        *,
+        deprecated_by_block_id: str | None = None,
+        reason: str = "",
+    ) -> None:
+        self._adapter.tombstone_block(
+            block_id,
+            deprecated_by_block_id=deprecated_by_block_id,
+            reason=reason,
+        )
 
     def insert_passage(self, passage: ArchivalPassage) -> ArchivalPassage:
-        return self._local.insert_passage(passage)
+        data = self._adapter.insert_archival(passage)
+        converted = LettaAdapter.letta_to_passage(
+            data or LettaAdapter.passage_to_letta(passage), agent_id=passage.agent_id
+        )
+        if converted is None:
+            return passage
+        return converted.model_copy(update={"dedup_hit": False})
 
     def search_passages(
         self,
@@ -302,19 +479,9 @@ class LettaMemoryStore:
             text = str(item.get("text", item.get("value", "")))
             if not text:
                 continue
-            passages.append(
-                ArchivalPassage(
-                    id=str(item.get("id", item.get("passage_id", ""))),
-                    agent_id=str(item.get("agent_id", agent_id)),
-                    text=text,
-                    embedding=None,
-                    embedding_model=str(item.get("embedding_model", "")),
-                    tags=[str(tag) for tag in item.get("tags", [])],
-                    source=str(item.get("source", "user")),  # type: ignore[arg-type]
-                    source_ref=str(item.get("source_ref", "")),
-                    dedup_hash=str(item.get("dedup_hash", item.get("id", text))),
-                )
-            )
+            passage = LettaAdapter.letta_to_passage(item, agent_id=agent_id)
+            if passage is not None:
+                passages.append(passage)
         return passages[:top_k]
 
     def list_passages(
@@ -325,19 +492,26 @@ class LettaMemoryStore:
         since: datetime | None = None,
         limit: int = 200,
     ) -> list[ArchivalPassage]:
-        return self._local.list_passages(agent_id, tags=tags, since=since, limit=limit)
+        rows = self._adapter.list_archival(agent_id=agent_id, tags=tags, since=since, limit=limit)
+        passages = [LettaAdapter.letta_to_passage(row, agent_id=agent_id) for row in rows]
+        return [passage for passage in passages if passage is not None]
 
     def record_recall(self, recall: MemoryRecall) -> MemoryRecall:
-        return self._local.record_recall(recall)
+        if recall.selected_passage_id:
+            self._adapter.update_passage_metadata(
+                recall.selected_passage_id,
+                {"atelier_last_recall_at": recall.created_at.isoformat()},
+            )
+        return self._recall_store.record_recall(recall)
 
     def list_recalls(self, agent_id: str, *, limit: int = 50) -> list[MemoryRecall]:
-        return self._local.list_recalls(agent_id, limit=limit)
+        return self._recall_store.list_recalls(agent_id, limit=limit)
 
     def write_run_frame(self, frame: RunMemoryFrame) -> None:
-        self._local.write_run_frame(frame)
+        self._recall_store.write_run_frame(frame)
 
     def get_run_frame(self, run_id: str) -> RunMemoryFrame | None:
-        return self._local.get_run_frame(run_id)
+        return self._recall_store.get_run_frame(run_id)
 
 
 __all__ = ["LettaAdapter", "LettaMemoryStore"]
