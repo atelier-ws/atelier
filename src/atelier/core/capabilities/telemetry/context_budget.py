@@ -157,9 +157,7 @@ class ContextBudgetRecorder:
 
             # Also emit a total across all levers
             if total_saved > 0:
-                self._tokens_saved_counter.labels(lever="total", model=record.model).inc(
-                    total_saved
-                )
+                self._tokens_saved_counter.labels(lever="total", model=record.model).inc(total_saved)
 
         except Exception:
             # Silently fail if Prometheus is not available or metric emission fails
@@ -199,9 +197,7 @@ class ContextBudgetRecorder:
                 metric_lever = lever
                 if lever.startswith("compact_tool_output:"):
                     metric_lever, method = lever.split(":", 1)
-                    result.compact_method_totals[method] = (
-                        result.compact_method_totals.get(method, 0) + saved
-                    )
+                    result.compact_method_totals[method] = result.compact_method_totals.get(method, 0) + saved
                 result.lever_totals[metric_lever] = result.lever_totals.get(metric_lever, 0) + saved
                 result.total_tokens_saved += saved
 

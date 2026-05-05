@@ -38,9 +38,9 @@ Ollama-powered-where-helpful background process.
     3. **Deterministic pass:** flag lesson candidates whose `last_seen_at` is older than
        180 days AND whose cluster has not grown in 90 days as `stale_candidate`.
     4. **Internal-LLM pass (Ollama):** for each duplicate cluster, ask Ollama:
-       *"These N ReasonBlocks describe similar procedures. Are they truly duplicates? If
+       _"These N ReasonBlocks describe similar procedures. Are they truly duplicates? If
        so, draft a consolidated version that subsumes all. If not, list which are
-       distinct."*
+       distinct."_
     5. Write everything as `ConsolidationCandidate` rows for human review (same gate as
        `LessonCandidate`).
   - On `OllamaUnavailable`, the deterministic passes still run and produce candidates with

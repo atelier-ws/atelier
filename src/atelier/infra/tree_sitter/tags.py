@@ -36,14 +36,10 @@ def _python_tags(path: Path, text: str) -> list[Tag]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             line = int(getattr(node, "lineno", 1))
-            tags.append(
-                Tag(node.name, "definition", str(path), line, (offsets[line - 1], offsets[line]))
-            )
+            tags.append(Tag(node.name, "definition", str(path), line, (offsets[line - 1], offsets[line])))
         elif isinstance(node, ast.Name):
             line = int(getattr(node, "lineno", 1))
-            tags.append(
-                Tag(node.id, "reference", str(path), line, (offsets[line - 1], offsets[line]))
-            )
+            tags.append(Tag(node.id, "reference", str(path), line, (offsets[line - 1], offsets[line])))
     return tags
 
 

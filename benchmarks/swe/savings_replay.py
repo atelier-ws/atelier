@@ -146,12 +146,8 @@ def run_replay(
     replay_result = ReplayResult(
         run_id=run_id,
         n_prompts=len(prompts),
-        median_input_tokens_baseline=int(
-            statistics.median(p.baseline_input_tokens for p in prompts)
-        ),
-        median_input_tokens_optimized=int(
-            statistics.median(p.optimized_input_tokens for p in prompts)
-        ),
+        median_input_tokens_baseline=int(statistics.median(p.baseline_input_tokens for p in prompts)),
+        median_input_tokens_optimized=int(statistics.median(p.optimized_input_tokens for p in prompts)),
         reduction_pct=reduction_pct,
         lever_totals=lever_totals,
         prompts=prompts,
@@ -162,9 +158,7 @@ def run_replay(
     return replay_result
 
 
-def _persist_result(
-    db_path: Path, result: ReplayResult, completed_at: datetime, root: Path
-) -> None:
+def _persist_result(db_path: Path, result: ReplayResult, completed_at: datetime, root: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """

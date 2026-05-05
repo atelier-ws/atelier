@@ -107,9 +107,7 @@ class ArchivalRecallCapability:
         return selected, recall
 
 
-def _chunk_text(
-    text: str, *, max_tokens: int = 800, window_tokens: int = 400, overlap: int = 80
-) -> list[str]:
+def _chunk_text(text: str, *, max_tokens: int = 800, window_tokens: int = 400, overlap: int = 80) -> list[str]:
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     if len(tokens) <= max_tokens:

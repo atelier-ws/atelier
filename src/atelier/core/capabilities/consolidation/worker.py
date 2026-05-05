@@ -101,9 +101,7 @@ def consolidate(
 
     cutoff = datetime.now(UTC) - timedelta(days=180)
     stale_lessons = [
-        item
-        for item in store.list_lesson_candidates(status="inbox", limit=500)
-        if item.created_at < cutoff
+        item for item in store.list_lesson_candidates(status="inbox", limit=500) if item.created_at < cutoff
     ]
     for lesson in stale_lessons:
         candidates.append(

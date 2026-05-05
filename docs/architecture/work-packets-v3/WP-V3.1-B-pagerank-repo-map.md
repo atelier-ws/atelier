@@ -19,18 +19,18 @@ PageRank repo map does — and it's fully deterministic, MIT-licensed, and well-
 
 The technique:
 
-1. Walk the repo with **tree-sitter**; emit tags classifying each symbol as a *definition*
-   or a *reference*.
-2. Build a directed graph: edges from files that *reference* a symbol to files that
-   *define* it. Weights account for symbol frequency.
+1. Walk the repo with **tree-sitter**; emit tags classifying each symbol as a _definition_
+   or a _reference_.
+2. Build a directed graph: edges from files that _reference_ a symbol to files that
+   _define_ it. Weights account for symbol frequency.
 3. Run **personalized PageRank** seeded by the files currently in the trace's working set
    (or supplied by the host).
 4. Binary-search the top-N tags to fit a token budget — return a budgeted, ranked outline of
    "the code that matters here".
 
 This is the deterministic algorithm Aider has been refining for 18+ months. It directly
-beats grep+outline for repo navigation: grep finds *where* a name appears, PageRank finds
-*what is most relevant given where you are*.
+beats grep+outline for repo navigation: grep finds _where_ a name appears, PageRank finds
+_what is most relevant given where you are_.
 
 Side effect: forces tree-sitter for languages beyond Python. V2's AST outline only handles
 Python (via stdlib `ast`). V3.1-B brings JS/TS/Go/Rust along for the ride.

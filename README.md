@@ -139,8 +139,8 @@ The API service runs at [http://localhost:8787](http://localhost:8787).
 uv run atelier [--root PATH] COMMAND [OPTIONS]
 ```
 
-| Command                             | Description                                     |
-| ----------------------------------- | ----------------------------------------------- |
+| Command                           | Description                                     |
+| --------------------------------- | ----------------------------------------------- |
 | `init`                            | Create store and seed blocks/rubrics            |
 | `context`                         | Get reasoning context for a task                |
 | `task`                            | Get context for a task description              |
@@ -202,8 +202,8 @@ Stdio JSON-RPC server. Tools available to agents:
 Atelier runs the same runtime across hosts, but integration and enforcement are host-native per CLI
 surface rather than a single identical plugin model.
 
-| Host                      | Interface             | Status       | Install guide                         |
-| ------------------------- | --------------------- | ------------ | ------------------------------------- |
+| Host                | Interface             | Status       | Install guide                       |
+| ------------------- | --------------------- | ------------ | ----------------------------------- |
 | **Claude Code**     | MCP + skills + agents | ✅ Supported | `docs/hosts/claude-code-install.md` |
 | **Codex CLI**       | MCP + AGENTS.md       | ✅ Supported | `docs/hosts/codex-install.md`       |
 | **VS Code Copilot** | MCP + instructions    | ✅ Supported | `docs/hosts/copilot-install.md`     |
@@ -259,21 +259,21 @@ Available clients: `AtelierClient`, `LocalClient`, `RemoteClient`, `MCPClient`,
 
 ## Storage
 
-| Path                        | Contents                                                 |
-| --------------------------- | -------------------------------------------------------- |
-| `.atelier/atelier.db`     | SQLite + FTS5 — all blocks, traces, rubrics             |
+| Path                      | Contents                                                 |
+| ------------------------- | -------------------------------------------------------- |
+| `.atelier/atelier.db`     | SQLite + FTS5 — all blocks, traces, rubrics              |
 | `.atelier/blocks/*.md`    | Markdown mirror of every ReasonBlock (reviewable in PRs) |
 | `.atelier/traces/*.json`  | JSON mirror of every recorded trace                      |
 | `.atelier/rubrics/*.yaml` | YAML mirror of every rubric                              |
 
 Key environment variables:
 
-| Variable                    | Default                   | Description                        |
-| --------------------------- | ------------------------- | ---------------------------------- |
+| Variable                  | Default                 | Description                        |
+| ------------------------- | ----------------------- | ---------------------------------- |
 | `ATELIER_ROOT`            | `.atelier`              | Store root directory               |
-| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`         |
+| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`             |
 | `ATELIER_DATABASE_URL`    | `""`                    | PostgreSQL DSN (if using postgres) |
-| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`            |
+| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`                |
 | `ATELIER_SERVICE_URL`     | `http://localhost:8787` | Remote service URL                 |
 | `ATELIER_API_KEY`         | `""`                    | API key for remote service         |
 | `ATELIER_SERVICE_ENABLED` | `false`                 | Enable HTTP service                |
@@ -344,8 +344,8 @@ make pre-commit      # format + lint + typecheck + tests
 
 ## Repository Layout
 
-| Path              | Purpose                                                       |
-| ----------------- | ------------------------------------------------------------- |
+| Path            | Purpose                                                       |
+| --------------- | ------------------------------------------------------------- |
 | `src/atelier/`  | Core engine: models, store, runtime, CLI, MCP server, service |
 | `tests/`        | pytest suite                                                  |
 | `docs/`         | Documentation                                                 |
@@ -354,8 +354,8 @@ make pre-commit      # format + lint + typecheck + tests
 
 ## Docs Index
 
-| Document                                            | For whom      | Content                                                |
-| --------------------------------------------------- | ------------- | ------------------------------------------------------ |
+| Document                                         | For whom      | Content                                                |
+| ------------------------------------------------ | ------------- | ------------------------------------------------------ |
 | **[AGENT_README.md](AGENT_README.md)**           | Coding agents | Decision trees, workflows, JSON tool specs, hard rules |
 | **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**     | Developers    | One-page cheat sheet: skills, agents, tools, commands  |
 | **[docs/](docs/README.md)**                      | Everyone      | Full documentation index                               |
