@@ -39,6 +39,13 @@ def _fts_query(query: str) -> str:
     return " OR ".join(terms)
 
 
+def _validate_embedding(vector: list[float] | None) -> None:
+    if vector is None:
+        return
+    if len(vector) == 32:
+        raise ValueError("32-dimensional legacy stub embeddings are not accepted")
+
+
 class SqliteMemoryStore:
     """SQLite memory store backed by the existing Atelier database file."""
 
@@ -79,9 +86,11 @@ class SqliteMemoryStore:
                     """
                     INSERT INTO memory_block (
                       id, agent_id, label, value, limit_chars, description, read_only,
-                      metadata, pinned, version, current_history_id, created_at, updated_at
+                                            metadata, pinned, version, current_history_id,
+                                            deprecated_at, deprecated_by_block_id, deprecation_reason,
+                                            created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
                     """,
                     (
                         block_id,
@@ -94,6 +103,9 @@ class SqliteMemoryStore:
                         _json(block.metadata),
                         int(block.pinned),
                         next_version,
+                        block.deprecated_at.isoformat() if block.deprecated_at else None,
+                        block.deprecated_by_block_id,
+                        block.deprecation_reason,
                         created_at,
                         _iso(now),
                     ),
@@ -140,6 +152,9 @@ class SqliteMemoryStore:
                       pinned = ?,
                       version = ?,
                       current_history_id = ?,
+                      deprecated_at = ?,
+                      deprecated_by_block_id = ?,
+                      deprecation_reason = ?,
                       updated_at = ?
                     WHERE id = ?
                     """,
@@ -152,30 +167,52 @@ class SqliteMemoryStore:
                         int(block.pinned),
                         next_version,
                         history.id,
+                        block.deprecated_at.isoformat() if block.deprecated_at else None,
+                        block.deprecated_by_block_id,
+                        block.deprecation_reason,
                         _iso(now),
                         block_id,
                     ),
                 )
 
-        stored = self.get_block(block.agent_id, block.label)
+        stored = self.get_block(block.agent_id, block.label, include_tombstoned=True)
         if stored is None:  # pragma: no cover - defensive
             raise RuntimeError("memory block upsert did not persist")
         return stored
 
-    def get_block(self, agent_id: str, label: str) -> MemoryBlock | None:
+    def get_block(
+        self, agent_id: str, label: str, *, include_tombstoned: bool = False
+    ) -> MemoryBlock | None:
+        tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
         with self._store._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM memory_block WHERE agent_id = ? AND label = ?",
+                f"SELECT * FROM memory_block WHERE agent_id = ? AND label = ?{tombstone_sql}",
                 (agent_id, label),
             ).fetchone()
         return self._block_from_row(row) if row is not None else None
+
+    def list_blocks(
+        self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500
+    ) -> list[MemoryBlock]:
+        tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
+        with self._store._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM memory_block
+                WHERE agent_id = ?{tombstone_sql}
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (agent_id, limit),
+            ).fetchall()
+        return [self._block_from_row(row) for row in rows]
 
     def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
         with self._store._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM memory_block
-                WHERE agent_id = ? AND pinned = 1
+                WHERE agent_id = ? AND pinned = 1 AND deprecated_at IS NULL
                 ORDER BY updated_at DESC
                 """,
                 (agent_id,),
@@ -199,7 +236,34 @@ class SqliteMemoryStore:
         with self._store._connect() as conn:
             conn.execute("DELETE FROM memory_block WHERE id = ?", (block_id,))
 
+    def tombstone_block(
+        self,
+        block_id: str,
+        *,
+        deprecated_by_block_id: str | None = None,
+        reason: str = "",
+    ) -> None:
+        with self._store._connect() as conn:
+            conn.execute(
+                """
+                UPDATE memory_block SET
+                  deprecated_at = ?,
+                  deprecated_by_block_id = ?,
+                  deprecation_reason = ?,
+                  updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    _iso(datetime.now(UTC)),
+                    deprecated_by_block_id,
+                    reason,
+                    _iso(datetime.now(UTC)),
+                    block_id,
+                ),
+            )
+
     def insert_passage(self, passage: ArchivalPassage) -> ArchivalPassage:
+        _validate_embedding(passage.embedding)
         with self._store._connect() as conn:
             existing = conn.execute(
                 "SELECT * FROM archival_passage WHERE agent_id = ? AND dedup_hash = ?",
@@ -211,10 +275,10 @@ class SqliteMemoryStore:
             cursor = conn.execute(
                 """
                 INSERT INTO archival_passage (
-                  id, agent_id, text, embedding, embedding_model, tags,
+                                    id, agent_id, text, embedding, embedding_model, embedding_provenance, tags,
                   source, source_ref, dedup_hash, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     passage.id,
@@ -226,6 +290,7 @@ class SqliteMemoryStore:
                         else None
                     ),
                     passage.embedding_model,
+                    passage.embedding_provenance,
                     _json(passage.tags),
                     passage.source,
                     passage.source_ref,
@@ -415,6 +480,7 @@ class SqliteMemoryStore:
             ).fetchall()
 
     def _block_from_row(self, row: sqlite3.Row) -> MemoryBlock:
+        row_keys = set(row.keys())
         metadata = json.loads(str(row["metadata"] or "{}"))
         return MemoryBlock(
             id=str(row["id"]),
@@ -429,6 +495,21 @@ class SqliteMemoryStore:
             version=int(row["version"]),
             current_history_id=(
                 str(row["current_history_id"]) if row["current_history_id"] else None
+            ),
+            deprecated_at=(
+                datetime.fromisoformat(str(row["deprecated_at"]))
+                if "deprecated_at" in row_keys and row["deprecated_at"]
+                else None
+            ),
+            deprecated_by_block_id=(
+                str(row["deprecated_by_block_id"])
+                if "deprecated_by_block_id" in row_keys and row["deprecated_by_block_id"]
+                else None
+            ),
+            deprecation_reason=(
+                str(row["deprecation_reason"])
+                if "deprecation_reason" in row_keys and row["deprecation_reason"]
+                else ""
             ),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
@@ -446,6 +527,7 @@ class SqliteMemoryStore:
         )
 
     def _passage_from_row(self, row: sqlite3.Row) -> ArchivalPassage:
+        row_keys = set(row.keys())
         embedding_blob = row["embedding"]
         embedding: list[float] | None = None
         if embedding_blob is not None:
@@ -458,6 +540,11 @@ class SqliteMemoryStore:
             text=str(row["text"]),
             embedding=embedding,
             embedding_model=str(row["embedding_model"]),
+            embedding_provenance=(
+                str(row["embedding_provenance"])
+                if "embedding_provenance" in row_keys
+                else "legacy_stub"
+            ),
             tags=_loads_list(str(row["tags"])),
             source=str(row["source"]),  # type: ignore[arg-type]
             source_ref=str(row["source_ref"]),

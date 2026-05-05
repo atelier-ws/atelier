@@ -23,6 +23,8 @@ TraceStatus = Literal["success", "failed", "partial"]
 TraceConfidence = Literal["full_live", "mcp_live", "wrapper_live", "imported", "manual"]
 PlanStatus = Literal["pass", "warn", "blocked"]
 Severity = Literal["low", "medium", "high"]
+ConsolidationKind = Literal["duplicate_cluster", "stale_candidate", "low_confidence"]
+ConsolidationAction = Literal["merge", "deprecate", "delete"]
 
 
 def _utcnow() -> datetime:
@@ -231,6 +233,23 @@ class Rubric(BaseModel):
     block_if_missing: list[str] = Field(default_factory=list)
     warning_checks: list[str] = Field(default_factory=list)
     escalation_conditions: list[str] = Field(default_factory=list)
+
+
+class ConsolidationCandidate(BaseModel):
+    """Human-reviewed proposal for consolidating stale or duplicate knowledge rows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=lambda: f"cc-{short_hash(str(_utcnow().timestamp()), 12)}")
+    kind: ConsolidationKind
+    affected_block_ids: list[str] = Field(default_factory=list)
+    proposed_action: ConsolidationAction
+    proposed_body: str | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utcnow)
+    decided_at: datetime | None = None
+    decided_by: str | None = None
+    decision: str | None = None
 
 
 # --------------------------------------------------------------------------- #

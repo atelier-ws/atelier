@@ -6,7 +6,7 @@ boundary: Cleanup
 owner_agent: atelier:code
 depends_on: [WP-33]
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-35 — Resolve LettaMemoryStore dual-write

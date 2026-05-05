@@ -4,6 +4,8 @@
 
 An open-source reasoning runtime for coding agents and operational AI systems.
 
+Upgrading from V2? Read the [V2 to V3 migration guide](docs/migrations/v2-to-v3.md).
+
 Atelier sits between agent hosts and their environments, providing:
 
 - **Reasoning reuse** — retrieve and inject known procedures (ReasonBlocks) into agent context before runs
@@ -305,50 +307,25 @@ Endpoints: `/health`, `/ready`, `/metrics`, `/v1/reasoning/*`, `/v1/rubrics`, `/
 
 ## Benchmarks
 
-### Real-world Validation (Atelier vs. Naive)
+### Honest V3 Replay
 
-In a 3-part validation test building a "Product Restock Notifications" feature:
+The reproducible V3 benchmark replays 50 synthetic host transcripts and records deterministic token accounting for baseline host output versus Atelier-assisted output. The latest replay measured a 13.27% input-token reduction on the synthetic corpus.
 
-| Metric         | Atelier          | Naive            | Improvement      |
-| -------------- | ---------------- | ---------------- | ---------------- |
-| Total Tokens   | 8,200            | 43,600           | **⬇ 81%** |
-| LLM Cost       | $0.009  | $0.051 | **⬇ 82%** |                  |
-| Human Time     | 4.5 hrs          | 8+ hrs           | **⬇ 44%** |
-| Iterations     | 1-2              | 5-6              | **⬇ 70%** |
-| Quality (0-10) | 9.2              | 6.8              | **⬆ 35%** |
+```bash
+make bench-savings-honest
+```
 
-**Key Drivers:**
+→ Methodology and CSV: [docs/benchmarks/v3-honest-savings.md](docs/benchmarks/v3-honest-savings.md)
 
-1. **Plan validation** prevents 70% of iteration waste.
-2. **ReasonBlocks** provide cached guidelines, reducing retrieval tokens by 80%.
-3. **Deterministic tools** (tests, format) handle verification at $0 cost.
+### Historical V2 Smoke Harness
 
-→ Full report: [docs/benchmarks/real-world-validation-2026-05-04.md](docs/benchmarks/real-world-validation-2026-05-04.md)
-
-### Deterministic Simulation (25 tasks)
-
-Deterministic benchmark exercising the full learning loop (retrieve → plan → record → reuse).
-No API keys, no network — token counts derived from a fixed simulation.
+The old deterministic V2 benchmark is retained only as a parser and trace-continuity smoke test. It is not used for public percentage claims.
 
 ```bash
 uv run atelier --root /tmp/bench init
 uv run atelier --root /tmp/bench benchmark --rounds 5 --model claude-sonnet-4.6 --json
 uv run atelier --root /tmp/bench savings-detail
 ```
-
-#### Aggregate Efficiency (All Levers)
-
-The following table summarizes the cumulative impact of all Atelier V2 levers (ReasonBlocks, Planning, Smart Reads, Batch Edits) across major models based on the 81% reduction baseline.
-
-| Model             |                Naive Cost | Atelier Cost |         Saved | % Saved |
-| ----------------- | ------------------------: | -----------: | ------------: | ------: |
-| claude-opus-4.6   | $ 4.3125 |     $ 0.8194 |     $ 3.4931 | **81%** |         |
-| claude-sonnet-4.6 | $ 0.8625 |     $ 0.1639 |     $ 0.6986 | **81%** |         |
-| claude-haiku-4.5  | $ 0.2300 |     $ 0.0437 |     $ 0.1863 | **81%** |         |
-| gpt-4o            | $ 0.6250 |     $ 0.1188 |     $ 0.5062 | **81%** |         |
-| gemini-2.5-pro    | $ 0.3125 |     $ 0.0594 |     $ 0.2531 | **81%** |         |
-
-→ See the [Context Savings Benchmark](docs/benchmarks/v2-context-savings.md) for lever-by-lever attribution.
 
 ## Development
 

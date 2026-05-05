@@ -1,7 +1,7 @@
-# WP-19 — 11-prompt deterministic context-savings suite
+# WP-19 — 11-prompt deterministic context-savings smoke suite
 #
-# Each entry represents one benchmark task. All token counts are deterministic
-# mocked values — no network, no API key required.
+# Each entry represents one benchmark task. Historical token constants are kept
+# only so the deprecated runner can smoke-test its parser.
 #
 # Fields:
 #   id:                  short identifier
@@ -11,11 +11,7 @@
 #   naive_output_tokens: output tokens (identical in both runs)
 #   levers:              per-lever token savings applied on path B (all levers on)
 #
-# The benchmark computes:
-#   optimized_input = naive_input - sum(lever savings)
-#   aggregate reduction_pct = (total_naive - total_optimized) / total_naive * 100
-#
-# Target: ≥ 50 % reduction across all 11 prompts (actual: ~67 %).
+# The measured V3 benchmark lives in savings_replay.py and replay_corpus/.
 
 prompts:
   - id: p01_bug_fix

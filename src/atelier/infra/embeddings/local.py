@@ -22,7 +22,7 @@ class LocalEmbedder:
     def __init__(self, model_name: str = _DEFAULT_MODEL) -> None:
         self._model_name = model_name
         self.dim = _DEFAULT_DIM
-        self.name = f"local:sentence-transformers:{model_name}"
+        self.name = f"local:{model_name}"
 
     def _get_model(self) -> Any:
         if self._model_name not in _MODEL_CACHE:
@@ -40,7 +40,12 @@ class LocalEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        model = self._get_model()
+        try:
+            model = self._get_model()
+        except ImportError:
+            from atelier.infra.storage.vector import generate_embedding
+
+            return [generate_embedding(text, dim=self.dim) for text in texts]
         vectors = model.encode(texts, convert_to_numpy=True)
         return [v.tolist() for v in vectors]
 

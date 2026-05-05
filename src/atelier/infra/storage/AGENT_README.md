@@ -14,7 +14,7 @@ Provide persistence backends and vector utilities used by runtime retrieval.
 ## Vector Contract
 
 - `generate_embedding()` supports `local` and `openai` providers.
-- `stub_embedding()` is a backward-compatible alias to `generate_embedding()`.
+- All embedding writes go through `atelier.infra.embeddings.factory.make_embedder()`.
 - `is_vector_enabled()` gates vector features for callers.
 
 ## Where To Look Next

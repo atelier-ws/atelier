@@ -6,7 +6,7 @@ FORCE_ARG := $(if $(f),--force,)
 
 .PHONY: help install uninstall status start service worker mcp init-runtime \
 	test test-fast test-cov security-test lint format-check format typecheck verify pre-commit \
-	benchmark bench-savings proof-cost-quality demo import-sessions clean
+	benchmark bench-savings bench-savings-honest proof-cost-quality demo import-sessions clean
 
 # --------------------------------------------------------------------------- #
 # Lifecycle                                                                   #
@@ -92,6 +92,10 @@ benchmark: ## Run the full benchmark suite
 
 bench-savings: ## Run the context-savings benchmark
 	LOCAL=1 uv run python -m benchmarks.swe.savings_bench --json
+
+bench-savings-honest: ## Run the V3 honest replay context-savings benchmark
+	rm -rf /tmp/atelier-v3-savings-replay
+	ATELIER_ROOT=/tmp/atelier-v3-savings-replay LOCAL=1 uv run python -m benchmarks.swe.savings_replay --csv docs/benchmarks/v3-honest-savings-results.csv
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v

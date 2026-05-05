@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from .deduplication import deduplicate_tool_outputs
 from .models import CompressionResult, DroppedContext
 from .scoring import score_events
-from .sleeptime import SleeptimeChunk, local_summarize
+from .sleeptime import SleeptimeChunk, SleeptimeUnavailable, summarize_ledger
 
 if TYPE_CHECKING:
     from atelier.infra.runtime.run_ledger import RunLedger
@@ -154,26 +154,15 @@ class ContextCompressionCapability:
 
         all_dropped_events = dropped_raw + budget_dropped_raw
 
-        # Use Letta delegate if available; else local deterministic summariser
+        # Use a real sleeptime summarizer if available; otherwise skip the lever.
         chunks: list[SleeptimeChunk] = []
         strategy = "tfidf"
         try:
-            from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
-
-            if LettaAdapter.is_available():
-                adapter = LettaAdapter()
-                if hasattr(adapter, "summarize_run"):
-                    raw_chunks = adapter.summarize_run(all_dropped_events)
-                    chunks = [SleeptimeChunk(**c) if isinstance(c, dict) else c for c in raw_chunks]
-                    strategy = "letta_summarizer"
-                else:
-                    chunks = local_summarize(all_dropped_events)
-                    strategy = "tfidf"
-            else:
-                chunks = local_summarize(all_dropped_events)
-        except Exception as exc:  # pragma: no cover
-            _log.warning("Sleeptime Letta delegate failed, using local: %s", exc)
-            chunks = local_summarize(all_dropped_events)
+            chunks = summarize_ledger(all_dropped_events)
+            strategy = "ollama_summarizer"
+        except SleeptimeUnavailable as exc:
+            _log.warning("Sleeptime summarizer unavailable; skipping archival summary: %s", exc)
+            chunks = []
 
         # Archive each chunk as an ArchivalPassage
         archived_ids: list[str] = []
