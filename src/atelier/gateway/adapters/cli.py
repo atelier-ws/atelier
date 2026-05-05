@@ -468,16 +468,12 @@ def context(
 ) -> None:
     """Render the reasoning-context block to inject into an agent prompt."""
     store = _load_store(ctx.obj["root"])
-    tctx = TaskContext(
-        task=task, domain=domain, files=list(files), tools=list(tools), errors=list(errors)
-    )
+    tctx = TaskContext(task=task, domain=domain, files=list(files), tools=list(tools), errors=list(errors))
     scored = retrieve(store, tctx, limit=limit, token_budget=token_budget, dedup=dedup)
     context_text = render_context_for_agent([s.block for s in scored])
     if as_json:
         payload: dict[str, Any] = {
-            "matched": [
-                {"id": s.block.id, "score": s.score, "breakdown": s.breakdown} for s in scored
-            ],
+            "matched": [{"id": s.block.id, "score": s.score, "breakdown": s.breakdown} for s in scored],
             "context": context_text,
         }
         if include_telemetry:
@@ -539,9 +535,7 @@ def check_plan_cmd(
     if not task or not plan:
         raise click.ClickException("--task and at least one --step (or --input) required")
 
-    result = check_plan(
-        store, task=task, plan=plan, domain=domain, files=list(files), tools=list(tools)
-    )
+    result = check_plan(store, task=task, plan=plan, domain=domain, files=list(files), tools=list(tools))
     if as_json:
         _emit(to_jsonable(result), as_json=True)
     else:
@@ -619,9 +613,7 @@ def record_trace(ctx: click.Context, input_path: Path | str) -> None:
 )
 @click.option("--output", "output_path", type=click.Path(path_type=Path), default=None)
 @click.pass_context
-def report_cmd(
-    ctx: click.Context, since: str, output_format: str, output_path: Path | None
-) -> None:
+def report_cmd(ctx: click.Context, since: str, output_format: str, output_path: Path | None) -> None:
     """Generate an engineering-leader governance report."""
     from atelier.core.capabilities.reporting.weekly_report import generate_report, render_markdown
 
@@ -668,9 +660,7 @@ def import_style_guide_cmd(
     payload = {
         "dry_run": dry_run,
         "written": 0 if dry_run else len(candidates),
-        "candidates": [
-            candidate.model_dump(mode="json", exclude={"embedding"}) for candidate in candidates
-        ],
+        "candidates": [candidate.model_dump(mode="json", exclude={"embedding"}) for candidate in candidates],
     }
     if dry_run:
         click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -720,9 +710,7 @@ def extract_block_cmd(ctx: click.Context, trace_id: str, save: bool, as_json: bo
 @click.option("--include-deprecated", is_flag=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def list_blocks_cmd(
-    ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool
-) -> None:
+def list_blocks_cmd(ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool) -> None:
     """List ReasonBlocks."""
     store = _load_store(ctx.obj["root"])
     blocks = store.list_blocks(domain=domain, include_deprecated=include_deprecated)
@@ -780,9 +768,7 @@ def quarantine(ctx: click.Context, block_id: str) -> None:
 )
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def run_rubric_cmd(
-    ctx: click.Context, rubric_id: str, input_path: Path | str, as_json: bool
-) -> None:
+def run_rubric_cmd(ctx: click.Context, rubric_id: str, input_path: Path | str, as_json: bool) -> None:
     """Evaluate a rubric against a checks JSON object."""
     store = _load_store(ctx.obj["root"])
     rubric = store.get_rubric(rubric_id)
@@ -943,9 +929,7 @@ def task(
                 "domain": domain,
                 "files": list(files),
                 "tools": list(tools),
-                "matched": [
-                    {"id": s.block.id, "score": s.score, "title": s.block.title} for s in scored
-                ],
+                "matched": [{"id": s.block.id, "score": s.score, "title": s.block.title} for s in scored],
                 "prompt": prompt,
             },
             as_json=True,
@@ -1246,9 +1230,7 @@ def compress_context_cmd(ctx: click.Context, run_id: str | None, as_json: bool) 
                 "tool_call_count": state.tool_call_count,
                 "total_tool_output_chars": state.total_tool_output_chars,
                 "preserved": {
-                    "latest_error": (
-                        state.error_fingerprints[-1] if state.error_fingerprints else None
-                    ),
+                    "latest_error": (state.error_fingerprints[-1] if state.error_fingerprints else None),
                     "active_rubrics": led.active_rubrics,
                     "active_reasonblocks": led.active_reasonblocks,
                     "next_required_validation": led.next_required_validation,
@@ -1421,10 +1403,7 @@ def failure_list(ctx: click.Context, as_json: bool) -> None:
     state = _load_failure_state(ctx.obj["root"])
     if as_json:
         _emit(
-            [
-                {**to_jsonable(c), "status": state.get(c.id, {}).get("status", "open")}
-                for c in clusters
-            ],
+            [{**to_jsonable(c), "status": state.get(c.id, {}).get("status", "open")} for c in clusters],
             as_json=True,
         )
         return
@@ -1493,9 +1472,7 @@ def lesson_list(ctx: click.Context, domain: str | None, limit: int, as_json: boo
         click.echo("(no inbox lessons)")
         return
     for item in lessons:
-        click.echo(
-            f"{item.id}\t{item.domain}\t{item.kind}\t{item.confidence:.2f}\t{item.cluster_fingerprint[:48]}"
-        )
+        click.echo(f"{item.id}\t{item.domain}\t{item.kind}\t{item.confidence:.2f}\t{item.cluster_fingerprint[:48]}")
 
 
 @lesson.command("approve")
@@ -1568,15 +1545,11 @@ def lesson_sync_pr(ctx: click.Context, lesson_id: str, dry_run: bool, as_json: b
 
 
 @cli.command("analyze-failures")
-@click.option(
-    "--since", default=None, help="ISO timestamp or shorthand like '7d' (filter by mtime)."
-)
+@click.option("--since", default=None, help="ISO timestamp or shorthand like '7d' (filter by mtime).")
 @click.option("--trace", "trace_id", default=None, help="Single ledger run id to analyze.")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def analyze_failures_cmd(
-    ctx: click.Context, since: str | None, trace_id: str | None, as_json: bool
-) -> None:
+def analyze_failures_cmd(ctx: click.Context, since: str | None, trace_id: str | None, as_json: bool) -> None:
     from atelier.core.improvement.failure_analyzer import FailureAnalyzer
 
     runs = _ledger_dir(ctx.obj["root"])
@@ -1665,9 +1638,7 @@ def eval_list(ctx: click.Context, as_json: bool) -> None:
         _emit(cases, as_json=True)
         return
     for c in cases:
-        click.echo(
-            f"{c.get('id')}\t{c.get('status', 'draft')}\t{c.get('domain', '')}\t{c.get('description', '')[:60]}"
-        )
+        click.echo(f"{c.get('id')}\t{c.get('status', 'draft')}\t{c.get('domain', '')}\t{c.get('description', '')[:60]}")
 
 
 @eval_.command("show")
@@ -1736,16 +1707,12 @@ def eval_run(ctx: click.Context, domain: str | None, case_id: str | None, as_jso
         )
         expected = c.get("expected_status", "pass")
         passed = result.status == expected
-        results.append(
-            {"id": c["id"], "expected": expected, "got": result.status, "passed": passed}
-        )
+        results.append({"id": c["id"], "expected": expected, "got": result.status, "passed": passed})
     if as_json:
         _emit(results, as_json=True)
     else:
         for r in results:
-            click.echo(
-                f"{r['id']}\t{'PASS' if r['passed'] else 'FAIL'}\texpected={r['expected']}\tgot={r['got']}"
-            )
+            click.echo(f"{r['id']}\t{'PASS' if r['passed'] else 'FAIL'}\texpected={r['expected']}\tgot={r['got']}")
 
 
 @cli.command("eval-from-cluster")
@@ -1895,9 +1862,7 @@ def route_group() -> None:
     default="medium",
     show_default=True,
 )
-@click.option(
-    "--changed-file", "changed_files", multiple=True, help="Repeat for each changed file."
-)
+@click.option("--changed-file", "changed_files", multiple=True, help="Repeat for each changed file.")
 @click.option("--domain", default=None)
 @click.option(
     "--step-type",
@@ -1979,9 +1944,7 @@ def route_decide_cmd(
 
 @route_group.command("verify")
 @click.option("--route-decision-id", required=True)
-@click.option(
-    "--changed-file", "changed_files", multiple=True, help="Repeat for each changed file."
-)
+@click.option("--changed-file", "changed_files", multiple=True, help="Repeat for each changed file.")
 @click.option(
     "--validation-json",
     default="[]",
@@ -2112,8 +2075,7 @@ def proof_group() -> None:
     type=float,
     default=None,
     help=(
-        "Context reduction percentage from WP-19 savings bench. "
-        "When omitted, the benchmark is re-run automatically."
+        "Context reduction percentage from WP-19 savings bench. " "When omitted, the benchmark is re-run automatically."
     ),
 )
 @click.option("--json", "as_json", is_flag=True)
@@ -2140,9 +2102,7 @@ def proof_run_cmd(
             savings = run_savings_bench(root / "proof" / "savings_bench_tmp")
             context_reduction_pct = savings.reduction_pct
         except Exception as exc:
-            raise click.ClickException(
-                f"Could not run savings bench (pass --context-reduction-pct): {exc}"
-            ) from exc
+            raise click.ClickException(f"Could not run savings bench (pass --context-reduction-pct): {exc}") from exc
 
     # Build a minimal deterministic set of benchmark cases from the savings bench suite
     # to provide trace evidence for the proof report.
@@ -2187,9 +2147,7 @@ def proof_report_cmd(
     report = capability.load()
 
     if report is None:
-        raise click.ClickException(
-            "No proof report found. Run `atelier proof run --run-id <id>` first."
-        )
+        raise click.ClickException("No proof report found. Run `atelier proof run --run-id <id>` first.")
 
     payload = to_jsonable(report)
     if as_json:
@@ -2354,9 +2312,7 @@ def memory_upsert_block(
     clean_value = _redact_memory_input(_read_memory_value(value), "value")
     clean_description = _redact_memory_input(description, "description")
     existing = store.get_block(agent_id, label)
-    version = (
-        expected_version if expected_version is not None else (existing.version if existing else 1)
-    )
+    version = expected_version if expected_version is not None else (existing.version if existing else 1)
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -2423,9 +2379,7 @@ def memory_archive(
     from atelier.infra.embeddings.factory import make_embedder
     from atelier.infra.storage.factory import make_memory_store
 
-    capability = ArchivalRecallCapability(
-        make_memory_store(ctx.obj["root"]), make_embedder(), redactor=redact
-    )
+    capability = ArchivalRecallCapability(make_memory_store(ctx.obj["root"]), make_embedder(), redactor=redact)
     passage = capability.archive(
         agent_id=agent_id,
         text=_read_memory_value(text),
@@ -2459,9 +2413,7 @@ def memory_recall(
     from atelier.infra.embeddings.factory import make_embedder
     from atelier.infra.storage.factory import make_memory_store
 
-    capability = ArchivalRecallCapability(
-        make_memory_store(ctx.obj["root"]), make_embedder(), redactor=redact
-    )
+    capability = ArchivalRecallCapability(make_memory_store(ctx.obj["root"]), make_embedder(), redactor=redact)
     passages, recall = capability.recall(
         agent_id=agent_id,
         query=query,
@@ -2651,12 +2603,8 @@ def bash_intercept(ctx: click.Context, command_text: str, history_path: Path | N
 
 @cli.command("search-read")
 @click.option("--query", required=True, help="Pattern to search for (grep -rn).")
-@click.option(
-    "--path", "search_path", default=".", show_default=True, help="Directory or file to search."
-)
-@click.option(
-    "--max-files", default=10, show_default=True, type=int, help="Max hit-files to return."
-)
+@click.option("--path", "search_path", default=".", show_default=True, help="Directory or file to search.")
+@click.option("--max-files", default=10, show_default=True, type=int, help="Max hit-files to return.")
 @click.option("--max-chars-per-file", default=2000, show_default=True, type=int)
 @click.option("--no-outline", "include_outline", is_flag=True, flag_value=False, default=True)
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON (default: human-readable).")
@@ -2967,9 +2915,7 @@ def benchmark(
         if len(inputs) != 1 or output_path is None:
             raise click.ClickException("benchmark export requires one --input report and --output")
         report = load_runtime_report(inputs[0])
-        exported = export_runtime_report(
-            report, output_path=output_path, output_format=output_format
-        )
+        exported = export_runtime_report(report, output_path=output_path, output_format=output_format)
         _emit({"output": str(exported), "format": output_format}, as_json=True)
         return
 
@@ -3018,9 +2964,7 @@ def _run_benchmark_packs(*, root: Path, host: str) -> dict[str, Any]:
     for bundle_id in bundle_ids:
         try:
             info = manager.info(bundle_id) or {}
-            results.append(
-                {"bundle_id": bundle_id, "domain": info.get("domain", ""), "status": "ok"}
-            )
+            results.append({"bundle_id": bundle_id, "domain": info.get("domain", ""), "status": "ok"})
         except Exception as exc:
             failures.append({"bundle_id": bundle_id, "error": str(exc)})
 
@@ -3121,9 +3065,7 @@ def benchmark_packs(ctx: click.Context, host: str, as_json: bool) -> None:
     if as_json:
         _emit(payload, as_json=True)
         return
-    click.echo(
-        f"domain benchmark complete: {payload['domains_benchmarked']}/{payload['domains_total']} domains"
-    )
+    click.echo(f"domain benchmark complete: {payload['domains_benchmarked']}/{payload['domains_total']} domains")
     if payload["failures"]:
         click.echo("failures:")
         for item in payload["failures"]:
@@ -3140,9 +3082,7 @@ def benchmark_packs(ctx: click.Context, host: str, as_json: bool) -> None:
 @click.option("--model", default="claude-sonnet-4.6", show_default=True)
 @click.option("--rounds", default=3, show_default=True)
 @click.option("--host", default="codex", show_default=True)
-@click.option(
-    "--workspace", default=None, help="Optional workspace path passed to host verify scripts."
-)
+@click.option("--workspace", default=None, help="Optional workspace path passed to host verify scripts.")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def benchmark_full(
@@ -3155,9 +3095,7 @@ def benchmark_full(
     as_json: bool,
 ) -> None:
     """Phase T3: run core + hosts + packs benchmark suite."""
-    core_payload = _run_benchmark_core(
-        root=ctx.obj["root"], prompts=prompts, model=model, rounds=rounds
-    )
+    core_payload = _run_benchmark_core(root=ctx.obj["root"], prompts=prompts, model=model, rounds=rounds)
     hosts_payload = _run_benchmark_hosts(workspace=workspace)
     packs_payload = _run_benchmark_packs(root=ctx.obj["root"], host=host)
 
@@ -3166,9 +3104,7 @@ def benchmark_full(
         "core": core_payload,
         "hosts": hosts_payload,
         "packs": packs_payload,
-        "status": (
-            "pass" if hosts_payload["exit_code"] == 0 and not packs_payload["failures"] else "warn"
-        ),
+        "status": ("pass" if hosts_payload["exit_code"] == 0 and not packs_payload["failures"] else "warn"),
     }
 
     if as_json:
@@ -3177,9 +3113,7 @@ def benchmark_full(
         click.echo("full benchmark suite complete")
         click.echo(f"core tasks: {len(core_payload['report'].get('tasks', []))}")
         click.echo(f"host verification status: {hosts_payload['status']}")
-        click.echo(
-            f"domain coverage: {packs_payload['domains_benchmarked']}/{packs_payload['domains_total']}"
-        )
+        click.echo(f"domain coverage: {packs_payload['domains_benchmarked']}/{packs_payload['domains_total']}")
 
     if hosts_payload["exit_code"] != 0:
         raise click.ClickException("full benchmark failed in host verification")
@@ -3199,9 +3133,7 @@ def service_start(host: str | None, port: int | None, reload: bool) -> None:
     try:
         from atelier.core.service.api import main as service_main
     except ImportError as exc:
-        raise click.ClickException(
-            "FastAPI/uvicorn not installed. Run: uv add 'atelier[api]'"
-        ) from exc
+        raise click.ClickException("FastAPI/uvicorn not installed. Run: uv add 'atelier[api]'") from exc
     service_main(host=host, port=port, reload=reload)
 
 

@@ -323,9 +323,7 @@ def _reasonblock_ids_from_tool(tool: ToolCall, known_blocks: dict[str, ReasonBlo
         for item in matched:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
                 ids.append(item["id"])
-    text = "\n".join(
-        [tool.result_summary, str(args.get("context", "")), str(args.get("output", ""))]
-    )
+    text = "\n".join([tool.result_summary, str(args.get("context", "")), str(args.get("output", ""))])
     for block_id in known_blocks:
         if block_id in text:
             ids.append(block_id)
@@ -395,9 +393,7 @@ def _trace_file_paths(trace: Trace) -> list[str]:
 
 def _pending_lesson_count(store: ReasoningStore) -> int:
     with store._connect() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS n FROM lesson_candidate WHERE status = 'inbox'"
-        ).fetchone()
+        row = conn.execute("SELECT COUNT(*) AS n FROM lesson_candidate WHERE status = 'inbox'").fetchone()
     return int(row["n"] if row is not None else 0)
 
 
