@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from atelier.core.foundation.models import Trace, ValidationResult
+from atelier.core.foundation.store import ReasoningStore
+from atelier.gateway.adapters.cli import cli
+
+
+def test_report_cli_outputs_json_and_markdown(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    runner = CliRunner()
+    init = runner.invoke(cli, ["--root", str(root), "init"])
+    assert init.exit_code == 0, init.output
+    store = ReasoningStore(root)
+    store.record_trace(
+        Trace(
+            id="trace-report",
+            agent="codex",
+            domain="coding",
+            task="change code",
+            status="success",
+            validation_results=[ValidationResult(name="rubric_code_change", passed=True)],
+            created_at=datetime.now(UTC),
+        ),
+        write_json=False,
+    )
+
+    json_result = runner.invoke(
+        cli, ["--root", str(root), "report", "--since", "7d", "--format", "json"]
+    )
+    assert json_result.exit_code == 0, json_result.output
+    payload = json.loads(json_result.output)
+    assert payload["rubric_pass_rate"]["total"] == 1
+
+    markdown_result = runner.invoke(cli, ["--root", str(root), "report", "--since", "7d"])
+    assert markdown_result.exit_code == 0, markdown_result.output
+    assert "Atelier Weekly Governance Report" in markdown_result.output
+
+
+def test_report_mcp_tool_is_registered() -> None:
+    from atelier.gateway.adapters.mcp_server import TOOLS
+
+    assert "atelier_report" in TOOLS

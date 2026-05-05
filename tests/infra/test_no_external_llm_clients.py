@@ -10,6 +10,16 @@ FORBIDDEN_PROVIDER_IMPORTS = {
     "litellm",
     "mistralai",
 }
+# Allowed provider imports are restricted to a single file each.
+# - "ollama": Atelier's internal-processing module only (WP-36). Any other file
+#   importing ollama breaks the boundary rule: no model-client imports on the
+#   user's hot path.
+# - "openai": The OpenAI embedder only (text-embedding-3-small vector lookups).
+#   This is a vector call, not a completion call. All other files are forbidden.
+# - "httpx": The OpenAI embedder uses httpx directly (the openai SDK depends on
+#   it). Allowing httpx only in that same file keeps the boundary consistent
+#   without special-casing the transitive openai→httpx dependency at the SDK
+#   level. No other Atelier module should import httpx.
 ALLOWED_PROVIDER_IMPORTS = {
     "ollama": {Path("src/atelier/infra/internal_llm/ollama_client.py")},
     "openai": {Path("src/atelier/infra/embeddings/openai_embedder.py")},
