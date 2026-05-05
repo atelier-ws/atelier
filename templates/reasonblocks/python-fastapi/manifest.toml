@@ -1,0 +1,43 @@
+name = "Python FastAPI"
+description = "Starter ReasonBlocks for FastAPI services using Pydantic, pytest, Alembic, and Ruff/Black."
+version = "0.1.0"
+
+[[blocks]]
+file = "pydantic-api-boundaries.md"
+title = "Pydantic Models At API Boundaries"
+summary = "Validate request and response shapes at FastAPI boundaries."
+
+[[blocks]]
+file = "dependency-injection.md"
+title = "FastAPI Dependency Injection Boundaries"
+summary = "Keep request-scoped resources behind explicit dependencies."
+
+[[blocks]]
+file = "alembic-migrations.md"
+title = "Alembic Migration Discipline"
+summary = "Separate schema changes from runtime code and test upgrade paths."
+
+[[blocks]]
+file = "pytest-layout.md"
+title = "Pytest Layout For FastAPI Services"
+summary = "Use focused fixtures and client factories for API tests."
+
+[[blocks]]
+file = "secret-handling.md"
+title = "Secret Handling In Service Code"
+summary = "Keep secrets out of traces, logs, tests, and checked-in config."
+
+[[blocks]]
+file = "structured-logging.md"
+title = "Structured Logging For Requests"
+summary = "Log request facts as structured fields without leaking sensitive data."
+
+[[blocks]]
+file = "ruff-black-formatting.md"
+title = "Ruff And Black Formatting Gate"
+summary = "Use local formatting and lint gates before declaring changes complete."
+
+[[blocks]]
+file = "request-tracing.md"
+title = "Request Tracing And Correlation IDs"
+summary = "Preserve correlation IDs across inbound requests and downstream calls."
