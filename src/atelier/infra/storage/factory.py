@@ -28,9 +28,7 @@ def create_store(root: Path) -> ReasoningStore:
 
 def make_memory_store(root: str | Path | None, *, prefer: str | None = None) -> MemoryStore:
     """Create exactly one configured MemoryStore implementation."""
-    raw_root: str | Path = (
-        root if root is not None else (os.environ.get("ATELIER_ROOT") or ".atelier")
-    )
+    raw_root: str | Path = root if root is not None else (os.environ.get("ATELIER_ROOT") or ".atelier")
     resolved_root = Path(raw_root)
     backend = _memory_backend(resolved_root, prefer=prefer)
     logger.info("selected memory backend: %s", backend)

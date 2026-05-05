@@ -14,9 +14,7 @@ class _MemoryStore:
     def __init__(self, blocks: list[MemoryBlock]) -> None:
         self.blocks = blocks
 
-    def list_blocks(
-        self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500
-    ) -> list[MemoryBlock]:
+    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
         _ = (include_tombstoned, limit)
         return [block for block in self.blocks if block.agent_id == agent_id]
 
@@ -62,12 +60,8 @@ def test_arbitration_emits_per_op_metric(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_arbitration_uses_ollama_json_for_similar_blocks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    existing = MemoryBlock(
-        agent_id="atelier:code", label="style", value="prefer compact scoped patches"
-    )
-    new_fact = MemoryBlock(
-        agent_id="atelier:code", label="style", value="prefer compact scoped edits"
-    )
+    existing = MemoryBlock(agent_id="atelier:code", label="style", value="prefer compact scoped patches")
+    new_fact = MemoryBlock(agent_id="atelier:code", label="style", value="prefer compact scoped edits")
     monkeypatch.setattr(
         "atelier.core.capabilities.memory_arbitration.arbiter.chat",
         lambda messages, json_schema=None: {

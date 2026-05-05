@@ -37,16 +37,18 @@ installed; passes through to V2 behavior otherwise.
 - **NEW:** `src/atelier/core/capabilities/memory_arbitration/__init__.py`
 - **NEW:** `src/atelier/core/capabilities/memory_arbitration/arbiter.py`:
   - `arbitrate(new_fact: MemoryBlockInput, store: MemoryStore, embedder: Embedder, *,
-    k: int = 5) -> ArbitrationDecision`
+k: int = 5) -> ArbitrationDecision`
   - Pipeline:
     1. Embed `new_fact.value`.
     2. `top_k = store.search_passages(embedding, k=5)` (or block-level search if available).
     3. Compose Ollama prompt with structured JSON schema response:
        ```json
-       {"op": "ADD|UPDATE|DELETE|NOOP",
-        "target_block_id": "<id or null>",
-        "merged_value": "<string or null>",
-        "reason": "<one-line explanation>"}
+       {
+         "op": "ADD|UPDATE|DELETE|NOOP",
+         "target_block_id": "<id or null>",
+         "merged_value": "<string or null>",
+         "reason": "<one-line explanation>"
+       }
        ```
     4. Call `internal_llm.ollama_client.chat(...,  json_schema=...)` (added in WP-36).
     5. Validate response; clamp invalid ops to `ADD` with a WARNING log.
@@ -104,7 +106,7 @@ installed; passes through to V2 behavior otherwise.
 
 ## Boundary check
 
-The Ollama call is on the host's *write* path (synchronous from the host's perspective).
+The Ollama call is on the host's _write_ path (synchronous from the host's perspective).
 That is **not** the user's hot reasoning path — it adds 300-500ms to a memory write, which
 is a rare operation. The host CLI is unaware of the Ollama call; from the host's view,
 `memory_upsert_block` is just slightly slower and returns richer info.

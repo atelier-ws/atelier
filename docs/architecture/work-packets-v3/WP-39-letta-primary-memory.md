@@ -14,7 +14,7 @@ status: done
 ## Why
 
 WP-35 cleaned up the dual-write contradiction by deciding "single primary, picked by config".
-WP-39 actually *implements* the Letta-primary path so users who configure
+WP-39 actually _implements_ the Letta-primary path so users who configure
 `[memory].backend = "letta"` get a real Letta-backed store underneath the **existing**
 `memory_*` MCP tools (`memory_upsert_block`, `memory_get_block`, `memory_recall`,
 `memory_archive`, etc.).
@@ -28,7 +28,7 @@ runbook. We do not depend on Letta Cloud or any hosted service.
 
 Boundary: we do not write a vector store, a passage indexer, an embedding pipeline, or any
 agent loop. Atelier maps its `MemoryBlock` / `ArchivalPassage` to Letta's `Block` / `Passage`
-and applies its hybrid ranking *policy* on top of Letta's results. **No LLM is called by
+and applies its hybrid ranking _policy_ on top of Letta's results. **No LLM is called by
 Atelier.** (Letta itself, running in its own Docker container, may call models the user has
 configured for it — that's the user's choice and bill, not Atelier's.)
 
@@ -62,8 +62,8 @@ configured for it — that's the user's choice and bill, not Atelier's.)
       ports:
         - "${ATELIER_LETTA_PORT:-8283}:8283"
       environment:
-        - LETTA_PG_URI=${LETTA_PG_URI:-}    # blank => Letta uses its bundled SQLite
-        - OPENAI_API_KEY=${OPENAI_API_KEY:-}  # optional; for Letta's internal calls
+        - LETTA_PG_URI=${LETTA_PG_URI:-} # blank => Letta uses its bundled SQLite
+        - OPENAI_API_KEY=${OPENAI_API_KEY:-} # optional; for Letta's internal calls
       volumes:
         - letta_data:/var/letta
       restart: unless-stopped
@@ -84,7 +84,7 @@ configured for it — that's the user's choice and bill, not Atelier's.)
   - `atelier letta logs [-f]`
   - `atelier letta status` — calls Letta's `/v1/health` and prints status + version
   - `atelier letta reset` — DANGER: removes the volume; requires `--yes` flag
-  All commands are thin wrappers; Atelier does not reimplement docker-compose.
+    All commands are thin wrappers; Atelier does not reimplement docker-compose.
 - **EDIT:** `pyproject.toml` — register `atelier letta` subcommand entry-point.
 
 ### Tests + docs

@@ -53,7 +53,7 @@ of this packet's writing, that is not the case.
 
 > **Note on default:** path (A) replaces the V2 template summarizer with a real summary.
 > It does not promise "compression" without measurement — telemetry records `input_tokens`
-> sent to Ollama and `output_tokens` returned, and the lever's reported saving is *net*
+> sent to Ollama and `output_tokens` returned, and the lever's reported saving is _net_
 > (`input - output`).
 
 ## Files touched

@@ -14,11 +14,11 @@ status: done
 ## Why
 
 WP-34 retracted the 81 % savings headline and gated the README against unmeasured claims.
-WP-50 *replaces* it with a real measurement of how much Atelier's MCP tools change a host's
+WP-50 _replaces_ it with a real measurement of how much Atelier's MCP tools change a host's
 token budget on a fixed corpus of tasks.
 
 **Atelier does not run the benchmark by executing tasks itself.** Atelier is a tool/data
-provider; it does not call LLMs. The benchmark is run by a *host harness* — a small Python
+provider; it does not call LLMs. The benchmark is run by a _host harness_ — a small Python
 script that simulates a host CLI's tool dispatch — using a deterministic mocked LLM over a
 recorded transcript corpus. Atelier's MCP tools are dispatched by the harness exactly as a
 real host would dispatch them.
@@ -27,7 +27,7 @@ Methodology:
 
 - Record a corpus of ≥ 50 transcripts of host-driven tasks (bug fix, refactor, schema
   migration, multi-file edit, search, summarize, doc edit, etc.). Each transcript is the
-  *recorded sequence of tool calls and responses* that a real host CLI made when solving
+  _recorded sequence of tool calls and responses_ that a real host CLI made when solving
   that task. The corpus is committed to the repo; no production data is used.
 - Re-play each transcript under two configurations:
   - **Baseline (Run A):** every Atelier tool call is replaced with the host-native equivalent

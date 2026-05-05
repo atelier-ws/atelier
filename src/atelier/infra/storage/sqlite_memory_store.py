@@ -77,9 +77,7 @@ class SqliteMemoryStore:
             block_id = str(existing["id"]) if existing is not None else block.id
             previous_value = str(existing["value"]) if existing is not None else ""
             next_version = int(existing["version"]) + 1 if existing is not None else block.version
-            created_at = (
-                str(existing["created_at"]) if existing is not None else _iso(block.created_at)
-            )
+            created_at = str(existing["created_at"]) if existing is not None else _iso(block.created_at)
 
             if existing is None:
                 conn.execute(
@@ -180,9 +178,7 @@ class SqliteMemoryStore:
             raise RuntimeError("memory block upsert did not persist")
         return stored
 
-    def get_block(
-        self, agent_id: str, label: str, *, include_tombstoned: bool = False
-    ) -> MemoryBlock | None:
+    def get_block(self, agent_id: str, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
         tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
         with self._store._connect() as conn:
             row = conn.execute(
@@ -191,9 +187,7 @@ class SqliteMemoryStore:
             ).fetchone()
         return self._block_from_row(row) if row is not None else None
 
-    def list_blocks(
-        self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500
-    ) -> list[MemoryBlock]:
+    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
         tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
         with self._store._connect() as conn:
             rows = conn.execute(
@@ -284,11 +278,7 @@ class SqliteMemoryStore:
                     passage.id,
                     passage.agent_id,
                     passage.text,
-                    (
-                        _json(passage.embedding).encode("utf-8")
-                        if passage.embedding is not None
-                        else None
-                    ),
+                    (_json(passage.embedding).encode("utf-8") if passage.embedding is not None else None),
                     passage.embedding_model,
                     passage.embedding_provenance,
                     _json(passage.tags),
@@ -385,9 +375,7 @@ class SqliteMemoryStore:
                 agent_id=str(row["agent_id"]),
                 query=str(row["query"]),
                 top_passages=_loads_list(str(row["top_passages"])),
-                selected_passage_id=(
-                    str(row["selected_passage_id"]) if row["selected_passage_id"] else None
-                ),
+                selected_passage_id=(str(row["selected_passage_id"]) if row["selected_passage_id"] else None),
                 created_at=datetime.fromisoformat(str(row["created_at"])),
             )
             for row in rows
@@ -493,9 +481,7 @@ class SqliteMemoryStore:
             metadata=metadata if isinstance(metadata, dict) else {},
             pinned=bool(row["pinned"]),
             version=int(row["version"]),
-            current_history_id=(
-                str(row["current_history_id"]) if row["current_history_id"] else None
-            ),
+            current_history_id=(str(row["current_history_id"]) if row["current_history_id"] else None),
             deprecated_at=(
                 datetime.fromisoformat(str(row["deprecated_at"]))
                 if "deprecated_at" in row_keys and row["deprecated_at"]
@@ -507,9 +493,7 @@ class SqliteMemoryStore:
                 else None
             ),
             deprecation_reason=(
-                str(row["deprecation_reason"])
-                if "deprecation_reason" in row_keys and row["deprecation_reason"]
-                else ""
+                str(row["deprecation_reason"]) if "deprecation_reason" in row_keys and row["deprecation_reason"] else ""
             ),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
@@ -541,9 +525,7 @@ class SqliteMemoryStore:
             embedding=embedding,
             embedding_model=str(row["embedding_model"]),
             embedding_provenance=(
-                str(row["embedding_provenance"])
-                if "embedding_provenance" in row_keys
-                else "legacy_stub"
+                str(row["embedding_provenance"]) if "embedding_provenance" in row_keys else "legacy_stub"
             ),
             tags=_loads_list(str(row["tags"])),
             source=str(row["source"]),  # type: ignore[arg-type]
