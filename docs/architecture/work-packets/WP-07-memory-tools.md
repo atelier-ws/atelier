@@ -53,7 +53,7 @@ spec at [§ 8](../IMPLEMENTATION_PLAN_V2_DATA_MODEL.md#8-new-mcp-tools).
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_mcp_memory_tools.py tests/gateway/test_cli_memory_commands.py -v
 
 # CLI smoke

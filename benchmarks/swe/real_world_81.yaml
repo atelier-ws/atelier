@@ -1,0 +1,28 @@
+# Real-world Validation — Product Restock Notifications
+#
+# This entry represents the 3-part validation test building the
+# Product Restock Notifications feature.
+#
+# Metric             | Atelier | Naive   | Improvement
+# ------------------ | ------- | ------- | -----------
+# Total Tokens       | 8,200   | 43,600  | ⬇ 81.2%
+# LLM Cost           | $0.009  | $0.051  | ⬇ 82.4%
+# Human Time         | 4.5 hrs | 8+ hrs  | ⬇ 44.0%
+# Iterations         | 1-2     | 5-6     | ⬇ 70.0%
+# Quality (0-10)     | 9.2     | 6.8     | ⬆ 35.3%
+
+prompts:
+  - id: p12_restock_notifications_full_lifecycle
+    task_type: feature_implementation
+    prompt: >
+      Implement the Product Restock Notifications feature:
+      1. Add `notificationPreferences` to User schema.
+      2. Create background job for restock monitoring.
+      3. Implement "Notify Me" button on frontend.
+      4. Write integration tests.
+    naive_input_tokens: 43600
+    naive_output_tokens: 8500
+    levers:
+      smart_read: 8500    # Targeting specific hooks
+      ast_truncation: 12000 # Outlining large existing schemas/services
+      memory_recall: 14900  # Reusing Shopify/Temporal procedures from ReasonBlocks

@@ -76,7 +76,7 @@ snippets _and_ the surrounding content. Removes a turn-tax on every search.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_search_read.py \
                      tests/infra/test_search_read_token_savings.py -v
 

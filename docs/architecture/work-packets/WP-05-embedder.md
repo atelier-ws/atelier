@@ -70,7 +70,7 @@ embedding interface. Centralising it lets us swap providers without touching cal
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_embedder_factory.py tests/core/test_null_embedder.py -v
 
 LOCAL=1 uv run python -c "

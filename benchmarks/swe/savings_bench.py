@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover
 # Data structures
 # ---------------------------------------------------------------------------
 
-_SUITE_YAML = Path(__file__).parent / "prompts_11.yaml"
+_SUITE_YAML = Path(os.environ.get("ATELIER_BENCHMARK_SUITE", Path(__file__).parent / "prompts_11.yaml"))
 
 _ALL_LEVERS = (
     "smart_read",

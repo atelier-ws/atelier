@@ -57,7 +57,7 @@ the lever that pays the rent.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/infra/test_cached_grep_hit_rate.py -v
 
 # Plugin sanity check (structural validation now runs inside install_claude.sh)

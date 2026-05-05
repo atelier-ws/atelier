@@ -77,7 +77,7 @@ QUICK_REFERENCE card, and the README.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 make verify  # all installed hosts must verify
 
 # Sidebar registers the new docs (Docusaurus build-check via dry-run)

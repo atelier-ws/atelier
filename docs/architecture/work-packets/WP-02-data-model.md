@@ -61,7 +61,7 @@ inside implementation packets.
 
 ```bash
 # Models import and instantiate cleanly
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run python -c "
 from atelier.core.foundation.memory_models import MemoryBlock, ArchivalPassage, MemoryRecall, RunMemoryFrame
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion

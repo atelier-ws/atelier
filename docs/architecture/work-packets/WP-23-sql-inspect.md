@@ -63,7 +63,7 @@ busy_timeout=5000` (SQLite).
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_sql_inspect_mcp.py -v
 
 # Smoke: read-only must reject INSERT

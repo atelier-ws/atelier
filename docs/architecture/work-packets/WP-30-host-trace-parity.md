@@ -53,7 +53,7 @@ perfect live-hook parity everywhere.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_host_trace_confidence.py -v
 rg -n "trace_confidence|capture_sources|missing_surfaces" docs/hosts docs/engineering
 make verify

@@ -71,7 +71,7 @@ summarizer (template-based, no LLM call) so CI stays hermetic.
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_local_sleeptime.py \
                      tests/infra/test_sleeptime_writes_archival.py -v
 
