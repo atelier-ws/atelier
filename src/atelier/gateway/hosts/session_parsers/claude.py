@@ -6,7 +6,7 @@ into redacted RawArtifacts + curated Atelier Traces.
 Session layout::
 
     ~/.claude/projects/
-        -home-pankaj-Projects-leanchain-e-commerce/   ← workspace slug
+        -home-pankaj-Projects-leanchain-atelier/   ← workspace slug
             00463f2c-c1c9-4cb4-ab4e-888a47dc4da4.jsonl  ← one file per session
             ...
 
@@ -92,8 +92,8 @@ def _workspace_from_slug(slug: str) -> str:
     Claude converts the workspace path to a slug by replacing '/' with '-'
     (the leading '/' becomes a leading '-').
 
-    Example: ``-home-pankaj-Projects-leanchain-e-commerce``
-             → ``/home/pankaj/Projects/leanchain/e-commerce``
+    Example: ``-home-pankaj-Projects-leanchain-atelier``
+             → ``/home/pankaj/Projects/leanchain/atelier``
 
     Note: dashes in directory names are ambiguous in the slug, so this is
     best-effort.  We return the slug itself if it does not start with '-'.

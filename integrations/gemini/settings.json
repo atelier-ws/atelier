@@ -1,16 +1,12 @@
 {
-    "mcpServers": {
-        "atelier": {
-            "command": "uv",
-            "args": [
-                "run",
-                "--project",
-                "${HOME}/Projects/leanchain/e-commerce/atelier",
-                "atelier-mcp"
-            ],
-            "env": {
-                "ATELIER_STORE_ROOT": "${HOME}/Projects/leanchain/e-commerce/.atelier"
-            }
-        }
+  "mcpServers": {
+    "atelier": {
+      "command": "<PROJECT_ROOT>/scripts/atelier_mcp_stdio.sh",
+      "args": [],
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "<PROJECT_ROOT>",
+        "ATELIER_STORE_ROOT": "<PROJECT_ROOT>/.atelier"
+      }
     }
+  }
 }

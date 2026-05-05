@@ -41,7 +41,7 @@ slightly different procedure). Cutting that cuts the prompt without hurting reca
 ## Acceptance tests
 
 ```bash
-cd /home/pankaj/Projects/leanchain/e-commerce/atelier
+cd /home/pankaj/Projects/leanchain/atelier
 
 # Unit: dedup collapses the seeded pair
 LOCAL=1 uv run pytest tests/core/test_retriever_dedup.py -v
