@@ -323,4 +323,4 @@ A: Use /atelier:context <domain>
 
 **Last Updated:** 2026-05-01  
 **Version:** Atelier v0.1.0 (MCP v2024-11-05)  
-**File:** `/home/pankaj/Projects/leanchain/e-commerce/atelier/ATELIER_QUICK_REFERENCE.md`
+**File:** `/home/pankaj/Projects/leanchain/atelier/ATELIER_QUICK_REFERENCE.md`

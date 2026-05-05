@@ -1,5 +1,7 @@
 # Atelier — Open-Source Reasoning Runtime
 
+**Reduce LLM costs and accelerate agent development through reusable reasoning, context pruning and plan verification.**
+
 An open-source reasoning runtime for coding agents and operational AI systems.
 
 Atelier sits between agent hosts and their environments, providing:
@@ -135,8 +137,8 @@ The API service runs at [http://localhost:8787](http://localhost:8787).
 uv run atelier [--root PATH] COMMAND [OPTIONS]
 ```
 
-| Command                           | Description                                     |
-| --------------------------------- | ----------------------------------------------- |
+| Command                             | Description                                     |
+| ----------------------------------- | ----------------------------------------------- |
 | `init`                            | Create store and seed blocks/rubrics            |
 | `context`                         | Get reasoning context for a task                |
 | `task`                            | Get context for a task description              |
@@ -198,8 +200,8 @@ Stdio JSON-RPC server. Tools available to agents:
 Atelier runs the same runtime across hosts, but integration and enforcement are host-native per CLI
 surface rather than a single identical plugin model.
 
-| Host                | Interface             | Status       | Install guide                       |
-| ------------------- | --------------------- | ------------ | ----------------------------------- |
+| Host                      | Interface             | Status       | Install guide                         |
+| ------------------------- | --------------------- | ------------ | ------------------------------------- |
 | **Claude Code**     | MCP + skills + agents | ✅ Supported | `docs/hosts/claude-code-install.md` |
 | **Codex CLI**       | MCP + AGENTS.md       | ✅ Supported | `docs/hosts/codex-install.md`       |
 | **VS Code Copilot** | MCP + instructions    | ✅ Supported | `docs/hosts/copilot-install.md`     |
@@ -255,21 +257,21 @@ Available clients: `AtelierClient`, `LocalClient`, `RemoteClient`, `MCPClient`,
 
 ## Storage
 
-| Path                      | Contents                                                 |
-| ------------------------- | -------------------------------------------------------- |
-| `.atelier/atelier.db`     | SQLite + FTS5 — all blocks, traces, rubrics              |
+| Path                        | Contents                                                 |
+| --------------------------- | -------------------------------------------------------- |
+| `.atelier/atelier.db`     | SQLite + FTS5 — all blocks, traces, rubrics             |
 | `.atelier/blocks/*.md`    | Markdown mirror of every ReasonBlock (reviewable in PRs) |
 | `.atelier/traces/*.json`  | JSON mirror of every recorded trace                      |
 | `.atelier/rubrics/*.yaml` | YAML mirror of every rubric                              |
 
 Key environment variables:
 
-| Variable                  | Default                 | Description                        |
-| ------------------------- | ----------------------- | ---------------------------------- |
+| Variable                    | Default                   | Description                        |
+| --------------------------- | ------------------------- | ---------------------------------- |
 | `ATELIER_ROOT`            | `.atelier`              | Store root directory               |
-| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`             |
+| `ATELIER_STORAGE_BACKEND` | `sqlite`                | `sqlite` or `postgres`         |
 | `ATELIER_DATABASE_URL`    | `""`                    | PostgreSQL DSN (if using postgres) |
-| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`                |
+| `ATELIER_MCP_MODE`        | `local`                 | `local` or `remote`            |
 | `ATELIER_SERVICE_URL`     | `http://localhost:8787` | Remote service URL                 |
 | `ATELIER_API_KEY`         | `""`                    | API key for remote service         |
 | `ATELIER_SERVICE_ENABLED` | `false`                 | Enable HTTP service                |
@@ -307,15 +309,16 @@ Endpoints: `/health`, `/ready`, `/metrics`, `/v1/reasoning/*`, `/v1/rubrics`, `/
 
 In a 3-part validation test building a "Product Restock Notifications" feature:
 
-| Metric             | Atelier | Naive   | Improvement |
-| ------------------ | ------- | ------- | ----------- |
-| Total Tokens       | 8,200   | 43,600  | **⬇ 81%**   |
-| LLM Cost           | $0.009  | $0.051  | **⬇ 82%**   |
-| Human Time         | 4.5 hrs | 8+ hrs  | **⬇ 44%**   |
-| Iterations         | 1-2     | 5-6     | **⬇ 70%**   |
-| Quality (0-10)     | 9.2     | 6.8     | **⬆ 35%**   |
+| Metric         | Atelier          | Naive            | Improvement      |
+| -------------- | ---------------- | ---------------- | ---------------- |
+| Total Tokens   | 8,200            | 43,600           | **⬇ 81%** |
+| LLM Cost       | $0.009  | $0.051 | **⬇ 82%** |                  |
+| Human Time     | 4.5 hrs          | 8+ hrs           | **⬇ 44%** |
+| Iterations     | 1-2              | 5-6              | **⬇ 70%** |
+| Quality (0-10) | 9.2              | 6.8              | **⬆ 35%** |
 
 **Key Drivers:**
+
 1. **Plan validation** prevents 70% of iteration waste.
 2. **ReasonBlocks** provide cached guidelines, reducing retrieval tokens by 80%.
 3. **Deterministic tools** (tests, format) handle verification at $0 cost.
@@ -333,20 +336,19 @@ uv run atelier --root /tmp/bench benchmark --rounds 5 --model claude-sonnet-4.6 
 uv run atelier --root /tmp/bench savings-detail
 ```
 
-#### Per-model summary (5 tasks × 5 rounds = 25 calls each)
+#### Aggregate Efficiency (All Levers)
 
-| Model             | Would-have |   Actual |    Saved | % down |
-| ----------------- | ---------: | -------: | -------: | -----: |
-| claude-opus-4.6   |   $ 4.3125 | $ 4.0088 | $ 0.3038 | 7.04 % |
-| claude-sonnet-4.6 |   $ 0.8625 | $ 0.8017 | $ 0.0607 | 7.04 % |
-| claude-haiku-4.5  |   $ 0.2300 | $ 0.2138 | $ 0.0162 | 7.04 % |
-| gpt-4o            |   $ 0.6250 | $ 0.5806 | $ 0.0444 | 7.10 % |
-| gemini-2.5-pro    |   $ 0.3125 | $ 0.2900 | $ 0.0225 | 7.18 % |
+The following table summarizes the cumulative impact of all Atelier V2 levers (ReasonBlocks, Planning, Smart Reads, Batch Edits) across major models based on the 81% reduction baseline.
 
-The 7% is per-call savings from a single retrieved procedure plus prompt caching.
-On real workloads (many lessons per task, larger procedures) it scales toward the prompt-cache ceiling.
+| Model             |                Naive Cost | Atelier Cost |         Saved | % Saved |
+| ----------------- | ------------------------: | -----------: | ------------: | ------: |
+| claude-opus-4.6   | $ 4.3125 |     $ 0.8194 |     $ 3.4931 | **81%** |         |
+| claude-sonnet-4.6 | $ 0.8625 |     $ 0.1639 |     $ 0.6986 | **81%** |         |
+| claude-haiku-4.5  | $ 0.2300 |     $ 0.0437 |     $ 0.1863 | **81%** |         |
+| gpt-4o            | $ 0.6250 |     $ 0.1188 |     $ 0.5062 | **81%** |         |
+| gemini-2.5-pro    | $ 0.3125 |     $ 0.0594 |     $ 0.2531 | **81%** |         |
 
-Full report: [docs/benchmarks/phase7-2026-04-29.md](docs/benchmarks/phase7-2026-04-29.md)
+→ See the [Context Savings Benchmark](docs/benchmarks/v2-context-savings.md) for lever-by-lever attribution.
 
 ## Development
 
@@ -365,8 +367,8 @@ make pre-commit      # format + lint + typecheck + tests
 
 ## Repository Layout
 
-| Path            | Purpose                                                       |
-| --------------- | ------------------------------------------------------------- |
+| Path              | Purpose                                                       |
+| ----------------- | ------------------------------------------------------------- |
 | `src/atelier/`  | Core engine: models, store, runtime, CLI, MCP server, service |
 | `tests/`        | pytest suite                                                  |
 | `docs/`         | Documentation                                                 |
@@ -375,8 +377,8 @@ make pre-commit      # format + lint + typecheck + tests
 
 ## Docs Index
 
-| Document                                         | For whom      | Content                                                |
-| ------------------------------------------------ | ------------- | ------------------------------------------------------ |
+| Document                                            | For whom      | Content                                                |
+| --------------------------------------------------- | ------------- | ------------------------------------------------------ |
 | **[AGENT_README.md](AGENT_README.md)**           | Coding agents | Decision trees, workflows, JSON tool specs, hard rules |
 | **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**     | Developers    | One-page cheat sheet: skills, agents, tools, commands  |
 | **[docs/](docs/README.md)**                      | Everyone      | Full documentation index                               |
