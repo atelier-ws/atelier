@@ -11,7 +11,8 @@ import os
 import re
 import subprocess
 import sys
-from datetime import UTC, datetime
+import urllib.request
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib import resources
 from pathlib import Path
@@ -122,6 +123,27 @@ def _read_memory_value(value: str) -> str:
     return Path(path_text).read_text(encoding="utf-8")
 
 
+def _parse_duration(value: str) -> timedelta:
+    match = re.fullmatch(r"(\d+)([dhm])", value.strip())
+    if not match:
+        raise click.ClickException("duration must look like 7d, 12h, or 30m")
+    amount = int(match.group(1))
+    unit = match.group(2)
+    if unit == "d":
+        return timedelta(days=amount)
+    if unit == "h":
+        return timedelta(hours=amount)
+    return timedelta(minutes=amount)
+
+
+def _letta_compose_file() -> Path:
+    return Path.cwd() / "deploy" / "letta" / "docker-compose.yml"
+
+
+def _run_compose(args: list[str]) -> None:
+    subprocess.run(["docker", "compose", "-f", str(_letta_compose_file()), *args], check=True)
+
+
 def _parse_tags(values: tuple[str, ...]) -> list[str]:
     tags: list[str] = []
     for value in values:
@@ -206,6 +228,70 @@ def init(ctx: click.Context, seed: bool) -> None:
             store.upsert_rubric(rubric)
             n_r += 1
         click.echo(f"seeded {n_b} reasonblocks and {n_r} rubrics")
+
+
+@cli.command("reembed")
+@click.option("--dry-run", is_flag=True, help="Count legacy rows without writing vectors.")
+@click.option("--batch-size", default=100, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -> None:
+    """Back-fill legacy_stub embeddings for archival passages and lesson candidates."""
+    from atelier.infra.embeddings.factory import make_embedder
+
+    root: Path = ctx.obj["root"]
+    store = ReasoningStore(root)
+    store.init()
+    embedder = make_embedder()
+    counts = {"archival_passage": 0, "lesson_candidate": 0, "dry_run": dry_run}
+    with store._connect() as conn:
+        passages = conn.execute(
+            """
+            SELECT id, text FROM archival_passage
+            WHERE embedding_provenance = 'legacy_stub'
+            LIMIT ?
+            """,
+            (batch_size,),
+        ).fetchall()
+        lessons = conn.execute(
+            """
+            SELECT id, cluster_fingerprint, evidence_trace_ids, body FROM lesson_candidate
+            WHERE embedding_provenance = 'legacy_stub'
+            LIMIT ?
+            """,
+            (batch_size,),
+        ).fetchall()
+        counts["archival_passage"] = len(passages)
+        counts["lesson_candidate"] = len(lessons)
+        if not dry_run:
+            for row in passages:
+                vector = embedder.embed([str(row["text"])])[0]
+                conn.execute(
+                    """
+                    UPDATE archival_passage
+                    SET embedding = ?, embedding_provenance = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(vector).encode("utf-8"), embedder.__class__.__name__, row["id"]),
+                )
+            for row in lessons:
+                text = "\n".join(
+                    [
+                        str(row["cluster_fingerprint"]),
+                        str(row["evidence_trace_ids"]),
+                        str(row["body"]),
+                    ]
+                )
+                vector = embedder.embed([text])[0]
+                conn.execute(
+                    """
+                    UPDATE lesson_candidate
+                    SET embedding = ?, embedding_provenance = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(vector), embedder.__class__.__name__, row["id"]),
+                )
+    _emit(counts, as_json=as_json)
 
 
 # ----- add-block ----------------------------------------------------------- #
@@ -2311,6 +2397,69 @@ def memory_summarize(ctx: click.Context, run_id: str | None) -> None:
     rt = _core_runtime(ctx.obj["root"])
     payload = rt.summarize_memory(run_id=run_id)
     _emit(payload, as_json=True)
+
+
+@cli.group("letta")
+def letta_group() -> None:
+    """Manage the self-hosted Letta sidecar."""
+
+
+@letta_group.command("up")
+def letta_up() -> None:
+    """Start the Letta Docker Compose stack."""
+    _run_compose(["up", "-d"])
+
+
+@letta_group.command("down")
+def letta_down() -> None:
+    """Stop the Letta Docker Compose stack while preserving volumes."""
+    _run_compose(["down"])
+
+
+@letta_group.command("logs")
+@click.option("-f", "follow", is_flag=True)
+def letta_logs(follow: bool) -> None:
+    """Show Letta logs."""
+    args = ["logs"]
+    if follow:
+        args.append("-f")
+    _run_compose(args)
+
+
+@letta_group.command("status")
+def letta_status() -> None:
+    """Print Letta health status."""
+    url = os.environ.get("ATELIER_LETTA_URL", "http://localhost:8283").rstrip("/")
+    try:
+        with urllib.request.urlopen(f"{url}/v1/health", timeout=5) as response:
+            body = response.read().decode("utf-8", errors="replace")
+        click.echo(f"healthy\t{url}\t{body}")
+    except Exception as exc:
+        raise click.ClickException(f"Letta is not healthy at {url}: {exc}") from exc
+
+
+@letta_group.command("reset")
+@click.option("--yes", is_flag=True, help="Confirm destructive volume removal.")
+def letta_reset(yes: bool) -> None:
+    """Remove the Letta container and persistent volume."""
+    if not yes:
+        raise click.ClickException("refusing to reset Letta data without --yes")
+    _run_compose(["down", "-v"])
+
+
+@cli.command("consolidate")
+@click.option("--since", default="7d", show_default=True)
+@click.option("--dry-run", is_flag=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def consolidate_cmd(ctx: click.Context, since: str, dry_run: bool, as_json: bool) -> None:
+    """Run manual sleep-time consolidation."""
+    from atelier.core.capabilities.consolidation import consolidate
+
+    store = ReasoningStore(ctx.obj["root"])
+    store.init()
+    report = consolidate(store, since=_parse_duration(since), dry_run=dry_run)
+    _emit(report.to_dict(), as_json=as_json)
 
 
 @cli.group("sql")

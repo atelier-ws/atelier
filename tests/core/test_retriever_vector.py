@@ -29,9 +29,9 @@ from atelier.core.foundation.retriever import (
 )
 from atelier.infra.storage.vector import (
     cosine_similarity,
+    generate_embedding,
     get_embedding_dim,
     is_vector_enabled,
-    stub_embedding,
 )
 
 # --------------------------------------------------------------------------- #
@@ -236,41 +236,46 @@ def test_is_vector_enabled_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# stub_embedding and cosine_similarity                                       #
+# generate_embedding and cosine_similarity                                  #
 # --------------------------------------------------------------------------- #
 
 
-def test_stub_embedding_deterministic() -> None:
-    """stub_embedding must return the same vector for the same input."""
-    v1 = stub_embedding("hello world")
-    v2 = stub_embedding("hello world")
+def test_generate_embedding_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local embeddings must return the same vector for the same input."""
+    monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
+    v1 = generate_embedding("hello world", dim=64)
+    v2 = generate_embedding("hello world", dim=64)
     assert v1 == v2
 
 
-def test_stub_embedding_dimension() -> None:
-    """stub_embedding dimension must match requested dim."""
-    v = stub_embedding("test", dim=64)
+def test_generate_embedding_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local embedding dimension must match requested dim."""
+    monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
+    v = generate_embedding("test", dim=64)
     assert len(v) == 64
 
 
-def test_stub_embedding_different_inputs_differ() -> None:
-    """Different inputs must produce different stub embeddings."""
-    v1 = stub_embedding("hello")
-    v2 = stub_embedding("world")
+def test_generate_embedding_different_inputs_differ(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Different inputs must produce different local embeddings."""
+    monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
+    v1 = generate_embedding("hello", dim=64)
+    v2 = generate_embedding("world", dim=64)
     assert v1 != v2
 
 
-def test_cosine_similarity_identical() -> None:
+def test_cosine_similarity_identical(monkeypatch: pytest.MonkeyPatch) -> None:
     """cosine_similarity of a vector with itself must be ~1.0."""
-    v = stub_embedding("test text")
+    monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
+    v = generate_embedding("test text", dim=64)
     sim = cosine_similarity(v, v)
     assert abs(sim - 1.0) < 1e-6
 
 
-def test_cosine_similarity_range() -> None:
+def test_cosine_similarity_range(monkeypatch: pytest.MonkeyPatch) -> None:
     """cosine_similarity must be in [-1, 1]."""
-    v1 = stub_embedding("alpha")
-    v2 = stub_embedding("beta")
+    monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
+    v1 = generate_embedding("alpha", dim=64)
+    v2 = generate_embedding("beta", dim=64)
     sim = cosine_similarity(v1, v2)
     assert -1.0 <= sim <= 1.0
 

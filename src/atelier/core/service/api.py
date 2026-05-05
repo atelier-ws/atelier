@@ -106,7 +106,8 @@ def _runtime(store: Any) -> Any:
     from atelier.gateway.adapters.runtime import ReasoningRuntime
 
     rt = ReasoningRuntime.__new__(ReasoningRuntime)
-    rt.core_runtime = AtelierRuntimeCore(cfg.atelier_root)
+    runtime_root = Path(getattr(store, "root", cfg.atelier_root))
+    rt.core_runtime = AtelierRuntimeCore(runtime_root)
     rt.core_runtime.store = store
     rt.store = store
     return rt

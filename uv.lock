@@ -344,6 +344,14 @@ parsers = [
 postgres = [
     { name = "psycopg", extra = ["binary"] },
 ]
+repo-map = [
+    { name = "networkx" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-languages", marker = "python_full_version < '3.13'" },
+]
+smart = [
+    { name = "ollama" },
+]
 vector = [
     { name = "numpy" },
     { name = "pgvector" },
@@ -369,7 +377,9 @@ requires-dist = [
     { name = "mypy", specifier = ">=1.20.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "networkx", specifier = ">=3.4" },
+    { name = "networkx", marker = "extra == 'repo-map'", specifier = ">=3.4" },
     { name = "numpy", marker = "extra == 'vector'", specifier = ">=1.26" },
+    { name = "ollama", marker = "extra == 'smart'", specifier = ">=0.4.0" },
     { name = "ortools", specifier = ">=9.10" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.2" },
     { name = "prometheus-client", specifier = ">=0.21" },
@@ -386,12 +396,14 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
     { name = "tree-sitter", specifier = ">=0.23" },
+    { name = "tree-sitter", marker = "extra == 'repo-map'", specifier = ">=0.23" },
     { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'parsers'", specifier = ">=1.10" },
+    { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'repo-map'", specifier = ">=1.10" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "embeddings", "api", "postgres", "vector", "parsers", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "embeddings", "smart", "repo-map", "api", "postgres", "vector", "parsers", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4039,6 +4051,19 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/f3/d86c845465a2723ad7e1e5c36dcd75ddb82898b3f53be47ebd429fb2fa5d/nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:4936d1d6780fbe68db454f5e72a42ff64d1fd6397df9f363ae786930fd5c1cd4", size = 148047, upload-time = "2025-09-04T08:29:01.761Z" },
     { url = "https://files.pythonhosted.org/packages/a8/64/3708a90d1ebe202ffdeb7185f878a3c84d15c2b2c31858da2ce0583e2def/nvidia_nvtx-13.0.85-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cb7780edb6b14107373c835bf8b72e7a178bac7367e23da7acb108f973f157a6", size = 148878, upload-time = "2025-09-04T08:28:53.627Z" },
+]
+
+[[package]]
+name = "ollama"
+version = "0.6.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/72/5f12423b6b39ca8430fbe56f77fcf4ef60f63067c7c4a2e30e200ed9ec16/ollama-0.6.2.tar.gz", hash = "sha256:936d55daa684f474364c098611c933626f8d6c7d67065c5b7ae0c477b508b07f", size = 53145, upload-time = "2026-04-29T21:21:15.018Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/ab/d6722beeb2d10f7a3b9ff49375708904fde18f82b5609a0bc4aeb5996a4d/ollama-0.6.2-py3-none-any.whl", hash = "sha256:3ad7daab28e5a973445c36a73882a3ef698c2ebb00e21e308652741577509f7d", size = 15115, upload-time = "2026-04-29T21:21:13.794Z" },
 ]
 
 [[package]]

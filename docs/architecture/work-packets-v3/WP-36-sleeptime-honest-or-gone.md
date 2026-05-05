@@ -6,7 +6,7 @@ boundary: Cleanup
 owner_agent: atelier:code
 depends_on: [WP-33]
 supersedes: [WP-09]
-status: ready
+status: done
 ---
 
 # WP-36 — Sleeptime: real or gone

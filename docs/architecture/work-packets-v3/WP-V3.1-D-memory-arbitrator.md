@@ -6,7 +6,7 @@ boundary: Atelier-core
 owner_agent: atelier:code
 depends_on: [WP-33, WP-34, WP-35, WP-36, WP-39, WP-47, WP-49, WP-50]
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-V3.1-D — Four-op memory arbitrator

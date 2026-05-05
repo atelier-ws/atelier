@@ -6,7 +6,7 @@ boundary: Migration
 owner_agent: atelier:code
 depends_on: [WP-33, WP-34, WP-35, WP-36, WP-39, WP-47]
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-49 — V2→V3 migration doc

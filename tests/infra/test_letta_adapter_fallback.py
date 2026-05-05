@@ -5,11 +5,10 @@ from typing import Any
 
 import pytest
 
-from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
+from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.memory_bridges.letta_adapter import LettaMemoryStore
 from atelier.infra.storage.factory import make_memory_store
 from atelier.infra.storage.memory_store import MemorySidecarUnavailable
-from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
 
 class _UnavailableClient:
@@ -35,7 +34,7 @@ def test_letta_memory_store_raises_sidecar_unavailable_on_503(tmp_path: Path) ->
         store.search_passages("atelier:code", "query")
 
 
-def test_make_memory_store_falls_back_to_sqlite_when_letta_construction_fails(
+def test_make_memory_store_does_not_fallback_when_letta_construction_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -58,22 +57,5 @@ def test_make_memory_store_falls_back_to_sqlite_when_letta_construction_fails(
         "atelier.infra.memory_bridges.letta_adapter.LettaMemoryStore.__init__", fail_init
     )
 
-    store = make_memory_store(tmp_path / "atelier", prefer="letta")
-
-    assert isinstance(store, SqliteMemoryStore)
-    block = store.upsert_block(
-        MemoryBlock(agent_id="atelier:code", label="persona", value="fallback", pinned=True),
-        actor="agent:atelier:code",
-    )
-    passage = store.insert_passage(
-        ArchivalPassage(
-            agent_id="atelier:code",
-            text="Fallback keeps writing to SQLite.",
-            tags=["fallback"],
-            source="user",
-            dedup_hash="fallback-hash",
-        )
-    )
-
-    assert store.get_block("atelier:code", "persona") == block
-    assert store.search_passages("atelier:code", "fallback")[0].id == passage.id
+    with pytest.raises(MemorySidecarUnavailable):
+        make_memory_store(tmp_path / "atelier", prefer="letta")
