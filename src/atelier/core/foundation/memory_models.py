@@ -31,6 +31,9 @@ class MemoryBlock(BaseModel):
     pinned: bool = False
     version: int = 1
     current_history_id: str | None = None
+    deprecated_at: datetime | None = None
+    deprecated_by_block_id: str | None = None
+    deprecation_reason: str = ""
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -61,6 +64,7 @@ class ArchivalPassage(BaseModel):
     text: str
     embedding: list[float] | None = None
     embedding_model: str = ""
+    embedding_provenance: str = "legacy_stub"
     tags: list[str] = Field(default_factory=list)
     source: ArchivalSource
     source_ref: str = ""
@@ -96,7 +100,7 @@ class RunMemoryFrame(BaseModel):
     summarized_events: list[str]
     tokens_pre_summary: int
     tokens_post_summary: int
-    compaction_strategy: Literal["none", "tfidf", "letta_summarizer"]
+    compaction_strategy: Literal["none", "tfidf", "ollama_summarizer", "letta_summarizer"]
     created_at: datetime = Field(default_factory=_utcnow)
 
 

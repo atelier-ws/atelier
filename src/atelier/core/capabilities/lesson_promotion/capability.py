@@ -5,27 +5,46 @@ Failed trace -> embedding -> nearest-neighbor cluster -> inbox candidate.
 
 from __future__ import annotations
 
+import hashlib
+import logging
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from atelier.core.capabilities.lesson_promotion.draft import draft_lesson_candidate
+from atelier.core.capabilities.lesson_promotion.reflection import draft_lesson_body
 from atelier.core.foundation.extractor import extract_candidate
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import Rubric, Trace
 from atelier.core.foundation.store import ReasoningStore
-from atelier.infra.storage.vector import cosine_similarity, get_embedding_dim, stub_embedding
+from atelier.infra.embeddings.base import Embedder
+from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.embeddings.null_embedder import NullEmbedder
+from atelier.infra.storage.vector import cosine_similarity
+
+_log = logging.getLogger(__name__)
 
 
 class LessonPromoterCapability:
     """Create and review lesson candidates from failed traces."""
 
-    def __init__(self, store: ReasoningStore, *, now: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        store: ReasoningStore,
+        *,
+        now: Callable[[], datetime] | None = None,
+        embedder: Embedder | None = None,
+        cluster_threshold: float | None = None,
+    ) -> None:
         self.store = store
         self._now = now or (lambda: datetime.now(UTC))
-        self._embedding_dim = min(get_embedding_dim(), 128)
+        self._embedder = embedder or make_embedder()
+        self._cluster_threshold = cluster_threshold or float(
+            os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85")
+        )
         self._trace_embedding_cache: dict[str, list[float]] = {}
-        self._recent_failed_by_fingerprint: dict[str, list[Trace]] = {}
+        self._recent_failed_by_domain: dict[str, list[Trace]] = {}
 
     def _trace_text(self, trace: Trace) -> str:
         commands: list[str] = []
@@ -41,9 +60,23 @@ class LessonPromoterCapability:
         cached = self._trace_embedding_cache.get(trace.id)
         if cached is not None:
             return cached
-        embedding = stub_embedding(self._trace_text(trace), dim=self._embedding_dim)
+        text = self._trace_text(trace)
+        try:
+            vectors = self._embedder.embed([text])
+        except Exception as exc:
+            _log.warning("lesson embedding unavailable, using NullEmbedder: %s", exc)
+            self._embedder = NullEmbedder()
+            vectors = self._embedder.embed([text])
+        embedding = vectors[0] if vectors and vectors[0] else []
         self._trace_embedding_cache[trace.id] = embedding
         return embedding
+
+    def _cluster_key(self, trace: Trace, embedding: list[float]) -> str:
+        if embedding:
+            raw = ",".join(f"{value:.4f}" for value in embedding[:16])
+        else:
+            raw = self._trace_text(trace)
+        return "semantic:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
     def _recent_inbox(self, domain: str, days: int = 30) -> list[LessonCandidate]:
         cutoff = self._now() - timedelta(days=days)
@@ -58,16 +91,18 @@ class LessonPromoterCapability:
         *,
         domain: str,
         embedding: list[float],
-        cluster_fingerprint: str,
         top_k: int = 8,
     ) -> list[LessonCandidate]:
         scored: list[tuple[float, LessonCandidate]] = []
         for candidate in self._recent_inbox(domain):
             if not candidate.embedding:
                 continue
-            if candidate.cluster_fingerprint != cluster_fingerprint:
+            try:
+                sim = cosine_similarity(embedding, candidate.embedding)
+            except ValueError:
+                sim = 0.0
+            if sim < self._cluster_threshold:
                 continue
-            sim = cosine_similarity(embedding, candidate.embedding)
             scored.append((sim, candidate))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [entry[1] for entry in scored[:top_k]]
@@ -77,7 +112,6 @@ class LessonPromoterCapability:
         *,
         domain: str,
         current_trace_id: str,
-        cluster_fingerprint: str,
         embedding: list[float],
         limit: int = 8,
     ) -> list[Trace]:
@@ -87,10 +121,12 @@ class LessonPromoterCapability:
                 continue
             if not trace.errors_seen:
                 continue
-            trace_fp = trace.errors_seen[0].strip().lower()[:160]
-            if trace_fp != cluster_fingerprint:
+            try:
+                sim = cosine_similarity(embedding, self._embed_trace(trace))
+            except ValueError:
+                sim = 0.0
+            if sim < self._cluster_threshold:
                 continue
-            sim = cosine_similarity(embedding, self._embed_trace(trace))
             scored.append((sim, trace))
         scored.sort(key=lambda item: item[0], reverse=True)
         return [item[1] for item in scored[:limit]]
@@ -103,14 +139,22 @@ class LessonPromoterCapability:
             return None
 
         embedding = self._embed_trace(trace)
-        cluster_fingerprint = trace.errors_seen[0].strip().lower()[:160] or "unknown_failure"
+        cluster_fingerprint = self._cluster_key(trace, embedding)
         neighbors = self._nearest_cluster(
             domain=trace.domain,
             embedding=embedding,
-            cluster_fingerprint=cluster_fingerprint,
         )
-        bucket = self._recent_failed_by_fingerprint.setdefault(cluster_fingerprint, [])
-        trace_neighbors = bucket[-8:]
+        bucket = self._recent_failed_by_domain.setdefault(trace.domain, [])
+        trace_neighbors: list[Trace] = []
+        for prior in reversed(bucket):
+            if len(trace_neighbors) >= 8:
+                break
+            try:
+                sim = cosine_similarity(embedding, self._embed_trace(prior))
+            except ValueError:
+                sim = 0.0
+            if sim >= self._cluster_threshold:
+                trace_neighbors.append(prior)
 
         if len(neighbors) + len(trace_neighbors) + 1 < 3:
             bucket.append(trace)
@@ -137,6 +181,13 @@ class LessonPromoterCapability:
             embedding=embedding,
             existing_blocks=existing_blocks,
         )
+        candidate.body = draft_lesson_body(traces)
+        candidate.evidence = {
+            "trace_ids": [item.id for item in traces],
+            "embedding_provenance": self._embedder.__class__.__name__,
+            "cluster_threshold": self._cluster_threshold,
+        }
+        candidate.embedding_provenance = self._embedder.__class__.__name__
         self.store.upsert_lesson_candidate(candidate)
         bucket.append(trace)
         return candidate

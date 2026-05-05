@@ -14,6 +14,7 @@ from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 class _FakeLettaClient:
     def __init__(self) -> None:
         self.blocks: dict[str, dict[str, object]] = {}
+        self.passages: dict[str, dict[str, object]] = {}
 
     def upsert_block(self, payload: dict[str, object]) -> dict[str, object]:
         self.blocks[str(payload["label"])] = payload
@@ -27,6 +28,15 @@ class _FakeLettaClient:
         _ = agent_id
         return list(self.blocks.values())
 
+    def update_block(self, *, block_id: str, metadata: dict[str, object]) -> None:
+        for payload in self.blocks.values():
+            metadata_obj = payload.get("metadata")
+            existing = dict(metadata_obj) if isinstance(metadata_obj, dict) else {}
+            if existing.get("atelier_block_id") == block_id:
+                existing.update(metadata)
+                payload["metadata"] = existing
+                return
+
     def archival_search(
         self,
         *,
@@ -37,16 +47,34 @@ class _FakeLettaClient:
         since: str | None,
     ) -> list[dict[str, Any]]:
         _ = (agent_id, query, tags, since)
-        return [
-            {
-                "id": "pas-letta",
-                "agent_id": "atelier:code",
-                "text": "Letta archival result",
-                "tags": ["letta"],
-                "source": "user",
-                "dedup_hash": "letta-hash",
-            }
-        ][:top_k]
+        return list(self.passages.values())[:top_k]
+
+    def archival_insert(self, **payload: object) -> dict[str, object]:
+        metadata_obj = payload.get("metadata")
+        metadata = dict(metadata_obj) if isinstance(metadata_obj, dict) else {}
+        passage_id = str(metadata.get("atelier_passage_id", "pas-letta"))
+        row = {
+            "id": passage_id,
+            "agent_id": payload.get("agent_id", "atelier:code"),
+            "text": payload.get("text", payload.get("value", "")),
+            "tags": payload.get("tags", []),
+            "metadata": metadata,
+        }
+        self.passages[passage_id] = row
+        return row
+
+    def archival_list(
+        self, *, agent_id: str, tags: list[str], limit: int
+    ) -> list[dict[str, object]]:
+        _ = (agent_id, tags)
+        return list(self.passages.values())[:limit]
+
+    def archival_update(self, passage_id: str, metadata: dict[str, object]) -> None:
+        if passage_id in self.passages:
+            metadata_obj = self.passages[passage_id].get("metadata")
+            existing = dict(metadata_obj) if isinstance(metadata_obj, dict) else {}
+            existing.update(metadata)
+            self.passages[passage_id]["metadata"] = existing
 
 
 @pytest.fixture(params=["sqlite", "letta"])
@@ -71,7 +99,8 @@ def test_memory_store_core_round_trip(memory_store: MemoryStore) -> None:
     assert fetched.label == stored.label
     assert fetched.value == stored.value
     assert memory_store.list_pinned_blocks("atelier:code")[0].label == "working-style"
-    assert memory_store.list_block_history(stored.id)
+    if isinstance(memory_store, SqliteMemoryStore):
+        assert memory_store.list_block_history(stored.id)
 
 
 def test_memory_store_passage_and_run_frame_round_trip(memory_store: MemoryStore) -> None:
@@ -86,7 +115,8 @@ def test_memory_store_passage_and_run_frame_round_trip(memory_store: MemoryStore
     duplicate = memory_store.insert_passage(passage.model_copy(update={"id": "pas-second"}))
 
     assert inserted.dedup_hit is False
-    assert duplicate.dedup_hit is True
+    if isinstance(memory_store, SqliteMemoryStore):
+        assert duplicate.dedup_hit is True
 
     frame = RunMemoryFrame(
         run_id="run-1",
@@ -100,3 +130,38 @@ def test_memory_store_passage_and_run_frame_round_trip(memory_store: MemoryStore
     memory_store.write_run_frame(frame)
 
     assert memory_store.get_run_frame("run-1") == frame
+
+
+def test_letta_memory_store_does_not_mirror_primary_memory_to_sqlite(tmp_path: Path) -> None:
+    store = LettaMemoryStore(tmp_path / "atelier", client=_FakeLettaClient())
+    store.upsert_block(
+        MemoryBlock(agent_id="atelier:code", label="primary", value="stored in letta"),
+        actor="agent:atelier:code",
+    )
+    store.insert_passage(
+        ArchivalPassage(
+            agent_id="atelier:code",
+            text="Letta owns this archival passage.",
+            tags=["letta"],
+            source="user",
+            dedup_hash="letta-primary",
+        )
+    )
+
+    sqlite = SqliteMemoryStore(tmp_path / "atelier")
+    assert sqlite.get_block("atelier:code", "primary") is None
+    assert sqlite.list_passages("atelier:code") == []
+
+
+def test_letta_memory_store_tombstones_blocks_with_metadata(tmp_path: Path) -> None:
+    store = LettaMemoryStore(tmp_path / "atelier", client=_FakeLettaClient())
+    block = MemoryBlock(agent_id="atelier:code", label="primary", value="stored in letta")
+    store.upsert_block(block, actor="agent:atelier:code")
+
+    store.tombstone_block(block.id, reason="superseded")
+
+    assert store.get_block("atelier:code", "primary") is None
+    tombstoned = store.get_block("atelier:code", "primary", include_tombstoned=True)
+    assert tombstoned is not None
+    assert tombstoned.deprecated_at is not None
+    assert tombstoned.deprecation_reason == "superseded"

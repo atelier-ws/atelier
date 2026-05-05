@@ -159,17 +159,10 @@ def generate_embedding(text: str, *, dim: int | None = None) -> list[float]:
     return _local_embedding(text, dim=resolved_dim)
 
 
-def stub_embedding(text: str, *, dim: int | None = None) -> list[float]:
-    """Deterministic local embedding used for tests and offline flows."""
-    resolved_dim = dim or get_embedding_dim()
-    return _local_embedding(text, dim=resolved_dim)
-
-
 __all__ = [
     "cosine_similarity",
     "generate_embedding",
     "get_embedding_dim",
     "get_embedding_model",
     "is_vector_enabled",
-    "stub_embedding",
 ]

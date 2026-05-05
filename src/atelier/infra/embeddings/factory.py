@@ -23,10 +23,10 @@ def make_embedder(*, pin: str | None = None) -> Embedder:
        ``local`` | ``openai`` | ``letta`` | ``null``
     2. Letta sidecar available → ``LettaEmbedder``
     3. ``OPENAI_API_KEY`` set → ``OpenAIEmbedder``
-    4. ``sentence_transformers`` importable → ``LocalEmbedder``
-    5. Fallback → ``NullEmbedder``
+    4. Default → ``LocalEmbedder`` (lazy-loads sentence-transformers on first embed call)
     """
-    chosen = (pin or os.environ.get("ATELIER_EMBEDDER", "")).strip().lower()
+    raw_choice = pin if pin is not None else (os.environ.get("ATELIER_EMBEDDER") or "")
+    chosen = raw_choice.strip().lower()
 
     if chosen:
         if chosen not in _PIN_CHOICES:
@@ -54,10 +54,7 @@ def make_embedder(*, pin: str | None = None) -> Embedder:
     if os.environ.get("OPENAI_API_KEY"):
         return OpenAIEmbedder()
 
-    if _importable("sentence_transformers"):
-        return LocalEmbedder()
-
-    return NullEmbedder()
+    return LocalEmbedder()
 
 
 def _importable(module: str) -> bool:

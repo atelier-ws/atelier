@@ -6,7 +6,7 @@ boundary: Cleanup
 owner_agent: atelier:code
 depends_on: []
 supersedes: [WP-19]
-status: ready
+status: done
 ---
 
 # WP-34 — Honest savings claim
@@ -40,9 +40,9 @@ Phase H + I to be in place.
   No bare percentages.
 - **EDIT:** `docs/benchmarks/v2-context-savings.md` — add a banner at the top:
   > **2026-05-04 correction:** the "81 %" figure on this page is derived from hand-written
-  > YAML constants, not a measurement. See [V3 plan § 0](../../docs/architecture/IMPLEMENTATION_PLAN_V3.md)
-  > and [WP-34](../../docs/architecture/work-packets-v3/WP-34-honest-savings-claim.md) for the
-  > retraction; see [WP-50](../../docs/architecture/work-packets-v3/WP-50-honest-benchmark-publish.md)
+  > YAML constants, not a measurement. See [V3 plan § 0](../IMPLEMENTATION_PLAN_V3.md)
+  > and [WP-34](WP-34-honest-savings-claim.md) for the
+  > retraction; see [WP-50](WP-50-honest-benchmark-publish.md)
   > for the replacement methodology.
   Do not delete the page (it is referenced from V2 traces).
 - **EDIT:** `docs/benchmarks/phase7-2026-04-29.md` — same banner.
@@ -81,7 +81,7 @@ Phase H + I to be in place.
    > **Context savings** — Atelier ships deterministic context-savings tools
    > (`atelier_search_read`, `atelier_batch_edit`, AST outline-first reads, scoped recall).
    > A measured reduction will be published with V3.0; see
-   > [WP-50](docs/architecture/work-packets-v3/WP-50-honest-benchmark-publish.md) for
+  > [WP-50](WP-50-honest-benchmark-publish.md) for
    > methodology. Until then, treat all percentage figures in this README as design targets.
 
 4. **Edit the existing benchmark docs** with the correction banner. Keep the original numbers

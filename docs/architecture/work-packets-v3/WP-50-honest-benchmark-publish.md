@@ -6,7 +6,7 @@ boundary: Cleanup
 owner_agent: atelier:code
 depends_on: [WP-34, WP-39, WP-47]
 supersedes: [WP-19]
-status: ready
+status: done
 ---
 
 # WP-50 — Honest benchmark publication

@@ -20,6 +20,7 @@ class RunSavings:
         self.run_id = run_id
         self.total_tokens_saved: int = 0
         self.lever_totals: dict[str, int] = {}
+        self.compact_method_totals: dict[str, int] = {}
         self.turn_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -27,6 +28,7 @@ class RunSavings:
             "run_id": self.run_id,
             "total_tokens_saved": self.total_tokens_saved,
             "lever_totals": self.lever_totals,
+            "compact_method_totals": self.compact_method_totals,
             "turn_count": self.turn_count,
         }
 
@@ -102,6 +104,31 @@ class ContextBudgetRecorder:
         if self._prometheus_enabled:
             self._emit_metrics(record)
 
+    def record_compact_tool_output(
+        self,
+        *,
+        run_id: str,
+        turn_index: int,
+        model: str,
+        method: str,
+        tokens_in: int,
+        tokens_out: int,
+    ) -> None:
+        """Record net savings for one compact-tool-output call."""
+        saved = max(0, tokens_in - tokens_out)
+        self.record(
+            run_id=run_id,
+            turn_index=turn_index,
+            model=model,
+            input_tokens=tokens_out,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            output_tokens=0,
+            naive_input_tokens=tokens_in,
+            lever_savings={f"compact_tool_output:{method}": saved} if saved else {},
+            tool_calls=1,
+        )
+
     def _emit_metrics(self, record: Any) -> None:
         """Emit Prometheus metrics for the recorded turn."""
         try:
@@ -120,7 +147,13 @@ class ContextBudgetRecorder:
 
             # Emit one metric per lever, plus a total
             for lever, saved in record.lever_savings.items():
-                self._tokens_saved_counter.labels(lever=lever, model=record.model).inc(saved)
+                method = ""
+                metric_lever = lever
+                if lever.startswith("compact_tool_output:"):
+                    metric_lever, method = lever.split(":", 1)
+                self._tokens_saved_counter.labels(lever=metric_lever, model=record.model).inc(saved)
+                if method:
+                    self._emit_compact_method_metric(method, record.model, saved)
 
             # Also emit a total across all levers
             if total_saved > 0:
@@ -130,6 +163,21 @@ class ContextBudgetRecorder:
 
         except Exception:
             # Silently fail if Prometheus is not available or metric emission fails
+            pass
+
+    def _emit_compact_method_metric(self, method: str, model: str, saved: int) -> None:
+        try:
+            from prometheus_client import Counter
+
+            if not hasattr(self, "_compact_tokens_saved_counter"):
+                self._compact_tokens_saved_counter = Counter(
+                    "atelier_compact_tool_output_tokens_saved_total",
+                    "Total tokens saved by compact tool output method",
+                    ["method", "model"],
+                )
+
+            self._compact_tokens_saved_counter.labels(method=method, model=model).inc(saved)
+        except Exception:
             pass
 
     def aggregate_run(self, run_id: str) -> RunSavings:
@@ -148,7 +196,13 @@ class ContextBudgetRecorder:
 
         for record in records:
             for lever, saved in record.lever_savings.items():
-                result.lever_totals[lever] = result.lever_totals.get(lever, 0) + saved
+                metric_lever = lever
+                if lever.startswith("compact_tool_output:"):
+                    metric_lever, method = lever.split(":", 1)
+                    result.compact_method_totals[method] = (
+                        result.compact_method_totals.get(method, 0) + saved
+                    )
+                result.lever_totals[metric_lever] = result.lever_totals.get(metric_lever, 0) + saved
                 result.total_tokens_saved += saved
 
         return result

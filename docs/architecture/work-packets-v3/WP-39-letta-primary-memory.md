@@ -6,7 +6,7 @@ boundary: Atelier-core
 owner_agent: atelier:code
 depends_on: [WP-35]
 supersedes: []
-status: ready
+status: done
 ---
 
 # WP-39 — Letta primary memory + self-hosted Docker

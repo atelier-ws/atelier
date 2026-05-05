@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import datetime
 
@@ -43,6 +44,7 @@ class ArchivalRecallCapability:
                 text=chunk,
                 embedding=embedding,
                 embedding_model=self._embedder.name if embedding is not None else "",
+                embedding_provenance=self._embedder.__class__.__name__,
                 tags=tags or [],
                 source=source,
                 source_ref=source_ref,
@@ -80,10 +82,24 @@ class ArchivalRecallCapability:
             since=since,
             top_k=top_k,
         )
+        recall_query = clean_query
+        if not ranked:
+            widened_query = _widen_query(clean_query)
+            if widened_query and widened_query != clean_query:
+                passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=500)
+                ranked = rank_archival_passages(
+                    query=widened_query,
+                    passages=passages,
+                    query_embedding=query_embedding,
+                    tags=tags,
+                    since=since,
+                    top_k=top_k,
+                )
+                recall_query = widened_query
         selected = [item.passage for item in ranked]
         recall = MemoryRecall(
             agent_id=agent_id,
-            query=clean_query,
+            query=recall_query,
             top_passages=[passage.id for passage in selected],
             selected_passage_id=selected[0].id if selected else None,
         )
@@ -108,6 +124,15 @@ def _chunk_text(
         if start + window_tokens >= len(tokens):
             break
     return chunks
+
+
+def _widen_query(query: str) -> str:
+    without_quotes = re.sub(r"(['\"]).*?\1", " ", query.lower())
+    without_bool = re.sub(r"\bAND\b", " OR ", without_quotes, flags=re.IGNORECASE)
+    terms = re.findall(r"[a-z0-9_]+", without_bool)
+    stop = {"and", "or", "the", "a", "an", "to", "of", "in", "for", "with", "on"}
+    useful = [term for term in terms if term not in stop]
+    return " OR ".join(useful[:3])
 
 
 __all__ = ["ArchivalRecallCapability"]
