@@ -13,9 +13,7 @@ from atelier.gateway.adapters.cli import cli
 from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
 
 
-def test_cli_reembed_rewrites_legacy_archival_passage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_reembed_rewrites_legacy_archival_passage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / ".atelier"
     store = ReasoningStore(root)
     store.init()

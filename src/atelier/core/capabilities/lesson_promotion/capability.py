@@ -40,9 +40,7 @@ class LessonPromoterCapability:
         self.store = store
         self._now = now or (lambda: datetime.now(UTC))
         self._embedder = embedder or make_embedder()
-        self._cluster_threshold = cluster_threshold or float(
-            os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85")
-        )
+        self._cluster_threshold = cluster_threshold or float(os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85"))
         self._trace_embedding_cache: dict[str, list[float]] = {}
         self._recent_failed_by_domain: dict[str, list[Trace]] = {}
 

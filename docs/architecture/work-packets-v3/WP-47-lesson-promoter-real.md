@@ -57,13 +57,13 @@ recall miss rate.
 
 - **NEW:** `src/atelier/core/capabilities/lesson_promotion/reflection.py`:
   - `draft_lesson_body(cluster_traces) -> str` that:
-    - Composes a stable prompt: *"From these failed attempts and the eventual fix, write a
+    - Composes a stable prompt: _"From these failed attempts and the eventual fix, write a
       one-paragraph procedural reflection: what was the dead-end, what worked, when does
-      this apply?"*
+      this apply?"_
     - Calls `internal_llm.ollama_client.summarize` with the cluster's traces.
     - Returns the reflection paragraph.
   - On `OllamaUnavailable`, falls back to the V2 mechanical concatenation (so the lesson
-    pipeline still produces *something*, just lower quality). Logs at INFO.
+    pipeline still produces _something_, just lower quality). Logs at INFO.
 - **EDIT:** `src/atelier/core/capabilities/lesson_promotion/capability.py` — when a cluster
   reaches threshold, call `draft_lesson_body` and store the result as
   `LessonCandidate.body`. Keep the raw cluster traces in `LessonCandidate.evidence` so
@@ -77,7 +77,7 @@ recall miss rate.
   - Drop quoted strings (often noisy in coding errors).
   - Loosen any boolean AND filters to OR.
   - Truncate query to top-3 terms by IDF if available.
-  Return whatever the second pass produces. If still empty, return empty.
+    Return whatever the second pass produces. If still empty, return empty.
 - Telemetry: record `recall_pass=1|2` and `recall_widened_hits` so we can measure how often
   the retry actually rescues a query.
 
@@ -97,7 +97,7 @@ recall miss rate.
 - **NEW:** `tests/infra/test_recall_refinement_retry.py` — empty first pass triggers second
   pass with widened query; matches expected hits; non-empty first pass does NOT retry.
 - **NEW:** `benchmarks/lesson_promoter/200_trace_fixture.yaml` — labelled fixture.
-  Synthetic traces; labels indicate which clusters *should* form a lesson.
+  Synthetic traces; labels indicate which clusters _should_ form a lesson.
 
 ## How to execute
 
@@ -110,7 +110,7 @@ recall miss rate.
    - If max cosine ≥ threshold: assign to that cluster.
    - Else: open a new cluster.
    - Promote when cluster size ≥ 3.
-   Intentionally simple — V3 is not the place to introduce a new clustering algorithm.
+     Intentionally simple — V3 is not the place to introduce a new clustering algorithm.
 
 3. **Add Reflexion step.** Goes between "cluster reaches threshold" and "candidate written
    to DB". Failing Ollama is non-fatal; promoter logs and falls back.

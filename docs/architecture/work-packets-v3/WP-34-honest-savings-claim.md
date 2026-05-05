@@ -27,7 +27,7 @@ pass. We need to either:
   the open WP-50 ("publish honest benchmark") — **this packet's path**, OR
 - (b) **Replace** the headline with a real measurement — that is WP-50's job.
 
-WP-34 is the *retraction* and *CI gate* step. WP-50 is the *replacement* step. They are split
+WP-34 is the _retraction_ and _CI gate_ step. WP-50 is the _replacement_ step. They are split
 because the retraction must ship in V3.0 unconditionally; the replacement requires the rest of
 Phase H + I to be in place.
 
@@ -37,14 +37,14 @@ Phase H + I to be in place.
   must be either:
   - A V3 design target with an explicit "(design target — see WP-50)" footnote, OR
   - A linked measurement from a `BenchmarkRun` row published after WP-50.
-  No bare percentages.
+    No bare percentages.
 - **EDIT:** `docs/benchmarks/v2-context-savings.md` — add a banner at the top:
   > **2026-05-04 correction:** the "81 %" figure on this page is derived from hand-written
   > YAML constants, not a measurement. See [V3 plan § 0](../IMPLEMENTATION_PLAN_V3.md)
   > and [WP-34](WP-34-honest-savings-claim.md) for the
   > retraction; see [WP-50](WP-50-honest-benchmark-publish.md)
   > for the replacement methodology.
-  Do not delete the page (it is referenced from V2 traces).
+  > Do not delete the page (it is referenced from V2 traces).
 - **EDIT:** `docs/benchmarks/phase7-2026-04-29.md` — same banner.
 - **NEW:** `tests/docs/test_readme_no_unmeasured_claims.py` — CI gate that scans `README.md`
   and `docs/benchmarks/*.md` for percentage tokens (`/\b\d+(\.\d+)?\s*%/`), and fails for any
@@ -56,7 +56,7 @@ Phase H + I to be in place.
   contains a `reduction_pct` or equivalent constant. The yaml is allowed to define prompts;
   it may not embed answers.
 - **EDIT:** `benchmarks/swe/savings_bench.py` — add a header docstring stating that the file
-  is *deprecated for measurement* until WP-50 lands; the existing assertion remains as a
+  is _deprecated for measurement_ until WP-50 lands; the existing assertion remains as a
   smoke test but its threshold is reduced from `≥ 50.0` to `≥ 0.0` (i.e., the test now only
   asserts the runner doesn't crash, not that any savings exist).
 - **EDIT:** `tests/infra/test_context_savings_50pct.py` — rename to
@@ -66,9 +66,11 @@ Phase H + I to be in place.
 ## How to execute
 
 1. **Inventory every percentage claim** in the codebase first:
+
    ```bash
    grep -rn -E '[0-9]+(\.[0-9]+)?\s*%' README.md docs/ | grep -v node_modules
    ```
+
    Record the list in the PR description.
 
 2. **Categorize each one:**
@@ -78,10 +80,11 @@ Phase H + I to be in place.
 
 3. **Edit the README.** The most likely fix is replacing the "81 % reduction across major
    models" line with something like:
+
    > **Context savings** — Atelier ships deterministic context-savings tools
    > (`atelier_search_read`, `atelier_batch_edit`, AST outline-first reads, scoped recall).
    > A measured reduction will be published with V3.0; see
-  > [WP-50](WP-50-honest-benchmark-publish.md) for
+   > [WP-50](WP-50-honest-benchmark-publish.md) for
    > methodology. Until then, treat all percentage figures in this README as design targets.
 
 4. **Edit the existing benchmark docs** with the correction banner. Keep the original numbers
