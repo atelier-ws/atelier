@@ -93,9 +93,7 @@ def test_extract_tags_unknown_extension_returns_empty(tmp_path: Path) -> None:
 
 
 def test_build_repo_map_respects_budget(tmp_path: Path) -> None:
-    (tmp_path / "a.py").write_text(
-        "import b\n\ndef alpha():\n    return b.beta()\n", encoding="utf-8"
-    )
+    (tmp_path / "a.py").write_text("import b\n\ndef alpha():\n    return b.beta()\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def beta():\n    return 1\n", encoding="utf-8")
 
     result = build_repo_map(tmp_path, seed_files=["a.py"], budget_tokens=80)

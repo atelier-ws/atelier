@@ -64,9 +64,7 @@ def import_files(
     resolved_domain = domain or _DEFAULT_DOMAIN
     files = collect_markdown_files(paths)
     active_embedder = embedder or LocalEmbedder()
-    existing_blocks = (
-        store.list_blocks(domain=resolved_domain, include_deprecated=True) if store else []
-    )
+    existing_blocks = store.list_blocks(domain=resolved_domain, include_deprecated=True) if store else []
     existing_vectors = _embed_existing_blocks(existing_blocks, active_embedder)
     candidates: list[LessonCandidate] = []
 
@@ -122,9 +120,7 @@ def split_markdown_chunks(path: Path, *, max_tokens: int = 800) -> list[Markdown
     return split_markdown_text(text, file_path=path, max_tokens=max_tokens)
 
 
-def split_markdown_text(
-    text: str, *, file_path: Path, max_tokens: int = 800
-) -> list[MarkdownChunk]:
+def split_markdown_text(text: str, *, file_path: Path, max_tokens: int = 800) -> list[MarkdownChunk]:
     """Split Markdown at H2/H3 boundaries while respecting fenced code blocks."""
 
     lines = text.splitlines()
@@ -302,9 +298,7 @@ def _response_dict(response: str | dict[str, Any]) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"procedural": False}
 
 
-def _embed_existing_blocks(
-    blocks: list[ReasonBlock], embedder: Embedder
-) -> list[tuple[ReasonBlock, list[float]]]:
+def _embed_existing_blocks(blocks: list[ReasonBlock], embedder: Embedder) -> list[tuple[ReasonBlock, list[float]]]:
     out: list[tuple[ReasonBlock, list[float]]] = []
     for block in blocks:
         out.append((block, _embed_block(block, embedder)))
@@ -333,9 +327,7 @@ def _near_duplicates(
         similarity = 0.0
         if embedding and existing_embedding and len(embedding) == len(existing_embedding):
             similarity = cosine_similarity(embedding, existing_embedding)
-        existing_tokens = _tokens(
-            " ".join([existing.title, existing.situation, *existing.procedure])
-        )
+        existing_tokens = _tokens(" ".join([existing.title, existing.situation, *existing.procedure]))
         lexical = len(block_tokens & existing_tokens) / max(1, len(block_tokens | existing_tokens))
         score = max(similarity, lexical)
         if score >= threshold:

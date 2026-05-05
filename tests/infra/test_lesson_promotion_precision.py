@@ -23,9 +23,7 @@ def _fixture_path() -> Path:
     return Path("tests/fixtures/200_failed_traces.jsonl")
 
 
-def test_lesson_promotion_precision_on_fixture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_lesson_promotion_precision_on_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "atelier.core.capabilities.lesson_promotion.capability.draft_lesson_body",
         lambda traces: "fixture lesson body",
