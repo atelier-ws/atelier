@@ -64,9 +64,7 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = (
-                param.annotation if param.annotation is not inspect.Parameter.empty else Any
-            )
+            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -615,9 +613,7 @@ def tool_proof_report(
     # Load last saved report
     maybe_report = capability.load()
     if maybe_report is None:
-        return {
-            "error": "No proof report found. Call atelier_proof_report with run_id to generate one."
-        }
+        return {"error": "No proof report found. Call atelier_proof_report with run_id to generate one."}
     return to_jsonable(maybe_report)
 
 
@@ -1063,9 +1059,7 @@ def tool_memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = (
-        expected_version if expected_version is not None else (existing.version if existing else 1)
-    )
+    version = expected_version if expected_version is not None else (existing.version if existing else 1)
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1101,9 +1095,7 @@ def tool_memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(
-            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
-        )
+        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1625,11 +1617,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
             led = _get_ledger()
             result_text = json.dumps(result, ensure_ascii=False, default=str)
-            compact_text = (
-                result_text
-                if len(result_text) <= 1200
-                else result_text[:600] + "..." + result_text[-600:]
-            )
+            compact_text = result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
             led.record(
                 "tool_result",
                 f"{name} result",
@@ -1648,9 +1636,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(
                 rid,
                 {
-                    "content": [
-                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
-                    ],
+                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
                     "structuredContent": result,
                 },
             )

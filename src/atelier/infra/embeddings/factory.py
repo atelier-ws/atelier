@@ -30,9 +30,7 @@ def make_embedder(*, pin: str | None = None) -> Embedder:
 
     if chosen:
         if chosen not in _PIN_CHOICES:
-            raise ValueError(
-                f"Unknown embedder pin {chosen!r}; must be one of {sorted(_PIN_CHOICES)}"
-            )
+            raise ValueError(f"Unknown embedder pin {chosen!r}; must be one of {sorted(_PIN_CHOICES)}")
         if chosen == "null":
             return NullEmbedder()
         if chosen == "local":

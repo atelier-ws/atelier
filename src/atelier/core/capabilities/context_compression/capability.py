@@ -51,9 +51,7 @@ class ContextCompressionCapability:
         # Normalise LedgerEvent Pydantic models to plain dicts
         events: list[dict[str, Any]] = [_normalise_event(ev) for ev in raw_events]
 
-        chars_before = sum(
-            len(str(ev.get("summary", ""))) + len(str(ev.get("payload", ""))) for ev in events
-        )
+        chars_before = sum(len(str(ev.get("summary", ""))) + len(str(ev.get("payload", ""))) for ev in events)
 
         # Step 1: Deduplicate near-identical outputs
         events_deduped, dropped_events = deduplicate_tool_outputs(events)
@@ -94,17 +92,11 @@ class ContextCompressionCapability:
         dropped += budget_dropped
 
         chars_after = used_chars
-        reduction_pct = (
-            round(100.0 * (chars_before - chars_after) / chars_before, 1)
-            if chars_before > 0
-            else 0.0
-        )
+        reduction_pct = round(100.0 * (chars_before - chars_after) / chars_before, 1) if chars_before > 0 else 0.0
         token_savings = (chars_before - chars_after) // _CHARS_PER_TOKEN
 
         # Build preserved_facts from selected events (highest importance first)
-        preserved_facts = [
-            f"[{ev.get('kind', '?')}] {str(ev.get('summary', ''))[:200]}" for ev in selected[:20]
-        ]
+        preserved_facts = [f"[{ev.get('kind', '?')}] {str(ev.get('summary', ''))[:200]}" for ev in selected[:20]]
 
         return CompressionResult(
             chars_before=chars_before,

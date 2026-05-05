@@ -45,7 +45,7 @@ This packet absorbs three earlier candidates that are all special cases of the s
       compression (see § "Deterministic strategies").
     - `> 2000 tokens`: `ollama_summary` — call `internal_llm.ollama_client.summarize` with
       explicit `budget_tokens`. On `OllamaUnavailable`, downgrade to
-      `deterministic_truncate` (so the tool always returns *something*).
+      `deterministic_truncate` (so the tool always returns _something_).
   - `CompactResult` Pydantic model:
     ```python
     class CompactResult(BaseModel):
@@ -62,7 +62,7 @@ This packet absorbs three earlier candidates that are all special cases of the s
     trajectory if `trajectory_files` arg passed.
   - `grep.py`: cluster hits by file; keep first 3 hits per file + count of remainder.
   - `bash.py`: keep stderr fully; truncate stdout to first/last K lines + `… (N lines
-    elided) …`. Recovery hint includes the exact rerun command if known.
+elided) …`. Recovery hint includes the exact rerun command if known.
   - `tool_output.py`: schema-and-sample for JSON/structured outputs (per SR2's pattern);
     raw-text fallback otherwise.
 - **EDIT:** `src/atelier/gateway/mcp_server.py` — register
@@ -102,13 +102,13 @@ This packet absorbs three earlier candidates that are all special cases of the s
 
 ## Deterministic strategies (cheat sheet)
 
-| `content_type` | Strategy at 500-2000 tokens |
-|---|---|
-| `file` | AST outline (V2 capability); if same file appears earlier in `trajectory_files`, replace with `[file X already read at step N — see above]` |
-| `grep` | Group hits by file; keep first 3 per file + `... and 17 more in foo.py` |
-| `bash` | Full stderr; first 50 + last 50 lines of stdout with `… (X lines elided) …` |
-| `tool_output` | JSON schema + 1-2 representative items + `len(items)` summary |
-| `unknown` | Truncate to first/last K characters with elision marker |
+| `content_type` | Strategy at 500-2000 tokens                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`         | AST outline (V2 capability); if same file appears earlier in `trajectory_files`, replace with `[file X already read at step N — see above]` |
+| `grep`         | Group hits by file; keep first 3 per file + `... and 17 more in foo.py`                                                                     |
+| `bash`         | Full stderr; first 50 + last 50 lines of stdout with `… (X lines elided) …`                                                                 |
+| `tool_output`  | JSON schema + 1-2 representative items + `len(items)` summary                                                                               |
+| `unknown`      | Truncate to first/last K characters with elision marker                                                                                     |
 
 Recovery hint always includes: how to re-fetch the original (offset/limit args, full path,
 rerun command, or `query` to repeat). Format consistent across strategies so an agent prompt

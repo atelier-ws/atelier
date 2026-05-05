@@ -103,9 +103,7 @@ def compact(
 ) -> CompactResult:
     """Compact tool output based on token thresholds."""
     original_tokens = _count_tokens(content)
-    hint = (
-        recovery_hint or "Re-run the original tool call or request the full output by path/range."
-    )
+    hint = recovery_hint or "Re-run the original tool call or request the full output by path/range."
     if original_tokens < 500:
         return CompactResult(
             compacted=content,

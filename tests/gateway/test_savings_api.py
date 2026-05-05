@@ -70,9 +70,7 @@ def _write_cost_history(path: Path) -> None:
     path.write_text(json.dumps(history), encoding="utf-8")
 
 
-def test_savings_summary_returns_per_lever_and_by_day(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_savings_summary_returns_per_lever_and_by_day(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _write_cost_history(root / "cost_history.json")
 

@@ -33,10 +33,7 @@ def build_repo_map(
     root = Path(repo_root)
     graph, tags_by_file = build_reference_graph(root)
     scores = personalized_pagerank(graph, seed_files or [])
-    ranked_files = [
-        file_name
-        for file_name, _score in sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    ]
+    ranked_files = [file_name for file_name, _score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]
 
     def render(files: list[str]) -> str:
         return render_outline(tags_by_file, files)

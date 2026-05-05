@@ -52,9 +52,11 @@ integration packets cannot honestly measure improvement against a baseline that 
 ## How to execute
 
 1. **Inventory callers first** — do NOT start editing until you have run:
+
    ```bash
    grep -rn "stub_embedding" src/atelier/
    ```
+
    Record the full list in the PR description so reviewers can verify nothing is missed.
 
 2. **Replace each caller in the smallest possible diff.** For each call site:

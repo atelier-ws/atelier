@@ -35,7 +35,7 @@ Every V3 packet declares one of these in its `boundary:` front-matter field:
 - **Cleanup** — removes code, retracts a claim, or tightens a contract. May not add new
   subsystems and may not add runtime dependencies.
 - **Atelier-core** — hardens an existing capability that Atelier already owns (memory tools,
-  lesson pipeline). May not change what Atelier *is*.
+  lesson pipeline). May not change what Atelier _is_.
 - **Migration** — documents or implements V2→V3 transition. May not change runtime behavior.
 
 There is no `OSS-adoption` or `Runtime` label in V3 because V3 does not adopt new runtime
@@ -45,12 +45,12 @@ dependencies and does not introduce a runtime.
 
 ## Phase Z — Truth & cleanup (blocking)
 
-| WP                                              | Title                                              | Owner        | Boundary | Depends on | Status |
-| ----------------------------------------------- | -------------------------------------------------- | ------------ | -------- | ---------- | ------ |
-| [WP-33](WP-33-strip-stub-embedding.md)          | Delete `stub_embedding`; route all callers through `Embedder` | atelier:code | Cleanup  | —          | done  |
-| [WP-34](WP-34-honest-savings-claim.md)          | Retract or qualify the 81 % savings headline; CI gate against unmeasured claims | atelier:code | Cleanup  | —          | done  |
-| [WP-35](WP-35-resolve-letta-dual-write.md)      | Resolve `LettaMemoryStore` dual-write — pick one primary backend | atelier:code | Cleanup  | WP-33      | done  |
-| [WP-36](WP-36-sleeptime-honest-or-gone.md)      | Real LLM-call sleeptime summarizer OR remove from savings story | atelier:code | Cleanup  | WP-33      | done  |
+| WP                                         | Title                                                                           | Owner        | Boundary | Depends on | Status |
+| ------------------------------------------ | ------------------------------------------------------------------------------- | ------------ | -------- | ---------- | ------ |
+| [WP-33](WP-33-strip-stub-embedding.md)     | Delete `stub_embedding`; route all callers through `Embedder`                   | atelier:code | Cleanup  | —          | done   |
+| [WP-34](WP-34-honest-savings-claim.md)     | Retract or qualify the 81 % savings headline; CI gate against unmeasured claims | atelier:code | Cleanup  | —          | done   |
+| [WP-35](WP-35-resolve-letta-dual-write.md) | Resolve `LettaMemoryStore` dual-write — pick one primary backend                | atelier:code | Cleanup  | WP-33      | done   |
+| [WP-36](WP-36-sleeptime-honest-or-gone.md) | Real LLM-call sleeptime summarizer OR remove from savings story                 | atelier:code | Cleanup  | WP-33      | done   |
 
 **Phase Z gate:** all four `done` before any Phase I packet starts.
 
@@ -60,30 +60,30 @@ dependencies and does not introduce a runtime.
 
 Two packets that finish what V2 left half-built. Both depend on Phase Z cleanups.
 
-| WP                                              | Title                                              | Owner        | Boundary       | Depends on | Status |
-| ----------------------------------------------- | -------------------------------------------------- | ------------ | -------------- | ---------- | ------ |
-| [WP-39](WP-39-letta-primary-memory.md)          | Letta as primary memory backend behind the existing `memory_*` MCP tools (no more dual-write) | atelier:code | Atelier-core  | WP-35      | done  |
-| [WP-47](WP-47-lesson-promoter-real.md)          | Rebuild `LessonPromoter` clustering on real embeddings; hit precision target | atelier:code | Atelier-core  | WP-33      | done  |
+| WP                                     | Title                                                                                         | Owner        | Boundary     | Depends on | Status |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- | ------------ | ------------ | ---------- | ------ |
+| [WP-39](WP-39-letta-primary-memory.md) | Letta as primary memory backend behind the existing `memory_*` MCP tools (no more dual-write) | atelier:code | Atelier-core | WP-35      | done   |
+| [WP-47](WP-47-lesson-promoter-real.md) | Rebuild `LessonPromoter` clustering on real embeddings; hit precision target                  | atelier:code | Atelier-core | WP-33      | done   |
 
 ---
 
 ## Phase J — Migration & honesty
 
-| WP                                              | Title                                              | Owner        | Boundary    | Depends on            | Status |
-| ----------------------------------------------- | -------------------------------------------------- | ------------ | ----------- | --------------------- | ------ |
-| [WP-49](WP-49-v2-to-v3-migration-doc.md)        | V2→V3 migration doc + deprecation matrix          | atelier:code | Migration   | WP-33 … WP-47         | done  |
-| [WP-50](WP-50-honest-benchmark-publish.md)      | Publish V3 honest benchmark; replace 81 % story    | atelier:code | Cleanup     | WP-34, WP-39, WP-47   | done  |
+| WP                                         | Title                                           | Owner        | Boundary  | Depends on          | Status |
+| ------------------------------------------ | ----------------------------------------------- | ------------ | --------- | ------------------- | ------ |
+| [WP-49](WP-49-v2-to-v3-migration-doc.md)   | V2→V3 migration doc + deprecation matrix        | atelier:code | Migration | WP-33 … WP-47       | done   |
+| [WP-50](WP-50-honest-benchmark-publish.md) | Publish V3 honest benchmark; replace 81 % story | atelier:code | Cleanup   | WP-34, WP-39, WP-47 | done   |
 
 ---
 
 ## Phase V3.1 — Runtime hardening
 
-| WP                                              | Title                                              | Owner        | Boundary       | Depends on | Status |
-| ----------------------------------------------- | -------------------------------------------------- | ------------ | -------------- | ---------- | ------ |
-| [WP-V3.1-A](WP-V3.1-A-compact-tool-output.md)   | Threshold-triggered tool-output compaction         | atelier:code | Atelier-core   | WP-33 … WP-50 | done  |
-| [WP-V3.1-B](WP-V3.1-B-pagerank-repo-map.md)     | PageRank repo map MCP tool                         | atelier:code | Atelier-core   | WP-33 … WP-50 | done  |
-| [WP-V3.1-C](WP-V3.1-C-sleeptime-consolidation.md) | Sleep-time trace consolidation worker            | atelier:code | Atelier-core   | WP-V3.1-A, WP-47 | done  |
-| [WP-V3.1-D](WP-V3.1-D-memory-arbitrator.md)     | Four-op memory arbitrator                          | atelier:code | Atelier-core   | WP-33 … WP-50 | done  |
+| WP                                                | Title                                      | Owner        | Boundary     | Depends on       | Status |
+| ------------------------------------------------- | ------------------------------------------ | ------------ | ------------ | ---------------- | ------ |
+| [WP-V3.1-A](WP-V3.1-A-compact-tool-output.md)     | Threshold-triggered tool-output compaction | atelier:code | Atelier-core | WP-33 … WP-50    | done   |
+| [WP-V3.1-B](WP-V3.1-B-pagerank-repo-map.md)       | PageRank repo map MCP tool                 | atelier:code | Atelier-core | WP-33 … WP-50    | done   |
+| [WP-V3.1-C](WP-V3.1-C-sleeptime-consolidation.md) | Sleep-time trace consolidation worker      | atelier:code | Atelier-core | WP-V3.1-A, WP-47 | done   |
+| [WP-V3.1-D](WP-V3.1-D-memory-arbitrator.md)       | Four-op memory arbitrator                  | atelier:code | Atelier-core | WP-33 … WP-50    | done   |
 
 ---
 

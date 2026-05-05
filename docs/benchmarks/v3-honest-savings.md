@@ -17,25 +17,25 @@ The harness uses `tiktoken` with `cl100k_base`, writes run metadata into `benchm
 
 Generated with `make bench-savings-honest` on 2026-05-05. Latest persisted run id: `bench-019df7de-dc87-7829-b9f2-99efaddb98c0`.
 
-| Metric | Value |
-| --- | ---: |
-| Replay prompts | 50 |
-| Median baseline input tokens | 14 |
-| Median Atelier input tokens | 12 |
+| Metric                         |  Value |
+| ------------------------------ | -----: |
+| Replay prompts                 |     50 |
+| Median baseline input tokens   |     14 |
+| Median Atelier input tokens    |     12 |
 | Measured input-token reduction | 13.27% |
 
 Per-lever token attribution from the same run:
 
-| Lever | Tokens saved |
-| --- | ---: |
-| `batch_edit` | 24 |
-| `search_read` | 17 |
-| `memory_recall` | 15 |
-| `smart_read` | 12 |
-| `ast_truncation` | 9 |
-| `compact_tool_output` | 7 |
-| `sql_inspect` | 7 |
-| `repo_map` | 6 |
+| Lever                 | Tokens saved |
+| --------------------- | -----------: |
+| `batch_edit`          |           24 |
+| `search_read`         |           17 |
+| `memory_recall`       |           15 |
+| `smart_read`          |           12 |
+| `ast_truncation`      |            9 |
+| `compact_tool_output` |            7 |
+| `sql_inspect`         |            7 |
+| `repo_map`            |            6 |
 
 The per-prompt table is published as [v3-honest-savings-results.csv](v3-honest-savings-results.csv).
 

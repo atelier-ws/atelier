@@ -45,8 +45,8 @@ dependencies and does not introduce a runtime.
 
 ## Phase Z — Truth & cleanup (blocking)
 
-| WP                                         | Title                                                                           | Owner        | Boundary | Depends on | Status |
-| ------------------------------------------ | ------------------------------------------------------------------------------- | ------------ | -------- | ---------- | ------ |
+| WP                                                         | Title                                                                           | Owner        | Boundary | Depends on | Status |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------ | -------- | ---------- | ------ |
 | [WP-33](work-packets-v3/WP-33-strip-stub-embedding.md)     | Delete `stub_embedding`; route all callers through `Embedder`                   | atelier:code | Cleanup  | —          | ready  |
 | [WP-34](work-packets-v3/WP-34-honest-savings-claim.md)     | Retract or qualify the 81 % savings headline; CI gate against unmeasured claims | atelier:code | Cleanup  | —          | ready  |
 | [WP-35](work-packets-v3/WP-35-resolve-letta-dual-write.md) | Resolve `LettaMemoryStore` dual-write — pick one primary backend                | atelier:code | Cleanup  | WP-33      | ready  |
@@ -60,8 +60,8 @@ dependencies and does not introduce a runtime.
 
 Two packets that finish what V2 left half-built. Both depend on Phase Z cleanups.
 
-| WP                                     | Title                                                                                         | Owner        | Boundary     | Depends on | Status |
-| -------------------------------------- | --------------------------------------------------------------------------------------------- | ------------ | ------------ | ---------- | ------ |
+| WP                                                     | Title                                                                                         | Owner        | Boundary     | Depends on | Status |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------ | ------------ | ---------- | ------ |
 | [WP-39](work-packets-v3/WP-39-letta-primary-memory.md) | Letta as primary memory backend behind the existing `memory_*` MCP tools (no more dual-write) | atelier:code | Atelier-core | WP-35      | ready  |
 | [WP-47](work-packets-v3/WP-47-lesson-promoter-real.md) | Rebuild `LessonPromoter` clustering on real embeddings; hit precision target                  | atelier:code | Atelier-core | WP-33      | ready  |
 
@@ -69,8 +69,8 @@ Two packets that finish what V2 left half-built. Both depend on Phase Z cleanups
 
 ## Phase J — Migration & honesty
 
-| WP                                         | Title                                           | Owner        | Boundary  | Depends on          | Status |
-| ------------------------------------------ | ----------------------------------------------- | ------------ | --------- | ------------------- | ------ |
+| WP                                                         | Title                                           | Owner        | Boundary  | Depends on          | Status |
+| ---------------------------------------------------------- | ----------------------------------------------- | ------------ | --------- | ------------------- | ------ |
 | [WP-49](work-packets-v3/WP-49-v2-to-v3-migration-doc.md)   | V2→V3 migration doc + deprecation matrix        | atelier:code | Migration | WP-33 … WP-47       | ready  |
 | [WP-50](work-packets-v3/WP-50-honest-benchmark-publish.md) | Publish V3 honest benchmark; replace 81 % story | atelier:code | Cleanup   | WP-34, WP-39, WP-47 | ready  |
 
@@ -778,7 +778,7 @@ Phase H + I to be in place.
    > **Context savings** — Atelier ships deterministic context-savings tools
    > (`atelier_search_read`, `atelier_batch_edit`, AST outline-first reads, scoped recall).
    > A measured reduction will be published with V3.0; see
-  > [WP-50](work-packets-v3/WP-50-honest-benchmark-publish.md) for
+   > [WP-50](work-packets-v3/WP-50-honest-benchmark-publish.md) for
    > methodology. Until then, treat all percentage figures in this README as design targets.
 
 4. **Edit the existing benchmark docs** with the correction banner. Keep the original numbers

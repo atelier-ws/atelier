@@ -26,7 +26,7 @@ The result: when Letta is configured, you pay double-write cost for marginal ben
 "Letta-backed" archival is actually SQLite-FTS-backed. This blocks WP-39 ("Letta as primary")
 because WP-39 cannot honestly migrate data while two stores diverge.
 
-WP-35 is the *decision* and *cleanup*. WP-39 is the *implementation* of the chosen primary.
+WP-35 is the _decision_ and _cleanup_. WP-39 is the _implementation_ of the chosen primary.
 
 ## Decision (made by this packet)
 
@@ -48,7 +48,7 @@ The dual-write path is removed. Period. Two stores of truth is the bug, not the 
 ## Files touched
 
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — remove every `also_write_sqlite`
-  / dual-write code path. The adapter becomes a *pure* Letta client wrapper. If Letta is
+  / dual-write code path. The adapter becomes a _pure_ Letta client wrapper. If Letta is
   unavailable, raise `MemorySidecarUnavailable`.
 - **EDIT:** `src/atelier/infra/storage/factory.py::make_memory_store()` — read
   `[memory].backend` from config (with env-var override `ATELIER_MEMORY_BACKEND`). Return
@@ -85,7 +85,7 @@ The dual-write path is removed. Period. Two stores of truth is the bug, not the 
 
 3. **Implement the real Letta archival search.** Use `letta-client`'s archival endpoint
    (check the V3 reference docstring or letta-client README). The cosine + BM25 hybrid math
-   stays as a **policy** applied on the result list — the *retrieval* itself is delegated to
+   stays as a **policy** applied on the result list — the _retrieval_ itself is delegated to
    Letta. (This is consistent with the V3 boundary rule: we don't write a vector store; we
    apply ranking on top of one.)
 
