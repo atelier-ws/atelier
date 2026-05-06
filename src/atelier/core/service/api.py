@@ -19,7 +19,9 @@ Or via CLI::
 
 from __future__ import annotations
 
+import contextlib
 import json
+import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -67,7 +69,19 @@ from atelier.core.service.schemas import (
     UpsertEnvironmentRequest,
     UpsertRubricRequest,
 )
-from atelier.core.service.telemetry import emit_audit
+from atelier.core.service.telemetry import (
+    emit_audit,
+    emit_product,
+    emit_product_local,
+    init_product_telemetry,
+    set_remote_enabled,
+)
+from atelier.core.service.telemetry.banner import mark_acknowledged
+from atelier.core.service.telemetry.config import save_telemetry_config
+from atelier.core.service.telemetry.exporters.posthog_frontend import frontend_telemetry_config
+from atelier.core.service.telemetry.frustration import match_frustration
+from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+from atelier.core.service.telemetry.schema import bucket_duration_ms, hash_identifier, schema_dump
 from atelier.gateway.hosts import HostRegistry, HostStatus
 from atelier.infra.runtime.cost_tracker import CostTracker, load_cost_history
 from atelier.infra.storage.factory import create_store
@@ -165,7 +179,9 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
 
             total_naive += naive
             total_actual += actual
-            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(0, naive - actual)
+            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(
+                0, naive - actual
+            )
 
             at_raw = str(call.get("at", ""))
             try:
@@ -178,7 +194,9 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
                 by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
                 by_day_seed[day_key]["actual"] = int(by_day_seed[day_key]["actual"]) + actual
 
-    reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    reduction_pct = (
+        round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    )
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
 
     # USD cost savings (from CostTracker baseline comparison).
@@ -233,6 +251,36 @@ def create_app(*, store: Any = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    init_product_telemetry(service_version="0.1.0")
+
+    @app.middleware("http")
+    async def product_telemetry_middleware(request: Request, call_next: Any) -> Any:
+        started_at = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            emit_product(
+                "api_request",
+                endpoint=_route_path(request),
+                method=request.method,
+                status_code=500,
+                duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+            )
+            raise
+        emit_product(
+            "api_request",
+            endpoint=_route_path(request),
+            method=request.method,
+            status_code=int(getattr(response, "status_code", 0) or 0),
+            duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+        )
+        return response
+
+    def _route_path(request: Request) -> str:
+        route = request.scope.get("route")
+        path = getattr(route, "path", None)
+        return str(path or request.url.path)
+
     # ------------------------------------------------------------------ #
     # Liveness / readiness                                                #
     # ------------------------------------------------------------------ #
@@ -268,6 +316,61 @@ def create_app(*, store: Any = None) -> FastAPI:
             }
             for name, spec in TOOLS.items()
         ]
+
+    # ------------------------------------------------------------------ #
+    # Product telemetry                                                   #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/telemetry/local", tags=["telemetry"])
+    def telemetry_local(
+        since: float | None = None,
+        event: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        return {"events": LocalTelemetryStore().list_events(since=since, event=event, limit=limit)}
+
+    @app.post("/telemetry/local", tags=["telemetry"])
+    def telemetry_local_write(payload: dict[str, Any]) -> dict[str, Any]:
+        event = str(payload.get("event", ""))
+        props = payload.get("props", {})
+        if not isinstance(props, dict):
+            raise HTTPException(status_code=400, detail="props must be an object")
+        emit_product_local(event, **props)
+        return {"ok": True}
+
+    @app.get("/telemetry/summary", tags=["telemetry"])
+    def telemetry_summary(since: float | None = None) -> dict[str, Any]:
+        return LocalTelemetryStore().summary(since=since)
+
+    @app.get("/telemetry/schema", tags=["telemetry"])
+    def telemetry_schema() -> dict[str, Any]:
+        return schema_dump()
+
+    @app.get("/telemetry/config", tags=["telemetry"])
+    def telemetry_config() -> dict[str, Any]:
+        return frontend_telemetry_config()
+
+    @app.post("/telemetry/config", tags=["telemetry"])
+    def telemetry_config_update(payload: dict[str, Any]) -> dict[str, Any]:
+        remote = payload.get("remote_enabled")
+        lexical = payload.get("lexical_frustration_enabled")
+        if remote is not None and not isinstance(remote, bool):
+            raise HTTPException(status_code=400, detail="remote_enabled must be boolean")
+        if lexical is not None and not isinstance(lexical, bool):
+            raise HTTPException(
+                status_code=400,
+                detail="lexical_frustration_enabled must be boolean",
+            )
+        if lexical is not None:
+            save_telemetry_config(lexical_frustration_enabled=lexical)
+        if remote is not None:
+            set_remote_enabled(remote)
+        return frontend_telemetry_config()
+
+    @app.post("/telemetry/ack", tags=["telemetry"])
+    def telemetry_ack() -> dict[str, Any]:
+        mark_acknowledged()
+        return frontend_telemetry_config()
 
     @app.post("/api/hosts/register", tags=["hosts"], response_model=HostRegisterResponse)
     def register_host(request: HostRegisterRequest) -> HostRegisterResponse:
@@ -305,7 +408,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                     status="registered",
                     active_domains=registration.metadata.get("active_domains", []),
                     mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
+                    last_seen=(
+                        registration.last_seen.isoformat() if registration.last_seen else None
+                    ),
                     atelier_version=registration.atelier_version,
                 )
             )
@@ -365,7 +470,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                     status="registered",
                     active_domains=registration.metadata.get("active_domains", []),
                     mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
+                    last_seen=(
+                        registration.last_seen.isoformat() if registration.last_seen else None
+                    ),
                     registered_at=registration.registered_at.isoformat(),
                     atelier_version=registration.atelier_version,
                 )
@@ -424,7 +531,11 @@ def create_app(*, store: Any = None) -> FastAPI:
 
         return HostStatusResponse(
             host_id=str(registration.host_id),
-            last_seen=(registration.last_seen.isoformat() if registration.last_seen else datetime.utcnow().isoformat()),
+            last_seen=(
+                registration.last_seen.isoformat()
+                if registration.last_seen
+                else datetime.utcnow().isoformat()
+            ),
             active_domains=registration.metadata.get("active_domains", []),
             available_mcp_tools=registration.metadata.get("mcp_tools", []),
             atelier_version=registration.atelier_version,
@@ -655,6 +766,27 @@ def create_app(*, store: Any = None) -> FastAPI:
     )
     def reasoning_context(req: ReasoningContextRequest) -> ReasoningContextResponse:
         rt = _runtime(get_store())
+        match_frustration(req.task, surface="api_body")
+        with contextlib.suppress(Exception):
+            scored = rt.core_runtime.reasoning_reuse.retrieve(
+                task=req.task,
+                domain=req.domain,
+                files=req.files,
+                tools=req.tools,
+                errors=req.errors,
+                limit=req.max_blocks,
+                token_budget=req.token_budget,
+                dedup=req.dedup,
+            )
+            for rank, item in enumerate(scored, start=1):
+                block = getattr(item, "block", None)
+                emit_product(
+                    "reasonblock_retrieved",
+                    block_id_hash=hash_identifier(str(getattr(block, "id", ""))),
+                    domain=str(getattr(block, "domain", req.domain or "")),
+                    retrieval_score=float(getattr(item, "score", 0.0)),
+                    rank=rank,
+                )
         text = rt.get_reasoning_context(
             task=req.task,
             domain=req.domain,
@@ -669,6 +801,14 @@ def create_app(*, store: Any = None) -> FastAPI:
             recall=req.recall,
         )
         payload = text if isinstance(text, dict) else {"context": text}
+        tokens_saved = payload.get("tokens_saved_vs_naive") if isinstance(payload, dict) else None
+        if isinstance(tokens_saved, int):
+            emit_product(
+                "value_estimate",
+                tokens_saved_estimate=tokens_saved,
+                cache_hits=0,
+                blocks_applied=len(payload.get("matched_blocks", []) or []),
+            )
         return ReasoningContextResponse.model_validate(payload)
 
     @app.post(
@@ -677,6 +817,7 @@ def create_app(*, store: Any = None) -> FastAPI:
         dependencies=[Depends(verify_api_key)],
     )
     def check_plan_endpoint(req: CheckPlanRequest) -> dict[str, Any]:
+        match_frustration(req.task, surface="api_body")
         result = check_plan(
             get_store(),
             task=req.task,
@@ -686,6 +827,22 @@ def create_app(*, store: Any = None) -> FastAPI:
             tools=req.tools,
             errors=req.errors,
         )
+        matched_blocks = list(getattr(result, "matched_blocks", []) or [])
+        if getattr(result, "status", "") == "blocked":
+            emit_product(
+                "plan_check_blocked",
+                domain=req.domain or "",
+                blocking_rule_id=hash_identifier(
+                    str(matched_blocks[0] if matched_blocks else "blocked")
+                ),
+                severity="high",
+            )
+        else:
+            emit_product(
+                "plan_check_passed",
+                domain=req.domain or "",
+                rule_count=len(matched_blocks),
+            )
         return to_jsonable(result)
 
     @app.post(
@@ -695,12 +852,20 @@ def create_app(*, store: Any = None) -> FastAPI:
     )
     def rescue(req: RescueRequest) -> dict[str, Any]:
         rt = _runtime(get_store())
+        match_frustration(req.task, surface="api_body")
+        match_frustration(req.error, surface="api_body")
         result = rt.rescue_failure(
             task=req.task,
             error=req.error,
             domain=req.domain,
             files=req.files,
             recent_actions=req.recent_actions,
+        )
+        matched = list(getattr(result, "matched_blocks", []) or [])
+        emit_product(
+            "rescue_offered",
+            cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
+            rescue_type="reasonblock" if matched else "summary",
         )
         return to_jsonable(result)
 
@@ -761,7 +926,9 @@ def create_app(*, store: Any = None) -> FastAPI:
         status: str | None = None,
         agent: str | None = None,
     ) -> list[dict[str, Any]]:
-        traces = get_store().list_traces(limit=limit, offset=offset, domain=domain, status=status, agent=agent)
+        traces = get_store().list_traces(
+            limit=limit, offset=offset, domain=domain, status=status, agent=agent
+        )
         return [to_jsonable(t) for t in traces]
 
     @app.get(
@@ -800,7 +967,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                     "tools_called": summary["tools_called"],
                     "commands_run": summary["commands_run"],
                     "errors_seen": snap.get("errors_seen", []),
-                    "repeated_failures": [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])],
+                    "repeated_failures": [
+                        {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
+                    ],
                     "diff_summary": "",
                     "output_summary": "",
                     "validation_results": [],
@@ -845,7 +1014,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                     redacted_items.append(item)
             payload[key] = redacted_items
         if "id" not in payload:
-            payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
+            payload["id"] = Trace.make_id(
+                payload.get("task", "untitled"), payload.get("agent", "agent")
+            )
         trace = Trace.model_validate(payload)
         get_store().record_trace(trace, write_json=False)
         emit_audit(
@@ -998,7 +1169,9 @@ def create_app(*, store: Any = None) -> FastAPI:
     @app.post("/api/benchmarks/run", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
     def run_benchmark(req: dict[str, Any]) -> dict[str, Any]:
         """Pack benchmark runner has been removed. Use domain bundles instead."""
-        raise HTTPException(status_code=410, detail="Pack benchmark runner removed. Use domain bundles.")
+        raise HTTPException(
+            status_code=410, detail="Pack benchmark runner removed. Use domain bundles."
+        )
 
     @app.get("/api/benchmarks", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
     def list_benchmarks(bundle_id: str | None = None, limit: int = 50) -> dict[str, Any]:
@@ -1177,8 +1350,12 @@ def create_app(*, store: Any = None) -> FastAPI:
                     mapped_status = "failed"
                 else:
                     mapped_status = "partial"  # unknown → treat as in-progress
-                tools_called = [{"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])]
-                repeated_failures = [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])]
+                tools_called = [
+                    {"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])
+                ]
+                repeated_failures = [
+                    {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
+                ]
                 live.append(
                     {
                         "id": snap.get("run_id", ""),
@@ -1311,7 +1488,9 @@ def create_app(*, store: Any = None) -> FastAPI:
         traces = st.list_traces(limit=10000)
 
         total_raw_tokens = sum(
-            sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in entry.get("calls", []))
+            sum(
+                c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in entry.get("calls", [])
+            )
             for entry in load_cost_history(Path(cfg.atelier_root)).get("operations", {}).values()
         )
 
@@ -1371,7 +1550,9 @@ def create_app(*, store: Any = None) -> FastAPI:
     # Raw artifacts                                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
+    @app.get(
+        "/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)]
+    )
     def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
         """Return metadata for a stored raw artifact."""
         store_inst = get_store()
@@ -1540,7 +1721,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                 claude_dir.mkdir(exist_ok=True)
                 config_path = claude_dir / "claude_desktop_config.json"
                 existing = (
-                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
+                    json.loads(config_path.read_text(encoding="utf-8"))
+                    if config_path.exists()
+                    else {"mcpServers": {}}
                 )
                 existing.setdefault("mcpServers", {}).update(config["mcpServers"])
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -1574,8 +1757,14 @@ def create_app(*, store: Any = None) -> FastAPI:
                 copilot_dir = config_dir / ".vscode"
                 copilot_dir.mkdir(exist_ok=True)
                 config_path = copilot_dir / "settings.json"
-                existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-                existing.setdefault("mcp", {}).setdefault("servers", {}).update(config["mcpServers"])
+                existing = (
+                    json.loads(config_path.read_text(encoding="utf-8"))
+                    if config_path.exists()
+                    else {}
+                )
+                existing.setdefault("mcp", {}).setdefault("servers", {}).update(
+                    config["mcpServers"]
+                )
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
             elif host_id == "gemini":
@@ -1583,7 +1772,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                 gemini_dir.mkdir(exist_ok=True)
                 config_path = gemini_dir / "settings.json"
                 existing = (
-                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
+                    json.loads(config_path.read_text(encoding="utf-8"))
+                    if config_path.exists()
+                    else {"mcpServers": {}}
                 )
                 existing.setdefault("mcpServers", {}).update(config["mcpServers"])
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -1596,7 +1787,9 @@ def create_app(*, store: Any = None) -> FastAPI:
     # Host Integrations (Phase D.7)                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get("/api/integrations/hosts", tags=["integrations"], dependencies=[Depends(verify_api_key)])
+    @app.get(
+        "/api/integrations/hosts", tags=["integrations"], dependencies=[Depends(verify_api_key)]
+    )
     def list_host_integrations() -> dict[str, Any]:
         """List all available host integrations."""
         import yaml
@@ -1650,7 +1843,9 @@ def create_app(*, store: Any = None) -> FastAPI:
                 config = yaml.safe_load(f)
 
             if not config:
-                raise HTTPException(status_code=404, detail=f"Host integration not found: {host_id}")
+                raise HTTPException(
+                    status_code=404, detail=f"Host integration not found: {host_id}"
+                )
 
             return {
                 "host_id": config.get("host_id"),
