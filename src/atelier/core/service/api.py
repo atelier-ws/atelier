@@ -1820,6 +1820,130 @@ def create_app(*, store: Any = None) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
+    # ------------------------------------------------------------------ #
+    # Memory routes (/v1/memory/*)                                       #
+    # ------------------------------------------------------------------ #
+
+    _mem_store: Any = None
+
+    def _get_mem_store() -> Any:
+        nonlocal _mem_store
+        if _mem_store is None:
+            from atelier.infra.storage.factory import make_memory_store
+
+            root = Path(cfg.atelier_root)
+            _mem_store = make_memory_store(root)
+        return _mem_store
+
+    @app.get("/v1/memory/blocks")
+    def memory_list_or_get(
+        agent_id: str,
+        label: str | None = None,
+        include_tombstoned: bool = False,
+        limit: int = 200,
+    ) -> Any:
+        """List all memory blocks for an agent, or get a single block by label."""
+        mem = _get_mem_store()
+        if label is not None:
+            block = mem.get_block(agent_id, label, include_tombstoned=include_tombstoned)
+            if block is None:
+                raise HTTPException(status_code=404, detail=f"Block not found: {label!r}")
+            return block
+        return mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
+
+    @app.post("/v1/memory/blocks")
+    def memory_upsert_block(payload: dict[str, Any]) -> Any:
+        """Create or update a memory block."""
+        from atelier.core.foundation.memory_models import MemoryBlock
+
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        label = payload.get("label")
+        if not agent_id or not label:
+            raise HTTPException(status_code=400, detail="agent_id and label are required")
+        existing = mem.get_block(agent_id, label)
+        if existing is None:
+            value = str(payload.get("value", ""))
+            limit_chars = int(payload.get("limit_chars", 8000))
+            if len(value) > limit_chars:
+                raise HTTPException(status_code=400, detail="value exceeds limit_chars")
+            block = MemoryBlock(
+                agent_id=agent_id,
+                label=label,
+                value=value,
+                limit_chars=limit_chars,
+                description=str(payload.get("description", "")),
+                read_only=bool(payload.get("read_only", False)),
+                pinned=bool(payload.get("pinned", False)),
+                metadata=payload.get("metadata") or {},
+            )
+        else:
+            expected_version = payload.get("expected_version")
+            if expected_version is not None and existing.version != int(expected_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"version conflict: expected {expected_version}, got {existing.version}",
+                )
+            update: dict[str, Any] = {}
+            for field in ("value", "description", "read_only", "pinned", "metadata", "limit_chars"):
+                if field in payload and payload[field] is not None:
+                    update[field] = payload[field]
+            block = existing.model_copy(update=update)
+        actor = str(payload.get("actor") or f"api:{agent_id}")
+        return mem.upsert_block(block, actor=actor)
+
+    @app.post("/v1/memory/archive")
+    def memory_archive_passage(payload: dict[str, Any]) -> Any:
+        """Archive a text passage into long-term memory."""
+        import hashlib
+
+        from atelier.core.foundation.memory_models import ArchivalPassage
+
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        text = payload.get("text")
+        if not agent_id or not text:
+            raise HTTPException(status_code=400, detail="agent_id and text are required")
+        valid_sources = ("trace", "block_evict", "user", "tool_output", "file_chunk")
+        source = payload.get("source", "user")
+        if source not in valid_sources:
+            source = "user"
+        dedup_hash = hashlib.sha256(f"{agent_id}:{text}".encode()).hexdigest()[:32]
+        passage = ArchivalPassage(
+            agent_id=agent_id,
+            text=str(text),
+            source=source,
+            source_ref=str(payload.get("source_ref", "")),
+            tags=list(payload.get("tags") or []),
+            dedup_hash=dedup_hash,
+        )
+        saved = mem.insert_passage(passage)
+        return {"id": saved.id, "dedup_hit": saved.dedup_hit}
+
+    @app.post("/v1/memory/recall")
+    def memory_recall_passages(payload: dict[str, Any]) -> Any:
+        """Search archived passages for a query."""
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        query = payload.get("query")
+        if not agent_id or not query:
+            raise HTTPException(status_code=400, detail="agent_id and query are required")
+        since_str = payload.get("since")
+        since_dt: datetime | None = None
+        if since_str:
+            try:
+                since_dt = datetime.fromisoformat(since_str).replace(tzinfo=UTC)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"invalid since: {since_str!r}") from exc
+        passages = mem.search_passages(
+            agent_id,
+            str(query),
+            top_k=int(payload.get("top_k", 5)),
+            tags=list(payload.get("tags") or []) or None,
+            since=since_dt,
+        )
+        return {"passages": [p.model_dump(mode="json") for p in passages]}
+
     return app
 
 
