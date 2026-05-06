@@ -18,4 +18,4 @@ Tool supervision reduces waste by detecting redundant operations and caching obs
 
 - `AtelierRuntimeCore.smart_search(...)`
 - `AtelierRuntimeCore.smart_edit(...)`
-- MCP: `atelier_tool_supervisor`, `atelier_smart_search`, `atelier_smart_edit`
+- MCP: `search`, `search`, `edit`

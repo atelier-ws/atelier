@@ -187,7 +187,7 @@ export default function Rubrics() {
                         atelier run-rubric {r.id} --json '{"{"}...{"}"}'
                       </code>
                       <code className="text-[10px] bg-neutral-950 px-2 py-1 block text-neutral-300 break-all font-mono border border-neutral-800">
-                        MCP: atelier_run_rubric_gate --rubric_id {r.id} --checks
+                        MCP: verify --rubric_id {r.id} --checks
                         '{"{"}...{"}"}'
                       </code>
                     </div>

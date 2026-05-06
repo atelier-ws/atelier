@@ -10,14 +10,21 @@
 make install
 ```
 
+By default this installs Gemini user/global settings. For project-local Gemini artifacts:
+
+```bash
+bash scripts/install_gemini.sh --workspace /path/to/workspace
+```
+
 ---
 
 ## What Gets Installed
 
-| Artifact          | Location                            |
-| ----------------- | ----------------------------------- |
-| MCP server config | `~/.gemini/settings.json` (global)  |
-| Custom commands   | `~/.gemini/commands/atelier/*.toml` |
+| Artifact          | Global install                      | `--workspace DIR` install                  |
+| ----------------- | ----------------------------------- | ------------------------------------------ |
+| MCP server config | `~/.gemini/settings.json`           | `<workspace>/.gemini/settings.json`        |
+| Custom commands   | `~/.gemini/commands/atelier/*.toml` | `<workspace>/.gemini/commands/atelier/*.toml` |
+| Persona context   | `~/.gemini/GEMINI.md`               | `<workspace>/GEMINI.md`                    |
 
 Gemini CLI requires **absolute paths** — the installer expands them at install time:
 
@@ -29,7 +36,7 @@ Gemini CLI requires **absolute paths** — the installer expands them at install
       "args": [],
       "env": &#123;
         "ATELIER_WORKSPACE_ROOT": "/absolute/path/to/workspace",
-        "ATELIER_STORE_ROOT": "/absolute/path/to/workspace/.atelier"
+        "ATELIER_ROOT": "/absolute/path/to/workspace/.atelier"
       &#125;
     &#125;
   &#125;
@@ -56,7 +63,7 @@ use atelier to check this plan
 ## Expected Behavior
 
 - Gemini CLI connects to Atelier MCP stdio server
-- All Atelier tools (`atelier_check_plan`, `atelier_status`, etc.) are available
+- All Atelier tools (`lint`, `atelier_status`, etc.) are available
 - Custom command presets (`/atelier:status`, `/atelier:context`) are installed
 
 ## Troubleshooting
@@ -73,18 +80,21 @@ All V2 tools are available via the Atelier MCP server. These are **Atelier augme
 
 | Tool                          | Boundary             | Description                                               |
 | ----------------------------- | -------------------- | --------------------------------------------------------- |
-| `atelier_memory_upsert_block` | Atelier augmentation | Store named value in agent memory                         |
-| `atelier_memory_get_block`    | Atelier augmentation | Retrieve named memory block                               |
-| `atelier_memory_recall`       | Atelier augmentation | FTS + vector search over archival memory                  |
-| `atelier_memory_archive`      | Atelier augmentation | Persist text passage to archival memory                   |
-| `atelier_memory_summary`      | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
-| `atelier_search_read`         | Atelier augmentation | Token-saving combined search + read                       |
-| `atelier_batch_edit`          | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
-| `atelier_sql_inspect`         | Atelier augmentation | Read-only SQL schema/data inspection                      |
-| `atelier_compact_advise`      | Atelier augmentation | Advise before context compaction; provides reinject hints |
-| `atelier_lesson_inbox`        | Atelier augmentation | List lesson candidates awaiting decision                  |
-| `atelier_lesson_decide`       | Atelier augmentation | Approve or reject a lesson candidate                      |
+| `memory` | Atelier augmentation | Store named value in agent memory                         |
+| `memory`    | Atelier augmentation | Retrieve named memory block                               |
+| `memory`       | Atelier augmentation | FTS + vector search over archival memory                  |
+| `memory`      | Atelier augmentation | Persist text passage to archival memory                   |
+| `memory`      | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
+| `search`         | Atelier augmentation | Token-saving combined search + read                       |
+| `edit`          | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
+| `atelier sql inspect`         | Atelier augmentation | Read-only SQL schema/data inspection                      |
+| `compact`      | Atelier augmentation | Advise before context compaction; provides reinject hints |
+| `atelier lesson inbox`        | Atelier augmentation | List lesson candidates awaiting decision                  |
+| `atelier lesson decide`       | Atelier augmentation | Approve or reject a lesson candidate                      |
 
 ## Uninstall
 
-Remove the `atelier` key from `~/.gemini/settings.json` → `mcpServers`.
+```bash
+bash scripts/uninstall_gemini.sh
+bash scripts/uninstall_gemini.sh --workspace /path/to/workspace
+```

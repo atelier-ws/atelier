@@ -30,6 +30,10 @@ def _payload(response: dict[str, Any]) -> Any:
     return json.loads(response["result"]["content"][0]["text"])
 
 
+def _memory_args(op: str, **kwargs: Any) -> dict[str, Any]:
+    return {"op": op, **kwargs}
+
+
 @pytest.fixture()
 def mcp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
@@ -40,27 +44,32 @@ def mcp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_memory_tools_are_registered() -> None:
-    assert "atelier_memory_upsert_block" in TOOLS
-    assert "atelier_memory_get_block" in TOOLS
+    assert "memory" in TOOLS
 
 
 def test_memory_upsert_and_get_round_trip(mcp_root: Path) -> None:
     _ = mcp_root
     result = _payload(
         _call(
-            "atelier_memory_upsert_block",
-            {
-                "agent_id": "atelier:code",
-                "label": "scratch",
-                "value": "hello",
-                "pinned": True,
-                "metadata": {"source": "test"},
-            },
+            "memory",
+            _memory_args(
+                "block_upsert",
+                agent_id="atelier:code",
+                label="scratch",
+                value="hello",
+                pinned=True,
+                metadata={"source": "test"},
+            ),
         )
     )
     assert result["version"] == 1
 
-    block = _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "scratch"}))
+    block = _payload(
+        _call(
+            "memory",
+            _memory_args("block_get", agent_id="atelier:code", label="scratch"),
+        )
+    )
     assert block["id"] == result["id"]
     assert block["value"] == "hello"
     assert block["pinned"] is True
@@ -68,36 +77,38 @@ def test_memory_upsert_and_get_round_trip(mcp_root: Path) -> None:
 
 def test_memory_get_returns_null_on_miss(mcp_root: Path) -> None:
     _ = mcp_root
-    assert _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "missing"})) is None
+    assert _payload(_call("memory", _memory_args("block_get", agent_id="atelier:code", label="missing"))) is None
 
 
 def test_memory_stale_version_maps_to_409(mcp_root: Path) -> None:
     _ = mcp_root
     _payload(
         _call(
-            "atelier_memory_upsert_block",
-            {"agent_id": "atelier:code", "label": "scratch", "value": "v1"},
+            "memory",
+            _memory_args("block_upsert", agent_id="atelier:code", label="scratch", value="v1"),
         )
     )
     _payload(
         _call(
-            "atelier_memory_upsert_block",
-            {
-                "agent_id": "atelier:code",
-                "label": "scratch",
-                "value": "v2",
-                "expected_version": 1,
-            },
+            "memory",
+            _memory_args(
+                "block_upsert",
+                agent_id="atelier:code",
+                label="scratch",
+                value="v2",
+                expected_version=1,
+            ),
         )
     )
     response = _call(
-        "atelier_memory_upsert_block",
-        {
-            "agent_id": "atelier:code",
-            "label": "scratch",
-            "value": "stale",
-            "expected_version": 1,
-        },
+        "memory",
+        _memory_args(
+            "block_upsert",
+            agent_id="atelier:code",
+            label="scratch",
+            value="stale",
+            expected_version=1,
+        ),
     )
     assert response["error"]["code"] == 409
 
@@ -106,12 +117,13 @@ def test_memory_upsert_returns_and_applies_arbitration(monkeypatch: pytest.Monke
     _ = mcp_root
     first = _payload(
         _call(
-            "atelier_memory_upsert_block",
-            {
-                "agent_id": "atelier:code",
-                "label": "style",
-                "value": "prefer compact patches",
-            },
+            "memory",
+            _memory_args(
+                "block_upsert",
+                agent_id="atelier:code",
+                label="style",
+                value="prefer compact patches",
+            ),
         )
     )
 
@@ -127,17 +139,23 @@ def test_memory_upsert_returns_and_applies_arbitration(monkeypatch: pytest.Monke
 
     result = _payload(
         _call(
-            "atelier_memory_upsert_block",
-            {
-                "agent_id": "atelier:code",
-                "label": "style",
-                "value": "prefer compact scoped edits",
-            },
+            "memory",
+            _memory_args(
+                "block_upsert",
+                agent_id="atelier:code",
+                label="style",
+                value="prefer compact scoped edits",
+            ),
         )
     )
 
     assert result["arbitration"]["op"] == "UPDATE"
-    stored = _payload(_call("atelier_memory_get_block", {"agent_id": "atelier:code", "label": "style"}))
+    stored = _payload(
+        _call(
+            "memory",
+            _memory_args("block_get", agent_id="atelier:code", label="style"),
+        )
+    )
     assert stored["value"] == "prefer compact scoped patches"
 
 
@@ -151,8 +169,8 @@ def test_memory_sidecar_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch,
 
     monkeypatch.setattr(mcp_server, "_memory_store", lambda: DownStore())
     response = _call(
-        "atelier_memory_upsert_block",
-        {"agent_id": "atelier:code", "label": "scratch", "value": "hello"},
+        "memory",
+        _memory_args("block_upsert", agent_id="atelier:code", label="scratch", value="hello"),
     )
     assert response["error"]["code"] == 503
 
@@ -160,12 +178,13 @@ def test_memory_sidecar_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch,
 def test_memory_upsert_rejects_likely_secret_leakage(mcp_root: Path) -> None:
     _ = mcp_root
     response = _call(
-        "atelier_memory_upsert_block",
-        {
-            "agent_id": "atelier:code",
-            "label": "leak",
-            "value": "AKIAIOSFODNN7EXAMPLE secretvalue",
-        },
+        "memory",
+        _memory_args(
+            "block_upsert",
+            agent_id="atelier:code",
+            label="leak",
+            value="AKIAIOSFODNN7EXAMPLE secretvalue",
+        ),
     )
     assert "error" in response
     assert "likely secret leakage" in response["error"]["message"]

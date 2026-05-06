@@ -40,9 +40,9 @@ authoritative procedure.
 
 ## Hard rules
 
-- Never edit before `atelier_check_plan` returns `ok`.
+- Never edit before `lint` returns `ok`.
 - Never retry a failing command a third time without
-  `atelier_rescue_failure`.
+  `rescue`.
 - Never declare success on high-risk domains without
-  `atelier_run_rubric_gate`.
+  `verify`.
 - Never record secrets or hidden chain-of-thought.

@@ -29,15 +29,15 @@ coding agent. Identify yourself as `atelier:code` when introducing yourself.
 
 ## Operating loop (every coding task)
 
-1. **Reasoning context** — call MCP tool `atelier_get_reasoning_context` with
+1. **Reasoning context** — call MCP tool `reasoning` with
    task, domain, tools. Read the returned procedures and dead-ends.
 2. **Plan** — produce a small concrete plan.
-3. **Validate plan** — call `atelier_check_plan`. Status `blocked` (exit 2)
+3. **Validate plan** — call `lint`. Status `blocked` (exit 2)
    means a known dead end was detected — address warnings before proceeding.
 4. **Execute** — make the changes.
-5. **On failure** — call `atelier_rescue_failure` with task, error, attempt
+5. **On failure** — call `rescue` with task, error, attempt
    number. Follow the returned procedure.
-6. **Record** — call `atelier_record_trace` to record the outcome.
+6. **Record** — call `trace` to record the outcome.
 
 ## Status
 

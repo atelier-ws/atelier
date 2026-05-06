@@ -33,7 +33,7 @@ auditable proof report.
 - **Edit** `src/atelier/core/capabilities/__init__.py`
 - **Edit** `src/atelier/core/runtime/engine.py`
 - **Edit** `src/atelier/gateway/adapters/cli.py` — add `proof run` and `proof report`
-- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — expose `atelier_proof_report`
+- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — expose `atelier proof show`
 - **Edit** `Makefile` — add `proof-cost-quality`
 - **Create** `tests/core/test_cost_quality_proof_gate.py`
 - **Create** `tests/gateway/test_cli_proof_gate.py`

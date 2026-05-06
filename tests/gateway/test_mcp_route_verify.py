@@ -40,13 +40,14 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_mcp_route_verify_tool_registered() -> None:
-    assert "atelier_route_verify" in TOOLS
+    assert "route" in TOOLS
 
 
 def test_mcp_route_verify_returns_envelope(mcp_env: Path) -> None:
     resp = _call(
-        "atelier_route_verify",
+        "route",
         {
+            "op": "verify",
             "route_decision_id": "rd-1",
             "changed_files": ["README.md"],
             "validation_results": [{"name": "pytest", "passed": True, "detail": "ok"}],

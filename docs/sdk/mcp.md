@@ -1,6 +1,6 @@
 # Atelier MCP
 
-Atelier's MCP server is the host-neutral way to plug procedural reasoning, monitors, rubric gates, and failure rescue into existing agent CLIs.
+Atelier's MCP server is the host-neutral way to plug procedural reasoning, rubric gates, failure rescue, compacting, smart file operations, and agent memory into existing agent CLIs.
 
 ## Start Modes
 
@@ -13,75 +13,52 @@ uv run atelier-mcp
 
 ### Remote service-backed mode
 
-Set `ATELIER_MCP_MODE=remote` plus `ATELIER_SERVICE_URL` and `ATELIER_API_KEY` to route the same tool calls through the HTTP service.
+Set `ATELIER_MCP_MODE=remote` plus `ATELIER_SERVICE_URL` and `ATELIER_API_KEY` to route supported core calls through the HTTP service.
 
-## Core MCP Tools
+## Agent-Facing Tools
 
-Canonical:
+The MCP registry exposes exactly these prefixed tool names:
 
-- `get_reasoning_context`
-- `check_plan`
-- `rescue_failure`
-- `run_rubric_gate`
-- `record_trace`
+- `reasoning`
+- `lint`
+- `route`
+- `rescue`
+- `trace`
+- `verify`
+- `memory`
+- `read`
+- `edit`
+- `search`
+- `compact`
+- `atelier_repo_map`
 
-Compatibility aliases (equivalent):
+There are no unprefixed aliases. Use CLI commands for governance and admin workflows such as `atelier lesson inbox`, `atelier consolidation decide`, `atelier report`, `atelier sql inspect`, `atelier proof show`, and `atelier route contract`.
 
-- `atelier_get_reasoning_context`
-- `atelier_check_plan`
-- `atelier_rescue_failure`
-- `atelier_run_rubric_gate`
-- `atelier_record_trace`
+## Dispatch Surfaces
 
-## Extended MCP Tools
+`memory` uses an `op` field for `block_upsert`, `block_get`, `archive`, `recall`, and `summarize`.
 
-Canonical:
+`compact` uses an `op` field for `output`, `session`, and `advise`.
 
-- `get_run_ledger`
-- `update_run_ledger`
-- `monitor_event`
-- `compress_context`
-- `get_environment`
-- `get_environment_context`
-- `smart_read`
-- `smart_search`
-- `cached_grep`
-
-Compatibility aliases:
-
-- `atelier_get_run_ledger`
-- `atelier_update_run_ledger`
-- `atelier_monitor_event`
-- `atelier_compress_context`
-- `atelier_get_environment`
-- `atelier_get_environment_context`
-- `atelier_cached_grep`
-
-Advanced runtime tools:
-
-- `atelier_smart_search`
-- `atelier_smart_read`
-- `atelier_smart_edit`
-- `atelier_sql_inspect`
-- `atelier_bash_intercept`
+`route` uses an `op` field for `decide` and `verify`.
 
 ## Host Example
 
 ```json
-&#123;
-  "mcpServers": &#123;
-    "atelier": &#123;
+{
+  "mcpServers": {
+    "atelier": {
       "command": "uv",
       "args": ["run", "atelier-mcp"],
-      "env": &#123;
+      "env": {
         "ATELIER_ROOT": ".atelier",
         "ATELIER_WORKSPACE_ROOT": "."
-      &#125;
-    &#125;
-  &#125;
-&#125;
+      }
+    }
+  }
+}
 ```
 
 ## Embedding via SDK
 
-When you want the MCP contract in-process, use `AtelierClient.mcp()` from the Python SDK. It uses the same tool semantics but can run in a loopback mode for tests and embedded agents.
+When you want the MCP contract in-process, use `AtelierClient.mcp()` from the Python SDK. It uses the same tool semantics and can run in loopback mode for tests and embedded agents.

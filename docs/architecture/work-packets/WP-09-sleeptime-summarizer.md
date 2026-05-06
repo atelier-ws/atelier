@@ -26,7 +26,7 @@ summarizer (template-based, no LLM call) so CI stays hermetic.
 - `src/atelier/core/capabilities/context_compression/capability.py` — edit: add `compress_with_sleeptime()`
 - `src/atelier/core/capabilities/context_compression/sleeptime.py` — new
 - `src/atelier/infra/memory_bridges/letta_adapter.py` — edit: add `summarize_run(...)`
-- `src/atelier/gateway/adapters/mcp_server.py` — edit: register `atelier_memory_summary`
+- `src/atelier/gateway/adapters/mcp_server.py` — edit: register `memory`
 - `tests/core/test_local_sleeptime.py`
 - `tests/infra/test_sleeptime_writes_archival.py`
 
@@ -57,7 +57,7 @@ summarizer (template-based, no LLM call) so CI stays hermetic.
      sidecar). Map the response to `SleeptimeChunk`s.
    - On any exception fall back to local summarizer and log WARNING.
 
-4. MCP tool `atelier_memory_summary`:
+4. MCP tool `memory`:
    - Input: `run_id`
    - Output: `&#123; tokens_pre, tokens_post, summary_md, evicted_event_ids, archived_passage_ids, strategy &#125;`
 

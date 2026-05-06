@@ -534,19 +534,19 @@ hygiene.
 
 | MCP tool                          | Pillar | Owner WP | Input                                                                  | Output                                                              |
 | --------------------------------- | ------ | -------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `atelier_memory_upsert_block`   | 1      | WP-07    | `agent_id, label, value, [pinned, read_only, description]`           | `\&#123; id, version \&#125;`                                                 |
-| `atelier_memory_get_block`      | 1      | WP-07    | `agent_id, label`                                                    | `MemoryBlock`                                                     |
-| `atelier_memory_recall`         | 1, 3   | WP-08    | `agent_id, query, [top_k, tags]`                                     | `\&#123; passages: [\&#123;id, text, score, source_ref\&#125;], recall_id \&#125;`        |
-| `atelier_memory_archive`        | 1      | WP-08    | `agent_id, text, source, [source_ref, tags]`                         | `\&#123; id, dedup_hit \&#125;`                                               |
-| `atelier_memory_summary`        | 1, 3   | WP-09    | `run_id`                                                             | `\&#123; tokens_pre, tokens_post, summary_md, evicted_event_ids \&#125;`      |
-| `atelier_lesson_inbox`          | 2      | WP-15    | `[domain, limit]`                                                    | `[LessonCandidate]`                                               |
-| `atelier_lesson_decide`         | 2      | WP-15    | `lesson_id, decision: "approve"|"reject", reviewer, reason`          | `\&#123; status, promotion_id? \&#125;`                                       |
-| `atelier_search_read`           | 3      | WP-21    | `query, [path, max_files, max_chars_per_file]`                       | `\&#123; matches: [\&#123;path, line_start, line_end, snippet, lang_outline?\&#125;], total_chars, cache_hit \&#125;` |
-| `atelier_batch_edit`            | 3      | WP-22    | `edits: [\&#123;path, old_string|range, new_string, fuzzy?: bool\&#125;]`        | `\&#123; applied: [\&#123;path, hunk\&#125;], failed: [\&#123;path, error\&#125;] \&#125;`            |
-| `atelier_sql_inspect`           | 3      | WP-23    | `connection_alias, sql`                                              | `\&#123; rows: [...], columns: [...], affected: int, truncated: bool \&#125;` |
-| `atelier_compact_advise`        | 3      | WP-13    | `run_id`                                                             | `\&#123; should_compact: bool, preserve_blocks, pin_memory, suggested_prompt \&#125;` |
-| `atelier_route_decide`          | routing | WP-26   | `AgentRequest, ContextBudgetPolicy`                                  | `RouteDecision`                                                    |
-| `atelier_route_verify`          | routing | WP-27   | `route_decision_id, validation_results, changed_files, rubric_status` | `VerificationEnvelope`                                             |
+| `memory`   | 1      | WP-07    | `agent_id, label, value, [pinned, read_only, description]`           | `\&#123; id, version \&#125;`                                                 |
+| `memory`      | 1      | WP-07    | `agent_id, label`                                                    | `MemoryBlock`                                                     |
+| `memory`         | 1, 3   | WP-08    | `agent_id, query, [top_k, tags]`                                     | `\&#123; passages: [\&#123;id, text, score, source_ref\&#125;], recall_id \&#125;`        |
+| `memory`        | 1      | WP-08    | `agent_id, text, source, [source_ref, tags]`                         | `\&#123; id, dedup_hit \&#125;`                                               |
+| `memory`        | 1, 3   | WP-09    | `run_id`                                                             | `\&#123; tokens_pre, tokens_post, summary_md, evicted_event_ids \&#125;`      |
+| `atelier lesson inbox`          | 2      | WP-15    | `[domain, limit]`                                                    | `[LessonCandidate]`                                               |
+| `atelier lesson decide`         | 2      | WP-15    | `lesson_id, decision: "approve"|"reject", reviewer, reason`          | `\&#123; status, promotion_id? \&#125;`                                       |
+| `search`           | 3      | WP-21    | `query, [path, max_files, max_chars_per_file]`                       | `\&#123; matches: [\&#123;path, line_start, line_end, snippet, lang_outline?\&#125;], total_chars, cache_hit \&#125;` |
+| `edit`            | 3      | WP-22    | `edits: [\&#123;path, old_string|range, new_string, fuzzy?: bool\&#125;]`        | `\&#123; applied: [\&#123;path, hunk\&#125;], failed: [\&#123;path, error\&#125;] \&#125;`            |
+| `atelier sql inspect`           | 3      | WP-23    | `connection_alias, sql`                                              | `\&#123; rows: [...], columns: [...], affected: int, truncated: bool \&#125;` |
+| `compact`        | 3      | WP-13    | `run_id`                                                             | `\&#123; should_compact: bool, preserve_blocks, pin_memory, suggested_prompt \&#125;` |
+| `route`          | routing | WP-26   | `AgentRequest, ContextBudgetPolicy`                                  | `RouteDecision`                                                    |
+| `route`          | routing | WP-27   | `route_decision_id, validation_results, changed_files, rubric_status` | `VerificationEnvelope`                                             |
 
 The five existing MCP tools (context, check_plan, rescue, record_trace, run_rubric) and the nine
 extended tools listed in `AGENT_README.md` are unchanged.

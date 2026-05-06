@@ -12,7 +12,7 @@ status: done
 
 ## Why
 Pillar 3 needs the agent to *recall* relevant prior context instead of having stale context
-re-pasted. We extend the `atelier_get_reasoning_context` tool (already exists) to *additionally*
+re-pasted. We extend the `reasoning` tool (already exists) to *additionally*
 return up to N archival passages relevant to the task — but with strict tags scoping so we never
 leak across agents.
 
@@ -26,7 +26,7 @@ leak across agents.
 
 ## How to execute
 
-1. Extend `atelier_get_reasoning_context` to accept an optional `agent_id` and an optional
+1. Extend `reasoning` to accept an optional `agent_id` and an optional
    `recall=true|false` (default `true`).
 
 2. When `recall=true` and `agent_id` is provided, after gathering ReasonBlocks call

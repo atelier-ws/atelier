@@ -1,126 +1,162 @@
-# Atelier MCP Tool Surface Cut — Implementation Plan
+# Atelier MCP Surface Consolidation — Implementation Plan
 
-**Audience:** coding agent picking up the cut. **Status:** approved, ready to execute.
+> **Status: COMPLETE — see CHANGELOG under "Unreleased: MCP Surface Consolidation."**
+> 11 tools registered (atelier\_ prefix dropped); all tests green; no features removed.
+
+**Audience:** historical record. **Status:** complete.
 **Author context:** decisions captured 2026-05-06. Companion to `telemetry-implementation-plan.md`.
+**Supersedes:** earlier "27 → 7 deletion" plans. Reverted; this version keeps every feature, consolidates similar MCPs, and moves admin/governance/static lookups to CLI.
 
 ---
 
-## 1. Goal
+## 1. Goal & Hard Rules
 
-Reduce the MCP tool surface from ~27 registered tools to **7 keepers**, by deleting outright (no deprecation cycle, no shims, no aliases) and folding/merging where the value belongs in another tool.
+**Goal:** apply two operations and only two:
 
-**Why:** every MCP tool is a documentation cost the host model pays on every call, an API surface to maintain, and a chance for the agent to pick the wrong tool. The current surface contradicts the README's stated identity ("Atelier is not a memory system" while shipping 5 memory tools) and includes governance/reporting tools that humans should run via CLI, not agents mid-loop.
+1. **Consolidate** multiple similar MCP tools into one (op-dispatch where input shapes are close enough; merge into related surface where natural).
+2. **Move to CLI** anything an agent does not need mid-loop (governance, admin, static lookups, benchmarks, reports).
 
-**Hard rule:** delete, don't deprecate. No `deprecated_in` fields. No legacy-name aliases. No "ship as no-op for one release." Cut means cut.
+**Don't delete features.** Every feature accessible today stays accessible — either via a kept MCP surface or via CLI.
+
+**Hard rules:**
+
+- Read each tool's implementation before deciding its fate. Names lie; code doesn't.
+- Consolidate only when input shapes are compatible enough that op-dispatch doesn't make the tool description a wall of text.
+- An MCP surface earns its slot only if an agent calls it during a task. Otherwise it goes to CLI.
+- No deprecation. Hard removal in one change.
+- Phantom tools (documented but not implemented): either fold into a kept surface or strike from docs.
 
 ---
 
-## 2. Ground Truth — what's actually in the code right now
+## 3. Verified Tool Inventory (read the code first)
 
-`src/atelier/gateway/adapters/mcp_server.py` currently registers these `@mcp_tool` names (verified 2026-05-06):
+Currently registered MCP tools and what each one actually does:
+
+| Tool                            | What the impl actually does                                                           | Mid-loop agent need?                           |
+| ------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `atelier_get_reasoning_context` | Retrieves ReasonBlocks + ledger + env state                                           | Yes, per turn                                  |
+| `lint`                          | Plan gate against rubrics                                                             | Yes, before action                             |
+| `route_decide`                  | Quality-aware route decision (~10 args)                                               | Yes, per plan step                             |
+| `route_verify`                  | Verification signal → pass/warn/fail/escalate (~10 different args)                    | Yes, after action                              |
+| `route_contract`                | Static lookup: returns advisory/wrapper_enforced for a named host                     | **No — static**, returned once                 |
+| `atelier_proof_report`          | Generates or loads cost-quality benchmark report                                      | **No — benchmarks**, agents don't run mid-task |
+| `rescue_failure`                | Failure-cluster match + rescue procedure                                              | Yes, when stuck                                |
+| `trace`                         | Records observable run trace                                                          | Yes, after action                              |
+| `atelier_run_rubric_gate`       | Verification with rubric                                                              | Yes, at completion                             |
+| `atelier_lesson_inbox`          | List pending promotion candidates                                                     | **No — governance**                            |
+| `atelier_lesson_decide`         | Approve/reject candidate                                                              | **No — governance**                            |
+| `atelier_report`                | Weekly governance report                                                              | **No — admin**                                 |
+| `atelier_sql_inspect`           | Read-only SQL query                                                                   | **No — debug/admin**                           |
+| `atelier_compress_context`      | Compresses run-ledger → prompt block                                                  | Yes, near context limit                        |
+| `memory_upsert_block`           | Editable memory block write (passthrough → Letta/SQLite)                              | Yes, agent memory                              |
+| `memory_get_block`              | Memory block read                                                                     | Yes                                            |
+| `memory_archive`                | Archival passage write                                                                | Yes                                            |
+| `memory_recall`                 | Archival passage semantic recall                                                      | Yes                                            |
+| `memory_summary`                | Sleeptime summarizer for a run                                                        | Yes (session-end or pause)                     |
+| `atelier_smart_read`            | Cached file read with outline-first                                                   | Yes                                            |
+| `atelier_batch_edit`            | Supervised multi-file edit with rollback                                              | Yes                                            |
+| `compact_advise`                | `{should_compact, utilisation_pct, suggested_prompt, …}`                              | Yes, decision support                          |
+| `search_read`                   | Search + return matching chunks (token saver vs. full files)                          | Yes                                            |
+| `compact_tool_output`           | **Per-output token saver** — transforms a single tool result before it enters context | Yes,**most-called**                            |
+| `atelier_repo_map`              | Budgeted PageRank repo map seeded by files                                            | Yes (navigation)                               |
+| `atelier_consolidation_inbox`   | List pending consolidation candidates                                                 | **No — governance**                            |
+| `atelier_consolidation_decide`  | Approve/reject consolidation                                                          | **No — governance**                            |
+
+Phantom tools (in docs, not in code): `atelier_smart_search`, `atelier_smart_edit`, `atelier_smart_bash`, `atelier_tool_supervisor`, `atelier_cached_grep`, `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_get_environment`, `atelier_get_environment_context`.
+
+---
+
+## 4. Final Surface List
+
+### 4.1 MCP — 11 surfaces (agent-mid-loop, every feature preserved)
+
+> Final names: `atelier_` prefix dropped — MCP server is named `atelier`, so hosts display `atelier.reasoning`, `atelier.lint`, etc.
+
+| Final tool name (registered) | Consolidates / renamed from                                                                                                         | Notes                                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reasoning`                  | formerly `atelier_get_reasoning_context`; + phantom `get_run_ledger`, `get_environment`, `get_environment_context`                  | Returns context + run-ledger snapshot + environment metadata. Expensive fields opt-in via request flags.                                                                               |
+| `lint`                       | formerly `atelier_check_plan`                                                                                                       |                                                                                                                                                                                        |
+| `rescue`                     | formerly `atelier_rescue_failure`                                                                                                   |                                                                                                                                                                                        |
+| `trace`                      | formerly `atelier_record_trace`; + phantom `update_run_ledger`, `monitor_event`                                                     | Single observation-write surface. Does not absorb compaction.                                                                                                                          |
+| `verify`                     | formerly `atelier_run_rubric_gate`                                                                                                  |                                                                                                                                                                                        |
+| `route` (op-dispatch)        | merges `route_decide` + `route_verify`                                                                                              | `op=decide` and `op=verify`. `route_contract` goes to CLI.                                                                                                                             |
+| `read`                       | formerly `atelier_smart_read`                                                                                                       |                                                                                                                                                                                        |
+| `search`                     | formerly `atelier_smart_search`; merges `search_read` (as `mode=chunks`); absorbs `atelier_repo_map` (`mode=map`, `seed_files` arg) | Pipeline: FTS + semantic + graph re-rank + chunked or full results based on `mode`. `repo_map/` modules remain internal.                                                               |
+| `edit`                       | formerly `atelier_smart_edit` (renamed from `batch_edit`)                                                                           | Wraps existing `tool_supervision/batch_edit.py`. Same feature, doc-aligned name.                                                                                                       |
+| `compact` (op-dispatch)      | merges `compact_tool_output` + `compress_context` + `compact_advise`                                                                | **CRITICAL — the token-saver surface.** `op=output` per-tool-output transform; `op=session` whole-ledger compression; `op=advise` returns recommendation. **Not folded into trace.**   |
+| `memory` (op-dispatch ×5)    | merges `memory_upsert_block` + `memory_get_block` + `memory_archive` + `memory_recall` + `memory_summary`                           | **Passthrough surface.** `ops`: `block_upsert`, `block_get`, `archive`, `recall`, `summarize`. Storage delegated to Letta / OpenMemory / Mem0 / SQLite via `infra/storage/factory.py`. |
+
+### 4.2 CLI — moved off MCP (governance/admin/static)
+
+| CLI command                                                    | Was MCP tool                                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------- |
+| `atelier lesson inbox` / `atelier lesson decide`               | `atelier_lesson_inbox`, `atelier_lesson_decide`               |
+| `atelier consolidation inbox` / `atelier consolidation decide` | `atelier_consolidation_inbox`, `atelier_consolidation_decide` |
+| `atelier report`                                               | `atelier_report`                                              |
+| `atelier sql inspect`                                          | `atelier_sql_inspect`                                         |
+| `atelier proof run` / `atelier proof show`                     | `atelier_proof_report`                                        |
+| `atelier route contract <host>`                                | `route_contract` (static lookup)                              |
+
+### 4.3 Memory passthrough — architecture clarification
+
+**Critical:** `memory` is the only path the agent has to reach memory. Storage is delegated to a configured backend (Letta, OpenMemory, Mem0, SQLite) via `infra/storage/factory.py:make_memory_store()`, selected by `ATELIER_MEMORY_BACKEND` env var or config.
 
 ```
-atelier_get_reasoning_context     atelier_check_plan
-atelier_route_decide              atelier_route_verify
-atelier_route_contract            atelier_proof_report
-atelier_rescue_failure            atelier_record_trace
-atelier_run_rubric_gate           atelier_lesson_inbox
-atelier_lesson_decide             atelier_report
-atelier_sql_inspect               atelier_compress_context
-atelier_memory_upsert_block       atelier_memory_get_block
-atelier_memory_archive            atelier_memory_recall
-atelier_memory_summary            atelier_smart_read
-atelier_batch_edit                atelier_compact_advise
-atelier_search_read               atelier_compact_tool_output
-atelier_repo_map                  atelier_consolidation_inbox
-atelier_consolidation_decide
+agent ──► memory MCP ──► memory_arbitration (ADD/UPDATE/DELETE/NOOP)
+                                       │
+                                       ▼
+                              MemoryStore (factory)
+                                       │
+              ┌────────────────┬───────┴───────┬──────────────┐
+              ▼                ▼               ▼              ▼
+          Letta          OpenMemory          Mem0          SQLite (dev)
 ```
 
-There is also a legacy-name alias map at the bottom of `mcp_server.py` (lines ~1722–1747) accepting unprefixed names like `get_reasoning_context`, `check_plan`, etc. **These aliases get deleted too.**
+Currently the factory knows `sqlite` and `letta`. **If your production backend is OpenMemory or Mem0, the adapter is a hard prerequisite for this consolidation** — without it, `memory` calls only route to those that exist and silently miss your real backend.
 
-**Docs reference tools that don't exist in code** (phantom tools). These need to be removed from documentation:
-`atelier_smart_search`, `atelier_smart_edit`, `atelier_bash_intercept`, `atelier_tool_supervisor`, `atelier_cached_grep`, `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_get_environment`, `atelier_get_environment_context`.
+**Reconcile the README:** drop "Atelier is not a memory system" — the code provides a memory surface and an arbitration layer, just with passthrough storage. Reposition:
 
----
+> _"Atelier provides procedural memory (ReasonBlocks) directly, and an agent-memory surface (`memory`) that passes through to your configured backend — Letta, OpenMemory, Mem0, or local SQLite for development. An arbitration layer (ADD/UPDATE/DELETE/NOOP) sits in front of writes regardless of backend."_
 
-## 3. Final Keep List (7)
+### 4.4 Phantom tools — disposition
 
-| Tool | File location now | Action |
-|---|---|---|
-| `atelier_get_reasoning_context` | mcp_server.py:448 | Keep. Extend return shape to include routing hint (replaces `route_decide`/`route_verify`/`route_contract`). |
-| `atelier_check_plan` | mcp_server.py:522 | Keep as-is. |
-| `atelier_rescue_failure` | mcp_server.py:809 | Keep as-is. |
-| `atelier_record_trace` | mcp_server.py:882 | Keep. Extend response to surface compaction-advice fields (absorbs `compact_advise`). |
-| `atelier_run_rubric_gate` | mcp_server.py:1117 | Keep as-is. |
-| `atelier_smart_read` | mcp_server.py:1388 | Keep as-is. |
-| **`atelier_smart_search`** | NOT IMPLEMENTED | **New work:** implement against existing `capabilities/semantic_file_memory` (and FTS index). Listed in 8+ doc files; ship to match. |
+| Phantom                                                      | What happens                                                                                                                     |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `atelier_smart_search`                                       | Build (§4.1)                                                                                                                     |
+| `atelier_smart_edit`                                         | Rename from `batch_edit` (§4.1)                                                                                                  |
+| `atelier_smart_bash`                                         | **Revmoe**                                                                                                                       |
+| `atelier_tool_supervisor`                                    | Strike from docs. No clean agent-facing semantic.                                                                                |
+| `atelier_cached_grep`                                        | Internal to `smart_search`. Strike from docs as a separate tool. Update prompt-template mentions in `runtime/engine.py:406,421`. |
+| `atelier_get_run_ledger`                                     | Folded into `get_reasoning_context`                                                                                              |
+| `atelier_update_run_ledger`                                  | Folded into `record_trace`                                                                                                       |
+| `atelier_monitor_event`                                      | Strike. Monitors fire internally from `core/foundation/monitors.py`; agent doesn't call them.                                    |
+| `atelier_get_environment`, `atelier_get_environment_context` | Folded into `get_reasoning_context`                                                                                              |
 
-That's it. Everything else goes.
-
----
-
-## 4. The Cuts (verdict per tool)
-
-### Delete outright (memory — contradicts README)
-
-The README states explicitly: *"Atelier is not a memory system — pair with OpenMemory or Mem0."* Drop these and add a one-paragraph pointer to Letta/Mem0 in the docs where they used to be referenced.
-
-- `atelier_memory_upsert_block`
-- `atelier_memory_get_block`
-- `atelier_memory_archive`
-- `atelier_memory_recall`
-- `atelier_memory_summary`
-
-The underlying capabilities (`core/capabilities/archival_recall`, `core/capabilities/memory_arbitration`) — see §6 for whether to delete or keep.
-
-### Delete from MCP, keep CLI (humans, not agents)
-
-These are governance / reporting / inspection that should be human-driven. CLI subcommands stay; MCP registrations and any MCP-only handler code go.
-
-- `atelier_lesson_inbox` → CLI: `atelier lesson inbox` (verify exists; add if missing)
-- `atelier_lesson_decide` → CLI: `atelier lesson decide`
-- `atelier_consolidation_inbox` → CLI: `atelier consolidation inbox`
-- `atelier_consolidation_decide` → CLI: `atelier consolidation decide`
-- `atelier_report` → CLI: `atelier report`
-- `atelier_sql_inspect` → CLI: `atelier sql inspect`
-
-### Delete outright (redundant or low-value)
-
-- `atelier_batch_edit` — host's `Edit` tool covers this; wrapping creates friction without value.
-- `atelier_search_read` — sugar over `smart_search` + `smart_read`; agents can compose.
-- `atelier_compact_tool_output` — folds into `record_trace` response (advice, not a separate call). Only delete if the call sites can be ported; if it's used standalone in non-trace flows, fold its body into `smart_read` post-processing instead. Agent must check before deleting.
-- `atelier_repo_map` — usage check first. If no caller depends on it, delete. If callers exist, fold output into `get_reasoning_context` return (treat repo map as another retrieval channel).
-
-### Fold into keepers (merge, not delete)
-
-| Source | Fold into | How |
-|---|---|---|
-| `atelier_route_decide` | `atelier_get_reasoning_context` | Add a `routing` field to the response: `{model_tier, verifier_required, max_tokens_hint}`. |
-| `atelier_route_verify` | `atelier_get_reasoning_context` | Add a `verification` field; agents that needed `route_verify` consume this instead. |
-| `atelier_route_contract` | `atelier_get_reasoning_context` | Same response. Contract is metadata about the routing decision. |
-| `atelier_proof_report` | `atelier_run_rubric_gate` | Make the proof report a field of the rubric-gate result. The error string at mcp_server.py:804 ("Call atelier_proof_report...") needs updating to point users at the new field. |
-| `atelier_compress_context` | `atelier_record_trace` | When trace indicates context bloat, the response carries a `compact_recommendation` with the compressed context inline. No separate tool call. |
-| `atelier_compact_advise` | `atelier_record_trace` | Same — advice rides on trace responses. |
-
-After folding, the merged callers stop existing as separate MCP entries.
+**Remvoe Phantom tools that are only in docs** (in docs, not in code): `atelier_smart_search`, `atelier_smart_edit`, `atelier_smart_bash`, `atelier_tool_supervisor`, `atelier_cached_grep`, `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_get_environment`, `atelier_get_environment_context`.
 
 ---
 
 ## 5. Result
 
-**MCP surface after cut:**
+- **MCP**: 24 active tools → **12 consolidated surfaces**. Every feature preserved.
+- **CLI**: 6 command groups for the 8 admin/governance/static MCP tools that move off MCP.
+- **Phantoms eliminated**: 10 in docs → 0.
+- **Features removed**: zero.
 
 ```
-atelier_get_reasoning_context   (extended: now includes routing + verification)
-atelier_check_plan
-atelier_rescue_failure
-atelier_record_trace            (extended: now carries compaction advice)
-atelier_run_rubric_gate         (extended: now carries proof report)
-atelier_smart_read
-atelier_smart_search            (newly implemented)
+MCP keep list (11) — final registered names (atelier_ prefix dropped):
+  reasoning              (formerly atelier_get_reasoning_context)
+  lint                   (formerly atelier_check_plan)
+  rescue                 (formerly atelier_rescue_failure)
+  trace                  (formerly atelier_record_trace)
+  verify                 (formerly atelier_run_rubric_gate)
+  route                  (op=decide|verify)
+  read                   (formerly atelier_smart_read)
+  search                 (formerly atelier_smart_search; mode=map absorbs atelier_repo_map)
+  edit                   (formerly atelier_smart_edit, renamed from batch_edit)
+  compact                (op=output|session|advise) — TOKEN SAVER
+  memory                 (op=block_upsert|block_get|archive|recall|summarize) — PASSTHROUGH
 ```
-
-7 tools. ~27 → 7. Every removed tool either had a CLI equivalent already, was redundant, contradicted the project identity, or folds cleanly into a keeper.
 
 ---
 
@@ -128,159 +164,171 @@ atelier_smart_search            (newly implemented)
 
 ### `src/atelier/gateway/adapters/mcp_server.py`
 
-- Delete every `@mcp_tool` block for tools listed in §4 "Delete outright" and §4 "Delete from MCP, keep CLI". For the latter, the underlying capability function may still be reachable via CLI; keep that import path working.
-- Delete the legacy-name alias map at the bottom (~lines 1722–1747). All callers use the `atelier_` prefixed names; the unprefixed aliases were transitional and we're not in a transition.
-- Extend `atelier_get_reasoning_context` response shape (§4 fold table). Document the new fields with a tested example.
-- Extend `atelier_record_trace` and `atelier_run_rubric_gate` similarly.
-- Implement `atelier_smart_search` against `capabilities/semantic_file_memory` + FTS index. Cache results on the same path as `smart_read`. Same injection-guard rules as other supervised tools (`capabilities/tool_supervision/search_read.py`).
+- **Remove** `@mcp_tool` blocks for: `route_contract`, `proof_report`, `lesson_inbox`, `lesson_decide`, `consolidation_inbox`, `consolidation_decide`, `report`, `sql_inspect`. (These move to CLI; their handler functions stay reachable for CLI to call.)
+- **Merge** `route_decide` + `route_verify` into one `route` op-dispatch tool.
+- **Merge** `compact_tool_output` + `compress_context` + `compact_advise` into one `compact` op-dispatch tool.
+- **Merge** `memory_upsert_block` + `memory_get_block` + `memory_archive` + `memory_recall` + `memory_summary` into one `memory` op-dispatch tool.
+- **Merge** `search_read` into `atelier_smart_search` (built fresh) as `mode=chunks`. Delete the standalone `search_read` MCP block.
+- **Rename** `batch_edit` → `smart_edit` in MCP registration; underlying capability function stays.
+- **Build** `atelier_smart_search` with: FTS5 lexical + semantic embeddings + graph re-rank (using restored `repo_map/` modules as internal) + cache + injection guard.
+- **Extend** `get_reasoning_context` response with `run_ledger`, `environment` fields, gated by request flags so default response stays small.
+- **Extend** `record_trace` to accept `event_type` covering monitor events; absorb `update_run_ledger` semantics if any caller used them.
+- **Delete** the legacy unprefixed alias map at the bottom of the file (~lines 1722–1747).
 
-### `src/atelier/gateway/sdk/mcp.py` (286 lines)
+### `src/atelier/gateway/sdk/mcp.py` and SDK clients
 
-Audit for stale tool references in the client SDK. Anything wrapping a deleted tool gets deleted. SDK should mirror the keep list exactly.
+Mirror the 12-surface keep list. Delete wrappers for tools that moved to CLI or got merged. Add wrappers for the new merged surfaces (`route`, `compact`, `memory`, `atelier_smart_search`, `atelier_smart_edit`).
 
 ### `src/atelier/gateway/adapters/cli.py`
 
-Verify CLI subcommands exist for everything moved from MCP→CLI in §4. Add any missing:
-- `atelier lesson inbox`, `atelier lesson decide`
-- `atelier consolidation inbox`, `atelier consolidation decide`
-- `atelier report` (already a `[project.scripts]` candidate; check)
-- `atelier sql inspect`
+Add or verify subcommands for everything moved off MCP (§4.2). Naming convention: subcommands under the `atelier` entry point, not separate `atelier-*` scripts.
+
+```
+atelier lesson inbox|decide
+atelier consolidation inbox|decide
+atelier report
+atelier sql inspect
+atelier proof run|show
+atelier route contract <host>
+```
+
+The handler functions called by these CLIs are the same functions previously called by the deleted MCP tool wrappers — they're not new code, just newly addressed only via CLI.
 
 ### `src/atelier/core/capabilities/`
 
-Per-capability decisions:
-
-| Capability dir | Action |
-|---|---|
-| `archival_recall/` | Delete if no remaining callers after memory tools go. Otherwise keep; it's used internally. Grep for callers first. |
-| `memory_arbitration/` | Same — grep first, delete if orphaned. |
-| `lesson_promotion/` | Keep. CLI uses it. |
-| `consolidation/` | Keep. CLI uses it. |
-| `quality_router/` | Keep. Now feeds `get_reasoning_context` instead of a standalone tool. |
-| `proof_gate/` | Keep. Now feeds `run_rubric_gate` response. |
-| `context_compression/` | Keep. Now feeds `record_trace` response. |
-| `repo_map/` | Decide based on `atelier_repo_map` usage check (§4). |
-| `reporting/` | Keep. CLI `atelier report` uses it. |
-| `tool_supervision/` | Keep. Powers `smart_read` and the new `smart_search`. |
-| `semantic_file_memory/` | Keep. Powers `smart_read` and `smart_search`. |
-| `starter_packs.py`, `style_import/` | Untouched. Already CLI-only. |
-| `loop_detection/`, `failure_analysis/` | Keep. Feed into `rescue_failure`. |
-| `budget_optimizer/` | Keep. Internal. |
-| `telemetry/` | Untouched (this is the internal substrate, not the new product telemetry). |
+| Dir                                                                                | Action                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repo_map/`                                                                        | **Restored from git** (Phase 0). Move `graph.py`, `pagerank.py`, `budget.py` to be internal modules used by `smart_search`. Keep `__init__.py` only exposing what the standalone `atelier_repo_map` MCP tool still needs. Delete `render.py` if unused after fold. |
+| `memory_arbitration/`                                                              | **Restored from git** (Phase 0). Stays as the arbiter in front of memory writes.                                                                                                                                                                                   |
+| `archival_recall/`                                                                 | Keep — backs `memory` archive/recall ops.                                                                                                                                                                                                                          |
+| `tool_supervision/`                                                                | Keep all of:`batch_edit.py`, `search_read.py`, `sql_inspect.py`, `compact_output.py`, `fuzzy_match.py`, `anomaly.py`, `circuit_breaker.py`. They back the smart\_\* and compact surfaces.                                                                          |
+| `semantic_file_memory/`                                                            | Keep. Powers smart_read and smart_search.                                                                                                                                                                                                                          |
+| `quality_router/`                                                                  | Keep. Powers `route` op-dispatch.                                                                                                                                                                                                                                  |
+| `proof_gate/`                                                                      | Keep — used by CLI `atelier proof`.                                                                                                                                                                                                                                |
+| `context_compression/`                                                             | Keep — used by `compact` op=session.                                                                                                                                                                                                                               |
+| `lesson_promotion/`, `consolidation/`, `reporting/`                                | Keep — used by CLI.                                                                                                                                                                                                                                                |
+| `loop_detection/`, `failure_analysis/`                                             | Keep — feed `rescue_failure`.                                                                                                                                                                                                                                      |
+| `budget_optimizer/`, `telemetry/` (substrate), `starter_packs.py`, `style_import/` | Untouched.                                                                                                                                                                                                                                                         |
 
 ### Tests
 
-Search and update:
-
-```
-tests/gateway/test_phase_d3_d4.py:25 references atelier_smart_search (currently fails to find it; will pass after implementation)
-tests/**/*.py — grep for every deleted tool name; delete or update tests
-```
-
-Any test asserting the deleted tools exist gets deleted. Any test calling the merged behavior via the *old* tool name gets updated to call the new fold target.
+- Delete tests asserting _existence_ of merged tool names with no behavioral coverage.
+- Rewrite tests exercising real behavior via merged tool names to call the new op-dispatch surfaces.
+- Add tests for:
+  - `route` op routing (decide vs verify)
+  - `compact` op routing (output vs session vs advise) — especially that `op=output` returns identical results to the old `compact_tool_output`
+  - `memory` op routing across all 5 ops
+  - `atelier_smart_search` graph-rank ordering on a fixture
+  - `atelier_smart_search` mode=chunks parity with old `search_read`
+  - Extended response shapes for `get_reasoning_context` and `record_trace`
 
 ### Docs
 
-This is the biggest single chunk of work. Files referencing tools to be cut or phantom tools that don't exist:
+Sweep every file referencing MCP tool names. Replace tool tables with the 12-surface MCP list + the 6 CLI command groups. Strike phantoms per §4.4. Files:
 
 ```
-docs/core/capabilities.md
-docs/core/tool-supervision.md
+README.md, AGENTS.md, AGENT_README.md, QUICK_REFERENCE.md, GEMINI.atelier.md
+docs/core/capabilities.md, docs/core/tool-supervision.md
 docs/engineering/mcp.md
-docs/hosts/all-agent-clis.md
-docs/hosts/claude-code.md
-docs/hosts/codex.md
-docs/hosts/opencode.md
-docs/sdk/mcp.md
-docs/sdk/python.md
-README.md
-AGENTS.md
-AGENT_README.md
-QUICK_REFERENCE.md
+docs/hosts/all-agent-clis.md, claude-code.md, codex.md, opencode.md
+docs/sdk/mcp.md, docs/sdk/python.md
 src/atelier/gateway/adapters/AGENT_README.md
 src/atelier/gateway/sdk/AGENT_README.md
 src/atelier/core/capabilities/AGENT_README.md
 src/atelier/infra/runtime/AGENT_README.md
-GEMINI.atelier.md
+docs/architecture/POSITIONING_AND_ADOPTION.md
+docs/architecture/full-v3-works.md (lines ~1866+)
+docs/migrations/v2-to-v3-deprecation-matrix.md
+docs/benchmarks/v3-honest-savings.md
+docs/architecture/work-packets-v3/WP-V3.1-B-pagerank-repo-map.md
+docs/architecture/work-packets-v3/WP-V3.1-D-memory-arbitrator.md
 ```
 
-For each: replace any tool table / capability list with the 7-tool keep list. Remove every reference to phantom tools (§2). Add a short "Why so few tools?" note linking the design rationale (this doc, or its public version).
+Update README's memory positioning per §4.3.
 
 ### `pyproject.toml`
 
-The `[project.scripts]` block already declares `atelier-task`, `atelier-context`, `atelier-check-plan`, `atelier-rescue`, `atelier-bench`. After the cut, ensure scripts exist for the CLI-only governance commands (`atelier-report`?), or accept that they live as subcommands under the main `atelier` entry point. Pick one convention; don't mix.
+CLI subcommands live under the main `atelier` entry point. No new `[project.scripts]` entries needed for the CLI moves; existing `atelier` script handles dispatch.
 
 ---
 
 ## 7. Phases
 
-### Phase 1 — Safety net (no cuts yet)
+### Phase 1 — Census (no surface changes)
 
-- Grep-based usage census: for every tool slated for delete/fold, list all internal callers (test files, doc files, capability-internal calls, SDK wrappers).
-- Output: a checklist file `docs/internal/engineering/mcp-cut-census.md` (delete after the cut lands).
-- Reason: this is the only way to do hard removal safely without a deprecation period. If the census shows surprises (a test depending on a tool you didn't expect, an SDK wrapper, an example), the cut plan branches before delete.
+Grep every MCP tool name slated for change. Output `docs/internal/engineering/mcp-cut-census.md` listing file path, line, kind (test/doc/code/example) for every reference. Delete the census doc once Phase 5 lands.
 
-### Phase 2 — Implement `atelier_smart_search`
+### Phase 2 — Build new + add CLI surfaces
 
-- Build the missing tool first, before any deletion. Eight doc files reference it; users may already be reaching for it.
-- Mirror `atelier_smart_read`'s shape: same injection-guard rules, cache key strategy, capability backing.
+- Build `atelier_smart_search` with the four-channel pipeline.
+- Add CLI subcommands for the 6 move-off-MCP groups, calling the existing handler functions.
+- Smoke-test each CLI command works end-to-end before any MCP tool gets removed.
 
-### Phase 3 — Fold the merges
+### Phase 3 — Consolidate via op-dispatch
 
-- Extend `atelier_get_reasoning_context` to carry routing + verification + contract fields.
-- Extend `atelier_record_trace` to carry compaction advice + compression output.
-- Extend `atelier_run_rubric_gate` to carry proof report.
-- Update the corresponding capability call paths so the merged tools' bodies live inline in the keeper handlers.
+- Merge `route_decide` + `route_verify` → `route`. Add tests.
+- Merge `compact_tool_output` + `compress_context` + `compact_advise` → `compact`. Add tests; verify `op=output` parity is byte-identical to old `compact_tool_output`.
+- Merge 5 memory tools → `memory`. Add tests.
+- Merge `search_read` into `smart_search` as `mode=chunks`. Add tests.
+- Rename `batch_edit` → `smart_edit`. Update internal callers.
+- Extend `get_reasoning_context` and `record_trace` response shapes; gate expensive fields.
 
-### Phase 4 — Delete
+### Phase 4 — Remove what moved or merged
 
-- Remove every `@mcp_tool` block for cuts.
-- Remove the legacy alias map.
-- Remove orphaned imports.
-- Run the census from Phase 1; every flagged caller must be updated or its consumer deleted.
+- Delete old `@mcp_tool` blocks: `route_decide`, `route_verify`, `route_contract`, `proof_report`, `lesson_inbox`, `lesson_decide`, `report`, `sql_inspect`, `consolidation_inbox`, `consolidation_decide`, individual memory tools, `compact_tool_output`, `compress_context`, `compact_advise`, `search_read`, `batch_edit` (replaced by `smart_edit`).
+- Delete legacy unprefixed alias map.
+- Run Phase 1 census; update every flagged caller.
 
 ### Phase 5 — Reconcile docs
 
-- Sweep every file in §6 "Docs". Replace tool tables with the 7-tool list. Remove phantom tool references.
-- Add a short "Surface area is intentional" paragraph to `README.md` and `docs/engineering/mcp.md` explaining the cut so users don't file issues asking where `atelier_memory_recall` went.
+- Sweep every file in §6 "Docs". Strike phantoms. Replace tool tables.
+- Add a "12 MCP surfaces, 6 CLI command groups, here's why" paragraph to `README.md` and `docs/engineering/mcp.md`.
 
 ### Phase 6 — Verify
 
-- `mcp-server` boots; advertises exactly 7 tools.
-- Each of the 7 is callable end-to-end with a smoke test.
-- `grep -rn "atelier_memory\|atelier_route_decide\|atelier_search_read\|atelier_batch_edit\|atelier_compact_advise\|atelier_compress_context\|atelier_compact_tool_output\|atelier_repo_map\|atelier_consolidation_\|atelier_lesson_\|atelier_report\|atelier_sql_inspect\|atelier_route_verify\|atelier_route_contract\|atelier_proof_report"` returns matches only in CHANGELOG and the cut-plan doc itself.
-- Phantom tools (§2) no longer appear anywhere in `docs/` or `*.md`.
+- `mcp-server` boots; advertises exactly the 11 surfaces in §4.1. ✅
+- Each surface callable end-to-end via an MCP smoke test. ✅
+- Each CLI command from §4.2 callable end-to-end. ✅
+- `grep -rn "atelier_lesson_\|atelier_consolidation_\|atelier_report\b\|atelier_sql_inspect\|atelier_proof_report\|route_contract\|compact_tool_output\|atelier_compress_context\|compact_advise\|memory_upsert_block\|memory_get_block\|memory_archive\|memory_recall\|memory_summary\|search_read\|atelier_batch_edit\|route_decide\|route_verify\|atelier_get_reasoning_context\|atelier_rescue_failure\|atelier_run_rubric_gate\|atelier_smart_read\|atelier_smart_search\|atelier_smart_edit\|atelier_repo_map"` returns matches only in CHANGELOG and this plan. ✅
+- Phantom tools no longer appear anywhere in `docs/` or `*.md`. ✅
 
 ---
 
 ## 8. Risks & How to Handle
 
-| Risk | Handling |
-|---|---|
-| External users depend on a deleted tool | Project is early-stage OSS; users have been told the surface may move. CHANGELOG entry calls out every removal by name. No grace period. |
-| A test depends on a deleted tool and gets deleted with it, hiding a real regression | The Phase 1 census surfaces tests; each flagged test gets a 30-second human review: "is this protecting real behavior, or just asserting the tool exists?" Real-behavior tests get rewritten against the keeper; existence tests get deleted. |
-| Folded responses bloat keeper return shapes | Document each new field; require a field to be opt-in via request param if it's expensive to compute (e.g., proof report only when `include_proof=True`). |
-| `atelier_repo_map` turns out to be load-bearing | The plan says "decide based on usage check" — don't delete blind. Census in Phase 1 settles this. |
-| Capability dirs `archival_recall` / `memory_arbitration` get orphaned | Phase 1 census catches this. Delete the dirs in the same PR if no callers remain — don't leave dead modules. |
+| Risk                                                                               | Handling                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Op-dispatch tool descriptions get bloated and hurt host model performance          | Keep per-op input schemas terse. Doc the ops in a separate page, not in the MCP tool description. If still too long, split that surface back to two.                                                                        |
+| `compact` op-dispatch makes the most-called token saver harder for hosts to use    | **Op naming is critical.** `op=output` must be the obvious choice for the per-tool-output case. Provide an example call in the tool docstring. Benchmark token-saving parity vs. old `compact_tool_output` before deletion. |
+| `atelier_smart_search` regresses on graph-only navigation cases vs. old `repo_map` | Capture a fixture-based benchmark before fold. Smart_search must match or beat repo_map on those queries — and `atelier_repo_map` stays as a separate surface, so the fallback exists.                                      |
+| `memory` adapter gap (OpenMemory/Mem0 not in factory)                              | Confirm production backend before the consolidation lands. If OpenMemory/Mem0, build the adapter as a prereq PR.                                                                                                            |
+| Folded responses bloat keeper return shapes                                        | Make expensive fields opt-in via request flags (`include_run_ledger`, `include_environment`). Default off.                                                                                                                  |
+| CLI subcommand UX worse than MCP tool for governance ops                           | Acceptable — humans run governance, not agents. UX bar is "discoverable via `atelier --help`," not "minimal keystrokes."                                                                                                    |
+| Doc drift recurs                                                                   | Add a CI check (follow-up):`grep -rn 'atelier_'` in docs vs. registered tool names in mcp_server.py — fail on mismatch.                                                                                                     |
 
 ---
 
 ## 9. Acceptance Criteria
 
-- [ ] `mcp_server.py` registers exactly 7 `@mcp_tool` names, matching §3.
-- [ ] No legacy-name alias map remains in `mcp_server.py`.
-- [ ] `atelier_smart_search` is implemented and matches the doc claims.
-- [ ] Every doc file in §6 has been swept; phantom tools and cut tools no longer appear.
-- [ ] `grep` regression check from Phase 6 passes.
-- [ ] CLI subcommands exist for every "Delete from MCP, keep CLI" entry in §4.
-- [ ] No capability dir is orphaned (zero internal callers and zero CLI/MCP exposure).
-- [ ] CHANGELOG entry lists every removed tool by name with a one-line "use X instead" pointer.
+- [ ] Phase 0 revert is clean; restored modules import without error.
+- [x] `mcp_server.py` registers exactly the 11 surfaces in §4.1.
+- [x] No legacy-name alias map remains.
+- [x] `search` exists and combines lexical + semantic + graph + chunks; `mode=map` absorbs `atelier_repo_map`.
+- [x] `compact` exists with `op=output|session|advise`.
+- [x] `memory` exists with op-dispatch over the 5 memory operations and routes to the configured backend via `factory.make_memory_store()`.
+- [x] `route` exists with `op=decide|verify`.
+- [x] `edit` exists (formerly `atelier_smart_edit`, renamed from `batch_edit`).
+- [ ] CLI subcommands exist and pass smoke tests for: `lesson inbox/decide`, `consolidation inbox/decide`, `report`, `sql inspect`, `proof run/show`, `route contract`.
+- [ ] No capability dir is orphaned.
+- [ ] Every doc file in §6 swept; phantom tools gone; tool tables show the 12-surface MCP list and 6 CLI command groups.
+- [ ] CHANGELOG entry lists every consolidation/move with the new home for each absorbed tool.
+- [ ] README's memory positioning matches §4.3.
 
 ---
 
-## 10. Open Items
+## 10. Decisions
 
-- `atelier_repo_map` and `atelier_compact_tool_output`: Phase 1 census decides delete vs fold. Don't ship the cut without resolving.
-- `archival_recall` / `memory_arbitration` capability dirs: same — delete decision waits on census.
-- Whether the `atelier_smart_search` implementation should land in this PR or a prior one. Recommend prior, so the cut PR is purely subtractive plus the three fold extensions.
-- Public-facing migration note: do we publish the rationale, or quiet ship? Recommend publish — this is the kind of decision OSS users respect when explained.
+- **Memory backends:** which is your production backend — Letta, OpenMemory, Mem0? `factory.py` currently knows `sqlite` and `letta`. If OpenMemory/Mem0, the adapter is a hard prereq for this work to ship correctly. Include openmemopry adaptor
+- **`atelier_repo_map` keep separate or fold?** fold seed-based lookup into `smart_search` with `mode=map`.
+- **Repoint arbitration at ReasonBlock writes too?** Default: yes, Adds Atelier-specific value to lesson promotion. Reject by replying "memory arbitration only."
+- **Public migration note** when this ships: quiet ship (faster).

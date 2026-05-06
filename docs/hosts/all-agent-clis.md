@@ -7,6 +7,13 @@ make install    # install into all CLIs found on PATH
 make verify     # verify code, runtime, and installed hosts
 ```
 
+Installers write user/global host config by default. To install project-local
+artifacts for a specific workspace, pass `--workspace DIR` to the script:
+
+```bash
+bash scripts/install_agent_clis.sh --workspace /path/to/workspace
+```
+
 ---
 
 ## Supported Hosts
@@ -51,7 +58,7 @@ All install scripts:
 - Support `--dry-run` (print actions, write nothing)
 - Support `--print-only` (print manual steps for offline/audited environments)
 - Support `--strict` (exit nonzero if CLI absent — useful for CI gates)
-- Support `--workspace PATH` to target a non-cwd workspace
+- Support `--workspace PATH` to write project-local artifacts instead of user/global config
 
 ---
 
@@ -74,12 +81,12 @@ Detailed documentation and example configs for each host live in:
 atelier/integrations/
 ├── claude/          # Full plugin config
 ├── codex/           # Skills + MCP example
-├── opencode/        # opencode.jsonc example
+├── opencode/        # opencode.json example
 ├── copilot/         # .vscode/mcp.json + copilot-instructions
 └── gemini/          # ~/.gemini/settings.json example
 ```
 
-Each host dir has: `README.md`, example config(s), `install.sh` (→ `scripts/install_<host>.sh`), `verify.sh` (→ `scripts/verify_<host>.sh`).
+Host install entrypoints are under `scripts/install_<host>.sh`.
 
 ---
 
@@ -97,15 +104,18 @@ This wrapper: locates the atelier repo from its own path, sets `ATELIER_WORKSPAC
 
 All hosts receive the same capability tools from the MCP server:
 
-- `atelier_reasoning_reuse`
-- `atelier_semantic_memory`
-- `atelier_loop_monitor`
-- `atelier_tool_supervisor`
-- `atelier_context_compressor`
-- `atelier_smart_search`
-- `atelier_smart_read`
-- `atelier_smart_edit`
-- `atelier_sql_inspect`
+- `reasoning`
+- `lint`
+- `route`
+- `rescue`
+- `trace`
+- `verify`
+- `memory`
+- `read`
+- `edit`
+- `search`
+- `compact`
+- `atelier_repo_map`
 
 ---
 

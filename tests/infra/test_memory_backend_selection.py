@@ -40,7 +40,23 @@ def test_memory_backend_config_selects_letta(tmp_path: Path, monkeypatch: pytest
     assert store.root_arg == root
 
 
+def test_memory_backend_env_selects_openmemory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "openmemory")
+
+    class FakeOpenMemoryMemoryStore:
+        def __init__(self, root_arg: Path) -> None:
+            self.root_arg = root_arg
+
+    monkeypatch.setattr(
+        "atelier.infra.memory_bridges.openmemory.OpenMemoryMemoryStore",
+        FakeOpenMemoryMemoryStore,
+    )
+
+    store = make_memory_store(tmp_path / "atelier")
+    assert isinstance(store, FakeOpenMemoryMemoryStore)
+
+
 def test_unknown_memory_backend_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "bogus")
-    with pytest.raises(ValueError, match=r"sqlite.*letta"):
+    with pytest.raises(ValueError, match=r"sqlite.*letta.*openmemory"):
         make_memory_store(tmp_path / "atelier")

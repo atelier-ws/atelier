@@ -31,8 +31,8 @@ Methodology:
   that task. The corpus is committed to the repo; no production data is used.
 - Re-play each transcript under two configurations:
   - **Baseline (Run A):** every Atelier tool call is replaced with the host-native equivalent
-    (`grep` instead of `atelier_search_read`, sequential `Edit` instead of
-    `atelier_batch_edit`, full file reads instead of AST outline). The mocked LLM consumes
+    (`grep` instead of `search`, sequential `Edit` instead of
+    `edit`, full file reads instead of AST outline). The mocked LLM consumes
     the resulting tool outputs and produces the same final response.
   - **V3 (Run B):** every Atelier tool call goes through Atelier's MCP server normally.
 - Compare total input tokens consumed by the mocked LLM, total tool round-trips, and final

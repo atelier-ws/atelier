@@ -21,7 +21,7 @@ capability to do the same for Python and TypeScript. Tree-sitter is already a de
 - `src/atelier/core/capabilities/semantic_file_memory/capability.py` — edit
 - `src/atelier/core/capabilities/semantic_file_memory/python_ast.py` — edit (add `outline()`)
 - `src/atelier/core/capabilities/semantic_file_memory/typescript_ast.py` — edit (add `outline()`)
-- `src/atelier/gateway/adapters/mcp_server.py` — edit: `atelier_smart_read` returns outline for files > 200 LOC unless `expand=true` or `range=L1-L2`
+- `src/atelier/gateway/adapters/mcp_server.py` — edit: `read` returns outline for files > 200 LOC unless `expand=true` or `range=L1-L2`
 - `tests/core/test_python_outline.py`
 - `tests/core/test_typescript_outline.py`
 - `tests/infra/test_smart_read_outline_first.py`
@@ -48,7 +48,7 @@ capability to do the same for Python and TypeScript. Tree-sitter is already a de
    `function_declaration`, `method_definition`, `arrow_function` _only_ when bound to a top-level
    `const`.
 
-4. `atelier_smart_read` API:
+4. `read` API:
    - Existing: `&#123;file_path&#125;` → `&#123;content, cache_hit, tokens_saved&#125;`
    - Extended: `&#123;file_path, [range, expand=false]&#125;` →
      `&#123;outline?, content?, cache_hit, tokens_saved, mode: "outline"|"range"|"full"&#125;`
