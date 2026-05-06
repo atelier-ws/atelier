@@ -403,24 +403,24 @@ class AtelierRuntimeCore:
             parts = text.split()
             if len(parts) >= 2:
                 suggestion = {
-                    "tool": "atelier_cached_grep",
-                    "args": {"pattern": parts[1], "path": "."},
-                    "reason": "Use cached grep to persist search context in the ledger.",
+                    "tool": "search",
+                    "args": {"query": parts[1], "path": ".", "mode": "chunks"},
+                    "reason": "Use smart search to persist and rank search context in the ledger.",
                 }
         elif text.startswith("cat "):
             path = text[4:].strip()
             if path:
                 suggestion = {
-                    "tool": "atelier_smart_read",
+                    "tool": "read",
                     "args": {"path": path, "max_lines": 120},
                     "reason": "Use AST-aware smart read with token metrics.",
                 }
         elif text.startswith("find "):
             query = text.replace("find", "", 1).strip()
             suggestion = {
-                "tool": "atelier_cached_grep",
-                "args": {"pattern": query or ".", "path": "."},
-                "reason": "Use cached grep for repeated repository lookups.",
+                "tool": "search",
+                "args": {"query": query or ".", "path": ".", "mode": "chunks"},
+                "reason": "Use smart search for repeated repository lookups.",
             }
 
         return {

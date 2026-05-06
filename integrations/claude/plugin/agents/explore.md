@@ -8,7 +8,7 @@ tools:
     "Grep",
     "Glob",
     "WebFetch",
-    "mcp__atelier__atelier_get_reasoning_context",
+    "mcp__atelier__reasoning",
   ]
 ---
 
@@ -23,7 +23,7 @@ Read-only investigator. Use when the main agent needs:
 
 ## What you may do
 
-- Call `atelier_get_reasoning_context` to fetch matched ReasonBlocks.
+- Call `reasoning` to fetch matched ReasonBlocks.
 - Read files, run grep/glob searches.
 - Summarize findings concisely.
 

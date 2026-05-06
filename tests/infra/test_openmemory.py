@@ -7,9 +7,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 import pytest
-from click.testing import CliRunner
 
-from atelier.gateway.adapters.cli import cli
 from atelier.gateway.integrations.openmemory import (
     is_enabled,
     list_available_memory_tools,
@@ -158,52 +156,9 @@ def test_disabled_response_has_required_keys(
     assert "action" in result
 
 
-# --------------------------------------------------------------------------- #
-# CLI smoke tests                                                             #
-# --------------------------------------------------------------------------- #
-
-
-def test_cli_openmemory_status_disabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "status"], obj={})
-    assert result.exit_code == 0
-    assert "enabled: False" in result.output
-    assert "available_tools" in result.output
-
-
-def test_cli_openmemory_status_enabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_OPENMEMORY_ENABLED", "true")
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "status"], obj={})
-    assert result.exit_code == 0
-    assert "enabled: True" in result.output
-
-
-def test_cli_openmemory_link_trace_disabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "link-trace", "trace-42"], obj={})
-    assert result.exit_code == 0
-    data = json.loads(result.output)
-    assert data["ok"] is True
-    assert data["data"]["trace_id"] == "trace-42"
-
-
-def test_cli_openmemory_fetch_context_disabled(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        ["--root", str(tmp_path), "openmemory", "fetch-context", "fix the bug"],
-        obj={},
-    )
-    assert result.exit_code == 0
-    data = json.loads(result.output)
-    assert data["ok"] is True
-    assert "matches" in data["data"]
+# CLI openmemory tests removed — openmemory top-level group cut in CLI
+# consolidation. Backend selection belongs in init --backend=... and
+# ATELIER_MEMORY_BACKEND env. Bridge logic is tested via Python API below.
 
 
 def test_bridge_persists_local_state(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
