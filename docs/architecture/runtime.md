@@ -56,7 +56,7 @@ flowchart TD
 | **Loop Monitors**   | Detect thrashing (same step repeated), second-guessing, and budget exhaustion        |
 | **Failure Rescue**  | Match observable error signatures against known failure clusters; surface rescue procedure |
 | **Context Compressor** | Summarise ledger state to keep agent context window within budget                 |
-| **Tool Cache**      | `smart_read` (AST-aware), `smart_search` (FTS + semantic), `cached_grep` (injection-guarded) |
+| **Tool Cache**      | `read` (AST-aware) and `search` (FTS + semantic + guarded search) |
 
 ## Interfaces
 

@@ -17,7 +17,7 @@ def _call_context(args: dict[str, Any]) -> dict[str, Any]:
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "atelier_get_reasoning_context", "arguments": args},
+            "params": {"name": "reasoning", "arguments": args},
         }
     )
     assert response is not None

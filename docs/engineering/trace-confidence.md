@@ -13,7 +13,7 @@ provides.
 | `mcp_live`     | Atelier MCP tool calls and tool outputs are captured; native host edits, commands, or compaction events may be incomplete.                       |
 | `wrapper_live` | Wrapper captures task start/end and validation results, but not every native host event.                                                         |
 | `imported`     | Host session data is imported after the run via a session importer (e.g., opencode SQLite DB or Claude JSONL).                                   |
-| `manual`       | Agent calls `atelier_record_trace` with observable facts only. No live event stream is available.                                                |
+| `manual`       | Agent calls `trace` with observable facts only. No live event stream is available.                                                |
 
 ## Host Confidence Map
 
@@ -51,7 +51,7 @@ If a caller supplies `trace_confidence = "full_live"` without the required
 
 ## Usage
 
-When calling `atelier_record_trace`, pass the new optional fields:
+When calling `trace`, pass the new optional fields:
 
 ```json
 &#123;

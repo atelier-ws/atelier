@@ -1,4 +1,4 @@
-"""Fuzzy matching helpers for atelier_batch_edit (WP-24).
+"""Fuzzy matching helpers for atelier_edit (WP-24).
 
 This module intentionally applies only to the batch-edit augmentation path.
 """

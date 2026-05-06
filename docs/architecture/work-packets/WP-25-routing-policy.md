@@ -50,4 +50,4 @@ uv run pytest tests/core/test_routing_policy.py -q
 - [ ] No provider prices or model names are hard-coded into policy defaults
 - [ ] High-risk and protected-file rules force premium/escalation
 - [ ] Acceptance tests pass
-- [ ] `atelier_record_trace` called with `WP-25` in `output_summary`
+- [ ] `trace` called with `WP-25` in `output_summary`

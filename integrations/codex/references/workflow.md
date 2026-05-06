@@ -19,7 +19,7 @@ in this workspace, especially anything touching:
 ### 1. Retrieve reasoning context
 
 ```json
-atelier_get_reasoning_context({
+reasoning({
   "task": "Fix Shopify publish validation",
   "domain": "beseam.shopify.publish",
   "files": ["backend/src/modules/shopify/publish.py"],
@@ -36,7 +36,7 @@ Read every returned ReasonBlock. Note their `dead_ends`.
 ### 3. Validate the plan
 
 ```json
-atelier_check_plan({
+lint({
   "task": "Fix Shopify publish validation",
   "domain": "beseam.shopify.publish",
   "plan": [
@@ -65,7 +65,7 @@ Smallest diff that satisfies the validated plan.
 Trigger: same command/test/tool fails twice with same error signature.
 
 ```json
-atelier_rescue_failure({
+rescue({
   "task": "Fix Shopify publish validation",
   "error": "AssertionError: metafield not updated",
   "files": ["..."],
@@ -81,7 +81,7 @@ atelier_rescue_failure({
 ### 6. Rubric gate (high-risk only)
 
 ```json
-atelier_run_rubric_gate({
+verify({
   "rubric_id": "rubric_shopify_publish",
   "checks": {
     "product_identity_uses_gid": true,
@@ -101,14 +101,14 @@ atelier_run_rubric_gate({
 ### 7. Record trace
 
 ```json
-atelier_record_trace({
+trace({
   "agent": "codex",
   "domain": "beseam.shopify.publish",
   "task": "Fix Shopify publish validation",
   "status": "success",
   "files_touched": ["backend/src/modules/shopify/publish.py"],
   "tools_called": [
-    {"name": "atelier_check_plan", "args_hash": "", "count": 2},
+    {"name": "lint", "args_hash": "", "count": 2},
     {"name": "edit", "args_hash": "", "count": 3}
   ],
   "commands_run": ["pytest tests/test_publish.py"],
@@ -123,11 +123,11 @@ atelier_record_trace({
 
 ## Hard rules
 
-1. Never edit files before `atelier_check_plan` returns `ok`.
+1. Never edit files before `lint` returns `ok`.
 2. Never retry a failing command a third time without
-   `atelier_rescue_failure`.
+   `rescue`.
 3. Never declare success on a high-risk domain without
-   `atelier_run_rubric_gate`.
+   `verify`.
 4. Never record secrets, tokens, API keys, customer PII, or hidden
    chain-of-thought.
 5. Never invent plan steps that contradict matched ReasonBlocks.

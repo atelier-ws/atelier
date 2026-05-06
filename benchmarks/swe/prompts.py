@@ -16,18 +16,18 @@ _BASE = (
 
 _TOOLS_HINT = (
     "\n\nThe Atelier MCP server is available. You may call tools such as "
-    "`atelier_get_reasoning_context`, `atelier_check_plan`, "
-    "`atelier_rescue_failure`, `atelier_run_rubric_gate`, and "
-    "`atelier_record_trace`. Use them when they help."
+    "`reasoning`, `lint`, "
+    "`rescue`, `verify`, and "
+    "`trace`. Use them when they help."
 )
 
 _FORCED_HINT = (
     "\n\nYou MUST follow this workflow:\n"
-    "  1. Call `atelier_get_reasoning_context` before drafting your plan.\n"
-    "  2. Call `atelier_check_plan` before producing the patch.\n"
-    "  3. If you fail twice on the same step, call `atelier_rescue_failure`.\n"
-    "  4. Call `atelier_run_rubric_gate` before submitting.\n"
-    "  5. Call `atelier_record_trace` once you finish."
+    "  1. Call `reasoning` before drafting your plan.\n"
+    "  2. Call `lint` before producing the patch.\n"
+    "  3. If you fail twice on the same step, call `rescue`.\n"
+    "  4. Call `verify` before submitting.\n"
+    "  5. Call `trace` once you finish."
 )
 
 

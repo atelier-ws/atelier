@@ -8,7 +8,7 @@ Show the Atelier run status.
 If `$1` is provided, treat it as the `run_id`. Otherwise, use the most
 recent run.
 
-1. Call `atelier_get_run_ledger({ run_id: "$1" })`. If `$1` is empty,
+1. Call `reasoning({ run_id: "$1" })`. If `$1` is empty,
    omit the argument and let the server resolve the latest run.
 2. If the tool returns an error like "no run ledger found", reply:
    > No active run. Start a task with the `atelier:code` agent to create one.

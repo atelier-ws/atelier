@@ -52,6 +52,8 @@ class ReasoningContextResult(BaseModel):
     tokens_saved_vs_naive: int | None = None
     recalled_passages: builtins.list[ReasoningContextRecalledPassage] = Field(default_factory=list)
     tokens_breakdown: ReasoningContextTokenBreakdown | None = None
+    run_ledger: dict[str, Any] | None = None
+    environment: dict[str, Any] | None = None
 
 
 class TraceRecordResult(BaseModel):
@@ -65,6 +67,7 @@ class MemoryUpsertBlockResult(BaseModel):
 
     id: str
     version: int
+    arbitration: dict[str, Any] = Field(default_factory=dict)
 
 
 class MemoryArchiveResult(BaseModel):

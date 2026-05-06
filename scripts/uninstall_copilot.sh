@@ -1,96 +1,97 @@
 #!/usr/bin/env bash
-# uninstall_copilot.sh — Remove Atelier from VS Code Copilot
-#
-# What it does:
-#   1. Removes atelier entry from .vscode/mcp.json
-#   2. Removes atelier context from .github/copilot-instructions.md
+# uninstall_copilot.sh - Remove Atelier from VS Code Copilot
 #
 # Options:
-#   --workspace DIR  Target workspace root (default: cwd)
-#   --dry-run       Print what would happen, touch nothing
+#   --workspace DIR  Remove project-local artifacts from DIR instead of global user config
+#   --dry-run        Print what would happen, touch nothing
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-
 DRY_RUN=false
-WORKSPACE="${PWD}"
+WORKSPACE=""
+WORKSPACE_SET=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=true ;;
-        --workspace) WORKSPACE="$2"; shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            WORKSPACE="$2"
+            WORKSPACE_SET=true
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift
 done
 
-WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+if $WORKSPACE_SET; then
+    WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+    MCP_JSON="${WORKSPACE}/.vscode/mcp.json"
+    INSTRUCTIONS="${WORKSPACE}/.github/copilot-instructions.md"
+    CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
+    TASKS_JSON="${WORKSPACE}/.vscode/tasks.json"
+else
+    VSCODE_USER_DIR="${VSCODE_USER_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/Code/User}"
+    MCP_JSON="${VSCODE_USER_DIR}/mcp.json"
+    INSTRUCTIONS="${HOME}/.copilot/instructions/atelier.instructions.md"
+    CHATMODE=""
+    TASKS_JSON="${VSCODE_USER_DIR}/tasks.json"
+fi
 
 info()  { echo "[atelier:uninstall:copilot] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# Remove MCP server entry from .vscode/mcp.json
-VSCODE_MCP="${WORKSPACE}/.vscode/mcp.json"
-if [ -f "$VSCODE_MCP" ] && grep -q "atelier" "$VSCODE_MCP"; then
-    if command -v python3 &> /dev/null; then
-        python3 -c "
+if [ -f "$MCP_JSON" ] && grep -q "atelier" "$MCP_JSON" 2>/dev/null; then
+    run "python3 -c '
 import json
-path = '$VSCODE_MCP'
-try:
-    with open(path, 'r') as f:
-        data = json.load(f)
-    # VS Code Copilot uses 'servers' key (not 'mcpServers')
-    if 'servers' in data and 'atelier' in data['servers']:
-        del data['servers']['atelier']
-        with open(path, 'w') as f:
-            json.dump(data, f, indent=2)
-        print('Removed atelier from .vscode/mcp.json')
-except Exception as e:
-    print(f'Warning: {e}', file=sys.stderr)
-" || true
-    else
-        echo "[atelier:uninstall:copilot] WARN: python3 not found, skipping .vscode/mcp.json cleanup"
-    fi
-fi
-
-# Remove atelier context from .github/copilot-instructions.md
-COPILOT_INSTR="${WORKSPACE}/.github/copilot-instructions.md"
-if [ -f "$COPILOT_INSTR" ]; then
-    # Check if it ONLY contains Atelier content (no other content)
-    if grep -q "Atelier" "$COPILOT_INSTR" 2>/dev/null; then
-        # Backup then remove the file entirely
-        run "cp '$COPILOT_INSTR' '${COPILOT_INSTR}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
-        run "rm -f '$COPILOT_INSTR'"
-        info "Removed .github/copilot-instructions.md (Atelier-only file)"
-    else
-        # Try to remove just atelier section if there's other content
-        if grep -q "atelier" "$COPILOT_INSTR" 2>/dev/null; then
-            run "python3 -c '
-import re
-path = \"$COPILOT_INSTR\"
-try:
-    with open(path, \"r\") as f:
-        content = f.read()
-    # Remove atelier section (from ## to next ## or end)
-    new_content = re.sub(r\"##\s*Atelier[^\\n]*\\n[\\s\\S]*?(?=\\n##|\$)\", \"\", content)
-    new_content = re.sub(r\"\\n{3,}\", \"\\n\", new_content).strip()
-    with open(path, \"w\") as f:
-        f.write(new_content + \"\\n\")
-    print(\"Removed atelier section from .github/copilot-instructions.md\")
-except Exception as e:
-    print(f\"Warning: {e}\", file=sys.stderr)
+from pathlib import Path
+path = Path(\"$MCP_JSON\")
+data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
+for key in (\"servers\", \"mcpServers\"):
+    data.get(key, {}).pop(\"atelier\", None)
+path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
-        fi
+    info "Removed atelier MCP entry from $MCP_JSON"
+fi
+
+if [ -f "$INSTRUCTIONS" ] && grep -qi "atelier" "$INSTRUCTIONS" 2>/dev/null; then
+    if $WORKSPACE_SET; then
+        run "cp '$INSTRUCTIONS' '${INSTRUCTIONS}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
+        run "python3 -c '
+import re
+from pathlib import Path
+path = Path(\"$INSTRUCTIONS\")
+content = path.read_text(encoding=\"utf-8\")
+content = re.sub(r\"\\n?##\\s*Atelier[^\\n]*\\n[\\s\\S]*?(?=\\n##\\s|\\Z)\", \"\\n\", content).strip()
+path.write_text((content + \"\\n\") if content else \"\", encoding=\"utf-8\")
+'"
+        info "Removed Atelier section from $INSTRUCTIONS"
+    else
+        run "rm -f '$INSTRUCTIONS'"
+        info "Removed $INSTRUCTIONS"
     fi
 fi
 
-# Remove .github/chatmodes/atelier.chatmode.md if exists
-CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
-if [ -f "$CHATMODE" ]; then
+if [ -n "$CHATMODE" ] && [ -f "$CHATMODE" ]; then
     run "rm -f '$CHATMODE'"
-    info "Removed .github/chatmodes/atelier.chatmode.md"
+    info "Removed $CHATMODE"
+fi
+
+if [ -f "$TASKS_JSON" ] && grep -q "Atelier:" "$TASKS_JSON" 2>/dev/null; then
+    run "python3 -c '
+import json
+from pathlib import Path
+path = Path(\"$TASKS_JSON\")
+data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
+data[\"tasks\"] = [t for t in data.get(\"tasks\", []) if not str(t.get(\"label\", \"\")).startswith(\"Atelier:\")]
+data[\"inputs\"] = [i for i in data.get(\"inputs\", []) if not str(i.get(\"id\", \"\")).startswith(\"atelier\")]
+path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+'"
+    info "Removed Atelier task presets from $TASKS_JSON"
 fi
 
 info "Done."

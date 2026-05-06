@@ -3,7 +3,7 @@
 
 Tracks command failures keyed by (command, error_signature). On the second
 identical failure, returns a decision that tells Claude to call
-`atelier_rescue_failure` before retrying.
+`rescue` before retrying.
 
 Opt-in via hooks.json.
 """
@@ -155,7 +155,7 @@ def main() -> int:
                     "decision": "ask",
                     "reason": (
                         "Atelier: this command has now failed twice with the "
-                        "same error signature. Call `atelier_rescue_failure` "
+                        "same error signature. Call `rescue` "
                         "with the task, error, files, and recent_actions "
                         "before running it again."
                     ),
