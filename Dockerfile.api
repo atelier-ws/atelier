@@ -13,6 +13,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
+COPY templates ./templates
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --extra api --no-dev
