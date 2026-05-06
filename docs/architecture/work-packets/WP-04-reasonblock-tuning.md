@@ -63,7 +63,7 @@ def test_dedup_and_budget_cut_tokens_at_least_30pct(seeded_store):
     tuned = list(seeded_store.retrieve(task=TASK, max_blocks=10, dedup=True,  token_budget=2000))
     naive_tok = sum(count_tokens(render(b)) for b in naive)
     tuned_tok = sum(count_tokens(render(b)) for b in tuned)
-    assert tuned_tok <= naive_tok * 0.7, f"only {(1 - tuned_tok/naive_tok)*100:.1f}% reduction"
+    assert tuned_tok <= naive_tok * 0.7, f"only &#123;(1 - tuned_tok/naive_tok)*100:.1f&#125;% reduction"
     # Recall is not regressed: top-1 block id is unchanged
     assert naive[0].id == tuned[0].id
 ```

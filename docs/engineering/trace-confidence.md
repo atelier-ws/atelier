@@ -54,7 +54,7 @@ If a caller supplies `trace_confidence = "full_live"` without the required
 When calling `atelier_record_trace`, pass the new optional fields:
 
 ```json
-{
+&#123;
   "agent": "claude:claude-opus-4-5",
   "domain": "coding",
   "task": "Implement WP-30 trace confidence",
@@ -62,7 +62,7 @@ When calling `atelier_record_trace`, pass the new optional fields:
   "trace_confidence": "full_live",
   "capture_sources": ["hooks", "mcp"],
   "missing_surfaces": []
-}
+&#125;
 ```
 
 If you do not supply `trace_confidence`, the field remains `null` on the

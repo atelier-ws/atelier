@@ -86,7 +86,7 @@ elided) …`. Recovery hint includes the exact rerun command if known.
 
 - **EDIT:** `src/atelier/core/capabilities/telemetry/context_budget.py` — record
   `compact_method` and per-method `tokens_in` / `tokens_out` per call. Surface
-  `atelier_tokens_saved_total{lever="compact_tool_output", method=...}`.
+  `atelier_tokens_saved_total&#123;lever="compact_tool_output", method=...&#125;`.
 
 ### Tests
 

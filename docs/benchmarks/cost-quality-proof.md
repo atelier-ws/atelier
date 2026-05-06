@@ -81,7 +81,7 @@ The proof gate writes two files to `.atelier/proof/`:
 ### Minimum required fields in `proof-report.json`
 
 ```json
-{
+&#123;
   "run_id": "...",
   "status": "pass | fail",
   "failed_thresholds": [],
@@ -91,9 +91,9 @@ The proof gate writes two files to `.atelier/proof/`:
   "routing_regression_rate": 0.0,
   "cheap_success_rate": 0.667,
   "host_enforcement_matrix": [...],
-  "feature_boundary_labels": {...},
+  "feature_boundary_labels": &#123;...&#125;,
   "benchmark_cases": [...]
-}
+&#125;
 ```
 
 ## Running the proof gate

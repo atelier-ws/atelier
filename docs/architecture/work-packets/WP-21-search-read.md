@@ -34,27 +34,27 @@ snippets _and_ the surrounding content. Removes a turn-tax on every search.
 
 ## How to execute
 
-1. Tool input: `{ query, [path], [max_files=10], [max_chars_per_file=2000], [include_outline=true] }`
+1. Tool input: `&#123; query, [path], [max_files=10], [max_chars_per_file=2000], [include_outline=true] &#125;`
 2. Tool output:
 
    ```json
-   {
+   &#123;
      "matches": [
-       {
+       &#123;
          "path": "src/foo.py",
          "lang": "python",
          "snippets": [
-           {"line_start": 42, "line_end": 58, "score": 0.91, "text": "..."},
-           {"line_start": 110, "line_end": 124, "score": 0.74, "text": "..."}
+           &#123;"line_start": 42, "line_end": 58, "score": 0.91, "text": "..."&#125;,
+           &#123;"line_start": 110, "line_end": 124, "score": 0.74, "text": "..."&#125;
          ],
-         "outline": {...},
+         "outline": &#123;...&#125;,
          "tokens": 612
-       }
+       &#125;
      ],
      "total_tokens": 5400,
      "tokens_saved_vs_naive": 8200,
      "cache_hit": false
-   }
+   &#125;
    ```
 
 3. Implementation:

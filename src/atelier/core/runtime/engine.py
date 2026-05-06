@@ -498,6 +498,14 @@ class AtelierRuntimeCore:
     def detect_loop(self, ledger: RunLedger) -> dict[str, Any]:
         """Run full loop analysis on a ledger and return the report dict."""
         report = self.loop_detection.check(ledger)
+        if report.loop_detected:
+            from atelier.core.service.telemetry import emit_product
+
+            emit_product(
+                "frustration_signal_behavioral",
+                signal_type="loop_detected",
+                session_id=getattr(ledger, "run_id", ""),
+            )
         return cast(dict[str, Any], report.to_dict())
 
     def loop_report(self, run_id: str | None = None) -> dict[str, Any]:
@@ -638,6 +646,13 @@ class AtelierRuntimeCore:
         if ledger is not None:
             report = self.loop_detection.check(ledger)
             if report.loop_detected:
+                from atelier.core.service.telemetry import emit_product
+
+                emit_product(
+                    "frustration_signal_behavioral",
+                    signal_type="loop_detected",
+                    session_id=getattr(ledger, "run_id", ""),
+                )
                 loop_alert = {
                     "severity": report.severity,
                     "summary": f"Loop detected: {', '.join(report.loop_types)}",
@@ -726,6 +741,14 @@ class AtelierRuntimeCore:
         supervision = self.tool_supervision.status()
         memory_state = self.semantic_memory._load()
         files_cached = len(memory_state.get("files", {}))
+        from atelier.core.service.telemetry import emit_product
+
+        emit_product(
+            "value_estimate",
+            tokens_saved_estimate=int(supervision.get("token_savings", 0) or 0),
+            cache_hits=int(supervision.get("cache_hits", 0) or 0),
+            blocks_applied=files_cached,
+        )
         return {
             "hook": "finalize",
             "status": status,

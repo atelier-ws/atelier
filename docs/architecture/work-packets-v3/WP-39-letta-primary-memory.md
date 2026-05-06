@@ -60,10 +60,10 @@ configured for it — that's the user's choice and bill, not Atelier's.)
     letta:
       image: letta/letta:latest
       ports:
-        - "${ATELIER_LETTA_PORT:-8283}:8283"
+        - "$&#123;ATELIER_LETTA_PORT:-8283&#125;:8283"
       environment:
-        - LETTA_PG_URI=${LETTA_PG_URI:-} # blank => Letta uses its bundled SQLite
-        - OPENAI_API_KEY=${OPENAI_API_KEY:-} # optional; for Letta's internal calls
+        - LETTA_PG_URI=$&#123;LETTA_PG_URI:-&#125; # blank => Letta uses its bundled SQLite
+        - OPENAI_API_KEY=$&#123;OPENAI_API_KEY:-&#125; # optional; for Letta's internal calls
       volumes:
         - letta_data:/var/letta
       restart: unless-stopped
@@ -165,7 +165,7 @@ make verify
 - [ ] Hybrid ranking policy applied on Letta results; degrades cleanly when cosine is absent.
 - [ ] `deploy/letta/docker-compose.yml` ships with a healthy default config + persistent
       volume.
-- [ ] `atelier letta {up|down|logs|status|reset}` CLI subcommands work; smoke tests pass.
+- [ ] `atelier letta &#123;up|down|logs|status|reset&#125;` CLI subcommands work; smoke tests pass.
 - [ ] Self-hosted runbook published; bring-up validated end-to-end on at least one machine.
 - [ ] No new vector store, no new agent loop, no new model invocation written by Atelier
       (boundary check).

@@ -56,16 +56,16 @@ Available rubrics: `rubric_shopify_publish`, `rubric_pdp_audit`, and others (use
 ## Setup for `.vscode/mcp.json`
 
 ```json
-{
-  "servers": {
-    "atelier": {
+&#123;
+  "servers": &#123;
+    "atelier": &#123;
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--project", "${workspaceFolder}/atelier", "atelier-mcp"],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${workspaceFolder}"
-      }
-    }
-  }
-}
+      "args": ["run", "--project", "$&#123;workspaceFolder&#125;/atelier", "atelier-mcp"],
+      "env": &#123;
+        "ATELIER_WORKSPACE_ROOT": "$&#123;workspaceFolder&#125;"
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```

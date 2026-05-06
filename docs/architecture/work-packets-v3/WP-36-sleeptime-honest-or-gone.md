@@ -17,7 +17,7 @@ The 2026-05-04 audit found `core/capabilities/context_compression/sleeptime.py` 
 template-based grouping:
 
 ```python
-f"[{n} {kind}s] {last_event.summary[:200]}"
+f"[&#123;n&#125; &#123;kind&#125;s] &#123;last_event.summary[:200]&#125;"
 ```
 
 The doc admits "deterministic, template-based, no LLM call". This is a glorified `groupby`
@@ -79,7 +79,7 @@ of this packet's writing, that is not the case.
   - Otherwise raise `SleeptimeUnavailable` (path A3).
 - **EDIT:** `src/atelier/core/capabilities/telemetry/context_budget.py` — record
   `summarizer_input_tokens` and `summarizer_output_tokens`. Surface
-  `atelier_tokens_saved_total{lever="sleeptime"}` as `input - output`. If sleeptime raised,
+  `atelier_tokens_saved_total&#123;lever="sleeptime"&#125;` as `input - output`. If sleeptime raised,
   do **not** record any saving for that turn.
 - **NEW:** `tests/core/test_sleeptime_ollama_default.py` — with a mocked Ollama backend,
   asserts:
@@ -145,7 +145,7 @@ LOCAL=1 uv run pytest tests/infra/test_no_external_llm_clients.py -v
 # ollama serve & ollama pull llama3.2:3b
 # LOCAL=1 uv run python -c "
 # from atelier.core.capabilities.context_compression.sleeptime import summarize_ledger
-# print(summarize_ledger([{'kind':'tool','summary':'long output ...'} for _ in range(50)]))
+# print(summarize_ledger([&#123;'kind':'tool','summary':'long output ...'&#125; for _ in range(50)]))
 # "
 
 make verify

@@ -184,7 +184,7 @@ summarization and native compaction lifecycle support on top.
 > behavior inside Atelier. We do not vendor plugin code or depend on third-party benchmark pages for
 > CI claims. The hard claim is Atelier's own deterministic benchmark.
 
-Each lever publishes a Prometheus metric (`atelier_tokens_saved_total{lever="…"}`) and is asserted
+Each lever publishes a Prometheus metric (`atelier_tokens_saved_total&#123;lever="…"&#125;`) and is asserted
 in CI under `tests/infra/test_context_savings.py`. Per-lever expected share is a *budget*,
 not a commitment — overall ≥ 50 % is the only hard CI gate.
 
@@ -195,8 +195,8 @@ itself earlier:
 
 ```
 @ 60 % util → atelier emits monitor_event("CompactAdvised", severity="medium",
-              payload={preserve: [block_ids…], pin: [memory_block_ids…],
-                       open_files: [path…]})
+              payload=&#123;preserve: [block_ids…], pin: [memory_block_ids…],
+                       open_files: [path…]&#125;)
 @ 75 % util → severity="high" + suggested_compact_prompt rendered into the
               tool result so the agent sees a copy-paste compact instruction
 @ post-compact → hook fires (integrations/claude/plugin/hooks/compact.py) and
