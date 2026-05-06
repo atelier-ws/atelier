@@ -71,13 +71,13 @@ Tools accept and return JSON. Key patterns:
 ### `atelier_get_reasoning_context`
 
 ```json
-{
+&#123;
   "task": "Wire scoped recall into context injection",
   "domain": "coding",
   "files": ["src/atelier/gateway/adapters/mcp_server.py"],
   "agent_id": "atelier:code",
   "recall": true
-}
+&#125;
 ```
 
 `agent_id` is optional. When it is present and `recall` is not false, the tool recalls up to three
@@ -88,29 +88,29 @@ strictly scoped: a passage must belong to the requested `agent_id` or carry the 
 Returns:
 
 ```json
-{
+&#123;
   "context": "<reasoning_procedures>...</reasoning_procedures>\n<memory>...</memory>\n",
-  "recalled_passages": [{"id": "pas-...", "source": "trace", "score": 0.4}],
-  "tokens_breakdown": {"reasonblocks": 180, "memory": 42, "total": 222}
-}
+  "recalled_passages": [&#123;"id": "pas-...", "source": "trace", "score": 0.4&#125;],
+  "tokens_breakdown": &#123;"reasonblocks": 180, "memory": 42, "total": 222&#125;
+&#125;
 ```
 
 ### `atelier_check_plan`
 
 ```json
-{
+&#123;
   "task": "Publish Shopify product",
   "domain": "beseam.shopify.publish",
   "steps": ["Parse product handle from URL", "Update metafields"]
-}
+&#125;
 ```
 
-Returns: `{"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]}`
+Returns: `&#123;"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]&#125;`
 
 ### `atelier_record_trace`
 
 ```json
-{
+&#123;
   "agent": "claude-code",
   "domain": "beseam.shopify.publish",
   "task": "Publish product GID 123",
@@ -119,15 +119,15 @@ Returns: `{"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]}`
   "errors_seen": [],
   "diff_summary": "Updated metafields",
   "output_summary": "Product published, audit passed"
-}
+&#125;
 ```
 
 ### `atelier_run_rubric_gate`
 
 ```json
-{
+&#123;
   "rubric_id": "rubric_shopify_publish",
-  "checks": {
+  "checks": &#123;
     "product_identity_uses_gid": true,
     "pre_publish_snapshot_exists": true,
     "write_result_checked": true,
@@ -136,33 +136,33 @@ Returns: `{"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]}`
     "rollback_available": true,
     "localized_url_test_passed": true,
     "changed_handle_test_passed": true
-  }
-}
+  &#125;
+&#125;
 ```
 
-Returns: `{"status": "pass"|"blocked", "failed_checks": [...]}`
+Returns: `&#123;"status": "pass"|"blocked", "failed_checks": [...]&#125;`
 
 ### `atelier_sql_inspect`
 
 ```json
-{
+&#123;
   "connection_alias": "atelier_local",
   "sql": "SELECT id, title FROM tasks ORDER BY id",
   "params": [],
   "row_limit": 200
-}
+&#125;
 ```
 
 Returns:
 
 ```json
-{
-  "columns": [{"name": "id", "type": "INTEGER"}, {"name": "title", "type": "TEXT"}],
-  "rows": [{"id": 1, "title": "First"}],
+&#123;
+  "columns": [&#123;"name": "id", "type": "INTEGER"&#125;, &#123;"name": "title", "type": "TEXT"&#125;],
+  "rows": [&#123;"id": 1, "title": "First"&#125;],
   "row_count": 1,
   "truncated": false,
   "took_ms": 12
-}
+&#125;
 ```
 
 Alias configuration is loaded from `.atelier/sql_aliases.toml`:
@@ -184,7 +184,7 @@ environment variables (`env = "..."`) and are never persisted by Atelier.
 cd atelier && bash scripts/verify_atelier_mcp_stdio.sh
 
 # Manual test
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | uv run atelier-mcp
+echo '&#123;"jsonrpc":"2.0","method":"tools/list","id":1&#125;' | uv run atelier-mcp
 ```
 
 Expected: a `tools/list` response containing all V1 + V2 tools.

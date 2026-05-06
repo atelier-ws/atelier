@@ -81,7 +81,7 @@ This returns a structured prompt block with relevant ReasonBlocks, known dead en
 After an agent completes a task, verify it met all required checks:
 
 ```bash
-echo '{
+echo '&#123;
   "product_identity_uses_gid": true,
   "pre_publish_snapshot_exists": true,
   "write_result_checked": true,
@@ -90,7 +90,7 @@ echo '{
   "rollback_available": true,
   "localized_url_test_passed": false,
   "changed_handle_test_passed": false
-}' | uv run atelier run-rubric rubric_shopify_publish
+&#125;' | uv run atelier run-rubric rubric_shopify_publish
 ```
 
 Expected: `status: blocked` (because localized_url_test_passed = false).
@@ -100,7 +100,7 @@ Expected: `status: blocked` (because localized_url_test_passed = false).
 After an agent run (success or failure), record what happened:
 
 ```bash
-echo '{
+echo '&#123;
   "agent": "claude-code",
   "domain": "beseam.shopify.publish",
   "task": "Publish product ID 123 to Shopify",
@@ -109,7 +109,7 @@ echo '{
   "errors_seen": [],
   "diff_summary": "Updated metafields for product gid://shopify/Product/123",
   "output_summary": "Product published, audit passed"
-}' | uv run atelier record-trace
+&#125;' | uv run atelier record-trace
 ```
 
 ## Step 7 — Extract a ReasonBlock from a trace
@@ -136,7 +136,7 @@ uv run atelier search smart "shopify publish validation"
 # AST-aware file read with semantic cache
 uv run atelier read smart src/atelier/gateway/adapters/runtime.py --max-lines 120
 
-# Batch edit input format: [{"path": "...", "find": "...", "replace": "..."}]
+# Batch edit input format: [&#123;"path": "...", "find": "...", "replace": "..."&#125;]
 uv run atelier edit smart --input edits.json
 
 # Compress latest run into actionable runtime memory

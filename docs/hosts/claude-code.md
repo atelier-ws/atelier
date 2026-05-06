@@ -28,18 +28,18 @@ uv run atelier init
 If you prefer to wire the MCP server directly without the plugin:
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--project", "${workspaceFolder}/atelier", "atelier-mcp"],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${workspaceFolder}"
-      }
-    }
-  }
-}
+      "args": ["run", "--project", "$&#123;workspaceFolder&#125;/atelier", "atelier-mcp"],
+      "env": &#123;
+        "ATELIER_WORKSPACE_ROOT": "$&#123;workspaceFolder&#125;"
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## Agents
@@ -87,15 +87,15 @@ What each hook does:
 - **`stop.py`** — On session stop, ensure `atelier_record_trace` was called.
 - **`compact.py`** — On PreCompact/PostCompact, manage context preservation manifest (see section below).
 
-Hook state is kept at `${workspace}/.atelier/session_state.json`. No secrets, no chain-of-thought stored.
+Hook state is kept at `$&#123;workspace&#125;/.atelier/session_state.json`. No secrets, no chain-of-thought stored.
 
 To enable hooks, edit `integrations/claude/plugin/hooks/hooks.json`:
 
 ```jsonc
 // integrations/claude/plugin/hooks/hooks.json
-{
-  "PreToolUse": [{ "matcher": "Edit|Write|MultiEdit", "enabled": true }],
-}
+&#123;
+  "PreToolUse": [&#123; "matcher": "Edit|Write|MultiEdit", "enabled": true &#125;],
+&#125;
 ```
 
 ### Context Preservation on Compact (`PreCompact` / `PostCompact`)
@@ -124,7 +124,7 @@ When Claude Code compacts the conversation, Atelier preserves critical runtime s
 **Example Manifest:**
 
 ```json
-{
+&#123;
   "created_at": "2026-05-03T17:44:00+00:00",
   "run_id": "abc123def456",
   "should_compact": true,
@@ -133,17 +133,17 @@ When Claude Code compacts the conversation, Atelier preserves critical runtime s
   "pin_memory": ["mem_api_token_xyz"],
   "open_files": ["src/auth.py", "src/db.py"],
   "suggested_prompt": "Compact this conversation. Context utilisation: 68.5%. Preserve: block_auth_001, block_db_config_002."
-}
+&#125;
 ```
 
 To enable the compact lifecycle:
 
 ```jsonc
 // integrations/claude/plugin/hooks/hooks.json
-{
-  "PreCompact": [{ "matcher": "manual|auto", "enabled": true }],
-  "PostCompact": [{ "matcher": "manual|auto", "enabled": true }]
-}
+&#123;
+  "PreCompact": [&#123; "matcher": "manual|auto", "enabled": true &#125;],
+  "PostCompact": [&#123; "matcher": "manual|auto", "enabled": true &#125;]
+&#125;
 ```
 
 ## MCP Tools Available

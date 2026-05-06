@@ -22,18 +22,18 @@ make install
 Gemini CLI requires **absolute paths** — the installer expands them at install time:
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "command": "/absolute/path/to/atelier/scripts/atelier_mcp_stdio.sh",
       "args": [],
-      "env": {
+      "env": &#123;
         "ATELIER_WORKSPACE_ROOT": "/absolute/path/to/workspace",
         "ATELIER_STORE_ROOT": "/absolute/path/to/workspace/.atelier"
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 > **Note**: Do not move the atelier repository after installing. Gemini CLI uses absolute paths.  

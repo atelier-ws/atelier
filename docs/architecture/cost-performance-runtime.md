@@ -65,7 +65,7 @@ Trace, budget, and eval store
 The gateway normalizes host input into a small routing object:
 
 ```ts
-type AgentRequest = {
+type AgentRequest = &#123;
   id: string;
   run_id?: string;
   user_goal: string;
@@ -81,12 +81,12 @@ type AgentRequest = {
     | "ops";
   risk_level: "low" | "medium" | "high";
   changed_files: string[];
-  context_budget: {
+  context_budget: &#123;
     max_input_tokens: number;
     premium_call_budget: number;
     cache_policy: "prefer_cache" | "neutral" | "disable";
-  };
-};
+  &#125;;
+&#125;;
 ```
 
 The router may add provider-specific fields later, but this object is deliberately provider-neutral.
@@ -138,7 +138,7 @@ ReasoningBank-style lessons belong in the procedure bank, not in raw hidden reas
 lesson is structured and observable:
 
 ```ts
-type ProcedureMemory = {
+type ProcedureMemory = &#123;
   title: string;
   task_type: string;
   repo_scope: string;
@@ -146,14 +146,14 @@ type ProcedureMemory = {
   successful_strategy?: string;
   failure_pattern?: string;
   prevention_rule?: string;
-  evidence: {
+  evidence: &#123;
     commit?: string;
     test?: string;
     trace_id?: string;
-  };
+  &#125;;
   confidence: number;
   last_used_at: string;
-};
+&#125;;
 ```
 
 ## Quality-Aware Routing

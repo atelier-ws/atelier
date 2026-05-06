@@ -135,79 +135,79 @@ OTel emission, batching, retries, network failures — all handled inside this m
 Define every event in `schema.py` as a dataclass or dict. Allowlist is hard-enforced.
 
 ```python
-EVENTS = {
-    "session_start": {
+EVENTS = &#123;
+    "session_start": &#123;
         "props": ["agent_host", "atelier_version", "os", "py_version",
                   "anon_id", "session_id"],
-    },
-    "session_end": {
+    &#125;,
+    "session_end": &#123;
         "props": ["session_id", "duration_s_bucket", "exit_reason"],
-    },
-    "session_interrupted": {
+    &#125;,
+    "session_interrupted": &#123;
         "props": ["session_id", "signal", "elapsed_s_bucket", "last_phase"],
-    },
-    "cli_command_invoked": {
+    &#125;,
+    "cli_command_invoked": &#123;
         "props": ["command_name", "session_id", "anon_id"],
         # NOT args, NOT cwd
-    },
-    "cli_command_completed": {
+    &#125;,
+    "cli_command_completed": &#123;
         "props": ["command_name", "session_id", "duration_ms_bucket", "ok"],
-    },
-    "mcp_tool_called": {
+    &#125;,
+    "mcp_tool_called": &#123;
         "props": ["tool_name", "session_id", "duration_ms_bucket", "ok"],
-    },
-    "api_request": {
+    &#125;,
+    "api_request": &#123;
         "props": ["endpoint", "method", "status_code", "duration_ms_bucket"],
-    },
-    "reasonblock_retrieved": {
+    &#125;,
+    "reasonblock_retrieved": &#123;
         "props": ["block_id_hash", "domain", "retrieval_score",
                   "rank", "session_id"],
-    },
-    "reasonblock_applied": {
+    &#125;,
+    "reasonblock_applied": &#123;
         "props": ["block_id_hash", "domain", "retrieval_score", "session_id"],
-    },
-    "reasonblock_rejected": {
+    &#125;,
+    "reasonblock_rejected": &#123;
         "props": ["block_id_hash", "domain", "rejection_reason", "session_id"],
-    },
-    "plan_check_passed": {
+    &#125;,
+    "plan_check_passed": &#123;
         "props": ["domain", "rule_count", "session_id"],
-    },
-    "plan_check_blocked": {
+    &#125;,
+    "plan_check_blocked": &#123;
         "props": ["domain", "blocking_rule_id", "severity", "session_id"],
-    },
-    "plan_check_overridden": {
+    &#125;,
+    "plan_check_overridden": &#123;
         "props": ["domain", "blocking_rule_id", "session_id"],
-    },
-    "plan_modified_by_user": {
+    &#125;,
+    "plan_modified_by_user": &#123;
         "props": ["domain", "edit_distance_bucket", "steps_added",
                   "steps_removed", "session_id"],
-    },
-    "failure_cluster_matched": {
+    &#125;,
+    "failure_cluster_matched": &#123;
         "props": ["cluster_id_hash", "domain", "session_id"],
-    },
-    "rescue_offered": {
+    &#125;,
+    "rescue_offered": &#123;
         "props": ["cluster_id_hash", "rescue_type", "session_id"],
-    },
-    "rescue_accepted": {
+    &#125;,
+    "rescue_accepted": &#123;
         "props": ["cluster_id_hash", "session_id"],
-    },
-    "frustration_signal_behavioral": {
+    &#125;,
+    "frustration_signal_behavioral": &#123;
         "props": ["signal_type", "session_id"],
-        # signal_type ∈ {loop_detected, retry_burst, file_revert,
+        # signal_type ∈ &#123;loop_detected, retry_burst, file_revert,
         #                abandon_after_error, plan_resubmitted_unchanged,
-        #                repeated_dead_end}
-    },
-    "frustration_signal_lexical": {
+        #                repeated_dead_end&#125;
+    &#125;,
+    "frustration_signal_lexical": &#123;
         "props": ["category", "surface", "session_id"],
         # category ∈ lexicon-defined set
-        # surface  ∈ {cli_input, mcp_prompt, api_body}
+        # surface  ∈ &#123;cli_input, mcp_prompt, api_body&#125;
         # NEVER include the matched word, the input text, or any hash of either
-    },
-    "value_estimate": {
+    &#125;,
+    "value_estimate": &#123;
         "props": ["session_id", "tokens_saved_estimate", "cache_hits",
                   "blocks_applied"],
-    },
-}
+    &#125;,
+&#125;
 ```
 
 **Bucketing rules** (avoid fingerprinting via high-cardinality numerics):
@@ -232,7 +232,7 @@ def emit_product(event: str, **props):
         logger.debug("telemetry.unknown_event", event=event)
         return
     allowed = set(spec["props"])
-    filtered = {k: v for k, v in props.items() if k in allowed}
+    filtered = &#123;k: v for k, v in props.items() if k in allowed&#125;
     dropped = set(props) - allowed
     if dropped:
         logger.debug("telemetry.dropped_props", event=event, dropped=list(dropped))
@@ -329,12 +329,12 @@ Lift these from existing code into `emit_product` calls:
 
 | Source (existing) | Emit |
 |---|---|
-| `capabilities/loop_detection` loop_probability > threshold | `frustration_signal_behavioral{signal_type=loop_detected}` |
-| `monitors.RepeatedCommandFailure` triggers | `{signal_type=retry_burst}` |
-| `SessionState.file_events` action == "revert" | `{signal_type=file_revert}` |
-| `monitors.KnownDeadEnd` triggers | `{signal_type=repeated_dead_end}` |
-| Plan rejected by check, then resubmitted unchanged | `{signal_type=plan_resubmitted_unchanged}` (NEW detection) |
-| Error event followed by session_end within 30s | `{signal_type=abandon_after_error}` (NEW detection) |
+| `capabilities/loop_detection` loop_probability > threshold | `frustration_signal_behavioral&#123;signal_type=loop_detected&#125;` |
+| `monitors.RepeatedCommandFailure` triggers | `&#123;signal_type=retry_burst&#125;` |
+| `SessionState.file_events` action == "revert" | `&#123;signal_type=file_revert&#125;` |
+| `monitors.KnownDeadEnd` triggers | `&#123;signal_type=repeated_dead_end&#125;` |
+| Plan rejected by check, then resubmitted unchanged | `&#123;signal_type=plan_resubmitted_unchanged&#125;` (NEW detection) |
+| Error event followed by session_end within 30s | `&#123;signal_type=abandon_after_error&#125;` (NEW detection) |
 
 ### Lexical (client-side, new)
 
@@ -369,7 +369,7 @@ Matcher (`frustration.py`):
 
 - Runs only on user-typed inputs to CLI/MCP/API (NOT on code, commit messages, ReasonBlocks, or model outputs).
 - Lowercased substring match against the YAML patterns.
-- Emits `frustration_signal_lexical{category, surface}`. Nothing else.
+- Emits `frustration_signal_lexical&#123;category, surface&#125;`. Nothing else.
 - Off by default? **No, on by default** since user opted in. But has its own kill switch in `telemetry.toml` and CLI: `atelier telemetry lexical off`.
 - Unit test: feed in 50 sample frustrated-user inputs, assert correct categorization, assert nothing from the input text appears in the emitted event.
 
@@ -406,11 +406,11 @@ from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
 
 def init_otel(*, endpoint: str, service_version: str):
-    resource = Resource.create({
+    resource = Resource.create(&#123;
         "service.name": "atelier",
         "service.version": service_version,
         # NO user-identifying resource attrs here
-    })
+    &#125;)
     # set up tracer, meter, logger providers with batch processors
     # endpoint defaults to http://localhost:4318 (Collector)
 ```
@@ -442,11 +442,11 @@ processors:
 
 exporters:
   otlphttp/posthog:
-    endpoint: ${POSTHOG_OTLP_ENDPOINT}     # e.g. https://us.i.posthog.com/i/v0/otlp
+    endpoint: $&#123;POSTHOG_OTLP_ENDPOINT&#125;     # e.g. https://us.i.posthog.com/i/v0/otlp
     headers:
-      Authorization: "Bearer ${POSTHOG_PROJECT_API_KEY}"
+      Authorization: "Bearer $&#123;POSTHOG_PROJECT_API_KEY&#125;"
   googlecloud:
-    project: ${GCP_PROJECT_ID}
+    project: $&#123;GCP_PROJECT_ID&#125;
     log:
       default_log_name: atelier
 
@@ -474,10 +474,10 @@ Run as a sidecar container next to the Atelier API in production. For local dev:
 // frontend/src/lib/telemetry.ts
 import posthog from 'posthog-js';
 
-export async function initTelemetry() {
+export async function initTelemetry() &#123;
   const cfg = await fetch('/telemetry/config').then(r => r.json());
   if (!cfg.remote_enabled) return;
-  posthog.init(cfg.posthog_key, {
+  posthog.init(cfg.posthog_key, &#123;
     api_host: cfg.posthog_host,
     autocapture: true,
     capture_pageview: true,
@@ -486,9 +486,9 @@ export async function initTelemetry() {
     mask_all_text: false,
     mask_all_element_attributes: false,
     sanitize_properties: (props) => scrubFrontend(props),  // mirror Python scrubber
-  });
+  &#125;);
   posthog.identify(cfg.anon_id);
-}
+&#125;
 ```
 
 The frontend always writes events to the local store too (via `POST /telemetry/local`). That keeps the Insights tab honest when remote is off.

@@ -46,7 +46,7 @@ A Letta-derived editable core-memory block. Lives in the prompt or is recalled i
 | `limit_chars`           | `int`                                                  | no       | `8000`                 | Hard cap; writes that exceed it are rejected                                       |
 | `description`           | `str`                                                  | no       | `""`                   | Why this block exists                                                              |
 | `read_only`             | `bool`                                                 | no       | `false`                | If `true`, agent tools cannot mutate                                             |
-| `metadata`              | `dict[str, Any]`                                       | no       | `\{\}`                   | Arbitrary JSON                                                                     |
+| `metadata`              | `dict[str, Any]`                                       | no       | `\&#123;\&#125;`                   | Arbitrary JSON                                                                     |
 | `pinned`                | `bool`                                                 | no       | `false`                | If `true`, included in every prompt; ignored by recall scoring                   |
 | `version`               | `int`                                                  | no       | `1`                    | Optimistic locking; incremented on each update                                     |
 | `current_history_id`    | `str \| None`                                          | no       | `null`                 | FK to `MemoryBlockHistory.id`                                                    |
@@ -191,7 +191,7 @@ Per-turn snapshot, written by the MCP gateway after every tool call.
 | `cache_write_tokens`   | `int`             | yes      |                                                                                        |
 | `output_tokens`        | `int`             | yes      |                                                                                        |
 | `naive_input_tokens`   | `int`             | yes      | What the prompt would have been **without** Atelier — required for savings claim |
-| `lever_savings`        | `dict[str, int]`  | yes      | E.g. `\{"reasonblock_inject": 420, "search_read": 1850, …\}`                          |
+| `lever_savings`        | `dict[str, int]`  | yes      | E.g. `\&#123;"reasonblock_inject": 420, "search_read": 1850, …\&#125;`                          |
 | `tool_calls`           | `int`             | yes      | Per-turn                                                                               |
 | `created_at`           | `datetime`        | no       | UTC                                                                                    |
 
@@ -308,7 +308,7 @@ CREATE TABLE memory_block (
   limit_chars         INTEGER NOT NULL DEFAULT 8000,
   description         TEXT NOT NULL DEFAULT '',
   read_only           INTEGER NOT NULL DEFAULT 0,
-  metadata            TEXT NOT NULL DEFAULT '{}',
+  metadata            TEXT NOT NULL DEFAULT '&#123;&#125;',
   pinned              INTEGER NOT NULL DEFAULT 0,
   version             INTEGER NOT NULL DEFAULT 1,
   current_history_id  TEXT,
@@ -534,17 +534,17 @@ hygiene.
 
 | MCP tool                          | Pillar | Owner WP | Input                                                                  | Output                                                              |
 | --------------------------------- | ------ | -------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `atelier_memory_upsert_block`   | 1      | WP-07    | `agent_id, label, value, [pinned, read_only, description]`           | `\{ id, version \}`                                                 |
+| `atelier_memory_upsert_block`   | 1      | WP-07    | `agent_id, label, value, [pinned, read_only, description]`           | `\&#123; id, version \&#125;`                                                 |
 | `atelier_memory_get_block`      | 1      | WP-07    | `agent_id, label`                                                    | `MemoryBlock`                                                     |
-| `atelier_memory_recall`         | 1, 3   | WP-08    | `agent_id, query, [top_k, tags]`                                     | `\{ passages: [\{id, text, score, source_ref\}], recall_id \}`        |
-| `atelier_memory_archive`        | 1      | WP-08    | `agent_id, text, source, [source_ref, tags]`                         | `\{ id, dedup_hit \}`                                               |
-| `atelier_memory_summary`        | 1, 3   | WP-09    | `run_id`                                                             | `\{ tokens_pre, tokens_post, summary_md, evicted_event_ids \}`      |
+| `atelier_memory_recall`         | 1, 3   | WP-08    | `agent_id, query, [top_k, tags]`                                     | `\&#123; passages: [\&#123;id, text, score, source_ref\&#125;], recall_id \&#125;`        |
+| `atelier_memory_archive`        | 1      | WP-08    | `agent_id, text, source, [source_ref, tags]`                         | `\&#123; id, dedup_hit \&#125;`                                               |
+| `atelier_memory_summary`        | 1, 3   | WP-09    | `run_id`                                                             | `\&#123; tokens_pre, tokens_post, summary_md, evicted_event_ids \&#125;`      |
 | `atelier_lesson_inbox`          | 2      | WP-15    | `[domain, limit]`                                                    | `[LessonCandidate]`                                               |
-| `atelier_lesson_decide`         | 2      | WP-15    | `lesson_id, decision: "approve"|"reject", reviewer, reason`          | `\{ status, promotion_id? \}`                                       |
-| `atelier_search_read`           | 3      | WP-21    | `query, [path, max_files, max_chars_per_file]`                       | `\{ matches: [\{path, line_start, line_end, snippet, lang_outline?\}], total_chars, cache_hit \}` |
-| `atelier_batch_edit`            | 3      | WP-22    | `edits: [\{path, old_string|range, new_string, fuzzy?: bool\}]`        | `\{ applied: [\{path, hunk\}], failed: [\{path, error\}] \}`            |
-| `atelier_sql_inspect`           | 3      | WP-23    | `connection_alias, sql`                                              | `\{ rows: [...], columns: [...], affected: int, truncated: bool \}` |
-| `atelier_compact_advise`        | 3      | WP-13    | `run_id`                                                             | `\{ should_compact: bool, preserve_blocks, pin_memory, suggested_prompt \}` |
+| `atelier_lesson_decide`         | 2      | WP-15    | `lesson_id, decision: "approve"|"reject", reviewer, reason`          | `\&#123; status, promotion_id? \&#125;`                                       |
+| `atelier_search_read`           | 3      | WP-21    | `query, [path, max_files, max_chars_per_file]`                       | `\&#123; matches: [\&#123;path, line_start, line_end, snippet, lang_outline?\&#125;], total_chars, cache_hit \&#125;` |
+| `atelier_batch_edit`            | 3      | WP-22    | `edits: [\&#123;path, old_string|range, new_string, fuzzy?: bool\&#125;]`        | `\&#123; applied: [\&#123;path, hunk\&#125;], failed: [\&#123;path, error\&#125;] \&#125;`            |
+| `atelier_sql_inspect`           | 3      | WP-23    | `connection_alias, sql`                                              | `\&#123; rows: [...], columns: [...], affected: int, truncated: bool \&#125;` |
+| `atelier_compact_advise`        | 3      | WP-13    | `run_id`                                                             | `\&#123; should_compact: bool, preserve_blocks, pin_memory, suggested_prompt \&#125;` |
 | `atelier_route_decide`          | routing | WP-26   | `AgentRequest, ContextBudgetPolicy`                                  | `RouteDecision`                                                    |
 | `atelier_route_verify`          | routing | WP-27   | `route_decision_id, validation_results, changed_files, rubric_status` | `VerificationEnvelope`                                             |
 

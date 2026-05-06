@@ -24,18 +24,18 @@ make install
 The MCP config registers Atelier as a stdio server:
 
 ```json
-{
-  "servers": {
-    "atelier": {
+&#123;
+  "servers": &#123;
+    "atelier": &#123;
       "type": "stdio",
       "command": "<atelier_repo>/scripts/atelier_mcp_stdio.sh",
       "args": [],
-      "env": {
+      "env": &#123;
         "ATELIER_WORKSPACE_ROOT": "<workspace>"
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## Verify
