@@ -60,4 +60,4 @@ grep -qi "vendor" docs/internal/engineering/decisions/001-v2-stateful-memory-and
 - [ ] ADR written and committed (locally — do not push)
 - [ ] Acceptance tests above all pass
 - [ ] `INDEX.md` updated: WP-01 status flipped to `done`
-- [ ] `atelier_record_trace` called with the WP-01 ID in `output_summary`
+- [ ] `trace` called with the WP-01 ID in `output_summary`

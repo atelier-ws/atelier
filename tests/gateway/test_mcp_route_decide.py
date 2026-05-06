@@ -40,13 +40,14 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_mcp_route_decide_tool_registered() -> None:
-    assert "atelier_route_decide" in TOOLS
+    assert "route" in TOOLS
 
 
 def test_mcp_route_decide_returns_decision(mcp_env: Path) -> None:
     resp = _call(
-        "atelier_route_decide",
+        "route",
         {
+            "op": "decide",
             "user_goal": "Summarize docs updates",
             "repo_root": ".",
             "task_type": "docs",

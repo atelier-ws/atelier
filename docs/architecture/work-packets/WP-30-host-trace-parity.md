@@ -36,7 +36,7 @@ perfect live-hook parity everywhere.
      require import or manual trace.
    - `wrapper_live`: wrapper captures task start/end and validations, but not every native event.
    - `imported`: host session is imported after the run.
-   - `manual`: agent must call `atelier_record_trace` with observable facts.
+   - `manual`: agent must call `trace` with observable facts.
 2. Map each host to one or more confidence modes:
    - Claude Code: `full_live` when plugin hooks are enabled; `mcp_live` otherwise.
    - Codex: `mcp_live` plus `wrapper_live`; imported session parser where available.

@@ -241,6 +241,35 @@ def test_install_script_has_print_only(host: str) -> None:
     assert "--print-only" in content, f"scripts/install_{host}.sh missing --print-only support"
 
 
+def test_install_scripts_use_workspace_not_project_root_flag() -> None:
+    for script in SCRIPTS.glob("install_*.sh"):
+        content = script.read_text()
+        assert "--project-root" not in content, f"{script.name} must use --workspace, not --project-root"
+
+
+def test_install_scripts_document_global_and_workspace_paths() -> None:
+    codex = (SCRIPTS / "install_codex.sh").read_text()
+    assert 'AGENTS_FILE="${CODEX_HOME}/AGENTS.md"' in codex
+    assert 'AGENTS_FILE="${WORKSPACE}/AGENTS.md"' in codex
+
+    copilot = (SCRIPTS / "install_copilot.sh").read_text()
+    assert "Code/User" in copilot
+    assert ".copilot/instructions/atelier.instructions.md" in copilot
+    assert "${HOME}/.vscode" not in copilot
+    assert "${HOME}/.github" not in copilot
+
+    opencode = (SCRIPTS / "install_opencode.sh").read_text()
+    assert ".config}/opencode" in opencode
+    assert 'OC_FILE="${WORKSPACE}/opencode.json"' in opencode
+    assert "${HOME}/opencode.jsonc" not in opencode
+    assert "${HOME}/.opencode" not in opencode
+
+    claude = (SCRIPTS / "install_claude.sh").read_text()
+    assert "claude mcp add --scope user atelier" in claude
+    assert '.mcp.json"' in claude
+    assert ".claude/.mcp.json" not in claude
+
+
 # ---------------------------------------------------------------------------
 # 13. Each install script gracefully skips if CLI absent
 # ---------------------------------------------------------------------------

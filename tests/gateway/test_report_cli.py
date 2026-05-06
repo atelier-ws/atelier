@@ -39,8 +39,3 @@ def test_report_cli_outputs_json_and_markdown(tmp_path: Path) -> None:
     assert markdown_result.exit_code == 0, markdown_result.output
     assert "Atelier Weekly Governance Report" in markdown_result.output
 
-
-def test_report_mcp_tool_is_registered() -> None:
-    from atelier.gateway.adapters.mcp_server import TOOLS
-
-    assert "atelier_report" in TOOLS

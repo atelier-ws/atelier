@@ -46,4 +46,4 @@ uv run pytest tests/gateway/test_docs.py -q
 - [ ] Failed cheap attempts are visible in reports
 - [ ] Benchmarking docs mention routing metrics
 - [ ] Acceptance tests pass
-- [ ] `atelier_record_trace` called with `WP-28` in `output_summary`
+- [ ] `trace` called with `WP-28` in `output_summary`

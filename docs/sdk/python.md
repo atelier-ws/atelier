@@ -86,12 +86,17 @@ Each adapter supports `shadow`, `suggest`, and `enforce` modes.
 
 When using MCP-backed SDK clients, these tools map directly to core runtime capabilities:
 
-- `atelier_reasoning_reuse`
-- `atelier_semantic_memory`
-- `atelier_loop_monitor`
-- `atelier_tool_supervisor`
-- `atelier_context_compressor`
-- `atelier_smart_search`
-- `atelier_smart_read`
-- `atelier_smart_edit`
-- `atelier_sql_inspect`
+- `reasoning`
+- `lint`
+- `route`
+- `rescue`
+- `trace`
+- `verify`
+- `memory`
+- `search`
+- `read`
+- `edit`
+- `compact`
+- `atelier_repo_map`
+
+CLI-only workflows include `atelier sql inspect`, `atelier lesson inbox`, `atelier consolidation inbox`, `atelier report`, `atelier proof show`, and `atelier route contract`.

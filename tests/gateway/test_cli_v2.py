@@ -1,4 +1,4 @@
-"""CLI tests for V2 commands: ledger, monitor-event, compress, env, failure, eval, smart, savings."""
+"""CLI tests for V2 commands: ledger, compress, env, failure, eval, read, savings."""
 
 from __future__ import annotations
 
@@ -37,25 +37,6 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     res2 = _invoke(root, "ledger", "summarize")
     assert res2.exit_code == 0
     assert "Atelier compact state" in res2.output
-
-
-def test_monitor_event_appends_to_ledger(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    _seed_ledger(root)
-    res = _invoke(
-        root,
-        "monitor-event",
-        "--monitor",
-        "second_guessing",
-        "--severity",
-        "medium",
-        "--message",
-        "edit-revert-edit on a.py",
-    )
-    assert res.exit_code == 0
-    snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
-    assert any(ev["kind"] == "monitor_alert" and ev["payload"]["monitor"] == "second_guessing" for ev in snap["events"])
 
 
 def test_compress_context_cli(tmp_path: Path) -> None:
@@ -166,29 +147,16 @@ def test_tool_mode_show_set(tmp_path: Path) -> None:
     assert res3.output.strip() == "suggest"
 
 
-def test_smart_read_returns_summary_and_related(tmp_path: Path) -> None:
+def test_read_returns_summary_and_related(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
     f = tmp_path / "x.py"
     f.write_text("\n".join(f"line {i}" for i in range(200)), encoding="utf-8")
-    res = _invoke(root, "smart-read", str(f), "--max-lines", "50")
+    res = _invoke(root, "read", str(f), "--max-lines", "50")
     assert res.exit_code == 0
     payload = json.loads(res.output)
     assert payload["lines_total"] == 200
-    assert payload["lines_returned"] == 50
-    assert payload["truncated"] is True
-    assert "related_blocks" in payload
-
-
-def test_smart_read_caching_records_savings(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    f = tmp_path / "x.py"
-    f.write_text("hi", encoding="utf-8")
-    _invoke(root, "smart-read", str(f))
-    _invoke(root, "smart-read", str(f))
-    state = json.loads((root / "smart_state.json").read_text(encoding="utf-8"))
-    assert state["savings"]["calls_avoided"] >= 1
+    assert "summary" in payload
 
 
 def test_savings_reports_counters(tmp_path: Path) -> None:

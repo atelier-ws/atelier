@@ -16,4 +16,4 @@ Reasoning reuse surfaces successful prior procedures and failure-aligned guidanc
 ## Runtime API
 
 - `AtelierRuntimeCore.get_reasoning_context(...)`
-- MCP: `atelier_reasoning_reuse`
+- MCP: `reasoning`

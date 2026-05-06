@@ -18,4 +18,4 @@ Loop detection finds repeated failures and dead-end behavior early.
 ## Runtime API
 
 - `AtelierRuntimeCore.summarize_memory(...)`
-- MCP: `atelier_loop_monitor`
+- MCP: `trace`

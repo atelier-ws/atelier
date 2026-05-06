@@ -1,6 +1,6 @@
 # VS Code Copilot Integration
 
-Atelier integrates with Copilot Chat through workspace MCP config, instruction injection, chat mode, and task presets.
+Atelier integrates with Copilot Chat through VS Code MCP config, instruction injection, chat mode, and task presets. Installs are global by default; pass `--workspace DIR` for project-local files.
 
 ## Setup
 
@@ -13,10 +13,8 @@ make verify
 
 ## Installed Artifacts
 
-- `.vscode/mcp.json`
-- `.github/copilot-instructions.md` (Atelier section appended)
-- `.github/chatmodes/atelier.chatmode.md`
-- `.vscode/tasks.json` (Atelier task presets merged)
+- Global: VS Code user `mcp.json`, `~/.copilot/instructions/atelier.instructions.md`, and VS Code user `tasks.json`
+- Workspace: `.vscode/mcp.json`, `.github/copilot-instructions.md`, `.github/chatmodes/atelier.chatmode.md`, and `.vscode/tasks.json` when `--workspace DIR` is used
 
 ## Usage
 
@@ -25,14 +23,14 @@ In Copilot Chat, ask explicitly for Atelier MCP tools when you need plan/context
 Example:
 
 ```text
-Use atelier_check_plan on this plan before editing files.
+Use lint on this plan before editing files.
 ```
 
 ## MCP Tool Names
 
-Canonical: `check_plan`, `get_reasoning_context`, `rescue_failure`, `run_rubric_gate`, `record_trace`.
+Canonical MCP names: `reasoning`, `lint`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`, `search`, `compact`, `atelier_repo_map`.
 
-Compatibility aliases also exist (`atelier_check_plan`, `atelier_get_reasoning_context`, etc.) for host prompts and older docs.
+CLI-only workflows include `atelier lesson inbox`, `atelier consolidation inbox`, `atelier report`, and `atelier proof show`.
 
 ## Fallback
 

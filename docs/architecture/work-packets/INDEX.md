@@ -68,10 +68,10 @@ or opencode already provide part of the workflow.
 | [WP-12](WP-12-scoped-recall.md)            | Wire `memory_recall` into automatic context injection | atelier:code |  1, 3  | WP-08      | done   |
 | [WP-13](WP-13-compact-lifecycle.md)        | Native `/compact` lifecycle (advise + post-hook)      | atelier:code |   3    | WP-09      | done   |
 | [WP-14](WP-14-context-budget-telemetry.md) | `ContextBudget` recorder + Prometheus metric          | atelier:code |   3    | WP-02      | done   |
-| [WP-21](WP-21-search-read.md)              | MCP tool `atelier_search_read` (wozcode 1)            | atelier:code |   3    | WP-10      | done   |
-| [WP-22](WP-22-batch-edit.md)               | Optional deterministic `atelier_batch_edit` executor  | atelier:code |   3    | —          | done   |
-| [WP-23](WP-23-sql-inspect.md)              | Read-only MCP `atelier_sql_inspect` (wozcode 4)       | atelier:code |   3    | —          | done   |
-| [WP-24](WP-24-fuzzy-edit.md)               | Fuzzy matching inside `atelier_batch_edit` only       | atelier:code |   3    | WP-22      | done   |
+| [WP-21](WP-21-search-read.md)              | MCP tool `search` (wozcode 1)            | atelier:code |   3    | WP-10      | done   |
+| [WP-22](WP-22-batch-edit.md)               | Optional deterministic `edit` executor  | atelier:code |   3    | —          | done   |
+| [WP-23](WP-23-sql-inspect.md)              | Read-only MCP `atelier sql inspect` (wozcode 4)       | atelier:code |   3    | —          | done   |
+| [WP-24](WP-24-fuzzy-edit.md)               | Fuzzy matching inside `edit` only       | atelier:code |   3    | WP-22      | done   |
 
 ## Phase D — Lesson pipeline
 

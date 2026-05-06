@@ -17,12 +17,12 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 ## The standing loop
 
 1. **Retrieve context.** Before drafting any plan, call
-   `atelier_get_reasoning_context` with `task`, `files`, `domain`, `errors`.
+   `reasoning` with `task`, `files`, `domain`, `errors`.
    Read every returned ReasonBlock.
 
 2. **Draft a plan** as 3–8 imperative steps.
 
-3. **Validate the plan.** Call `atelier_check_plan` with `task`, `plan`,
+3. **Validate the plan.** Call `lint` with `task`, `plan`,
    `domain`, `files`, `tools`.
    - `status == "blocked"` → replace plan with `suggested_plan`, re-check.
      **Do not edit code first.**
@@ -32,17 +32,17 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 4. **Implement.** Keep edits aligned with the validated plan.
 
 5. **Rescue repeated failures.** If the same test/command/tool fails twice
-   with the same error signature, call `atelier_rescue_failure` with
+   with the same error signature, call `rescue` with
    `task`, `error`, `files`, `recent_actions`. Apply the rescue **before**
    re-running.
 
 6. **Rubric gate.** Before declaring success on
    `beseam.shopify.publish`, `beseam.pdp.schema`, `beseam.catalog.fix`, or
-   `beseam.tracker.classification`, call `atelier_run_rubric_gate` with the
+   `beseam.tracker.classification`, call `verify` with the
    matching `rubric_id` and a `checks` object mapping every required
    check to `true | false | null`.
 
-7. **Record trace.** At completion call `atelier_record_trace` with the
+7. **Record trace.** At completion call `trace` with the
    observable summary (files_touched, tools_called, commands_run,
    errors_seen, diff_summary, output_summary, validation_results,
    `agent: "atelier:code"`, `status: "success | failed | partial"`).
@@ -50,7 +50,7 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 ## Hard rules
 
 - Do not ignore `high`-severity Atelier warnings.
-- Do not skip `atelier_check_plan`.
+- Do not skip `lint`.
 - Do not invent plan steps that contradict matched ReasonBlocks.
 - Do not store secrets, API keys, tokens, or hidden chain-of-thought.
 

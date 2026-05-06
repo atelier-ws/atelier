@@ -36,8 +36,12 @@ def make_memory_store(root: str | Path | None, *, prefer: str | None = None) -> 
         from atelier.infra.memory_bridges.letta_adapter import LettaMemoryStore
 
         return LettaMemoryStore(resolved_root)
+    if backend == "openmemory":
+        from atelier.infra.memory_bridges.openmemory import OpenMemoryMemoryStore
+
+        return OpenMemoryMemoryStore(resolved_root)
     if backend != "sqlite":
-        raise ValueError("memory backend must be 'sqlite' or 'letta'")
+        raise ValueError("memory backend must be 'sqlite', 'letta', or 'openmemory'")
     from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
     return SqliteMemoryStore(resolved_root)

@@ -21,7 +21,7 @@ Activate when **any of these** is true:
 ## Action
 
 ```
-atelier_rescue_failure({
+rescue({
   task: "<one sentence task>",
   error: "<copy the error message verbatim, redacted of secrets>",
   files: ["<files in play>"],

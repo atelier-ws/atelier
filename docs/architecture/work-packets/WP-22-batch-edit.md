@@ -1,6 +1,6 @@
 ---
 id: WP-22
-title: Optional deterministic MCP tool `atelier_batch_edit` (wozcode 2 - batched edits)
+title: Optional deterministic MCP tool `edit` (wozcode 2 - batched edits)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -20,7 +20,7 @@ not compete with host-native edit tools for ordinary coding.
 
 - **Host-native:** Claude, Codex, Copilot, and other hosts keep ownership of their normal
   Edit/MultiEdit/apply-patch flows, diff presentation, conflict handling, and user approval UX.
-- **Atelier augmentation:** `atelier_batch_edit` is an optional deterministic executor for large
+- **Atelier augmentation:** `edit` is an optional deterministic executor for large
   mechanical changes, benchmark replay, and cases where one audited atomic operation is cheaper
   than many host edit acknowledgements.
 - **Not in scope:** do not intercept, monkeypatch, replace, or make mandatory the host's native edit
@@ -79,7 +79,7 @@ not compete with host-native edit tools for ordinary coding.
    from a per-call working copy. Use `git stash`-style mechanic: snapshot files into
    `.atelier/run/<run_id>/batch_edit_backup/` before starting; restore on failure.
 
-4. Expose this as an explicit `atelier_batch_edit` MCP tool and CLI command only. Do not route
+4. Expose this as an explicit `edit` MCP tool and CLI command only. Do not route
    native host Edit/MultiEdit calls through it.
 
 5. Honor the project safety protocol: never delete files; never operate outside the repo root.
