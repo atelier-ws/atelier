@@ -21,9 +21,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
 # ---------------------------------------------------------------------------
 
 # Exported top-level symbols
-_RE_EXPORT_FUNCTION = re.compile(
-    r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*(<[^>]*>)?\s*\(", re.M
-)
+_RE_EXPORT_FUNCTION = re.compile(r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*(<[^>]*>)?\s*\(", re.M)
 _RE_EXPORT_ARROW = re.compile(
     r"^export\s+(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:<[^>]*>\s*)?\(", re.M
 )
@@ -49,8 +47,7 @@ _RE_CLASS_PROP = re.compile(
 
 # Imports
 _RE_IMPORT_FROM = re.compile(
-    r"^import\s+(?:type\s+)?(?:\{([^}]+)\}|\*\s+as\s+(\w+)|(\w+))(?:,\s*\{([^}]+)\})?\s+"
-    r"from\s+['\"](.*?)['\"](;?)",
+    r"^import\s+(?:type\s+)?(?:\{([^}]+)\}|\*\s+as\s+(\w+)|(\w+))(?:,\s*\{([^}]+)\})?\s+" r"from\s+['\"](.*?)['\"](;?)",
     re.M,
 )
 _RE_REQUIRE = re.compile(r"(?:const|let|var)\s+(\w+)\s*=\s*require\(['\"](.*?)['\"]\)", re.M)
@@ -245,13 +242,9 @@ def _analyze_with_regex(source: str) -> tuple[list[SymbolInfo], list[ImportInfo]
         )
         names: list[str] = []
         if named_group:
-            names += [
-                n.strip().split(" as ")[0].strip() for n in named_group.split(",") if n.strip()
-            ]
+            names += [n.strip().split(" as ")[0].strip() for n in named_group.split(",") if n.strip()]
         if extra_group:
-            names += [
-                n.strip().split(" as ")[0].strip() for n in extra_group.split(",") if n.strip()
-            ]
+            names += [n.strip().split(" as ")[0].strip() for n in extra_group.split(",") if n.strip()]
         if ns_group:
             names.append(f"* as {ns_group}")
         if default_group:
@@ -316,9 +309,7 @@ def _extract_import_names(text: str) -> list[str]:
     names: list[str] = []
     named = re.search(r"\{([^}]+)\}", text)
     if named:
-        names.extend(
-            n.strip().split(" as ")[0].strip() for n in named.group(1).split(",") if n.strip()
-        )
+        names.extend(n.strip().split(" as ")[0].strip() for n in named.group(1).split(",") if n.strip())
     default_match = re.match(r"import\s+(\w+)\s*(,|from)", text)
     if default_match:
         names.append(default_match.group(1))
@@ -490,16 +481,12 @@ def _outline_with_regex(path: str, source: str, *, lang: str) -> FileOutline:
     for m in _RE_EXPORT_FUNCTION.finditer(source):
         name = m.group(1)
         lineno = _find_lineno(source, m.start())
-        symbols.append(
-            SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno)
-        )
+        symbols.append(SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno))
 
     for m in _RE_TOP_LEVEL_CONST_ARROW.finditer(source):
         name = m.group(1)
         lineno = _find_lineno(source, m.start())
-        symbols.append(
-            SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno)
-        )
+        symbols.append(SymbolOutline(name=name, kind="function", start_line=lineno, end_line=lineno))
 
     # Extract class methods by scanning each class body for balanced braces.
     for class_match in _RE_CLASS_DECL.finditer(source):

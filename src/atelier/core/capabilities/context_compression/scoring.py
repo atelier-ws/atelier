@@ -72,11 +72,7 @@ _REPEAT_PENALTY = 0.5
 
 
 def _tokenise(text: str) -> list[str]:
-    return [
-        t
-        for t in re.findall(r"[a-z][a-z0-9_]*", text.lower())
-        if t not in _STOPWORDS and len(t) >= 3
-    ]
+    return [t for t in re.findall(r"[a-z][a-z0-9_]*", text.lower()) if t not in _STOPWORDS and len(t) >= 3]
 
 
 def _build_idf(corpus: list[list[str]]) -> dict[str, float]:
@@ -115,10 +111,7 @@ def score_events(
     error_precede: set[int] = set()
     for i, ev in enumerate(events):
         kind = str(ev.get("kind", "")).lower()
-        if (
-            any(kind.startswith(k) for k in ("error", "exception", "test_fail", "validation_fail"))
-            and i > 0
-        ):
+        if any(kind.startswith(k) for k in ("error", "exception", "test_fail", "validation_fail")) and i > 0:
             error_precede.add(i - 1)
 
     # Track seen (kind, summary_prefix) pairs to apply repeat penalties

@@ -64,9 +64,7 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
 # --------------------------------------------------------------------------- #
 
 
-def test_mcp_local_mode_still_works(
-    local_mode: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_mcp_local_mode_still_works(local_mode: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """get_reasoning_context works in local mode with an empty store."""
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / ".atelier"))
 
@@ -133,9 +131,7 @@ def test_remote_check_plan_same_shape(remote_mode: None, monkeypatch: pytest.Mon
     assert payload["status"] == "pass"
 
 
-def test_remote_get_reasoning_context_same_shape(
-    remote_mode: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_remote_get_reasoning_context_same_shape(remote_mode: None, monkeypatch: pytest.MonkeyPatch) -> None:
     expected = {"context": "Here are the relevant procedures."}
     client = _mock_client({"get_reasoning_context": expected})
 
@@ -216,9 +212,7 @@ def test_remote_client_routes_correctly() -> None:
 
     captured: list[tuple[str, str]] = []
 
-    def _fake_request(
-        self: Any, method: str, path: str, body: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _fake_request(self: Any, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         captured.append((method, path))
         return {"ok": True}
 

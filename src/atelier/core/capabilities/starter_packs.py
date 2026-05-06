@@ -113,9 +113,7 @@ def _template_roots() -> list[Path]:
     roots.extend([cwd_root, source_root])
     with (
         suppress(FileNotFoundError, ModuleNotFoundError),
-        resources.as_file(
-            resources.files("atelier") / "templates" / "reasonblocks"
-        ) as package_root,
+        resources.as_file(resources.files("atelier") / "templates" / "reasonblocks") as package_root,
     ):
         roots.append(package_root)
     return list(dict.fromkeys(roots))

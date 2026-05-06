@@ -22,9 +22,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"shpat_[A-Za-z0-9]{20,}"), "<redacted-shopify-token>"),
     (re.compile(r"ghp_[A-Za-z0-9]{20,}"), "<redacted-github-token>"),
     (
-        re.compile(
-            r"-----BEGIN [A-Z ]+PRIVATE KEY-----.*?-----END [A-Z ]+PRIVATE KEY-----", re.DOTALL
-        ),
+        re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----.*?-----END [A-Z ]+PRIVATE KEY-----", re.DOTALL),
         "<redacted-private-key>",
     ),
     # JWT-ish tokens (3 base64url segments).

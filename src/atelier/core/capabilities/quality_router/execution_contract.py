@@ -47,8 +47,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": True,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "provider_enforced is future-only and disabled; "
-            "full model-provider override is outside host surface"
+            "provider_enforced is future-only and disabled; " "full model-provider override is outside host surface"
         ),
         "host_native_owner": "model,agent_orchestration",
     },
@@ -60,8 +59,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": True,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "hook_enforced parity with Claude hooks is unsupported; "
-            "provider_enforced is future-only and disabled"
+            "hook_enforced parity with Claude hooks is unsupported; " "provider_enforced is future-only and disabled"
         ),
         "host_native_owner": "model,edit,agent_orchestration",
     },
@@ -86,8 +84,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": True,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "cross-host hook parity is unsupported; "
-            "provider_enforced is future-only and disabled"
+            "cross-host hook parity is unsupported; " "provider_enforced is future-only and disabled"
         ),
         "host_native_owner": "model,edit,agent_orchestration",
     },
@@ -124,9 +121,7 @@ class RouteExecutionContract(BaseModel):
         default_factory=list,
         description="Execution tiers the host accepts route decisions for.",
     )
-    can_block_start: bool = Field(
-        description="Whether the wrapper/hook surface can prevent a task from starting."
-    )
+    can_block_start: bool = Field(description="Whether the wrapper/hook surface can prevent a task from starting.")
     can_force_model: bool = Field(
         description=(
             "Whether Atelier can override the model selection made by the host. "
@@ -136,9 +131,7 @@ class RouteExecutionContract(BaseModel):
     can_require_verification: bool = Field(
         description="Whether the wrapper surface can withhold task completion pending verification."
     )
-    fallback_mode: ExecutionMode = Field(
-        description="Mode used when the primary enforcement surface is unavailable."
-    )
+    fallback_mode: ExecutionMode = Field(description="Mode used when the primary enforcement surface is unavailable.")
     unsupported_reason: str = Field(
         description="Human-readable note on what enforcement capabilities are not available."
     )

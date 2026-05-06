@@ -47,9 +47,7 @@ def test_cached_grep_content_mutation_causes_exactly_one_new_miss(tmp_path: Path
     target.write_text("GIDs are stable, handles are not\n", encoding="utf-8")
 
     before = [_cached_grep(root, "GIDs", target) for _ in range(10)]
-    target.write_text(
-        "GIDs are stable, handles are not\nProduct IDs remain canonical\n", encoding="utf-8"
-    )
+    target.write_text("GIDs are stable, handles are not\nProduct IDs remain canonical\n", encoding="utf-8")
     after = [_cached_grep(root, "GIDs", target) for _ in range(10)]
 
     assert before[0]["cached"] is False

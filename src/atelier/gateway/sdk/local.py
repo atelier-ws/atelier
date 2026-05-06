@@ -209,11 +209,7 @@ class LocalClient(AtelierClient):
     ) -> MemoryUpsertBlockResult:
         store = make_memory_store(self.root)
         existing = store.get_block(agent_id, label)
-        version = (
-            expected_version
-            if expected_version is not None
-            else (existing.version if existing else 1)
-        )
+        version = expected_version if expected_version is not None else (existing.version if existing else 1)
         seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=value)
         block = MemoryBlock(
             id=seed.id,
@@ -244,9 +240,7 @@ class LocalClient(AtelierClient):
         source_ref: str = "",
         tags: list[str] | None = None,
     ) -> MemoryArchiveResult:
-        capability = ArchivalRecallCapability(
-            make_memory_store(self.root), make_embedder(), redactor=redact
-        )
+        capability = ArchivalRecallCapability(make_memory_store(self.root), make_embedder(), redactor=redact)
         passage = capability.archive(
             agent_id=agent_id,
             text=text,
@@ -267,9 +261,7 @@ class LocalClient(AtelierClient):
     ) -> MemoryRecallResult:
         from datetime import datetime
 
-        capability = ArchivalRecallCapability(
-            make_memory_store(self.root), make_embedder(), redactor=redact
-        )
+        capability = ArchivalRecallCapability(make_memory_store(self.root), make_embedder(), redactor=redact)
         passages, recall = capability.recall(
             agent_id=agent_id,
             query=query,

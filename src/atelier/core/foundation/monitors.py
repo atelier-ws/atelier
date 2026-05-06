@@ -161,9 +161,7 @@ class KnownDeadEnd:
                             monitor=self.name,
                             severity="high",
                             message=f"Plan contains known dead end: {dead!r}",
-                            suggestion=(
-                                f"Apply procedure from ReasonBlock '{block.title}' instead."
-                            ),
+                            suggestion=(f"Apply procedure from ReasonBlock '{block.title}' instead."),
                         )
         return None
 
@@ -177,10 +175,7 @@ class SkippedVerification:
                 monitor=self.name,
                 severity="high",
                 message="Agent declared success without verified validation.",
-                suggestion=(
-                    "Run the rubric gate before accepting the result. "
-                    "No success without validation."
-                ),
+                suggestion=("Run the rubric gate before accepting the result. " "No success without validation."),
             )
         return None
 
@@ -194,14 +189,8 @@ class ContextBloat:
             return MonitorAlert(
                 monitor=self.name,
                 severity="medium",
-                message=(
-                    f"Tool outputs accumulated {state.tool_outputs_chars} chars. "
-                    "Likely stale repeated logs."
-                ),
-                suggestion=(
-                    "Compress trace to: files changed, errors seen, assumptions "
-                    "tested, current blocker."
-                ),
+                message=(f"Tool outputs accumulated {state.tool_outputs_chars} chars. " "Likely stale repeated logs."),
+                suggestion=("Compress trace to: files changed, errors seen, assumptions " "tested, current blocker."),
             )
         return None
 
@@ -263,17 +252,11 @@ class BudgetExhaustion:
     name = "budget_exhaustion"
 
     def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> MonitorAlert | None:
-        if (
-            state.budget_max_tool_calls is not None
-            and len(state.tool_calls) > state.budget_max_tool_calls
-        ):
+        if state.budget_max_tool_calls is not None and len(state.tool_calls) > state.budget_max_tool_calls:
             return MonitorAlert(
                 monitor=self.name,
                 severity="high",
-                message=(
-                    f"Tool call count {len(state.tool_calls)} exceeds budget "
-                    f"{state.budget_max_tool_calls}."
-                ),
+                message=(f"Tool call count {len(state.tool_calls)} exceeds budget " f"{state.budget_max_tool_calls}."),
                 suggestion="Summarize-and-plan before continuing.",
             )
         if state.budget_max_repeated_commands is not None:
@@ -284,21 +267,16 @@ class BudgetExhaustion:
                         monitor=self.name,
                         severity="high",
                         message=(
-                            f"Command {cmd!r} repeated {n}x exceeds budget "
-                            f"{state.budget_max_repeated_commands}."
+                            f"Command {cmd!r} repeated {n}x exceeds budget " f"{state.budget_max_repeated_commands}."
                         ),
                         suggestion="Summarize-and-plan before continuing.",
                     )
-        if (
-            state.budget_max_estimated_tokens is not None
-            and state.estimated_tokens > state.budget_max_estimated_tokens
-        ):
+        if state.budget_max_estimated_tokens is not None and state.estimated_tokens > state.budget_max_estimated_tokens:
             return MonitorAlert(
                 monitor=self.name,
                 severity="high",
                 message=(
-                    f"Estimated tokens {state.estimated_tokens} exceeds budget "
-                    f"{state.budget_max_estimated_tokens}."
+                    f"Estimated tokens {state.estimated_tokens} exceeds budget " f"{state.budget_max_estimated_tokens}."
                 ),
                 suggestion="Summarize-and-plan before continuing.",
             )

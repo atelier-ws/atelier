@@ -133,10 +133,7 @@ def check_plan(
                         PlanWarning(
                             severity="high",
                             reason_block=block.title,
-                            message=(
-                                f"Known dead end: {dead!r}. "
-                                f"Replace with the procedure from '{block.title}'."
-                            ),
+                            message=(f"Known dead end: {dead!r}. " f"Replace with the procedure from '{block.title}'."),
                         )
                     )
                     if block not in dead_end_blocks:
@@ -158,9 +155,7 @@ def check_plan(
             )
 
     # Suggested plan: prefer the block(s) whose dead-ends were hit, then top-scored.
-    source_blocks: list[ReasonBlock] = (
-        dead_end_blocks if dead_end_blocks else ([scored[0].block] if scored else [])
-    )
+    source_blocks: list[ReasonBlock] = dead_end_blocks if dead_end_blocks else ([scored[0].block] if scored else [])
     for block in source_blocks:
         for step in [*block.procedure, *block.verification]:
             if step not in suggested:
@@ -176,8 +171,7 @@ def check_plan(
                     severity="high",
                     reason_block=f"environment:{env.id}",
                     message=(
-                        f"Forbidden by environment {env.id!r}: step {step!r} "
-                        f"contains banned phrase {phrase!r}."
+                        f"Forbidden by environment {env.id!r}: step {step!r} " f"contains banned phrase {phrase!r}."
                     ),
                 )
             )

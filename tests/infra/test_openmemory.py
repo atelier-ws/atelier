@@ -110,9 +110,7 @@ def test_fetch_context_disabled_noop(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_fetch_context_enabled_server_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_OPENMEMORY_ENABLED", "true")
-    result = maybe_fetch_memory_context_for_task(
-        "update Shopify product metafields", project_id="proj-1"
-    )
+    result = maybe_fetch_memory_context_for_task("update Shopify product metafields", project_id="proj-1")
     assert result["ok"] is True
     assert "matches" in _data(result)
 
@@ -165,9 +163,7 @@ def test_disabled_response_has_required_keys(
 # --------------------------------------------------------------------------- #
 
 
-def test_cli_openmemory_status_disabled(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_openmemory_status_disabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
     runner = CliRunner()
     result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "status"], obj={})
@@ -176,9 +172,7 @@ def test_cli_openmemory_status_disabled(
     assert "available_tools" in result.output
 
 
-def test_cli_openmemory_status_enabled(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_openmemory_status_enabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_OPENMEMORY_ENABLED", "true")
     runner = CliRunner()
     result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "status"], obj={})
@@ -186,14 +180,10 @@ def test_cli_openmemory_status_enabled(
     assert "enabled: True" in result.output
 
 
-def test_cli_openmemory_link_trace_disabled(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_openmemory_link_trace_disabled(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["--root", str(tmp_path), "openmemory", "link-trace", "trace-42"], obj={}
-    )
+    result = runner.invoke(cli, ["--root", str(tmp_path), "openmemory", "link-trace", "trace-42"], obj={})
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["ok"] is True
@@ -216,9 +206,7 @@ def test_cli_openmemory_fetch_context_disabled(
     assert "matches" in data["data"]
 
 
-def test_bridge_persists_local_state(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_bridge_persists_local_state(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
     monkeypatch.delenv("ATELIER_OPENMEMORY_ENABLED", raising=False)
 

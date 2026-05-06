@@ -24,12 +24,8 @@ def test_provider_enforced_always_disabled() -> None:
     """provider_enforced mode must never be the active mode for any host."""
     for host in ("claude", "codex", "copilot", "opencode", "gemini"):
         contract = route_execution_contract(host)
-        assert (
-            contract.mode != "provider_enforced"
-        ), f"host={host!r}: provider_enforced must not be the active mode"
-        assert (
-            contract.provider_enforced_disabled is True
-        ), f"host={host!r}: provider_enforced_disabled must be True"
+        assert contract.mode != "provider_enforced", f"host={host!r}: provider_enforced must not be the active mode"
+        assert contract.provider_enforced_disabled is True, f"host={host!r}: provider_enforced_disabled must be True"
 
 
 def test_unknown_host_raises() -> None:

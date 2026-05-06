@@ -8,9 +8,7 @@ from atelier.core.foundation.store import ReasoningStore
 from atelier.infra.embeddings.null_embedder import NullEmbedder
 
 
-def _chat(
-    messages: list[dict[str, str]], json_schema: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def _chat(messages: list[dict[str, str]], json_schema: dict[str, Any] | None = None) -> dict[str, Any]:
     content = messages[-1]["content"]
     title = "Imported API Rule" if "API" in content else "Imported Test Rule"
     return {
