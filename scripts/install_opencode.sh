@@ -79,14 +79,16 @@ JSON
     exit 0
 fi
 
-# ---- merge opencode.jsonc ---------------------------------------------------
-# opencode reads both opencode.json and opencode.jsonc; prefer .jsonc if present
-if [ -f "${WORKSPACE}/opencode.jsonc" ]; then
-    OC_FILE="${WORKSPACE}/opencode.jsonc"
-elif [ -f "${WORKSPACE}/opencode.json" ]; then
-    OC_FILE="${WORKSPACE}/opencode.json"
+# ---- merge user-global opencode.jsonc -----------------------------------
+# Atelier is a plugin for users' own projects, install to user-global config
+# opencode reads both opencode.json and opencode.jsonc from user home
+USER_OPENCODE_DIR="${HOME}"
+if [ -f "${USER_OPENCODE_DIR}/opencode.jsonc" ]; then
+    OC_FILE="${USER_OPENCODE_DIR}/opencode.jsonc"
+elif [ -f "${USER_OPENCODE_DIR}/opencode.json" ]; then
+    OC_FILE="${USER_OPENCODE_DIR}/opencode.json"
 else
-    OC_FILE="${WORKSPACE}/opencode.jsonc"
+    OC_FILE="${USER_OPENCODE_DIR}/opencode.jsonc"
 fi
 
 NEW_ENTRY=$(cat <<JSON
@@ -136,9 +138,9 @@ else
     fi
 fi
 
-# ---- install opencode atelier agent (workspace-local) -----------------------
+# ---- install opencode atelier agent (user-global) -----------------------
 AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
-AGENT_DEST_DIR="${WORKSPACE}/.opencode/agents"
+AGENT_DEST_DIR="${HOME}/.opencode/agents"
 if [ -f "$AGENT_SRC" ]; then
     run "mkdir -p '$AGENT_DEST_DIR'"
     run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
@@ -153,9 +155,9 @@ VFAIL=0
 vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:opencode] FAIL: $*" >&2; VFAIL=1; }
 
-# Find config file
+# Find config file in user home
 OC_FILE=""
-for f in "${WORKSPACE}/opencode.jsonc" "${WORKSPACE}/opencode.json"; do
+for f in "${HOME}/opencode.jsonc" "${HOME}/opencode.json"; do
     [ -f "$f" ] && OC_FILE="$f" && break
 done
 
@@ -201,7 +203,7 @@ PYEOF
     fi
 fi
 
-AGENT_FILE="${WORKSPACE}/.opencode/agents/atelier.md"
+AGENT_FILE="${HOME}/.opencode/agents/atelier.md"
 if [ -f "$AGENT_FILE" ]; then
     vpass "opencode atelier agent installed: $AGENT_FILE"
 else

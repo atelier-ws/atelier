@@ -190,9 +190,7 @@ class CostTracker:
     ) -> CallRecord:
         op_key = operation_key(domain, task or operation)
         cost = (
-            cost_usd
-            if cost_usd is not None
-            else estimate_cost(model, input_tokens, output_tokens, cache_read_tokens)
+            cost_usd if cost_usd is not None else estimate_cost(model, input_tokens, output_tokens, cache_read_tokens)
         )
         rec = CallRecord(
             operation=operation,

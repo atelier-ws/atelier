@@ -14,17 +14,13 @@ def test_memory_store_defaults_to_sqlite(tmp_path: Path, monkeypatch: pytest.Mon
     assert isinstance(store, SqliteMemoryStore)
 
 
-def test_memory_backend_env_overrides_preference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_memory_backend_env_overrides_preference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "sqlite")
     store = make_memory_store(tmp_path / "atelier", prefer="letta")
     assert isinstance(store, SqliteMemoryStore)
 
 
-def test_memory_backend_config_selects_letta(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_memory_backend_config_selects_letta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "atelier"
     root.mkdir()
     (root / "config.toml").write_text('[memory]\nbackend = "letta"\n', encoding="utf-8")

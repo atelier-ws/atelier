@@ -50,9 +50,7 @@ class _LoopbackTransport(MCPToolTransport):
 
 
 class MCPClient(LocalClient):
-    def __init__(
-        self, *, root: str = ".atelier", transport: MCPToolTransport | None = None
-    ) -> None:
+    def __init__(self, *, root: str = ".atelier", transport: MCPToolTransport | None = None) -> None:
         self._transport = transport or _LoopbackTransport()
         super().__init__(root=root)
 
@@ -248,9 +246,7 @@ class MCPClient(LocalClient):
                 "errors_seen": errors_seen or [],
                 "diff_summary": diff_summary,
                 "output_summary": output_summary,
-                "validation_results": [
-                    result.model_dump(mode="json") for result in (validation_results or [])
-                ],
+                "validation_results": [result.model_dump(mode="json") for result in (validation_results or [])],
             },
         )
         payload = {"id": str(payload.get("id") or payload.get("run_id") or "")}

@@ -133,9 +133,7 @@ def test_benchmark_case_extra_fields_rejected() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        BenchmarkCase.model_validate(
-            {"case_id": "c1", "tier": "cheap", "accepted": True, "cost_usd": 0.001, "bad": 1}
-        )
+        BenchmarkCase.model_validate({"case_id": "c1", "tier": "cheap", "accepted": True, "cost_usd": 0.001, "bad": 1})
 
 
 # ---------------------------------------------------------------------------

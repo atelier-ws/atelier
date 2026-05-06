@@ -145,9 +145,7 @@ class ReasonBlockClient:
     def __init__(self, client: AtelierClient) -> None:
         self._client = client
 
-    def list(
-        self, *, domain: str | None = None, include_deprecated: bool = False
-    ) -> builtins.list[ReasonBlock]:
+    def list(self, *, domain: str | None = None, include_deprecated: bool = False) -> builtins.list[ReasonBlock]:
         return self._client._list_reasonblocks(domain=domain, include_deprecated=include_deprecated)
 
     def search(self, query: str, *, limit: int = 20) -> builtins.list[ReasonBlock]:
@@ -207,9 +205,7 @@ class TraceClient:
     def get(self, trace_id: str) -> Trace | None:
         return self._client._get_trace(trace_id)
 
-    def list(
-        self, *, domain: str | None = None, status: str | None = None, limit: int = 50
-    ) -> builtins.list[Trace]:
+    def list(self, *, domain: str | None = None, status: str | None = None, limit: int = 50) -> builtins.list[Trace]:
         return self._client._list_traces(domain=domain, status=status, limit=limit)
 
 
@@ -228,9 +224,7 @@ class EvalClient:
     def list(self, *, domain: str | None = None) -> builtins.list[dict[str, Any]]:
         return self._client._list_evals(domain=domain)
 
-    def run(
-        self, *, case_id: str | None = None, domain: str | None = None, limit: int = 50
-    ) -> EvalRunResult:
+    def run(self, *, case_id: str | None = None, domain: str | None = None, limit: int = 50) -> EvalRunResult:
         return self._client._run_evals(case_id=case_id, domain=domain, limit=limit)
 
 
@@ -318,9 +312,7 @@ class LessonClient:
     def inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
         return self._client.lesson_inbox(domain=domain, limit=limit)
 
-    def decide(
-        self, *, lesson_id: str, decision: str, reviewer: str, reason: str
-    ) -> LessonDecisionResult:
+    def decide(self, *, lesson_id: str, decision: str, reviewer: str, reason: str) -> LessonDecisionResult:
         return self._client.lesson_decide(
             lesson_id=lesson_id,
             decision=decision,
@@ -433,9 +425,7 @@ class AtelierClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def analyze_failures(
-        self, *, domain: str | None = None, limit: int = 100
-    ) -> FailureAnalysisResult:
+    def analyze_failures(self, *, domain: str | None = None, limit: int = 100) -> FailureAnalysisResult:
         raise NotImplementedError
 
     @abstractmethod
