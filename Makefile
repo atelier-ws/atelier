@@ -4,7 +4,7 @@ PY_PATHS := src tests
 ATELIER_STORE ?= $(CURDIR)/.atelier
 FORCE_ARG := $(if $(f),--force,)
 
-.PHONY: help install uninstall status start service worker mcp init-runtime \
+.PHONY: help install uninstall status start restart \
 	test test-fast test-cov security-test lint format-check format typecheck verify pre-commit \
 	benchmark bench-savings bench-savings-honest proof-cost-quality demo import-sessions clean
 
@@ -17,8 +17,7 @@ install: ## Install deps, agent CLI integrations, status helper, and runtime sto
 	bash scripts/install_agent_clis.sh
 	@mkdir -p "$(HOME)/.local/bin"
 	@ln -sf "$(CURDIR)/bin/atelier-status" "$(HOME)/.local/bin/atelier-status"
-	uv run atelier init || true
-	@echo "[atelier] Installation complete. Run 'make status' to verify."
+	@echo "[atelier] Installation complete. Run 'make start' to launch with Docker."
 
 uninstall: ## Remove generated agent CLI integrations and status helper
 	@rm -f "$(HOME)/.local/bin/atelier-status"
@@ -31,9 +30,6 @@ uninstall: ## Remove generated agent CLI integrations and status helper
 status: ## Show Atelier installation status
 	@bash scripts/status.sh
 
-init-runtime: ## Initialize the local Atelier store
-	uv run atelier init
-
 start: ## Start the service and frontend with Docker Compose
 	docker compose up --build -d
 	docker compose logs -f
@@ -41,15 +37,6 @@ restart: ## Restart the service and frontend with Docker Compose
 	docker compose down
 	docker compose up --build -d
 	docker compose logs -f
-
-service: ## Start the HTTP service on localhost:8787
-	ATELIER_REQUIRE_AUTH=false uv run atelier service start
-
-worker: ## Start background workers
-	uv run atelier worker start
-
-mcp: ## Start the MCP server over stdio JSON-RPC
-	uv run atelier-mcp
 
 # --------------------------------------------------------------------------- #
 # Development                                                                 #
@@ -70,12 +57,14 @@ security-test: ## Run security-focused test cases
 lint: ## Run ruff lint checks
 	uv run ruff check $(PY_PATHS)
 
-format-check: ## Check black formatting
-	uv run black --check $(PY_PATHS)
-
-format: ## Auto-fix ruff issues and apply black formatting
+format: ## Format all code: Python (ruff+black) and frontend (prettier if available)
 	uv run ruff check --fix $(PY_PATHS)
 	uv run black $(PY_PATHS)
+	@if [ -d "frontend" ]; then \
+		if [ -f "frontend/package.json" ] && grep -q "prettier" frontend/package.json 2>/dev/null; then \
+			cd frontend && npx prettier --write "src/**/*.{ts,tsx,js,jsx,json,css,md}" 2>/dev/null || true; \
+		fi; \
+	fi
 
 typecheck: ## Run mypy strict type-checking
 	uv run mypy --strict $(PY_PATHS)

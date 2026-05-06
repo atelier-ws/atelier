@@ -20,7 +20,7 @@ Atelier sits between agent hosts and their environments, providing:
 
 ## What Atelier is not
 
-- **Not a memory system** — Atelier stores procedures (what to do), not facts (what is true). Pair it with OpenMemory or Mem0 for factual state.
+- **Not a general memory platform** — Atelier owns procedural memory (ReasonBlocks). Agent memory goes through `memory` to the configured backend: Letta, OpenMemory, Mem0, or local SQLite for development.
 - **Not an agent framework** — Atelier does not execute tools, manage model calls, or own the agent loop.
 - **Not an IDE** — Atelier runs as a sidecar to your agent host, not as a standalone coding environment.
 - **Not a vector database** — FTS5 is the default retrieval; pgvector is optional for semantic similarity.
@@ -38,7 +38,7 @@ Atelier Runtime
 |- Run ledger          (per-session execution state)
 |- Failure clusters    (recurring error signatures -> rescue procedures)
 |- Context compressor  (ledger summarisation)
-`- Tool cache          (smart_read / smart_search / cached_grep)
+`- Tool cache          (read / search / edit)
         |
         |- Local SQLite (default)
         `- PostgreSQL   (optional, ATELIER_DATABASE_URL)
@@ -46,31 +46,20 @@ Atelier Runtime
 
 ## Capability Model
 
-- Reasoning reuse: Atelier augmentation, MCP `atelier_get_reasoning_context`, CLI `context` / `task`
-- Plan verification: Atelier augmentation, MCP `atelier_check_plan`, CLI `check-plan`
-- Failure rescue: Atelier augmentation, MCP `atelier_rescue_failure`, CLI `rescue`
-- Weekly governance report: MCP `atelier_report`, CLI `report`
+- Reasoning reuse: Atelier augmentation, MCP `reasoning`, CLI `reasoning`
+- Plan verification: Atelier augmentation, MCP `lint`, CLI `lint`
+- Failure rescue: Atelier augmentation, MCP `rescue`, CLI `rescue`
+- Weekly governance report: CLI `report`
 - Style-guide import: CLI `import-style-guide` into the human-reviewed lesson inbox
 - Starter ReasonBlock packs: CLI `init --stack` and `init --list-stacks`
-- Rubric verification: Atelier augmentation, MCP `atelier_run_rubric_gate`, CLI `run-rubric`
-- Trace recording: Atelier augmentation, MCP `atelier_record_trace`, CLI `record-trace`
-- Loop monitoring: Atelier augmentation, MCP `atelier_monitor_event`, CLI `monitor event`
-- Compact lifecycle advise: Atelier augmentation, MCP `atelier_compact_advise`
-- Context compression: Atelier augmentation, MCP `atelier_compress_context`, CLI `memory summarize`
-- Semantic search: Atelier augmentation, MCP `atelier_smart_search`, CLI `search smart`
-- Cached file read: Atelier augmentation, MCP `atelier_smart_read`, CLI `read smart`
-- Token-saving search+read: Atelier augmentation, MCP `atelier_search_read`
-- Deterministic batch edit: Atelier augmentation, MCP `atelier_batch_edit`, CLI `edit smart`
-- Read-only SQL inspect: Atelier augmentation, MCP `atelier_sql_inspect`, CLI `sql inspect`
-- Memory upsert block: Atelier augmentation, MCP `atelier_memory_upsert_block`
-- Memory get block: Atelier augmentation, MCP `atelier_memory_get_block`
-- Archival recall: Atelier augmentation, MCP `atelier_memory_recall`
-- Archival archive: Atelier augmentation, MCP `atelier_memory_archive`
-- Sleeptime summarize: Atelier augmentation, MCP `atelier_memory_summary`
-- Lesson promotion inbox: Atelier augmentation, MCP `atelier_lesson_inbox`
-- Lesson promotion decide: Atelier augmentation, MCP `atelier_lesson_decide`
-- Quality-aware routing: Atelier augmentation, MCP `atelier_route_decide`
-- Verification escalation: Atelier augmentation, MCP `atelier_route_verify`
+- Rubric verification: Atelier augmentation, MCP `verify`, CLI `verify`
+- Trace recording: Atelier augmentation, MCP `trace`, CLI `trace record`
+- Compact lifecycle: Atelier augmentation, MCP `compact` with `op="output"`, `op="session"`, or `op="advise"`
+- Smart read/search/edit: Atelier augmentation, MCP `read`, `search`, `edit`; CLI `read`, `search`, `edit`
+- Agent memory: Atelier augmentation, MCP `memory` with `op="block_upsert"`, `op="block_get"`, `op="archive"`, `op="recall"`; CLI `memory upsert/get/list/recall/archive`
+- Lesson promotion: CLI `lesson inbox` and `lesson decide`
+- Consolidation review: CLI `consolidation inbox` and `consolidation decide`
+- Quality-aware routing: Atelier augmentation, MCP `route` with `op="decide"` or `op="verify"`
 
 ## Installation
 
@@ -105,7 +94,7 @@ bash scripts/install_codex.sh --print-only
 
 ```bash
 # 1. Check a plan before executing it
-uv run atelier check-plan \
+uv run atelier lint \
     --task "Publish Shopify product" \
     --domain Agent.shopify.publish \
     --step "Parse product handle from PDP URL" \
@@ -113,14 +102,14 @@ uv run atelier check-plan \
 # → status: blocked (exit 2) — dead end detected
 
 # 2. Get reasoning context
-uv run atelier context \
+uv run atelier reasoning \
     --task "Fix Shopify JSON-LD availability" \
     --domain Agent.pdp.schema \
     --file pdp/schema.py
 
 # 3. Run a rubric gate
 echo '{"product_identity_uses_gid": true, "pre_publish_snapshot_exists": true, "write_result_checked": true}' \
-  | uv run atelier run-rubric rubric_shopify_publish
+  | uv run atelier verify rubric_shopify_publish
 ```
 
 → Full tutorial: [docs/quickstart.md](docs/quickstart.md)
@@ -142,32 +131,30 @@ The API service runs at [http://localhost:8787](http://localhost:8787).
 uv run atelier [--root PATH] COMMAND [OPTIONS]
 ```
 
-| Command                           | Description                                     |
-| --------------------------------- | ----------------------------------------------- |
-| `init`                            | Create store and seed blocks/rubrics            |
-| `context`                         | Get reasoning context for a task                |
-| `task`                            | Get context for a task description              |
-| `check-plan`                      | Validate a plan (exit 2 = blocked)              |
-| `rescue`                          | Suggest rescue for a failure                    |
-| `record-trace`                    | Record an execution trace (JSON stdin or file)  |
-| `extract-block`                   | Extract candidate ReasonBlock from a trace      |
-| `run-rubric`                      | Run a rubric gate                               |
-| `block list/show/add/edit/retire` | Manage ReasonBlocks                             |
-| `trace list/show`                 | Browse traces                                   |
-| `rubric list/show/add`            | Manage rubrics                                  |
-| `env list/show`                   | List reasoning environments                     |
-| `failure list/show/accept`        | Manage failure clusters                         |
-| `ledger list/show`                | Browse run ledger                               |
-| `monitor event`                   | Emit a monitor event                            |
-| `capability list/status`          | Inspect core capability state                   |
-| `memory summarize`                | Summarize runtime memory for next-step context  |
-| `search smart`                    | Unified smart retrieval (procedures + semantic) |
-| `read smart`                      | AST-aware cached read                           |
-| `edit smart`                      | Batch smart edits                               |
-| `sql inspect`                     | SQL/schema introspection helper                 |
-| `benchmark-runtime`               | Capability efficiency metrics                   |
-| `service`                         | Start/stop the HTTP service                     |
-| `openmemory`                      | OpenMemory bridge commands                      |
+| Command                                 | Description                             |
+| --------------------------------------- | --------------------------------------- |
+| `init`                                  | Create store and seed blocks/rubrics    |
+| `reasoning`                             | Get reasoning context for a task        |
+| `lint`                                  | Validate a plan (exit 2 = blocked)      |
+| `rescue`                                | Suggest rescue for a failure            |
+| `trace record/list/show`                | Record and browse execution traces      |
+| `verify`                                | Run a rubric gate                       |
+| `block list/add/extract`                | Manage ReasonBlocks                     |
+| `rubric list/show/add`                  | Manage rubrics                          |
+| `env list/show`                         | List reasoning environments             |
+| `failure list/show/accept`              | Manage failure clusters                 |
+| `ledger list/show`                      | Browse run ledger                       |
+| `lesson inbox/decide`                   | Review generated lesson candidates      |
+| `consolidation inbox/decide`            | Review memory consolidation candidates  |
+| `report`                                | Generate governance reports             |
+| `proof run/show`                        | Run or display proof report output      |
+| `route`                                 | Quality-aware routing decisions         |
+| `memory upsert/get/list/recall/archive` | Session memory block operations         |
+| `search`                                | Semantic retrieval across ReasonBlocks  |
+| `read`                                  | AST-aware file read with symbol summary |
+| `edit`                                  | Batch find/replace edits from JSON file |
+| `bench runtime`                         | Capability efficiency metrics           |
+| `service`                               | Start/stop the HTTP service             |
 
 All commands accept `--json` for machine-readable output.
 
@@ -179,24 +166,14 @@ All commands accept `--json` for machine-readable output.
 uv run atelier-mcp
 ```
 
-Stdio JSON-RPC server. Tools available to agents:
+Stdio JSON-RPC server. The agent-facing MCP surface is deliberately small:
 
-**Core (5):** `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`,
-`atelier_run_rubric_gate`, `atelier_record_trace`
+`reasoning`, `lint`, `route`,
+`rescue`, `trace`, `verify`,
+`memory`, `read`, `edit`, `search`,
+`compact`, `atelier_repo_map`.
 
-**Extended (9):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_extract_reasonblock`,
-`atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment_context`,
-`atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`
-
-**V2 — Memory (5):** `atelier_memory_upsert_block`, `atelier_memory_get_block`,
-`atelier_memory_recall`, `atelier_memory_archive`, `atelier_memory_summary`
-
-**V2 — Lesson pipeline (2):** `atelier_lesson_inbox`, `atelier_lesson_decide`
-
-**V2 — Context savings (4):** `atelier_search_read`, `atelier_batch_edit`,
-`atelier_sql_inspect`, `atelier_compact_advise`
-
-**V2 — Routing (2):** `atelier_route_decide`, `atelier_route_verify`
+Governance, admin, benchmarks, read-only SQL inspection, and static routing contracts live on the CLI.
 
 → Full reference: [docs/engineering/mcp.md](docs/engineering/mcp.md)
 

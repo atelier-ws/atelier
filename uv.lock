@@ -368,6 +368,7 @@ vector = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "mypy" },
     { name = "pytest" },
 ]
 
@@ -422,6 +423,7 @@ provides-extras = ["mcp", "memory", "memory-server", "embeddings", "smart", "rep
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "mypy", specifier = ">=1.20.2" },
     { name = "pytest", specifier = ">=9.0.3" },
 ]
 

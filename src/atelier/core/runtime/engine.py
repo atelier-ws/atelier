@@ -116,9 +116,7 @@ class AtelierRuntimeCore:
             from atelier.infra.embeddings.factory import make_embedder
             from atelier.infra.storage.factory import make_memory_store
 
-            capability = ArchivalRecallCapability(
-                make_memory_store(self.root), make_embedder(), redactor=redact
-            )
+            capability = ArchivalRecallCapability(make_memory_store(self.root), make_embedder(), redactor=redact)
             passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
             scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
             memory_context = render_memory_for_agent(scoped_passages)
@@ -196,10 +194,7 @@ class AtelierRuntimeCore:
         ranked.sort(key=lambda x: x["score"], reverse=True)
 
         payload = {
-            "matches": [
-                {"id": block.id, "title": block.title, "domain": block.domain}
-                for block in block_matches
-            ],
+            "matches": [{"id": block.id, "title": block.title, "domain": block.domain} for block in block_matches],
             "semantic": semantic_matches,
             "glob": glob_matches,
             "snippets": snippets,
@@ -215,9 +210,7 @@ class AtelierRuntimeCore:
 
         cached_summary = self.semantic_memory.get_cached(file_path) if cache_enabled else None
         if cached_summary is not None:
-            token_metrics = self._token_metrics(
-                cached_summary.lines_total, len(cached_summary.summary)
-            )
+            token_metrics = self._token_metrics(cached_summary.lines_total, len(cached_summary.summary))
             payload = {
                 "path": cached_summary.path,
                 "summary": cached_summary.summary,
@@ -364,9 +357,7 @@ class AtelierRuntimeCore:
         """Fallback static SQL analysis mode (no live DB connection)."""
 
         schema = self._sql_schema_snapshot(source)
-        tables = sorted(
-            set(re.findall(r"\b(?:from|join|update|into)\s+([a-zA-Z0-9_.]+)", source, re.I))
-        )
+        tables = sorted(set(re.findall(r"\b(?:from|join|update|into)\s+([a-zA-Z0-9_.]+)", source, re.I)))
         fks = re.findall(
             r"\bforeign\s+key\s*\(([^)]+)\)\s*references\s+([a-zA-Z0-9_.]+)\s*\(([^)]+)\)",
             source,
@@ -375,9 +366,7 @@ class AtelierRuntimeCore:
 
         select_count = len(re.findall(r"\bselect\b", source, re.I))
         join_count = len(re.findall(r"\bjoin\b", source, re.I))
-        mutation_count = len(
-            re.findall(r"\b(insert|update|delete|alter|create|drop)\b", source, re.I)
-        )
+        mutation_count = len(re.findall(r"\b(insert|update|delete|alter|create|drop)\b", source, re.I))
 
         return {
             "tables": tables,
@@ -414,24 +403,24 @@ class AtelierRuntimeCore:
             parts = text.split()
             if len(parts) >= 2:
                 suggestion = {
-                    "tool": "atelier_cached_grep",
-                    "args": {"pattern": parts[1], "path": "."},
-                    "reason": "Use cached grep to persist search context in the ledger.",
+                    "tool": "search",
+                    "args": {"query": parts[1], "path": ".", "mode": "chunks"},
+                    "reason": "Use smart search to persist and rank search context in the ledger.",
                 }
         elif text.startswith("cat "):
             path = text[4:].strip()
             if path:
                 suggestion = {
-                    "tool": "atelier_smart_read",
+                    "tool": "read",
                     "args": {"path": path, "max_lines": 120},
                     "reason": "Use AST-aware smart read with token metrics.",
                 }
         elif text.startswith("find "):
             query = text.replace("find", "", 1).strip()
             suggestion = {
-                "tool": "atelier_cached_grep",
-                "args": {"pattern": query or ".", "path": "."},
-                "reason": "Use cached grep for repeated repository lookups.",
+                "tool": "search",
+                "args": {"query": query or ".", "path": ".", "mode": "chunks"},
+                "reason": "Use smart search for repeated repository lookups.",
             }
 
         return {
@@ -793,9 +782,7 @@ class AtelierRuntimeCore:
             matches = [str(p) for p in workspace.rglob(query) if p.is_file()]
         else:
             needle = query.lower()
-            matches = [
-                str(p) for p in workspace.rglob("*") if p.is_file() and needle in p.name.lower()
-            ]
+            matches = [str(p) for p in workspace.rglob("*") if p.is_file() and needle in p.name.lower()]
         return matches[:limit]
 
     def _snippet_search(self, query: str, *, limit: int) -> list[dict[str, Any]]:
@@ -818,9 +805,7 @@ class AtelierRuntimeCore:
             end = min(len(text), pos + len(query) + 80)
             snippet = text[start:end].replace("\n", " ")
             score = 0.5 + min(0.5, text.lower().count(query_lower) / 10.0)
-            snippets.append(
-                {"path": str(path), "snippet": snippet.strip(), "score": round(score, 3)}
-            )
+            snippets.append({"path": str(path), "snippet": snippet.strip(), "score": round(score, 3)})
             if len(snippets) >= limit * 3:
                 break
 

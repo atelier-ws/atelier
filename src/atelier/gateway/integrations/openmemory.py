@@ -150,9 +150,7 @@ def _disabled(action: str) -> dict[str, object]:
         "ok": False,
         "skipped": True,
         "action": action,
-        "reason": (
-            "OpenMemory integration is disabled. Set ATELIER_OPENMEMORY_ENABLED=true to enable."
-        ),
+        "reason": ("OpenMemory integration is disabled. Set ATELIER_OPENMEMORY_ENABLED=true to enable."),
     }
 
 
@@ -165,8 +163,7 @@ def _unavailable(action: str, detail: str = "") -> dict[str, object]:
         "reason": f"OpenMemory MCP server '{server}' is unavailable.",
         "detail": detail or f"Could not reach MCP server '{server}'.",
         "hint": (
-            "Ensure the OpenMemory MCP server is running and its name matches "
-            "ATELIER_OPENMEMORY_MCP_SERVER_NAME."
+            "Ensure the OpenMemory MCP server is running and its name matches " "ATELIER_OPENMEMORY_MCP_SERVER_NAME."
         ),
     }
 
@@ -299,11 +296,7 @@ def maybe_fetch_memory_context_for_task(
                     {
                         "trace_id": trace_id,
                         "context_id": ctx_id,
-                        "memory_id": (
-                            trace_to_memory.get(trace_id)
-                            if isinstance(trace_to_memory, dict)
-                            else None
-                        ),
+                        "memory_id": (trace_to_memory.get(trace_id) if isinstance(trace_to_memory, dict) else None),
                         "context": contexts.get(ctx_id, {}) if isinstance(contexts, dict) else {},
                     }
                 )

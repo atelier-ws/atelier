@@ -23,7 +23,7 @@ def _smart_read(args: dict[str, Any]) -> dict[str, Any]:
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
-        "params": {"name": "atelier_smart_read", "arguments": args},
+        "params": {"name": "read", "arguments": args},
     }
     resp = _handle(req)
     assert resp is not None

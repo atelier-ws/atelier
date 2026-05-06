@@ -63,9 +63,7 @@ class _FakeLettaClient:
         self.passages[passage_id] = row
         return row
 
-    def archival_list(
-        self, *, agent_id: str, tags: list[str], limit: int
-    ) -> list[dict[str, object]]:
+    def archival_list(self, *, agent_id: str, tags: list[str], limit: int) -> list[dict[str, object]]:
         _ = (agent_id, tags)
         return list(self.passages.values())[:limit]
 

@@ -10,17 +10,23 @@
 make install
 ```
 
+By default this installs Codex user/global config. For a project-local install:
+
+```bash
+bash scripts/install_codex.sh --workspace /path/to/workspace
+```
+
 ---
 
 ## What Gets Installed
 
-| Artifact                 | Location                             |
-| ------------------------ | ------------------------------------ |
-| Atelier skills           | `<workspace>/.codex/skills/atelier/` |
-| MCP server config        | `<workspace>/.codex/mcp.json`        |
-| AGENTS instruction block | `<workspace>/AGENTS.atelier.md`      |
-| Wrapper script           | `<workspace>/bin/atelier-codex`      |
-| Task templates           | `<workspace>/.codex/tasks/*.md`      |
+| Artifact                 | Global install                           | `--workspace DIR` install            |
+| ------------------------ | ---------------------------------------- | ------------------------------------ |
+| Atelier skills           | `~/.codex/skills/atelier/`               | `<workspace>/.codex/skills/atelier/` |
+| MCP server config        | `codex mcp add` / `~/.codex/config.toml` | `<workspace>/.codex/mcp.json`        |
+| AGENTS instruction block | `~/.codex/AGENTS.md`                     | `<workspace>/AGENTS.md`              |
+| Wrapper script           | `~/.local/bin/atelier-codex`             | `<workspace>/bin/atelier-codex`      |
+| Task templates           | not installed globally                   | `<workspace>/.codex/tasks/*.md`      |
 
 ## Verify
 
@@ -33,7 +39,7 @@ make verify
 Start Codex in your workspace and use the skill:
 
 ```
-use skill: atelier-check-plan
+use skill: atelier-lint
 ```
 
 Or run the Atelier preflight wrapper:
@@ -44,42 +50,41 @@ Or run the Atelier preflight wrapper:
 
 ## Expected Behavior
 
-- Codex loads `atelier-check-plan` skill and submits the current task plan to Atelier for scoring
+- Codex loads `atelier-lint` skill and submits the current task plan to Atelier for scoring
 - MCP tools are available for Atelier reasoning operations
 - Wrapper preflight always runs reasoning context, plan validation, and optional rubric gate
 
 ## Troubleshooting
 
-| Problem           | Fix                                                               |
-| ----------------- | ----------------------------------------------------------------- |
-| Skill not found   | Check `.codex/skills/atelier/` — rerun `make install`             |
-| MCP tools missing | Check `.codex/mcp.json` — confirm `atelier` entry present         |
-| Wrapper missing   | Re-run `make install` and verify `bin/atelier-codex` exists       |
+| Problem           | Fix                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| Skill not found   | Check `~/.codex/skills/atelier/` or workspace `.codex/skills/atelier/`                   |
+| MCP tools missing | Global: run `codex mcp list`; workspace: check `.codex/mcp.json`                         |
+| Wrapper missing   | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 
 The following V2 tools are available via MCP once installed. All are **Atelier augmentations** — native Codex read/search tools remain the primary interface.
 
-| Tool                          | Boundary                                         | Description                                       |
-| ----------------------------- | ------------------------------------------------ | ------------------------------------------------- |
-| `atelier_memory_upsert_block` | Atelier augmentation                             | Store named value in agent memory                 |
-| `atelier_memory_get_block`    | Atelier augmentation                             | Retrieve named memory block                       |
-| `atelier_memory_recall`       | Atelier augmentation                             | FTS + vector search over archival memory          |
-| `atelier_memory_archive`      | Atelier augmentation                             | Persist text passage to archival memory           |
-| `atelier_memory_summary`      | Atelier augmentation                             | Compact sleeptime memory (reduces context window) |
-| `atelier_search_read`         | Atelier augmentation                             | Token-saving combined search + read               |
-| `atelier_batch_edit`          | Atelier augmentation                             | Deterministic multi-file batch edits (optional)   |
-| `atelier_sql_inspect`         | Atelier augmentation                             | Read-only SQL schema/data inspection              |
-| `atelier_compact_advise`      | Atelier augmentation over host-native `/compact` | Advise before compaction; provides reinject hints |
-| `atelier_lesson_inbox`        | Atelier augmentation                             | List lesson candidates awaiting decision          |
-| `atelier_lesson_decide`       | Atelier augmentation                             | Approve or reject a lesson candidate              |
+| Tool                    | Boundary                                         | Description                                       |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------------- |
+| `memory`                | Atelier augmentation                             | Store named value in agent memory                 |
+| `memory`                | Atelier augmentation                             | Retrieve named memory block                       |
+| `memory`                | Atelier augmentation                             | FTS + vector search over archival memory          |
+| `memory`                | Atelier augmentation                             | Persist text passage to archival memory           |
+| `memory`                | Atelier augmentation                             | Compact sleeptime memory (reduces context window) |
+| `search`                | Atelier augmentation                             | Token-saving combined search + read               |
+| `edit`                  | Atelier augmentation                             | Deterministic multi-file batch edits (optional)   |
+| `atelier bench runtime` | Atelier augmentation                             | Capability efficiency metrics                     |
+| `compact`               | Atelier augmentation over host-native `/compact` | Advise before compaction; provides reinject hints |
+| `atelier lesson inbox`  | Atelier augmentation                             | List lesson candidates awaiting decision          |
+| `atelier lesson decide` | Atelier augmentation                             | Approve or reject a lesson candidate              |
 
-See `integrations/codex/tasks/preflight.md` for how to use memory and `search_read` in the preflight workflow.
+See `integrations/codex/tasks/preflight.md` for how to use `memory` and `search` in the preflight workflow.
 
 ## Uninstall
 
 ```bash
-rm -rf .codex/skills/atelier/
-# Remove atelier entry from .codex/mcp.json manually
-# Remove or ignore AGENTS.atelier.md
+bash scripts/uninstall_codex.sh
+bash scripts/uninstall_codex.sh --workspace /path/to/workspace
 ```

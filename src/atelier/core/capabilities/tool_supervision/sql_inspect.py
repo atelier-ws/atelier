@@ -222,9 +222,7 @@ class SqlInspectCapability:
             import psycopg
             from psycopg.rows import dict_row
         except Exception as exc:  # pragma: no cover - dependency optional in local setups
-            raise RuntimeError(
-                "psycopg is required for postgres sql inspect (install atelier[postgres])"
-            ) from exc
+            raise RuntimeError("psycopg is required for postgres sql inspect (install atelier[postgres])") from exc
 
         with psycopg.connect(dsn) as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SET LOCAL statement_timeout = '5s'")
