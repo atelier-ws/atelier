@@ -7,6 +7,7 @@ Codex / Claude Code to discover and call the runtime tools.
 from __future__ import annotations
 
 import contextlib
+import difflib
 import inspect
 import json
 import os
@@ -64,7 +65,9 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            annotation = (
+                param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            )
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -108,6 +111,11 @@ def mcp_tool(
 
 _current_ledger: RunLedger | None = None
 _realtime_ctx: RealtimeContextManager | None = None
+_product_session_id: str | None = None
+_product_session_started_at: float | None = None
+_last_plan_hash_by_session: dict[str, str] = {}
+_last_plan_by_session: dict[str, list[str]] = {}
+_last_blocked_plan_hash_by_session: dict[str, str] = {}
 
 
 def _detect_agent() -> str:
@@ -157,6 +165,143 @@ def _get_realtime_context() -> RealtimeContextManager:
     if _realtime_ctx is None:
         _realtime_ctx = RealtimeContextManager(_atelier_root())
     return _realtime_ctx
+
+
+def _get_product_session_id() -> str:
+    global _product_session_id
+    if _product_session_id is None:
+        from atelier.core.service.telemetry.identity import new_session_id
+
+        _product_session_id = new_session_id()
+    return _product_session_id
+
+
+def _emit_mcp_session_start() -> None:
+    global _product_session_started_at
+    if _product_session_started_at is not None:
+        return
+    from importlib.metadata import PackageNotFoundError, version
+
+    from atelier.core.service.telemetry import emit_product, init_product_telemetry
+    from atelier.core.service.telemetry.identity import get_anon_id, platform_payload
+
+    try:
+        service_version = version("atelier")
+    except PackageNotFoundError:
+        service_version = SERVER_VERSION
+    init_product_telemetry(service_version=service_version)
+    _product_session_started_at = time.perf_counter()
+    emit_product(
+        "session_start",
+        agent_host=_detect_agent(),
+        atelier_version=service_version,
+        anon_id=get_anon_id(),
+        session_id=_get_product_session_id(),
+        **platform_payload(),
+    )
+
+
+def _emit_mcp_session_end(exit_reason: str = "success") -> None:
+    if _product_session_started_at is None:
+        return
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import bucket_duration_s
+
+    elapsed = max(0.0, time.perf_counter() - _product_session_started_at)
+    emit_product(
+        "session_end",
+        session_id=_get_product_session_id(),
+        duration_s_bucket=bucket_duration_s(elapsed),
+        exit_reason=exit_reason,
+    )
+
+
+def _plan_hash(plan: list[str]) -> str:
+    return sha256(json.dumps(plan, sort_keys=True).encode("utf-8", errors="replace")).hexdigest()
+
+
+def _observe_plan_change(plan: list[str], domain: str | None) -> None:
+    session_id = _get_product_session_id()
+    last_plan = _last_plan_by_session.get(session_id)
+    plan_hash = _plan_hash(plan)
+    if last_plan is not None and _last_plan_hash_by_session.get(session_id) != plan_hash:
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import bucket_edit_distance
+
+        matcher = difflib.SequenceMatcher(a=last_plan, b=plan)
+        added = max(0, len(plan) - len(last_plan))
+        removed = max(0, len(last_plan) - len(plan))
+        emit_product(
+            "plan_modified_by_user",
+            domain=domain or "",
+            edit_distance_bucket=bucket_edit_distance(1.0 - matcher.ratio()),
+            steps_added=added,
+            steps_removed=removed,
+            session_id=session_id,
+        )
+    _last_plan_hash_by_session[session_id] = plan_hash
+    _last_plan_by_session[session_id] = list(plan)
+
+
+def _observe_plan_result(result: Any, domain: str | None, plan: list[str]) -> None:
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import hash_identifier
+
+    session_id = _get_product_session_id()
+    status = getattr(result, "status", "")
+    matched_blocks = list(getattr(result, "matched_blocks", []) or [])
+    if status == "blocked":
+        plan_hash = _plan_hash(plan)
+        if _last_blocked_plan_hash_by_session.get(session_id) == plan_hash:
+            emit_product(
+                "frustration_signal_behavioral",
+                signal_type="plan_resubmitted_unchanged",
+                session_id=session_id,
+            )
+        _last_blocked_plan_hash_by_session[session_id] = plan_hash
+        emit_product(
+            "plan_check_blocked",
+            domain=domain or "",
+            blocking_rule_id=hash_identifier(
+                str(matched_blocks[0] if matched_blocks else "blocked")
+            ),
+            severity="high",
+            session_id=session_id,
+        )
+        return
+
+    _last_blocked_plan_hash_by_session.pop(session_id, None)
+    emit_product(
+        "plan_check_passed",
+        domain=domain or "",
+        rule_count=len(matched_blocks),
+        session_id=session_id,
+    )
+
+
+def _match_mcp_lexical(args: dict[str, Any]) -> None:
+    from atelier.core.service.telemetry.frustration import match_frustration
+
+    for key in ("task", "query", "user_goal", "error"):
+        value = args.get(key)
+        if isinstance(value, str):
+            match_frustration(value, surface="mcp_prompt", session_id=_get_product_session_id())
+
+
+def _emit_reasonblock_retrieved(scored: list[Any], domain: str | None) -> None:
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import hash_identifier
+
+    for rank, item in enumerate(scored, start=1):
+        block = getattr(item, "block", None)
+        emit_product(
+            "reasonblock_retrieved",
+            block_id_hash=hash_identifier(str(getattr(block, "id", ""))),
+            domain=str(getattr(block, "domain", domain or "")),
+            retrieval_score=float(getattr(item, "score", 0.0)),
+            rank=rank,
+            session_id=_get_product_session_id(),
+        )
 
 
 _context_budget_recorder: Any = None
@@ -326,6 +471,7 @@ def tool_get_reasoning_context(
     led.task = task
     if domain:
         led.domain = domain
+    _match_mcp_lexical({"task": task})
 
     led.record_tool_call(
         "get_reasoning_context",
@@ -343,6 +489,19 @@ def tool_get_reasoning_context(
             "recall": recall,
         },
     )
+
+    with contextlib.suppress(Exception):
+        scored = rt.core_runtime.reasoning_reuse.retrieve(
+            task=task,
+            domain=domain,
+            files=files,
+            tools=tools,
+            errors=errors,
+            limit=max_blocks,
+            token_budget=token_budget,
+            dedup=dedup,
+        )
+        _emit_reasonblock_retrieved(scored, domain)
 
     payload = rt.get_reasoning_context(
         task=task,
@@ -378,6 +537,8 @@ def tool_check_plan(
         files = []
     rt = _runtime()
     led = _get_ledger()
+    _match_mcp_lexical({"task": task})
+    _observe_plan_change(plan, domain)
     led.set_plan(plan)
 
     led.record_tool_call(
@@ -409,6 +570,8 @@ def tool_check_plan(
 
     if getattr(result, "status", None) in ("ok", "warn", "pass"):
         _write_session_state({"last_plan_check_ok_ts": time.time()})
+
+    _observe_plan_result(result, domain, plan)
 
     return to_jsonable(result)
 
@@ -637,7 +800,9 @@ def tool_proof_report(
     # Load last saved report
     maybe_report = capability.load()
     if maybe_report is None:
-        return {"error": "No proof report found. Call atelier_proof_report with run_id to generate one."}
+        return {
+            "error": "No proof report found. Call atelier_proof_report with run_id to generate one."
+        }
     return to_jsonable(maybe_report)
 
 
@@ -656,6 +821,7 @@ def tool_rescue_failure(
         files = []
     rt = _runtime()
     led = _get_ledger()
+    _match_mcp_lexical({"task": task, "error": error})
     led.record_tool_call(
         "rescue_failure",
         {
@@ -675,6 +841,17 @@ def tool_rescue_failure(
         recent_actions=recent_actions,
     )
     payload = to_jsonable(result)
+    with contextlib.suppress(Exception):
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import hash_identifier
+
+        matched = list(payload.get("matched_blocks", []) or []) if isinstance(payload, dict) else []
+        emit_product(
+            "rescue_offered",
+            cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
+            rescue_type="reasonblock" if matched else "summary",
+            session_id=_get_product_session_id(),
+        )
 
     # Lemma-style failure incident analysis from prior failed traces.
     with contextlib.suppress(Exception):
@@ -991,7 +1168,9 @@ def tool_lesson_decide(
 
 
 @mcp_tool(name="atelier_report")
-def tool_report(since_iso: str = "7d", format: Literal["markdown", "json"] = "markdown") -> dict[str, Any]:
+def tool_report(
+    since_iso: str = "7d", format: Literal["markdown", "json"] = "markdown"
+) -> dict[str, Any]:
     """Generate a deterministic governance report for traces and lesson candidates."""
     from atelier.core.capabilities.reporting.weekly_report import generate_report, render_markdown
 
@@ -1098,7 +1277,9 @@ def tool_memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = expected_version if expected_version is not None else (existing.version if existing else 1)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1134,7 +1315,9 @@ def tool_memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1616,6 +1799,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     params = request.get("params") or {}
 
     if method == "initialize":
+        _emit_mcp_session_start()
         return _ok(
             rid,
             {
@@ -1645,7 +1829,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _err(rid, -32601, f"unknown tool: {name}")
 
         mcp_mode = os.environ.get("ATELIER_MCP_MODE", "local")
+        started_at = time.perf_counter()
         try:
+            _match_mcp_lexical(args if isinstance(args, dict) else {})
             rtc = _get_realtime_context()
             rtc.record_tool_input(name, args)
             if mcp_mode == "remote" and name in _REMOTE_TOOLS:
@@ -1656,7 +1842,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
             led = _get_ledger()
             result_text = json.dumps(result, ensure_ascii=False, default=str)
-            compact_text = result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
+            compact_text = (
+                result_text
+                if len(result_text) <= 1200
+                else result_text[:600] + "..." + result_text[-600:]
+            )
             led.record(
                 "tool_result",
                 f"{name} result",
@@ -1672,10 +1862,26 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # Record context budget metrics
             _record_context_budget_for_tool(name, led, result)
 
+            with contextlib.suppress(Exception):
+                from atelier.core.service.telemetry import emit_product
+                from atelier.core.service.telemetry.schema import bucket_duration_ms
+
+                emit_product(
+                    "mcp_tool_called",
+                    tool_name=name,
+                    session_id=_get_product_session_id(),
+                    duration_ms_bucket=bucket_duration_ms(
+                        (time.perf_counter() - started_at) * 1000
+                    ),
+                    ok=True,
+                )
+
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
+                    ],
                     "structuredContent": result,
                 },
             )
@@ -1684,6 +1890,19 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 rtc = _get_realtime_context()
                 rtc.record_tool_error(name, str(exc))
                 rtc.persist()
+            with contextlib.suppress(Exception):
+                from atelier.core.service.telemetry import emit_product
+                from atelier.core.service.telemetry.schema import bucket_duration_ms
+
+                emit_product(
+                    "mcp_tool_called",
+                    tool_name=name,
+                    session_id=_get_product_session_id(),
+                    duration_ms_bucket=bucket_duration_ms(
+                        (time.perf_counter() - started_at) * 1000
+                    ),
+                    ok=False,
+                )
             return _err(rid, _tool_error_code(exc), str(exc))
 
     return _err(rid, -32601, f"unknown method: {method}")
@@ -1706,20 +1925,23 @@ def _tool_error_code(exc: Exception) -> int:
 
 
 def serve() -> None:
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            req = json.loads(line)
-        except json.JSONDecodeError as exc:
-            sys.stdout.write(json.dumps(_err(None, -32700, f"parse error: {exc}")) + "\n")
-            sys.stdout.flush()
-            continue
-        resp = _handle(req)
-        if resp is not None:
-            sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                req = json.loads(line)
+            except json.JSONDecodeError as exc:
+                sys.stdout.write(json.dumps(_err(None, -32700, f"parse error: {exc}")) + "\n")
+                sys.stdout.flush()
+                continue
+            resp = _handle(req)
+            if resp is not None:
+                sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
+                sys.stdout.flush()
+    finally:
+        _emit_mcp_session_end()
 
 
 def main() -> None:

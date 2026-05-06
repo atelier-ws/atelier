@@ -95,7 +95,7 @@ code. Specifically, these surfaces are live:
   `memory_*` family, `lesson_inbox` / `lesson_decide`, `consolidation_inbox` /
   `consolidation_decide`, `atelier_search_read`, `atelier_batch_edit`,
   `atelier_sql_inspect`, `atelier_compact_tool_output`, `atelier_repo_map`.
-- CLI: `atelier letta {up,down,logs,status,reset}`, `atelier reembed`,
+- CLI: `atelier letta &#123;up,down,logs,status,reset&#125;`, `atelier reembed`,
   `atelier consolidate`.
 - Local Ollama integration via `src/atelier/infra/internal_llm/ollama_client.py`
   (boundary: internal/background only, never user-hot-path).
@@ -213,7 +213,7 @@ Atelier uses. Manually re-authoring as ReasonBlocks is nobody's priority.
     5. Embed each draft (already deterministic via `Embedder`) and check against existing
        ReasonBlocks — flag near-duplicates so reviewer can merge instead of accept.
     6. Write surviving drafts as `LessonCandidate` rows with
-       `source = "style-guide-import"` and `evidence = {file_path, chunk_range}`.
+       `source = "style-guide-import"` and `evidence = &#123;file_path, chunk_range&#125;`.
 - **Prompt template:** `src/atelier/core/capabilities/style_import/prompts.py` — single
   fixed prompt, version-stamped. Do not let the prompt drift between releases.
 - **Tests:**
@@ -261,7 +261,7 @@ ReasonBlock looks like for their stack. Templates remove the blank-page problem.
   user's `.atelier/blocks/` directory, prefixed with `template_` so the user can rename or
   delete without confusion.
 - **Manifest:** each stack folder contains a `manifest.toml` with `name`, `description`,
-  `version`, `blocks: list[{file, title, summary}]`. `--list-stacks` reads these
+  `version`, `blocks: list[&#123;file, title, summary&#125;]`. `--list-stacks` reads these
   manifests and prints a table.
 - **Tests:**
   - `tests/gateway/test_init_with_stack.py` — `atelier init --stack python-fastapi`

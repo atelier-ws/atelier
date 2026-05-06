@@ -25,7 +25,7 @@ This is implemented in `src/atelier/core/redaction.py` and applied in:
 - `record-trace` CLI command
 - `atelier_record_trace` MCP tool
 - `POST /v1/traces` HTTP endpoint
-- `POST /v1/traces/{id}/finish` HTTP endpoint
+- `POST /v1/traces/&#123;id&#125;/finish` HTTP endpoint
 
 ### No Chain-of-Thought Storage
 
@@ -41,7 +41,7 @@ Only observable fields are stored: what commands ran, what errors appeared, what
 
 The `integrations/claude/plugin/hooks/` directory contains lifecycle hooks that intercept agent tool calls. These are **disabled by default** in `integrations/claude/plugin/hooks/hooks.json`.
 
-Hook state is persisted at `${workspace}/.atelier/session_state.json`. It contains only: last-check-plan timestamp, last tool called, failure count. No agent reasoning is stored.
+Hook state is persisted at `$&#123;workspace&#125;/.atelier/session_state.json`. It contains only: last-check-plan timestamp, last tool called, failure count. No agent reasoning is stored.
 
 ### OpenMemory Stub
 

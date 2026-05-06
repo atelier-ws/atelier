@@ -41,14 +41,14 @@ memory blocks re-injected.
 1. Add `atelier_compact_advise(run_id)` MCP tool. Output:
 
    ```json
-   {
+   &#123;
      "should_compact": true,
      "utilisation_pct": 62.4,
      "preserve_blocks": ["block_id1", "block_id2"],
      "pin_memory": ["mem_id1"],
      "open_files": ["src/foo.py", "src/bar.ts"],
      "suggested_prompt": "Compact this conversation. Preserve: ..."
-   }
+   &#125;
    ```
 
    Logic:

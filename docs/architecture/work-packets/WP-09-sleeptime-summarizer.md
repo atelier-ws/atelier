@@ -59,7 +59,7 @@ summarizer (template-based, no LLM call) so CI stays hermetic.
 
 4. MCP tool `atelier_memory_summary`:
    - Input: `run_id`
-   - Output: `{ tokens_pre, tokens_post, summary_md, evicted_event_ids, archived_passage_ids, strategy }`
+   - Output: `&#123; tokens_pre, tokens_post, summary_md, evicted_event_ids, archived_passage_ids, strategy &#125;`
 
 5. Integration test:
    - Build a 200-event ledger with redundant tool outputs.

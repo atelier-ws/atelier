@@ -7,16 +7,16 @@ Claude Code supports MCP servers + lifecycle hooks (`SessionStart`, `PreToolUse`
 `~/.config/claude-code/mcp.json` (or repo-local equivalent):
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "command": "uv",
       "args": ["run", "atelier-mcp"],
       "cwd": "/abs/path/to/repo/atelier",
-      "env": { "ATELIER_ROOT": ".atelier" }
-    }
-  }
-}
+      "env": &#123; "ATELIER_ROOT": ".atelier" &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## 2. Hooks
@@ -24,64 +24,64 @@ Claude Code supports MCP servers + lifecycle hooks (`SessionStart`, `PreToolUse`
 Save as `.claude/hooks.json` (or whatever your Claude Code version expects):
 
 ```json
-{
-  "SessionStart": {
+&#123;
+  "SessionStart": &#123;
     "command": "uv",
     "args": [
       "run",
       "atelier",
       "context",
       "--task",
-      "${SESSION_TITLE:-repository session}",
+      "$&#123;SESSION_TITLE:-repository session&#125;",
       "--domain",
       "coding"
     ],
     "cwd": "/abs/path/to/repo/atelier",
     "inject_as": "system_message"
-  },
-  "PreToolUse": {
-    "match": { "tool": "Edit" },
+  &#125;,
+  "PreToolUse": &#123;
+    "match": &#123; "tool": "Edit" &#125;,
     "command": "uv",
     "args": [
       "run",
       "atelier",
       "check-plan",
       "--task",
-      "${SESSION_TITLE:-edit}",
+      "$&#123;SESSION_TITLE:-edit&#125;",
       "--step",
-      "${TOOL_INPUT_DESCRIPTION}",
+      "$&#123;TOOL_INPUT_DESCRIPTION&#125;",
       "--file",
-      "${TOOL_INPUT_FILE_PATH}",
+      "$&#123;TOOL_INPUT_FILE_PATH&#125;",
       "--json"
     ],
     "cwd": "/abs/path/to/repo/atelier",
     "block_on_exit_code": 2
-  },
-  "PostToolUse": {
-    "match": { "tool": "Bash" },
-    "when": { "exit_code": "non_zero" },
+  &#125;,
+  "PostToolUse": &#123;
+    "match": &#123; "tool": "Bash" &#125;,
+    "when": &#123; "exit_code": "non_zero" &#125;,
     "command": "uv",
     "args": [
       "run",
       "atelier",
       "rescue",
       "--task",
-      "${SESSION_TITLE:-debug}",
+      "$&#123;SESSION_TITLE:-debug&#125;",
       "--error",
-      "${TOOL_OUTPUT_LAST_LINE}",
+      "$&#123;TOOL_OUTPUT_LAST_LINE&#125;",
       "--json"
     ],
     "cwd": "/abs/path/to/repo/atelier"
-  },
-  "Stop": {
+  &#125;,
+  "Stop": &#123;
     "command": "bash",
     "args": [
       "-c",
-      "echo '${SESSION_SUMMARY_JSON}' | uv run atelier record-trace"
+      "echo '$&#123;SESSION_SUMMARY_JSON&#125;' | uv run atelier record-trace"
     ],
     "cwd": "/abs/path/to/repo/atelier"
-  }
-}
+  &#125;
+&#125;
 ```
 
 Field names depend on your Claude Code version. The contract is:

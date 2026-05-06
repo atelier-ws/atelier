@@ -26,10 +26,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -45,6 +46,17 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.store import ReasoningStore
 from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+from atelier.core.service.telemetry import (
+    emit_product,
+    emit_product_local,
+    init_product_telemetry,
+    set_remote_enabled,
+)
+from atelier.core.service.telemetry.banner import mark_acknowledged
+from atelier.core.service.telemetry.config import save_telemetry_config
+from atelier.core.service.telemetry.exporters.posthog_frontend import frontend_telemetry_config
+from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+from atelier.core.service.telemetry.schema import bucket_duration_ms, schema_dump
 from atelier.infra.runtime.cost_tracker import CostTracker
 
 # --------------------------------------------------------------------------- #
@@ -293,9 +305,34 @@ def create_app(
         CORSMiddleware,
         allow_origins=cors_origins or ["*"],
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
+
+    init_product_telemetry(service_version="0.1.0")
+
+    @app.middleware("http")
+    async def product_telemetry_middleware(request: Request, call_next: Any) -> Any:
+        started_at = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            emit_product(
+                "api_request",
+                endpoint=_route_path(request),
+                method=request.method,
+                status_code=500,
+                duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+            )
+            raise
+        emit_product(
+            "api_request",
+            endpoint=_route_path(request),
+            method=request.method,
+            status_code=int(getattr(response, "status_code", 0) or 0),
+            duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+        )
+        return response
 
     # ------------------------------------------------------------------ #
     # Helpers                                                            #
@@ -315,6 +352,11 @@ def create_app(
             return []
         return load_environments_from_dir(env_directory)
 
+    def _route_path(request: Request) -> str:
+        route = request.scope.get("route")
+        path = getattr(route, "path", None)
+        return str(path or request.url.path)
+
     # ------------------------------------------------------------------ #
     # Endpoints                                                          #
     # ------------------------------------------------------------------ #
@@ -326,6 +368,57 @@ def create_app(
             "store_root": str(store.root),
             "env_dir": str(env_directory),
         }
+
+    @app.get("/telemetry/local")
+    def telemetry_local(
+        since: float | None = None,
+        event: str | None = None,
+        limit: int = Query(500, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        return {"events": LocalTelemetryStore().list_events(since=since, event=event, limit=limit)}
+
+    @app.post("/telemetry/local")
+    def telemetry_local_write(payload: dict[str, Any]) -> dict[str, Any]:
+        event = str(payload.get("event", ""))
+        props = payload.get("props", {})
+        if not isinstance(props, dict):
+            raise HTTPException(status_code=400, detail="props must be an object")
+        emit_product_local(event, **props)
+        return {"ok": True}
+
+    @app.get("/telemetry/summary")
+    def telemetry_summary(since: float | None = None) -> dict[str, Any]:
+        return LocalTelemetryStore().summary(since=since)
+
+    @app.get("/telemetry/schema")
+    def telemetry_schema() -> dict[str, Any]:
+        return schema_dump()
+
+    @app.get("/telemetry/config")
+    def telemetry_config() -> dict[str, Any]:
+        return frontend_telemetry_config()
+
+    @app.post("/telemetry/config")
+    def telemetry_config_update(payload: dict[str, Any]) -> dict[str, Any]:
+        remote = payload.get("remote_enabled")
+        lexical = payload.get("lexical_frustration_enabled")
+        if remote is not None and not isinstance(remote, bool):
+            raise HTTPException(status_code=400, detail="remote_enabled must be boolean")
+        if lexical is not None and not isinstance(lexical, bool):
+            raise HTTPException(
+                status_code=400,
+                detail="lexical_frustration_enabled must be boolean",
+            )
+        if lexical is not None:
+            save_telemetry_config(lexical_frustration_enabled=lexical)
+        if remote is not None:
+            set_remote_enabled(remote)
+        return frontend_telemetry_config()
+
+    @app.post("/telemetry/ack")
+    def telemetry_ack() -> dict[str, Any]:
+        mark_acknowledged()
+        return frontend_telemetry_config()
 
     @app.get("/overview", response_model=OverviewStats)
     def overview() -> OverviewStats:

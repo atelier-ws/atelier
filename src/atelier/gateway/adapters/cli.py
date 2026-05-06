@@ -9,12 +9,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib import resources
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +45,183 @@ from atelier.core.foundation.rubric_gate import run_rubric
 from atelier.core.foundation.store import ReasoningStore
 
 DEFAULT_ROOT = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+
+
+# --------------------------------------------------------------------------- #
+# Product telemetry helpers                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def _atelier_version() -> str:
+    try:
+        return version("atelier")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
+def _cli_command_name(argv: list[str]) -> str:
+    skip_next = False
+    options_with_values = {"--root"}
+    for token in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if token in options_with_values:
+            skip_next = True
+            continue
+        if token.startswith("-"):
+            continue
+        return token.replace("-", "_")
+    return "root"
+
+
+def _telemetry_session(ctx: click.Context) -> str | None:
+    obj = ctx.obj if isinstance(ctx.obj, dict) else {}
+    value = obj.get("_telemetry_session_id")
+    return value if isinstance(value, str) else None
+
+
+def _begin_cli_telemetry(command_name: str) -> tuple[str, float]:
+    from atelier.core.service.telemetry import emit_product, init_product_telemetry
+    from atelier.core.service.telemetry.banner import maybe_show_banner
+    from atelier.core.service.telemetry.identity import (
+        get_anon_id,
+        new_session_id,
+        platform_payload,
+    )
+
+    maybe_show_banner()
+    init_product_telemetry(service_version=_atelier_version())
+    session_id = new_session_id()
+    payload = platform_payload()
+    emit_product(
+        "session_start",
+        agent_host="cli",
+        atelier_version=_atelier_version(),
+        anon_id=get_anon_id(),
+        session_id=session_id,
+        **payload,
+    )
+    emit_product(
+        "cli_command_invoked",
+        command_name=command_name,
+        session_id=session_id,
+        anon_id=get_anon_id(),
+    )
+    return session_id, time.perf_counter()
+
+
+def _finish_cli_telemetry(
+    *,
+    command_name: str,
+    session_id: str,
+    started_at: float,
+    ok: bool,
+    exit_reason: str,
+) -> None:
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import bucket_duration_ms, bucket_duration_s
+
+    elapsed = max(0.0, time.perf_counter() - started_at)
+    emit_product(
+        "cli_command_completed",
+        command_name=command_name,
+        session_id=session_id,
+        duration_ms_bucket=bucket_duration_ms(elapsed * 1000),
+        ok=ok,
+    )
+    emit_product(
+        "session_end",
+        session_id=session_id,
+        duration_s_bucket=bucket_duration_s(elapsed),
+        exit_reason=exit_reason,
+    )
+
+
+def _emit_cli_interrupted(
+    *,
+    session_id: str,
+    started_at: float,
+    signum: int,
+    command_name: str,
+) -> None:
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import bucket_duration_s
+
+    try:
+        signal_name = signal.Signals(signum).name
+    except ValueError:
+        signal_name = str(signum)
+    emit_product(
+        "session_interrupted",
+        session_id=session_id,
+        signal=signal_name,
+        elapsed_s_bucket=bucket_duration_s(max(0.0, time.perf_counter() - started_at)),
+        last_phase=command_name,
+    )
+
+
+def _record_reasonblock_events(
+    scored: list[Any],
+    *,
+    event_name: str,
+    domain: str | None,
+    session_id: str | None,
+) -> None:
+    if session_id is None:
+        return
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import hash_identifier
+
+    for rank, item in enumerate(scored, start=1):
+        block = getattr(item, "block", None)
+        block_id = getattr(block, "id", "")
+        block_domain = getattr(block, "domain", domain or "")
+        props: dict[str, Any] = {
+            "block_id_hash": hash_identifier(str(block_id)),
+            "domain": str(block_domain or domain or ""),
+            "retrieval_score": float(getattr(item, "score", 0.0)),
+            "session_id": session_id,
+        }
+        if event_name == "reasonblock_retrieved":
+            props["rank"] = rank
+        emit_product(event_name, **props)
+
+
+def _record_plan_telemetry(
+    *,
+    ctx: click.Context,
+    result: Any,
+    domain: str | None,
+    plan: list[str],
+) -> None:
+    session_id = _telemetry_session(ctx)
+    if session_id is None:
+        return
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.schema import hash_identifier
+
+    status = getattr(result, "status", "")
+    matched_blocks = list(getattr(result, "matched_blocks", []) or [])
+    if status == "blocked":
+        blocking_rule_id = hash_identifier(str(matched_blocks[0] if matched_blocks else "blocked"))
+        emit_product(
+            "plan_check_blocked",
+            domain=domain or "",
+            blocking_rule_id=blocking_rule_id,
+            severity="high",
+            session_id=session_id,
+        )
+    else:
+        emit_product(
+            "plan_check_passed",
+            domain=domain or "",
+            rule_count=len(matched_blocks),
+            session_id=session_id,
+        )
+
+    if not plan:
+        return
 
 
 # --------------------------------------------------------------------------- #
@@ -467,9 +647,18 @@ def context(
     as_json: bool,
 ) -> None:
     """Render the reasoning-context block to inject into an agent prompt."""
+    from atelier.core.service.telemetry.frustration import match_frustration
+
+    match_frustration(task, surface="cli_input", session_id=_telemetry_session(ctx))
     store = _load_store(ctx.obj["root"])
     tctx = TaskContext(task=task, domain=domain, files=list(files), tools=list(tools), errors=list(errors))
     scored = retrieve(store, tctx, limit=limit, token_budget=token_budget, dedup=dedup)
+    _record_reasonblock_events(
+        scored,
+        event_name="reasonblock_retrieved",
+        domain=domain,
+        session_id=_telemetry_session(ctx),
+    )
     context_text = render_context_for_agent([s.block for s in scored])
     if as_json:
         payload: dict[str, Any] = {
@@ -536,6 +725,7 @@ def check_plan_cmd(
         raise click.ClickException("--task and at least one --step (or --input) required")
 
     result = check_plan(store, task=task, plan=plan, domain=domain, files=list(files), tools=list(tools))
+    _record_plan_telemetry(ctx=ctx, result=result, domain=domain, plan=plan)
     if as_json:
         _emit(to_jsonable(result), as_json=True)
     else:
@@ -562,16 +752,135 @@ def rescue(
     as_json: bool,
 ) -> None:
     """Suggest a rescue procedure for a repeated failure."""
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.frustration import match_frustration
+    from atelier.core.service.telemetry.schema import hash_identifier
     from atelier.gateway.adapters.runtime import ReasoningRuntime
 
+    match_frustration(task, surface="cli_input", session_id=_telemetry_session(ctx))
     rt = ReasoningRuntime(ctx.obj["root"])
     result = rt.rescue_failure(task=task, error=error, files=list(files), domain=domain)
+    if _telemetry_session(ctx) is not None:
+        cluster_id_hash = hash_identifier(result.matched_blocks[0] if result.matched_blocks else "unmatched_rescue")
+        emit_product(
+            "rescue_offered",
+            cluster_id_hash=cluster_id_hash,
+            rescue_type="reasonblock" if result.matched_blocks else "summary",
+            session_id=_telemetry_session(ctx),
+        )
     if as_json:
         _emit(to_jsonable(result), as_json=True)
         return
     click.echo(result.rescue)
     if result.matched_blocks:
         click.echo("matched blocks: " + ", ".join(result.matched_blocks))
+
+
+# ----- telemetry ---------------------------------------------------------- #
+
+
+@cli.group("telemetry")
+def telemetry_group() -> None:
+    """Product telemetry controls."""
+
+
+@telemetry_group.command("status")
+@click.option("--json", "as_json", is_flag=True)
+def telemetry_status(as_json: bool) -> None:
+    from atelier.core.service.telemetry import emit_product
+    from atelier.core.service.telemetry.banner import is_acknowledged
+    from atelier.core.service.telemetry.config import config_path, load_telemetry_config
+    from atelier.core.service.telemetry.identity import (
+        get_anon_id,
+        new_session_id,
+        telemetry_id_path,
+    )
+    from atelier.core.service.telemetry.local_store import default_db_path
+
+    session_id = new_session_id()
+    emit_product(
+        "cli_command_invoked",
+        command_name="telemetry_status",
+        session_id=session_id,
+        anon_id=get_anon_id(),
+    )
+    cfg = load_telemetry_config()
+    payload = {
+        "remote_enabled": cfg.remote_enabled,
+        "lexical_frustration_enabled": cfg.lexical_frustration_enabled,
+        "config_path": str(config_path()),
+        "telemetry_id_path": str(telemetry_id_path()),
+        "local_db_path": str(default_db_path()),
+        "acknowledged": is_acknowledged(),
+        "anon_id": get_anon_id(),
+    }
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"remote telemetry: {'on' if cfg.remote_enabled else 'off'}")
+    click.echo(f"lexical frustration detection: {'on' if cfg.lexical_frustration_enabled else 'off'}")
+    click.echo(f"local database: {payload['local_db_path']}")
+
+
+@telemetry_group.command("on")
+def telemetry_on() -> None:
+    from atelier.core.service.telemetry import set_remote_enabled
+
+    set_remote_enabled(True)
+    click.echo("remote telemetry: on")
+
+
+@telemetry_group.command("off")
+def telemetry_off() -> None:
+    from atelier.core.service.telemetry import set_remote_enabled
+
+    set_remote_enabled(False)
+    click.echo("remote telemetry: off")
+
+
+@telemetry_group.command("show")
+@click.option("--limit", default=20, show_default=True, type=int)
+def telemetry_show(limit: int) -> None:
+    from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+
+    events = LocalTelemetryStore().list_events(limit=limit)
+    _emit([{"event": item["event"], "props": item["props"]} for item in events], as_json=True)
+
+
+@telemetry_group.command("reset-id")
+def telemetry_reset_id() -> None:
+    from atelier.core.service.telemetry.identity import reset_anon_id
+
+    click.echo(reset_anon_id())
+
+
+@telemetry_group.group("lexical")
+def telemetry_lexical_group() -> None:
+    """Lexical frustration detection controls."""
+
+
+@telemetry_lexical_group.command("on")
+def telemetry_lexical_on() -> None:
+    from atelier.core.service.telemetry.config import save_telemetry_config
+
+    save_telemetry_config(lexical_frustration_enabled=True)
+    click.echo("lexical frustration detection: on")
+
+
+@telemetry_lexical_group.command("off")
+def telemetry_lexical_off() -> None:
+    from atelier.core.service.telemetry.config import save_telemetry_config
+
+    save_telemetry_config(lexical_frustration_enabled=False)
+    click.echo("lexical frustration detection: off")
+
+
+@telemetry_lexical_group.command("status")
+def telemetry_lexical_status() -> None:
+    from atelier.core.service.telemetry.config import load_telemetry_config
+
+    cfg = load_telemetry_config()
+    click.echo(f"lexical frustration detection: {'on' if cfg.lexical_frustration_enabled else 'off'}")
 
 
 # ----- record-trace -------------------------------------------------------- #
@@ -891,10 +1200,13 @@ def task(
 
         atelier task "Fix Shopify publish validation" --domain beseam.shopify.publish | opencode run -
     """
+    from atelier.core.service.telemetry.frustration import match_frustration
+
     store = _load_store(ctx.obj["root"])
     task_str = " ".join(task_description).strip()
     if not task_str:
         raise click.ClickException("task description is required")
+    match_frustration(task_str, surface="cli_input", session_id=_telemetry_session(ctx))
 
     tctx = TaskContext(
         task=task_str,
@@ -904,6 +1216,12 @@ def task(
         errors=list(errors),
     )
     scored = retrieve(store, tctx, limit=limit)
+    _record_reasonblock_events(
+        scored,
+        event_name="reasonblock_applied",
+        domain=domain,
+        session_id=_telemetry_session(ctx),
+    )
     context_text = render_context_for_agent([s.block for s in scored]) or "(no matched blocks)"
 
     domain_line = f"Domain hint: `{domain}`\n\n" if domain else ""
@@ -1586,6 +1904,18 @@ def analyze_failures_cmd(ctx: click.Context, since: str | None, trace_id: str | 
     from atelier.core.improvement.failure_analyzer import analyze_failures
 
     clusters = analyze_failures(snaps)
+    session_id = _telemetry_session(ctx)
+    if session_id is not None:
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import hash_identifier
+
+        for cluster in clusters:
+            emit_product(
+                "failure_cluster_matched",
+                cluster_id_hash=hash_identifier(cluster.id),
+                domain=cluster.domain,
+                session_id=session_id,
+            )
     if as_json:
         _emit([to_jsonable(c) for c in clusters], as_json=True)
         return
@@ -3516,7 +3846,64 @@ def batch_edit_cmd(
 
 
 def main() -> None:
-    cli(obj={})
+    command_name = _cli_command_name(sys.argv[1:])
+    session_id, started_at = _begin_cli_telemetry(command_name)
+    old_handlers: dict[int, Any] = {}
+
+    def _handler(signum: int, frame: Any) -> None:
+        _emit_cli_interrupted(
+            session_id=session_id,
+            started_at=started_at,
+            signum=signum,
+            command_name=command_name,
+        )
+        previous = old_handlers.get(signum)
+        if callable(previous):
+            previous(signum, frame)
+        raise KeyboardInterrupt
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        old_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, _handler)
+
+    try:
+        cli(obj={"_telemetry_session_id": session_id, "_telemetry_command_name": command_name})
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        _finish_cli_telemetry(
+            command_name=command_name,
+            session_id=session_id,
+            started_at=started_at,
+            ok=code == 0,
+            exit_reason="success" if code == 0 else "error",
+        )
+        raise
+    except KeyboardInterrupt:
+        _finish_cli_telemetry(
+            command_name=command_name,
+            session_id=session_id,
+            started_at=started_at,
+            ok=False,
+            exit_reason="interrupted",
+        )
+        raise
+    except BaseException:
+        _finish_cli_telemetry(
+            command_name=command_name,
+            session_id=session_id,
+            started_at=started_at,
+            ok=False,
+            exit_reason="error",
+        )
+        raise
+    else:
+        _finish_cli_telemetry(
+            command_name=command_name,
+            session_id=session_id,
+            started_at=started_at,
+            ok=True,
+            exit_reason="success",
+        )
 
 
 if __name__ == "__main__":

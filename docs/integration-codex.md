@@ -22,16 +22,16 @@ Never store secrets or hidden chain-of-thought in traces.
 Codex CLI / IDE configuration:
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "command": "uv",
       "args": ["run", "atelier-mcp"],
       "cwd": "/abs/path/to/repo/atelier",
-      "env": { "ATELIER_ROOT": ".atelier" }
-    }
-  }
-}
+      "env": &#123; "ATELIER_ROOT": ".atelier" &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## 3. First-time setup

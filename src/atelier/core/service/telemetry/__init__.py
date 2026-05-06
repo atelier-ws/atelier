@@ -1,7 +1,8 @@
-"""Minimal telemetry stubs — structured logging hooks for the service.
+"""Service telemetry APIs.
 
-These are intentionally lightweight. In production, replace the
-``_emit`` implementation with your observability backend.
+This package intentionally preserves the existing audit/request-timing helpers
+while adding the product telemetry entry point used by CLI, MCP, API, and the
+dashboard. Product telemetry is local-first and privacy allowlisted.
 """
 
 from __future__ import annotations
@@ -11,6 +12,13 @@ import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+
+from atelier.core.service.telemetry.emit import (
+    emit_product,
+    emit_product_local,
+    init_product_telemetry,
+    set_remote_enabled,
+)
 
 logger = logging.getLogger("atelier.service")
 
@@ -52,3 +60,13 @@ def timed_request(endpoint: str) -> Generator[None, None, None]:
     finally:
         elapsed_ms = (time.perf_counter() - t0) * 1000
         logger.debug("request", extra={"endpoint": endpoint, "elapsed_ms": round(elapsed_ms, 1)})
+
+
+__all__ = [
+    "emit_audit",
+    "emit_product",
+    "emit_product_local",
+    "init_product_telemetry",
+    "set_remote_enabled",
+    "timed_request",
+]
