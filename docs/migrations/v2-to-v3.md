@@ -17,8 +17,8 @@ measured replay benchmark.
 
 - Every MCP tool name, signature, and return shape from V2 is preserved verbatim:
   `memory_upsert_block`, `memory_get_block`, `memory_recall`, `memory_archive`,
-  `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_record_trace`,
-  `atelier_search_read`, `atelier_batch_edit`, `atelier_sql_inspect`,
+  `reasoning`, `lint`, `trace`,
+  `search`, `edit`, `atelier sql inspect`,
   `atelier_repo_map`, and all others.
 - The default memory backend is SQLite — users without a Letta sidecar see no
   change in behaviour.

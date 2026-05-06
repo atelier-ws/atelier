@@ -5,7 +5,7 @@ A single script handles both events — the ``hook_event_name`` field in the
 payload determines which path runs.
 
 PreCompact:
-  1. Creates a placeholder manifest file for compact_advise to populate
+    1. Creates a placeholder manifest file for compact op=advise to populate
   2. Writes a note event to the ledger indicating pre-compact
   3. Does NOT block (exit 0 always).
 
@@ -14,7 +14,7 @@ PostCompact:
   2. Records that compaction completed with preservation details
   3. Writes a note event to the ledger
 
-The atelier_compact_advise MCP tool populates the manifest on PreCompact.
+The compact MCP tool with op=advise populates the manifest on PreCompact.
 
 Fail-open: any error exits silently (code 0) — never blocks the agent.
 
@@ -32,7 +32,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # State helpers
@@ -82,7 +81,7 @@ def _ensure_compact_manifest(run_id: str) -> Path:
     manifest_path = run_dir / "compact_manifest.json"
 
     if not manifest_path.exists():
-        # Create an empty manifest; atelier_compact_advise will populate it
+        # Create an empty manifest; compact op=advise will populate it
         initial = {
             "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "run_id": run_id,
@@ -119,9 +118,7 @@ def _read_compact_manifest(run_id: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def _append_compact_event(
-    run_id: str, hook_event: str, trigger: str, payload: dict[str, Any] | None = None
-) -> None:
+def _append_compact_event(run_id: str, hook_event: str, trigger: str, payload: dict[str, Any] | None = None) -> None:
     atelier_root = _atelier_root()
     runs_dir = atelier_root / "runs"
     run_file = runs_dir / f"{run_id}.json"
@@ -233,4 +230,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -179,9 +179,7 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
 
             total_naive += naive
             total_actual += actual
-            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(
-                0, naive - actual
-            )
+            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(0, naive - actual)
 
             at_raw = str(call.get("at", ""))
             try:
@@ -194,9 +192,7 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
                 by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
                 by_day_seed[day_key]["actual"] = int(by_day_seed[day_key]["actual"]) + actual
 
-    reduction_pct = (
-        round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
-    )
+    reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
 
     # USD cost savings (from CostTracker baseline comparison).
@@ -408,9 +404,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                     status="registered",
                     active_domains=registration.metadata.get("active_domains", []),
                     mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(
-                        registration.last_seen.isoformat() if registration.last_seen else None
-                    ),
+                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
                     atelier_version=registration.atelier_version,
                 )
             )
@@ -470,9 +464,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                     status="registered",
                     active_domains=registration.metadata.get("active_domains", []),
                     mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(
-                        registration.last_seen.isoformat() if registration.last_seen else None
-                    ),
+                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
                     registered_at=registration.registered_at.isoformat(),
                     atelier_version=registration.atelier_version,
                 )
@@ -531,11 +523,7 @@ def create_app(*, store: Any = None) -> FastAPI:
 
         return HostStatusResponse(
             host_id=str(registration.host_id),
-            last_seen=(
-                registration.last_seen.isoformat()
-                if registration.last_seen
-                else datetime.utcnow().isoformat()
-            ),
+            last_seen=(registration.last_seen.isoformat() if registration.last_seen else datetime.utcnow().isoformat()),
             active_domains=registration.metadata.get("active_domains", []),
             available_mcp_tools=registration.metadata.get("mcp_tools", []),
             atelier_version=registration.atelier_version,
@@ -832,9 +820,7 @@ def create_app(*, store: Any = None) -> FastAPI:
             emit_product(
                 "plan_check_blocked",
                 domain=req.domain or "",
-                blocking_rule_id=hash_identifier(
-                    str(matched_blocks[0] if matched_blocks else "blocked")
-                ),
+                blocking_rule_id=hash_identifier(str(matched_blocks[0] if matched_blocks else "blocked")),
                 severity="high",
             )
         else:
@@ -926,9 +912,7 @@ def create_app(*, store: Any = None) -> FastAPI:
         status: str | None = None,
         agent: str | None = None,
     ) -> list[dict[str, Any]]:
-        traces = get_store().list_traces(
-            limit=limit, offset=offset, domain=domain, status=status, agent=agent
-        )
+        traces = get_store().list_traces(limit=limit, offset=offset, domain=domain, status=status, agent=agent)
         return [to_jsonable(t) for t in traces]
 
     @app.get(
@@ -967,9 +951,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                     "tools_called": summary["tools_called"],
                     "commands_run": summary["commands_run"],
                     "errors_seen": snap.get("errors_seen", []),
-                    "repeated_failures": [
-                        {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
-                    ],
+                    "repeated_failures": [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])],
                     "diff_summary": "",
                     "output_summary": "",
                     "validation_results": [],
@@ -1014,9 +996,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                     redacted_items.append(item)
             payload[key] = redacted_items
         if "id" not in payload:
-            payload["id"] = Trace.make_id(
-                payload.get("task", "untitled"), payload.get("agent", "agent")
-            )
+            payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
         trace = Trace.model_validate(payload)
         get_store().record_trace(trace, write_json=False)
         emit_audit(
@@ -1169,9 +1149,7 @@ def create_app(*, store: Any = None) -> FastAPI:
     @app.post("/api/benchmarks/run", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
     def run_benchmark(req: dict[str, Any]) -> dict[str, Any]:
         """Pack benchmark runner has been removed. Use domain bundles instead."""
-        raise HTTPException(
-            status_code=410, detail="Pack benchmark runner removed. Use domain bundles."
-        )
+        raise HTTPException(status_code=410, detail="Pack benchmark runner removed. Use domain bundles.")
 
     @app.get("/api/benchmarks", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
     def list_benchmarks(bundle_id: str | None = None, limit: int = 50) -> dict[str, Any]:
@@ -1350,12 +1328,8 @@ def create_app(*, store: Any = None) -> FastAPI:
                     mapped_status = "failed"
                 else:
                     mapped_status = "partial"  # unknown → treat as in-progress
-                tools_called = [
-                    {"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])
-                ]
-                repeated_failures = [
-                    {"signature": f, "count": 1} for f in snap.get("repeated_failures", [])
-                ]
+                tools_called = [{"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])]
+                repeated_failures = [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])]
                 live.append(
                     {
                         "id": snap.get("run_id", ""),
@@ -1488,9 +1462,7 @@ def create_app(*, store: Any = None) -> FastAPI:
         traces = st.list_traces(limit=10000)
 
         total_raw_tokens = sum(
-            sum(
-                c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in entry.get("calls", [])
-            )
+            sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in entry.get("calls", []))
             for entry in load_cost_history(Path(cfg.atelier_root)).get("operations", {}).values()
         )
 
@@ -1550,9 +1522,7 @@ def create_app(*, store: Any = None) -> FastAPI:
     # Raw artifacts                                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get(
-        "/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)]
-    )
+    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
     def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
         """Return metadata for a stored raw artifact."""
         store_inst = get_store()
@@ -1721,9 +1691,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                 claude_dir.mkdir(exist_ok=True)
                 config_path = claude_dir / "claude_desktop_config.json"
                 existing = (
-                    json.loads(config_path.read_text(encoding="utf-8"))
-                    if config_path.exists()
-                    else {"mcpServers": {}}
+                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
                 )
                 existing.setdefault("mcpServers", {}).update(config["mcpServers"])
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -1757,14 +1725,8 @@ def create_app(*, store: Any = None) -> FastAPI:
                 copilot_dir = config_dir / ".vscode"
                 copilot_dir.mkdir(exist_ok=True)
                 config_path = copilot_dir / "settings.json"
-                existing = (
-                    json.loads(config_path.read_text(encoding="utf-8"))
-                    if config_path.exists()
-                    else {}
-                )
-                existing.setdefault("mcp", {}).setdefault("servers", {}).update(
-                    config["mcpServers"]
-                )
+                existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+                existing.setdefault("mcp", {}).setdefault("servers", {}).update(config["mcpServers"])
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
             elif host_id == "gemini":
@@ -1772,9 +1734,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                 gemini_dir.mkdir(exist_ok=True)
                 config_path = gemini_dir / "settings.json"
                 existing = (
-                    json.loads(config_path.read_text(encoding="utf-8"))
-                    if config_path.exists()
-                    else {"mcpServers": {}}
+                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
                 )
                 existing.setdefault("mcpServers", {}).update(config["mcpServers"])
                 config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -1787,9 +1747,7 @@ def create_app(*, store: Any = None) -> FastAPI:
     # Host Integrations (Phase D.7)                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get(
-        "/api/integrations/hosts", tags=["integrations"], dependencies=[Depends(verify_api_key)]
-    )
+    @app.get("/api/integrations/hosts", tags=["integrations"], dependencies=[Depends(verify_api_key)])
     def list_host_integrations() -> dict[str, Any]:
         """List all available host integrations."""
         import yaml
@@ -1843,9 +1801,7 @@ def create_app(*, store: Any = None) -> FastAPI:
                 config = yaml.safe_load(f)
 
             if not config:
-                raise HTTPException(
-                    status_code=404, detail=f"Host integration not found: {host_id}"
-                )
+                raise HTTPException(status_code=404, detail=f"Host integration not found: {host_id}")
 
             return {
                 "host_id": config.get("host_id"),

@@ -17,4 +17,4 @@ Semantic memory stores local file meaning to avoid repeated full reads.
 ## Runtime API
 
 - `AtelierRuntimeCore.smart_read(...)`
-- MCP: `atelier_semantic_memory`, `atelier_smart_read`
+- MCP: `read`, `search`

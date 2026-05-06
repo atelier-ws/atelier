@@ -60,12 +60,8 @@ class HostStatus(BaseModel):
 
     host_id: UUID
     atelier_version: str
-    installed_packs: list[dict[str, str]] = Field(
-        default_factory=list, description="[{pack_id, version}, ...]"
-    )
-    available_mcp_tools: list[str] = Field(
-        default_factory=list, description="List of MCP tool names"
-    )
+    installed_packs: list[dict[str, str]] = Field(default_factory=list, description="[{pack_id, version}, ...]")
+    available_mcp_tools: list[str] = Field(default_factory=list, description="List of MCP tool names")
     active_domains: list[str] = Field(default_factory=list)
     last_seen: datetime = Field(default_factory=datetime.utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)

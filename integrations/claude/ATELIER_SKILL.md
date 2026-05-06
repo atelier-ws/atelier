@@ -28,61 +28,61 @@ You have these tools via the `atelier` MCP server:
 
 ```python
 # Before a task - get relevant ReasonBlock
-atelier_get_reasoning_context(task="...", domain="...", tools=[...])
+reasoning(task="...", domain="...", tools=[...])
 
 # Before executing a plan - check for dead ends
-atelier_check_plan(task="...", domain="...", plan=[...])
+lint(task="...", domain="...", plan=[...])
 # Returns: {"status": "passed" | "warn" | "blocked", "warnings": [...], "dead_ends": [...]}
 
 # On repeated failure - get rescue procedure
-atelier_rescue_failure(task="...", error="...", domain="...")
+rescue(task="...", error="...", domain="...")
 
 # After task - record the outcome
-atelier_record_trace(task="...", status="success|failed", ...)
+trace(task="...", status="success|failed", ...)
 
 # For Shopify publish - verify against rubric
-atelier_run_rubric_gate(rubric_id="rubric_shopify_publish", checks={...})
+verify(rubric_id="rubric_shopify_publish", checks={...})
 ```
 
 ### V2 Memory tools [Atelier augmentation]
 
 ```python
 # Store/retrieve named memory block
-atelier_memory_upsert_block(agent_id="atelier:code", label="last_gid", value="gid://shopify/Product/12345")
-atelier_memory_get_block(agent_id="atelier:code", label="last_gid")
+memory(agent_id="atelier:code", label="last_gid", value="gid://shopify/Product/12345")
+memory(agent_id="atelier:code", label="last_gid")
 
 # Archival memory — persist and recall
-atelier_memory_archive(agent_id="atelier:code", text="...", source="run_123")
-atelier_memory_recall(agent_id="atelier:code", query="Shopify GID pattern", top_k=5)
+memory(agent_id="atelier:code", text="...", source="run_123")
+memory(agent_id="atelier:code", query="Shopify GID pattern", top_k=5)
 
 # Compact sleeptime memory to reduce context window
-atelier_memory_summary(run_id="run_123")
+memory(run_id="run_123")
 ```
 
 ### V2 Context-savings tools [Atelier augmentation]
 
 ```python
 # Combined token-saving search + read (host-native tools remain the raw-access fallback)
-atelier_search_read(query="publish_product function", path="src/")
+search(query="publish_product function", path="src/")
 
 # Deterministic batch edits (optional — host MultiEdit remains default)
-atelier_batch_edit(edits=[{"path": "src/foo.py", "old_string": "...", "new_string": "..."}])
+edit(edits=[{"path": "src/foo.py", "old_string": "...", "new_string": "..."}])
 
 # Read-only SQL inspection
-atelier_sql_inspect(connection_alias="default", sql="SELECT * FROM products LIMIT 5")
+atelier sql inspect(connection_alias="default", sql="SELECT * FROM products LIMIT 5")
 
 # Advise before host-native /compact — get preserve/reinject hints
-atelier_compact_advise(run_id="run_123")
+compact(run_id="run_123")
 ```
 
 ### V2 Lesson pipeline tools [Atelier augmentation]
 
 ```python
 # Review pending lesson candidates
-atelier_lesson_inbox(domain="beseam.shopify.publish", limit=10)
+atelier lesson inbox(domain="beseam.shopify.publish", limit=10)
 
 # Approve or reject a candidate (approved → ReasonBlock)
-atelier_lesson_decide(lesson_id="les_001", decision="approve", reviewer="atelier:code", reason="...")
+atelier lesson decide(lesson_id="les_001", decision="approve", reviewer="atelier:code", reason="...")
 ```
 
 ## Domains
@@ -100,10 +100,10 @@ atelier_lesson_decide(lesson_id="les_001", decision="approve", reviewer="atelier
 
 ```
 You: Update the product title for handle "winter-coat"
-→ Call atelier_get_reasoning_context with domain=beseam.shopify.publish
-→ Call atelier_check_plan before making the API call
-→ Call atelier_run_rubric_gate after publish with checks
-→ Call atelier_record_trace when done
+→ Call reasoning with domain=beseam.shopify.publish
+→ Call lint before making the API call
+→ Call verify after publish with checks
+→ Call trace when done
 ```
 
 ## Verification

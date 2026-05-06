@@ -90,11 +90,7 @@ class AgentAdapter:
     ) -> AdapterDecision:
         rubric_result = self.client.run_rubric_gate(rubric_id=rubric_id, checks=checks)
         blocked = self.mode == "enforce" and rubric_result.status == "blocked"
-        warnings = [
-            outcome.name
-            for outcome in rubric_result.outcomes
-            if outcome.status in {"warn", "fail", "missing"}
-        ]
+        warnings = [outcome.name for outcome in rubric_result.outcomes if outcome.status in {"warn", "fail", "missing"}]
         return AdapterDecision(
             host=self.host,
             mode=self.mode,
@@ -131,7 +127,5 @@ class AgentAdapter:
     def benchmark_report(self) -> SavingsSummary:
         return self.client.savings.summary()
 
-    def failure_clusters(
-        self, *, domain: str | None = None, limit: int = 100
-    ) -> FailureAnalysisResult:
+    def failure_clusters(self, *, domain: str | None = None, limit: int = 100) -> FailureAnalysisResult:
         return self.client.failures.analyze(domain=domain or self.default_domain, limit=limit)

@@ -7,11 +7,11 @@ Add this to your repo's `AGENTS.md` (see the [Atelier AGENTS.md](https://github.
 ```
 # Agent Reasoning Runtime
 Before editing code:
-1. Call `get_reasoning_context` with the task, likely files, and known errors.
+1. Call `reasoning` with the task, likely files, and known errors.
 2. Draft a plan.
-3. Call `check_plan` before modifying files.
-4. If the same test/command fails twice, call `rescue_failure`.
-5. After finishing, call `record_trace`.
+3. Call `lint` before modifying files.
+4. If the same test/command fails twice, call `rescue`.
+5. After finishing, call `trace`.
 
 Never ignore high-severity Reasoning Runtime warnings.
 Never store secrets or hidden chain-of-thought in traces.
@@ -45,7 +45,7 @@ uv run atelier init   # creates .atelier/ + seeds 10 blocks + 5 rubrics
 ## 4. Smoke test
 
 ```bash
-uv run atelier check-plan \
+uv run atelier lint \
   --task "Fix Shopify publish validation" \
   --domain beseam.shopify.publish \
   --step "Parse product handle from PDP URL" \
@@ -55,11 +55,10 @@ uv run atelier check-plan \
 
 ## 5. Tool reference
 
-| Tool                    | Required input                      | Returns                                |
-| ----------------------- | ----------------------------------- | -------------------------------------- |
-| `get_reasoning_context` | `task`                              | injection text                         |
-| `check_plan`            | `task`, `plan`                      | `status`, `warnings`, `suggested_plan` |
-| `rescue_failure`        | `task`, `error`                     | `rescue`, `matched_blocks`             |
-| `record_trace`          | `agent`, `domain`, `task`, `status` | `id`                                   |
-| `extract_reasonblock`   | `trace_id`                          | candidate block + confidence           |
-| `run_rubric_gate`       | `rubric_id`, `checks`               | `status`, `outcomes`                   |
+| Tool        | Required input                      | Returns                                |
+| ----------- | ----------------------------------- | -------------------------------------- |
+| `reasoning` | `task`                              | injection text                         |
+| `lint`      | `task`, `plan`                      | `status`, `warnings`, `suggested_plan` |
+| `rescue`    | `task`, `error`                     | `rescue`, `matched_blocks`             |
+| `trace`     | `agent`, `domain`, `task`, `status` | `id`                                   |
+| `verify`    | `rubric_id`, `checks`               | `status`, `outcomes`                   |

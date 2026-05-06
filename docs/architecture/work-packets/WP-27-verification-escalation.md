@@ -20,7 +20,7 @@ outcomes and escalation triggers.
 
 - **Create** `src/atelier/core/capabilities/quality_router/verifier.py`
 - **Edit** `src/atelier/core/capabilities/quality_router/capability.py`
-- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — register `atelier_route_verify`
+- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — register `route`
 - **Edit** `src/atelier/gateway/adapters/cli.py` — add `route verify` command
 - **Create** `tests/core/test_routing_verifier.py`
 - **Create** `tests/gateway/test_mcp_route_verify.py`
@@ -48,6 +48,6 @@ uv run pytest tests/core/test_routing_verifier.py tests/gateway/test_mcp_route_v
 - [ ] Verification outcomes are structured and serializable
 - [ ] Escalation includes concise evidence, not full conversation history
 - [ ] Verifier does not execute shell commands
-- [ ] `atelier_route_verify` is registered in MCP and mirrored by CLI
+- [ ] `route` is registered in MCP and mirrored by CLI
 - [ ] Acceptance tests pass
-- [ ] `atelier_record_trace` called with `WP-27` in `output_summary`
+- [ ] `trace` called with `WP-27` in `output_summary`

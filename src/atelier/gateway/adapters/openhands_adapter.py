@@ -88,9 +88,7 @@ class OpenHandsAdapter(AgentAdapter):
         suggest - surfaces warnings; execution continues.
         enforce - callers must check ``decision.blocked``.
         """
-        decision = self.pre_plan_check(
-            task=task, plan=plan, domain=domain, files=files, tools=tools
-        )
+        decision = self.pre_plan_check(task=task, plan=plan, domain=domain, files=files, tools=tools)
         rid = rubric_id or self.default_rubric_id
         if rid and checks:
             rubric_decision = self.verify_rubric(rubric_id=rid, checks=checks)

@@ -1,85 +1,72 @@
 #!/usr/bin/env bash
-# install_claude.sh — Install Atelier into Claude Code
+# install_claude.sh - Install Atelier into Claude Code
 #
 # What it does:
-#   1. Validates the plugin package at integrations/claude/plugin/
-#   2. Installs atelier@atelier (idempotent)
-#   3. Merges the atelier MCP server entry into <workspace>/.mcp.json
-#
-# After this:
-#   - `claude plugin list` shows  atelier@atelier  ✔ enabled
-#   - /atelier:status, /atelier:context, /atelier:settings work in Claude Code
-#   - atelier:code, atelier:explore, atelier:review, atelier:repair agents available
-#   - MCP tools (atelier_get_reasoning_context, etc.) wired via .mcp.json
+#   1. Validates the Claude plugin package at integrations/claude/plugin/.
+#   2. Installs/updates atelier@atelier.
+#   3. Global mode: registers MCP with Claude's user scope.
+#   4. Workspace mode (--workspace DIR): writes project-local .mcp.json and settings.
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
 #   --print-only   Print config snippets for manual install, touch nothing
-#   --workspace DIR  Target workspace root (default: cwd)
+#   --workspace DIR  Install project-local artifacts into DIR instead of global user config
 #   --strict       Exit nonzero if 'claude' CLI not on PATH
-#
-# Requirements: bash, python3, claude CLI ≥ 2.1
-# Skips gracefully if 'claude' CLI not found (unless --strict)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
-INSTALL_SOURCE_DIR="${ATELIER_REPO}"
+INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 PLUGIN_REF="atelier@atelier"
 
 DRY_RUN=false
 PRINT_ONLY=false
 STRICT=false
-WORKSPACE="${PWD}"
+WORKSPACE=""
+WORKSPACE_SET=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)    DRY_RUN=true ;;
         --print-only) PRINT_ONLY=true ;;
         --strict)     STRICT=true ;;
-        --workspace)  WORKSPACE="$2"; shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            WORKSPACE="$2"
+            WORKSPACE_SET=true
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift
 done
 
-WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+if $WORKSPACE_SET; then
+    WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+    INSTALL_SCOPE="workspace"
+    MCP_JSON="${WORKSPACE}/.mcp.json"
+    CLAUDE_SETTINGS_DIR="${WORKSPACE}/.claude"
+else
+    INSTALL_SCOPE="global"
+    MCP_JSON=""
+    CLAUDE_SETTINGS_DIR="${HOME}/.claude"
+fi
+
+CLAUDE_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.json"
+CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
 
 info()  { echo "[atelier:claude] $*"; }
 warn()  { echo "[atelier:claude] WARN: $*" >&2; }
+run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-if ! command -v claude &>/dev/null; then
-    if $STRICT; then
-        echo "[atelier:claude] ERROR: 'claude' CLI not found on PATH. Install from https://claude.ai/download" >&2
-        exit 1
-    fi
-    warn "'claude' CLI not found on PATH — SKIPPING Claude install."
-    warn "Install Claude Code from https://claude.ai/download, then run: make install-claude"
-    exit 2
-fi
-
-CLAUDE_VERSION="$(claude --version 2>/dev/null || echo 'unknown')"
-info "Found Claude Code: $CLAUDE_VERSION"
-
-if $PRINT_ONLY; then
-    echo ""
-    echo "=== Atelier Claude Code — Install Steps ==="
-    echo ""
-    echo "Step 1 — Register the local Atelier source (from repo root):"
-    echo "  claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
-    echo "  # This reads .claude-plugin/marketplace.json (name=atelier)"
-    echo ""
-    echo "Step 2 — Install the plugin:"
-    echo "  claude plugin install ${PLUGIN_REF}"
-    echo ""
-    echo "Step 3 — Verify:"
-    echo "  claude plugin list   # should show ${PLUGIN_REF} ✔ enabled"
-    echo ""
-    echo "Step 4 — Register MCP server in ${WORKSPACE}/.mcp.json:"
-    cat <<JSON
+if $WORKSPACE_SET; then
+    NEW_MCP_ENTRY=$(cat <<JSON
 {
   "mcpServers": {
     "atelier": {
@@ -87,32 +74,82 @@ if $PRINT_ONLY; then
       "command": "${ATELIER_WRAPPER}",
       "args": [],
       "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
+        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
+        "ATELIER_ROOT": "${WORKSPACE}/.atelier"
       }
     }
   }
 }
 JSON
+)
+else
+    NEW_MCP_ENTRY=$(cat <<JSON
+{
+  "mcpServers": {
+    "atelier": {
+      "type": "stdio",
+      "command": "${ATELIER_WRAPPER}",
+      "args": []
+    }
+  }
+}
+JSON
+)
+fi
+
+if $PRINT_ONLY; then
+    echo ""
+    echo "=== Atelier Claude Code - Install Steps ==="
+    echo ""
+    echo "Scope: ${INSTALL_SCOPE}"
+    echo ""
+    echo "Step 1 - Register the local Atelier plugin source:"
+    echo "  claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
+    echo ""
+    echo "Step 2 - Install the plugin:"
+    echo "  claude plugin install ${PLUGIN_REF}"
+    echo ""
+    if $WORKSPACE_SET; then
+        echo "Step 3 - Create/merge ${MCP_JSON}:"
+        echo "$NEW_MCP_ENTRY"
+        echo ""
+        echo "Step 4 - Optional project setting:"
+        echo "  set env.CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
+    else
+        echo "Step 3 - Register MCP in Claude user scope:"
+        echo "  claude mcp add --scope user atelier -- '${ATELIER_WRAPPER}'"
+    fi
     echo ""
     echo "After install, in Claude Code: /atelier:status"
     exit 0
 fi
 
-# ── Structural validation (replaces verify_claude_plugin_dev.sh) ──
+if ! command -v claude &>/dev/null; then
+    if $STRICT; then
+        echo "[atelier:claude] ERROR: 'claude' CLI not found on PATH. Install from https://claude.ai/download" >&2
+        exit 1
+    fi
+    warn "'claude' CLI not found on PATH - SKIPPING Claude install."
+    warn "Install Claude Code, then run: make install-claude"
+    exit 2
+fi
+
+CLAUDE_VERSION="$(claude --version 2>/dev/null || echo 'unknown')"
+info "Found Claude Code: $CLAUDE_VERSION"
+
+# ---- structural validation --------------------------------------------------
 info "Running structural validation on plugin package at ${PLUGIN_DIR}"
 
 STRUCT_FAIL=0
 struct_pass() { info "PASS: $*"; }
 struct_fail() { echo "[atelier:claude] FAIL: $*" >&2; STRUCT_FAIL=1; }
 
-# 1. Plugin directory exists
 if [ -d "${PLUGIN_DIR}" ]; then
     struct_pass "plugin directory exists: integrations/claude/plugin/"
 else
     struct_fail "plugin directory missing: ${PLUGIN_DIR}"
 fi
 
-# 2. plugin.json exists and has name=atelier
 PLUGIN_JSON="${PLUGIN_DIR}/.claude-plugin/plugin.json"
 if [ -f "${PLUGIN_JSON}" ]; then
     NAME=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
@@ -125,23 +162,21 @@ else
     struct_fail "plugin.json missing: ${PLUGIN_JSON}"
 fi
 
-# 3. plugin.json must NOT declare agents/skills/hooks/mcp (auto-discovered), author must be object
 if [ -f "${PLUGIN_JSON}" ]; then
     HAS_FORBIDDEN=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); bad=[k for k in ('agents','skills','hooks','mcp') if k in d]; print(','.join(bad) if bad else 'none')" 2>/dev/null || echo "error")
     AUTHOR_TYPE=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(type(d.get('author')).__name__)" 2>/dev/null || echo "error")
     if [ "$HAS_FORBIDDEN" = "none" ]; then
-        struct_pass "plugin.json has no forbidden keys (agents/skills/hooks/mcp are auto-discovered)"
+        struct_pass "plugin.json has no forbidden keys"
     else
-        struct_fail "plugin.json declares '${HAS_FORBIDDEN}' — remove these; they cause install validation errors"
+        struct_fail "plugin.json declares '${HAS_FORBIDDEN}' - remove these; they cause install validation errors"
     fi
     if [ "$AUTHOR_TYPE" = "dict" ]; then
         struct_pass "plugin.json author is an object"
     else
-        struct_fail "plugin.json author must be an object like {\"name\": \"Beseam\"}, got type: ${AUTHOR_TYPE}"
+        struct_fail "plugin.json author must be an object, got type: ${AUTHOR_TYPE}"
     fi
 fi
 
-# 4. Agent files exist
 for agent in code explore review repair; do
     AGENT_FILE="${PLUGIN_DIR}/agents/${agent}.md"
     if [ -f "${AGENT_FILE}" ]; then
@@ -151,7 +186,6 @@ for agent in code explore review repair; do
     fi
 done
 
-# 5. hooks.json exists
 HOOKS_JSON="${PLUGIN_DIR}/hooks/hooks.json"
 if [ -f "${HOOKS_JSON}" ]; then
     struct_pass "hooks/hooks.json exists"
@@ -159,19 +193,17 @@ else
     struct_fail "hooks/hooks.json missing: ${HOOKS_JSON}"
 fi
 
-# 6. .mcp.json exists and uses CLAUDE_PLUGIN_ROOT
-MCP_JSON="${PLUGIN_DIR}/.mcp.json"
-if [ -f "${MCP_JSON}" ]; then
-    if grep -q 'CLAUDE_PLUGIN_ROOT' "${MCP_JSON}"; then
-        struct_pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT} (safe for marketplace install)"
+PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
+if [ -f "${PLUGIN_MCP_JSON}" ]; then
+    if grep -q 'CLAUDE_PLUGIN_ROOT' "${PLUGIN_MCP_JSON}"; then
+        struct_pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT}"
     else
-        struct_fail ".mcp.json does not use \${CLAUDE_PLUGIN_ROOT} — absolute paths will break marketplace install"
+        struct_fail ".mcp.json does not use \${CLAUDE_PLUGIN_ROOT} - absolute paths will break marketplace install"
     fi
 else
-    struct_fail ".mcp.json missing: ${MCP_JSON}"
+    struct_fail ".mcp.json missing: ${PLUGIN_MCP_JSON}"
 fi
 
-# 7. MCP wrapper exists
 WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
 if [ -f "${WRAPPER}" ]; then
     struct_pass "MCP wrapper exists: servers/atelier-mcp-wrapper.js"
@@ -185,9 +217,11 @@ if [ "$STRUCT_FAIL" -ne 0 ]; then
 fi
 info "Structural validation passed"
 
-# ── Claude CLI validation ──
+# ---- plugin install ---------------------------------------------------------
 if $DRY_RUN; then
     echo "  [dry-run] claude plugin validate ${PLUGIN_DIR}"
+    echo "  [dry-run] claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
+    echo "  [dry-run] reinstall ${PLUGIN_REF}"
 else
     info "Validating plugin package with Claude CLI at ${PLUGIN_DIR}"
     if ! claude plugin validate "${PLUGIN_DIR}" 2>&1 | grep -q "Validation passed"; then
@@ -195,13 +229,9 @@ else
         exit 1
     fi
     info "Plugin package valid (Claude CLI)"
-fi
 
-if $DRY_RUN; then
-    echo "  [dry-run] claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
-else
-    info "Registering local Claude plugin source at ${PLUGIN_DIR}"
-    INSTALL_SOURCE_OUT="$(claude plugin marketplace add "${PLUGIN_DIR}" 2>&1 || true)"
+    info "Registering local Claude plugin source at ${INSTALL_SOURCE_DIR}"
+    INSTALL_SOURCE_OUT="$(claude plugin marketplace add "${INSTALL_SOURCE_DIR}" 2>&1 || true)"
     if echo "$INSTALL_SOURCE_OUT" | grep -q "already on disk"; then
         info "Claude plugin source 'atelier' already registered"
     elif echo "$INSTALL_SOURCE_OUT" | grep -q "Successfully added"; then
@@ -210,11 +240,7 @@ else
         echo "[atelier:claude] ERROR: plugin source add failed: $INSTALL_SOURCE_OUT" >&2
         exit 1
     fi
-fi
 
-if $DRY_RUN; then
-    echo "  [dry-run] reinstall ${PLUGIN_REF}"
-else
     info "Installing/updating plugin ${PLUGIN_REF}"
     claude plugin uninstall "${PLUGIN_REF}" 2>/dev/null || true
     INSTALL_OUT="$(claude plugin install "${PLUGIN_REF}" 2>&1 || true)"
@@ -226,101 +252,73 @@ else
     fi
 fi
 
-MCP_JSON="${WORKSPACE}/.mcp.json"
-NEW_ENTRY=$(cat <<JSON
-{
-  "mcpServers": {
-    "atelier": {
-      "type": "stdio",
-      "command": "${ATELIER_WRAPPER}",
-      "args": [],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
-      }
-    }
-  }
-}
-JSON
-)
-
-if $DRY_RUN; then
-    echo "  [dry-run] merge atelier entry into ${MCP_JSON}"
-elif [ ! -f "${MCP_JSON}" ]; then
-    info "Creating ${MCP_JSON} with atelier entry"
-    echo "${NEW_ENTRY}" > "${MCP_JSON}"
-else
-    HAS=$(python3 -c "
+# ---- MCP config -------------------------------------------------------------
+if $WORKSPACE_SET; then
+    run "mkdir -p '$(dirname "$MCP_JSON")'"
+    if $DRY_RUN; then
+        echo "  [dry-run] merge atelier entry into ${MCP_JSON}"
+    elif [ ! -f "${MCP_JSON}" ]; then
+        info "Creating ${MCP_JSON} with atelier entry"
+        echo "${NEW_MCP_ENTRY}" > "${MCP_JSON}"
+    else
+        HAS=$(python3 -c "
 import json
 d = json.load(open('${MCP_JSON}'))
 servers = d.get('mcpServers', {})
 print('yes' if 'atelier' in servers else 'no')
 " 2>/dev/null || echo "error")
-    if [ "$HAS" = "yes" ]; then
-        info "atelier entry already in ${MCP_JSON}"
-    else
-        info "Merging atelier entry into ${MCP_JSON}"
-        python3 -c "
+        if [ "$HAS" = "yes" ]; then
+            info "atelier entry already in ${MCP_JSON}"
+        else
+            info "Merging atelier entry into ${MCP_JSON}"
+            python3 - <<PYEOF
 import json
-with open('${MCP_JSON}') as f:
-    d = json.load(f)
-d.setdefault('mcpServers', {})['atelier'] = {
-    'type': 'stdio',
-    'command': '${ATELIER_WRAPPER}',
-    'args': [],
-    'env': {'ATELIER_WORKSPACE_ROOT': '${WORKSPACE}'}
-}
-with open('${MCP_JSON}', 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-"
-        info "atelier entry merged into ${MCP_JSON}"
+from pathlib import Path
+
+path = Path('${MCP_JSON}')
+existing = json.loads(path.read_text(encoding='utf-8') or '{}')
+new_entry = json.loads('''${NEW_MCP_ENTRY}''')
+existing.setdefault('mcpServers', {}).update(new_entry['mcpServers'])
+path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
+PYEOF
+            info "atelier entry merged into ${MCP_JSON}"
+        fi
     fi
-fi
-
-# ── Step 4: inject CLAUDE_WORKSPACE_ROOT into .claude/settings.local.json ──
-# The plugin's atelier-mcp-wrapper.js resolves the binary via:
-#   $ATELIER_VENV, $CLAUDE_WORKSPACE_ROOT/atelier/.venv, or PATH.
-# Setting CLAUDE_WORKSPACE_ROOT in settings.local.json is the workspace-scoped
-# way to provide it without touching the user's shell profile.
-CLAUDE_SETTINGS_DIR="${WORKSPACE}/.claude"
-CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
-
-if $DRY_RUN; then
-    echo "  [dry-run] merge CLAUDE_WORKSPACE_ROOT into ${CLAUDE_LOCAL_SETTINGS}"
 else
-    mkdir -p "${CLAUDE_SETTINGS_DIR}"
-    if [ ! -f "${CLAUDE_LOCAL_SETTINGS}" ]; then
-        info "Creating ${CLAUDE_LOCAL_SETTINGS} with env.CLAUDE_WORKSPACE_ROOT"
-        echo "{}" > "${CLAUDE_LOCAL_SETTINGS}"
-    fi
-    HAS_ENV=$(python3 -c "
-import json
-d = json.load(open('${CLAUDE_LOCAL_SETTINGS}'))
-existing = d.get('env', {}).get('CLAUDE_WORKSPACE_ROOT', '')
-print(existing)
-" 2>/dev/null || echo "")
-    if [ "${HAS_ENV}" = "${WORKSPACE}" ]; then
-        info "CLAUDE_WORKSPACE_ROOT already set correctly in ${CLAUDE_LOCAL_SETTINGS}"
+    if $DRY_RUN; then
+        echo "  [dry-run] claude mcp add --scope user atelier -- '${ATELIER_WRAPPER}'"
     else
-        info "Setting CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
-        python3 -c "
-import json
-with open('${CLAUDE_LOCAL_SETTINGS}') as f:
-    d = json.load(f)
-d.setdefault('env', {})['CLAUDE_WORKSPACE_ROOT'] = '${WORKSPACE}'
-with open('${CLAUDE_LOCAL_SETTINGS}', 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-"
-        info "CLAUDE_WORKSPACE_ROOT written — restart Claude Code for it to take effect"
+        info "Registering atelier MCP server in Claude user scope"
+        claude mcp remove --scope user atelier 2>/dev/null || true
+        claude mcp add --scope user atelier -- "${ATELIER_WRAPPER}"
     fi
 fi
 
-# ── Step 5: inject Atelier loop PreToolUse hook into .claude/settings.json ──
-# Fires before every Edit/Write call and injects a systemMessage reminding the
-# agent to run get_reasoning_context → check_plan before editing.
-# This is the enforcement mechanism for the Atelier standing loop.
-CLAUDE_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.json"
+# ---- workspace-local Claude env --------------------------------------------
+if $WORKSPACE_SET; then
+    run "mkdir -p '$CLAUDE_SETTINGS_DIR'"
+    if $DRY_RUN; then
+        echo "  [dry-run] merge CLAUDE_WORKSPACE_ROOT into ${CLAUDE_LOCAL_SETTINGS}"
+    else
+        if [ ! -f "${CLAUDE_LOCAL_SETTINGS}" ]; then
+            info "Creating ${CLAUDE_LOCAL_SETTINGS} with env.CLAUDE_WORKSPACE_ROOT"
+            echo "{}" > "${CLAUDE_LOCAL_SETTINGS}"
+        fi
+        python3 - <<PYEOF
+import json
+from pathlib import Path
+
+path = Path('${CLAUDE_LOCAL_SETTINGS}')
+data = json.loads(path.read_text(encoding='utf-8') or '{}')
+data.setdefault('env', {})['CLAUDE_WORKSPACE_ROOT'] = '${WORKSPACE}'
+path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+print("[atelier:claude] CLAUDE_WORKSPACE_ROOT written to ${CLAUDE_LOCAL_SETTINGS}")
+PYEOF
+    fi
+fi
+
+# ---- Claude hook settings ---------------------------------------------------
+run "mkdir -p '$CLAUDE_SETTINGS_DIR'"
 
 if $DRY_RUN; then
     echo "  [dry-run] merge PreToolUse Atelier loop hook into ${CLAUDE_SETTINGS}"
@@ -331,11 +329,11 @@ else
     fi
     HOOK_SCRIPT=$(mktemp /tmp/atelier_hook_XXXXXX.py)
     cat > "${HOOK_SCRIPT}" << 'PYEOF'
-import json, sys
+import json
+import sys
 
 path = sys.argv[1]
-# Command that injects a reminder into Claude's context before every Edit/Write.
-hook_command = "echo '{\"systemMessage\": \"\\u26a0 Atelier loop required: call get_reasoning_context \\u2192 check_plan before editing.\"}'"
+hook_command = "echo '{\"systemMessage\": \"Atelier loop required: call reasoning then lint before editing.\"}'"
 
 with open(path) as f:
     d = json.load(f)
@@ -365,7 +363,12 @@ PYEOF
     rm -f "${HOOK_SCRIPT}"
 fi
 
+if $DRY_RUN; then
+    info "Dry run complete; skipped post-install verification because no files were written."
+    exit 0
+fi
+
 info "Done. Start Claude Code in your workspace. Skills and agents are available."
-info "  /atelier:status  — show run ledger"
-info "  /atelier:context — show environment context"
+info "  /atelier:status  - show run ledger"
+info "  /atelier:context - show environment context"
 info "  Agents: atelier:code, atelier:explore, atelier:review, atelier:repair"

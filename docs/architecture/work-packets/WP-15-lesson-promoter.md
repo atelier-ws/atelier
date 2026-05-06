@@ -63,8 +63,8 @@ ReasonBlock-or-rubric-edit candidate → surface to a human reviewer.
      additional dead_end entry.
 
 3. MCP tools:
-   - `atelier_lesson_inbox(domain?, limit?)` → `[LessonCandidate]`
-   - `atelier_lesson_decide(lesson_id, decision, reviewer, reason)` → on approve, calls existing
+   - `atelier lesson inbox(domain?, limit?)` → `[LessonCandidate]`
+   - `atelier lesson decide(lesson_id, decision, reviewer, reason)` → on approve, calls existing
      `atelier_extract_reasonblock` for `new_block` / mutates the target block for `edit_block` /
      adds the rubric check for `new_rubric_check`. Writes a `LessonPromotion` row.
 

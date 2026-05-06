@@ -1,6 +1,6 @@
 # Codex Integration
 
-Atelier integrates with Codex via workspace-local MCP config, skill packs, a preflight wrapper, and reusable task templates.
+Atelier integrates with Codex via MCP config, skill packs, a preflight wrapper, and reusable task templates. Installs are global by default; pass `--workspace DIR` for project-local files.
 
 ## Setup
 
@@ -13,12 +13,8 @@ make verify
 
 ## Installed Artifacts
 
-- `.codex/skills/atelier/`
-- `.codex/mcp.json`
-- `AGENTS.atelier.md`
-- `bin/atelier-codex`
-- `.codex/tasks/preflight.md`
-- `.codex/tasks/review-repair.md`
+- Global: `~/.codex/skills/atelier/`, `~/.codex/AGENTS.md`, `~/.local/bin/atelier-codex`, and `codex mcp add`
+- Workspace: `<workspace>/.codex/skills/atelier/`, `<workspace>/.codex/mcp.json`, `<workspace>/AGENTS.md`, `<workspace>/bin/atelier-codex`, and `.codex/tasks/*.md`
 
 ## Wrapper Flow
 
@@ -34,14 +30,12 @@ The wrapper enforces:
 
 ## MCP Tools
 
-Canonical names:
+Canonical MCP names:
 
-- `get_reasoning_context`, `check_plan`, `rescue_failure`, `run_rubric_gate`, `record_trace`
-- `get_run_ledger`, `update_run_ledger`, `monitor_event`, `compress_context`
-- `get_environment`, `get_environment_context`
-- `atelier_smart_search`, `atelier_smart_read`, `atelier_smart_edit`, `atelier_sql_inspect`, `atelier_bash_intercept`
+- `reasoning`, `lint`, `route`, `rescue`, `trace`, `verify`
+- `memory`, `search`, `read`, `edit`, `compact`, `atelier_repo_map`
 
-Compatibility aliases are also available for host prompts that use prefixed names (`atelier_check_plan`, `atelier_get_reasoning_context`, etc.).
+CLI-only workflows include `atelier sql inspect`, `atelier lesson inbox`, `atelier consolidation inbox`, `atelier report`, `atelier proof show`, and `atelier route contract`.
 
 ## References
 

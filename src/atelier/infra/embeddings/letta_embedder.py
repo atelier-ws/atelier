@@ -26,9 +26,7 @@ class LettaEmbedder:
         from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
 
         if not LettaAdapter.is_available():
-            raise RuntimeError(
-                "Letta sidecar not available; set ATELIER_LETTA_URL to use LettaEmbedder"
-            )
+            raise RuntimeError("Letta sidecar not available; set ATELIER_LETTA_URL to use LettaEmbedder")
         return LettaAdapter()
 
     def embed(self, texts: list[str]) -> list[list[float]]:

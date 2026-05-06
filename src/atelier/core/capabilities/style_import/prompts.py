@@ -39,9 +39,7 @@ Do not invent company rules that are not supported by the chunk.
 """
 
 
-def build_messages(
-    *, file_path: str, chunk_range: tuple[int, int], text: str
-) -> list[dict[str, str]]:
+def build_messages(*, file_path: str, chunk_range: tuple[int, int], text: str) -> list[dict[str, str]]:
     return [
         {"role": "system", "content": STYLE_IMPORT_SYSTEM_PROMPT},
         {

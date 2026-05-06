@@ -17,7 +17,14 @@ PASSTHROUGH=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --workspace) PASSTHROUGH+=("$1" "$2"); shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            PASSTHROUGH+=("$1" "$2")
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift

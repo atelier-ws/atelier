@@ -22,22 +22,22 @@ Host-facing integration surfaces for CLI, MCP, service, and embedded runtime ada
 ## Capability-driven tools and commands
 
 - CLI: `capability list/status`, `memory summarize`, `read smart`, `edit smart`, `sql inspect`, `benchmark-runtime`, `benchmark-host`
-- MCP (Core-6): `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_record_trace`, `atelier_run_rubric_gate`, `atelier_compress_context`
+- MCP (Core-6): `reasoning`, `lint`, `rescue`, `trace`, `verify`, `compact`
 
 ## MCP Tool Surface (Core-6)
 
 | Tool | Namespace | Purpose |
 |---|---|---|
-| `atelier_get_reasoning_context` | brain | Retrieves curated reasoning context from the ledger |
-| `atelier_check_plan` | brain | Validates a plan against rubrics before execution |
-| `atelier_rescue_failure` | brain | Suggests recovery for a failed step |
-| `atelier_run_rubric_gate` | brain | Evaluates rubric checks, returns pass/warn/blocked/fail |
-| `atelier_record_trace` | capture | Records trace + realtime prompt/response/bash compaction + optional Langfuse emit |
-| `atelier_compress_context` | infra | Returns compact ledger prompt block plus realtime context snapshot |
+| `reasoning` | brain | Retrieves curated reasoning context from the ledger |
+| `lint` | brain | Validates a plan against rubrics before execution |
+| `rescue` | brain | Suggests recovery for a failed step |
+| `verify` | brain | Evaluates rubric checks, returns pass/warn/blocked/fail |
+| `trace` | capture | Records trace + realtime prompt/response/bash compaction + optional Langfuse emit |
+| `compact` | infra | Returns compact ledger prompt block plus realtime context snapshot |
 
-Remote mode (`ATELIER_MCP_MODE=remote`) routes the first 5 tools through `remote_client.py`; `compress_context` is always local.
+Remote mode (`ATELIER_MCP_MODE=remote`) routes the core HTTP-backed tools through `remote_client.py`; `compact` is always local.
 
-`atelier_rescue_failure` now enriches responses with failure-cluster analysis (`analysis`) derived from historical failed traces.
+`rescue` now enriches responses with failure-cluster analysis (`analysis`) derived from historical failed traces.
 
 ## OpenMemory CLI Notes
 

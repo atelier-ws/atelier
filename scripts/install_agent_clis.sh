@@ -14,7 +14,7 @@
 #   --dry-run      Pass through to all install scripts
 #   --print-only   Pass through to all install scripts
 #   --strict       Pass through; scripts exit nonzero if CLI absent
-#   --workspace DIR  Pass through to all install scripts
+#   --workspace DIR  Install project-local artifacts into DIR instead of global user config
 
 set -euo pipefail
 
@@ -37,7 +37,14 @@ while [[ $# -gt 0 ]]; do
         --copilot)   EXPLICIT=true; DO_COPILOT=true ;;
         --gemini)    EXPLICIT=true; DO_GEMINI=true ;;
         --dry-run|--print-only|--strict) PASSTHROUGH+=("$1") ;;
-        --workspace) PASSTHROUGH+=("$1" "$2"); shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            PASSTHROUGH+=("$1" "$2")
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift

@@ -17,7 +17,7 @@ def _call_context(args: dict[str, Any]) -> dict[str, Any]:
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "atelier_get_reasoning_context", "arguments": args},
+            "params": {"name": "reasoning", "arguments": args},
         }
     )
     assert response is not None
@@ -78,9 +78,7 @@ def test_get_reasoning_context_injects_same_agent_memory(memory_root: Path) -> N
 
     assert "<memory>" in payload["context"]
     assert "durable memory for atelier code" in payload["context"]
-    assert payload["recalled_passages"] == [
-        {"id": "pas-atelier-code", "source": "user", "score": 0.4}
-    ]
+    assert payload["recalled_passages"] == [{"id": "pas-atelier-code", "source": "user", "score": 0.4}]
     assert payload["tokens_breakdown"]["memory"] > 0
     assert payload["tokens_breakdown"]["total"] >= payload["tokens_breakdown"]["reasonblocks"]
 

@@ -169,8 +169,8 @@ class ContextBudgetRecorder:
 
             if not hasattr(self, "_compact_tokens_saved_counter"):
                 self._compact_tokens_saved_counter = Counter(
-                    "atelier_compact_tool_output_tokens_saved_total",
-                    "Total tokens saved by compact tool output method",
+                    "atelier_compact_output_tokens_saved_total",
+                    "Total tokens saved by compact output method",
                     ["method", "model"],
                 )
 

@@ -27,7 +27,7 @@ Before starting any task in this repository, you MUST follow the Atelier reasoni
 
 3. **Record what happened** — After each task, state what commands you ran, what errors you saw, and what the outcome was.
 
-If MCP is configured (`atelier` server), use `atelier_check_plan`, `atelier_run_rubric_gate`, and `atelier_record_trace` instead of doing the above manually.
+If MCP is configured (`atelier` server), use `lint`, `verify`, and `trace` instead of doing the above manually.
 ```
 
 ---
@@ -43,12 +43,12 @@ MCP server `atelier` is available. Use it on every task:
 
 **Before executing:**
 
-1. Call `atelier_get_reasoning_context` with the task + domain
-2. Call `atelier_check_plan` with your proposed steps — if it returns `status: blocked`, revise your plan
+1. Call `reasoning` with the task + domain
+2. Call `lint` with your proposed steps — if it returns `status: blocked`, revise your plan
 
-**After executing:** 3. Call `atelier_run_rubric_gate` with the appropriate rubric and your results 4. Call `atelier_record_trace` with the execution summary
+**After executing:** 3. Call `verify` with the appropriate rubric and your results 4. Call `trace` with the execution summary
 
-Available rubrics: `rubric_shopify_publish`, `rubric_pdp_audit`, and others (use `atelier_search` to find domain-specific ones).
+Available rubrics: `rubric_shopify_publish`, `rubric_pdp_audit`, and others (use `search` to find domain-specific ones).
 ```
 
 ---
