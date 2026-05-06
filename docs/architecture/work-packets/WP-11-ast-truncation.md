@@ -49,9 +49,9 @@ capability to do the same for Python and TypeScript. Tree-sitter is already a de
    `const`.
 
 4. `atelier_smart_read` API:
-   - Existing: `{file_path}` → `{content, cache_hit, tokens_saved}`
-   - Extended: `{file_path, [range, expand=false]}` →
-     `{outline?, content?, cache_hit, tokens_saved, mode: "outline"|"range"|"full"}`
+   - Existing: `&#123;file_path&#125;` → `&#123;content, cache_hit, tokens_saved&#125;`
+   - Extended: `&#123;file_path, [range, expand=false]&#125;` →
+     `&#123;outline?, content?, cache_hit, tokens_saved, mode: "outline"|"range"|"full"&#125;`
 
 5. Tests:
    - 600-LOC sample Python file → outline returned by default

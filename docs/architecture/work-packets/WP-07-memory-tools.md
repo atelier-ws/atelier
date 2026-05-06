@@ -33,7 +33,7 @@ spec at [§ 8](../IMPLEMENTATION_PLAN_V2_DATA_MODEL.md#8-new-mcp-tools).
    - Default `actor = "agent:" + agent_id`
    - Calls `make_memory_store(root).upsert_block(...)` inside a try/except that maps
      `MemoryConcurrencyError` → tool error code `409` and `MemorySidecarUnavailable` → `503`
-   - Output: `{ id, version }`
+   - Output: `&#123; id, version &#125;`
 
 3. Tool: `atelier_memory_get_block`
    - Input: `agent_id, label`

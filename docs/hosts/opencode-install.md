@@ -21,17 +21,17 @@ make install
 The installer merges an `atelier` entry into the `mcp` key:
 
 ```json
-{
-  "mcp": {
-    "atelier": {
+&#123;
+  "mcp": &#123;
+    "atelier": &#123;
       "type": "local",
       "command": ["<atelier_repo>/scripts/atelier_mcp_stdio.sh"],
-      "environment": {
+      "environment": &#123;
         "ATELIER_WORKSPACE_ROOT": "<workspace>"
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## Verify

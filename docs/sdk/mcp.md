@@ -68,18 +68,18 @@ Advanced runtime tools:
 ## Host Example
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "command": "uv",
       "args": ["run", "atelier-mcp"],
-      "env": {
+      "env": &#123;
         "ATELIER_ROOT": ".atelier",
         "ATELIER_WORKSPACE_ROOT": "."
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## Embedding via SDK

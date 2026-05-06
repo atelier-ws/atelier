@@ -69,7 +69,7 @@ uv run atelier eval deprecate EVAL_ID
 Eval cases are stored in `.atelier/evals/` as JSON files:
 
 ```json
-{
+&#123;
   "id": "eval_shopify_handle_deadend",
   "domain": "beseam.shopify.publish",
   "task": "Publish Shopify product",
@@ -78,7 +78,7 @@ Eval cases are stored in `.atelier/evals/` as JSON files:
   "expected_warnings_include": ["dead end: product handle from pdp"],
   "status": "active",
   "created_at": "2026-04-21T00:00:00Z"
-}
+&#125;
 ```
 
 ## Benchmark Output

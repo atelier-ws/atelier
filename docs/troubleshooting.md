@@ -92,17 +92,17 @@ uv run atelier init --no-seed
 **Fix:** Update `~/.config/gemini/settings.json` to use the full absolute path:
 
 ```json
-{
-  "mcpServers": {
-    "atelier": {
+&#123;
+  "mcpServers": &#123;
+    "atelier": &#123;
       "command": "uv",
       "args": ["run", "--project", "/absolute/path/to/atelier", "atelier-mcp"],
-      "env": {
+      "env": &#123;
         "ATELIER_STORE_ROOT": "/absolute/path/to/.atelier"
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## check-plan Returns "pass" When It Should Block

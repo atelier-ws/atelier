@@ -57,7 +57,7 @@ if check.status == "blocked":
 
 gate = client.run_rubric_gate(
     rubric_id="rubric_shopify_publish",
-    checks={"product_identity_uses_gid": True},
+    checks=&#123;"product_identity_uses_gid": True&#125;,
 )
 
 trace = client.traces.record(
