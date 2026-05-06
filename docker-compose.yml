@@ -8,6 +8,7 @@ services:
       - ./.atelier:/app/.atelier
     environment:
       - ATELIER_ROOT=/app/.atelier
+      - ATELIER_OTEL_ENDPOINT=http://otel-collector:4318
 
   service:
     build:
@@ -22,6 +23,7 @@ services:
       - ATELIER_SERVICE_PORT=8787
       - ATELIER_REQUIRE_AUTH=false
       - ATELIER_ROOT=/app/.atelier
+      - ATELIER_OTEL_ENDPOINT=http://otel-collector:4318
     volumes:
       - ./.atelier:/app/.atelier
       - ./integrations:/app/integrations:ro
@@ -30,6 +32,19 @@ services:
     depends_on:
       init:
         condition: service_completed_successfully
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      - POSTHOG_OTLP_ENDPOINT=${POSTHOG_OTLP_ENDPOINT:-https://us.i.posthog.com/i/v0/otlp}
+      - POSTHOG_PROJECT_API_KEY=${POSTHOG_PROJECT_API_KEY:-}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318"
+    restart: unless-stopped
 
   frontend:
     build:

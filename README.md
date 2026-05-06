@@ -99,6 +99,7 @@ bash scripts/install_codex.sh --print-only
 
 → Full install guide: [docs/installation.md](docs/installation.md)
 → Per-host guides: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
+→ V2 to V3 migration guide: [docs/migrations/v2-to-v3.md](docs/migrations/v2-to-v3.md)
 
 ## Quickstart
 
