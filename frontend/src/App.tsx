@@ -114,7 +114,6 @@ export default function App() {
       {/* Header: modern terminal prompt style */}
       <header className="border-b border-neutral-800 px-6 py-4 bg-gradient-to-r from-neutral-950 to-neutral-900/50">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">⚙️</span>
           <div>
             <h1 className="text-lg font-bold tracking-wide text-[#ff6041]">
               ❯ ATELIER
