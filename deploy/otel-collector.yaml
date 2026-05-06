@@ -1,0 +1,39 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 30s
+    send_batch_size: 512
+  attributes/scrub:
+    actions:
+      - key: cwd
+        action: delete
+      - key: file_path
+        action: delete
+      - key: repo_url
+        action: delete
+      - key: prompt
+        action: delete
+      - key: code
+        action: delete
+
+exporters:
+  otlphttp/posthog:
+    endpoint: ${POSTHOG_OTLP_ENDPOINT}
+    headers:
+      Authorization: "Bearer ${POSTHOG_PROJECT_API_KEY}"
+  googlecloud:
+    project: ${GCP_PROJECT_ID}
+    log:
+      default_log_name: atelier
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [attributes/scrub, batch]
+      exporters: [otlphttp/posthog]
