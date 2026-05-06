@@ -183,17 +183,10 @@ class CopilotImporter:
         artifact_id = f"copilot-{session_id}-events-jsonl"
         existing = self.store.get_raw_artifact(artifact_id)
         try:
-            file_mtime = datetime.fromtimestamp(
-                (session_dir / "events.jsonl").stat().st_mtime, tz=UTC
-            )
+            file_mtime = datetime.fromtimestamp((session_dir / "events.jsonl").stat().st_mtime, tz=UTC)
         except OSError:
             file_mtime = _utcnow()
-        if (
-            not force
-            and existing
-            and existing.source_file_mtime
-            and file_mtime <= existing.source_file_mtime
-        ):
+        if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
             return False  # unchanged, skip
 
         # --- workspace metadata ---
@@ -201,9 +194,7 @@ class CopilotImporter:
         if not workspace_path.exists():
             return False
         try:
-            workspace_data: dict[str, Any] = (
-                yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
-            )
+            workspace_data: dict[str, Any] = yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
         except (OSError, yaml.YAMLError):
             return False
 
@@ -299,10 +290,7 @@ class CopilotImporter:
             domain="coding",
             task=task,
             status="success",
-            files_touched=[
-                record if record is not None else path
-                for path, record in sorted(files_touched.items())
-            ],
+            files_touched=[record if record is not None else path for path, record in sorted(files_touched.items())],
             tools_called=[
                 ToolCall(
                     name=n,
@@ -390,9 +378,7 @@ class CopilotImporter:
                         tool_results[name] = (
                             diff_text[:200]
                             if diff_text
-                            else _extract_first_text(
-                                args, ("path", "file_path", "filePath"), limit=200
-                            )
+                            else _extract_first_text(args, ("path", "file_path", "filePath"), limit=200)
                         )
                 elif name == "view":
                     path = args.get("path") or args.get("file_path") or args.get("filePath")
@@ -423,9 +409,7 @@ class CopilotImporter:
                 args = _as_dict(data.get("arguments") or data.get("input"))
                 if args:
                     tool_args[name] = args
-                result_summary = _extract_first_text(
-                    data, ("result_summary", "summary", "output", "result"), limit=200
-                )
+                result_summary = _extract_first_text(data, ("result_summary", "summary", "output", "result"), limit=200)
                 if result_summary:
                     tool_results[name] = result_summary
 

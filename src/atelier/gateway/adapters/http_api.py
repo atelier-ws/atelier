@@ -64,9 +64,7 @@ from atelier.infra.runtime.cost_tracker import CostTracker
 # --------------------------------------------------------------------------- #
 
 DEFAULT_WORKSPACE = Path(os.environ.get("ATELIER_WORKSPACE_ROOT", ".")).resolve()
-DEFAULT_STORE_ROOT = Path(
-    os.environ.get("ATELIER_STORE_ROOT", DEFAULT_WORKSPACE / ".atelier")
-).resolve()
+DEFAULT_STORE_ROOT = Path(os.environ.get("ATELIER_STORE_ROOT", DEFAULT_WORKSPACE / ".atelier")).resolve()
 DEFAULT_ENV_DIR = Path(
     os.environ.get(
         "ATELIER_ENV_DIR",
@@ -474,9 +472,7 @@ def create_app(
         """Lightweight view of plan-related validation results per trace."""
         out: list[dict[str, Any]] = []
         for trace in store.list_traces(limit=limit):
-            plan_checks = [
-                vr.model_dump() for vr in trace.validation_results if "plan" in vr.name.lower()
-            ]
+            plan_checks = [vr.model_dump() for vr in trace.validation_results if "plan" in vr.name.lower()]
             if not plan_checks:
                 continue
             out.append(
@@ -498,9 +494,7 @@ def create_app(
         domain: str | None = Query(None),
         agent: str | None = Query(None),
     ) -> list[Trace]:
-        traces = store.list_traces(
-            limit=limit, offset=offset, status=status, domain=domain, agent=agent
-        )
+        traces = store.list_traces(limit=limit, offset=offset, status=status, domain=domain, agent=agent)
         return traces
 
     @app.get("/traces/{trace_id}", response_model=Trace)

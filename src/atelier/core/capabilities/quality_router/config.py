@@ -78,9 +78,7 @@ class RoutingPolicyConfig(BaseModel):
     def _reject_empty_patterns(cls, value: list[str]) -> list[str]:
         return [pattern for pattern in value if pattern.strip()]
 
-    def budget_policy(
-        self, *, max_input_tokens: int, premium_call_budget: int = 1
-    ) -> ContextBudgetPolicy:
+    def budget_policy(self, *, max_input_tokens: int, premium_call_budget: int = 1) -> ContextBudgetPolicy:
         """Create a routing budget policy from configured tier model names."""
 
         return ContextBudgetPolicy(

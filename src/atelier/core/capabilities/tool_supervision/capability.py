@@ -329,9 +329,7 @@ class ToolSupervisionCapability:
 
     def status(self) -> dict[str, Any]:
         """Return high-level metrics."""
-        cache_hit_rate = (
-            round(self._avoided_calls / self._total_calls, 3) if self._total_calls > 0 else 0.0
-        )
+        cache_hit_rate = round(self._avoided_calls / self._total_calls, 3) if self._total_calls > 0 else 0.0
         return {
             "total_tool_calls": self._total_calls,
             "avoided_tool_calls": self._avoided_calls,
@@ -376,11 +374,7 @@ class ToolSupervisionCapability:
         for key in cache:
             prefix = key.split(":")[0]
             tool_counts[prefix] = tool_counts.get(prefix, 0) + 1
-        return [
-            {"tool": tool, "cached_results": count}
-            for tool, count in tool_counts.items()
-            if count >= 3
-        ]
+        return [{"tool": tool, "cached_results": count} for tool, count in tool_counts.items() if count >= 3]
 
     def _build_recommendations(
         self,
@@ -398,9 +392,7 @@ class ToolSupervisionCapability:
         for t in open_circuits:
             recs.append(f"Circuit breaker OPEN for '{t}' — check for systematic failures")
         if self._retries_prevented > 0:
-            recs.append(
-                f"Circuit breaker prevented {self._retries_prevented} retries on failing tools"
-            )
+            recs.append(f"Circuit breaker prevented {self._retries_prevented} retries on failing tools")
         if self._avoided_calls > 0:
             recs.append(
                 f"Cache hits saved ~{self._token_savings} tokens "

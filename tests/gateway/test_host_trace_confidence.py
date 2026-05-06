@@ -18,9 +18,7 @@ DOCS_ROOT = Path(__file__).parent.parent.parent / "docs"
 TRACE_CONFIDENCE_DOC = DOCS_ROOT / "engineering" / "trace-confidence.md"
 HOST_MATRIX = DOCS_ROOT / "hosts" / "host-capability-matrix.md"
 CODEX_README = Path(__file__).parent.parent.parent / "integrations" / "codex" / "AGENT_README.md"
-COPILOT_README = (
-    Path(__file__).parent.parent.parent / "integrations" / "copilot" / "AGENT_README.md"
-)
+COPILOT_README = Path(__file__).parent.parent.parent / "integrations" / "copilot" / "AGENT_README.md"
 
 SUPPORTED_HOSTS = [
     "Claude Code",
@@ -257,12 +255,8 @@ def test_mcp_server_downgrades_full_live_without_hooks(tmp_path: Path) -> None:
         # Verify the stored trace was downgraded
         assert fake_store.record_trace.called
         stored_trace = fake_store.record_trace.call_args[0][0]
-        assert (
-            stored_trace.trace_confidence == "mcp_live"
-        ), "full_live without hooks must be downgraded to mcp_live"
-        assert (
-            "hooks" in stored_trace.missing_surfaces
-        ), "hooks must appear in missing_surfaces after downgrade"
+        assert stored_trace.trace_confidence == "mcp_live", "full_live without hooks must be downgraded to mcp_live"
+        assert "hooks" in stored_trace.missing_surfaces, "hooks must appear in missing_surfaces after downgrade"
 
 
 def test_mcp_server_record_trace_accepts_string_tool_names(tmp_path: Path) -> None:

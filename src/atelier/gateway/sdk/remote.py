@@ -48,9 +48,7 @@ class _ServiceClient(Protocol):
     def get_reasonblock(self, block_id: str) -> dict[str, Any]: ...
     def list_rubrics(self, *, domain: str | None = None) -> list[dict[str, Any]]: ...
     def get_rubric(self, rubric_id: str) -> dict[str, Any]: ...
-    def analyze_failures(
-        self, *, domain: str | None = None, limit: int = 100
-    ) -> dict[str, Any]: ...
+    def analyze_failures(self, *, domain: str | None = None, limit: int = 100) -> dict[str, Any]: ...
     def get_savings(self) -> dict[str, Any]: ...
     def _get(self, path: str) -> dict[str, Any]: ...
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]: ...
@@ -165,9 +163,7 @@ class RemoteClient(AtelierClient):
         return RescueResult.model_validate(payload)
 
     def run_rubric_gate(self, *, rubric_id: str, checks: dict[str, bool | None]) -> RubricResult:
-        payload = self._ensure_ok(
-            self._client.run_rubric_gate({"rubric_id": rubric_id, "checks": checks})
-        )
+        payload = self._ensure_ok(self._client.run_rubric_gate({"rubric_id": rubric_id, "checks": checks}))
         return RubricResult.model_validate(payload)
 
     def record_trace(
@@ -198,9 +194,7 @@ class RemoteClient(AtelierClient):
                     "errors_seen": errors_seen or [],
                     "diff_summary": diff_summary,
                     "output_summary": output_summary,
-                    "validation_results": [
-                        result.model_dump(mode="json") for result in (validation_results or [])
-                    ],
+                    "validation_results": [result.model_dump(mode="json") for result in (validation_results or [])],
                 }
             )
         )
@@ -281,8 +275,7 @@ class RemoteClient(AtelierClient):
     def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
         payload = self._ensure_ok(
             self._client._get(
-                "/v1/memory/blocks"
-                f"?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
+                "/v1/memory/blocks" f"?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
             )
         )
         return MemoryBlock.model_validate(payload) if payload else None

@@ -163,9 +163,7 @@ class FailureAnalyzer:
     ) -> None:
         self.runs_dir = Path(runs_dir) if runs_dir is not None else None
         self.store = store
-        self.lesson_promoter = lesson_promoter or (
-            LessonPromoterCapability(store) if store else None
-        )
+        self.lesson_promoter = lesson_promoter or (LessonPromoterCapability(store) if store else None)
 
     def load_snapshots(self) -> list[dict[str, Any]]:
         if self.store is not None:

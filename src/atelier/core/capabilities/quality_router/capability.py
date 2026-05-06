@@ -195,9 +195,9 @@ class QualityRouterCapability:
 
         estimated_tokens = summary.get("estimated_input_tokens")
         if not isinstance(estimated_tokens, int):
-            estimated_tokens = self._latest_input_tokens(
-                request.run_id
-            ) or self._estimate_input_tokens(request, len(reasonblock_refs))
+            estimated_tokens = self._latest_input_tokens(request.run_id) or self._estimate_input_tokens(
+                request, len(reasonblock_refs)
+            )
 
         base_confidence = self._confidence_from_runtime(
             reasonblock_count=len(reasonblock_refs),
@@ -291,9 +291,7 @@ class QualityRouterCapability:
         if isinstance(refs, list):
             decision.evidence_refs = [str(ref) for ref in refs]
 
-    def _merge_changed_files(
-        self, changed_files: list[str] | None, ledger: RunLedger | None
-    ) -> list[str]:
+    def _merge_changed_files(self, changed_files: list[str] | None, ledger: RunLedger | None) -> list[str]:
         merged: list[str] = []
         for path in changed_files or []:
             if path not in merged:
