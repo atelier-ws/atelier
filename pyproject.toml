@@ -29,6 +29,9 @@ dependencies = [
     "mypy>=1.20.2",
     "types-pyyaml>=6.0.12.20260408",
     "ortools>=9.10",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +54,11 @@ vector = [
 ]
 parsers = [
     "tree-sitter-languages>=1.10; python_version < '3.13'",
+]
+telemetry = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
 ]
 dev = [
     "pytest>=8.0",
@@ -82,6 +90,7 @@ packages = ["src/atelier", "benchmarks"]
 "src/atelier/infra/seed_blocks" = "atelier/infra/seed_blocks"
 "src/atelier/core/rubrics" = "atelier/core/rubrics"
 "src/atelier/core/environments" = "atelier/core/environments"
+"src/atelier/core/service/telemetry/frustration_lexicon.yaml" = "atelier/core/service/telemetry/frustration_lexicon.yaml"
 "templates/reasonblocks" = "atelier/templates/reasonblocks"
 
 [tool.ruff]

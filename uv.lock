@@ -300,6 +300,9 @@ dependencies = [
     { name = "gitpython" },
     { name = "mypy" },
     { name = "networkx" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
     { name = "ortools" },
     { name = "prometheus-client" },
     { name = "pybreaker" },
@@ -352,6 +355,11 @@ repo-map = [
 smart = [
     { name = "ollama" },
 ]
+telemetry = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+]
 vector = [
     { name = "numpy" },
     { name = "pgvector" },
@@ -380,6 +388,12 @@ requires-dist = [
     { name = "networkx", marker = "extra == 'repo-map'", specifier = ">=3.4" },
     { name = "numpy", marker = "extra == 'vector'", specifier = ">=1.26" },
     { name = "ollama", marker = "extra == 'smart'", specifier = ">=0.4.0" },
+    { name = "opentelemetry-api", specifier = ">=1.27" },
+    { name = "opentelemetry-api", marker = "extra == 'telemetry'", specifier = ">=1.27" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'telemetry'", specifier = ">=1.27" },
+    { name = "opentelemetry-sdk", specifier = ">=1.27" },
+    { name = "opentelemetry-sdk", marker = "extra == 'telemetry'", specifier = ">=1.27" },
     { name = "ortools", specifier = ">=9.10" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.2" },
     { name = "prometheus-client", specifier = ">=0.21" },
@@ -403,7 +417,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "embeddings", "smart", "repo-map", "api", "postgres", "vector", "parsers", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "embeddings", "smart", "repo-map", "api", "postgres", "vector", "parsers", "telemetry", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
