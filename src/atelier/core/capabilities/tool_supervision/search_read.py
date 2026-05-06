@@ -122,10 +122,7 @@ def _file_outline(path: str, source: str, lang: str) -> dict[str, Any] | None:
 
             symbols, imports, *_ = analyze_python(source)
             return {
-                "symbols": [
-                    {"name": s.name, "kind": s.kind, "start": s.lineno, "end": s.end_lineno}
-                    for s in symbols
-                ],
+                "symbols": [{"name": s.name, "kind": s.kind, "start": s.lineno, "end": s.end_lineno} for s in symbols],
                 "imports": [i.module for i in imports[:20]],
             }
         if lang in ("typescript", "javascript"):
@@ -135,10 +132,7 @@ def _file_outline(path: str, source: str, lang: str) -> dict[str, Any] | None:
 
             symbols, imports, *_ = analyze_typescript(source)
             return {
-                "symbols": [
-                    {"name": s.name, "kind": s.kind, "start": s.lineno, "end": s.end_lineno}
-                    for s in symbols
-                ],
+                "symbols": [{"name": s.name, "kind": s.kind, "start": s.lineno, "end": s.end_lineno} for s in symbols],
                 "imports": [i.module for i in imports[:20]],
             }
     except Exception:
@@ -251,9 +245,7 @@ def _parse_grep_output(raw: str) -> dict[str, list[int]]:
     return hits
 
 
-def _expand_snippet(
-    lines: list[str], lineno: int, context: int = _CONTEXT_LINES
-) -> tuple[int, int, str]:
+def _expand_snippet(lines: list[str], lineno: int, context: int = _CONTEXT_LINES) -> tuple[int, int, str]:
     """Return (start, end, text) for a match with context lines."""
     n = len(lines)
     start = max(0, lineno - 1 - context)
@@ -262,18 +254,14 @@ def _expand_snippet(
     return start + 1, end, text
 
 
-def _cluster_snippets(
-    linenos: list[int], lines: list[str], context: int = _CONTEXT_LINES
-) -> list[Snippet]:
+def _cluster_snippets(linenos: list[int], lines: list[str], context: int = _CONTEXT_LINES) -> list[Snippet]:
     """Merge overlapping match windows into non-overlapping snippets."""
     if not linenos:
         return []
     sorted_lines = sorted(set(linenos))
     snippets: list[Snippet] = []
     # Build windows per match line, then merge overlapping ones
-    windows: list[tuple[int, int]] = [
-        (max(1, ln - context), min(len(lines), ln + context)) for ln in sorted_lines
-    ]
+    windows: list[tuple[int, int]] = [(max(1, ln - context), min(len(lines), ln + context)) for ln in sorted_lines]
     # Merge overlapping windows
     merged: list[tuple[int, int]] = []
     cur_start, cur_end = windows[0]

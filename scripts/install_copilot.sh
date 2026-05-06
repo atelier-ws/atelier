@@ -92,8 +92,9 @@ JSON
     exit 0
 fi
 
-# ---- write .vscode/mcp.json -------------------------------------------------
-VSCODE_DIR="${WORKSPACE}/.vscode"
+# ---- write user-global .vscode/mcp.json ---------------------------------
+# Atelier is a plugin for users' own projects, install to user-global config
+VSCODE_DIR="${HOME}/.vscode"
 MCP_JSON="${VSCODE_DIR}/mcp.json"
 NEW_ENTRY=$(cat <<JSON
 {
@@ -139,12 +140,13 @@ else
     fi
 fi
 
-# ---- append copilot instructions --------------------------------------------
-GITHUB_DIR="${WORKSPACE}/.github"
-INSTRUCTIONS="${GITHUB_DIR}/copilot-instructions.md"
+# ---- append copilot instructions to user-global config ----------------
+# Install to user-global so it applies to all projects
+USER_GITHUB_DIR="${HOME}/.github"
+INSTRUCTIONS="${USER_GITHUB_DIR}/copilot-instructions.md"
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
-run "mkdir -p '$GITHUB_DIR'"
+run "mkdir -p '$USER_GITHUB_DIR'"
 
 if [ -f "$INSTRUCTIONS" ]; then
     if grep -q "Atelier — Copilot Instructions" "$INSTRUCTIONS" 2>/dev/null; then
@@ -164,12 +166,12 @@ else
     info "created $INSTRUCTIONS"
 fi
 
-# ---- install atelier chat mode ---------------------------------------------
+# ---- install atelier chat mode to user-global ---------------------------
+USER_CHATMODE_DIR="${HOME}/.github/chatmodes"
 CHATMODE_SRC="${ATELIER_REPO}/integrations/copilot/chatmodes/atelier.chatmode.md"
-CHATMODE_DEST_DIR="${WORKSPACE}/.github/chatmodes"
-CHATMODE_DEST="${CHATMODE_DEST_DIR}/atelier.chatmode.md"
+CHATMODE_DEST="${USER_CHATMODE_DIR}/atelier.chatmode.md"
 if [ -f "$CHATMODE_SRC" ]; then
-    run "mkdir -p '$CHATMODE_DEST_DIR'"
+    run "mkdir -p '$USER_CHATMODE_DIR'"
     if [ -f "$CHATMODE_DEST" ]; then
         info "$CHATMODE_DEST already exists — not overwriting"
     else
@@ -180,22 +182,23 @@ else
     warn "chat mode source missing: $CHATMODE_SRC"
 fi
 
-# ---- merge .vscode/tasks.json ----------------------------------------------
-TASKS_SRC="${ATELIER_REPO}/integrations/copilot/tasks.json"
-TASKS_DEST="${WORKSPACE}/.vscode/tasks.json"
+# ---- merge user-global .vscode/tasks.json ---------------------------------
+# Install to user-global so it applies to all projects
+USER_TASKS_SRC="${ATELIER_REPO}/integrations/copilot/tasks.json"
+USER_TASKS_DEST="${HOME}/.vscode/tasks.json"
 
-if [ -f "$TASKS_SRC" ]; then
-    if [ -f "$TASKS_DEST" ]; then
-        backup_file "$TASKS_DEST"
+if [ -f "$USER_TASKS_SRC" ]; then
+    if [ -f "$USER_TASKS_DEST" ]; then
+        backup_file "$USER_TASKS_DEST"
         if $DRY_RUN; then
-            echo "  [dry-run] merge Atelier task presets into $TASKS_DEST"
+            echo "  [dry-run] merge Atelier task presets into $USER_TASKS_DEST"
         else
             python3 - <<PYEOF
 import json
 from pathlib import Path
 
-dest = Path('$TASKS_DEST')
-src = Path('$TASKS_SRC')
+dest = Path('$USER_TASKS_DEST')
+src = Path('$USER_TASKS_SRC')
 existing = json.loads(dest.read_text(encoding='utf-8'))
 incoming = json.loads(src.read_text(encoding='utf-8'))
 
@@ -218,11 +221,12 @@ print('[atelier:copilot] merged Atelier task presets into ' + str(dest))
 PYEOF
         fi
     else
-        run "cp '$TASKS_SRC' '$TASKS_DEST'"
-        info "created VS Code tasks preset: $TASKS_DEST"
+        run "mkdir -p '$(dirname "$USER_TASKS_DEST")'"
+        run "cp '$USER_TASKS_SRC' '$USER_TASKS_DEST'"
+        info "created VS Code tasks preset: $USER_TASKS_DEST"
     fi
 else
-    warn "task preset source missing: $TASKS_SRC"
+    warn "task preset source missing: $USER_TASKS_SRC"
 fi
 
 # ── Post-install verification (replaces verify_copilot.sh) ──
@@ -231,7 +235,7 @@ VFAIL=0
 vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:copilot] FAIL: $*" >&2; VFAIL=1; }
 
-MCP_JSON="${WORKSPACE}/.vscode/mcp.json"
+MCP_JSON="${HOME}/.vscode/mcp.json"
 if [ -f "$MCP_JSON" ]; then
     HAS=$(python3 -c "
 import json
@@ -248,7 +252,7 @@ else
     vfail ".vscode/mcp.json missing"
 fi
 
-INSTRUCTIONS="${WORKSPACE}/.github/copilot-instructions.md"
+INSTRUCTIONS="${HOME}/.github/copilot-instructions.md"
 if [ -f "$INSTRUCTIONS" ] && grep -q -i "atelier" "$INSTRUCTIONS" 2>/dev/null; then
     vpass "copilot-instructions.md references Atelier"
 else
@@ -261,14 +265,14 @@ else
     vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
 fi
 
-CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
+CHATMODE="${HOME}/.github/chatmodes/atelier.chatmode.md"
 if [ -f "$CHATMODE" ]; then
     vpass "Copilot chat mode installed: $CHATMODE"
 else
     vfail "Copilot chat mode missing: $CHATMODE"
 fi
 
-TASKS_JSON="${WORKSPACE}/.vscode/tasks.json"
+TASKS_JSON="${HOME}/.vscode/tasks.json"
 if [ -f "$TASKS_JSON" ] && grep -q "Atelier: Check Plan" "$TASKS_JSON" 2>/dev/null; then
     vpass "Atelier VS Code task presets installed in .vscode/tasks.json"
 else

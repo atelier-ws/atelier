@@ -70,12 +70,7 @@ def test_memory_summarize_search_smart_and_sql_inspect(tmp_path: Path) -> None:
 
     alias_file = root / "sql_aliases.toml"
     alias_file.write_text(
-        (
-            "[aliases.cli_local]\n"
-            'backend = "sqlite"\n'
-            f'dsn = "{db_path}"\n'
-            "allow_writes = false\n"
-        ),
+        ("[aliases.cli_local]\n" 'backend = "sqlite"\n' f'dsn = "{db_path}"\n' "allow_writes = false\n"),
         encoding="utf-8",
     )
 

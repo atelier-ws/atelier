@@ -34,19 +34,13 @@ def run_rubric(
         if result is True:
             outcomes.append(RubricCheckOutcome(name=name, status="pass"))
         elif result is False:
-            outcomes.append(
-                RubricCheckOutcome(name=name, status="fail", detail="Required check failed.")
-            )
+            outcomes.append(RubricCheckOutcome(name=name, status="fail", detail="Required check failed."))
             if name in rubric.block_if_missing:
                 blocked = True
             else:
                 warned = True
         else:
-            outcomes.append(
-                RubricCheckOutcome(
-                    name=name, status="missing", detail="Required check not reported."
-                )
-            )
+            outcomes.append(RubricCheckOutcome(name=name, status="missing", detail="Required check not reported."))
             if name in rubric.block_if_missing:
                 blocked = True
             else:

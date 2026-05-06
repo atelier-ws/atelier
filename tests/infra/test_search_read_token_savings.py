@@ -108,9 +108,7 @@ def test_search_read_token_reduction_ge_70_percent(tmp_path: Path) -> None:
 
     # --- naive token count ---
     grep_output = _run_grep(_SEARCH_PATTERN, str(corpus))
-    file_contents: dict[str, str] = {
-        str(p): p.read_text(encoding="utf-8") for p in sorted(corpus.glob("*.py"))
-    }
+    file_contents: dict[str, str] = {str(p): p.read_text(encoding="utf-8") for p in sorted(corpus.glob("*.py"))}
     naive_tokens = _naive_token_count(grep_output, file_contents)
 
     # --- search_read token count ---
@@ -130,8 +128,7 @@ def test_search_read_token_reduction_ge_70_percent(tmp_path: Path) -> None:
     # Core acceptance criterion: ≤ 30 % of naive
     ratio = smart_tokens / naive_tokens if naive_tokens > 0 else 0.0
     assert ratio <= 0.30, (
-        f"search_read used {ratio:.1%} of naive tokens ({smart_tokens} vs {naive_tokens}); "
-        f"must be ≤ 30 %"
+        f"search_read used {ratio:.1%} of naive tokens ({smart_tokens} vs {naive_tokens}); " f"must be ≤ 30 %"
     )
 
     # Also verify the reported savings metric is consistent

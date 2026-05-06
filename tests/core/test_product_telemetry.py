@@ -63,9 +63,7 @@ def test_scrubber_removes_realistic_pii_fixture() -> None:
         )
 
     assert len(samples) == 100
-    forbidden = re.compile(
-        r"(?:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|/home/user|github\.com|sk-[A-Za-z0-9])"
-    )
+    forbidden = re.compile(r"(?:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|/home/user|github\.com|sk-[A-Za-z0-9])")
     for sample in samples:
         assert not forbidden.search(scrub_string(sample))
 

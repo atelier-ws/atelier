@@ -48,14 +48,8 @@ def _detect_patch_revert_cycle(events: list[dict[str, Any]]) -> PatternMatch | N
 
 def _detect_search_read_loop(events: list[dict[str, Any]]) -> PatternMatch | None:
     """Detect repeated search → read → search sequences with no progress."""
-    search_count = sum(
-        1
-        for ev in events
-        if ev.get("kind", "") in ("search", "grep", "file_search", "symbol_search")
-    )
-    read_count = sum(
-        1 for ev in events if ev.get("kind", "") in ("read_file", "smart_read", "file_read")
-    )
+    search_count = sum(1 for ev in events if ev.get("kind", "") in ("search", "grep", "file_search", "symbol_search"))
+    read_count = sum(1 for ev in events if ev.get("kind", "") in ("read_file", "smart_read", "file_read"))
     total = search_count + read_count
     if total < 6:
         return None
@@ -156,8 +150,7 @@ def _detect_stall(events: list[dict[str, Any]]) -> PatternMatch | None:
     reads = sum(
         1
         for ev in events
-        if ev.get("kind", "")
-        in {"tool_call", "read_file", "smart_read", "file_read", "search", "grep"}
+        if ev.get("kind", "") in {"tool_call", "read_file", "smart_read", "file_read", "search", "grep"}
     )
     stall_ratio = reads / max(len(events), 1)
     if stall_ratio < 0.5:
