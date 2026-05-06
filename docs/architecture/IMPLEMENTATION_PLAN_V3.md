@@ -31,10 +31,10 @@ Atelier owns:
 
 - ReasonBlocks (procedure store) and rubric gates — surfaced as MCP tools;
 - the `memory_*` MCP tools (upsert/get/list/recall/archive);
-- the deterministic context-savings tools: `atelier_search_read`, `atelier_batch_edit`,
-  `atelier_sql_inspect`, AST-outline-first reads;
-- the `atelier_check_plan` advisory and the `atelier_run_rubric_gate` verifier;
-- the trace store (`atelier_record_trace`);
+- the deterministic context-savings tools: `search`, `edit`,
+  `atelier sql inspect`, AST-outline-first reads;
+- the `lint` advisory and the `verify` verifier;
+- the trace store (`trace`);
 - the lesson pipeline that processes traces in the background and surfaces candidates for human
   review.
 
@@ -171,7 +171,7 @@ Optional backends:
 ### 3.3 Routing — V2 advisory, kept as-is
 
 Atelier's V2 routing capability (`quality_router/policy.py`, WP-25..28) is an *advisory* MCP
-response inside `atelier_check_plan`. The host reads `routing_advice` and decides what to do —
+response inside `lint`. The host reads `routing_advice` and decides what to do —
 or ignores it if the host has no per-step model switching. V3 does not change this surface.
 
 If, later, you decide to improve the routing algorithm, that is a separate decision and a
@@ -276,8 +276,8 @@ required that V2 didn't have.
    or `in_progress`.
 3. Read the packet file. Read the V3 plan section it links to. Read any V2 packet it
    supersedes (linked in `supersedes:` front-matter).
-4. Run the standing Atelier loop: `atelier_get_reasoning_context` → draft plan →
-   `atelier_check_plan` → implement → run packet acceptance tests → `atelier_record_trace`.
+4. Run the standing Atelier loop: `reasoning` → draft plan →
+   `lint` → implement → run packet acceptance tests → `trace`.
 5. Mark `status: done` in front-matter and update the V3 INDEX.
 
 Subagents must **not** invent new files outside what a packet specifies, and must **not** add

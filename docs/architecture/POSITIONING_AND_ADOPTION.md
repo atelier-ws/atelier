@@ -50,7 +50,7 @@ Atelier provides the layer that all of those tools fail at when an AI agent is i
 |---|---|---|
 | Style guide / wiki | Agent doesn't read them | ReasonBlocks: agent retrieves on every task |
 | Lint / format | Catches syntax, not procedure | Rubric gates catch procedural decisions |
-| CI rules | Post-hoc, agent already committed | `atelier_check_plan` validates before code is written |
+| CI rules | Post-hoc, agent already committed | `lint` validates before code is written |
 | Code review | Doesn't scale to high-volume agent commits | Per-task trace + rubric verdict per change |
 | ADRs | Static, not retrieved at decision time | ReasonBlocks are retrieved at decision time |
 
@@ -90,11 +90,11 @@ Per the V3 audit on 2026-05-05, all 8 V3 packets and 4 V3.1 packets are implemen
 code. Specifically, these surfaces are live:
 
 - ReasonBlock store with versioned, retrievable blocks (`.atelier/blocks/*.md`).
-- MCP tools: `atelier_get_reasoning_context`, `atelier_check_plan`,
-  `atelier_run_rubric_gate`, `atelier_rescue_failure`, `atelier_record_trace`,
+- MCP tools: `reasoning`, `lint`,
+  `verify`, `rescue`, `trace`,
   `memory_*` family, `lesson_inbox` / `lesson_decide`, `consolidation_inbox` /
-  `consolidation_decide`, `atelier_search_read`, `atelier_batch_edit`,
-  `atelier_sql_inspect`, `atelier_compact_tool_output`, `atelier_repo_map`.
+  `consolidation_decide`, `search`, `edit`,
+  `atelier sql inspect`, `compact`, `atelier_repo_map`.
 - CLI: `atelier letta &#123;up,down,logs,status,reset&#125;`, `atelier reembed`,
   `atelier consolidate`.
 - Local Ollama integration via `src/atelier/infra/internal_llm/ollama_client.py`
@@ -152,7 +152,7 @@ single command that answers "is the team using Atelier and is it working?"
   store and computes:
   - **Rubric pass rate** overall and per `domain` (e.g., `beseam.shopify.publish`,
     `beseam.pdp.schema`).
-  - **Top 5 ReasonBlocks** retrieved (by `atelier_get_reasoning_context` count).
+  - **Top 5 ReasonBlocks** retrieved (by `reasoning` count).
   - **Top 5 rubric failures** with affected file paths and a one-line failure summary
     extracted from the trace's `output_summary`.
   - **New lesson candidates** pending review (count + top 3 by cluster size).
@@ -162,7 +162,7 @@ single command that answers "is the team using Atelier and is it working?"
   `period_end`, `git_sha` of the repo at report time.
 - **Markdown rendering:** `render_markdown(report) -> str`. Stable, scannable format.
   Headings, small tables, no emoji. Suitable for paste into Slack.
-- **MCP tool:** `atelier_report(since_iso, format)` — host can call programmatically.
+- **MCP tool:** `atelier report(since_iso, format)` — host can call programmatically.
 
 **Acceptance.**
 

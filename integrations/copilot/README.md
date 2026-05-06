@@ -1,16 +1,17 @@
 # VS Code Copilot Integration
 
-Support level: **MCP + custom instructions** — MCP server registration and workspace instructions.
+Support level: **MCP + custom instructions** — MCP server registration and Copilot instructions.
 
 ## What gets installed
 
 | Component           | Location after install                       | Description                             |
 | ------------------- | -------------------------------------------- | --------------------------------------- |
-| MCP server          | `.vscode/mcp.json` in workspace root         | Wired to `scripts/atelier_mcp_stdio.sh` |
-| Custom instructions | `.github/copilot-instructions.md` (appended) | Atelier usage instructions              |
+| MCP server          | VS Code user `mcp.json` or workspace `.vscode/mcp.json` | Wired to `scripts/atelier_mcp_stdio.sh` |
+| Custom instructions | `~/.copilot/instructions/atelier.instructions.md` or workspace `.github/copilot-instructions.md` | Atelier usage instructions |
 
-VS Code Copilot reads MCP servers from `.vscode/mcp.json`. The installer creates or merges that file.
-For full plugin features, it also appends Atelier context instructions to your copilot-instructions.md.
+The installer writes user/global VS Code config by default. Pass
+`--workspace DIR` to create or merge workspace `.vscode/mcp.json` and
+`.github/copilot-instructions.md`.
 
 ## Install
 

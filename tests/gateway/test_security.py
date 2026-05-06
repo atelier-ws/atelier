@@ -143,11 +143,6 @@ def test_assert_safe_grep_args_accepts_clean_args() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_cached_grep_removed_from_core_six_surface() -> None:
-    from atelier.gateway.adapters import mcp_server
-
-    assert "atelier_cached_grep" not in mcp_server.TOOLS
-
 
 def test_cli_cached_grep_rejects_injection(tmp_path: Path) -> None:
     runner = CliRunner()

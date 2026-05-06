@@ -10,11 +10,14 @@ Atelier integrates with Claude Code via:
 
 ## Quick Setup (Plugin)
 
-The `integrations/claude/plugin/` directory is the canonical Claude Code plugin. Install it from the workspace root:
+The `integrations/claude/plugin/` directory is the canonical Claude Code plugin. Install it from the Atelier repo:
 
 ```bash
 make install
 ```
+
+This uses Claude user MCP scope by default. For project-local `.mcp.json`, run
+`bash scripts/install_claude.sh --workspace /path/to/workspace`.
 
 Then bootstrap the engine:
 
@@ -35,7 +38,8 @@ If you prefer to wire the MCP server directly without the plugin:
       "command": "uv",
       "args": ["run", "--project", "$&#123;workspaceFolder&#125;/atelier", "atelier-mcp"],
       "env": &#123;
-        "ATELIER_WORKSPACE_ROOT": "$&#123;workspaceFolder&#125;"
+        "ATELIER_WORKSPACE_ROOT": "$&#123;workspaceFolder&#125;",
+        "ATELIER_ROOT": "$&#123;workspaceFolder&#125;/.atelier"
       &#125;
     &#125;
   &#125;
@@ -50,7 +54,7 @@ The plugin provides 4 agents selectable via `claude --agent`:
 | ----------------- | ----------------------------------------------------------------- |
 | `atelier:code`    | Main coding agent — runs full reasoning loop (default)            |
 | `atelier:explore` | Read-only investigator — retrieves context, reads files, no edits |
-| `atelier:review`  | Verifier — runs `check_plan` + `run_rubric_gate` against a patch  |
+| `atelier:review`  | Verifier — runs `lint` + `verify` against a patch  |
 | `atelier:repair`  | Repair specialist — loads run ledger, asks for rescue, verifies   |
 
 ## Slash Commands
@@ -82,9 +86,9 @@ Hooks are **disabled by default**. Enable them in `integrations/claude/plugin/ho
 
 What each hook does:
 
-- **`pre_tool_use.py`** — On Edit/Write to risky paths (`shopify/`, `pdp/`, `catalog/`, etc.), require a recent successful `atelier_check_plan` in session state.
-- **`post_tool_use_failure.py`** — On the second identical Bash failure (same command + error signature), tell the agent to call `atelier_rescue_failure`.
-- **`stop.py`** — On session stop, ensure `atelier_record_trace` was called.
+- **`pre_tool_use.py`** — On Edit/Write to risky paths (`shopify/`, `pdp/`, `catalog/`, etc.), require a recent successful `lint` in session state.
+- **`post_tool_use_failure.py`** — On the second identical Bash failure (same command + error signature), tell the agent to call `rescue`.
+- **`stop.py`** — On session stop, ensure `trace` was called.
 - **`compact.py`** — On PreCompact/PostCompact, manage context preservation manifest (see section below).
 
 Hook state is kept at `$&#123;workspace&#125;/.atelier/session_state.json`. No secrets, no chain-of-thought stored.
@@ -105,7 +109,7 @@ When Claude Code compacts the conversation, Atelier preserves critical runtime s
 **Pre-Compact Lifecycle:**
 
 1. Claude Code triggers the `PreCompact` hook (before compaction).
-2. Atelier's `atelier_compact_advise` MCP tool calculates:
+2. Atelier's `compact` MCP tool calculates:
    - **Context utilisation %** (tokens used / 200K context window)
    - **Should compact** (true if ≥60% utilized)
    - **Top ReasonBlocks** to preserve (max 3)
@@ -148,16 +152,16 @@ To enable the compact lifecycle:
 
 ## MCP Tools Available
 
-**V1 (core):** `atelier_get_reasoning_context`, `atelier_check_plan`, `atelier_rescue_failure`, `atelier_run_rubric_gate`, `atelier_record_trace`, `atelier_search`
+**V1 (core):** `reasoning`, `lint`, `rescue`, `verify`, `trace`, `search`
 
-**V2 (extended):** `atelier_get_run_ledger`, `atelier_update_run_ledger`, `atelier_monitor_event`, `atelier_compress_context`, `atelier_get_environment`, `atelier_get_environment_context`, `atelier_smart_read`, `atelier_smart_search`, `atelier_cached_grep`, `atelier_compact_advise`
+**V2 (extended):** `reasoning`, `trace`, `trace`, `compact`, `reasoning`, `reasoning`, `read`, `search`, `search`, `compact`
 
 ## Reasoning Loop (Full)
 
 The `atelier:code` agent and `atelier-task` skill enforce this loop on every task:
 
-1. `atelier_get_reasoning_context` — inject relevant procedures
-2. `atelier_check_plan` — validate plan before editing (exit 2 = abort)
+1. `reasoning` — inject relevant procedures
+2. `lint` — validate plan before editing (exit 2 = abort)
 3. Execute task
-4. `atelier_run_rubric_gate` — verify output meets domain requirements
-5. `atelier_record_trace` — record what happened (for future rescue + block extraction)
+4. `verify` — verify output meets domain requirements
+5. `trace` — record what happened (for future rescue + block extraction)

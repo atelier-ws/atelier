@@ -23,7 +23,7 @@ All trace string fields (`task`, `diff_summary`, `output_summary`, `files_touche
 This is implemented in `src/atelier/core/redaction.py` and applied in:
 
 - `record-trace` CLI command
-- `atelier_record_trace` MCP tool
+- `trace` MCP tool
 - `POST /v1/traces` HTTP endpoint
 - `POST /v1/traces/&#123;id&#125;/finish` HTTP endpoint
 
@@ -49,7 +49,7 @@ The OpenMemory bridge (`src/atelier/integrations/openmemory.py`) is a no-op stub
 
 ### Cached-Grep Injection Guard
 
-`atelier_cached_grep` and `cached-grep` CLI validate grep patterns before execution:
+`search` and `cached-grep` CLI validate grep patterns before execution:
 
 - Patterns are not passed to shell via string interpolation
 - `subprocess` is called with an argument list, never `shell=True`
@@ -73,7 +73,7 @@ Atelier never writes `ATELIER_API_KEY`, OpenAI keys, Shopify tokens, or any othe
 
 ### SQL Inspect Alias Allowlist + Read-only Gate
 
-`atelier_sql_inspect` and `atelier sql inspect` only connect to aliases declared in
+`atelier sql inspect` and `atelier sql inspect` only connect to aliases declared in
 `.atelier/sql_aliases.toml` under `[aliases.*]`.
 
 - Only listed aliases are reachable.

@@ -1,5 +1,5 @@
 {
-  "name": "check_plan",
+  "name": "lint",
   "arguments": {
     "task": "Update Shopify product description and republish",
     "domain": "beseam.shopify.publish",

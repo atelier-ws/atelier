@@ -9,12 +9,12 @@ def test_realtime_context_records_and_compacts(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     mgr = RealtimeContextManager(root)
 
-    mgr.record_tool_input("atelier_check_plan", {"task": "fix", "plan": ["a", "b"]})
+    mgr.record_tool_input("lint", {"task": "fix", "plan": ["a", "b"]})
     mgr.record_tool_output(
-        "atelier_check_plan",
+        "lint",
         {"status": "blocked", "warnings": ["missing validation"]},
     )
-    mgr.record_tool_error("atelier_check_plan", "AssertionError: expected 200 got 500")
+    mgr.record_tool_error("lint", "AssertionError: expected 200 got 500")
     mgr.record_prompt_response(
         "Please fix the failing endpoint and avoid retries",
         "I found repeated AssertionError and will add a guardrail",
@@ -37,7 +37,7 @@ def test_realtime_context_records_and_compacts(tmp_path: Path) -> None:
 def test_realtime_context_persists_to_disk(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     mgr = RealtimeContextManager(root)
-    mgr.record_tool_input("atelier_get_reasoning_context", {"task": "ship"})
+    mgr.record_tool_input("reasoning", {"task": "ship"})
     mgr.persist()
 
     path = root / "runtime" / "realtime_context.json"
