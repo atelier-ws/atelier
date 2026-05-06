@@ -158,9 +158,7 @@ class OpenCodeImporter:
     # Internal
     # ------------------------------------------------------------------
 
-    def _import_session(
-        self, session_row: dict[str, Any], db_path: Path, *, force: bool = False
-    ) -> bool:
+    def _import_session(self, session_row: dict[str, Any], db_path: Path, *, force: bool = False) -> bool:
         session_id: str = session_row["id"]
 
         # ── Timestamp-based dedup check ────────────────────────────────
@@ -168,12 +166,7 @@ class OpenCodeImporter:
         existing = self.store.get_raw_artifact(artifact_id)
         # Use time_created (ms timestamp) from DB as proxy for mtime
         session_mtime = _ms_to_dt(session_row.get("time_created"))
-        if (
-            not force
-            and existing
-            and existing.source_file_mtime
-            and session_mtime <= existing.source_file_mtime
-        ):
+        if not force and existing and existing.source_file_mtime and session_mtime <= existing.source_file_mtime:
             return False  # unchanged, skip
 
         # ── Step 1: serialize raw data and apply redaction ──────────────────
@@ -373,12 +366,7 @@ class OpenCodeImporter:
             elif tool_name == "bash":
                 cmd = inp.get("command")
                 if cmd:
-                    stdout = _to_text(
-                        metadata.get("stdout")
-                        or metadata.get("output")
-                        or state.get("output")
-                        or ""
-                    )
+                    stdout = _to_text(metadata.get("stdout") or metadata.get("output") or state.get("output") or "")
                     stderr = _to_text(metadata.get("stderr") or state.get("stderr") or "")
                     exit_code = metadata.get("exit")
                     commands_run.append(

@@ -215,7 +215,7 @@ same way. Atelier therefore records a route execution contract per host:
 > it records the chosen tier, confidence, reason, and required verifiers for a single routing step.
 > A `RouteExecutionContract` is a _host descriptor_: it states whether the host can _enforce_ that
 > decision (block start, require verification, force model flags) or can only _advise_ on it.
-> Call `atelier_route_contract(host)` or `atelier route contract --host <host>` to retrieve the
+> Call `atelier route contract(host)` or `atelier route contract --host <host>` to retrieve the
 > contract for a specific host. The `provider_enforced` mode is always disabled in the contract
 > until a future provider execution packet explicitly enables it.
 

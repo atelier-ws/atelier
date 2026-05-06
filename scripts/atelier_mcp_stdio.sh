@@ -13,7 +13,7 @@
 # Environment variables honoured:
 #   ATELIER_ROOT              — override store root (default: <workspace>/.atelier)
 #   ATELIER_WORKSPACE_ROOT    — override workspace root (default: cwd at exec time)
-#   ATELIER_STORE_ROOT        — explicit store root override (takes precedence over ATELIER_ROOT)
+#   ATELIER_STORE_ROOT        — explicit store root alias when ATELIER_ROOT is unset
 #
 # This script intentionally never writes non-JSON to stdout.
 
@@ -29,11 +29,14 @@ if [ -z "${ATELIER_WORKSPACE_ROOT:-}" ]; then
 fi
 
 # --- store root -------------------------------------------------------------
-# Default to the atelier repo's own .atelier/ — derived from this script's
-# location so the MCP server always writes to the right place regardless of
-# what ATELIER_WORKSPACE_ROOT the host injects.
-if [ -z "${ATELIER_STORE_ROOT:-}" ] && [ -z "${ATELIER_ROOT:-}" ]; then
-    export ATELIER_ROOT="${ATELIER_REPO}/.atelier"
+# The MCP server reads ATELIER_ROOT. Accept ATELIER_STORE_ROOT as a friendlier
+# host-config alias, then fall back to the active workspace's .atelier store.
+if [ -z "${ATELIER_ROOT:-}" ]; then
+    if [ -n "${ATELIER_STORE_ROOT:-}" ]; then
+        export ATELIER_ROOT="${ATELIER_STORE_ROOT}"
+    else
+        export ATELIER_ROOT="${ATELIER_WORKSPACE_ROOT}/.atelier"
+    fi
 fi
 
 # --- diagnostics → stderr only (never stdout) ------------------------------

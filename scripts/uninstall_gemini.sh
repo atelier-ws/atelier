@@ -1,74 +1,76 @@
 #!/usr/bin/env bash
-# uninstall_gemini.sh — Remove Atelier from Gemini CLI
-#
-# What it does:
-#   1. Removes atelier entry from .gemini/settings.json
+# uninstall_gemini.sh - Remove Atelier from Gemini CLI
 #
 # Options:
-#   --workspace DIR  Target workspace root (default: cwd)
-#   --dry-run       Print what would happen, touch nothing
+#   --workspace DIR  Remove project-local artifacts from DIR instead of global user config
+#   --dry-run        Print what would happen, touch nothing
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-
 DRY_RUN=false
-WORKSPACE="${PWD}"
+WORKSPACE=""
+WORKSPACE_SET=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=true ;;
-        --workspace) WORKSPACE="$2"; shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            WORKSPACE="$2"
+            WORKSPACE_SET=true
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift
 done
 
-WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+if $WORKSPACE_SET; then
+    WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+    GEMINI_DIR="${WORKSPACE}/.gemini"
+    GEMINI_MD="${WORKSPACE}/GEMINI.md"
+else
+    GEMINI_DIR="${HOME}/.gemini"
+    GEMINI_MD="${GEMINI_DIR}/GEMINI.md"
+fi
+SETTINGS="${GEMINI_DIR}/settings.json"
+CMD_DIR="${GEMINI_DIR}/commands/atelier"
 
 info()  { echo "[atelier:uninstall:gemini] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# Check common gemini settings locations
-GEMINI_SETTINGS=""
-for loc in "$WORKSPACE/.gemini/settings.json" "$HOME/.gemini/settings.json"; do
-    if [ -f "$loc" ]; then
-        GEMINI_SETTINGS="$loc"
-        break
-    fi
-done
-
-if [ -n "$GEMINI_SETTINGS" ] && [ -f "$GEMINI_SETTINGS" ]; then
-    if command -v python3 &> /dev/null; then
-        run "python3 -c '
+if [ -f "$SETTINGS" ] && grep -q "atelier" "$SETTINGS" 2>/dev/null; then
+    run "python3 -c '
 import json
-import sys
-path = \"$GEMINI_SETTINGS\"
-try:
-    with open(path, \"r\") as f:
-        data = json.load(f)
-    modified = False
-    # Check for mcpServers
-    if \"mcpServers\" in data and \"atelier\" in data[\"mcpServers\"]:
-        del data[\"mcpServers\"][\"atelier\"]
-        modified = True
-    # Check for tools or other possible locations
-    if \"tools\" in data and isinstance(data[\"tools\"], list):
-        data[\"tools\"] = [t for t in data[\"tools\"] if t != \"atelier\"]
-        modified = True
-    if modified:
-        with open(path, \"w\") as f:
-            json.dump(data, f, indent=2)
-        print(\"Removed atelier from .gemini/settings.json\")
-except Exception as e:
-    print(f\"Warning: {e}\", file=sys.stderr)
+from pathlib import Path
+path = Path(\"$SETTINGS\")
+data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
+data.get(\"mcpServers\", {}).pop(\"atelier\", None)
+path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
-    else
-        echo "[atelier:uninstall:gemini] WARN: python3 not found, skipping .gemini/settings.json cleanup"
-    fi
-else
-    info "No .gemini/settings.json found, skipping."
+    info "Removed atelier MCP entry from $SETTINGS"
+fi
+
+if [ -d "$CMD_DIR" ]; then
+    run "rm -rf '$CMD_DIR'"
+    info "Removed $CMD_DIR"
+fi
+
+if [ -f "$GEMINI_MD" ] && grep -q "atelier:code" "$GEMINI_MD" 2>/dev/null; then
+    run "cp '$GEMINI_MD' '${GEMINI_MD}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
+    run "python3 -c '
+from pathlib import Path
+path = Path(\"$GEMINI_MD\")
+content = path.read_text(encoding=\"utf-8\")
+marker = \"# Atelier\"
+if marker in content:
+    content = content[:content.find(marker)].rstrip()
+path.write_text((content + \"\\n\") if content else \"\", encoding=\"utf-8\")
+'"
+    info "Removed Atelier persona from $GEMINI_MD"
 fi
 
 info "Done."

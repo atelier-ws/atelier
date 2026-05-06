@@ -66,11 +66,7 @@ class SemanticFileMemoryCapability:
     def _effective_loc(source: str, language: str) -> int:
         """Count effective LOC (exclude blank + comment-only lines)."""
         if language == "python":
-            return sum(
-                1
-                for line in source.splitlines()
-                if line.strip() and not line.lstrip().startswith("#")
-            )
+            return sum(1 for line in source.splitlines() if line.strip() and not line.lstrip().startswith("#"))
 
         if language in {"typescript", "javascript"}:
             count = 0
@@ -129,9 +125,7 @@ class SemanticFileMemoryCapability:
         returned_tokens = max(1, len(returned_text) // 4)
         return max(0, full_tokens - returned_tokens)
 
-    def _outline_for(
-        self, path: Path, source: str, language: str, *, effective_loc: int
-    ) -> FileOutline:
+    def _outline_for(self, path: Path, source: str, language: str, *, effective_loc: int) -> FileOutline:
         if language == "python":
             base = python_outline(str(path), source)
         else:
@@ -181,11 +175,7 @@ class SemanticFileMemoryCapability:
             )
             return result
 
-        if (
-            not expand
-            and effective_loc > outline_threshold
-            and language in {"python", "typescript", "javascript"}
-        ):
+        if not expand and effective_loc > outline_threshold and language in {"python", "typescript", "javascript"}:
             outline = self._outline_for(
                 file_path,
                 source,
@@ -245,9 +235,7 @@ class SemanticFileMemoryCapability:
         git_last_author_date = ""
 
         if language == "python":
-            sym_infos, imp_infos, ast_summary, module_docstring, complexity_score = analyze_python(
-                source
-            )
+            sym_infos, imp_infos, ast_summary, module_docstring, complexity_score = analyze_python(source)
             symbols = [s.name for s in sym_infos]
             exports = [s.name for s in sym_infos if s.is_export and not s.is_private]
             symbol_details = [
@@ -284,8 +272,7 @@ class SemanticFileMemoryCapability:
             symbols = [s.name for s in sym_infos_ts]
             exports = [s.name for s in sym_infos_ts if s.is_export]
             symbol_details = [
-                {"name": s.name, "kind": s.kind, "lineno": s.lineno, "signature": s.signature}
-                for s in sym_infos_ts
+                {"name": s.name, "kind": s.kind, "lineno": s.lineno, "signature": s.signature} for s in sym_infos_ts
             ]
             imports_modules = sorted({i.module for i in imp_infos_ts})
             summary_str = "\n".join(lines[:max_lines])
@@ -406,9 +393,7 @@ class SemanticFileMemoryCapability:
         for _ in range(4):
             tests_dir = root / "tests"
             if tests_dir.is_dir():
-                matches = list(tests_dir.rglob(f"test_{stem}.py")) + list(
-                    tests_dir.rglob(f"*{stem}*test*.py")
-                )
+                matches = list(tests_dir.rglob(f"test_{stem}.py")) + list(tests_dir.rglob(f"*{stem}*test*.py"))
                 return [str(p) for p in matches[:5]]
             root = root.parent
         return []

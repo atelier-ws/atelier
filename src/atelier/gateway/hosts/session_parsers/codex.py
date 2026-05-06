@@ -172,9 +172,7 @@ def _files_from_patch(patch_text: str) -> list[str]:
     """
     files: list[str] = []
     for ln in patch_text.splitlines():
-        m = re.match(
-            r"^\*\*\*\s+(?:Update|Add|Delete|Move|Rename)\s+File:\s+(.+)$", ln, re.IGNORECASE
-        )
+        m = re.match(r"^\*\*\*\s+(?:Update|Add|Delete|Move|Rename)\s+File:\s+(.+)$", ln, re.IGNORECASE)
         if m:
             files.append(m.group(1).strip())
     return files
@@ -451,8 +449,7 @@ class CodexImporter:
             status="success",
             files_touched=cast(Any, files_enriched),
             tools_called=[
-                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n))
-                for n, c in tools_called.items()
+                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n)) for n, c in tools_called.items()
             ],
             commands_run=cast(Any, commands_run),
             errors_seen=[],
@@ -563,8 +560,7 @@ class CodexImporter:
             status="success",
             files_touched=cast(Any, files_enriched),
             tools_called=[
-                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n))
-                for n, c in tools_called.items()
+                ToolCall(name=n, args_hash="", count=c, args=tool_args.get(n)) for n, c in tools_called.items()
             ],
             commands_run=cast(Any, commands_run),
             errors_seen=[],

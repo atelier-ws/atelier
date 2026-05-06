@@ -30,9 +30,7 @@ def test_report_cli_outputs_json_and_markdown(tmp_path: Path) -> None:
         write_json=False,
     )
 
-    json_result = runner.invoke(
-        cli, ["--root", str(root), "report", "--since", "7d", "--format", "json"]
-    )
+    json_result = runner.invoke(cli, ["--root", str(root), "report", "--since", "7d", "--format", "json"])
     assert json_result.exit_code == 0, json_result.output
     payload = json.loads(json_result.output)
     assert payload["rubric_pass_rate"]["total"] == 1
@@ -41,8 +39,3 @@ def test_report_cli_outputs_json_and_markdown(tmp_path: Path) -> None:
     assert markdown_result.exit_code == 0, markdown_result.output
     assert "Atelier Weekly Governance Report" in markdown_result.output
 
-
-def test_report_mcp_tool_is_registered() -> None:
-    from atelier.gateway.adapters.mcp_server import TOOLS
-
-    assert "atelier_report" in TOOLS

@@ -66,14 +66,8 @@ def chat(
             raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     except Exception as exc:  # pragma: no cover - depends on local server
         raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
-    message = (
-        response.get("message", {})
-        if isinstance(response, dict)
-        else getattr(response, "message", {})
-    )
-    content = (
-        message.get("content", "") if isinstance(message, dict) else getattr(message, "content", "")
-    )
+    message = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", {})
+    content = message.get("content", "") if isinstance(message, dict) else getattr(message, "content", "")
     if json_schema is None:
         return str(content)
     try:

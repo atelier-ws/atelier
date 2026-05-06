@@ -53,9 +53,7 @@ def test_make_memory_store_does_not_fallback_when_letta_construction_fails(
         _ = (self, root, adapter, client)
         raise MemorySidecarUnavailable("503 Service Unavailable")
 
-    monkeypatch.setattr(
-        "atelier.infra.memory_bridges.letta_adapter.LettaMemoryStore.__init__", fail_init
-    )
+    monkeypatch.setattr("atelier.infra.memory_bridges.letta_adapter.LettaMemoryStore.__init__", fail_init)
 
     with pytest.raises(MemorySidecarUnavailable):
         make_memory_store(tmp_path / "atelier", prefer="letta")

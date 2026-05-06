@@ -293,8 +293,7 @@ class ReasoningReuseCapability:
         # BM25 scoring
         doc_tokens_map = {
             b.id: _tokenise(
-                f"{b.title} {b.title} {b.domain} {' '.join(b.triggers)} "
-                f"{b.situation} {' '.join(b.failure_signals)}"
+                f"{b.title} {b.title} {b.domain} {' '.join(b.triggers)} " f"{b.situation} {' '.join(b.failure_signals)}"
             )
             for b in all_blocks
         }
@@ -302,10 +301,7 @@ class ReasoningReuseCapability:
         idf = _build_idf(list(doc_tokens_map.values()))
 
         bm25_scored = sorted(
-            [
-                (b.id, _bm25(query_tokens, doc_tokens_map[b.id], idf, avg_len=avg_len))
-                for b in all_blocks
-            ],
+            [(b.id, _bm25(query_tokens, doc_tokens_map[b.id], idf, avg_len=avg_len)) for b in all_blocks],
             key=lambda x: x[1],
             reverse=True,
         )
@@ -347,9 +343,7 @@ class ReasoningReuseCapability:
                 continue
 
             is_rescue = bool(
-                errors
-                and block.failure_signals
-                and any(fs.lower() in error_text_lower for fs in block.failure_signals)
+                errors and block.failure_signals and any(fs.lower() in error_text_lower for fs in block.failure_signals)
             )
 
             # Combine: RRF (rank quality) x recency x Bayesian success
@@ -363,9 +357,7 @@ class ReasoningReuseCapability:
                 _HybridResult(
                     block=block,
                     fts_score=1.0 / (_RRF_K + fts_rank.get(bid, len(all_blocks))),
-                    bm25_score=_bm25(
-                        query_tokens, doc_tokens_map.get(bid, []), idf, avg_len=avg_len
-                    ),
+                    bm25_score=_bm25(query_tokens, doc_tokens_map.get(bid, []), idf, avg_len=avg_len),
                     recency_score=_recency_score(block),
                     success_score=_bayesian_success(block),
                     final_score=final,
@@ -430,9 +422,7 @@ class ReasoningReuseCapability:
         for item in results:
             prior = self._adaptive_priors.prior(item.block.domain)
             item.adaptive_prior = prior
-            multiplier = _ADAPTIVE_MIN_MULTIPLIER + (
-                (_ADAPTIVE_MAX_MULTIPLIER - _ADAPTIVE_MIN_MULTIPLIER) * prior
-            )
+            multiplier = _ADAPTIVE_MIN_MULTIPLIER + ((_ADAPTIVE_MAX_MULTIPLIER - _ADAPTIVE_MIN_MULTIPLIER) * prior)
             item.final_score *= multiplier
 
     def _apply_graph_propagation(self, results: list[Any]) -> None:
@@ -456,9 +446,7 @@ class ReasoningReuseCapability:
         rescue_nodes = [r.block.id for r in results if r.rescue]
         if rescue_nodes:
             base = 1.0 / len(rescue_nodes)
-            personalization = {
-                node: (base if node in rescue_nodes else 0.001) for node in graph.nodes
-            }
+            personalization = {node: (base if node in rescue_nodes else 0.001) for node in graph.nodes}
         else:
             personalization = {node: 1.0 / max(graph.number_of_nodes(), 1) for node in graph.nodes}
 

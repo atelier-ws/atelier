@@ -28,14 +28,14 @@ spec at [§ 8](../IMPLEMENTATION_PLAN_V2_DATA_MODEL.md#8-new-mcp-tools).
 1. Inspect the existing tool registration block in `mcp_server.py`. Match the same pattern (Pydantic
    tool input model, dispatch dict, error mapping).
 
-2. Tool: `atelier_memory_upsert_block`
+2. Tool: `memory`
    - Input: `agent_id, label, value, [limit_chars, description, read_only, pinned, metadata, expected_version, actor]`
    - Default `actor = "agent:" + agent_id`
    - Calls `make_memory_store(root).upsert_block(...)` inside a try/except that maps
      `MemoryConcurrencyError` → tool error code `409` and `MemorySidecarUnavailable` → `503`
    - Output: `&#123; id, version &#125;`
 
-3. Tool: `atelier_memory_get_block`
+3. Tool: `memory`
    - Input: `agent_id, label`
    - Output: full `MemoryBlock` JSON (Pydantic `model_dump(mode="json")`)
    - Returns `null` (not an error) on miss

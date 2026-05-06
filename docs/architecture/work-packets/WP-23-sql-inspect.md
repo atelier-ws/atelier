@@ -20,14 +20,14 @@ and harden it.
 
 - **Host-native:** interactive database shells, migrations, write workflows, credentials, tunnels,
   and production access policies stay owned by the host environment and existing DB tooling.
-- **Atelier augmentation:** `atelier_sql_inspect` provides bounded, read-only, deterministic query
+- **Atelier augmentation:** `atelier sql inspect` provides bounded, read-only, deterministic query
   results for reasoning and trace evidence.
 - **Not in scope:** do not build an interactive SQL client, schema migration system, data editor, or
   broad database administration surface.
 
 ## Files touched
 
-- `src/atelier/gateway/adapters/mcp_server.py` — edit (register `atelier_sql_inspect`)
+- `src/atelier/gateway/adapters/mcp_server.py` — edit (register `atelier sql inspect`)
 - `src/atelier/core/capabilities/tool_supervision/sql_inspect.py` — likely exists, edit
 - `tests/gateway/test_sql_inspect_mcp.py`
 - `docs/engineering/mcp.md` — edit

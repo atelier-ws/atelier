@@ -690,9 +690,7 @@ def test_capability_registry_dependency_report() -> None:
     assert report["capabilities"]["context_compression"]["fallback"] == "reasoning_reuse"
     assert "reasoning_reuse" in report["capabilities"]["context_compression"]["depends_on"]
     # At least one edge should appear
-    assert any(
-        e["from"] == "reasoning_reuse" and e["to"] == "context_compression" for e in report["edges"]
-    )
+    assert any(e["from"] == "reasoning_reuse" and e["to"] == "context_compression" for e in report["edges"])
 
 
 def test_capability_registry_activation_path_ordered() -> None:

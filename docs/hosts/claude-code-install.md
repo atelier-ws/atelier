@@ -20,9 +20,10 @@
 make install
 ```
 
-This registers the repo root as a local Claude plugin source (`atelier`), installs
-`atelier@atelier`, and merges the MCP server entry into your workspace
-`.mcp.json`.
+This registers the local Claude plugin source (`atelier`), installs
+`atelier@atelier`, and registers the MCP server in Claude's user scope.
+Pass `--workspace /path/to/workspace` to write a project-local `.mcp.json`
+instead.
 
 The script is idempotent — safe to run again after updates.
 
@@ -36,12 +37,14 @@ All checks should show `PASS`:
 
 - `claude plugin list` shows `atelier@atelier ✔ enabled`
 - Plugin source `atelier` is registered
-- `.mcp.json` contains atelier server entry
+- Global install: `claude mcp list` shows `atelier`
+- Workspace install: `.mcp.json` contains atelier server entry
 
 ### Manual steps (print-only mode)
 
 ```bash
 bash scripts/install_claude.sh --print-only
+bash scripts/install_claude.sh --print-only --workspace /path/to/workspace
 ```
 
 ---
@@ -79,16 +82,14 @@ bash scripts/install_claude.sh --print-only
 
 ## What Gets Installed (Full Plugin)
 
-| Artifact                   | Location                                                              |
-| -------------------------- | --------------------------------------------------------------------- |
-| Claude plugin (registered) | `~/.claude/plugins/cache/atelier/atelier/<version>/`                  |
-| Plugin listing             | `~/.claude/plugins/installed_plugins.json`                            |
-| Marketplace entry          | `~/.claude/settings.json` (known_marketplaces)                        |
-| MCP server config          | `<workspace>/.mcp.json`                                               |
-| Skills (slash commands)    | 7 skills in `integrations/claude/plugin/skills/`                      |
-| Agents                     | `atelier:code`, `atelier:explore`, `atelier:review`, `atelier:repair` |
-| Internal skills            | 4 skills in `integrations/claude/plugin/skills/atelier-*/`            |
-| Hooks                      | disabled by default in `integrations/claude/plugin/hooks/hooks.json`  |
+| Artifact            | Global install                                        | `--workspace DIR` install                 |
+| ------------------- | ----------------------------------------------------- | ----------------------------------------- |
+| Claude plugin       | `~/.claude/plugins/cache/...`                         | same plugin install                       |
+| Plugin listing      | `~/.claude/plugins/installed_plugins.json`            | same plugin listing                       |
+| Marketplace entry   | `~/.claude/settings.json` (known_marketplaces)        | same marketplace entry                    |
+| MCP server config   | Claude user MCP scope (`claude mcp add --scope user`) | `<workspace>/.mcp.json`                   |
+| Workspace env       | not written                                           | `<workspace>/.claude/settings.local.json` |
+| Skills/agents/hooks | bundled in `integrations/claude/plugin/`              | bundled in the same plugin                |
 
 ---
 
@@ -133,34 +134,34 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 
 ### Memory tools
 
-| Tool                          | Description                                | Example                                                                                          |
-| ----------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `atelier_memory_upsert_block` | Store a named value in agent memory        | `atelier_memory_upsert_block(&#123;agent_id: 'atelier:code', label: 'last_gid', value: 'gid://...'&#125;)` |
-| `atelier_memory_get_block`    | Retrieve a named memory block              | `atelier_memory_get_block(&#123;agent_id: 'atelier:code', label: 'last_gid'&#125;)`                        |
-| `atelier_memory_recall`       | FTS + vector search over archival memory   | `atelier_memory_recall(&#123;agent_id: 'atelier:code', query: 'Shopify GID pattern'&#125;)`                |
-| `atelier_memory_archive`      | Persist a text passage to archival memory  | `atelier_memory_archive(&#123;agent_id: 'atelier:code', text: '...', source: 'run_123'&#125;)`             |
-| `atelier_memory_summary`      | Summarize sleeptime memory to save context | `atelier_memory_summary(&#123;run_id: 'run_123'&#125;)`                                                    |
+| Tool     | Description                                | Example                                                                               |
+| -------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `memory` | Store a named value in agent memory        | `memory(&#123;agent_id: 'atelier:code', label: 'last_gid', value: 'gid://...'&#125;)` |
+| `memory` | Retrieve a named memory block              | `memory(&#123;agent_id: 'atelier:code', label: 'last_gid'&#125;)`                     |
+| `memory` | FTS + vector search over archival memory   | `memory(&#123;agent_id: 'atelier:code', query: 'Shopify GID pattern'&#125;)`          |
+| `memory` | Persist a text passage to archival memory  | `memory(&#123;agent_id: 'atelier:code', text: '...', source: 'run_123'&#125;)`        |
+| `memory` | Summarize sleeptime memory to save context | `memory(&#123;run_id: 'run_123'&#125;)`                                               |
 
 ### Compact lifecycle
 
-| Tool                     | Boundary                                             | Description                                                                                                                                                        |
-| ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `atelier_compact_advise` | **Atelier augmentation** over host-native `/compact` | Call before triggering `/compact`; Atelier provides `preserve_blocks` and `pin_memory` lists plus a `suggested_prompt` to reinject runtime facts after compaction. |
+| Tool      | Boundary                                             | Description                                                                                                                                                        |
+| --------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `compact` | **Atelier augmentation** over host-native `/compact` | Call before triggering `/compact`; Atelier provides `preserve_blocks` and `pin_memory` lists plus a `suggested_prompt` to reinject runtime facts after compaction. |
 
 ### Context-savings tools
 
-| Tool                  | Boundary                 | Description                                                                      |
-| --------------------- | ------------------------ | -------------------------------------------------------------------------------- |
-| `atelier_search_read` | **Atelier augmentation** | Token-saving combined search + read; deduplicates repeated context fetches       |
-| `atelier_batch_edit`  | **Atelier augmentation** | Deterministic multi-file batch edits (optional — host MultiEdit remains default) |
-| `atelier_sql_inspect` | **Atelier augmentation** | Read-only SQL schema/data inspection                                             |
+| Tool                    | Boundary                 | Description                                                                      |
+| ----------------------- | ------------------------ | -------------------------------------------------------------------------------- |
+| `search`                | **Atelier augmentation** | Token-saving combined search + read; deduplicates repeated context fetches       |
+| `edit`                  | **Atelier augmentation** | Deterministic multi-file batch edits (optional — host MultiEdit remains default) |
+| `atelier bench runtime` | **Atelier augmentation** | Capability efficiency metrics                                                    |
 
 ### Lesson pipeline
 
 | Tool                    | Description                                                         |
 | ----------------------- | ------------------------------------------------------------------- |
-| `atelier_lesson_inbox`  | List pending lesson candidates awaiting decision                    |
-| `atelier_lesson_decide` | Approve or reject a candidate; approved lessons become ReasonBlocks |
+| `atelier lesson inbox`  | List pending lesson candidates awaiting decision                    |
+| `atelier lesson decide` | Approve or reject a candidate; approved lessons become ReasonBlocks |
 
 ## Troubleshooting
 
@@ -169,13 +170,13 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 | Not in `claude plugin list`   | Run `make install`                                                      |
 | Plugin listed but not enabled | Run `claude plugin enable atelier@atelier`                              |
 | Validation fails              | Run `claude plugin validate integrations/claude/plugin/`                |
-| MCP tools missing             | Check `.mcp.json` in workspace root; re-run `make install`              |
+| MCP tools missing             | Global: run `claude mcp list`; workspace: check `.mcp.json`             |
 | Hooks firing unexpectedly     | Set `"enabled": false` in `integrations/claude/plugin/hooks/hooks.json` |
 | Want to test without install  | Use `bash scripts/install_claude.sh --print-only`                       |
 
 ## Uninstall
 
 ```bash
-claude plugin uninstall atelier@atelier
-# Remove atelier entry from .mcp.json manually
+bash scripts/uninstall_claude.sh
+bash scripts/uninstall_claude.sh --workspace /path/to/workspace
 ```

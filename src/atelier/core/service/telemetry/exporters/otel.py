@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 from typing import Any
 
@@ -49,7 +50,33 @@ def emit_product_log(event_name: str, props: dict[str, Any]) -> bool:
     if _LOGGER is None:
         return False
     try:
-        _LOGGER.debug(event_name, extra={"event.name": event_name, "otel_attributes": props})
+        from opentelemetry._logs.severity import SeverityNumber
+        from opentelemetry.sdk._logs import LogRecord
+        from opentelemetry.trace import TraceFlags, get_current_span
+
+        # Flatten dict values to OTel-compatible types (str, int, float, bool)
+        flat_attrs = {"event.name": event_name}
+        for key, value in props.items():
+            if isinstance(value, (dict, list, tuple)):
+                flat_attrs[key] = json.dumps(value, ensure_ascii=False)
+            else:
+                flat_attrs[key] = value
+
+        # Get current span context if available
+        span = get_current_span()
+        span_context = span.get_span_context() if span else None
+
+        # Create LogRecord with proper span context
+        record = LogRecord(
+            body=event_name,
+            attributes=flat_attrs,
+            span_id=span_context.span_id if span_context else 1,
+            trace_id=span_context.trace_id if span_context else 1,
+            trace_flags=span_context.trace_flags if span_context else TraceFlags(0),
+            severity_text="DEBUG",
+            severity_number=SeverityNumber.DEBUG,
+        )
+        _PROVIDER.get_logger("atelier.product.telemetry.otel").emit(record)
         return True
     except Exception:
         return False

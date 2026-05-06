@@ -1,6 +1,6 @@
 # Gemini CLI Integration
 
-Atelier integrates with Gemini CLI through global `~/.gemini/settings.json` MCP wiring plus Atelier command presets.
+Atelier integrates with Gemini CLI through MCP wiring plus Atelier command presets. Installs are global by default; pass `--workspace DIR` for project-local files.
 
 ## Setup
 
@@ -13,10 +13,8 @@ make verify
 
 ## Installed Artifacts
 
-- `~/.gemini/settings.json` (`mcpServers.atelier` merged)
-- `~/.gemini/commands/atelier/status.toml`
-- `~/.gemini/commands/atelier/context.toml`
-- `~/.gemini/GEMINI.md` (atelier:code persona appended — global context)
+- Global: `~/.gemini/settings.json`, `~/.gemini/commands/atelier/*.toml`, and `~/.gemini/GEMINI.md`
+- Workspace: `<workspace>/.gemini/settings.json`, `<workspace>/.gemini/commands/atelier/*.toml`, and `<workspace>/GEMINI.md` when `--workspace DIR` is used
 
 ## Notes
 
@@ -25,6 +23,6 @@ make verify
 
 ## MCP Tool Names
 
-Canonical: `check_plan`, `get_reasoning_context`, `rescue_failure`, `run_rubric_gate`, `record_trace`.
+Canonical MCP names: `reasoning`, `lint`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`, `search`, `compact`, `atelier_repo_map`.
 
-Compatibility aliases are available for prefixed names (`atelier_check_plan`, `atelier_status`, etc.).
+CLI-only workflows include `atelier lesson inbox`, `atelier consolidation inbox`, `atelier report`, and `atelier proof show`.

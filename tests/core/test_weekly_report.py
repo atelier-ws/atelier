@@ -34,13 +34,13 @@ def _trace(
 ) -> Trace:
     tools = [
         ToolCall(
-            name="atelier_get_reasoning_context",
+            name="reasoning",
             args_hash="ctx",
             args={"matched_blocks": ["rb-plan"]},
         )
     ]
     if rescue:
-        tools.append(ToolCall(name="atelier_rescue_failure", args_hash="rescue"))
+        tools.append(ToolCall(name="rescue", args_hash="rescue"))
     return Trace(
         id=trace_id,
         run_id=run_id,
@@ -66,9 +66,7 @@ def test_generate_report_aggregates_weekly_governance(store: ReasoningStore) -> 
     now = datetime(2026, 5, 5, 12, tzinfo=UTC)
     store.upsert_block(_block("rb-plan"), write_markdown=False)
     store.record_trace(
-        _trace(
-            "current-pass", created_at=now - timedelta(days=1), passed=True, run_id="run-current"
-        ),
+        _trace("current-pass", created_at=now - timedelta(days=1), passed=True, run_id="run-current"),
         write_json=False,
     )
     store.record_trace(

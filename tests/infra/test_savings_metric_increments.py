@@ -73,9 +73,7 @@ def test_context_budget_database_schema_migration(store: ReasoningStore) -> None
     """Test that the database schema includes the context_budget table."""
     # Verify the table exists by attempting to query it
     with store._connect() as conn:
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='context_budget';"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='context_budget';")
         result = cursor.fetchone()
         assert result is not None, "context_budget table should exist after init()"
 
@@ -227,9 +225,7 @@ def test_context_budget_index_performance(store: ReasoningStore) -> None:
     """Test that the database index on (run_id) is present for query performance."""
     # Verify the index exists
     with store._connect() as conn:
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='ix_context_budget_run';"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='ix_context_budget_run';")
         result = cursor.fetchone()
         assert result is not None, "Index on run_id should exist"
 

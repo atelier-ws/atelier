@@ -24,4 +24,4 @@ Context compression keeps decision-critical information while removing stale his
 
 - `AtelierRuntimeCore.summarize_memory(...)`
 - CLI: `atelier memory summarize`
-- MCP: `atelier_context_compressor`
+- MCP: `compact`

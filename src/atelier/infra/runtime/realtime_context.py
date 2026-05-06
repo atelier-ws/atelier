@@ -115,9 +115,7 @@ class RealtimeContextManager:
             prompt_lines.append(_safe_json(item.get("compact")))
 
         errors = [
-            i
-            for i in items
-            if "error" in set(i.get("tags", [])) or i.get("kind") in ("tool_error", "bash_result")
+            i for i in items if "error" in set(i.get("tags", [])) or i.get("kind") in ("tool_error", "bash_result")
         ]
         latest_error = errors[-1]["title"] if errors else None
 
@@ -168,10 +166,7 @@ class RealtimeContextManager:
             self._state["items"] = items[-self._max_items :]
             items = self._state["items"]
 
-        while (
-            sum(int(i.get("compact_chars", 0)) for i in items) > self._budget_chars
-            and len(items) > 8
-        ):
+        while sum(int(i.get("compact_chars", 0)) for i in items) > self._budget_chars and len(items) > 8:
             # Prefer dropping the oldest low-signal item first.
             drop_idx = 0
             for idx, item in enumerate(items):

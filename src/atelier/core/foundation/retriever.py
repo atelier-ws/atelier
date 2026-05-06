@@ -99,9 +99,7 @@ def passage_in_agent_scope(passage: ArchivalPassage, requested_agent_id: str) ->
     return passage.agent_id == requested_agent_id or "agent:any" in passage.tags
 
 
-def filter_scoped_passages(
-    passages: Sequence[ArchivalPassage], *, requested_agent_id: str
-) -> list[ArchivalPassage]:
+def filter_scoped_passages(passages: Sequence[ArchivalPassage], *, requested_agent_id: str) -> list[ArchivalPassage]:
     """Keep only same-agent passages and explicit global lessons."""
     return [passage for passage in passages if passage_in_agent_scope(passage, requested_agent_id)]
 
@@ -120,15 +118,11 @@ def render_memory_for_agent(passages: Sequence[ArchivalPassage]) -> str:
     return "\n".join(out) + "\n"
 
 
-def summarize_recalled_passages(
-    passages: Sequence[ArchivalPassage], *, query: str
-) -> list[dict[str, str | float]]:
+def summarize_recalled_passages(passages: Sequence[ArchivalPassage], *, query: str) -> list[dict[str, str | float]]:
     """Return compact metadata for passages injected into context."""
     scores = {
         item.passage.id: item.score
-        for item in rank_archival_passages(
-            query=query, passages=list(passages), top_k=len(passages)
-        )
+        for item in rank_archival_passages(query=query, passages=list(passages), top_k=len(passages))
     }
     return [
         {

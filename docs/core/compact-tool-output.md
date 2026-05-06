@@ -1,6 +1,6 @@
 # Compact Tool Output
 
-`atelier_compact_tool_output` reduces oversized tool output before it is inserted into model context.
+`compact` reduces oversized tool output before it is inserted into model context.
 
 ## Behavior
 

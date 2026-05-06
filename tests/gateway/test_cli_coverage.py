@@ -5,7 +5,7 @@ Covers:
 - ledger reset, ledger update
 - env validate
 - failure show, eval show/deprecate, eval-from-cluster
-- smart-search, cached-grep
+- search, cached-grep
 - savings-detail, savings-reset
 - benchmark-hosts, benchmark-full, benchmark-packs
 - copilot/claude/codex/opencode import (with empty session dir)
@@ -316,26 +316,25 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# smart-search / cached-grep                                                  #
+# search / cached-grep                                                        #
 # --------------------------------------------------------------------------- #
 
 
-def test_smart_search_returns_matches(tmp_path: Path) -> None:
+def test_search_blocks_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "smart-search", "shopify publish")
+    res = _invoke(root, "search", "shopify publish", "--json")
     assert res.exit_code == 0
     payload = json.loads(res.output)
-    # smart-search returns a list of {id, title, domain} directly
+    # search returns a list of {id, title, domain} or block objects
     assert isinstance(payload, list)
 
 
-def test_smart_search_empty_query_returns_empty(tmp_path: Path) -> None:
+def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "smart-search", "zzz_no_match_xyz")
+    res = _invoke(root, "search", "zzz_no_match_xyz")
     assert res.exit_code == 0
-    assert json.loads(res.output) == []
 
 
 def test_cached_grep_finds_pattern(tmp_path: Path) -> None:

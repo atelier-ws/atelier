@@ -33,7 +33,7 @@ where a host only accepts advice.
 - **Create** `src/atelier/core/capabilities/quality_router/execution_contract.py`
 - **Edit** `src/atelier/core/capabilities/quality_router/capability.py`
 - **Edit** `src/atelier/gateway/adapters/cli.py` — add `route contract` command
-- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — expose `atelier_route_contract`
+- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — expose `atelier route contract`
 - **Create** `tests/core/test_routing_execution_contract.py`
 - **Create** `tests/gateway/test_mcp_route_contract.py`
 
@@ -56,7 +56,7 @@ where a host only accepts advice.
    - `unsupported_reason`
    - `host_native_owner` for the capability that still belongs to the host, such as `model`,
      `edit`, `compact`, or `agent_orchestration`
-3. Wire `atelier_route_contract(host)` into CLI and MCP.
+3. Wire `atelier route contract(host)` into CLI and MCP.
 4. Update routing docs so `RouteDecision` is a decision artifact and `RouteExecutionContract`
    describes whether the host can enforce it.
 5. Tests must cover Claude hook enforcement, Codex wrapper enforcement, Copilot advisory mode, and
@@ -75,7 +75,7 @@ make verify
 ## Definition of done
 
 - [x] Routing execution modes are documented
-- [x] `atelier_route_contract` returns host-specific enforcement facts
+- [x] `atelier route contract` returns host-specific enforcement facts
 - [x] Provider-enforced mode cannot be selected accidentally
 - [x] No provider clients, provider secrets, model proxy, or general agent scheduler added
 - [x] Host docs distinguish route decision from route enforcement

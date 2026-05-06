@@ -56,12 +56,8 @@ def test_dedup_and_budget_cut_tokens_at_least_30pct(seeded_store: ReasoningStore
         errors=["publish succeeded but verification failed"],
     )
 
-    naive = [
-        item.block for item in retrieve(seeded_store, ctx, limit=10, dedup=False, token_budget=None)
-    ]
-    tuned = [
-        item.block for item in retrieve(seeded_store, ctx, limit=10, dedup=True, token_budget=2000)
-    ]
+    naive = [item.block for item in retrieve(seeded_store, ctx, limit=10, dedup=False, token_budget=None)]
+    tuned = [item.block for item in retrieve(seeded_store, ctx, limit=10, dedup=True, token_budget=2000)]
 
     naive_tok = _tokens(naive)
     tuned_tok = _tokens(tuned)

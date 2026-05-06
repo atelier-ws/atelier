@@ -37,9 +37,9 @@ The task involved:
 The following Atelier levers were the primary drivers of token reduction:
 
 - **ReasonBlocks (Cached Guidelines):** Instead of the LLM re-discovering how to handle Shopify GIDs or Temporal workflows, cached ReasonBlocks were injected. This reduced the initial "research" and "implementation detail" tokens by ~80%.
-- **Plan Validation (`atelier_check_plan`):** The validator caught two schema mismatches and one missing error-handling step *before* any code was written. This prevented at least 3 failed implementation cycles (saving ~15,000 tokens in rework).
+- **Plan Validation (`lint`):** The validator caught two schema mismatches and one missing error-handling step *before* any code was written. This prevented at least 3 failed implementation cycles (saving ~15,000 tokens in rework).
 - **Smart Reads (`smart_read` / `search_read`):** Instead of reading whole files to find hook locations, Atelier targeted specific AST nodes and grep snippets.
-- **Trace-driven Iteration:** When a test failed, the `atelier_rescue_failure` tool provided a targeted fix based on previous similar failures, avoiding a blind "trial and error" loop.
+- **Trace-driven Iteration:** When a test failed, the `rescue` tool provided a targeted fix based on previous similar failures, avoiding a blind "trial and error" loop.
 
 ### 2. Time & Efficiency
 
