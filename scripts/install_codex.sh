@@ -163,12 +163,17 @@ fi
 fi
 
 # ---- AGENTS.atelier.md -------------------------------------------------------
-AGENTS_FILE="${WORKSPACE}/AGENTS.atelier.md"
+# Install to user global ~/.codex/AGENTS.md so it loads for all workspaces.
+# Users working in their own projects get atelier context automatically.
+USER_CODEX_DIR="${HOME}/.codex"
+AGENTS_FILE="${USER_CODEX_DIR}/AGENTS.md"
 if [ ! -f "$AGENTS_FILE" ]; then
+    run "mkdir -p '$USER_CODEX_DIR'"
     run "cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
-    info "created AGENTS.atelier.md"
+    info "created $AGENTS_FILE (global Codex config)"
 else
-    info "AGENTS.atelier.md already exists — not overwriting"
+    info "AGENTS.md already exists in $USER_CODEX_DIR — not overwriting"
+    info "manually copy if needed: cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
 fi
 
 # ---- wrapper + task templates ---------------------------------------------
@@ -240,11 +245,11 @@ else
     vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
 fi
 
-AGENTS_MD="${WORKSPACE}/AGENTS.atelier.md"
+AGENTS_MD="${HOME}/.codex/AGENTS.md"
 if [ -f "$AGENTS_MD" ] && grep -q "atelier:code" "$AGENTS_MD" 2>/dev/null; then
-    vpass "AGENTS.atelier.md present with atelier:code persona"
+    vpass "AGENTS.md present in ~/.codex/ with atelier:code persona"
 else
-    vfail "AGENTS.atelier.md missing or has no atelier:code persona"
+    vfail "AGENTS.md missing in ~/.codex/ or has no atelier:code persona"
 fi
 
 WRAPPER_BIN="${WORKSPACE}/bin/atelier-codex"

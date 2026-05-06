@@ -136,9 +136,7 @@ class TestMCPProtocol:
 
 class TestCoreReasoningTools:
     def test_get_reasoning_context_returns_string(self, store_root: Path) -> None:
-        resp = _call(
-            "atelier_get_reasoning_context", {"task": "Fix Shopify publish bug"}, store_root
-        )
+        resp = _call("atelier_get_reasoning_context", {"task": "Fix Shopify publish bug"}, store_root)
         payload = _result(resp)
         assert "context" in payload
         assert isinstance(payload["context"], str)

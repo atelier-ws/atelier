@@ -50,10 +50,7 @@ class CompactState:
                 lines.append(f"  - {msg}")
         if self.current_blocker:
             lines.append(f"Current blocker: {self.current_blocker}")
-        lines.append(
-            f"Stats: tool_calls={self.tool_call_count} "
-            f"output_chars={self.total_tool_output_chars}"
-        )
+        lines.append(f"Stats: tool_calls={self.tool_call_count} " f"output_chars={self.total_tool_output_chars}")
         return "\n".join(lines)
 
 

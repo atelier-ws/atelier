@@ -235,9 +235,7 @@ class PromptBudgetOptimizer:
         if _HAS_ORTOOLS and len(feasible) <= 500:
             selected, solver_name = _ortools_knapsack(feasible, token_budget, bonus)
         else:
-            selected, solver_name = _greedy_knapsack(
-                feasible, token_budget, bonus
-            )  # pragma: no cover
+            selected, solver_name = _greedy_knapsack(feasible, token_budget, bonus)  # pragma: no cover
 
         selected_ids = {b.id for b in selected}
         dropped = [b for b in feasible if b.id not in selected_ids] + infeasible

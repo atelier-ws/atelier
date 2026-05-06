@@ -87,9 +87,7 @@ def test_mcp_route_contract_mode_field_present(mcp_env: Path) -> None:
 def test_mcp_route_contract_provider_enforced_disabled_by_default(mcp_env: Path, host: str) -> None:
     resp = _call("atelier_route_contract", {"host": host})
     payload = _result(resp)
-    assert (
-        payload["mode"] != "provider_enforced"
-    ), f"host={host!r}: provider_enforced must never be the active mode"
+    assert payload["mode"] != "provider_enforced", f"host={host!r}: provider_enforced must never be the active mode"
     assert payload["provider_enforced_disabled"] is True
 
 

@@ -25,9 +25,7 @@ def test_run_runtime_benchmark_writes_report(tmp_path: Path) -> None:
 
 def test_compare_and_export_runtime_reports(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    first = run_runtime_benchmark(
-        root=root, prompts=("Fix Shopify publish",), model="claude-sonnet-4.6", rounds=2
-    )
+    first = run_runtime_benchmark(root=root, prompts=("Fix Shopify publish",), model="claude-sonnet-4.6", rounds=2)
     report_a = root / "benchmarks" / "runtime" / "a.json"
     report_b = root / "benchmarks" / "runtime" / "b.json"
     export_runtime_report(first, output_path=report_a, output_format="json")

@@ -55,10 +55,7 @@ def test_monitor_event_appends_to_ledger(tmp_path: Path) -> None:
     )
     assert res.exit_code == 0
     snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
-    assert any(
-        ev["kind"] == "monitor_alert" and ev["payload"]["monitor"] == "second_guessing"
-        for ev in snap["events"]
-    )
+    assert any(ev["kind"] == "monitor_alert" and ev["payload"]["monitor"] == "second_guessing" for ev in snap["events"])
 
 
 def test_compress_context_cli(tmp_path: Path) -> None:

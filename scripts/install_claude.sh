@@ -226,7 +226,10 @@ else
     fi
 fi
 
-MCP_JSON="${WORKSPACE}/.mcp.json"
+# Install to user-global Claude config, not project directory
+# Atelier is a plugin for users' own projects, not the atelier repo
+USER_CLAUDE_DIR="${HOME}/.claude"
+MCP_JSON="${USER_CLAUDE_DIR}/.mcp.json"
 NEW_ENTRY=$(cat <<JSON
 {
   "mcpServers": {
@@ -242,6 +245,8 @@ NEW_ENTRY=$(cat <<JSON
 }
 JSON
 )
+
+run "mkdir -p '$USER_CLAUDE_DIR'"
 
 if $DRY_RUN; then
     echo "  [dry-run] merge atelier entry into ${MCP_JSON}"
@@ -277,18 +282,19 @@ with open('${MCP_JSON}', 'w') as f:
     fi
 fi
 
-# ── Step 4: inject CLAUDE_WORKSPACE_ROOT into .claude/settings.local.json ──
+# ── Step 4: inject CLAUDE_WORKSPACE_ROOT into user-global settings.local.json ──
 # The plugin's atelier-mcp-wrapper.js resolves the binary via:
 #   $ATELIER_VENV, $CLAUDE_WORKSPACE_ROOT/atelier/.venv, or PATH.
-# Setting CLAUDE_WORKSPACE_ROOT in settings.local.json is the workspace-scoped
-# way to provide it without touching the user's shell profile.
-CLAUDE_SETTINGS_DIR="${WORKSPACE}/.claude"
-CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
+# Setting CLAUDE_WORKSPACE_ROOT in user-global settings.local.json so it
+# applies to all workspaces, not just one project.
+USER_CLAUDE_DIR="${HOME}/.claude"
+CLAUDE_LOCAL_SETTINGS="${USER_CLAUDE_DIR}/settings.local.json"
+
+run "mkdir -p '$USER_CLAUDE_DIR'"
 
 if $DRY_RUN; then
     echo "  [dry-run] merge CLAUDE_WORKSPACE_ROOT into ${CLAUDE_LOCAL_SETTINGS}"
 else
-    mkdir -p "${CLAUDE_SETTINGS_DIR}"
     if [ ! -f "${CLAUDE_LOCAL_SETTINGS}" ]; then
         info "Creating ${CLAUDE_LOCAL_SETTINGS} with env.CLAUDE_WORKSPACE_ROOT"
         echo "{}" > "${CLAUDE_LOCAL_SETTINGS}"
@@ -316,11 +322,11 @@ with open('${CLAUDE_LOCAL_SETTINGS}', 'w') as f:
     fi
 fi
 
-# ── Step 5: inject Atelier loop PreToolUse hook into .claude/settings.json ──
+# ── Step 5: inject Atelier loop PreToolUse hook into user-global settings.json ──
 # Fires before every Edit/Write call and injects a systemMessage reminding the
 # agent to run get_reasoning_context → check_plan before editing.
 # This is the enforcement mechanism for the Atelier standing loop.
-CLAUDE_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.json"
+CLAUDE_SETTINGS="${USER_CLAUDE_DIR}/settings.json"
 
 if $DRY_RUN; then
     echo "  [dry-run] merge PreToolUse Atelier loop hook into ${CLAUDE_SETTINGS}"

@@ -68,9 +68,7 @@ def test_safe_args_rejects_path_with_pipe() -> None:
 
 
 def test_parse_grep_output_basic() -> None:
-    raw = (
-        "src/foo.py:42: def example():\nsrc/bar.py:7: x = example()\nsrc/foo.py:100: return None\n"
-    )
+    raw = "src/foo.py:42: def example():\nsrc/bar.py:7: x = example()\nsrc/foo.py:100: return None\n"
     hits = _parse_grep_output(raw)
     assert hits["src/foo.py"] == [42, 100]
     assert hits["src/bar.py"] == [7]
@@ -175,9 +173,7 @@ def test_search_read_cache_hit_on_repeat(tmp_path: Path) -> None:
     assert second.cache_hit is True
 
 
-def test_search_read_respects_cache_disabled_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_search_read_respects_cache_disabled_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "module.py").write_text("x = 'pattern'\n", encoding="utf-8")
     monkeypatch.setenv("ATELIER_CACHE_DISABLED", "1")
 
@@ -188,9 +184,7 @@ def test_search_read_respects_cache_disabled_env(
     assert second.cache_hit is False
 
 
-def test_search_read_preserves_existing_smart_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_search_read_preserves_existing_smart_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "src.py").write_text("value = 'needle'\n", encoding="utf-8")
 
@@ -220,9 +214,7 @@ def test_search_read_respects_max_files(tmp_path: Path) -> None:
 
 def test_search_read_attaches_outline_for_dense_files(tmp_path: Path) -> None:
     # Create a file with >5 matches so outline is requested
-    lines = ["class Foo:"] + [
-        f"    def method_{i}(self):  # target\n        pass" for i in range(10)
-    ]
+    lines = ["class Foo:"] + [f"    def method_{i}(self):  # target\n        pass" for i in range(10)]
     (tmp_path / "dense.py").write_text("\n".join(lines), encoding="utf-8")
 
     result = search_read(query="target", path=str(tmp_path))

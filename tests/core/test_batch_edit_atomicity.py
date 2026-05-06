@@ -174,10 +174,7 @@ def test_path_escape_rejected(tmp_path: Path) -> None:
         repo_root=tmp_path,
     )
     assert len(result["failed"]) == 1
-    assert (
-        "escape" in result["failed"][0]["error"].lower()
-        or "outside" in result["failed"][0]["error"].lower()
-    )
+    assert "escape" in result["failed"][0]["error"].lower() or "outside" in result["failed"][0]["error"].lower()
 
 
 # --------------------------------------------------------------------------- #
