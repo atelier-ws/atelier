@@ -28,12 +28,12 @@ regression in any one lever.
 1. Server endpoint: extend `/v1/savings/summary` to return:
 
    ```json
-   {
+   &#123;
      "window_days": 7,
      "total_naive_tokens": 412000,
      "total_actual_tokens": 198000,
      "reduction_pct": 51.9,
-     "per_lever": {
+     "per_lever": &#123;
        "search_read": 21000,
        "batch_edit": 14500,
        "ast_truncation": 27000,
@@ -42,9 +42,9 @@ regression in any one lever.
        "scoped_recall": 9000,
        "compact_lifecycle": 8500,
        "reasonblock_inject": 5500
-     },
-     "by_day": [{ "day": "2026-04-26", "naive": 60000, "actual": 28000 }, ...]
-   }
+     &#125;,
+     "by_day": [&#123; "day": "2026-04-26", "naive": 60000, "actual": 28000 &#125;, ...]
+   &#125;
    ```
 
 2. UI:

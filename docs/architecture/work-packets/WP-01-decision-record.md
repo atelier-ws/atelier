@@ -21,7 +21,7 @@ the contract every other packet links back to.
   exist, append a "no entries yet" placeholder under the V1.x heading; otherwise leave alone)
 
 > If `docs/internal/engineering/decisions/` does not exist, create it and add `_category_.json`
-> with `{"label": "Decisions", "position": 8}`.
+> with `&#123;"label": "Decisions", "position": 8&#125;`.
 
 ## How to execute
 

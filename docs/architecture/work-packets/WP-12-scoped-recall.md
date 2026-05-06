@@ -40,8 +40,8 @@ leak across agents.
    Never return passages from another agent_id.
 
 4. Output additions:
-   - `recalled_passages: [{id, source, score}]`
-   - `tokens_breakdown: { reasonblocks, memory, total }`
+   - `recalled_passages: [&#123;id, source, score&#125;]`
+   - `tokens_breakdown: &#123; reasonblocks, memory, total &#125;`
 
 5. Tests:
    - With seeded passages tagged for `atelier:code`, calling with that agent_id surfaces them

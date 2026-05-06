@@ -48,7 +48,7 @@ is present. CI must pass in both modes.
    - Commit with `co-author: Atelier Lesson Bot <bot@atelier>`.
    - `gh pr create` with body templated from the lesson's evidence trace IDs.
 3. Dry-run mode (`--dry-run`) prints the diff and the would-be PR body without writing.
-4. When disabled, all bot calls return `{ skipped: true, reason: "disabled" }` — no `git` or `gh`
+4. When disabled, all bot calls return `&#123; skipped: true, reason: "disabled" &#125;` — no `git` or `gh`
    subprocess invoked.
 5. The enabled path must shell out only to the host-native `git`/`gh` tools; it must not implement
    its own GitHub API client.
