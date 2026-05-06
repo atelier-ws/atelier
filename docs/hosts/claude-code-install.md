@@ -135,11 +135,11 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 
 | Tool                          | Description                                | Example                                                                                          |
 | ----------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `atelier_memory_upsert_block` | Store a named value in agent memory        | `atelier_memory_upsert_block({agent_id: 'atelier:code', label: 'last_gid', value: 'gid://...'})` |
-| `atelier_memory_get_block`    | Retrieve a named memory block              | `atelier_memory_get_block({agent_id: 'atelier:code', label: 'last_gid'})`                        |
-| `atelier_memory_recall`       | FTS + vector search over archival memory   | `atelier_memory_recall({agent_id: 'atelier:code', query: 'Shopify GID pattern'})`                |
-| `atelier_memory_archive`      | Persist a text passage to archival memory  | `atelier_memory_archive({agent_id: 'atelier:code', text: '...', source: 'run_123'})`             |
-| `atelier_memory_summary`      | Summarize sleeptime memory to save context | `atelier_memory_summary({run_id: 'run_123'})`                                                    |
+| `atelier_memory_upsert_block` | Store a named value in agent memory        | `atelier_memory_upsert_block(&#123;agent_id: 'atelier:code', label: 'last_gid', value: 'gid://...'&#125;)` |
+| `atelier_memory_get_block`    | Retrieve a named memory block              | `atelier_memory_get_block(&#123;agent_id: 'atelier:code', label: 'last_gid'&#125;)`                        |
+| `atelier_memory_recall`       | FTS + vector search over archival memory   | `atelier_memory_recall(&#123;agent_id: 'atelier:code', query: 'Shopify GID pattern'&#125;)`                |
+| `atelier_memory_archive`      | Persist a text passage to archival memory  | `atelier_memory_archive(&#123;agent_id: 'atelier:code', text: '...', source: 'run_123'&#125;)`             |
+| `atelier_memory_summary`      | Summarize sleeptime memory to save context | `atelier_memory_summary(&#123;run_id: 'run_123'&#125;)`                                                    |
 
 ### Compact lifecycle
 

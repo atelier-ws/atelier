@@ -35,7 +35,12 @@ init-runtime: ## Initialize the local Atelier store
 	uv run atelier init
 
 start: ## Start the service and frontend with Docker Compose
-	docker compose up --build service frontend
+	docker compose up --build -d
+	docker compose logs -f
+restart: ## Restart the service and frontend with Docker Compose
+	docker compose down
+	docker compose up --build -d
+	docker compose logs -f
 
 service: ## Start the HTTP service on localhost:8787
 	ATELIER_REQUIRE_AUTH=false uv run atelier service start

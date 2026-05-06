@@ -980,7 +980,7 @@ The 2026-05-04 audit found `core/capabilities/context_compression/sleeptime.py` 
 template-based grouping:
 
 ```python
-f"[{n} {kind}s] {last_event.summary[:200]}"
+f"[&#123;n&#125; &#123;kind&#125;s] &#123;last_event.summary[:200]&#125;"
 ```
 
 The doc admits "deterministic, template-based, no LLM call". This is a glorified `groupby`
@@ -1042,7 +1042,7 @@ of this packet's writing, that is not the case.
   - Otherwise raise `SleeptimeUnavailable` (path A3).
 - **EDIT:** `src/atelier/core/capabilities/telemetry/context_budget.py` — record
   `summarizer_input_tokens` and `summarizer_output_tokens`. Surface
-  `atelier_tokens_saved_total{lever="sleeptime"}` as `input - output`. If sleeptime raised,
+  `atelier_tokens_saved_total&#123;lever="sleeptime"&#125;` as `input - output`. If sleeptime raised,
   do **not** record any saving for that turn.
 - **NEW:** `tests/core/test_sleeptime_ollama_default.py` — with a mocked Ollama backend,
   asserts:
@@ -1108,7 +1108,7 @@ LOCAL=1 uv run pytest tests/infra/test_no_external_llm_clients.py -v
 # ollama serve & ollama pull llama3.2:3b
 # LOCAL=1 uv run python -c "
 # from atelier.core.capabilities.context_compression.sleeptime import summarize_ledger
-# print(summarize_ledger([{'kind':'tool','summary':'long output ...'} for _ in range(50)]))
+# print(summarize_ledger([&#123;'kind':'tool','summary':'long output ...'&#125; for _ in range(50)]))
 # "
 
 make verify
@@ -1191,10 +1191,10 @@ configured for it — that's the user's choice and bill, not Atelier's.)
     letta:
       image: letta/letta:latest
       ports:
-        - "${ATELIER_LETTA_PORT:-8283}:8283"
+        - "$&#123;ATELIER_LETTA_PORT:-8283&#125;:8283"
       environment:
-        - LETTA_PG_URI=${LETTA_PG_URI:-} # blank => Letta uses its bundled SQLite
-        - OPENAI_API_KEY=${OPENAI_API_KEY:-} # optional; for Letta's internal calls
+        - LETTA_PG_URI=$&#123;LETTA_PG_URI:-&#125; # blank => Letta uses its bundled SQLite
+        - OPENAI_API_KEY=$&#123;OPENAI_API_KEY:-&#125; # optional; for Letta's internal calls
       volumes:
         - letta_data:/var/letta
       restart: unless-stopped
@@ -1291,7 +1291,7 @@ make verify
 - [ ] Hybrid ranking policy applied on Letta results; degrades cleanly when cosine is absent.
 - [ ] `deploy/letta/docker-compose.yml` ships with a healthy default config + persistent
       volume.
-- [ ] `atelier letta {up|down|logs|status|reset}` CLI subcommands work; smoke tests pass.
+- [ ] `atelier letta &#123;up|down|logs|status|reset&#125;` CLI subcommands work; smoke tests pass.
 - [ ] Self-hosted runbook published; bring-up validated end-to-end on at least one machine.
 - [ ] No new vector store, no new agent loop, no new model invocation written by Atelier
       (boundary check).
@@ -1780,7 +1780,7 @@ This packet absorbs three earlier candidates that are all special cases of the s
 
 - **EDIT:** `src/atelier/core/capabilities/telemetry/context_budget.py` — record
   `compact_method` and per-method `tokens_in` / `tokens_out` per call. Surface
-  `atelier_tokens_saved_total{lever="compact_tool_output", method=...}`.
+  `atelier_tokens_saved_total&#123;lever="compact_tool_output", method=...&#125;`.
 
 ### Tests
 
@@ -2176,7 +2176,7 @@ Mem0's four-op operator (Apache-2.0, paper arXiv:2504.19413) solves this at writ
 each new fact:
 
 1. Retrieve top-k similar existing memories via embedding.
-2. Single LLM call returns one of `{ADD, UPDATE, DELETE, NOOP}`:
+2. Single LLM call returns one of `&#123;ADD, UPDATE, DELETE, NOOP&#125;`:
    - **ADD:** new fact is genuinely new; insert.
    - **UPDATE:** new fact refines an existing one; replace its value, preserve id.
    - **DELETE:** new fact contradicts an existing one that's now stale; tombstone the
@@ -2196,12 +2196,12 @@ installed; passes through to V2 behavior otherwise.
     2. `top_k = store.search_passages(embedding, k=5)` (or block-level search if available).
     3. Compose Ollama prompt with structured JSON schema response:
        ```json
-       {
+       &#123;
          "op": "ADD|UPDATE|DELETE|NOOP",
          "target_block_id": "<id or null>",
          "merged_value": "<string or null>",
          "reason": "<one-line explanation>"
-       }
+       &#125;
        ```
     4. Call `internal_llm.ollama_client.chat(...,  json_schema=...)` (added in WP-36).
     5. Validate response; clamp invalid ops to `ADD` with a WARNING log.
@@ -2211,7 +2211,7 @@ installed; passes through to V2 behavior otherwise.
   call:
   - If `[smart]` extra is installed AND Ollama is reachable: arbitrate, then apply the op.
   - Otherwise: V2 behavior (direct upsert).
-  - Either way, result includes `arbitration: {"op": ..., "reason": ...}` so the host can
+  - Either way, result includes `arbitration: &#123;"op": ..., "reason": ...&#125;` so the host can
     see what happened.
 - **EDIT:** `src/atelier/infra/storage/sqlite_memory_store.py` — support tombstone for
   `DELETE` (don't physically remove; mark `deprecated_at`, `deprecated_by_block_id`,
@@ -2220,8 +2220,8 @@ installed; passes through to V2 behavior otherwise.
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — implement tombstone
   semantics on the Letta side (Letta's metadata field carries the deprecation flag).
 - **NEW:** Telemetry: per-op counter
-  `atelier_memory_arbitration_total{op="ADD|UPDATE|DELETE|NOOP"}`. Surfaces drift in op
-  distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, <5% DELETE.
+  `atelier_memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
+  distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, \<5% DELETE.
 
 ### Tests
 

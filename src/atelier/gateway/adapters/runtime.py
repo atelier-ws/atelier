@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -129,6 +130,7 @@ class RuntimeSession:
     trace_id: str | None = None
     monitors: list[Any] = field(default_factory=default_monitors)
     core_runtime: AtelierRuntimeCore | None = None
+    started_at: float = field(default_factory=time.time)
 
     # ----- context injection ---------------------------------------------- #
 
@@ -159,6 +161,17 @@ class RuntimeSession:
             token_budget=token_budget,
             dedup=dedup,
         )
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import hash_identifier
+
+        for rank, item in enumerate(scored, start=1):
+            emit_product(
+                "reasonblock_retrieved",
+                block_id_hash=hash_identifier(item.block.id),
+                domain=item.block.domain,
+                retrieval_score=float(item.score),
+                rank=rank,
+            )
         return render_context_for_agent([s.block for s in scored])
 
     # ----- plan checking --------------------------------------------------- #
@@ -166,7 +179,7 @@ class RuntimeSession:
     def check_plan(self, plan: list[str]) -> PlanCheckResult:
         assert self.store is not None
         self.state.plan = plan
-        return check_plan(
+        result = check_plan(
             self.store,
             task=self.task,
             plan=plan,
@@ -174,6 +187,26 @@ class RuntimeSession:
             files=self.files,
             tools=self.tools,
         )
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import hash_identifier
+
+        matched_blocks = list(getattr(result, "matched_blocks", []) or [])
+        if result.status == "blocked":
+            emit_product(
+                "plan_check_blocked",
+                domain=self.domain,
+                blocking_rule_id=hash_identifier(
+                    str(matched_blocks[0] if matched_blocks else "blocked")
+                ),
+                severity="high",
+            )
+        else:
+            emit_product(
+                "plan_check_passed",
+                domain=self.domain,
+                rule_count=len(matched_blocks),
+            )
+        return result
 
     # ----- monitor hooks --------------------------------------------------- #
 
@@ -208,6 +241,10 @@ class RuntimeSession:
         if path not in self.files:
             self.files.append(path)
         self.state.file_events.append((path, event))
+        if event == "revert":
+            from atelier.core.service.telemetry import emit_product
+
+            emit_product("frustration_signal_behavioral", signal_type="file_revert")
         if diff:
             self.state.file_diffs.append((path, event, diff[:4096]))
 
@@ -215,7 +252,16 @@ class RuntimeSession:
         assert self.store is not None
         ctx = TaskContext(task=self.task, domain=self.domain, files=self.files, tools=self.tools)
         blocks = [s.block for s in _retrieve_with_pack_context(self.store, ctx, limit=10)]
-        return run_monitors(self.state, blocks, self.monitors)
+        alerts = run_monitors(self.state, blocks, self.monitors)
+        if alerts:
+            from atelier.core.service.telemetry import emit_product
+
+            for alert in alerts:
+                if alert.monitor == "repeated_command_failure":
+                    emit_product("frustration_signal_behavioral", signal_type="retry_burst")
+                elif alert.monitor == "known_dead_end":
+                    emit_product("frustration_signal_behavioral", signal_type="repeated_dead_end")
+        return alerts
 
     # ----- rubric gate ----------------------------------------------------- #
 
@@ -359,6 +405,15 @@ class ReasoningRuntime:
         finally:
             # Make sure something is recorded even if the agent crashed.
             if session.trace_id is None:
+                if time.time() - session.started_at <= 30 and any(
+                    not ok for _, ok, _ in session.state.command_results
+                ):
+                    from atelier.core.service.telemetry import emit_product
+
+                    emit_product(
+                        "frustration_signal_behavioral",
+                        signal_type="abandon_after_error",
+                    )
                 with suppress(Exception):  # pragma: no cover - defensive
                     session.record_trace(status="partial")
 

@@ -22,14 +22,14 @@ uv run atelier check-plan \
 **Expected:**
 
 ```json
-{
+&#123;
   "status": "blocked",
   "exit": 2,
   "warnings": [
     "dead end: product handle from pdp",
     "dead end: lookup product by handle"
   ]
-}
+&#125;
 ```
 
 ### Scenario 2: GID-Based Plan Passes
@@ -47,14 +47,14 @@ uv run atelier check-plan \
     --json
 ```
 
-**Expected:** `{"status": "pass", "exit": 0}`
+**Expected:** `&#123;"status": "pass", "exit": 0&#125;`
 
 ### Scenario 3: Rubric Gate — Full Pass
 
 **Test:**
 
 ```bash
-echo '{
+echo '&#123;
   "product_identity_uses_gid": true,
   "pre_publish_snapshot_exists": true,
   "write_result_checked": true,
@@ -63,28 +63,28 @@ echo '{
   "rollback_available": true,
   "localized_url_test_passed": true,
   "changed_handle_test_passed": true
-}' | uv run atelier run-rubric rubric_shopify_publish --json
+&#125;' | uv run atelier run-rubric rubric_shopify_publish --json
 ```
 
-**Expected:** `{"status": "pass"}`
+**Expected:** `&#123;"status": "pass"&#125;`
 
 ### Scenario 4: Rubric Gate — Blocked (Missing Checks)
 
 **Test:**
 
 ```bash
-echo '{
+echo '&#123;
   "product_identity_uses_gid": true,
   "pre_publish_snapshot_exists": false
-}' | uv run atelier run-rubric rubric_shopify_publish --json
+&#125;' | uv run atelier run-rubric rubric_shopify_publish --json
 ```
 
-**Expected:** `{"status": "blocked", "failed_checks": ["pre_publish_snapshot_exists", ...]}`
+**Expected:** `&#123;"status": "blocked", "failed_checks": ["pre_publish_snapshot_exists", ...]&#125;`
 
 ### Scenario 5: Trace Record
 
 ```bash
-echo '{
+echo '&#123;
   "agent": "claude-code",
   "domain": "beseam.shopify.publish",
   "task": "Dogfood: Publish product GID 123",
@@ -93,10 +93,10 @@ echo '{
   "errors_seen": [],
   "diff_summary": "Updated metafields for gid://shopify/Product/123",
   "output_summary": "Product published, audit passed"
-}' | uv run atelier record-trace --json
+&#125;' | uv run atelier record-trace --json
 ```
 
-**Expected:** `{"id": "trace_<hash>"}` with exit 0.
+**Expected:** `&#123;"id": "trace_<hash>"&#125;` with exit 0.
 
 ### Scenario 6: Extract Block from Trace
 
@@ -125,9 +125,9 @@ uv run atelier rescue \
 
 ```bash
 curl -s -X POST http://127.0.0.1:8787/v1/failures/analyze \
-  -H "Authorization: Bearer ${ATELIER_API_KEY}" \
+  -H "Authorization: Bearer $&#123;ATELIER_API_KEY&#125;" \
   -H "Content-Type: application/json" \
-  -d '{"limit": 100}'
+  -d '&#123;"limit": 100&#125;'
 ```
 
 **Expected:** one or more clusters with fingerprints and suggested procedural guidance fields.

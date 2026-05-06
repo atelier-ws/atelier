@@ -151,13 +151,13 @@ The legacy no-action invocation remains valid; `run` is the new explicit action.
 ```bash
 uv run atelier record-trace [--input PATH]
 # or via stdin:
-echo '{...trace json...}' | uv run atelier record-trace
+echo '&#123;...trace json...&#125;' | uv run atelier record-trace
 ```
 
 Record an execution trace. Accepts JSON from stdin or a file. Required fields:
 
 ```json
-{
+&#123;
   "agent": "claude-code",
   "domain": "beseam.shopify.publish",
   "task": "Publish product ID 123",
@@ -166,7 +166,7 @@ Record an execution trace. Accepts JSON from stdin or a file. Required fields:
   "errors_seen": [],
   "diff_summary": "Updated metafields for gid://shopify/Product/123",
   "output_summary": "Product published, audit passed"
-}
+&#125;
 ```
 
 Full trace schema:
@@ -234,7 +234,7 @@ There are also individual subcommands for block management. Use `list-blocks` an
 ### `run-rubric`
 
 ```bash
-echo '{"check_name": true, ...}' | uv run atelier run-rubric RUBRIC_ID [--json]
+echo '&#123;"check_name": true, ...&#125;' | uv run atelier run-rubric RUBRIC_ID [--json]
 ```
 
 Run a rubric gate against a set of check results (JSON from stdin). Returns pass/blocked + which checks failed.
@@ -247,7 +247,7 @@ Run a rubric gate against a set of check results (JSON from stdin). Returns pass
 **Example with the Shopify publish rubric:**
 
 ```bash
-echo '{
+echo '&#123;
   "product_identity_uses_gid": true,
   "pre_publish_snapshot_exists": true,
   "write_result_checked": true,
@@ -256,7 +256,7 @@ echo '{
   "rollback_available": true,
   "localized_url_test_passed": true,
   "changed_handle_test_passed": true
-}' | uv run atelier run-rubric rubric_shopify_publish
+&#125;' | uv run atelier run-rubric rubric_shopify_publish
 ```
 
 ---
