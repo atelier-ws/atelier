@@ -13,7 +13,7 @@ status: done
 ## Why
 
 Pillar 3's >50% claim is only credible with per-turn measurements. This packet ships the
-`ContextBudget` recorder and the `atelier_tokens_saved_total{lever}` Prometheus metric so the
+`ContextBudget` recorder and the `atelier_tokens_saved_total&#123;lever&#125;` Prometheus metric so the
 benchmark harness (WP-19) and the dashboard (WP-18) have data to read.
 
 ## Files touched
@@ -42,7 +42,7 @@ benchmark harness (WP-19) and the dashboard (WP-18) have data to read.
    - Before tool exec: snapshot prompt tokens
    - After tool exec: compute lever-attributed savings (each capability now returns its own
      `tokens_saved` field — see WP-04, WP-09, WP-10, WP-11, WP-21, WP-23)
-   - Emit Prometheus counter `atelier_tokens_saved_total{lever, model}`
+   - Emit Prometheus counter `atelier_tokens_saved_total&#123;lever, model&#125;`
    - Persist a `ContextBudget` row
 
 3. The `naive_input_tokens` value in production is **estimated** as `input_tokens + sum(lever_savings)`.

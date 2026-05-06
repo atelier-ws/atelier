@@ -22,7 +22,7 @@ Mem0's four-op operator (Apache-2.0, paper arXiv:2504.19413) solves this at writ
 each new fact:
 
 1. Retrieve top-k similar existing memories via embedding.
-2. Single LLM call returns one of `{ADD, UPDATE, DELETE, NOOP}`:
+2. Single LLM call returns one of `&#123;ADD, UPDATE, DELETE, NOOP&#125;`:
    - **ADD:** new fact is genuinely new; insert.
    - **UPDATE:** new fact refines an existing one; replace its value, preserve id.
    - **DELETE:** new fact contradicts an existing one that's now stale; tombstone the
@@ -43,12 +43,12 @@ k: int = 5) -> ArbitrationDecision`
     2. `top_k = store.search_passages(embedding, k=5)` (or block-level search if available).
     3. Compose Ollama prompt with structured JSON schema response:
        ```json
-       {
+       &#123;
          "op": "ADD|UPDATE|DELETE|NOOP",
          "target_block_id": "<id or null>",
          "merged_value": "<string or null>",
          "reason": "<one-line explanation>"
-       }
+       &#125;
        ```
     4. Call `internal_llm.ollama_client.chat(...,  json_schema=...)` (added in WP-36).
     5. Validate response; clamp invalid ops to `ADD` with a WARNING log.
@@ -58,7 +58,7 @@ k: int = 5) -> ArbitrationDecision`
   call:
   - If `[smart]` extra is installed AND Ollama is reachable: arbitrate, then apply the op.
   - Otherwise: V2 behavior (direct upsert).
-  - Either way, result includes `arbitration: {"op": ..., "reason": ...}` so the host can
+  - Either way, result includes `arbitration: &#123;"op": ..., "reason": ...&#125;` so the host can
     see what happened.
 - **EDIT:** `src/atelier/infra/storage/sqlite_memory_store.py` — support tombstone for
   `DELETE` (don't physically remove; mark `deprecated_at`, `deprecated_by_block_id`,
@@ -67,8 +67,8 @@ k: int = 5) -> ArbitrationDecision`
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — implement tombstone
   semantics on the Letta side (Letta's metadata field carries the deprecation flag).
 - **NEW:** Telemetry: per-op counter
-  `atelier_memory_arbitration_total{op="ADD|UPDATE|DELETE|NOOP"}`. Surfaces drift in op
-  distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, <5% DELETE.
+  `atelier_memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
+  distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, \<5% DELETE.
 
 ### Tests
 

@@ -62,8 +62,8 @@ Environment variables:
 | Method | Path                     | Description        |
 | ------ | ------------------------ | ------------------ |
 | `POST` | `/v1/traces`             | Record a trace     |
-| `POST` | `/v1/traces/{id}/events` | Add event to trace |
-| `POST` | `/v1/traces/{id}/finish` | Finalize a trace   |
+| `POST` | `/v1/traces/&#123;id&#125;/events` | Add event to trace |
+| `POST` | `/v1/traces/&#123;id&#125;/finish` | Finalize a trace   |
 
 ### ReasonBlocks
 
@@ -71,7 +71,7 @@ Environment variables:
 | ------- | ----------------------- | ------------------- |
 | `GET`   | `/v1/reasonblocks`      | List/search blocks  |
 | `POST`  | `/v1/reasonblocks`      | Create/update block |
-| `PATCH` | `/v1/reasonblocks/{id}` | Update block status |
+| `PATCH` | `/v1/reasonblocks/&#123;id&#125;` | Update block status |
 
 ### Environments
 

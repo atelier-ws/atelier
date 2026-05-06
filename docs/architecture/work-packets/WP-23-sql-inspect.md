@@ -35,17 +35,17 @@ and harden it.
 
 ## How to execute
 
-1. Input: `{ connection_alias, sql, [params], [row_limit=200] }`
+1. Input: `&#123; connection_alias, sql, [params], [row_limit=200] &#125;`
 2. Output:
 
    ```json
-   {
-     "columns": [{"name": "id", "type": "TEXT"}, ...],
-     "rows": [{...}, ...],
+   &#123;
+     "columns": [&#123;"name": "id", "type": "TEXT"&#125;, ...],
+     "rows": [&#123;...&#125;, ...],
      "row_count": 17,
      "truncated": false,
      "took_ms": 23
-   }
+   &#125;
    ```
 
 3. Connection aliases configured in `.atelier/sql_aliases.toml`. Only aliases listed there are

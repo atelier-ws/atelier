@@ -47,7 +47,7 @@ uv run atelier --root .atelier lesson sync-pr <lesson_id> --json
 
 ## Troubleshooting
 
-- `{"skipped": true, "reason": "disabled"}`
+- `&#123;"skipped": true, "reason": "disabled"&#125;`
   Verify both env vars are present and non-empty.
 - `lesson must be approved before sync-pr`
   Approve the candidate first via `atelier lesson approve`.
