@@ -23,10 +23,7 @@ required verifiers for a single step. A `RouteExecutionContract` is a _host desc
 whether the host can _enforce_ that decision (block start, require verification) or can only _advise_
 on it.
 
-Use `atelier_route_contract(host)` via MCP, or `atelier route contract --host <host>` via CLI, to
-retrieve the serialisable contract for any supported host. The `provider_enforced` mode is always
-`provider_enforced_disabled = true` in the returned contract until a future provider execution packet
-explicitly enables it.
+Use the `route` MCP tool (`op="decide"`) to retrieve host routing decisions and enforcement facts.
 
 ## Trace Confidence Levels
 
@@ -36,7 +33,7 @@ explicitly enables it.
 | `mcp_live`     | Atelier MCP calls and tool outputs are captured; native host edits/commands may be incomplete. |
 | `wrapper_live` | Wrapper captures task start/end and validation results, but not every native host event.       |
 | `imported`     | Host session data is imported after the run.                                                   |
-| `manual`       | Agent must call `atelier_record_trace` with observable facts.                                  |
+| `manual`       | Agent must call `trace` with observable facts.                                                 |
 
 ### Trace Metadata Fields
 

@@ -251,9 +251,7 @@ class FailureAnalysisCapability:
             if block.verification:
                 fixes.append(f"Add verification gate: {block.verification[0]}")
         if commands:
-            fixes.append(
-                f"Add command guardrail around '{commands[0]}' with explicit pass/fail checks"
-            )
+            fixes.append(f"Add command guardrail around '{commands[0]}' with explicit pass/fail checks")
         fixes.append("Capture this failure signature in rubric checks to block silent retries")
         # Deduplicate while preserving order.
         out: list[str] = []

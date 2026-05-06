@@ -7,11 +7,12 @@
 #   3. Plugin package at integrations/claude/plugin/ validates
 #   4. Claude plugin source 'atelier' is registered
 #   5. Plugin listed as enabled (claude plugin list — atelier@atelier)
-#   6. .mcp.json in workspace contains atelier server entry
+#   6. Global mode: Claude user MCP list contains atelier
+#   7. Workspace mode: .mcp.json in workspace contains atelier server entry
 #   7. MCP wrapper exists and is executable
 #
 # Options:
-#   --workspace DIR  Target workspace root (default: cwd)
+#   --workspace DIR  Verify project-local workspace config instead of global user MCP
 #
 # Exits 0 if all checks pass (or CLI not found — graceful skip)
 # Exits 1 if CLI found but checks fail
@@ -22,18 +23,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 MARKETPLACE_JSON="${PLUGIN_DIR}/.claude-plugin/marketplace.json"
-WORKSPACE="${PWD}"
+WORKSPACE=""
+WORKSPACE_SET=false
 PLUGIN_REF="atelier@atelier"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --workspace) WORKSPACE="$2"; shift ;;
+        --workspace)
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --workspace" >&2
+                exit 1
+            fi
+            WORKSPACE="$2"
+            WORKSPACE_SET=true
+            shift
+            ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift
 done
 
-WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+if $WORKSPACE_SET; then
+    WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+fi
 FAIL=0
 
 pass() { echo "PASS: $*"; }
@@ -85,21 +97,27 @@ else
     fail "${PLUGIN_REF} not in plugin list — run: make install-claude"
 fi
 
-MCP_JSON="${WORKSPACE}/.mcp.json"
-if [ -f "$MCP_JSON" ]; then
-    HAS=$(python3 -c "
+if $WORKSPACE_SET; then
+    MCP_JSON="${WORKSPACE}/.mcp.json"
+    if [ -f "$MCP_JSON" ]; then
+        HAS=$(python3 -c "
 import json
 d = json.load(open('$MCP_JSON'))
 servers = d.get('mcpServers', {})
 print('yes' if 'atelier' in servers else 'no')
 " 2>/dev/null || echo "error")
-    if [ "$HAS" = "yes" ]; then
-        pass ".mcp.json contains atelier server entry"
+        if [ "$HAS" = "yes" ]; then
+            pass ".mcp.json contains atelier server entry"
+        else
+            fail ".mcp.json missing atelier entry - run: scripts/install_claude.sh --workspace $WORKSPACE"
+        fi
     else
-        fail ".mcp.json missing atelier entry — run: make install-claude"
+        fail ".mcp.json missing at $MCP_JSON - run: scripts/install_claude.sh --workspace $WORKSPACE"
     fi
+elif claude mcp list 2>/dev/null | grep -q "atelier"; then
+    pass "Claude user MCP list contains atelier"
 else
-    fail ".mcp.json missing at $MCP_JSON — run: make install-claude"
+    fail "Claude user MCP missing atelier - run: make install-claude"
 fi
 
 WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"

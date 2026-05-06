@@ -6,9 +6,7 @@ from atelier.core.foundation.models import ReasonBlock, Rubric, Trace
 from atelier.core.foundation.store import ReasoningStore
 
 
-def _block(
-    bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object
-) -> ReasonBlock:
+def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> ReasonBlock:
     base: dict[str, Any] = dict(
         id=bid,
         title=title,

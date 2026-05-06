@@ -233,12 +233,7 @@ class ClaudeImporter:
             elif ev_type == "last-prompt":
                 # lastPrompt holds the final user message — use as task fallback
                 lp = str(ev.get("lastPrompt", "")).strip()
-                if (
-                    lp
-                    and task == "untitled claude session"
-                    and not lp.startswith("<")
-                    and len(lp) > 5
-                ):
+                if lp and task == "untitled claude session" and not lp.startswith("<") and len(lp) > 5:
                     task = lp[:200]
 
             elif ev_type == "user":
@@ -280,9 +275,7 @@ class ClaudeImporter:
                                     block.get("content"),
                                     is_error=bool(block.get("is_error")),
                                 )
-                                command = str((pending.get("input") or {}).get("command") or "")[
-                                    :200
-                                ]
+                                command = str((pending.get("input") or {}).get("command") or "")[:200]
                                 commands_run[idx] = CommandRecord(
                                     command=command,
                                     exit_code=block.get("exit_code"),
@@ -333,9 +326,7 @@ class ClaudeImporter:
                             if name in {"Write", "Edit", "MultiEdit"}:
                                 diff = _infer_file_edit_diff(name, inp)
                                 if diff:
-                                    files_touched.append(
-                                        FileEditRecord(path=fp_str, diff=diff[:4096], event="edit")
-                                    )
+                                    files_touched.append(FileEditRecord(path=fp_str, diff=diff[:4096], event="edit"))
                                 else:
                                     files_touched.append(fp_str)
                             else:
@@ -489,9 +480,7 @@ def _tool_result_streams(content: Any, *, is_error: bool = False) -> tuple[str, 
         stderr = _tool_result_text(content.get("stderr"))
         if stdout or stderr:
             return stdout[:1024], stderr[:1024]
-        text = _tool_result_text(
-            content.get("content") or content.get("text") or content.get("output")
-        )
+        text = _tool_result_text(content.get("content") or content.get("text") or content.get("output"))
         if text:
             if is_error:
                 return "", text[:1024]
@@ -511,9 +500,7 @@ def _tool_result_streams(content: Any, *, is_error: bool = False) -> tuple[str, 
                         stderr_parts.append(stderr_piece)
                     continue
                 kind = str(item.get("type", "")).lower()
-                text = _tool_result_text(
-                    item.get("text") or item.get("content") or item.get("output")
-                )
+                text = _tool_result_text(item.get("text") or item.get("content") or item.get("output"))
                 if not text:
                     text = _tool_result_text(item)
                 if not text:
@@ -540,8 +527,7 @@ def _tool_result_streams(content: Any, *, is_error: bool = False) -> tuple[str, 
 def _looks_like_diff(text: str) -> bool:
     stripped = text.strip()
     return bool(stripped) and any(
-        marker in stripped
-        for marker in ("diff --git", "\n--- ", "\n+++ ", "\n@@", "@@", "--- ", "+++ ")
+        marker in stripped for marker in ("diff --git", "\n--- ", "\n+++ ", "\n@@", "@@", "--- ", "+++ ")
     )
 
 
@@ -567,13 +553,7 @@ def _infer_file_edit_diff(name: str, inp: dict[str, Any], result_text: str = "")
             for edit in edits:
                 if not isinstance(edit, dict):
                     continue
-                path = str(
-                    edit.get("file_path")
-                    or edit.get("path")
-                    or inp.get("file_path")
-                    or inp.get("path")
-                    or ""
-                )
+                path = str(edit.get("file_path") or edit.get("path") or inp.get("file_path") or inp.get("path") or "")
                 old = _tool_result_text(edit.get("old_string"))
                 new = _tool_result_text(edit.get("new_string"))
                 if old or new:

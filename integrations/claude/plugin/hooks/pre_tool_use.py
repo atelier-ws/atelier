@@ -2,8 +2,8 @@
 """PreToolUse hook for Edit/Write/MultiEdit.
 
 Reads the hook payload from stdin. If the target file matches a risky path
-or the recent context lacks a successful `atelier_check_plan` call, returns
-a JSON decision telling Claude to call `atelier_check_plan` first.
+or the recent context lacks a successful `lint` call, returns
+a JSON decision telling Claude to call `lint` first.
 
 This hook is **opt-in**. Enable it via hooks.json once the skills flow is
 comfortable. It defaults to non-blocking (decision: "ask") to avoid
@@ -76,7 +76,7 @@ def main() -> int:
 
     msg = (
         f"Atelier: `{target}` is in a risky domain (shopify / pdp / catalog / "
-        "tracker / publish / schema). Call `atelier_check_plan` with your "
+        "tracker / publish / schema). Call `lint` with your "
         "current task and plan before editing."
     )
     print(json.dumps({"decision": "ask", "reason": msg}))

@@ -21,13 +21,9 @@ def test_style_import_flags_near_duplicates(store: ReasoningStore, tmp_path: Pat
         write_markdown=False,
     )
     guide = tmp_path / "STYLE.md"
-    guide.write_text(
-        "## API\nUse schemas at service boundaries before changing API code.\n", encoding="utf-8"
-    )
+    guide.write_text("## API\nUse schemas at service boundaries before changing API code.\n", encoding="utf-8")
 
-    def fake_chat(
-        messages: list[dict[str, str]], json_schema: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def fake_chat(messages: list[dict[str, str]], json_schema: dict[str, Any] | None = None) -> dict[str, Any]:
         return {
             "procedural": True,
             "title": "Use Schemas At Boundaries",

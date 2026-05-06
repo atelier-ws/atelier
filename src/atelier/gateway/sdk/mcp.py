@@ -19,8 +19,6 @@ from atelier.core.foundation.models import (
 )
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.sdk.client import (
-    LessonDecisionResult,
-    LessonInboxResult,
     MCPToolTransport,
     MemoryArchiveResult,
     MemoryRecallResult,
@@ -34,25 +32,23 @@ from atelier.gateway.sdk.local import LocalClient
 class _LoopbackTransport(MCPToolTransport):
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         tools = {
-            "get_reasoning_context": mcp_server.tool_get_reasoning_context,
-            "check_plan": mcp_server.tool_check_plan,
-            "rescue_failure": mcp_server.tool_rescue_failure,
-            "run_rubric_gate": mcp_server.tool_run_rubric_gate,
-            "record_trace": mcp_server.tool_record_trace,
-            "atelier_lesson_inbox": mcp_server.tool_lesson_inbox,
-            "atelier_lesson_decide": mcp_server.tool_lesson_decide,
-            "memory_upsert_block": mcp_server.tool_memory_upsert_block,
-            "memory_get_block": mcp_server.tool_memory_get_block,
-            "memory_archive": mcp_server.tool_memory_archive,
-            "memory_recall": mcp_server.tool_memory_recall,
+            "reasoning": mcp_server.tool_get_reasoning_context,
+            "lint": mcp_server.tool_check_plan,
+            "rescue": mcp_server.tool_rescue_failure,
+            "trace": mcp_server.tool_record_trace,
+            "verify": mcp_server.tool_run_rubric_gate,
+            "route": mcp_server.tool_route,
+            "memory": mcp_server.tool_memory,
+            "read": mcp_server.tool_smart_read,
+            "search": mcp_server.tool_smart_search,
+            "edit": mcp_server.tool_smart_edit,
+            "compact": mcp_server.tool_compact,
         }
         return cast(dict[str, Any], tools[name](arguments))
 
 
 class MCPClient(LocalClient):
-    def __init__(
-        self, *, root: str = ".atelier", transport: MCPToolTransport | None = None
-    ) -> None:
+    def __init__(self, *, root: str = ".atelier", transport: MCPToolTransport | None = None) -> None:
         self._transport = transport or _LoopbackTransport()
         super().__init__(root=root)
 
@@ -68,11 +64,13 @@ class MCPClient(LocalClient):
         token_budget: int | None = 2000,
         dedup: bool = True,
         include_telemetry: bool = False,
+        include_run_ledger: bool = False,
+        include_environment: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
     ) -> ReasoningContextResult:
         payload = self._transport.call_tool(
-            "get_reasoning_context",
+            "reasoning",
             {
                 "task": task,
                 "domain": domain,
@@ -83,6 +81,8 @@ class MCPClient(LocalClient):
                 "token_budget": token_budget,
                 "dedup": dedup,
                 "include_telemetry": include_telemetry,
+                "include_run_ledger": include_run_ledger,
+                "include_environment": include_environment,
                 "agent_id": agent_id,
                 "recall": recall,
             },
@@ -100,7 +100,7 @@ class MCPClient(LocalClient):
         errors: list[str] | None = None,
     ) -> PlanCheckResult:
         payload = self._transport.call_tool(
-            "check_plan",
+            "lint",
             {
                 "task": task,
                 "plan": plan,
@@ -127,8 +127,9 @@ class MCPClient(LocalClient):
         actor: str | None = None,
     ) -> MemoryUpsertBlockResult:
         payload = self._transport.call_tool(
-            "memory_upsert_block",
+            "memory",
             {
+                "op": "block_upsert",
                 "agent_id": agent_id,
                 "label": label,
                 "value": value,
@@ -145,8 +146,8 @@ class MCPClient(LocalClient):
 
     def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
         payload = self._transport.call_tool(
-            "memory_get_block",
-            {"agent_id": agent_id, "label": label},
+            "memory",
+            {"op": "block_get", "agent_id": agent_id, "label": label},
         )
         return MemoryBlock.model_validate(payload) if payload is not None else None
 
@@ -160,8 +161,9 @@ class MCPClient(LocalClient):
         tags: list[str] | None = None,
     ) -> MemoryArchiveResult:
         payload = self._transport.call_tool(
-            "memory_archive",
+            "memory",
             {
+                "op": "archive",
                 "agent_id": agent_id,
                 "text": text,
                 "source": source,
@@ -181,8 +183,9 @@ class MCPClient(LocalClient):
         since: str | None = None,
     ) -> MemoryRecallResult:
         payload = self._transport.call_tool(
-            "memory_recall",
+            "memory",
             {
+                "op": "recall",
                 "agent_id": agent_id,
                 "query": query,
                 "top_k": top_k,
@@ -191,6 +194,24 @@ class MCPClient(LocalClient):
             },
         )
         return MemoryRecallResult.model_validate(payload)
+
+    def memory_summary(self, *, run_id: str) -> dict[str, Any]:
+        return self._transport.call_tool("memory", {"op": "summarize", "run_id": run_id})
+
+    def route(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
+        return self._transport.call_tool("route", {"op": op, **kwargs})
+
+    def compact(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
+        return self._transport.call_tool("compact", {"op": op, **kwargs})
+
+    def smart_search(self, *, query: str, **kwargs: Any) -> dict[str, Any]:
+        return self._transport.call_tool("search", {"query": query, **kwargs})
+
+    def smart_edit(self, *, edits: list[dict[str, Any]], atomic: bool = True) -> dict[str, Any]:
+        return self._transport.call_tool("edit", {"edits": edits, "atomic": atomic})
+
+    def repo_map(self, *, seed_files: list[str], **kwargs: Any) -> dict[str, Any]:
+        return self._transport.call_tool("search", {"seed_files": seed_files, "mode": "map", **kwargs})
 
     def rescue_failure(
         self,
@@ -202,7 +223,7 @@ class MCPClient(LocalClient):
         recent_actions: list[str] | None = None,
     ) -> RescueResult:
         payload = self._transport.call_tool(
-            "rescue_failure",
+            "rescue",
             {
                 "task": task,
                 "error": error,
@@ -215,7 +236,7 @@ class MCPClient(LocalClient):
 
     def run_rubric_gate(self, *, rubric_id: str, checks: dict[str, bool | None]) -> RubricResult:
         payload = self._transport.call_tool(
-            "run_rubric_gate",
+            "verify",
             {"rubric_id": rubric_id, "checks": checks},
         )
         return RubricResult.model_validate(payload)
@@ -236,7 +257,7 @@ class MCPClient(LocalClient):
         validation_results: list[ValidationResult] | None = None,
     ) -> TraceRecordResult:
         payload = self._transport.call_tool(
-            "record_trace",
+            "trace",
             {
                 "agent": agent,
                 "domain": domain,
@@ -248,39 +269,8 @@ class MCPClient(LocalClient):
                 "errors_seen": errors_seen or [],
                 "diff_summary": diff_summary,
                 "output_summary": output_summary,
-                "validation_results": [
-                    result.model_dump(mode="json") for result in (validation_results or [])
-                ],
+                "validation_results": [result.model_dump(mode="json") for result in (validation_results or [])],
             },
         )
         payload = {"id": str(payload.get("id") or payload.get("run_id") or "")}
         return TraceRecordResult.model_validate(payload)
-
-    def lesson_inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
-        payload = self._transport.call_tool(
-            "atelier_lesson_inbox",
-            {
-                "domain": domain,
-                "limit": limit,
-            },
-        )
-        return LessonInboxResult.model_validate(payload)
-
-    def lesson_decide(
-        self,
-        *,
-        lesson_id: str,
-        decision: str,
-        reviewer: str,
-        reason: str,
-    ) -> LessonDecisionResult:
-        payload = self._transport.call_tool(
-            "atelier_lesson_decide",
-            {
-                "lesson_id": lesson_id,
-                "decision": decision,
-                "reviewer": reviewer,
-                "reason": reason,
-            },
-        )
-        return LessonDecisionResult.model_validate(payload)

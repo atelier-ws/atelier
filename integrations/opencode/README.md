@@ -1,16 +1,18 @@
 # opencode Integration
 
-Support level: **MCP config** — MCP server registration in `opencode.jsonc`.
+Support level: **MCP config** — MCP server registration in `opencode.json`.
 
 ## What gets installed
 
 | Component  | Location after install                    | Description                             |
 | ---------- | ----------------------------------------- | --------------------------------------- |
-| MCP server | Merged into `opencode.jsonc` in workspace | Wired to `scripts/atelier_mcp_stdio.sh` |
+| MCP server | Merged into global or workspace `opencode.json` | Wired to `scripts/atelier_mcp_stdio.sh` |
 
-opencode reads `opencode.jsonc` from the workspace root. The installer merges the atelier MCP entry.
+By default the installer writes `~/.config/opencode/opencode.json`. With
+`--workspace DIR`, it writes `<workspace>/opencode.json` and installs the agent
+profile in `<workspace>/.opencode/agents/`.
 
-`smart_read`, `smart_search`, and `cached_grep` are default-on when the Atelier
+`read` and `search` are default-on when the Atelier
 agent profile is installed. They augment repeated reads/searches but do not
 replace opencode-native file reads, shell search, `rg`, or `grep`. Set
 `ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.

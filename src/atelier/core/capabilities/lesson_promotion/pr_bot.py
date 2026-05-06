@@ -36,9 +36,7 @@ class LessonPrBot:
         store: ReasoningStore,
         root: Path,
         env: Mapping[str, str] | None = None,
-        run_cmd: Callable[
-            [Sequence[str], Path], subprocess.CompletedProcess[str]
-        ] = _run_subprocess,
+        run_cmd: Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]] = _run_subprocess,
     ) -> None:
         self.store = store
         self.root = root

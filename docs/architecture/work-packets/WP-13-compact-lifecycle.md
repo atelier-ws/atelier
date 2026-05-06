@@ -30,7 +30,7 @@ memory blocks re-injected.
 - `integrations/claude/plugin/hooks/compact.py` — edit (currently a stub)
 - `integrations/claude/plugin/hooks/hooks.json` — edit (register pre-compact + post-compact)
 - `src/atelier/core/foundation/monitors.py` — edit (add `CompactAdvised` event type)
-- `src/atelier/gateway/adapters/mcp_server.py` — edit (register `atelier_compact_advise`)
+- `src/atelier/gateway/adapters/mcp_server.py` — edit (register `compact`)
 - `src/atelier/core/capabilities/context_compression/capability.py` — edit
 - `tests/core/test_compact_advise.py`
 - `tests/gateway/test_compact_hook_round_trip.py`
@@ -38,7 +38,7 @@ memory blocks re-injected.
 
 ## How to execute
 
-1. Add `atelier_compact_advise(run_id)` MCP tool. Output:
+1. Add `compact(run_id)` MCP tool. Output:
 
    ```json
    &#123;
@@ -58,13 +58,13 @@ memory blocks re-injected.
    - `open_files` = last 5 files modified in the run ledger
 
 2. Implement the pre-compact hook (`compact.py`):
-   - On every Claude `/compact` event, query `atelier_compact_advise` and emit a chat message with
+   - On every Claude `/compact` event, query `compact` and emit a chat message with
      the suggested preservation list.
    - Persist the manifest to `.atelier/run/<run_id>/compact_manifest.json`.
 
 3. Implement the post-compact hook (same file, different handler):
    - Read the manifest.
-   - Call `atelier_get_reasoning_context(task=<saved task>, agent_id=<run.agent_id>, recall=true)`
+   - Call `reasoning(task=<saved task>, agent_id=<run.agent_id>, recall=true)`
      and inject the result as a system note in the new conversation.
    - Re-load pinned memory blocks the same way.
    - Never replace the host's compacted conversation text; only add Atelier's observable runtime
@@ -87,7 +87,7 @@ make verify
 ## Definition of done
 
 - [ ] Pre- and post-compact hooks land in `compact.py` (no longer a stub)
-- [ ] `atelier_compact_advise` registered and reachable
+- [ ] `compact` registered and reachable
 - [ ] Manifest written to disk, restored after compact
 - [ ] Tests prove Atelier restores facts around host compaction rather than replacing compaction
 - [ ] Claude Code host docs updated

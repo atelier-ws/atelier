@@ -38,9 +38,9 @@ Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent 
 │  ┌────────▼─────────────────────────────▼───────────────┐   │
 │  │              ReasoningRuntime                        │   │
 │  │                                                      │   │
-│  │  get_reasoning_context()   check_plan()              │   │
-│  │  rescue_failure()          run_rubric()              │   │
-│  │  record_trace()            extract_candidate()       │   │
+│  │  reasoning()       lint()      │   │
+│  │  rescue()          verify()          │   │
+│  │  trace()    extract_candidate()       │   │
 │  └────────────────────────┬─────────────────────────────┘   │
 │                           │                                 │
 │  ┌────────────────────────▼─────────────────────────────┐   │
@@ -141,7 +141,7 @@ CheckPlanResult(status="pass"|"blocked", warnings=[...])
 Agent starts task
     │
     ▼
-get_reasoning_context(task, domain, files, tools, errors)
+reasoning(task, domain, files, tools, errors)
     │
     ├─→ FTS5 search for relevant blocks (domain + query)
     ├─→ Load environment for domain (constraints, tool patterns)
@@ -157,7 +157,7 @@ Structured context string injected into agent's system prompt
 Agent hits repeated failure
     │
     ▼
-rescue_failure(task, error, domain, recent_actions)
+rescue(task, error, domain, recent_actions)
     │
     ├─→ Search traces with matching errors
     ├─→ Find blocks in same domain
@@ -176,7 +176,7 @@ RescueResult(procedure=..., related_blocks=[...], confidence=...)
 
 ## Smart Tool Cache
 
-`smart_read`, `smart_search`, and `cached_grep` are default-on Atelier
+`read` and `search` are default-on Atelier
 augmentations for repeated, bounded reads/searches. Cache entries use call
 arguments plus content fingerprints where file contents matter, expire after
 600 seconds by default, and are invalidated across git `HEAD` changes when the

@@ -13,7 +13,7 @@ status: done
 
 ## Why
 
-V2 ships `atelier_search_read` (grep + AST outline + token counting). It answers "where is
+V2 ships `search` (grep + AST outline + token counting). It answers "where is
 this string?" well. It does not answer **"what code matters for this task?"** Aider's
 PageRank repo map does — and it's fully deterministic, MIT-licensed, and well-documented.
 
@@ -95,7 +95,7 @@ Python (via stdlib `ast`). V3.1-B brings JS/TS/Go/Rust along for the ride.
 ### Docs
 
 - **NEW:** `docs/host-integrations/repo-map.md` — when to use `atelier_repo_map` vs.
-  `atelier_search_read` (this is the comparison from the "Why" section, written for users).
+  `search` (this is the comparison from the "Why" section, written for users).
 
 ## How to execute
 

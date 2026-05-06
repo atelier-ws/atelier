@@ -37,11 +37,11 @@ const AGENTS: AgentDef[] = [
     icon: "🔍",
     color: "yellow",
     description: "Read-only repo exploration. Retrieves ReasonBlocks, reads files, runs grep/search. Never edits, never runs migrations, never executes destructive commands.",
-    tools: ["Read", "Grep", "Glob", "WebFetch", "atelier_get_reasoning_context"],
+    tools: ["Read", "Grep", "Glob", "WebFetch", "reasoning"],
     mode: "Read-only investigation & summarization",
     file: "integrations/claude/plugin/agents/explore.md",
     rules: [
-      "Call atelier_get_reasoning_context to fetch matched ReasonBlocks",
+      "Call reasoning to fetch matched ReasonBlocks",
       "Read files, run grep/glob searches — never edit",
       "Return tight summary with ReasonBlock IDs and file/line citations",
       "Never call atelier write tools (record_trace, extract_reasonblock)",
@@ -53,7 +53,7 @@ const AGENTS: AgentDef[] = [
     icon: "✅",
     color: "green",
     description: "Verifier agent. Reviews finished or in-progress patches against Atelier ReasonBlocks and rubrics. Blocks known dead ends. Uses check_plan and run_rubric_gate but never edits code.",
-    tools: ["Read", "Grep", "Glob", "atelier_get_reasoning_context", "atelier_check_plan", "atelier_run_rubric_gate"],
+    tools: ["Read", "Grep", "Glob", "reasoning", "lint", "verify"],
     mode: "Verify patch → check_plan → rubric_gate → verdict",
     file: "integrations/claude/plugin/agents/review.md",
     rules: [

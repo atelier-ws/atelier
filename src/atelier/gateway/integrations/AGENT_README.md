@@ -17,7 +17,7 @@ Enabled by setting `ATELIER_LANGFUSE_ENABLED=1` (or `true`/`yes`) plus `LANGFUSE
 
 - `emit_trace(payload)` — emits an `atelier.{domain}` trace to Langfuse. Fail-open: any error is silently swallowed so the core loop is never broken.
 - `health_check()` — returns a diagnostic dict for health endpoints.
-- Hooked into `atelier_record_trace` in `mcp_server.py` after the local ledger write.
+- Hooked into `trace` in `mcp_server.py` after the local ledger write.
 
 ## OpenMemory Contract
 

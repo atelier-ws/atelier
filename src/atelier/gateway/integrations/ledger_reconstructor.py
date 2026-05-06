@@ -113,9 +113,7 @@ class LedgerReconstructor:
                 if "usage" in ev:
                     usage = ev.get("usage", {})
                     input_tokens += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
-                    output_tokens += usage.get("completion_tokens", 0) or usage.get(
-                        "output_tokens", 0
-                    )
+                    output_tokens += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
 
             # OpenCode usage (best effort)
             elif source == "opencode":
@@ -123,9 +121,7 @@ class LedgerReconstructor:
                 if "usage" in data:
                     usage = data.get("usage", {})
                     input_tokens += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
-                    output_tokens += usage.get("completion_tokens", 0) or usage.get(
-                        "output_tokens", 0
-                    )
+                    output_tokens += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
 
         # Update ledger token counts
         if input_tokens > 0 or output_tokens > 0:

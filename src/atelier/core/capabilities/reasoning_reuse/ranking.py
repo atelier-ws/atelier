@@ -192,9 +192,7 @@ def rank_blocks(
         # Base score (normalised)
         base = float(block.get("base_score", 0.5))
 
-        composite = (
-            _W_BM25 * bm25_norm + _W_RECENCY * recency + _W_SUCCESS * success + _W_BASE * base
-        )
+        composite = _W_BM25 * bm25_norm + _W_RECENCY * recency + _W_SUCCESS * success + _W_BASE * base
 
         # Domain alignment bonus
         if domain_filter and str(block.get("domain", "")) == domain_filter:

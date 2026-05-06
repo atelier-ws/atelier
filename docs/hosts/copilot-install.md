@@ -10,16 +10,22 @@
 make install
 ```
 
+By default this installs VS Code user/global MCP, instructions, and task presets. For project-local Copilot artifacts:
+
+```bash
+bash scripts/install_copilot.sh --workspace /path/to/workspace
+```
+
 ---
 
 ## What Gets Installed
 
-| Artifact             | Location                                            |
-| -------------------- | --------------------------------------------------- |
-| MCP server config    | `<workspace>/.vscode/mcp.json`                      |
-| Copilot instructions | `<workspace>/.github/copilot-instructions.md`       |
-| Chat mode            | `<workspace>/.github/chatmodes/atelier.chatmode.md` |
-| Task presets         | `<workspace>/.vscode/tasks.json` (merged)           |
+| Artifact             | Global install                                    | `--workspace DIR` install                           |
+| -------------------- | ------------------------------------------------- | --------------------------------------------------- |
+| MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                      |
+| Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md`       |
+| Chat mode            | not installed globally                            | `<workspace>/.github/chatmodes/atelier.chatmode.md` |
+| Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)           |
 
 The MCP config registers Atelier as a stdio server:
 
@@ -31,7 +37,8 @@ The MCP config registers Atelier as a stdio server:
       "command": "<atelier_repo>/scripts/atelier_mcp_stdio.sh",
       "args": [],
       "env": &#123;
-        "ATELIER_WORKSPACE_ROOT": "<workspace>"
+        "ATELIER_WORKSPACE_ROOT": "<workspace>",
+        "ATELIER_ROOT": "<workspace>/.atelier"
       &#125;
     &#125;
   &#125;
@@ -72,32 +79,34 @@ After install, reload the VS Code window:
 
 ## Troubleshooting
 
-| Problem               | Fix                                                                   |
-| --------------------- | --------------------------------------------------------------------- |
-| MCP tools not loading | Reload VS Code window; check `.vscode/mcp.json`                       |
-| `code` CLI not found  | Install VS Code CLI: in VS Code, run "Install 'code' command in PATH" |
+| Problem               | Fix                                                                          |
+| --------------------- | ---------------------------------------------------------------------------- |
+| MCP tools not loading | Reload VS Code window; check user `mcp.json` or workspace `.vscode/mcp.json` |
+| `code` CLI not found  | Install VS Code CLI: in VS Code, run "Install 'code' command in PATH"        |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 
 All V2 tools are available via the Atelier MCP server. These are **Atelier augmentations** — VS Code native search, file reads, and editing remain the primary interfaces.
 
-| Tool                          | Boundary             | Description                                               |
-| ----------------------------- | -------------------- | --------------------------------------------------------- |
-| `atelier_memory_upsert_block` | Atelier augmentation | Store named value in agent memory                         |
-| `atelier_memory_get_block`    | Atelier augmentation | Retrieve named memory block                               |
-| `atelier_memory_recall`       | Atelier augmentation | FTS + vector search over archival memory                  |
-| `atelier_memory_archive`      | Atelier augmentation | Persist text passage to archival memory                   |
-| `atelier_memory_summary`      | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
-| `atelier_search_read`         | Atelier augmentation | Token-saving combined search + read                       |
-| `atelier_batch_edit`          | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
-| `atelier_sql_inspect`         | Atelier augmentation | Read-only SQL schema/data inspection                      |
-| `atelier_compact_advise`      | Atelier augmentation | Advise before context compaction; provides reinject hints |
-| `atelier_lesson_inbox`        | Atelier augmentation | List lesson candidates awaiting decision                  |
-| `atelier_lesson_decide`       | Atelier augmentation | Approve or reject a lesson candidate                      |
+| Tool                    | Boundary             | Description                                               |
+| ----------------------- | -------------------- | --------------------------------------------------------- |
+| `memory`                | Atelier augmentation | Store named value in agent memory                         |
+| `memory`                | Atelier augmentation | Retrieve named memory block                               |
+| `memory`                | Atelier augmentation | FTS + vector search over archival memory                  |
+| `memory`                | Atelier augmentation | Persist text passage to archival memory                   |
+| `memory`                | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
+| `search`                | Atelier augmentation | Token-saving combined search + read                       |
+| `edit`                  | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
+| `atelier bench runtime` | Atelier augmentation | Capability efficiency metrics                             |
+| `compact`               | Atelier augmentation | Advise before context compaction; provides reinject hints |
+| `atelier lesson inbox`  | Atelier augmentation | List lesson candidates awaiting decision                  |
+| `atelier lesson decide` | Atelier augmentation | Approve or reject a lesson candidate                      |
 
 Disable Atelier cache: `ATELIER_CACHE_DISABLED=1`.
 
 ## Uninstall
 
-Remove the `atelier` key from `.vscode/mcp.json` → `servers`.  
-Remove or revert the Atelier section from `.github/copilot-instructions.md`.
+```bash
+bash scripts/uninstall_copilot.sh
+bash scripts/uninstall_copilot.sh --workspace /path/to/workspace
+```

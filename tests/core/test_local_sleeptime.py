@@ -92,9 +92,7 @@ def test_summarize_ledger_fails_closed_without_summarizer(
         _ = (text, max_tokens)
         raise OllamaUnavailable("no ollama")
 
-    monkeypatch.setattr(
-        "atelier.core.capabilities.context_compression.sleeptime.summarize", unavailable
-    )
+    monkeypatch.setattr("atelier.core.capabilities.context_compression.sleeptime.summarize", unavailable)
     monkeypatch.delenv("ATELIER_MEMORY_BACKEND", raising=False)
 
     with pytest.raises(SleeptimeUnavailable):

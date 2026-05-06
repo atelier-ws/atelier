@@ -6,10 +6,10 @@ Reads the hook payload (stdin: JSON with session_id, transcript_path).
 Decision tree:
 1. If this was a discussion-only session (no code-editing tools used in the
    transcript) → silent exit.  No trace required.
-2. If code work happened AND atelier_record_trace was already called for
+2. If code work happened AND trace was already called for
    this session → show stats and exit silently.
 3. If code work happened but no trace was recorded → surface a system
-   message asking Claude to call atelier_record_trace.
+   message asking Claude to call trace.
 
 Token and tool-call counts are read directly from the Claude Code
 transcript JSONL at `transcript_path`.
@@ -133,7 +133,7 @@ def _write_token_event(stats: dict) -> None:  # type: ignore[type-arg]
 
 
 def _trace_recorded(session_id: str) -> bool:
-    """Return True if atelier_record_trace was called in this session.
+    """Return True if trace was called in this session.
 
     Checks session-scoped state first (keyed by *session_id*), then falls
     back to the legacy global ``trace_recorded`` flag for older MCP versions
@@ -286,7 +286,7 @@ def main() -> int:
     # and would silently no-op. Use `systemMessage` for a visible warning.
     msg = (
         "Atelier: no trace was recorded this session. "
-        "Call `atelier_record_trace` with the observable summary "
+        "Call `trace` with the observable summary "
         "(files_touched, commands_run, errors_seen, diff_summary, "
         "validation_results, status) before stopping."
     )

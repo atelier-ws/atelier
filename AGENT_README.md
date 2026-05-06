@@ -11,33 +11,33 @@
 ```
 Are you editing code?
 ├─ YES → Use atelier:code
-│        First: call atelier_get_reasoning_context
+│        First: call reasoning
 │        Then: draft plan
-│        Then: call atelier_check_plan (MUST PASS before editing)
+│        Then: call lint (MUST PASS before editing)
 │        Then: edit code
-│        Then: if 2+ failures → call atelier_rescue_failure
-│        Finally: call atelier_record_trace
+│        Then: if 2+ failures → call rescue
+│        Finally: call trace
 │
 ├─ NO, just reading/exploring?
 │  └─ Use atelier:explore
-│     - Call atelier_get_reasoning_context only
+│     - Call reasoning only
 │     - Read files, grep, search
 │     - Never edit, never mutate
 │
 ├─ NO, I'm reviewing a patch?
 │  └─ Use atelier:review
-│     - Call atelier_get_reasoning_context
-│     - Call atelier_check_plan on the patch
-│     - Call atelier_run_rubric_gate for high-risk domains
+│     - Call reasoning
+│     - Call lint on the patch
+│     - Call verify for high-risk domains
 │     - Report verdict: pass | warn | block
 │
 └─ NO, same error failed 2+ times?
    └─ Use atelier:repair
-      - Call atelier_get_run_ledger
-      - Call atelier_rescue_failure
+      - Call reasoning
+      - Call rescue
       - Apply patch
       - Re-run test
-      - Call atelier_record_trace
+      - Call trace
 ```
 
 ---
@@ -47,7 +47,7 @@ Are you editing code?
 ### atelier:code (Main Coding Agent)
 
 ```
-1. call atelier_get_reasoning_context({
+1. call reasoning({
      task: "one-sentence task",
      domain: "beseam.shopify.publish" | null,
      files: ["src/..."],
@@ -57,7 +57,7 @@ Are you editing code?
 
 2. Draft plan: 3-8 imperative steps
 
-3. call atelier_check_plan({
+3. call lint({
      task: same,
      plan: [...],
      domain: same,
@@ -71,7 +71,7 @@ Are you editing code?
 4. Edit code (aligned with validated plan)
 
 5. IF test/command fails same way twice:
-   call atelier_rescue_failure({
+   call rescue({
      task: same,
      error: "error message (redacted)",
      files: [...],
@@ -81,7 +81,7 @@ Are you editing code?
 
 6. IF domain in [beseam.shopify.publish, beseam.pdp.schema,
                  beseam.catalog.fix, beseam.tracker.classification]:
-   call atelier_run_rubric_gate({
+   call verify({
      rubric_id: "rubric_shopify_publish" | ...,
      checks: {
        "check_name_1": true,
@@ -91,7 +91,7 @@ Are you editing code?
    })
    → MUST have status != "blocked"
 
-7. call atelier_record_trace({
+7. call trace({
      agent: "atelier:code",
      domain: same | null,
      task: same,
@@ -109,7 +109,7 @@ Are you editing code?
 ### atelier:explore (Read-Only Investigator)
 
 ```
-1. call atelier_get_reasoning_context({
+1. call reasoning({
      task: "...",
      domain: "...",
      files: ["..."],
@@ -132,7 +132,7 @@ Are you editing code?
 ### atelier:review (Verifier/Gatekeeper)
 
 ```
-1. call atelier_get_reasoning_context({
+1. call reasoning({
      task: "review patch for X",
      files: [changed_files],
      domain: "beseam.shopify.publish" | ...
@@ -140,7 +140,7 @@ Are you editing code?
 
 2. Identify dead-end overlaps
 
-3. call atelier_check_plan({
+3. call lint({
      task: "implement the diff",
      plan: [implied_steps_from_diff],
      domain: same,
@@ -149,7 +149,7 @@ Are you editing code?
    → IF blocked: STOP, report verdict: block
 
 4. IF high-risk domain:
-   call atelier_run_rubric_gate({
+   call verify({
      rubric_id: ...,
      checks: {...}
    })
@@ -171,13 +171,13 @@ DO NOT:
 ### atelier:repair (Repair Specialist)
 
 ```
-1. call atelier_get_run_ledger({run_id: "" | "specific_id"})
+1. call reasoning({run_id: "" | "specific_id"})
    → Extract: current_plan, verified_facts, hypotheses_tried,
               hypotheses_rejected, errors
 
 2. Form ONE new hypothesis not in hypotheses_tried or rejected
 
-3. call atelier_rescue_failure({
+3. call rescue({
      task: same,
      error: "error signature (redacted)",
      files: [...],
@@ -190,7 +190,7 @@ DO NOT:
 5. Re-run failing test/command
 
 6. IF still fails same way:
-   call atelier_update_run_ledger({
+   call trace({
      run_id: same,
      add_hypothesis: {
        hypothesis: "...",
@@ -200,7 +200,7 @@ DO NOT:
    })
    → STOP after 2 rejections
 
-7. call atelier_record_trace({
+7. call trace({
      agent: "atelier:repair",
      domain: same,
      task: same,
@@ -226,7 +226,7 @@ DO NOT:
 {
   "core_tools": [
     {
-      "name": "atelier_get_reasoning_context",
+      "name": "reasoning",
       "input": {
         "task": "string (required)",
         "domain": "string (optional)",
@@ -241,7 +241,7 @@ DO NOT:
       "use_when": "Starting any task, before planning"
     },
     {
-      "name": "atelier_check_plan",
+      "name": "lint",
       "input": {
         "task": "string (required)",
         "plan": ["string"] (required, 3-8 steps)",
@@ -263,7 +263,7 @@ DO NOT:
       "use_when": "Before editing code, after drafting plan"
     },
     {
-      "name": "atelier_rescue_failure",
+      "name": "rescue",
       "input": {
         "task": "string (required)",
         "error": "string (required, redacted)",
@@ -278,7 +278,7 @@ DO NOT:
       "use_when": "Same error fails 2+ times"
     },
     {
-      "name": "atelier_record_trace",
+      "name": "trace",
       "input": {
         "agent": "string (required: atelier:code|explore|review|repair)",
         "domain": "string (optional)",
@@ -301,7 +301,7 @@ DO NOT:
       "use_when": "Task complete, failed, or partial"
     },
     {
-      "name": "atelier_run_rubric_gate",
+      "name": "verify",
       "input": {
         "rubric_id": "string (required)",
         "checks": {
@@ -331,12 +331,12 @@ DO NOT:
 {
   "extended_tools": [
     {
-      "name": "atelier_get_run_ledger",
+      "name": "reasoning",
       "input": {"run_id": "string (optional)"},
       "output": {"ledger": {"run_id", "task", "plan", "verified_facts", "hypotheses_tried", "hypotheses_rejected", "blockers", "errors"}}
     },
     {
-      "name": "atelier_update_run_ledger",
+      "name": "trace",
       "input": {
         "run_id": "string",
         "set_plan": ["string"],
@@ -352,7 +352,7 @@ DO NOT:
       "output": {"candidate": {"id", "title", "domain", "procedures", "dead_ends"}}
     },
     {
-      "name": "atelier_monitor_event",
+      "name": "trace",
       "input": {
         "event_type": "SecondGuessing|Thrashing|BudgetExhaustion|RepeatedFailure|WrongDirection",
         "severity": "low|medium|high",
@@ -361,31 +361,31 @@ DO NOT:
       "output": {"recorded": "bool"}
     },
     {
-      "name": "atelier_compress_context",
+      "name": "compact",
       "input": {"run_id": "string"},
       "output": {"summary": "string"}
     },
     {
-      "name": "atelier_get_environment_context",
+      "name": "reasoning",
       "input": {"domain": "string"},
       "output": {
         "environment": {"id", "title", "domain_match", "required_validations", "forbidden_phrases", "top_procedures"}
       }
     },
     {
-      "name": "atelier_smart_read",
+      "name": "read",
       "input": {"file_path": "string"},
       "output": {"content": "string", "cache_hit": "bool", "tokens_saved": "int"},
       "boundary": "Atelier augmentation — host-native Read stays the raw-access fallback"
     },
     {
-      "name": "atelier_smart_search",
+      "name": "search",
       "input": {"query": "string", "path": "string"},
       "output": {"results": ["string"], "cache_hit": "bool", "calls_avoided": "int"},
       "boundary": "Atelier augmentation — host-native search/grep stays available"
     },
     {
-      "name": "atelier_cached_grep",
+      "name": "search",
       "input": {"pattern": "string", "path": "string"},
       "output": {"matches": ["string"], "cache_hit": "bool"},
       "boundary": "Atelier augmentation — host-native grep stays available"
@@ -400,33 +400,33 @@ DO NOT:
 {
   "v2_memory_tools": [
     {
-      "name": "atelier_memory_upsert_block",
+      "name": "memory",
       "input": {"agent_id": "string", "label": "string", "value": "string", "pinned": "bool (optional)", "read_only": "bool (optional)", "description": "string (optional)"},
       "output": {"id": "string", "version": "int"},
       "use_when": "Store a persistent fact or value in the agent's memory block",
-      "example": "atelier_memory_upsert_block({agent_id: 'atelier:code', label: 'last_gid', value: 'gid://shopify/Product/12345'})"
+      "example": "memory({agent_id: 'atelier:code', label: 'last_gid', value: 'gid://shopify/Product/12345'})"
     },
     {
-      "name": "atelier_memory_get_block",
+      "name": "memory",
       "input": {"agent_id": "string", "label": "string"},
       "output": {"MemoryBlock": {"id", "agent_id", "label", "value", "pinned", "read_only", "version", "updated_at"}},
       "use_when": "Retrieve a specific named memory block"
     },
     {
-      "name": "atelier_memory_recall",
+      "name": "memory",
       "input": {"agent_id": "string", "query": "string", "top_k": "int (optional)", "tags": ["string"] "(optional)"},
       "output": {"passages": [{"id", "text", "score", "source_ref"}], "recall_id": "string"},
       "use_when": "FTS + vector semantic search over archival memory",
-      "example": "atelier_memory_recall({agent_id: 'atelier:code', query: 'Shopify product GID pattern', top_k: 5})"
+      "example": "memory({agent_id: 'atelier:code', query: 'Shopify product GID pattern', top_k: 5})"
     },
     {
-      "name": "atelier_memory_archive",
+      "name": "memory",
       "input": {"agent_id": "string", "text": "string", "source": "string", "source_ref": "string (optional)", "tags": ["string"] "(optional)"},
       "output": {"id": "string", "dedup_hit": "bool"},
       "use_when": "Persist a text passage to archival memory (dedup guard included)"
     },
     {
-      "name": "atelier_memory_summary",
+      "name": "memory",
       "input": {"run_id": "string"},
       "output": {"tokens_pre": "int", "tokens_post": "int", "summary_md": "string", "evicted_event_ids": ["string"]},
       "use_when": "Summarize and compact the run's sleeptime memory (reduces context window)"
@@ -441,14 +441,14 @@ DO NOT:
 {
   "v2_lesson_tools": [
     {
-      "name": "atelier_lesson_inbox",
+      "name": "atelier lesson inbox",
       "input": { "domain": "string (optional)", "limit": "int (optional)" },
       "output": ["LessonCandidate"],
       "use_when": "List pending lesson candidates awaiting promote/reject decision",
-      "example": "atelier_lesson_inbox({domain: 'beseam.shopify.publish', limit: 10})"
+      "example": "atelier lesson inbox({domain: 'beseam.shopify.publish', limit: 10})"
     },
     {
-      "name": "atelier_lesson_decide",
+      "name": "atelier lesson decide",
       "input": {
         "lesson_id": "string",
         "decision": "approve|reject",
@@ -468,29 +468,29 @@ DO NOT:
 {
   "v2_context_savings_tools": [
     {
-      "name": "atelier_search_read",
+      "name": "search",
       "input": {"query": "string", "path": "string (optional)", "max_files": "int (optional)", "max_chars_per_file": "int (optional)"},
       "output": {"matches": [{"path", "line_start", "line_end", "snippet", "lang_outline?"}], "total_chars": "int", "cache_hit": "bool"},
       "use_when": "Token-saving combined search + read for repeated context gathering",
       "boundary": "Atelier augmentation — host shell/search stays available for raw access",
-      "example": "atelier_search_read({query: 'publish_product function', path: 'src/'})"
+      "example": "search({query: 'publish_product function', path: 'src/'})"
     },
     {
-      "name": "atelier_batch_edit",
+      "name": "edit",
       "input": {"edits": [{"path": "string", "old_string": "string|null", "range": "{start,end}|null", "new_string": "string", "fuzzy": "bool (optional)"}]},
       "output": {"applied": [{"path", "hunk"}], "failed": [{"path", "error"}]},
       "use_when": "Apply multiple deterministic edits in one call; host-native Edit/MultiEdit remains default",
       "boundary": "Atelier augmentation — optional batch executor; never intercepts host edit tools"
     },
     {
-      "name": "atelier_sql_inspect",
+      "name": "atelier sql inspect",
       "input": {"connection_alias": "string", "sql": "string"},
       "output": {"rows": ["..."], "columns": ["string"], "affected": "int", "truncated": "bool"},
       "use_when": "Read-only SQL schema/data introspection; never an interactive DB client or migration tool",
       "boundary": "Atelier augmentation — read-only inspection only"
     },
     {
-      "name": "atelier_compact_advise",
+      "name": "compact",
       "input": {"run_id": "string"},
       "output": {"should_compact": "bool", "preserve_blocks": ["string"], "pin_memory": ["string"], "suggested_prompt": "string"},
       "use_when": "Get advice before triggering host-native /compact — Atelier preserves runtime facts for re-injection",
@@ -506,13 +506,13 @@ DO NOT:
 {
   "v2_routing_tools": [
     {
-      "name": "atelier_route_decide",
+      "name": "route",
       "input": {"agent_request": "AgentRequest", "policy": "ContextBudgetPolicy"},
       "output": {"RouteDecision": {"model", "tier", "budget_tokens", "rationale"}},
       "use_when": "Quality-aware model routing — select best model/tier for task within cost budget"
     },
     {
-      "name": "atelier_route_verify",
+      "name": "route",
       "input": {"route_decision_id": "string", "validation_results": ["..."], "changed_files": ["string"], "rubric_status": "string"},
       "output": {"VerificationEnvelope": {"verified", "escalated", "reason"}},
       "use_when": "Verification-gated escalation — promote to higher-tier model when output quality is insufficient"
@@ -525,25 +525,25 @@ DO NOT:
 
 ## 🚫 ERROR HANDLING (Decision Trees)
 
-### When atelier_check_plan returns status="blocked"
+### When lint returns status="blocked"
 
 ```
 IF status == "blocked":
   ├─ STOP editing code
   ├─ Read suggested_plan from response
   ├─ Replace your plan with suggested_plan
-  ├─ Call atelier_check_plan again with new plan
+  ├─ Call lint again with new plan
   └─ Repeat until status != "blocked"
 ```
 
-### When atelier_run_rubric_gate returns status="blocked"
+### When verify returns status="blocked"
 
 ```
 IF status == "blocked":
   ├─ DO NOT mark task success
   ├─ Read failures list
   ├─ Fix each failed check in code
-  ├─ Call atelier_run_rubric_gate again
+  ├─ Call verify again
   └─ Repeat until status="pass"
 ```
 
@@ -551,17 +551,17 @@ IF status == "blocked":
 
 ```
 IF count_failures >= 2 AND same_error_signature:
-  ├─ Call atelier_rescue_failure
+  ├─ Call rescue
   ├─ Read matched ReasonBlocks
   ├─ Apply rescue procedure
   ├─ Re-run test/command
   ├─ IF still fails same way:
-  │  └─ Call atelier_rescue_failure again (max 3 times total)
+  │  └─ Call rescue again (max 3 times total)
   └─ IF 3rd attempt still fails:
      └─ STOP and ask human for help
 ```
 
-### When atelier_get_reasoning_context returns empty
+### When reasoning returns empty
 
 ```
 IF context is empty:
@@ -606,23 +606,23 @@ IF context is empty:
 }
 ```
 
-**Rule:** If domain is in high_risk_domains, MUST call atelier_run_rubric_gate before marking task success.
+**Rule:** If domain is in high_risk_domains, MUST call verify before marking task success.
 
 ---
 
 ## ⚠️ HARD RULES (Never Break)
 
 ```
-1. DO NOT skip atelier_check_plan before editing code in high-risk domains
-2. DO NOT ignore status="blocked" from check_plan or run_rubric_gate
+1. DO NOT skip lint before editing code in high-risk domains
+2. DO NOT ignore status="blocked" from lint or verify
 3. DO NOT propose same hypothesis twice in repair loop
-4. DO NOT call record_trace without observable facts
+4. DO NOT call trace without observable facts
 5. DO NOT store secrets, API keys, tokens, or PII in traces
 6. DO NOT edit code after review agent reports verdict="block"
-7. DO NOT loop more than 2 times on rescue_failure
-8. DO NOT skip get_run_ledger when in repair agent
-9. DO NOT call record_trace during exploration (explore agent only reads)
-10. DO NOT mark task success if rubric_gate status != "pass"
+7. DO NOT loop more than 2 times on rescue
+8. DO NOT skip reasoning when in repair agent
+9. DO NOT call trace during exploration (explore agent only reads)
+10. DO NOT mark task success if verify status != "pass"
 ```
 
 ---

@@ -32,7 +32,7 @@ This creates `.atelier/` with:
 The core feature: block dangerous agent plans _before_ execution.
 
 ```bash
-uv run atelier check-plan \
+uv run atelier lint \
     --task "Publish Shopify product" \
     --domain beseam.shopify.publish \
     --step "Parse product handle from PDP URL" \
@@ -52,7 +52,7 @@ warnings:
 Now try a safe plan:
 
 ```bash
-uv run atelier check-plan \
+uv run atelier lint \
     --task "Publish Shopify product" \
     --domain beseam.shopify.publish \
     --step "Fetch product by GID via GraphQL" \
@@ -68,7 +68,7 @@ Expected: `status: pass` (exit 0)
 Before an agent starts a task, inject relevant procedures into its context:
 
 ```bash
-uv run atelier context \
+uv run atelier reasoning \
     --task "Fix Shopify JSON-LD availability validation" \
     --domain beseam.pdp.schema \
     --file pdp/schema.py
@@ -90,7 +90,7 @@ echo '&#123;
   "rollback_available": true,
   "localized_url_test_passed": false,
   "changed_handle_test_passed": false
-&#125;' | uv run atelier run-rubric rubric_shopify_publish
+&#125;' | uv run atelier verify rubric_shopify_publish
 ```
 
 Expected: `status: blocked` (because localized_url_test_passed = false).
@@ -109,7 +109,7 @@ echo '&#123;
   "errors_seen": [],
   "diff_summary": "Updated metafields for product gid://shopify/Product/123",
   "output_summary": "Product published, audit passed"
-&#125;' | uv run atelier record-trace
+&#125;' | uv run atelier trace record
 ```
 
 ## Step 7 — Extract a ReasonBlock from a trace
@@ -120,30 +120,24 @@ When an agent solves something non-obviously, capture the pattern for future run
 uv run atelier trace list
 # → find the trace ID
 
-uv run atelier extract-block <trace-id>
+uv run atelier block extract <trace-id>
 # → shows candidate block with confidence score
 
-uv run atelier extract-block <trace-id> --save
+uv run atelier block extract <trace-id> --save
 # → saves to store and markdown mirror
 ```
 
 ## Step 8 — Use smart runtime commands
 
 ```bash
-# Smart retrieval routed through core capabilities
-uv run atelier search smart "shopify publish validation"
+# Smart retrieval across ReasonBlocks
+uv run atelier search "shopify publish validation"
 
-# AST-aware file read with semantic cache
-uv run atelier read smart src/atelier/gateway/adapters/runtime.py --max-lines 120
+# AST-aware file read with symbol summary
+uv run atelier read src/atelier/gateway/adapters/runtime.py --max-lines 120
 
-# Batch edit input format: [&#123;"path": "...", "find": "...", "replace": "..."&#125;]
-uv run atelier edit smart --input edits.json
-
-# Compress latest run into actionable runtime memory
-uv run atelier memory summarize
-
-# Inspect SQL text or file
-uv run atelier sql inspect --sql "select * from catalog.products join sales.orders on ..."
+# Batch edit input format: [{"path": "...", "find": "...", "replace": "..."}]
+uv run atelier edit --input edits.json
 ```
 
 ## Next Steps

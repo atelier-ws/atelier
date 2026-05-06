@@ -1,6 +1,6 @@
 ---
 id: WP-V3.1-A
-title: Threshold-triggered tool-output compaction (`atelier_compact_tool_output`)
+title: Threshold-triggered tool-output compaction (`compact`)
 phase: V3.1
 boundary: Atelier-core
 owner_agent: atelier:code
@@ -9,7 +9,7 @@ supersedes: []
 status: done
 ---
 
-# WP-V3.1-A — `atelier_compact_tool_output`
+# WP-V3.1-A — `compact`
 
 ## Why
 
@@ -66,14 +66,14 @@ elided) …`. Recovery hint includes the exact rerun command if known.
   - `tool_output.py`: schema-and-sample for JSON/structured outputs (per SR2's pattern);
     raw-text fallback otherwise.
 - **EDIT:** `src/atelier/gateway/mcp_server.py` — register
-  `atelier_compact_tool_output(content, content_type, budget_tokens)` MCP tool.
+  `compact(content, content_type, budget_tokens)` MCP tool.
 
 ### Claude Code PostToolUse hook
 
 - **NEW:** `integrations/claude/plugin/hooks/post_tool_use_compact.py` — a Claude Code
   `PostToolUse` hook script:
   - Reads the just-finished tool's output from the hook's stdin payload.
-  - If `len(output_tokens) > threshold`, calls `atelier_compact_tool_output` via MCP and
+  - If `len(output_tokens) > threshold`, calls `compact` via MCP and
     returns the compacted output to be substituted in conversation.
   - Otherwise passthrough.
   - Configurable threshold via `.atelier/config.toml [compact].threshold_tokens`.
@@ -155,7 +155,7 @@ make verify
 
 ## Definition of done
 
-- [ ] `atelier_compact_tool_output` MCP tool registered; three methods route correctly by
+- [ ] `compact` MCP tool registered; three methods route correctly by
       size threshold.
 - [ ] Five deterministic strategies implemented and tested.
 - [ ] Ollama-summary path goes through `internal_llm.ollama_client`; never violates

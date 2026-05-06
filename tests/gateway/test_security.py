@@ -30,10 +30,7 @@ from atelier.gateway.adapters.cli import cli
 
 
 def test_redact_strips_credentials_and_cot() -> None:
-    text = (
-        "set api_key=sk-aaaabbbbccccddddeeeeffff1122 then\n"
-        "internal reasoning: do something private"
-    )
+    text = "set api_key=sk-aaaabbbbccccddddeeeeffff1122 then\n" "internal reasoning: do something private"
     out = redact(text)
     assert "sk-aaaabbbbccccdddd" not in out
     assert "<redacted-openai-key>" in out or "<redacted-credential>" in out
@@ -145,11 +142,6 @@ def test_assert_safe_grep_args_accepts_clean_args() -> None:
 # cached_grep — both wrappers reject injection
 # ---------------------------------------------------------------------------
 
-
-def test_mcp_cached_grep_removed_from_core_six_surface() -> None:
-    from atelier.gateway.adapters import mcp_server
-
-    assert "atelier_cached_grep" not in mcp_server.TOOLS
 
 
 def test_cli_cached_grep_rejects_injection(tmp_path: Path) -> None:

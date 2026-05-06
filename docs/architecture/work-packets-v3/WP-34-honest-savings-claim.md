@@ -82,7 +82,7 @@ Phase H + I to be in place.
    models" line with something like:
 
    > **Context savings** — Atelier ships deterministic context-savings tools
-   > (`atelier_search_read`, `atelier_batch_edit`, AST outline-first reads, scoped recall).
+   > (`search`, `edit`, AST outline-first reads, scoped recall).
    > A measured reduction will be published with V3.0; see
    > [WP-50](WP-50-honest-benchmark-publish.md) for
    > methodology. Until then, treat all percentage figures in this README as design targets.

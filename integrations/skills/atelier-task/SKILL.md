@@ -12,7 +12,7 @@ When this skill activates, follow the loop **in order**. Do not skip steps.
 Call the MCP tool:
 
 ```
-atelier_get_reasoning_context({
+reasoning({
   task: "<one-sentence task>",
   domain: "<beseam.shopify.publish | beseam.pdp.schema | ... | null>",
   files: ["<likely files>"],
@@ -29,7 +29,7 @@ Read every returned ReasonBlock. They are short on purpose.
 ## 3. Validate the plan
 
 ```
-atelier_check_plan({
+lint({
   task: "<same task>",
   domain: "<same domain>",
   plan: ["step 1", "step 2", "..."],
@@ -39,7 +39,7 @@ atelier_check_plan({
 ```
 
 - `status == "blocked"` → **stop. Do not edit code.** Replace your plan
-  with the response's `suggested_plan` and call `atelier_check_plan`
+  with the response's `suggested_plan` and call `lint`
   again.
 - `status == "warn"` → address every warning in the next revision.
 - `status == "ok"` → proceed.
@@ -53,7 +53,7 @@ Make the smallest possible diff that satisfies the validated plan.
 If the same test/command fails twice with the same error signature:
 
 ```
-atelier_rescue_failure({
+rescue({
   task, error, files,
   recent_actions: ["last 3 actions"]
 })
@@ -64,13 +64,13 @@ Apply the rescue **before** running the failing thing again.
 ## 6. Rubric gate (high-risk domains only)
 
 For `beseam.shopify.publish`, `beseam.pdp.schema`, `beseam.catalog.fix`,
-`beseam.tracker.classification` call `atelier_run_rubric_gate` with the
+`beseam.tracker.classification` call `verify` with the
 domain's `rubric_id` and a complete `checks` object.
 
 ## 7. Record trace
 
 ```
-atelier_record_trace({
+trace({
   agent: "atelier:code",
   domain, task, status,
   files_touched, tools_called, commands_run, errors_seen,
@@ -83,5 +83,5 @@ Never include secrets, API keys, tokens, or hidden chain-of-thought.
 ## Hard rules
 
 - Do not ignore `high`-severity Atelier warnings.
-- Do not bypass `atelier_check_plan` by editing first.
+- Do not bypass `lint` by editing first.
 - Do not invent plan steps that contradict matched ReasonBlocks.
