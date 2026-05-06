@@ -13,10 +13,10 @@ The response includes the compaction strategy, original token estimate, compacte
 ## MCP Shape
 
 ```json
-{
+&#123;
   "text": "...raw output...",
   "source": "pytest"
-}
+&#125;
 ```
 
 Hosts should call this tool before injecting long command, search, SQL, or test output into the prompt.

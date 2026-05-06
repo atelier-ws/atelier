@@ -9,11 +9,11 @@ The builder extracts deterministic tags from Python, JavaScript, TypeScript, Go,
 ## MCP Shape
 
 ```json
-{
+&#123;
   "path": ".",
   "focus": "memory arbitration",
   "budget_tokens": 1200
-}
+&#125;
 ```
 
 The response contains the rendered map, the file count, node count, and token estimate. It is intended for broad navigation before deeper reads.

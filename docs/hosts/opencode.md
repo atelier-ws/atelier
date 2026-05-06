@@ -20,18 +20,18 @@ make verify
 ## MCP Config Shape
 
 ```json
-{
+&#123;
   "default_agent": "atelier",
-  "mcp": {
-    "atelier": {
+  "mcp": &#123;
+    "atelier": &#123;
       "type": "local",
       "command": ["<atelier_repo>/scripts/atelier_mcp_stdio.sh"],
-      "environment": {
+      "environment": &#123;
         "ATELIER_WORKSPACE_ROOT": "<workspace>"
-      }
-    }
-  }
-}
+      &#125;
+    &#125;
+  &#125;
+&#125;
 ```
 
 ## MCP Tools

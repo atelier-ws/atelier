@@ -44,7 +44,7 @@ wozcode's 11-prompt suite. Without it the V2 plan is marketing.
    def test_context_savings_at_least_50_percent_on_11_prompt_suite(tmp_path):
        result = run_savings_bench(tmp_path)
        assert result.reduction_pct >= 50.0, (
-           f"context savings regressed: {result.reduction_pct:.1f}% < 50%"
+           f"context savings regressed: &#123;result.reduction_pct:.1f&#125;% < 50%"
        )
    ```
 

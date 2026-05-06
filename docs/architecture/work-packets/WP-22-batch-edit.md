@@ -39,40 +39,40 @@ not compete with host-native edit tools for ordinary coding.
 1. Input:
 
    ```json
-   {
+   &#123;
      "edits": [
-       {
+       &#123;
          "path": "src/foo.py",
          "op": "replace",
          "old_string": "...",
          "new_string": "..."
-       },
-       {
+       &#125;,
+       &#123;
          "path": "src/bar.py",
          "op": "insert_after",
          "anchor": "def baz",
          "new_string": "..."
-       },
-       {
+       &#125;,
+       &#123;
          "path": "src/baz.ts",
          "op": "replace_range",
          "line_start": 42,
          "line_end": 58,
          "new_string": "..."
-       }
+       &#125;
      ],
      "atomic": true
-   }
+   &#125;
    ```
 
 2. Output:
 
    ```json
-   {
-     "applied": [{"path": "...", "hunks": [{"line_start":..,"line_end":..}]}],
-     "failed": [{"path": "...", "error": "..."}],
+   &#123;
+     "applied": [&#123;"path": "...", "hunks": [&#123;"line_start":..,"line_end":..&#125;]&#125;],
+     "failed": [&#123;"path": "...", "error": "..."&#125;],
      "rolled_back": false
-   }
+   &#125;
    ```
 
 3. Atomicity: if `atomic=true` (default) and any edit fails, all already-applied edits are reverted
@@ -98,7 +98,7 @@ LOCAL=1 uv run pytest tests/core/test_batch_edit_atomicity.py \
                      tests/infra/test_batch_edit_round_trip.py -v
 
 # CLI smoke
-echo '{"edits":[{"path":"/tmp/x.txt","op":"replace","old_string":"a","new_string":"b"}]}' | \
+echo '&#123;"edits":[&#123;"path":"/tmp/x.txt","op":"replace","old_string":"a","new_string":"b"&#125;]&#125;' | \
   LOCAL=1 uv run atelier batch-edit --from-stdin --json
 
 make verify
