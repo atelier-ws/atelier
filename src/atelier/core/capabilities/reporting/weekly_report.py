@@ -27,8 +27,8 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.store import ReasoningStore
 
-_CONTEXT_TOOL_NAMES = {"get_reasoning_context", "atelier_get_reasoning_context"}
-_RESCUE_TOOL_NAMES = {"rescue_failure", "atelier_rescue_failure"}
+_CONTEXT_TOOL_NAMES = {"get_reasoning_context", "reasoning"}
+_RESCUE_TOOL_NAMES = {"rescue_failure", "rescue"}
 
 
 class RateMetric(BaseModel):

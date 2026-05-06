@@ -69,11 +69,7 @@ class ModelPricing:
     ) -> float:
         """Compute total USD cost for the given token counts."""
         return round(
-            (
-                input_tokens * self.input
-                + output_tokens * self.output
-                + cache_read_tokens * self.cache_read
-            )
+            (input_tokens * self.input + output_tokens * self.output + cache_read_tokens * self.cache_read)
             / 1_000_000.0,
             8,
         )
@@ -84,9 +80,7 @@ class ModelPricing:
         token_type: Literal["input", "output", "cache_read"] = "output",
     ) -> float:
         """Convert a single token count to USD cost."""
-        rate = {"input": self.input, "output": self.output, "cache_read": self.cache_read}[
-            token_type
-        ]
+        rate = {"input": self.input, "output": self.output, "cache_read": self.cache_read}[token_type]
         return round(tokens * rate / 1_000_000.0, 8)
 
 

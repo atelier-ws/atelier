@@ -1,6 +1,6 @@
 ---
 id: WP-21
-title: MCP tool `atelier_search_read` (wozcode 1 — combined search + read)
+title: MCP tool `search` (wozcode 1 — combined search + read)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -19,7 +19,7 @@ snippets _and_ the surrounding content. Removes a turn-tax on every search.
 
 - **Host-native:** shell search, `rg`, host `Grep`, host `Read`, and direct file inspection remain
   available for exact raw exploration.
-- **Atelier augmentation:** `atelier_search_read` is a deterministic context compiler that combines
+- **Atelier augmentation:** `search` is a deterministic context compiler that combines
   ranked snippets, outlines, cache status, and token accounting for common search-to-read loops.
 - **Not in scope:** do not build a replacement shell, universal search engine, editor, or file
   browser.

@@ -135,9 +135,7 @@ class LangGraphAdapter(AgentAdapter):
         """Return cost-savings summary for the current graph run."""
         return self.benchmark_report()
 
-    def graph_failure_clusters(
-        self, *, node_name: str | None = None, limit: int = 100
-    ) -> FailureAnalysisResult:
+    def graph_failure_clusters(self, *, node_name: str | None = None, limit: int = 100) -> FailureAnalysisResult:
         """Cluster repeated failures across a graph run."""
         domain = self._domain_for(node_name) if node_name else self.default_domain
         return self.failure_clusters(domain=domain, limit=limit)

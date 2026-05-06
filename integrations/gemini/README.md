@@ -6,7 +6,7 @@ Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelie
 
 1. Make sure the `atelier-mcp` console script is available (run `make install` from `atelier/`, or `LOCAL=1 uv run --project atelier atelier-mcp --help`).
 2. Merge the `mcpServers` block from [`settings.json`](./settings.json) into your `~/.gemini/settings.json` (create the file if it does not exist).
-3. Set `ATELIER_STORE_ROOT` to the workspace `.atelier/` directory you want Gemini to read.
+3. Set `ATELIER_ROOT` to the workspace `.atelier/` directory you want Gemini to read.
 4. Restart Gemini CLI and run `/mcp list` — you should see `atelier` listed as a connected server.
 
 ## Verify
@@ -15,7 +15,7 @@ Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelie
 gemini --prompt "List the current Atelier plans and tell me which ones are stale."
 ```
 
-If Gemini returns the plan list from `<ATELIER_STORE_ROOT>/plans/`, the plugin is wired correctly.
+If Gemini returns the plan list from `<ATELIER_ROOT>/plans/`, the plugin is wired correctly.
 
 ## Files
 

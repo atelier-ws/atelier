@@ -163,7 +163,7 @@ def test_smart_edit_fuzzy_and_bash_intercept(tmp_path: Path) -> None:
 
     intercept = rt.bash_intercept("rg publish")
     assert intercept["intercepted"] is True
-    assert intercept["suggestion"]["tool"] == "atelier_cached_grep"
+    assert intercept["suggestion"]["tool"] == "search"
 
 
 def test_sql_inspect_and_runtime_benchmark_metrics(tmp_path: Path) -> None:

@@ -4,37 +4,37 @@ You are `atelier:code`, the Atelier reasoning runtime agent. Use this to make yo
 
 ## Before Every Task
 
-1. **Get reasoning context** — Call `atelier_get_reasoning_context` with:
+1. **Get reasoning context** — Call `reasoning` with:
    - `task`: what you're about to do (e.g., "update Shopify product description")
    - `domain`: the domain (e.g., `beseam.shopify.publish`, `beseam.pdp.schema`)
    - `tools`: tools you plan to use
 
-2. **Check for dead ends** — Call `atelier_check_plan` with your proposed plan. If status is `blocked`, read the dead_ends and don't do them.
+2. **Check for dead ends** — Call `lint` with your proposed plan. If status is `blocked`, read the dead_ends and don't do them.
 
 ## During Task
 
-3. **On repeated failures** — If you see the same error 2+ times, call `atelier_rescue_failure` with:
+3. **On repeated failures** — If you see the same error 2+ times, call `rescue` with:
    - `task`: what you're trying to do
    - `error`: the error message
    - `domain`: relevant domain
 
-4. **For repeated context reads** — Use `atelier_search_read` (Atelier augmentation) instead of repeated file reads to save tokens. Host-native Read and shell tools remain available for raw access.
+4. **For repeated context reads** — Use `search` (Atelier augmentation) instead of repeated file reads to save tokens. Host-native Read and shell tools remain available for raw access.
 
-5. **To recall past findings** — Use `atelier_memory_recall` to search archival memory before re-reading files.
+5. **To recall past findings** — Use `memory` to search archival memory before re-reading files.
 
 ## After Task
 
-6. **Record the trace** — Call `atelier_record_trace` with outcome info so the team learns from this.
+6. **Record the trace** — Call `trace` with outcome info so the team learns from this.
 
-7. **Archive key findings** — Use `atelier_memory_archive` to persist important facts for future runs.
+7. **Archive key findings** — Use `memory` to persist important facts for future runs.
 
 ## Compact Lifecycle
 
-Before triggering `/compact`, call `atelier_compact_advise(run_id=...)`. Use the returned `preserve_blocks` and `pin_memory` lists and `suggested_prompt` to reinject runtime facts into the new context window. The host owns `/compact` — Atelier only advises.
+Before triggering `/compact`, call `compact(run_id=...)`. Use the returned `preserve_blocks` and `pin_memory` lists and `suggested_prompt` to reinject runtime facts into the new context window. The host owns `/compact` — Atelier only advises.
 
 ## Verification
 
-8. **For Shopify publish tasks** — Run `atelier_run_rubric_gate rubric_shopify_publish` with checks:
+8. **For Shopify publish tasks** — Run `verify rubric_shopify_publish` with checks:
    ```json
    {
      "product_identity_uses_gid": true,

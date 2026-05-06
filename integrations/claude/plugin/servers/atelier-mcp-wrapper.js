@@ -2,7 +2,7 @@
 /**
  * atelier-mcp-wrapper.js
  *
- * Launches the local `atelier-mcp` stdio server pointing at the current
+ * Launches the local `atelier-mcp` stdio server pointing at the active
  * workspace's .atelier/ directory. Works when the atelier package is
  * installed in any of:
  *   1. `${ATELIER_VENV}/bin/atelier-mcp`             (explicit venv)
@@ -44,29 +44,40 @@ function resolveBinary() {
   return "atelier-mcp";
 }
 
+function resolveWorkspaceRoot() {
+  return (
+    process.env.ATELIER_WORKSPACE_ROOT ||
+    process.env.CLAUDE_WORKSPACE_ROOT ||
+    process.cwd()
+  );
+}
+
 function resolveRoot(resolvedBin) {
   if (process.env.ATELIER_ROOT) return process.env.ATELIER_ROOT;
-  // Derive root from the binary location so this always points to the atelier
-  // repo's own .atelier/ — regardless of CLAUDE_WORKSPACE_ROOT and regardless
-  // of whether this wrapper is running from the repo or the plugin cache.
-  //
-  // The binary lives at: <repo>/.venv/bin/atelier-mcp
-  // So repo root is:     path.dirname(bin)/../../  (3 levels up)
+  if (process.env.ATELIER_STORE_ROOT) return process.env.ATELIER_STORE_ROOT;
+
+  const ws = resolveWorkspaceRoot();
+  if (ws) return path.join(ws, ".atelier");
+
   if (resolvedBin && resolvedBin !== "atelier-mcp" && fs.existsSync(resolvedBin)) {
     const repoRoot = path.resolve(path.dirname(resolvedBin), "..", "..");
     return path.join(repoRoot, ".atelier");
   }
-  // Fallback for global installs where binary is on PATH
-  const ws = process.env.CLAUDE_WORKSPACE_ROOT || process.cwd();
-  return path.join(ws, ".atelier");
+
+  return path.join(process.cwd(), ".atelier");
 }
 
 const bin = resolveBinary();
 const root = resolveRoot(bin);
+const workspaceRoot = resolveWorkspaceRoot();
 
 const child = spawn(bin, ["--root", root], {
   stdio: ["inherit", "inherit", "inherit"],
-  env: { ...process.env, ATELIER_ROOT: root },
+  env: {
+    ...process.env,
+    ATELIER_ROOT: root,
+    ATELIER_WORKSPACE_ROOT: workspaceRoot,
+  },
 });
 
 child.on("error", (err) => {

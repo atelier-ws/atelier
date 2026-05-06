@@ -20,7 +20,7 @@ decision surface. Host adapters should not implement their own routing logic.
 - **Create** `src/atelier/core/capabilities/quality_router/capability.py`
 - **Edit** `src/atelier/core/capabilities/__init__.py`
 - **Edit** `src/atelier/core/runtime/engine.py`
-- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — register `atelier_route_decide`
+- **Edit** `src/atelier/gateway/adapters/mcp_server.py` — register `route`
 - **Edit** `src/atelier/gateway/adapters/cli.py` — add `route decide` command
 - **Create** `tests/core/test_quality_router.py`
 - **Create** `tests/gateway/test_mcp_route_decide.py`
@@ -46,8 +46,8 @@ uv run pytest tests/core/test_quality_router.py tests/gateway/test_mcp_route_dec
 ## Definition of done
 
 - [ ] Router capability is registered with runtime core
-- [ ] `atelier_route_decide` is registered in MCP and mirrored by CLI
+- [ ] `route` is registered in MCP and mirrored by CLI
 - [ ] Decisions are deterministic and trace-friendly
 - [ ] Repeated failure or protected files force premium/escalation
 - [ ] Acceptance tests pass
-- [ ] `atelier_record_trace` called with `WP-26` in `output_summary`
+- [ ] `trace` called with `WP-26` in `output_summary`

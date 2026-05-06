@@ -168,15 +168,15 @@ summarization and native compaction lifecycle support on top.
 
 | Lever                                                | Owner WP | Mechanism                                                                                                                                              | Expected share |
 | ---------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
-| **wozcode 1** — Combined search + read       | WP-21    | New MCP tool `atelier_search_read(query, path)` returns ranked snippets + content in one call. Replaces grep → read → read.                       | ~12 %         |
-| **wozcode 2** — Batched edits                | WP-22    | New MCP tool `atelier_batch_edit(edits=[…])` applies many edits across many files in one turn. Removes per-edit "turn-tax".                          | ~10 %         |
+| **wozcode 1** — Combined search + read       | WP-21    | New MCP tool `search(query, path)` returns ranked snippets + content in one call. Replaces grep → read → read.                       | ~12 %         |
+| **wozcode 2** — Batched edits                | WP-22    | New MCP tool `edit(edits=[…])` applies many edits across many files in one turn. Removes per-edit "turn-tax".                          | ~10 %         |
 | **wozcode 3** — AST-aware truncation         | WP-11    | Extend existing `semantic_file_memory` AST capability: any file > 200 LOC returns signatures only on first read; full body only on narrow follow-up. | ~12 %          |
-| **wozcode 4** — Live SQL introspection       | WP-23    | Existing `sql inspect` CLI command exposed as MCP tool `atelier_sql_inspect`. Single deterministic call replaces psql-via-Bash chain.            | ~5 %           |
+| **wozcode 4** — Live SQL introspection       | WP-23    | Existing `sql inspect` CLI command exposed as MCP tool `atelier sql inspect`. Single deterministic call replaces psql-via-Bash chain.            | ~5 %           |
 | **wozcode 5** — Fuzzy edit matching          | WP-24    | Extend existing `edit smart` capability: Levenshtein-tolerant `old_string` matching. Removes "old_string not found" retry loops.                   | ~6 %           |
 | Sleeptime ledger summarization                       | WP-09    | Letta-style summarizer condenses tool outputs older than N events                                                                                      | ~10 %          |
 | Cached tool results (`smart_read` everywhere)      | WP-10    | Existing capability promoted from optional to default; hit-rate raised via content hash                                                                | ~5 %           |
 | Scoped recall from archival memory                   | WP-12    | Agent calls `memory_recall(query)` to retrieve top-3 passages instead of dumping prior trace                                                         | ~5 %           |
-| **Native `/compact` lifecycle integration**  | WP-13    | At 60 % context utilisation, emit `atelier_compact_advised` event with preservation manifest derived from active ReasonBlocks + memory blocks      | ~5 %           |
+| **Native `/compact` lifecycle integration**  | WP-13    | At 60 % context utilisation, emit `compactd` event with preservation manifest derived from active ReasonBlocks + memory blocks      | ~5 %           |
 | Reduced ReasonBlock duplication on repeated retrieve | WP-04    | Already shipped; tuned by limit + dedup                                                                                                                | ~3 %           |
 | **Total measured savings (target)**            | —      | `benchmark-runtime --measure-context-savings` (WP-19) on Atelier's deterministic 11-prompt suite                                                       | **≥ 50 %** |
 
@@ -201,7 +201,7 @@ itself earlier:
               tool result so the agent sees a copy-paste compact instruction
 @ post-compact → hook fires (integrations/claude/plugin/hooks/compact.py) and
                  re-injects the preservation manifest, plus runs
-                 atelier_get_reasoning_context with the active task to seed
+                 reasoning with the active task to seed
                  the new turn with the right ReasonBlocks
 ```
 
@@ -334,13 +334,13 @@ in parallel respecting the dependency graph (see [work-packets/INDEX.md](work-pa
    explicitly linked from that packet, such as [cost-performance-runtime.md](cost-performance-runtime.md)
    for routing packets.
 3. Run the standing Atelier loop:
-    1. `atelier_get_reasoning_context(task=<packet title>, domain="atelier.platform", files=<packet files>)`
+    1. `reasoning(task=<packet title>, domain="atelier.platform", files=<packet files>)`
     2. Draft a 3–8 step plan from the packet's "How to execute" section.
-    3. `atelier_check_plan(...)` → must return `pass` or `warn` before editing.
+    3. `lint(...)` → must return `pass` or `warn` before editing.
     4. Implement the smallest diff that makes all acceptance tests pass.
     5. Run the packet's acceptance tests. If a test/command fails twice with the same signature,
-       call `atelier_rescue_failure`.
-    6. `atelier_record_trace(...)` with `agent="atelier:code"`, `domain="atelier.platform"`,
+       call `rescue`.
+    6. `trace(...)` with `agent="atelier:code"`, `domain="atelier.platform"`,
        `status="success" | "partial"`, files_touched, output_summary referencing the WP id.
 4. Mark the packet complete by setting `status: done` in the packet's front-matter and updating
    `work-packets/INDEX.md`.

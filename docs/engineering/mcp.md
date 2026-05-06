@@ -38,37 +38,37 @@ uv run atelier-mcp
 
 | Tool                            | Description                                          |
 | ------------------------------- | ---------------------------------------------------- |
-| `atelier_get_reasoning_context` | Get context prompt for a task (blocks + scoped memory) |
-| `atelier_check_plan`            | Validate a plan against dead ends and constraints    |
-| `atelier_rescue_failure`        | Get rescue procedure for a repeated failure          |
-| `atelier_run_rubric_gate`       | Run a rubric gate and get pass/blocked result        |
-| `atelier_record_trace`          | Record an execution trace                            |
-| `atelier_search`                | Full-text search across blocks                       |
+| `reasoning` | Get context prompt for a task (blocks + scoped memory) |
+| `lint`            | Validate a plan against dead ends and constraints    |
+| `rescue`        | Get rescue procedure for a repeated failure          |
+| `verify`       | Run a rubric gate and get pass/blocked result        |
+| `trace`          | Record an execution trace                            |
+| `search`                | Full-text search across blocks                       |
 
 ### V2 Tools (Extended — Always Present)
 
 | Tool                              | Description                                 |
 | --------------------------------- | ------------------------------------------- |
-| `atelier_get_run_ledger`          | Read per-run state ledger                   |
-| `atelier_update_run_ledger`       | Update per-run state ledger                 |
-| `atelier_monitor_event`           | Emit a monitoring event                     |
-| `atelier_compress_context`        | Compress context to reduce token usage      |
-| `atelier_get_environment`         | Get a reasoning environment by ID           |
-| `atelier_get_environment_context` | Get formatted environment context           |
-| `atelier_smart_read`              | Read file with smart truncation (FTS-aware) |
-| `atelier_smart_search`            | Search files with result caching            |
-| `atelier_cached_grep`             | Grep with injection guard and caching       |
-| `atelier_memory_upsert_block`     | Create or update an editable memory block   |
-| `atelier_memory_get_block`        | Fetch one editable memory block             |
-| `atelier_memory_archive`          | Archive long-term memory text               |
-| `atelier_memory_recall`           | Recall relevant archival memory passages    |
-| `atelier_sql_inspect`             | Read-only deterministic SQL introspection   |
+| `reasoning`          | Read per-run state ledger                   |
+| `trace`       | Update per-run state ledger                 |
+| `trace`           | Emit a monitoring event                     |
+| `compact`        | Compress context to reduce token usage      |
+| `reasoning`         | Get a reasoning environment by ID           |
+| `reasoning` | Get formatted environment context           |
+| `read`              | Read file with smart truncation (FTS-aware) |
+| `search`            | Search files with result caching            |
+| `search`             | Grep with injection guard and caching       |
+| `memory`     | Create or update an editable memory block   |
+| `memory`        | Fetch one editable memory block             |
+| `memory`          | Archive long-term memory text               |
+| `memory`           | Recall relevant archival memory passages    |
+| `atelier sql inspect`             | Read-only deterministic SQL introspection   |
 
 ## Tool Schemas
 
 Tools accept and return JSON. Key patterns:
 
-### `atelier_get_reasoning_context`
+### `reasoning`
 
 ```json
 &#123;
@@ -95,7 +95,7 @@ Returns:
 &#125;
 ```
 
-### `atelier_check_plan`
+### `lint`
 
 ```json
 &#123;
@@ -107,7 +107,7 @@ Returns:
 
 Returns: `&#123;"status": "blocked"|"pass", "warnings": [...], "suggestions": [...]&#125;`
 
-### `atelier_record_trace`
+### `trace`
 
 ```json
 &#123;
@@ -122,7 +122,7 @@ Returns: `&#123;"status": "blocked"|"pass", "warnings": [...], "suggestions": [.
 &#125;
 ```
 
-### `atelier_run_rubric_gate`
+### `verify`
 
 ```json
 &#123;
@@ -142,7 +142,7 @@ Returns: `&#123;"status": "blocked"|"pass", "warnings": [...], "suggestions": [.
 
 Returns: `&#123;"status": "pass"|"blocked", "failed_checks": [...]&#125;`
 
-### `atelier_sql_inspect`
+### `atelier sql inspect`
 
 ```json
 &#123;

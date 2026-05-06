@@ -55,9 +55,7 @@ def summarize_routing_evals(run_id: str, cases: list[RoutingEvalCase]) -> Routin
         cost_per_accepted_patch=round(cost_per_accepted_patch, 6),
         premium_call_rate=round(premium_calls / total, 6),
         cheap_success_rate=(round(cheap_accepted / len(cheap_cases), 6) if cheap_cases else 0.0),
-        escalation_success_rate=(
-            round(escalated_accepted / len(escalated_cases), 6) if escalated_cases else 0.0
-        ),
+        escalation_success_rate=(round(escalated_accepted / len(escalated_cases), 6) if escalated_cases else 0.0),
         routing_regression_rate=round(regressions / total, 6),
     )
 

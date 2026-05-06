@@ -17,7 +17,7 @@ A trace captures what happened — files, commands, tools, errors, results.
 ## Required fields
 
 ```
-atelier_record_trace({
+trace({
   agent: "atelier:code",
   domain: "<domain or null>",
   task: "<one sentence>",

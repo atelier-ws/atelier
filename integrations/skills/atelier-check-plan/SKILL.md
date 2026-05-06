@@ -21,7 +21,7 @@ Optional: `domain`, `files`, `tools`.
 Call exactly:
 
 ```
-atelier_check_plan({
+lint({
   task,
   domain,
   plan,
@@ -35,7 +35,7 @@ atelier_check_plan({
 - `status == "blocked"` → list the matched dead-end blocks and the
   `suggested_plan`. Tell the user: "I cannot proceed with the original
   plan. Here is the corrected plan from Atelier." Then call
-  `atelier_check_plan` again on the corrected plan.
+  `lint` again on the corrected plan.
 - `status == "warn"` → enumerate warnings, propose mitigations.
 - `status == "ok"` → confirm and proceed.
 

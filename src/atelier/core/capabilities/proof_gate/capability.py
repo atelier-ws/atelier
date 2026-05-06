@@ -71,18 +71,12 @@ class BenchmarkCase(BaseModel):
     tier: str = Field(description="Route tier used: cheap | mid | premium | deterministic.")
     accepted: bool = Field(description="Whether the patch was accepted.")
     cost_usd: float = Field(description="Total cost for this case in USD.")
-    escalated: bool = Field(
-        default=False, description="Whether routing escalated to a higher tier."
-    )
+    escalated: bool = Field(default=False, description="Whether routing escalated to a higher tier.")
     regression: bool = Field(default=False, description="Whether this case caused a regression.")
     trace_id: str | None = Field(default=None, description="Trace evidence ID.")
     run_id: str | None = Field(default=None, description="Eval run evidence ID.")
-    verifier_outcome: str | None = Field(
-        default=None, description="Verifier outcome: pass | fail | skipped."
-    )
-    route_decision_id: str | None = Field(
-        default=None, description="Route decision ID linking to routing evidence."
-    )
+    verifier_outcome: str | None = Field(default=None, description="Verifier outcome: pass | fail | skipped.")
+    route_decision_id: str | None = Field(default=None, description="Route decision ID linking to routing evidence.")
 
 
 class HostEnforcementSnapshot(BaseModel):
@@ -110,24 +104,16 @@ class ProofGateConfig(BaseModel):
     )
     premium_only_baseline_cost_per_accepted_patch: float = Field(
         default=1.0,
-        description=(
-            "Baseline cost per accepted patch if all tasks used premium tier. "
-            "Routing must beat this."
-        ),
+        description=("Baseline cost per accepted patch if all tasks used premium tier. " "Routing must beat this."),
     )
     premium_only_baseline_accepted_patch_rate: float = Field(
         default=0.80,
         description=(
-            "Baseline accepted-patch rate if all tasks used premium tier. "
-            "Routing must stay within 0.03 of this."
+            "Baseline accepted-patch rate if all tasks used premium tier. " "Routing must stay within 0.03 of this."
         ),
     )
-    routing_regression_rate_max: float = Field(
-        default=0.02, description="Maximum routing regression rate (2%)."
-    )
-    min_cheap_success_rate: float = Field(
-        default=0.60, description="Minimum cheap-tier success rate."
-    )
+    routing_regression_rate_max: float = Field(default=0.02, description="Maximum routing regression rate (2%).")
+    min_cheap_success_rate: float = Field(default=0.60, description="Minimum cheap-tier success rate.")
 
 
 class ProofReport(BaseModel):
@@ -162,9 +148,7 @@ class ProofReport(BaseModel):
     )
 
     # Thresholds used
-    config: ProofGateConfig = Field(
-        default_factory=ProofGateConfig, description="Gate thresholds used for this run."
-    )
+    config: ProofGateConfig = Field(default_factory=ProofGateConfig, description="Gate thresholds used for this run.")
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

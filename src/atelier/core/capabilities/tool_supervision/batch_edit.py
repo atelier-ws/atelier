@@ -80,16 +80,12 @@ def _apply_insert_after(content: str, anchor: str, new_string: str) -> tuple[str
     for i, line in enumerate(lines):
         if anchor in line:
             insert_line = i + 1  # 0-indexed, insert after line i
-            lines.insert(
-                insert_line, new_string if new_string.endswith("\n") else new_string + "\n"
-            )
+            lines.insert(insert_line, new_string if new_string.endswith("\n") else new_string + "\n")
             return "".join(lines), insert_line + 1, insert_line + 1
     raise ValueError(f"anchor {anchor!r} not found in file")
 
 
-def _apply_replace_range(
-    content: str, line_start: int, line_end: int, new_string: str
-) -> tuple[str, int, int]:
+def _apply_replace_range(content: str, line_start: int, line_end: int, new_string: str) -> tuple[str, int, int]:
     """Replace lines [line_start, line_end] (1-indexed, inclusive) with *new_string*.
 
     Raises ``ValueError`` if line numbers are out of range.

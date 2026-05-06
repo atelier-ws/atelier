@@ -67,7 +67,7 @@ k: int = 5) -> ArbitrationDecision`
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — implement tombstone
   semantics on the Letta side (Letta's metadata field carries the deprecation flag).
 - **NEW:** Telemetry: per-op counter
-  `atelier_memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
+  `memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
   distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, \<5% DELETE.
 
 ### Tests
@@ -149,7 +149,7 @@ make verify
       `[smart]` extra absent.
 - [ ] Tombstone semantics in both SQLite and Letta backends.
 - [ ] All four ops tested with golden fixtures.
-- [ ] `atelier_memory_arbitration_total` Prometheus counter exported.
+- [ ] `memory_arbitration_total` Prometheus counter exported.
 - [ ] No new general-purpose Ollama surface added (boundary check — Ollama is reached only
       via this arbitrator).
 - [ ] `make verify` green.

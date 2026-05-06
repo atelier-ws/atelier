@@ -148,10 +148,10 @@ Atelier owns:
 
 - ReasonBlocks (procedure store) and rubric gates — surfaced as MCP tools;
 - the `memory_*` MCP tools (upsert/get/list/recall/archive);
-- the deterministic context-savings tools: `atelier_search_read`, `atelier_batch_edit`,
-  `atelier_sql_inspect`, AST-outline-first reads;
-- the `atelier_check_plan` advisory and the `atelier_run_rubric_gate` verifier;
-- the trace store (`atelier_record_trace`);
+- the deterministic context-savings tools: `search`, `edit`,
+  `atelier sql inspect`, AST-outline-first reads;
+- the `lint` advisory and the `verify` verifier;
+- the trace store (`trace`);
 - the lesson pipeline that processes traces in the background and surfaces candidates for human
   review.
 
@@ -288,7 +288,7 @@ Optional backends:
 ### 3.3 Routing — V2 advisory, kept as-is
 
 Atelier's V2 routing capability (`quality_router/policy.py`, WP-25..28) is an _advisory_ MCP
-response inside `atelier_check_plan`. The host reads `routing_advice` and decides what to do —
+response inside `lint`. The host reads `routing_advice` and decides what to do —
 or ignores it if the host has no per-step model switching. V3 does not change this surface.
 
 If, later, you decide to improve the routing algorithm, that is a separate decision and a
@@ -393,8 +393,8 @@ required that V2 didn't have.
    or `in_progress`.
 3. Read the packet file. Read the V3 plan section it links to. Read any V2 packet it
    supersedes (linked in `supersedes:` front-matter).
-4. Run the standing Atelier loop: `atelier_get_reasoning_context` → draft plan →
-   `atelier_check_plan` → implement → run packet acceptance tests → `atelier_record_trace`.
+4. Run the standing Atelier loop: `reasoning` → draft plan →
+   `lint` → implement → run packet acceptance tests → `trace`.
 5. Mark `status: done` in front-matter and update the V3 INDEX.
 
 Subagents must **not** invent new files outside what a packet specifies, and must **not** add
@@ -776,7 +776,7 @@ Phase H + I to be in place.
    models" line with something like:
 
    > **Context savings** — Atelier ships deterministic context-savings tools
-   > (`atelier_search_read`, `atelier_batch_edit`, AST outline-first reads, scoped recall).
+   > (`search`, `edit`, AST outline-first reads, scoped recall).
    > A measured reduction will be published with V3.0; see
    > [WP-50](work-packets-v3/WP-50-honest-benchmark-publish.md) for
    > methodology. Until then, treat all percentage figures in this README as design targets.
@@ -1593,8 +1593,8 @@ Methodology:
   that task. The corpus is committed to the repo; no production data is used.
 - Re-play each transcript under two configurations:
   - **Baseline (Run A):** every Atelier tool call is replaced with the host-native equivalent
-    (`grep` instead of `atelier_search_read`, sequential `Edit` instead of
-    `atelier_batch_edit`, full file reads instead of AST outline). The mocked LLM consumes
+    (`grep` instead of `search`, sequential `Edit` instead of
+    `edit`, full file reads instead of AST outline). The mocked LLM consumes
     the resulting tool outputs and produces the same final response.
   - **V3 (Run B):** every Atelier tool call goes through Atelier's MCP server normally.
 - Compare total input tokens consumed by the mocked LLM, total tool round-trips, and final
@@ -1694,7 +1694,7 @@ make verify
 ---
 
 id: WP-V3.1-A
-title: Threshold-triggered tool-output compaction (`atelier_compact_tool_output`)
+title: Threshold-triggered tool-output compaction (`compact`)
 phase: V3.1
 boundary: Atelier-core
 owner_agent: atelier:code
@@ -1704,7 +1704,7 @@ status: done
 
 ---
 
-# WP-V3.1-A — `atelier_compact_tool_output`
+# WP-V3.1-A — `compact`
 
 ## Why
 
@@ -1760,14 +1760,14 @@ This packet absorbs three earlier candidates that are all special cases of the s
   - `tool_output.py`: schema-and-sample for JSON/structured outputs (per SR2's pattern);
     raw-text fallback otherwise.
 - **EDIT:** `src/atelier/gateway/mcp_server.py` — register
-  `atelier_compact_tool_output(content, content_type, budget_tokens)` MCP tool.
+  `compact(content, content_type, budget_tokens)` MCP tool.
 
 ### Claude Code PostToolUse hook
 
 - **NEW:** `integrations/claude/plugin/hooks/post_tool_use_compact.py` — a Claude Code
   `PostToolUse` hook script:
   - Reads the just-finished tool's output from the hook's stdin payload.
-  - If `len(output_tokens) > threshold`, calls `atelier_compact_tool_output` via MCP and
+  - If `len(output_tokens) > threshold`, calls `compact` via MCP and
     returns the compacted output to be substituted in conversation.
   - Otherwise passthrough.
   - Configurable threshold via `.atelier/config.toml [compact].threshold_tokens`.
@@ -1849,7 +1849,7 @@ make verify
 
 ## Definition of done
 
-- [ ] `atelier_compact_tool_output` MCP tool registered; three methods route correctly by
+- [ ] `compact` MCP tool registered; three methods route correctly by
       size threshold.
 - [ ] Five deterministic strategies implemented and tested.
 - [ ] Ollama-summary path goes through `internal_llm.ollama_client`; never violates
@@ -1877,7 +1877,7 @@ status: done
 
 ## Why
 
-V2 ships `atelier_search_read` (grep + AST outline + token counting). It answers "where is
+V2 ships `search` (grep + AST outline + token counting). It answers "where is
 this string?" well. It does not answer **"what code matters for this task?"** Aider's
 PageRank repo map does — and it's fully deterministic, MIT-licensed, and well-documented.
 
@@ -1959,7 +1959,7 @@ Python (via stdlib `ast`). V3.1-B brings JS/TS/Go/Rust along for the ride.
 ### Docs
 
 - **NEW:** `docs/host-integrations/repo-map.md` — when to use `atelier_repo_map` vs.
-  `atelier_search_read` (this is the comparison from the "Why" section, written for users).
+  `search` (this is the comparison from the "Why" section, written for users).
 
 ## How to execute
 
@@ -2220,7 +2220,7 @@ installed; passes through to V2 behavior otherwise.
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — implement tombstone
   semantics on the Letta side (Letta's metadata field carries the deprecation flag).
 - **NEW:** Telemetry: per-op counter
-  `atelier_memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
+  `memory_arbitration_total&#123;op="ADD|UPDATE|DELETE|NOOP"&#125;`. Surfaces drift in op
   distribution; healthy distribution is ~70% ADD, ~15% UPDATE, ~10% NOOP, \<5% DELETE.
 
 ### Tests
@@ -2298,7 +2298,7 @@ make verify
       `[smart]` extra absent.
 - [ ] Tombstone semantics in both SQLite and Letta backends.
 - [ ] All four ops tested with golden fixtures.
-- [ ] `atelier_memory_arbitration_total` Prometheus counter exported.
+- [ ] `memory_arbitration_total` Prometheus counter exported.
 - [ ] No new general-purpose Ollama surface added (boundary check — Ollama is reached only
       via this arbitrator).
 - [ ] `make verify` green.

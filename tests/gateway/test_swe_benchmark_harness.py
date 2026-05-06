@@ -53,9 +53,7 @@ def test_config_requires_modes(tmp_path: Path) -> None:
 def test_warm_reasonblocks_requires_path() -> None:
     cfg = Cfg(modes=[Mode.ATELIER_WARM_REASONBLOCKS], dataset_name="mock")
     assert cfg.warm_required_but_missing()
-    cfg2 = Cfg(
-        modes=[Mode.ATELIER_WARM_REASONBLOCKS], warm_reasonblocks_path="x.json", dataset_name="mock"
-    )
+    cfg2 = Cfg(modes=[Mode.ATELIER_WARM_REASONBLOCKS], warm_reasonblocks_path="x.json", dataset_name="mock")
     assert not cfg2.warm_required_but_missing()
 
 
@@ -65,10 +63,7 @@ def test_warm_reasonblocks_requires_path() -> None:
 def test_modes_are_distinct() -> None:
     specs = mode_specs()
     assert len(specs) == 5
-    seen = {
-        (s.mcp_available, s.forced_steps, s.enable_run_ledger, s.requires_warm_blocks)
-        for s in specs.values()
-    }
+    seen = {(s.mcp_available, s.forced_steps, s.enable_run_ledger, s.requires_warm_blocks) for s in specs.values()}
     assert len(seen) == 5  # five truly different mode shapes
 
 
@@ -144,9 +139,7 @@ def test_run_one_writes_metrics(tmp_path: Path) -> None:
     cfg = Cfg(dataset_name="mock", task_limit=1, output_dir=str(tmp_path))
     agent = build_agent(cfg)
     task = load_tasks(cfg)[0]
-    m = run_one(
-        task=task, mode=Mode.ATELIER_FULL_RUNTIME, attempt=1, cfg=cfg, agent=agent, out_dir=tmp_path
-    )
+    m = run_one(task=task, mode=Mode.ATELIER_FULL_RUNTIME, attempt=1, cfg=cfg, agent=agent, out_dir=tmp_path)
     assert isinstance(m, RunMetrics)
     assert m.patch_generated
     assert m.tool_calls > 0
@@ -214,17 +207,13 @@ def test_prompt_changes_with_mode() -> None:
 # ----------------------------- evaluator -------------------------------- #
 
 
-def test_swebench_eval_skips_cleanly_when_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_swebench_eval_skips_cleanly_when_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Force the "not installed" branch even if the package happens to be present.
     import benchmarks.swe.swebench_eval as ev
 
     monkeypatch.setattr(ev, "is_available", lambda: False)
     p = tmp_path / "predictions.jsonl"
-    p.write_text(
-        json.dumps({"instance_id": "x", "model_name_or_path": "m", "model_patch": ""}) + "\n"
-    )
+    p.write_text(json.dumps({"instance_id": "x", "model_name_or_path": "m", "model_patch": ""}) + "\n")
     out = ev.evaluate(p, dataset_name="swe_bench_lite", run_id="t")
     assert out["status"] == "skipped"
 

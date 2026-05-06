@@ -55,7 +55,7 @@ QUICK_REFERENCE card, and the README.
 - `docs/hosts/copilot-install.md` — edit
 - `docs/hosts/gemini-cli-install.md` — edit
 - `docs/hosts/opencode-install.md` — edit
-- `integrations/claude/ATELIER_SKILL.md` — edit (document `atelier_memory_*`, `atelier_search_read`, etc.)
+- `integrations/claude/ATELIER_SKILL.md` — edit (document `memory_*`, `search`, etc.)
 - `integrations/claude/AGENTS.atelier.md` — edit
 - `integrations/codex/AGENT_README.md` — edit
 - `integrations/copilot/AGENT_README.md` — edit

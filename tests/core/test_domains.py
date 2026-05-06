@@ -141,9 +141,7 @@ def test_domain_cli_list_json(tmp_path: Path) -> None:
 
 def test_domain_cli_info(tmp_path: Path) -> None:
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["--root", str(tmp_path / ".atelier"), "domain", "info", "swe.general"]
-    )
+    result = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "domain", "info", "swe.general"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["bundle_id"] == "swe.general"
@@ -151,9 +149,7 @@ def test_domain_cli_info(tmp_path: Path) -> None:
 
 def test_domain_cli_info_unknown_bundle(tmp_path: Path) -> None:
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["--root", str(tmp_path / ".atelier"), "domain", "info", "does.not.exist"]
-    )
+    result = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "domain", "info", "does.not.exist"])
     assert result.exit_code != 0
 
 

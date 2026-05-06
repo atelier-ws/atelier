@@ -27,7 +27,7 @@ def test_check_plan_blocks_shopify_handle_from_url(tmp_path: Path) -> None:
     _invoke(root, "init")
     res = _invoke(
         root,
-        "check-plan",
+        "lint",
         "--task",
         "Fix shopify",
         "--domain",
@@ -58,7 +58,7 @@ def test_run_rubric_via_cli(tmp_path: Path) -> None:
             "changed_handle_test_passed": True,
         }
     )
-    res = _invoke(root, "run-rubric", "rubric_shopify_publish", "--json", input=checks)
+    res = _invoke(root, "verify", "rubric_shopify_publish", "--json", input=checks)
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["status"] == "pass"
@@ -67,7 +67,7 @@ def test_run_rubric_via_cli(tmp_path: Path) -> None:
 def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
-    res = _invoke(root, "run-rubric", "rubric_shopify_publish", "--json", input="{}")
+    res = _invoke(root, "verify", "rubric_shopify_publish", "--json", input="{}")
     assert res.exit_code == 2
     payload = json.loads(res.output)
     assert payload["status"] == "blocked"
@@ -87,11 +87,11 @@ def test_record_trace_and_extract_block(tmp_path: Path) -> None:
             "validation_results": [{"name": "unit", "passed": True, "detail": ""}],
         }
     )
-    res = _invoke(root, "record-trace", input=trace)
+    res = _invoke(root, "trace", "record", input=trace)
     assert res.exit_code == 0
     trace_id = res.output.strip()
 
-    res2 = _invoke(root, "extract-block", trace_id, "--json")
+    res2 = _invoke(root, "block", "extract", trace_id, "--json")
     assert res2.exit_code == 0
     payload = json.loads(res2.output)
     assert payload["confidence"] >= 0.4
@@ -117,76 +117,4 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
     assert payload["matched_blocks"]
 
 
-# --------------------------------------------------------------------------- #
-# `atelier task` command                                                      #
-# --------------------------------------------------------------------------- #
-
-
-def test_task_emits_prompt_with_task_text(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(
-        root,
-        "task",
-        "Fix",
-        "Shopify",
-        "publish",
-        "validation",
-        "--domain",
-        "beseam.shopify.publish",
-        "--file",
-        "backend/src/modules/shopify/publish.py",
-        "--tool",
-        "shopify.gql",
-    )
-    assert res.exit_code == 0, res.output
-    out = res.output
-    assert "Fix Shopify publish validation" in out
-    assert "atelier_check_plan" in out
-    assert "atelier_record_trace" in out
-
-
-def test_task_json_envelope_has_expected_keys(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(
-        root,
-        "task",
-        "Refactor publish flow",
-        "--domain",
-        "beseam.shopify.publish",
-        "--json",
-    )
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["task"] == "Refactor publish flow"
-    assert payload["domain"] == "beseam.shopify.publish"
-    assert isinstance(payload["matched"], list)
-    assert "prompt" in payload and isinstance(payload["prompt"], str)
-    assert "Refactor publish flow" in payload["prompt"]
-
-
-def test_task_empty_description_errors(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    # Single empty whitespace argument -> stripped to empty -> ClickException.
-    res = _invoke(root, "task", "   ")
-    assert res.exit_code != 0
-    assert "task description is required" in res.output
-
-
-def test_task_matches_shopify_block(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(
-        root,
-        "task",
-        "Fix Shopify publish validation",
-        "--domain",
-        "beseam.shopify.publish",
-        "--json",
-    )
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    titles = " ".join(m["title"].lower() for m in payload["matched"])
-    assert "shopify" in titles or payload["matched"], payload
+# `atelier task` command removed — cut in CLI consolidation.

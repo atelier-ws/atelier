@@ -93,10 +93,10 @@ Field names depend on your Claude Code version. The contract is:
 
 ## 3. Smoke test
 
-After wiring, ask Claude to "rename Shopify product by URL handle". The PreToolUse hook should call `check-plan`, get a `blocked` result, and prevent the edit.
+After wiring, ask Claude to "rename Shopify product by URL handle". The PreToolUse hook should call `lint`, get a `blocked` result, and prevent the edit.
 
 ## 4. Hard rules (mirror these in `CLAUDE.md`)
 
 - Never bypass a `blocked` plan check by editing files anyway.
-- Never include hidden chain-of-thought in `record_trace` payloads — only observable facts.
-- For high-risk domains, call `run_rubric_gate` before declaring success.
+- Never include hidden chain-of-thought in `trace` payloads — only observable facts.
+- For high-risk domains, call `verify` before declaring success.
