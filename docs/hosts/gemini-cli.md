@@ -1,6 +1,6 @@
 # Gemini CLI Integration
 
-Atelier integrates with Gemini CLI through MCP wiring plus Atelier command presets. Installs are global by default; pass `--workspace DIR` for project-local files.
+Atelier integrates with Gemini CLI through a formal extension that bundles MCP wiring, Atelier commands, skills, and GEMINI context. Installs are global by default; pass `--workspace DIR` to switch activation to a single workspace.
 
 ## Setup
 
@@ -13,12 +13,13 @@ make verify
 
 ## Installed Artifacts
 
-- Global: `~/.gemini/settings.json`, `~/.gemini/commands/atelier/*.toml`, and `~/.gemini/GEMINI.md`
-- Workspace: `<workspace>/.gemini/settings.json`, `<workspace>/.gemini/commands/atelier/*.toml`, and `<workspace>/GEMINI.md` when `--workspace DIR` is used
+- Extension bundle: `integrations/gemini/extension/`
+- Global install: `gemini extensions link integrations/gemini/extension`
+- Workspace install: same linked extension, but enabled with workspace scope for the requested directory
 
 ## Notes
 
-- Gemini requires absolute paths in MCP settings.
+- Gemini loads the extension from `integrations/gemini/extension/` and invokes the installed `atelier-mcp` console script.
 - Re-run `make install` if the Atelier repo path changes.
 
 ## MCP Tool Names

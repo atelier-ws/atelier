@@ -21,10 +21,10 @@ bash scripts/install_agent_clis.sh --workspace /path/to/workspace
 | Host            | Support Level                              | Advanced installer             |
 | --------------- | ------------------------------------------ | ------------------------------ |
 | Claude Code     | Full plugin (skills, commands, hooks, MCP) | `scripts/install_claude.sh`    |
-| Codex CLI       | Skills + subagents + MCP + wrapper         | `scripts/install_codex.sh`     |
+| Codex CLI       | Plugin + marketplace + AGENTS + wrapper    | `scripts/install_codex.sh`     |
 | opencode        | MCP + workspace agent profile              | `scripts/install_opencode.sh`  |
 | VS Code Copilot | MCP + instructions + chat mode + tasks     | `scripts/install_copilot.sh`   |
-| Gemini CLI      | MCP + custom command presets               | `scripts/install_gemini.sh`    |
+| Gemini CLI      | Extension + commands + skills + MCP        | `scripts/install_gemini.sh`    |
 
 ---
 
@@ -80,10 +80,10 @@ Detailed documentation and example configs for each host live in:
 ```
 atelier/integrations/
 ├── claude/          # Full plugin config
-├── codex/           # Skills + MCP example
+├── codex/           # Codex plugin template + marketplace docs
 ├── opencode/        # opencode.json example
 ├── copilot/         # .vscode/mcp.json + copilot-instructions
-└── gemini/          # ~/.gemini/settings.json example
+└── gemini/          # Gemini extension bundle + settings example
 ```
 
 Host install entrypoints are under `scripts/install_<host>.sh`.
@@ -92,13 +92,13 @@ Host install entrypoints are under `scripts/install_<host>.sh`.
 
 ## MCP Transport
 
-All hosts connect via the same wrapper:
+All hosts ultimately invoke the same Atelier MCP server, but packaged hosts now carry their own host-specific wrapper surfaces:
 
 ```
 atelier/scripts/atelier_mcp_stdio.sh
 ```
 
-This wrapper: locates the atelier repo from its own path, sets `ATELIER_WORKSPACE_ROOT` and `ATELIER_ROOT`, then execs `uv run python -m atelier.gateway.adapters.mcp_server`. All logs go to stderr; never stdout.
+That repo wrapper remains the canonical MCP entrypoint for direct MCP-only installs. Codex and Gemini package that same runtime behavior behind a plugin-local or extension-local wrapper so the host can load a packaged surface instead of a raw settings merge.
 
 ## Core Capability Tools
 

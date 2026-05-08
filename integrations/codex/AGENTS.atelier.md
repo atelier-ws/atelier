@@ -33,10 +33,16 @@ atelier | run abc12345 | pdp | Wire SEO check | status=in_progress | ev=3 err=0 
 ## Tools
 
 All tools are available via MCP server name `atelier`. See
-`atelier/codex-plugin/references/v2-tools.md` for the full reference.
+`integrations/codex/references/v2-tools.md` for the full reference.
 
 `read` and `search` are default-on Atelier
 augmentations for repeated file reads and searches. Prefer them for bounded,
 cacheable context; keep native `Read`, shell `rg`, `grep`, and direct file
 access available when exact raw output is needed. Set
 `ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.
+
+## OpenAI docs tasks
+
+For OpenAI API docs, model selection, GPT-5.5 migration, or prompt-migration
+questions, prefer the `openai-docs` skill first. Keep the Atelier loop for
+repo-local implementation and validation work after the docs guidance is grounded.

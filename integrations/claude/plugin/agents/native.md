@@ -2,7 +2,13 @@
 name: native
 description: Fallback coding agent for when Atelier MCP tools are unavailable. Uses native Claude Code file tools but still follows the Atelier reasoning, lint, rescue, verify, and trace loop.
 tools: ["*"]
-disallowedTools: ["mcp__atelier__search", "mcp__atelier__read", "mcp__atelier__edit", "mcp__atelier__memory"]
+disallowedTools:
+  [
+    "mcp__atelier__search",
+    "mcp__atelier__read",
+    "mcp__atelier__edit",
+    "mcp__atelier__memory",
+  ]
 color: gray
 ---
 

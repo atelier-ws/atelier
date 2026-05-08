@@ -1,6 +1,6 @@
 # Installing Atelier into Gemini CLI
 
-**Support level**: MCP config + custom command presets
+**Support level**: Formal Gemini extension + commands + skills + MCP
 
 ---
 
@@ -10,7 +10,7 @@
 make install
 ```
 
-By default this installs Gemini user/global settings. For project-local Gemini artifacts:
+By default this links the Gemini extension and enables it for the user. For workspace-only activation:
 
 ```bash
 bash scripts/install_gemini.sh --workspace /path/to/workspace
@@ -20,31 +20,34 @@ bash scripts/install_gemini.sh --workspace /path/to/workspace
 
 ## What Gets Installed
 
-| Artifact          | Global install                      | `--workspace DIR` install                  |
-| ----------------- | ----------------------------------- | ------------------------------------------ |
-| MCP server config | `~/.gemini/settings.json`           | `<workspace>/.gemini/settings.json`        |
-| Custom commands   | `~/.gemini/commands/atelier/*.toml` | `<workspace>/.gemini/commands/atelier/*.toml` |
-| Persona context   | `~/.gemini/GEMINI.md`               | `<workspace>/GEMINI.md`                    |
+| Artifact                  | Global install                                  | `--workspace DIR` install                              |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Extension source          | `integrations/gemini/extension/`                | same repo extension source                             |
+| Extension registration    | `~/.gemini/extensions/atelier` symlink managed by Gemini CLI | same global link managed by Gemini CLI        |
+| Activation scope          | user                                             | workspace only for the requested directory             |
+| Bundled commands/skills   | loaded from the linked extension                 | loaded from the same linked extension                  |
+| Bundled GEMINI context    | loaded from `extension/GEMINI.md`                | loaded from the same linked extension                  |
 
-Gemini CLI requires **absolute paths** — the installer expands them at install time:
+The extension manifest wires MCP directly:
 
 ```json
-&#123;
-  "mcpServers": &#123;
-    "atelier": &#123;
-      "command": "/absolute/path/to/atelier/scripts/atelier_mcp_stdio.sh",
-      "args": [],
-      "env": &#123;
-        "ATELIER_WORKSPACE_ROOT": "/absolute/path/to/workspace",
-        "ATELIER_ROOT": "/absolute/path/to/workspace/.atelier"
-      &#125;
-    &#125;
-  &#125;
-&#125;
+{
+  "name": "atelier",
+  "mcpServers": {
+    "atelier": {
+      "command": "atelier-mcp",
+      "cwd": "${workspacePath}",
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "${workspacePath}",
+        "ATELIER_ROOT": "${workspacePath}${/}.atelier"
+      }
+    }
+  },
+  "contextFileName": "GEMINI.md"
+}
 ```
 
-> **Note**: Do not move the atelier repository after installing. Gemini CLI uses absolute paths.  
-> Re-run `make install` after any move.
+> **Note**: The extension expects `atelier-mcp` to be available on `PATH`. The installer uses `gemini extensions link`, so changes under `integrations/gemini/extension/` are picked up after you restart Gemini CLI.
 
 ## Verify
 
@@ -62,17 +65,18 @@ use atelier to check this plan
 
 ## Expected Behavior
 
-- Gemini CLI connects to Atelier MCP stdio server
-- All Atelier tools (`lint`, `atelier_status`, etc.) are available
-- Custom command presets (`/atelier:status`, `/atelier:context`) are installed
+- Gemini CLI loads the Atelier extension on startup
+- All Atelier tools (`lint`, `atelier_status`, etc.) are available through the bundled MCP server
+- Bundled commands (`/atelier:status`, `/atelier:context`) and bundled skills are installed with the extension
 
 ## Troubleshooting
 
-| Problem                             | Fix                                                       |
-| ----------------------------------- | --------------------------------------------------------- |
-| `~/.gemini/settings.json` not found | `make install` creates it                                 |
-| MCP tools missing                   | Restart gemini CLI; check absolute paths in settings.json |
-| Paths are wrong after repo move     | Re-run `make install`                                     |
+| Problem                             | Fix                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| Extension not listed                | Re-run `gemini extensions link integrations/gemini/extension`       |
+| MCP tools missing                   | Restart Gemini CLI and verify `atelier-mcp` is on `PATH`                         |
+| Workspace-only activation not taking effect | Re-run `bash scripts/install_gemini.sh --workspace /path/to/workspace` from the target repo |
+| Repo path changed                   | Re-run `make install`                                               |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 
