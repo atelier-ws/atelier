@@ -1,4 +1,4 @@
-"""Combined search + read — WP-21 (baseline 1).
+"""Combined search + read — WP-21.
 
 Collapses the common ``grep → read → read`` loop into a single deterministic
 call that returns ranked snippets *and* the surrounding context.  Token usage
