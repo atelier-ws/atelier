@@ -1,6 +1,6 @@
 # Installing Atelier into Codex CLI
 
-**Support level**: Native Codex skills/subagents + MCP + Atelier wrapper workflow
+**Support level**: Native Codex plugin + marketplace + AGENTS + Atelier wrapper workflow
 
 ---
 
@@ -20,13 +20,17 @@ bash scripts/install_codex.sh --workspace /path/to/workspace
 
 ## What Gets Installed
 
-| Artifact                 | Global install                           | `--workspace DIR` install            |
-| ------------------------ | ---------------------------------------- | ------------------------------------ |
-| Atelier skills           | `~/.codex/skills/atelier/`               | `<workspace>/.codex/skills/atelier/` |
-| MCP server config        | `codex mcp add` / `~/.codex/config.toml` | `<workspace>/.codex/mcp.json`        |
-| AGENTS instruction block | `~/.codex/AGENTS.md`                     | `<workspace>/AGENTS.md`              |
-| Wrapper script           | `~/.local/bin/atelier-codex`             | `<workspace>/bin/atelier-codex`      |
-| Task templates           | not installed globally                   | `<workspace>/.codex/tasks/*.md`      |
+| Artifact                 | Global install                           | `--workspace DIR` install              |
+| ------------------------ | ---------------------------------------- | -------------------------------------- |
+| Codex plugin source      | `~/.codex/plugins/atelier/`              | `<workspace>/.codex/plugins/atelier/` |
+| Marketplace file         | `~/.agents/plugins/marketplace.json`     | `<workspace>/.agents/plugins/marketplace.json` |
+| AGENTS instruction block | `~/.codex/AGENTS.md`                     | `<workspace>/AGENTS.md`                |
+| Wrapper script           | `~/.local/bin/atelier-codex`             | `<workspace>/bin/atelier-codex`        |
+| Task templates           | not installed globally                   | `<workspace>/.codex/tasks/*.md`        |
+
+The installer also writes a generated `servers/atelier-mcp-wrapper.sh` inside
+the installed plugin source and patches the plugin `.mcp.json` to use that
+repo-pinned wrapper.
 
 ## Verify
 
@@ -36,7 +40,7 @@ make verify
 
 ## First Task
 
-Start Codex in your workspace and use the skill:
+Start Codex in your workspace, restart once so the marketplace is reloaded, and use the bundled skill:
 
 ```
 use skill: atelier-lint
@@ -50,17 +54,18 @@ Or run the Atelier preflight wrapper:
 
 ## Expected Behavior
 
-- Codex loads `atelier-lint` skill and submits the current task plan to Atelier for scoring
-- MCP tools are available for Atelier reasoning operations
+- Codex finds the local `atelier` marketplace and installs the plugin source on restart
+- Codex loads bundled Atelier skills and connects to the generated MCP wrapper
 - Wrapper preflight always runs reasoning context, plan validation, and optional rubric gate
 
 ## Troubleshooting
 
-| Problem           | Fix                                                                                      |
-| ----------------- | ---------------------------------------------------------------------------------------- |
-| Skill not found   | Check `~/.codex/skills/atelier/` or workspace `.codex/skills/atelier/`                   |
-| MCP tools missing | Global: run `codex mcp list`; workspace: check `.codex/mcp.json`                         |
-| Wrapper missing   | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists |
+| Problem             | Fix                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| Plugin not visible   | Restart Codex, then check `~/.agents/plugins/marketplace.json` or workspace `.agents/plugins/marketplace.json` |
+| MCP tools missing    | Verify `<plugin>/servers/atelier-mcp-wrapper.sh` exists inside the installed plugin source             |
+| Wrapper missing      | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists             |
+| Skills look outdated | Re-run `bash scripts/install_codex.sh` to refresh the copied plugin source                             |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 

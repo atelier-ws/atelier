@@ -10,7 +10,8 @@ tools:
     "mcp__atelier__read",
     "mcp__atelier__memory",
   ]
-disallowedTools: ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"]
+disallowedTools:
+  ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"]
 ---
 
 # Atelier Explore Agent
