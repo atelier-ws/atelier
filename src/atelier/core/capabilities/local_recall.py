@@ -99,7 +99,9 @@ def build_index(config_dir: str | Path | None = None) -> list[dict[str, Any]]:
     for transcript in discover_transcripts(config_dir):
         chunks = _chunk_messages(_read_jsonl(transcript))
         for idx, chunk in enumerate(chunks):
-            entries.append({"transcript": str(transcript), "chunk_index": idx, "content": chunk, "vector": vectorize(chunk)})
+            entries.append(
+                {"transcript": str(transcript), "chunk_index": idx, "content": chunk, "vector": vectorize(chunk)}
+            )
     return entries
 
 
@@ -109,14 +111,34 @@ def recall_transcripts(query: str, *, top_k: int = 10, config_dir: str | Path | 
         return {"isError": False, "content": [{"type": "text", "text": "No past sessions found."}], "matches": []}
     query_vector = vectorize(query)
     scored = [(_cosine(query_vector, entry["vector"]), entry) for entry in entries]
-    matches = [entry | {"score": score} for score, entry in sorted(scored, key=lambda item: item[0], reverse=True) if score >= MIN_SCORE_THRESHOLD][:top_k]
+    matches = [
+        entry | {"score": score}
+        for score, entry in sorted(scored, key=lambda item: item[0], reverse=True)
+        if score >= MIN_SCORE_THRESHOLD
+    ][:top_k]
     if not matches:
-        return {"isError": False, "content": [{"type": "text", "text": f"No relevant results for: {query!r}"}], "matches": []}
+        return {
+            "isError": False,
+            "content": [{"type": "text", "text": f"No relevant results for: {query!r}"}],
+            "matches": [],
+        }
     lines = [f"Recall: {query!r} ({len(entries)} turns indexed)"]
     for idx, match in enumerate(matches, start=1):
         lines.append(f"\n[{idx}] {match['score']:.0%} -- {Path(match['transcript']).name}")
         lines.append(str(match["content"])[:2000])
-    return {"isError": False, "content": [{"type": "text", "text": "\n".join(lines)}], "matches": [{k: v for k, v in match.items() if k != "vector"} for match in matches]}
+    return {
+        "isError": False,
+        "content": [{"type": "text", "text": "\n".join(lines)}],
+        "matches": [{k: v for k, v in match.items() if k != "vector"} for match in matches],
+    }
 
 
-__all__ = ["DIM", "MAX_CHUNK_CHARS", "MAX_SESSIONS", "MIN_SCORE_THRESHOLD", "discover_transcripts", "recall_transcripts", "vectorize"]
+__all__ = [
+    "DIM",
+    "MAX_CHUNK_CHARS",
+    "MAX_SESSIONS",
+    "MIN_SCORE_THRESHOLD",
+    "discover_transcripts",
+    "recall_transcripts",
+    "vectorize",
+]

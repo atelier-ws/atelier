@@ -1961,6 +1961,7 @@ def create_app(*, store: Any = None) -> FastAPI:
     def memory_upsert_block(payload: dict[str, Any]) -> Any:
         """Create or update a memory block."""
         from atelier.core.foundation.memory_models import MemoryBlock
+        from atelier.infra.storage.memory_store import MemoryConcurrencyError
 
         mem = _get_mem_store()
         agent_id = payload.get("agent_id")
@@ -1996,7 +1997,10 @@ def create_app(*, store: Any = None) -> FastAPI:
                     update[field] = payload[field]
             block = existing.model_copy(update=update)
         actor = str(payload.get("actor") or f"api:{agent_id}")
-        return mem.upsert_block(block, actor=actor)
+        try:
+            return mem.upsert_block(block, actor=actor)
+        except MemoryConcurrencyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/v1/memory/archive")
     def memory_archive_passage(payload: dict[str, Any]) -> Any:

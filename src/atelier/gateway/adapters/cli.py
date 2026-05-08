@@ -552,6 +552,7 @@ def domain_info(ctx: click.Context, bundle_id: str, as_json: bool) -> None:
         return
     click.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
+
 # ----- search -------------------------------------------------------------- #
 
 
@@ -2024,10 +2025,6 @@ def tool_mode_set(ctx: click.Context, mode: str) -> None:
     click.echo(f"tool_mode={mode}")
 
 
-
-
-
-
 @cli.group("route")
 def route_group() -> None:
     """Quality-aware routing helpers."""
@@ -2196,7 +2193,6 @@ def route_verify_cmd(
 
     click.echo(f"outcome={payload['outcome']} rubric={payload['rubric_status']}")
     click.echo(payload["compressed_evidence"])
-
 
 
 # --------------------------------------------------------------------------- #
@@ -2604,7 +2600,6 @@ def memory_recall(
         return
     for passage in passages:
         click.echo(f"{passage.id}\t{passage.source_ref}\t{passage.text}")
-
 
 
 @cli.group("letta")
@@ -3092,7 +3087,9 @@ def plugin_settings_set(ctx: click.Context, key: str, value: str, as_json: bool)
     help="Command template for benchmark savings Atelier-enabled runs. Receives ATELIER_BENCH_PROMPT.",
 )
 @click.option("--timeout", "timeout_s", default=600.0, show_default=True, type=float, help="Seconds per command.")
-@click.option("--max-prompts", default=5, show_default=True, type=int, help="Default replay prompts for savings action.")
+@click.option(
+    "--max-prompts", default=5, show_default=True, type=int, help="Default replay prompts for savings action."
+)
 @click.option(
     "--input",
     "inputs",
@@ -3168,7 +3165,10 @@ def benchmark(
             raise click.ClickException("benchmark savings requires --baseline-command and --atelier-command")
         from benchmarks.swe.savings_replay import run_paired_command_benchmark
 
-        tasks = [{"id": f"prompt-{idx}", "task_type": "ad_hoc", "task": prompt} for idx, prompt in enumerate(prompts, start=1)]
+        tasks = [
+            {"id": f"prompt-{idx}", "task_type": "ad_hoc", "task": prompt}
+            for idx, prompt in enumerate(prompts, start=1)
+        ]
         report = run_paired_command_benchmark(
             root=ctx.obj["root"],
             baseline_command=baseline_command,

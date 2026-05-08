@@ -242,7 +242,9 @@ def auth_status(root: str | Path) -> dict[str, Any]:
     }
 
 
-def begin_browser_login(root: str | Path, *, app_url: str | None = None, state: str | None = None, callback_port: int | None = None) -> dict[str, Any]:
+def begin_browser_login(
+    root: str | Path, *, app_url: str | None = None, state: str | None = None, callback_port: int | None = None
+) -> dict[str, Any]:
     fp = _fingerprint()
     chosen_state = state or _fingerprint(f"state:{fp}:{_iso_now()}")
     port = callback_port or 49152 + (int(fp[:4], 16) % (65535 - 49152))
@@ -364,9 +366,7 @@ def apply_text_file_edits(initial: str, edits: list[dict[str, str]]) -> dict[str
     return {"final": content, "writes": 1 if applied_count else 0, "applied_count": applied_count}
 
 
-def fuzzy_acceptance_policy(
-    *, best_score: float, second_best_score: float, snippet_line_count: int
-) -> dict[str, Any]:
+def fuzzy_acceptance_policy(*, best_score: float, second_best_score: float, snippet_line_count: int) -> dict[str, Any]:
     if best_score < FUZZY_ACCEPT_THRESHOLD:
         return {"accepted": False, "reason": "public accepted fuzzy threshold is 0.95"}
     if second_best_score and (best_score - second_best_score) < FUZZY_AMBIGUITY_MARGIN:
@@ -475,9 +475,13 @@ def chunk_transcript(messages: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def status_line_choose_message(
-    *, auth_present: bool = True, update_flag: dict[str, Any] | None = None,
-    session_id: str | None = None, total_tool_calls: int = 0,
-    turn_count: int = 0, enabled_families: list[str] | None = None,
+    *,
+    auth_present: bool = True,
+    update_flag: dict[str, Any] | None = None,
+    session_id: str | None = None,
+    total_tool_calls: int = 0,
+    turn_count: int = 0,
+    enabled_families: list[str] | None = None,
     subscription_warning: bool = False,
     free_plan_remaining: int | None = None,
     free_plan_limit: int | None = None,
@@ -573,8 +577,25 @@ def rewrite_mcp_always_load(
 
 
 _REAL_COMMANDS = {
-    "git", "docker", "python", "python3", "node", "npm", "pnpm", "yarn", "make", "pytest",
-    "uv", "curl", "wget", "ssh", "scp", "tar", "unzip", "zip", "jq",
+    "git",
+    "docker",
+    "python",
+    "python3",
+    "node",
+    "npm",
+    "pnpm",
+    "yarn",
+    "make",
+    "pytest",
+    "uv",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "tar",
+    "unzip",
+    "zip",
+    "jq",
 }
 _BUILD_COMMANDS = {"npm", "pnpm", "yarn", "make", "pytest", "cargo", "go", "uv"}
 _READ_COMMANDS = {"cat", "sed", "grep", "rg", "find", "ls", "awk", "head", "tail", "less", "more"}
@@ -632,10 +653,13 @@ def rewrite_agent(subagent_type: str | None, is_free_plan: bool = False) -> dict
 
 
 def edit_nudge(
-    *, state_before: dict[str, Any] | None = None, now: int | None = None,
-    payload: dict[str, Any], window_ms: int = 30_000,
+    *,
+    state_before: dict[str, Any] | None = None,
+    now: int | None = None,
+    payload: dict[str, Any],
+    window_ms: int = 30_000,
 ) -> dict[str, Any]:
-    edits = ((payload.get("tool_input") or {}).get("edits") or [])
+    edits = (payload.get("tool_input") or {}).get("edits") or []
     if len(edits) != 1:
         return {"no_output": True, "state_unchanged": True}
     now_ms = int(now if now is not None else datetime.now().timestamp() * 1000)
@@ -666,7 +690,10 @@ def edit_nudge(
 
 
 def session_start(settings: dict[str, Any], plugin_root: str) -> dict[str, Any]:
-    return {"settings_write_contains": session_start_install_status_line(plugin_root, settings)["settings"], "stdout": ""}
+    return {
+        "settings_write_contains": session_start_install_status_line(plugin_root, settings)["settings"],
+        "stdout": "",
+    }
 
 
 def session_start_bootstrap(
@@ -714,7 +741,11 @@ def apply_session_start_files(
     current_version: str = "0.0.0",
 ) -> dict[str, Any]:
     plugin_root_path = Path(plugin_root)
-    config_path = Path(config_dir) if config_dir is not None else Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude")))
+    config_path = (
+        Path(config_dir)
+        if config_dir is not None
+        else Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude")))
+    )
     settings_path = config_path / "settings.json"
     host_settings = _read_json(settings_path, {})
     if not isinstance(host_settings, dict):
@@ -832,7 +863,11 @@ def detect_read_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
     for _, turn in enumerate(turns):
         reads = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Read"]
         if len(reads) >= 2:
-            return {"workflows": 1, "calls_saved": len(reads) - 1, "consumed_tool_use_ids": [r.get("id") for r in reads]}
+            return {
+                "workflows": 1,
+                "calls_saved": len(reads) - 1,
+                "consumed_tool_use_ids": [r.get("id") for r in reads],
+            }
     return {"workflows": 0, "calls_saved": 0, "consumed_tool_use_ids": []}
 
 
@@ -889,7 +924,10 @@ def baseline_is_available(vanillaSessions: int, totalVanillaCostInUsd: float) ->
 
 
 def baseline_time_saved(calls_saved: int) -> dict[str, Any]:
-    return {"time_saved_ms": calls_saved * BASELINE_TIME_SAVED_PER_CALL_MS, "per_call_ms": BASELINE_TIME_SAVED_PER_CALL_MS}
+    return {
+        "time_saved_ms": calls_saved * BASELINE_TIME_SAVED_PER_CALL_MS,
+        "per_call_ms": BASELINE_TIME_SAVED_PER_CALL_MS,
+    }
 
 
 def efficiency_gain(actual_tool_calls: int, equivalent_baseline_calls: int) -> dict[str, Any]:
@@ -944,7 +982,11 @@ def _usage_numbers(raw: dict[str, Any]) -> dict[str, int]:
 def _extract_usage(payload: dict[str, Any]) -> dict[str, int]:
     usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     candidates = [payload.get("usage"), payload.get("token_usage")]
-    context_usage = ((payload.get("context_window") or {}).get("current_usage") if isinstance(payload.get("context_window"), dict) else None)
+    context_usage = (
+        (payload.get("context_window") or {}).get("current_usage")
+        if isinstance(payload.get("context_window"), dict)
+        else None
+    )
     candidates.append(context_usage)
     message_usage = (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None
     candidates.append(message_usage)
@@ -975,14 +1017,19 @@ def _usage_from_transcript(path: Path) -> list[dict[str, int]]:
             continue
         if not isinstance(payload, dict):
             continue
-        for candidate in (payload.get("usage"), (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None):
+        for candidate in (
+            payload.get("usage"),
+            (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None,
+        ):
             if isinstance(candidate, dict):
                 rows.append(_usage_numbers(candidate))
     return rows
 
 
 def _merge_usage(state: dict[str, Any], usage: dict[str, int]) -> None:
-    totals = state.setdefault("usage", {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0})
+    totals = state.setdefault(
+        "usage", {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    )
     for key, value in usage.items():
         totals[key] = int(totals.get(key, 0) or 0) + max(0, int(value))
 
@@ -997,7 +1044,11 @@ def _append_session_event(root: str | Path, session_id: str, payload: dict[str, 
         "at_ms": _now_ms(payload),
         "event": event,
         "tool_name": payload.get("tool_name"),
-        "subagent_type": (payload.get("tool_input") or {}).get("subagent_type") if isinstance(payload.get("tool_input"), dict) else None,
+        "subagent_type": (
+            (payload.get("tool_input") or {}).get("subagent_type")
+            if isinstance(payload.get("tool_input"), dict)
+            else None
+        ),
     }
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -1030,7 +1081,12 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         state["equivalent_baseline_calls"] = float(state.get("equivalent_baseline_calls", 0.0)) + equiv
         state["savings"]["calls_saved"] = int(state["savings"].get("calls_saved", 0)) + savings["calls_saved"]
         state["savings"]["time_saved_ms"] = int(state["savings"].get("time_saved_ms", 0)) + savings["time_saved_ms"]
-        state["savings"]["tokens_saved"] = int(state["savings"].get("tokens_saved", 0)) + savings["input_tokens_saved"] + savings["output_tokens_saved"] + savings["cache_read_tokens_saved"]
+        state["savings"]["tokens_saved"] = (
+            int(state["savings"].get("tokens_saved", 0))
+            + savings["input_tokens_saved"]
+            + savings["output_tokens_saved"]
+            + savings["cache_read_tokens_saved"]
+        )
         if tool_name == "Agent":
             state["subagents_started"] = int(state.get("subagents_started", 0) or 0) + 1
             state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) + 1)
@@ -1039,7 +1095,9 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     elif event == "PostCompact":
         state["compactions"] = int(state.get("compactions", 0)) + 1
         started_at = int(state.pop("compaction_started_at_ms", _now_ms(payload)) or _now_ms(payload))
-        state["compaction_duration_ms"] = int(state.get("compaction_duration_ms", 0) or 0) + max(0, _now_ms(payload) - started_at)
+        state["compaction_duration_ms"] = int(state.get("compaction_duration_ms", 0) or 0) + max(
+            0, _now_ms(payload) - started_at
+        )
     elif event == "SubagentStop":
         state["subagents_completed"] = int(state.get("subagents_completed", 0) or 0) + 1
         state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) - 1)
@@ -1054,7 +1112,11 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
 
 def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
     stats_dir = Path(root) / "session_stats"
-    files = [session_stats_path(root, session_id)] if session_id else sorted(stats_dir.glob("*.json")) if stats_dir.exists() else []
+    files = (
+        [session_stats_path(root, session_id)]
+        if session_id
+        else sorted(stats_dir.glob("*.json")) if stats_dir.exists() else []
+    )
     aggregate: dict[str, Any] = {
         "session_count": 0,
         "total_tool_calls": 0,
@@ -1081,7 +1143,13 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
             aggregate["savings"][key] += int((data.get("savings") or {}).get(key, 0) or 0)
         for key in aggregate["usage"]:
             aggregate["usage"][key] += int((data.get("usage") or {}).get(key, 0) or 0)
-        for key in ("compactions", "compaction_duration_ms", "pending_subagents", "subagents_started", "subagents_completed"):
+        for key in (
+            "compactions",
+            "compaction_duration_ms",
+            "pending_subagents",
+            "subagents_started",
+            "subagents_completed",
+        ):
             aggregate[key] += int(data.get(key, 0) or 0)
     aggregate["equivalent_baseline_calls"] = round(float(aggregate["equivalent_baseline_calls"]), 2)
     return aggregate
@@ -1122,7 +1190,9 @@ def _cost_history_summary(root: str | Path) -> dict[str, Any]:
     }
 
 
-def build_savings_report(root: str | Path, *, session_id: str | None = None, usd_per_1k_tokens: float = 0.003) -> dict[str, Any]:
+def build_savings_report(
+    root: str | Path, *, session_id: str | None = None, usd_per_1k_tokens: float = 0.003
+) -> dict[str, Any]:
     root_path = Path(root)
     smart = {}
     smart_path = root_path / "smart_state.json"
