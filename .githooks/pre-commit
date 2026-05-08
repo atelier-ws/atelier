@@ -62,11 +62,19 @@ if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
 
     uvx black "${PYTHON_FILES[@]}"
 
-    # Re-stage any files that were modified by formatting
+    # Check if any files were modified by formatting — never auto-stage
     mapfile -t FORMATTED_FILES < <(git diff --name-only -- "${PYTHON_FILES[@]}")
     if [ ${#FORMATTED_FILES[@]} -gt 0 ]; then
-        echo "   Auto-staging formatted files..."
-        git add "${FORMATTED_FILES[@]}"
+        echo -e "\n\033[1;31m================================================================================\033[0m"
+        echo -e "\033[1;31m❌  FORMATTING APPLIED — COMMIT ABORTED\033[0m"
+        echo -e "\n📝  The following files were auto-formatted during pre-commit checks."
+        echo -e "    \033[1;33mPlease review the changes, stage them, and commit again:\033[0m"
+        echo -e "\033[1;31m================================================================================\033[0m"
+        for file in "${FORMATTED_FILES[@]}"; do
+            echo "    - $file"
+        done
+        echo -e "\033[1;31m================================================================================\033[0m\n"
+        exit 1
     fi
 fi
 

@@ -171,33 +171,33 @@ atelier worker list
 uv run atelier [--root PATH] COMMAND [OPTIONS]
 ```
 
-| Command                                 | Description                                |
-| --------------------------------------- | ------------------------------------------ |
-| `init`                                  | Create store and seed blocks/rubrics       |
-| `reasoning`                             | Get reasoning context for a task           |
-| `lint`                                  | Validate a plan (exit 2 = blocked)         |
-| `rescue`                                | Suggest rescue for a failure               |
-| `trace record/list/show`                | Record and browse execution traces         |
-| `verify`                                | Run a rubric gate                          |
-| `block list/add/extract`                | Manage ReasonBlocks                        |
-| `rubric list/show/add`                  | Manage rubrics                             |
-| `env list/show`                         | List reasoning environments                |
-| `failure list/show/accept`              | Manage failure clusters                    |
-| `ledger list/show`                      | Browse run ledger                          |
-| `lesson inbox/decide`                   | Review generated lesson candidates         |
-| `consolidation inbox/decide`            | Review memory consolidation candidates     |
-| `report`                                | Generate governance reports                |
-| `proof run/show`                        | Run or display proof report output         |
-| `route`                                 | Quality-aware routing decisions            |
-| `memory upsert/get/list/recall/archive` | Session memory block operations            |
-| `search`                                | Semantic retrieval across ReasonBlocks     |
-| `read`                                  | AST-aware file read with symbol summary    |
-| `edit`                                  | Batch find/replace edits from JSON file    |
-| `bench runtime`                         | Capability efficiency metrics              |
-| `service`                               | Start/configure the optional HTTP service  |
-| `worker`                                | Enqueue and run background jobs            |
-| `servicectl`                            | Manage the detached offline processor      |
-| `stack`                                 | Start/stop the optional UI stack           |
+| Command                                 | Description                               |
+| --------------------------------------- | ----------------------------------------- |
+| `init`                                  | Create store and seed blocks/rubrics      |
+| `reasoning`                             | Get reasoning context for a task          |
+| `lint`                                  | Validate a plan (exit 2 = blocked)        |
+| `rescue`                                | Suggest rescue for a failure              |
+| `trace record/list/show`                | Record and browse execution traces        |
+| `verify`                                | Run a rubric gate                         |
+| `block list/add/extract`                | Manage ReasonBlocks                       |
+| `rubric list/show/add`                  | Manage rubrics                            |
+| `env list/show`                         | List reasoning environments               |
+| `failure list/show/accept`              | Manage failure clusters                   |
+| `ledger list/show`                      | Browse run ledger                         |
+| `lesson inbox/decide`                   | Review generated lesson candidates        |
+| `consolidation inbox/decide`            | Review memory consolidation candidates    |
+| `report`                                | Generate governance reports               |
+| `proof run/show`                        | Run or display proof report output        |
+| `route`                                 | Quality-aware routing decisions           |
+| `memory upsert/get/list/recall/archive` | Session memory block operations           |
+| `search`                                | Semantic retrieval across ReasonBlocks    |
+| `read`                                  | AST-aware file read with symbol summary   |
+| `edit`                                  | Batch find/replace edits from JSON file   |
+| `bench runtime`                         | Capability efficiency metrics             |
+| `service`                               | Start/configure the optional HTTP service |
+| `worker`                                | Enqueue and run background jobs           |
+| `servicectl`                            | Manage the detached offline processor     |
+| `stack`                                 | Start/stop the optional UI stack          |
 
 All commands accept `--json` for machine-readable output.
 

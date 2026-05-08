@@ -125,11 +125,11 @@ All configuration is via environment variables. No config file is required.
 
 ### Background Controller
 
-| Variable                                          | Default | Description                                            |
-| ------------------------------------------------- | ------- | ------------------------------------------------------ |
-| `ATELIER_NO_SERVICECTL`                           | `0`     | Skip auto-starting the detached background controller  |
-| `ATELIER_SERVICECTL_INTERVAL_SECONDS`             | `60`    | Poll interval for the offline processing loop          |
-| `ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS` | `21600` | Periodic maintenance enqueue interval                  |
+| Variable                                          | Default | Description                                           |
+| ------------------------------------------------- | ------- | ----------------------------------------------------- |
+| `ATELIER_NO_SERVICECTL`                           | `0`     | Skip auto-starting the detached background controller |
+| `ATELIER_SERVICECTL_INTERVAL_SECONDS`             | `60`    | Poll interval for the offline processing loop         |
+| `ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS` | `21600` | Periodic maintenance enqueue interval                 |
 
 ### MCP Server
 

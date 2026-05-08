@@ -11,8 +11,9 @@ status: done
 # WP-12 — Scoped recall in context injection
 
 ## Why
-Pillar 3 needs the agent to *recall* relevant prior context instead of having stale context
-re-pasted. We extend the `reasoning` tool (already exists) to *additionally*
+
+Pillar 3 needs the agent to _recall_ relevant prior context instead of having stale context
+re-pasted. We extend the `reasoning` tool (already exists) to _additionally_
 return up to N archival passages relevant to the task — but with strict tags scoping so we never
 leak across agents.
 
@@ -57,6 +58,7 @@ make verify
 ```
 
 ## Definition of done
+
 - [x] Tool extended; backward-compat preserved when `recall=false`
 - [x] Strict agent_id scoping enforced and tested
 - [x] tokens_breakdown surfaced
