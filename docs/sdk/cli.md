@@ -171,22 +171,22 @@ Record an execution trace. Accepts JSON from stdin or a file. Required fields:
 
 Full trace schema:
 
-| Field                | Type         | Required            | Description                            |
-| -------------------- | ------------ | ------------------- | -------------------------------------- |
-| `id`                 | string       | No (auto-generated) | Trace ID                               |
-| `agent`              | string       | Yes                 | Agent identifier                       |
-| `domain`             | string       | Yes                 | Domain (e.g. `state.change`)           |
-| `task`               | string       | Yes                 | Task description                       |
-| `status`             | enum         | Yes                 | `success`, `failed`, or `partial`      |
-| `files_touched`      | string[]     | No                  | Files modified                         |
-| `tools_called`       | string[]     | No                  | Tools invoked                          |
-| `commands_run`       | string[]     | No                  | Commands executed                      |
-| `errors_seen`        | string[]     | No                  | Errors encountered                     |
-| `repeated_failures`  | string[]     | No                  | Patterns that recurred                 |
-| `diff_summary`       | string       | No                  | What changed                           |
-| `output_summary`     | string       | No                  | Outcome summary                        |
-| `validation_results` | object       | No                  | Rubric results                         |
-| `created_at`         | ISO datetime | No                  | Timestamp (auto)                       |
+| Field                | Type         | Required            | Description                       |
+| -------------------- | ------------ | ------------------- | --------------------------------- |
+| `id`                 | string       | No (auto-generated) | Trace ID                          |
+| `agent`              | string       | Yes                 | Agent identifier                  |
+| `domain`             | string       | Yes                 | Domain (e.g. `state.change`)      |
+| `task`               | string       | Yes                 | Task description                  |
+| `status`             | enum         | Yes                 | `success`, `failed`, or `partial` |
+| `files_touched`      | string[]     | No                  | Files modified                    |
+| `tools_called`       | string[]     | No                  | Tools invoked                     |
+| `commands_run`       | string[]     | No                  | Commands executed                 |
+| `errors_seen`        | string[]     | No                  | Errors encountered                |
+| `repeated_failures`  | string[]     | No                  | Patterns that recurred            |
+| `diff_summary`       | string       | No                  | What changed                      |
+| `output_summary`     | string       | No                  | Outcome summary                   |
+| `validation_results` | object       | No                  | Rubric results                    |
+| `created_at`         | ISO datetime | No                  | Timestamp (auto)                  |
 
 All string fields are redacted before persistence (secrets removed).
 
