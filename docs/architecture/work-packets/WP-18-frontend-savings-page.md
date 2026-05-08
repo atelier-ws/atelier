@@ -13,8 +13,8 @@ status: done
 ## Why
 
 The current `Savings.tsx` displays a single aggregate number. With per-lever telemetry from WP-14,
-we can show a baseline-style breakdown that proves the >50 % claim is real and lets us spot
-regression in any one lever.
+we can show a lever-level breakdown that proves the >50 % claim is real and lets us spot regression
+in any one lever.
 
 ## Files touched
 
@@ -53,7 +53,7 @@ regression in any one lever.
      pure CSS bars to keep bundle small)
    - 14-day stacked area chart (`SavingsTimeChart`) — use existing chart lib if one is already in
      `package.json`; otherwise SVG hand-rolled
-   - "Why this matters" callout linking to baseline and the V2 plan
+    - "Why this matters" callout linking to the V2 plan
 
 3. Empty state: when no savings data has been recorded yet, render a coaching message:
    "Run any task with `atelier-mcp` enabled to start collecting savings telemetry."

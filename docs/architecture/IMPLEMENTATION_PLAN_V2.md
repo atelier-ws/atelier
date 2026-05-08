@@ -20,7 +20,7 @@ V2 keeps that posture but closes three gaps that block adoption against best-in-
 | --- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Stateful memory**           | [Letta](https://github.com/letta-ai/letta)                                                                                                                                                                                                   | First-class long-term memory for agents that survive across sessions: editable core memory blocks, archival passages with semantic search, sleeptime summarization.                                                                                                                                                               |
 | 2   | **ReasonBlocks evolution**    | [reasonblocks.com](https://reasonblocks.com/) + Letta                                                                                                                                                                                        | Ship a versioned, reviewable, retrievable corpus of reasoning procedures (already started) and add automated promotion / deprecation from production traces.                                                                                                                                                                      |
-| 3   | **Context savings ≥ 50 %** | [Lemma](https://www.uselemma.ai/) + [baseline](https://www.baseline.com/) + [Claude `/compact`](https://platform.claude.com/docs/en/build-with-claude/compaction) | Demonstrate ≥ 50 % reduction in tokens shipped to the model per task on the SWE-bench-style harness. The design adopts the stable tool-level ideas that have shown up across coding-agent optimization systems: combined search/read, batched edits, outline-first reads, deterministic SQL inspection, fuzzy edit matching, scoped recall, and lifecycle compaction. |
+| 3   | **Context savings ≥ 50 %** | [Lemma](https://www.uselemma.ai/) + [Claude `/compact`](https://platform.claude.com/docs/en/build-with-claude/compaction) | Demonstrate ≥ 50 % reduction in tokens shipped to the model per task on the SWE-bench-style harness. The design adopts the stable tool-level ideas that have shown up across coding-agent optimization systems: combined search/read, batched edits, outline-first reads, deterministic SQL inspection, fuzzy edit matching, scoped recall, and lifecycle compaction. |
 
 Each pillar is a separate work-stream. Subagents may execute packets in parallel as long as they
 respect the dependency edges in [work-packets/INDEX.md](work-packets/INDEX.md).
@@ -163,16 +163,16 @@ PR-bot integration.
 
 The context-savings strategy assumes that most practical savings come from avoiding repeated
 tool round-trips and repeated full-context sends, not from summarization alone. We adopt five
-baseline-inspired tool-level techniques as first-class MCP tools, then layer Letta-style sleeptime
+tool-efficiency techniques as first-class MCP tools, then layer Letta-style sleeptime
 summarization and native compaction lifecycle support on top.
 
 | Lever                                                | Owner WP | Mechanism                                                                                                                                              | Expected share |
 | ---------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
-| **baseline 1** — Combined search + read       | WP-21    | New MCP tool `search(query, path)` returns ranked snippets + content in one call. Replaces grep → read → read.                       | ~12 %         |
-| **baseline 2** — Batched edits                | WP-22    | New MCP tool `edit(edits=[…])` applies many edits across many files in one turn. Removes per-edit "turn-tax".                          | ~10 %         |
-| **baseline 3** — AST-aware truncation         | WP-11    | Extend existing `semantic_file_memory` AST capability: any file > 200 LOC returns signatures only on first read; full body only on narrow follow-up. | ~12 %          |
-| **baseline 4** — Live SQL introspection       | WP-23    | Existing `sql inspect` CLI command exposed as MCP tool `atelier sql inspect`. Single deterministic call replaces psql-via-Bash chain.            | ~5 %           |
-| **baseline 5** — Fuzzy edit matching          | WP-24    | Extend existing `edit smart` capability: Levenshtein-tolerant `old_string` matching. Removes "old_string not found" retry loops.                   | ~6 %           |
+| Combined search + read                       | WP-21    | New MCP tool `search(query, path)` returns ranked snippets + content in one call. Replaces grep → read → read.                       | ~12 %         |
+| Batched edits                                | WP-22    | New MCP tool `edit(edits=[…])` applies many edits across many files in one turn. Removes per-edit "turn-tax".                          | ~10 %         |
+| AST-aware truncation                         | WP-11    | Extend existing `semantic_file_memory` AST capability: any file > 200 LOC returns signatures only on first read; full body only on narrow follow-up. | ~12 %          |
+| Live SQL introspection                       | WP-23    | Existing `sql inspect` CLI command exposed as MCP tool `atelier sql inspect`. Single deterministic call replaces psql-via-Bash chain.            | ~5 %           |
+| Fuzzy edit matching                          | WP-24    | Extend existing `edit smart` capability: Levenshtein-tolerant `old_string` matching. Removes "old_string not found" retry loops.                   | ~6 %           |
 | Sleeptime ledger summarization                       | WP-09    | Letta-style summarizer condenses tool outputs older than N events                                                                                      | ~10 %          |
 | Cached tool results (`smart_read` everywhere)      | WP-10    | Existing capability promoted from optional to default; hit-rate raised via content hash                                                                | ~5 %           |
 | Scoped recall from archival memory                   | WP-12    | Agent calls `memory_recall(query)` to retrieve top-3 passages instead of dumping prior trace                                                         | ~5 %           |
@@ -180,7 +180,7 @@ summarization and native compaction lifecycle support on top.
 | Reduced ReasonBlock duplication on repeated retrieve | WP-04    | Already shipped; tuned by limit + dedup                                                                                                                | ~3 %           |
 | **Total measured savings (target)**            | —      | `benchmark-runtime --measure-context-savings` (WP-19) on Atelier's deterministic 11-prompt suite                                                       | **≥ 50 %** |
 
-> **Note on attribution.** The baseline techniques are *concepts* — we re-implement analogous
+> **Note on attribution.** These techniques are *concepts* — we implement analogous
 > behavior inside Atelier. We do not vendor plugin code or depend on third-party benchmark pages for
 > CI claims. The hard claim is Atelier's own deterministic benchmark.
 
