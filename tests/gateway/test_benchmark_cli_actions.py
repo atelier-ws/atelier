@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -81,6 +82,49 @@ def test_benchmark_compare_and_export_actions(tmp_path: Path) -> None:
     )
     assert export.exit_code == 0, export.output
     assert export_path.exists()
+
+
+def test_benchmark_savings_action_runs_paired_commands(tmp_path: Path) -> None:
+    script = tmp_path / "bench_agent.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "mode = os.environ['ATELIER_BENCH_MODE']",
+                "if mode == 'baseline':",
+                "    print(json.dumps({'input_tokens': 100, 'output_tokens': 50, 'cost_usd': 0.002, 'success': True}))",
+                "else:",
+                "    print(json.dumps({'input_tokens': 60, 'output_tokens': 30, 'cost_usd': 0.001, 'success': True}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "benchmark",
+            "savings",
+            "--prompt",
+            "Fix a failing benchmark",
+            "--baseline-command",
+            f"{sys.executable} {script}",
+            "--atelier-command",
+            f"{sys.executable} {script}",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["tokens_saved"] == 60
+    assert payload["reduction_pct"] == 40.0
+    assert payload["cost_saved_usd"] == 0.001
+    assert (root / "benchmarks" / "savings" / "latest.json").exists()
 
 
 def test_benchmark_core_command_runs(tmp_path: Path) -> None:

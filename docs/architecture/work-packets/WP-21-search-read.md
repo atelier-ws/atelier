@@ -1,6 +1,6 @@
 ---
 id: WP-21
-title: MCP tool `search` (baseline 1 — combined search + read)
+title: MCP tool `search` (combined search + read)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -12,7 +12,7 @@ status: done
 
 ## Why
 
-Wozcode's biggest single lever: collapse `grep → read → read` into one tool that returns ranked
+Collapse `grep → read → read` into one tool that returns ranked
 snippets _and_ the surrounding content. Removes a turn-tax on every search.
 
 ## Implementation boundary
