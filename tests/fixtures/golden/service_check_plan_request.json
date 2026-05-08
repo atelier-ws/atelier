@@ -1,10 +1,7 @@
 {
   "task": "Apply a live state change",
   "domain": "state.change",
-  "plan": [
-    "Resolve target from URL slug alone",
-    "Apply the change"
-  ],
+  "plan": ["Resolve target from URL slug alone", "Apply the change"],
   "files": [],
   "tools": ["api.write"]
 }

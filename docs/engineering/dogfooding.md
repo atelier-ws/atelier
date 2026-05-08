@@ -159,12 +159,12 @@ The pytest suite in `tests/test_golden_fixtures.py` covers all the above scenari
 
 The required checks for the state-change safety rubric (as of last dogfood):
 
-| Check                            | Description                                        |
-| -------------------------------- | -------------------------------------------------- |
-| `canonical_identifier_used`      | Target identified by a stable canonical identifier |
-| `pre_change_state_captured`      | State snapshot taken before the change             |
-| `read_after_write_completed`     | Authoritative readback executed                    |
-| `observed_state_matches_intent`  | Observed state matches intended state              |
+| Check                           | Description                                        |
+| ------------------------------- | -------------------------------------------------- |
+| `canonical_identifier_used`     | Target identified by a stable canonical identifier |
+| `pre_change_state_captured`     | State snapshot taken before the change             |
+| `read_after_write_completed`    | Authoritative readback executed                    |
+| `observed_state_matches_intent` | Observed state matches intended state              |
 
 ## Dogfood Results Log
 
