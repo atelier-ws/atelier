@@ -5,6 +5,7 @@ from pathlib import Path
 
 from click.testing import CliRunner, Result
 
+from atelier.core.capabilities.plugin_runtime import update_session_stats
 from atelier.gateway.adapters.cli import cli
 
 
@@ -17,9 +18,9 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     res = _invoke(tmp_path / "a", "init")
     assert res.exit_code == 0, res.output
     assert "seeded" in res.output
-    # 10 blocks + 6 rubrics expected
+    # 10 blocks + 7 rubrics expected
     assert "10 reasonblocks" in res.output
-    assert "6 rubrics" in res.output
+    assert "7 rubrics" in res.output
 
 
 def test_check_plan_blocks_shopify_handle_from_url(tmp_path: Path) -> None:
@@ -115,6 +116,71 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
     payload = json.loads(res.output)
     assert "rescue" in payload
     assert payload["matched_blocks"]
+
+
+def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    root.mkdir(parents=True)
+    (root / "smart_state.json").write_text(
+        json.dumps({"savings": {"calls_avoided": 1, "tokens_saved": 500}}),
+        encoding="utf-8",
+    )
+    update_session_stats(
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "s1",
+            "tool_name": "Search",
+            "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
+        },
+    )
+
+    res = _invoke(root, "savings", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["session"]["session_count"] == 1
+    assert payload["calls_avoided"] >= 2
+    assert payload["tokens_saved"] >= 500
+    assert "local estimates" in payload["local_note"]
+
+
+def test_plugin_auth_status_share_and_settings_cli(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    token = json.dumps({"email": "dev@example.com", "userId": "u1", "refreshToken": "r1"})
+
+    login = _invoke(root, "login", "--token", token, "--json")
+    assert login.exit_code == 0, login.output
+    login_payload = json.loads(login.output)
+    assert login_payload["auth"]["email"] == "dev@example.com"
+
+    status = _invoke(root, "status", "--json")
+    assert status.exit_code == 0, status.output
+    status_payload = json.loads(status.output)
+    assert status_payload["authenticated"] is True
+    assert status_payload["email"] == "dev@example.com"
+
+    share = _invoke(root, "share", "--json")
+    assert share.exit_code == 0, share.output
+    assert json.loads(share.output)["code"].startswith("ATELIER-")
+
+    set_result = _invoke(root, "settings", "set", "alwaysLoadTools", "off", "--json")
+    assert set_result.exit_code == 0, set_result.output
+    assert json.loads(set_result.output)["alwaysLoadTools"] is False
+
+    show = _invoke(root, "settings", "show", "--json")
+    assert show.exit_code == 0, show.output
+    assert json.loads(show.output)["alwaysLoadTools"] is False
+
+
+def test_logout_starts_anonymous_trial_by_default(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    res = _invoke(root, "logout", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["logged_out"] is True
+    assert payload["anonymous"]["isAnonymous"] is True
 
 
 # `atelier task` command removed — cut in CLI consolidation.

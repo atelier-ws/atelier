@@ -1,6 +1,6 @@
 ---
 id: WP-22
-title: Optional deterministic MCP tool `edit` (baseline 2 - batched edits)
+title: Optional deterministic MCP tool `edit` (batched edits)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -12,7 +12,7 @@ status: done
 
 ## Why
 
-Wozcode lever 2: apply many mechanical edits across many files in one explicit tool call. Each
+Apply many mechanical edits across many files in one explicit tool call. Each
 round-trip the agent saves on individual edit acknowledgements is real money, but this packet must
 not compete with host-native edit tools for ordinary coding.
 

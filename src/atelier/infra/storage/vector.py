@@ -12,9 +12,13 @@ Environment variables:
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import sqlite3
 import urllib.request
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 # Optional numpy for embedding math — not required at import time
@@ -44,6 +48,67 @@ def get_embedding_dim() -> int:
 def get_embedding_model() -> str:
     """Return the configured embedding model name."""
     return os.environ.get("ATELIER_EMBEDDING_MODEL", "text-embedding-3-small")
+
+
+def vector_cache_key(block_id: str, rendered_content: str) -> str:
+    """Return a stable cache key for a rendered ReasonBlock payload."""
+    digest = sha256(rendered_content.encode("utf-8")).hexdigest()
+    return f"{block_id}:{digest}"
+
+
+def _vector_cache_path(root: str | Path) -> Path:
+    return Path(root) / "vector_cache.sqlite"
+
+
+def _ensure_vector_cache(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reasonblock_embedding_cache (
+            cache_key TEXT NOT NULL,
+            embedder_name TEXT NOT NULL,
+            vector_json TEXT NOT NULL,
+            PRIMARY KEY (cache_key, embedder_name)
+        )
+        """)
+
+
+def get_cached_embedding(root: str | Path, *, cache_key: str, embedder_name: str) -> list[float] | None:
+    """Return a cached block embedding from the sidecar sqlite cache."""
+    path = _vector_cache_path(root)
+    if not path.exists():
+        return None
+
+    with sqlite3.connect(path) as conn:
+        _ensure_vector_cache(conn)
+        row = conn.execute(
+            "SELECT vector_json FROM reasonblock_embedding_cache WHERE cache_key = ? AND embedder_name = ?",
+            (cache_key, embedder_name),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    payload = json.loads(str(row[0]))
+    if not isinstance(payload, list):
+        return None
+    return [float(item) for item in payload]
+
+
+def put_cached_embedding(root: str | Path, *, cache_key: str, embedder_name: str, vector: list[float]) -> None:
+    """Persist a block embedding into the sidecar sqlite cache."""
+    path = _vector_cache_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with sqlite3.connect(path) as conn:
+        _ensure_vector_cache(conn)
+        conn.execute(
+            """
+            INSERT INTO reasonblock_embedding_cache (cache_key, embedder_name, vector_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(cache_key, embedder_name) DO UPDATE SET vector_json = excluded.vector_json
+            """,
+            (cache_key, embedder_name, json.dumps(vector, ensure_ascii=False)),
+        )
+        conn.commit()
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -162,7 +227,10 @@ def generate_embedding(text: str, *, dim: int | None = None) -> list[float]:
 __all__ = [
     "cosine_similarity",
     "generate_embedding",
+    "get_cached_embedding",
     "get_embedding_dim",
     "get_embedding_model",
     "is_vector_enabled",
+    "put_cached_embedding",
+    "vector_cache_key",
 ]

@@ -12,9 +12,8 @@ status: done
 
 ## Why
 The `tool_supervision` capability already ships `smart_read`, `smart_search`, and `cached_grep`,
-but the host integrations only wire them in opt-in. We make them default. Wozcode's measurement
-showed the largest single drop in cache-read tokens came from collapsing repeat reads — this is
-the lever that pays the rent.
+but the host integrations only wire them in opt-in. We make them default. The largest single drop in
+cache-read tokens comes from collapsing repeat reads — this is the lever that pays the rent.
 
 ## Implementation boundary
 

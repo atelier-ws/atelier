@@ -1,0 +1,17 @@
+{
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "AI reasoning/procedure/runtime layer for agentic workflows",
+  "mcpServers": {
+    "atelier": {
+      "command": "atelier-mcp",
+      "args": [],
+      "cwd": "${workspacePath}",
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "${workspacePath}",
+        "ATELIER_ROOT": "${workspacePath}${/}.atelier"
+      }
+    }
+  },
+  "contextFileName": "GEMINI.md"
+}

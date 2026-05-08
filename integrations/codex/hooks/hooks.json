@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${ATELIER_CODEX_PLUGIN_ROOT}/hooks/update_notification.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_atelier_atelier__Edit|mcp__plugin_atelier_atelier__Search|mcp__plugin_atelier_atelier__Sql|mcp__plugin_atelier_atelier__Recall",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${ATELIER_CODEX_PLUGIN_ROOT}/hooks/savings_reporter.py"
+          }
+        ]
+      }
+    ]
+  }
+}
