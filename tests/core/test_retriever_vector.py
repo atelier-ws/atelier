@@ -30,8 +30,11 @@ from atelier.core.foundation.retriever import (
 from atelier.infra.storage.vector import (
     cosine_similarity,
     generate_embedding,
+    get_cached_embedding,
     get_embedding_dim,
     is_vector_enabled,
+    put_cached_embedding,
+    vector_cache_key,
 )
 
 # --------------------------------------------------------------------------- #
@@ -253,6 +256,21 @@ def test_generate_embedding_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_EMBEDDING_PROVIDER", "local")
     v = generate_embedding("test", dim=64)
     assert len(v) == 64
+
+
+def test_reasonblock_embedding_cache_round_trip(tmp_path: Path) -> None:
+    """ReasonBlock embedding cache should round-trip vectors by cache key and embedder."""
+    cache_key = vector_cache_key("rb-cache", "rendered content")
+    assert get_cached_embedding(tmp_path, cache_key=cache_key, embedder_name="local:test") is None
+
+    put_cached_embedding(
+        tmp_path,
+        cache_key=cache_key,
+        embedder_name="local:test",
+        vector=[0.25, 0.75],
+    )
+
+    assert get_cached_embedding(tmp_path, cache_key=cache_key, embedder_name="local:test") == [0.25, 0.75]
 
 
 def test_generate_embedding_different_inputs_differ(monkeypatch: pytest.MonkeyPatch) -> None:

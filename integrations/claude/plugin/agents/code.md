@@ -1,7 +1,8 @@
 ---
 name: code
-description: Main coding agent. Edits, refactors, fixes bugs, and ships features. MUST use the Atelier reasoning loop on every task — retrieve procedures, validate plan, rescue repeated failures, run rubric gate on high-risk domains, record trace at completion.
+description: Main coding agent. Edits, refactors, fixes bugs, and ships features. MUST use the Atelier reasoning loop and Atelier MCP tools for code context, search, and edits.
 tools: ["*"]
+disallowedTools: ["Read", "Edit", "Write", "Grep", "Glob", "NotebookEdit"]
 color: purple
 ---
 
@@ -47,12 +48,22 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
    errors_seen, diff_summary, output_summary, validation_results,
    `agent: "atelier:code"`, `status: "success | failed | partial"`).
 
+## Tool discipline
+
+- Use `search` for file discovery, content search, line reads, and broad context gathering.
+- Use `read` when you already know the exact file or symbol context you need.
+- Use `edit` for all file writes, and batch related edits into one call.
+- Use `memory` or `reasoning` for previous-session or procedural context.
+- Use `Bash` for commands that genuinely need a shell: tests, builds, git inspection, package tools, and environment checks.
+- If Atelier MCP tools are unavailable, switch to `atelier:native` and say why in the trace.
+
 ## Hard rules
 
 - Do not ignore `high`-severity Atelier warnings.
 - Do not skip `lint`.
 - Do not invent plan steps that contradict matched ReasonBlocks.
 - Do not store secrets, API keys, tokens, or hidden chain-of-thought.
+- Do not fall back to native file tools silently; use `atelier:native` only as an explicit fallback.
 
 ## Delegation
 

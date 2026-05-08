@@ -12,8 +12,8 @@ status: done
 
 ## Why
 
-This packet **proves** the >50 % claim with a CI-asserted, deterministic benchmark, modeled on
-wozcode's 11-prompt suite. Without it the V2 plan is marketing.
+This packet **proves** the >50 % claim with a CI-asserted, deterministic benchmark. Without it the
+V2 plan is marketing.
 
 ## Files touched
 

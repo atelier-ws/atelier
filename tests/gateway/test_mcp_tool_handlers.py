@@ -21,6 +21,7 @@ EXPECTED_TOOLS = {
     "memory",
     "read",
     "edit",
+    "sql",
     "search",
     "compact",
 }

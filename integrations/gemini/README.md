@@ -1,13 +1,34 @@
-# Atelier — Gemini CLI plugin
+# Atelier — Gemini CLI extension
 
-Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelier's MCP server so Gemini can read reasoning blocks, plans, traces, and rubrics.
+Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelier's MCP server through a formal Gemini extension bundle.
 
 ## Install
 
-1. Make sure the `atelier-mcp` console script is available (run `make install` from `atelier/`, or `LOCAL=1 uv run --project atelier atelier-mcp --help`).
-2. Merge the `mcpServers` block from [`settings.json`](./settings.json) into your `~/.gemini/settings.json` (create the file if it does not exist).
-3. Set `ATELIER_ROOT` to the workspace `.atelier/` directory you want Gemini to read.
-4. Restart Gemini CLI and run `/mcp list` — you should see `atelier` listed as a connected server.
+1. Install the engine:
+   ```bash
+   cd atelier
+   uv sync
+   uv run atelier init
+   ```
+2. Make sure the `atelier-mcp` console script is on your `PATH`, then link the packaged extension from this repo:
+   ```bash
+   atelier-mcp --help
+   gemini extensions validate integrations/gemini/extension
+   gemini extensions link integrations/gemini/extension
+   ```
+3. Restart Gemini CLI. The extension contributes `GEMINI.md`, `commands/`, `skills/`, and the Atelier MCP server in one bundle.
+
+The repo install script automates this flow:
+
+```bash
+bash scripts/install_gemini.sh
+```
+
+For workspace-scoped activation:
+
+```bash
+bash scripts/install_gemini.sh --workspace /path/to/workspace
+```
 
 ## Verify
 
@@ -15,17 +36,19 @@ Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelie
 gemini --prompt "List the current Atelier plans and tell me which ones are stale."
 ```
 
-If Gemini returns the plan list from `<ATELIER_ROOT>/plans/`, the plugin is wired correctly.
+If Gemini returns the plan list from `<workspace>/.atelier/plans/`, the extension is wired correctly.
 
 ## Files
 
-- `settings.json` — template fragment to merge into `~/.gemini/settings.json`.
+- `extension/gemini-extension.json` — extension manifest.
+- `extension/commands/` — bundled Gemini commands.
+- `extension/skills/` — bundled agent skills.
 - `verify.sh` — non-destructive smoke test (lists plans, prints the first reasoning block).
 
 ## See also
 
-- [`atelier/claude-plugin/`](../claude-plugin/) — Claude Code plugin
-- [`atelier/codex-plugin/`](../codex-plugin/) — OpenAI Codex CLI plugin
+- [`../claude/`](../claude/) — Claude Code plugin docs
+- [`../codex/`](../codex/) — OpenAI Codex plugin docs
 - [`atelier/copilot/`](../copilot/) — GitHub Copilot (VS Code) MCP config
 - [`atelier/opencode/`](../opencode/) — OpenCode MCP config
 
@@ -37,7 +60,8 @@ six. All V1 tools remain backward compatible. See
 [`atelier/codex-plugin/references/v2-tools.md`](../codex-plugin/references/v2-tools.md)
 for the full surface.
 
-Gemini CLI does not register slash commands or sub-agents; the
-equivalents are exposed only through MCP and the host CLI
-(`atelier savings`, `atelier analyze-failures`, `atelier eval`,
-`atelier benchmark`, `atelier tool-mode`).
+Gemini CLI extensions can bundle commands, skills, hooks, and MCP servers. The
+Atelier extension uses commands and skills for host-native entrypoints and calls
+the installed `atelier-mcp` console script for MCP transport, while
+CLI-only workflows such as `atelier savings`, `atelier analyze-failures`,
+`atelier eval`, and `atelier benchmark` remain available in the shell.

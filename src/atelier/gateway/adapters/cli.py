@@ -24,6 +24,7 @@ from typing import Any
 import click
 import yaml
 
+from atelier.core.foundation.paths import default_store_root
 from atelier.core.capabilities.lesson_promotion import LessonPrBot, LessonPromoterCapability
 from atelier.core.foundation.extractor import extract_candidate
 from atelier.core.foundation.metrics import summarize
@@ -44,7 +45,7 @@ from atelier.core.foundation.retriever import TaskContext, retrieve
 from atelier.core.foundation.rubric_gate import run_rubric
 from atelier.core.foundation.store import ReasoningStore
 
-DEFAULT_ROOT = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+DEFAULT_ROOT = default_store_root()
 
 
 # --------------------------------------------------------------------------- #
@@ -551,6 +552,7 @@ def domain_info(ctx: click.Context, bundle_id: str, as_json: bool) -> None:
         _emit(result, as_json=True)
         return
     click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
 
 # ----- search -------------------------------------------------------------- #
 
@@ -2024,10 +2026,6 @@ def tool_mode_set(ctx: click.Context, mode: str) -> None:
     click.echo(f"tool_mode={mode}")
 
 
-
-
-
-
 @cli.group("route")
 def route_group() -> None:
     """Quality-aware routing helpers."""
@@ -2196,7 +2194,6 @@ def route_verify_cmd(
 
     click.echo(f"outcome={payload['outcome']} rubric={payload['rubric_status']}")
     click.echo(payload["compressed_evidence"])
-
 
 
 # --------------------------------------------------------------------------- #
@@ -2606,7 +2603,6 @@ def memory_recall(
         click.echo(f"{passage.id}\t{passage.source_ref}\t{passage.text}")
 
 
-
 @cli.group("letta")
 def letta_group() -> None:
     """Manage the self-hosted Letta sidecar."""
@@ -2760,7 +2756,7 @@ def search_read_cmd(
     include_outline: bool,
     as_json: bool,
 ) -> None:
-    """Combined search + read (wozcode 1).
+    """Combined search + read.
 
     Collapses grep→read→read into a single ranked-snippet call.  Returns
     context windows around each match plus AST outlines for dense files.
@@ -2856,10 +2852,8 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
 @click.pass_context
 def savings_cmd(ctx: click.Context, as_json: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
-    from atelier.infra.runtime.cost_tracker import CostTracker
+    from atelier.core.capabilities.plugin_runtime import build_savings_report
 
-    s = _load_smart_state(ctx.obj["root"])
-    sav = s.get("savings", {})
     runs = _ledger_dir(ctx.obj["root"])
     bad_plans_blocked = 0
     rescue_events = 0
@@ -2878,23 +2872,10 @@ def savings_cmd(ctx: click.Context, as_json: bool) -> None:
                         rescue_events += 1
                 if kind == "rubric_run" and (ev.get("payload") or {}).get("status") == "blocked":
                     rubric_failures += 1
-    tracker = CostTracker(ctx.obj["root"])
-    cost_summary = tracker.total_savings()
-    payload = {
-        "calls_avoided": int(sav.get("calls_avoided", 0)),
-        "tokens_saved": int(sav.get("tokens_saved", 0)),
-        "bad_plans_blocked": bad_plans_blocked,
-        "rescue_events": rescue_events,
-        "rubric_failures_caught": rubric_failures,
-        "cost": {
-            "operations_tracked": cost_summary["operations_tracked"],
-            "total_calls": cost_summary["total_calls"],
-            "would_have_cost_usd": cost_summary["would_have_cost_usd"],
-            "actually_cost_usd": cost_summary["actually_cost_usd"],
-            "saved_usd": cost_summary["saved_usd"],
-            "saved_pct": cost_summary["saved_pct"],
-        },
-    }
+    payload = build_savings_report(ctx.obj["root"])
+    payload["bad_plans_blocked"] = bad_plans_blocked
+    payload["rescue_events"] = rescue_events
+    payload["rubric_failures_caught"] = rubric_failures
     if as_json:
         _emit(payload, as_json=True)
     else:
@@ -2960,6 +2941,132 @@ def savings_reset(ctx: click.Context) -> None:
     click.echo("savings reset (cache + cost history)")
 
 
+@cli.command("login")
+@click.option("--token", default=None, help="Credentials JSON, base64 payload, or refresh token.")
+@click.option("--anonymous", "anonymous", is_flag=True, help="Start a local anonymous trial.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: bool) -> None:
+    """Create local Atelier auth state for plugin operations."""
+    from atelier.core.capabilities.plugin_runtime import (
+        begin_browser_login,
+        claim_anonymous_trial,
+        parse_login_token,
+        write_auth_state,
+    )
+
+    if anonymous:
+        payload = {"auth": claim_anonymous_trial(ctx.obj["root"]), "mode": "anonymous"}
+    elif token:
+        payload = {"auth": write_auth_state(ctx.obj["root"], parse_login_token(token)), "mode": "token"}
+    else:
+        pending = begin_browser_login(ctx.obj["root"])
+        payload = {"mode": "browser", "pending": pending}
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    if str(payload.get("mode")) == "browser":
+        pending_payload = payload.get("pending")
+        pending = pending_payload if isinstance(pending_payload, dict) else {}
+        click.echo("Open this URL to finish login:")
+        click.echo(pending.get("url", ""))
+    else:
+        auth_payload = payload.get("auth")
+        auth = auth_payload if isinstance(auth_payload, dict) else {}
+        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        click.echo(f"logged in: {label}")
+
+
+@cli.command("logout")
+@click.option("--no-trial", is_flag=True, help="Do not create a local anonymous trial after logout.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def logout_cmd(ctx: click.Context, no_trial: bool, as_json: bool) -> None:
+    """Remove local auth and optionally activate an anonymous trial."""
+    from atelier.core.capabilities.plugin_runtime import logout_local
+
+    payload = logout_local(ctx.obj["root"], claim_trial=not no_trial)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo("logged out" + ("; anonymous trial active" if payload.get("anonymous") else ""))
+
+
+@cli.command("status")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def status_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Show local plugin/auth/subscription status."""
+    from atelier.core.capabilities.plugin_runtime import auth_status, load_plugin_settings
+
+    payload = auth_status(ctx.obj["root"])
+    payload["settings"] = load_plugin_settings(ctx.obj["root"])
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"authenticated: {payload['authenticated']}")
+    click.echo(f"anonymous: {payload['isAnonymous']}")
+    if payload.get("email"):
+        click.echo(f"email: {payload['email']}")
+    if payload.get("subscription"):
+        click.echo(f"subscription: {payload['subscription']}")
+    click.echo(f"root: {payload['root']}")
+
+
+@cli.command("share")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def share_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Render local referral/share text."""
+    from atelier.core.capabilities.plugin_runtime import share_referral
+
+    payload = share_referral(ctx.obj["root"])
+    if payload.get("is_error"):
+        raise click.ClickException(str(payload["message"]))
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(payload["text"])
+
+
+@cli.group("settings")
+def plugin_settings_group() -> None:
+    """Manage local plugin settings."""
+
+
+@plugin_settings_group.command("show")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def plugin_settings_show(ctx: click.Context, as_json: bool) -> None:
+    from atelier.core.capabilities.plugin_runtime import load_plugin_settings
+
+    payload = load_plugin_settings(ctx.obj["root"])
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    for key, value in payload.items():
+        click.echo(f"{key}: {str(value).lower()}")
+
+
+@plugin_settings_group.command("set")
+@click.argument("key")
+@click.argument("value", type=click.Choice(["true", "false", "on", "off", "1", "0"]))
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def plugin_settings_set(ctx: click.Context, key: str, value: str, as_json: bool) -> None:
+    from atelier.core.capabilities.plugin_runtime import write_plugin_setting
+
+    enabled = value in {"true", "on", "1"}
+    try:
+        payload = write_plugin_setting(ctx.obj["root"], key, enabled)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"set {key}={str(enabled).lower()}")
+
+
 @cli.command("benchmark")
 @click.argument("action", required=False)
 @click.option(
@@ -2970,6 +3077,20 @@ def savings_reset(ctx: click.Context) -> None:
 )
 @click.option("--model", default="claude-sonnet-4.6", show_default=True)
 @click.option("--rounds", default=3, show_default=True, help="How many rounds per prompt.")
+@click.option(
+    "--baseline-command",
+    default=None,
+    help="Command template for benchmark savings baseline runs. Receives ATELIER_BENCH_PROMPT.",
+)
+@click.option(
+    "--atelier-command",
+    default=None,
+    help="Command template for benchmark savings Atelier-enabled runs. Receives ATELIER_BENCH_PROMPT.",
+)
+@click.option("--timeout", "timeout_s", default=600.0, show_default=True, type=float, help="Seconds per command.")
+@click.option(
+    "--max-prompts", default=5, show_default=True, type=int, help="Default replay prompts for savings action."
+)
 @click.option(
     "--input",
     "inputs",
@@ -2999,6 +3120,10 @@ def benchmark(
     prompts: tuple[str, ...],
     model: str,
     rounds: int,
+    baseline_command: str | None,
+    atelier_command: str | None,
+    timeout_s: float,
+    max_prompts: int,
     inputs: tuple[Path, ...],
     output_path: Path | None,
     output_format: str,
@@ -3036,6 +3161,39 @@ def benchmark(
         click.echo(f"saved report: {benchmark_report_path(ctx.obj['root'])}")
         return
 
+    if selected_action == "savings":
+        if baseline_command is None or atelier_command is None:
+            raise click.ClickException("benchmark savings requires --baseline-command and --atelier-command")
+        from benchmarks.swe.savings_replay import run_paired_command_benchmark
+
+        tasks = [
+            {"id": f"prompt-{idx}", "task_type": "ad_hoc", "task": prompt}
+            for idx, prompt in enumerate(prompts, start=1)
+        ]
+        report = run_paired_command_benchmark(
+            root=ctx.obj["root"],
+            baseline_command=baseline_command,
+            atelier_command=atelier_command,
+            tasks=tasks or None,
+            model=model,
+            timeout_s=timeout_s,
+            max_prompts=max_prompts,
+        )
+        payload = report.to_dict()
+        if output_path is not None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        if as_json:
+            _emit(payload, as_json=True)
+            return
+        click.echo(
+            f"savings benchmark complete: {payload['tokens_saved']} tokens, "
+            f"{payload['reduction_pct']:.2f}% reduction, "
+            f"${payload['cost_saved_usd']:.4f} saved"
+        )
+        click.echo(f"saved report: {ctx.obj['root'] / 'benchmarks' / 'savings' / 'latest.json'}")
+        return
+
     if selected_action == "compare":
         if len(inputs) < 2:
             raise click.ClickException("benchmark compare requires at least two --input reports")
@@ -3061,7 +3219,7 @@ def benchmark(
         _emit({"output": str(exported), "format": output_format}, as_json=True)
         return
 
-    raise click.ClickException("benchmark action must be one of: run, compare, report, export")
+    raise click.ClickException("benchmark action must be one of: run, savings, compare, report, export")
 
 
 def _repo_root() -> Path:

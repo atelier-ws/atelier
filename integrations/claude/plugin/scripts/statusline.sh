@@ -16,6 +16,7 @@ if command -v jq >/dev/null 2>&1; then
   OUT_TOK=$(printf '%s' "$input" | jq -r '.context_window.current_usage.output_tokens // 0' 2>/dev/null)
   CACHE_R=$(printf '%s' "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0' 2>/dev/null)
   CACHE_W=$(printf '%s' "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0' 2>/dev/null)
+  SESSION_ID=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null)
 else
   read_field() {
     python3 -c "
@@ -45,6 +46,7 @@ except Exception:
   OUT_TOK=$(read_field "context_window.current_usage.output_tokens" "0")
   CACHE_R=$(read_field "context_window.current_usage.cache_read_input_tokens" "0")
   CACHE_W=$(read_field "context_window.current_usage.cache_creation_input_tokens" "0")
+  SESSION_ID=$(read_field "session_id" "")
 fi
 
 PCT_INT=${PCT%%.*}
@@ -69,36 +71,107 @@ OUT_F=$(fmt_tok "${OUT_TOK:-0}")
 CACHE_F=$(fmt_tok "${CACHE_R:-0}")
 CACHE_WF=$(fmt_tok "${CACHE_W:-0}")
 
-ATELIER_ROOT="${ATELIER_STORE_ROOT:-${PWD}/.atelier}"
-SAVED_LINE=$(python3 - "$ATELIER_ROOT" 2>/dev/null <<'PYEOF'
-import json, sys
+ATELIER_ROOT="${ATELIER_ROOT:-${ATELIER_STORE_ROOT:-${HOME}/.atelier}}"
+export ATELIER_STATUS_ROOT="$ATELIER_ROOT"
+export ATELIER_STATUS_USD_PER_1K="${ATELIER_USD_PER_1K_TOKENS:-0.003}"
+export ATELIER_STATUS_SESSION_ID="${SESSION_ID:-}"
+SAVED_LINE=$(python3 2>/dev/null <<'PYEOF'
+import json
+import os
 from pathlib import Path
-root = Path(sys.argv[1])
+
+root = Path(os.environ["ATELIER_STATUS_ROOT"])
+usd_per_1k = float(os.environ["ATELIER_STATUS_USD_PER_1K"])
 hist = root / "cost_history.json"
+smart = root / "smart_state.json"
 saved_usd = 0.0
 ctx_saved = 0
+smart_calls = 0
+smart_tokens = 0
+session_id = os.environ.get("ATELIER_STATUS_SESSION_ID") or ""
+status_text = ""
+
+def read_json(name: str) -> dict:
+  path = root / name
+  if not path.is_file():
+    return {}
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+  except Exception:
+    return {}
+
 if hist.is_file():
+  try:
+    data = json.loads(hist.read_text(encoding="utf-8"))
+    for op in (data.get("operations") or {}).values():
+      calls = op.get("calls") or []
+      if not calls:
+        continue
+      base = float(calls[0].get("cost_usd", 0.0))
+      for call in calls[1:]:
+        saved_usd += max(0.0, base - float(call.get("cost_usd", 0.0)))
+        ctx_saved += int(call.get("cache_read_tokens", 0) or 0)
+  except Exception:
+    pass
+
+if smart.is_file():
+  try:
+    data = json.loads(smart.read_text(encoding="utf-8"))
+    savings = data.get("savings") or {}
+    smart_calls = int(savings.get("calls_avoided", 0) or 0)
+    smart_tokens = int(savings.get("tokens_saved", 0) or 0)
+  except Exception:
+    pass
+
+if session_id:
+  stats = root / "session_stats" / f"{session_id}.json"
+  if stats.is_file():
     try:
-        d = json.loads(hist.read_text())
-        for op in (d.get("operations") or {}).values():
-            calls = op.get("calls") or []
-            if not calls:
-                continue
-            base = float(calls[0].get("cost_usd", 0.0))
-            for c in calls[1:]:
-                saved_usd += max(0.0, base - float(c.get("cost_usd", 0.0)))
-                ctx_saved += int(c.get("cache_read_tokens", 0) or 0)
+      data = json.loads(stats.read_text(encoding="utf-8"))
+      savings = data.get("savings") or {}
+      smart_calls = max(smart_calls, int(savings.get("calls_saved", 0) or 0))
+      smart_tokens = max(smart_tokens, int(savings.get("tokens_saved", 0) or 0))
     except Exception:
-        pass
+      pass
+
+if ctx_saved == 0 and smart_tokens > 0:
+  ctx_saved = smart_tokens
+if saved_usd == 0.0 and smart_tokens > 0:
+  saved_usd = (smart_tokens / 1000.0) * usd_per_1k
+
+update = read_json("update.json")
+auth = read_json("auth.json")
+subscription = read_json("subscription.json")
+free_plan = read_json("free_plan.json")
+
+if not auth and os.environ.get("ATELIER_HIDE_MISSING_LOGIN") != "1":
+  status_text = "login"
+elif update.get("toVersion") and update.get("toVersion") != update.get("fromVersion"):
+  status_text = f"update {update.get('toVersion')}"
+elif auth and auth.get("authenticated") is False:
+  status_text = "login"
+elif subscription.get("warning"):
+  status_text = str(subscription.get("message") or "subscription")[:40]
+elif free_plan.get("limit"):
+  limit = max(1, int(free_plan.get("limit") or 1))
+  remaining = int(free_plan.get("remaining") or 0)
+  used_pct = int(round(100 * max(0, limit - remaining) / limit))
+  if used_pct >= 90:
+    status_text = f"plan {used_pct}%"
+
 def k(n: int) -> str:
-    return f"{n//1000}k" if n >= 1000 else str(n)
-print(f"${saved_usd:.3f}|{k(ctx_saved)}")
+  return f"{n//1000}k" if n >= 1000 else str(n)
+
+print(f"${saved_usd:.3f}|{k(ctx_saved)}|{smart_calls}|{status_text}")
 PYEOF
 )
-SAVED_USD="${SAVED_LINE%|*}"
-SAVED_CTX="${SAVED_LINE#*|}"
+IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT <<EOF
+$SAVED_LINE
+EOF
 [ -z "$SAVED_USD" ] && SAVED_USD="\$0.000"
 [ -z "$SAVED_CTX" ] && SAVED_CTX="0"
+[ -z "$SAVED_CALLS" ] && SAVED_CALLS="0"
 
 if [ -n "${ATELIER_NO_COLOR:-}" ]; then
   C_BRAND=""; C_PIPE=""; C_DIM=""; C_GREEN=""; C_RESET=""
@@ -120,10 +193,22 @@ else
   CACHE_NEW_SEG=""
 fi
 
-printf '%s%s%s %s %s %s ctx %s%% %s cache %s%s %s %s %s saved %s%s%s (ctx %s%s%s) %s %dm%02ds\n' \
+if [ "${SAVED_CALLS:-0}" -gt 0 ] 2>/dev/null; then
+  SAVED_CALLS_SEG=" / ${SAVED_CALLS}c"
+else
+  SAVED_CALLS_SEG=""
+fi
+
+if [ -n "${STATUS_TEXT:-}" ]; then
+  STATUS_SEG=" ${SEP} ${STATUS_TEXT}"
+else
+  STATUS_SEG=""
+fi
+
+printf '%s%s%s %s %s%s %s ctx %s%% %s cache %s%s %s %s %s saved %s%s%s (ctx %s%s%s) %s %dm%02ds\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
-  "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
+  "$PIPE" "$MODEL" "$STATUS_SEG" "$SEP" "$PCT_INT" \
   "$SEP" "$CACHE_F" "$CACHE_NEW_SEG" \
   "$SEP" "$COST_FMT" "$SEP" \
-  "$C_GREEN" "$SAVED_USD" "$C_RESET" "$C_GREEN" "$SAVED_CTX" "$C_RESET" \
+  "$C_GREEN" "$SAVED_USD" "$C_RESET" "$C_GREEN" "${SAVED_CTX}${SAVED_CALLS_SEG}" "$C_RESET" \
   "$SEP" "$MINS" "$SECS"

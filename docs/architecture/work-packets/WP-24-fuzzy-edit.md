@@ -1,6 +1,6 @@
 ---
 id: WP-24
-title: Fuzzy matching inside `edit` only (wozcode 5 - fuzzy edit)
+title: Fuzzy matching inside `edit` only (fuzzy edit)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -12,7 +12,7 @@ status: done
 
 ## Why
 
-Wozcode lever 5: tolerate whitespace / indentation drift in `old_string` so edits land on the first
+Tolerate whitespace / indentation drift in `old_string` so edits land on the first
 try inside `edit`. This reduces the "old_string not found, retry" loop for explicit
 batch edits without changing host-native edit behavior.
 

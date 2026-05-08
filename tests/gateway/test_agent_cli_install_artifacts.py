@@ -164,6 +164,31 @@ def test_gemini_example_has_mcp_servers_key() -> None:
     assert "atelier" in data["mcpServers"], "gemini example must have 'mcpServers.atelier' key"
 
 
+GEMINI_EXTENSION = INTEGRATIONS / "gemini" / "extension"
+
+
+def test_gemini_extension_dir_exists() -> None:
+    assert GEMINI_EXTENSION.is_dir(), "integrations/gemini/extension/ directory must exist"
+
+
+def test_gemini_extension_manifest_exists() -> None:
+    manifest = GEMINI_EXTENSION / "gemini-extension.json"
+    assert manifest.exists(), "integrations/gemini/extension/gemini-extension.json must exist"
+    data = json.loads(manifest.read_text())
+    assert data.get("name") == "atelier", "Gemini extension name must be atelier"
+    assert data.get("contextFileName") == "GEMINI.md", "Gemini extension must load GEMINI.md as context"
+    assert "atelier" in data.get("mcpServers", {}), "Gemini extension must declare the atelier MCP server"
+    assert data.get("mcpServers", {}).get("atelier", {}).get("command") == "atelier-mcp"
+
+
+def test_gemini_extension_bundles_commands_and_context() -> None:
+    cmd_dir = GEMINI_EXTENSION / "commands" / "atelier"
+    assert cmd_dir.is_dir(), "Gemini extension must bundle commands/atelier/"
+    assert (cmd_dir / "status.toml").exists(), "Gemini extension must bundle status.toml"
+    assert (cmd_dir / "context.toml").exists(), "Gemini extension must bundle context.toml"
+    assert (GEMINI_EXTENSION / "GEMINI.md").exists(), "Gemini extension must bundle GEMINI.md"
+
+
 def test_copilot_example_has_servers_key() -> None:
     example = INTEGRATIONS / "copilot" / "mcp.atelier.example.json"
     if not example.exists():
@@ -180,6 +205,45 @@ def test_codex_example_has_mcp_servers_key() -> None:
     data = json.loads(example.read_text())
     assert "mcpServers" in data, "codex example must have 'mcpServers' key"
     assert "atelier" in data["mcpServers"], "codex example must have 'mcpServers.atelier'"
+
+
+CODEX_PLUGIN = INTEGRATIONS / "codex" / "plugin"
+
+
+def test_codex_plugin_dir_exists() -> None:
+    assert CODEX_PLUGIN.is_dir(), "integrations/codex/plugin/ directory must exist"
+
+
+def test_codex_plugin_manifest_exists_and_names_atelier() -> None:
+    plugin_json = CODEX_PLUGIN / ".codex-plugin" / "plugin.json"
+    assert plugin_json.exists(), "integrations/codex/plugin/.codex-plugin/plugin.json must exist"
+    data = json.loads(plugin_json.read_text())
+    assert data.get("name") == "atelier", f"codex plugin name should be 'atelier', got: {data.get('name')}"
+    assert data.get("skills") == "./skills/", "codex plugin must bundle ./skills/"
+    assert data.get("mcpServers") == "./.mcp.json", "codex plugin must bundle ./.mcp.json"
+
+
+def test_codex_plugin_mcp_template_exists() -> None:
+    mcp_json = CODEX_PLUGIN / ".mcp.json"
+    assert mcp_json.exists(), "integrations/codex/plugin/.mcp.json must exist"
+    data = json.loads(mcp_json.read_text())
+    atelier = data.get("atelier", {})
+    assert atelier.get("command") == "atelier-mcp", "Codex plugin template must call atelier-mcp directly"
+
+
+def test_codex_repo_marketplace_exists() -> None:
+    marketplace = ATELIER_ROOT / ".agents" / "plugins" / "marketplace.json"
+    assert marketplace.exists(), ".agents/plugins/marketplace.json must exist for Codex repo-marketplace installs"
+
+
+def test_codex_repo_marketplace_points_to_plugin() -> None:
+    marketplace = ATELIER_ROOT / ".agents" / "plugins" / "marketplace.json"
+    data = json.loads(marketplace.read_text())
+    plugins = data.get("plugins", [])
+    assert any(
+        plugin.get("name") == "atelier" and plugin.get("source", {}).get("path") == "./integrations/codex/plugin"
+        for plugin in plugins
+    ), "repo marketplace must expose the Codex plugin at ./integrations/codex/plugin"
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +315,9 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     codex = (SCRIPTS / "install_codex.sh").read_text()
     assert 'AGENTS_FILE="${CODEX_HOME}/AGENTS.md"' in codex
     assert 'AGENTS_FILE="${WORKSPACE}/AGENTS.md"' in codex
+    assert 'PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"' in codex
+    assert 'PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"' in codex
+    assert ".agents/plugins/marketplace.json" in codex
 
     copilot = (SCRIPTS / "install_copilot.sh").read_text()
     assert "Code/User" in copilot
@@ -268,6 +335,12 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     assert "claude mcp add --scope user atelier" in claude
     assert '.mcp.json"' in claude
     assert ".claude/.mcp.json" not in claude
+
+    gemini = (SCRIPTS / "install_gemini.sh").read_text()
+    assert "gemini extensions validate" in gemini
+    assert "gemini extensions link" in gemini
+    assert "settings.json" not in gemini
+    assert "atelier-mcp" in gemini
 
 
 # ---------------------------------------------------------------------------

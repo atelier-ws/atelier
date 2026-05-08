@@ -1,6 +1,6 @@
 ---
 id: WP-23
-title: Promote read-only `sql inspect` to MCP tool (wozcode 4 - live SQL introspection)
+title: Promote read-only `sql inspect` to MCP tool (live SQL introspection)
 phase: C
 pillar: 3
 owner_agent: atelier:code
@@ -12,7 +12,7 @@ status: done
 
 ## Why
 
-Wozcode lever 4: replace the `psql → bash → parse → repeat` chain with a single deterministic
+Replace the `psql → bash → parse → repeat` chain with a single deterministic
 SQL tool. The CLI subcommand `atelier sql inspect` already exists; we surface it as an MCP tool
 and harden it.
 
