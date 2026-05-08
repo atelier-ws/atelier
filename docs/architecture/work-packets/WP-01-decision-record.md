@@ -29,14 +29,14 @@ the contract every other packet links back to.
 2. Draft the ADR with these sections:
    - **Status:** Accepted (you may set Accepted because the user is the project owner)
    - **Context:** What problem V2 solves; cite the ReasonBlock + Trace gap that motivated it
-   - **Decision:** The three pillars; the vendoring posture for Letta; the baseline adoption plan
+   - **Decision:** The three pillars; the vendoring posture for Letta; the context-savings plan
    - **Alternatives considered:**
      1. Fork Letta — rejected (forever-divergence risk)
      2. Build memory ground-up — rejected (we'd recreate Letta's mistakes)
      3. Replace ReasonBlocks with Letta blocks — rejected (different semantics: procedure vs fact)
    - **Consequences:** (a) extra optional dependency; (b) two stores in the codebase; (c) need to
      keep the Embedder interface stable; (d) lesson promotion requires a human reviewer
-   - **References:** link to the plan + data-model docs; link to Letta repo and baseline posts
+   - **References:** link to the plan + data-model docs; link to the Letta repo
 
 3. Keep it under 300 lines. Use prose, not bullet soup.
 

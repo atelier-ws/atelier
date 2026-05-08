@@ -149,6 +149,55 @@ def _normalize_lever(operation: str) -> str:
     return op
 
 
+def _live_savings_events_path(root: Path) -> Path:
+    return root / "live_savings_events.jsonl"
+
+
+def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
+    path = _live_savings_events_path(root)
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
+def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
+    path = root / "benchmarks" / "savings" / "latest.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    keys = {
+        "run_id",
+        "model",
+        "n_prompts",
+        "total_tokens_baseline",
+        "total_tokens_atelier",
+        "tokens_saved",
+        "reduction_pct",
+        "total_cost_baseline_usd",
+        "total_cost_atelier_usd",
+        "cost_saved_usd",
+        "total_time_baseline_ms",
+        "total_time_atelier_ms",
+        "time_saved_ms",
+        "baseline_success_rate",
+        "atelier_success_rate",
+    }
+    return {key: payload[key] for key in keys if key in payload}
+
+
 def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     """Build token-savings summary for API/dashboard rendering."""
     history = load_cost_history(root)
@@ -165,6 +214,10 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     total_naive = 0
     total_actual = 0
     per_lever: defaultdict[str, int] = defaultdict(int)
+    live_cost_saved = 0.0
+    live_calls_saved = 0
+    live_time_saved_ms = 0
+    source_totals: dict[tuple[str, str], dict[str, Any]] = {}
 
     for entry in ops.values() if isinstance(ops, dict) else []:
         calls = entry.get("calls", []) if isinstance(entry, dict) else []
@@ -192,11 +245,59 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
                 by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
                 by_day_seed[day_key]["actual"] = int(by_day_seed[day_key]["actual"]) + actual
 
+    for event in _iter_live_savings_events(root):
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        at_raw = str(event.get("at", ""))
+        try:
+            at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
+        except Exception:
+            at_date = today
+        if at_date < start_day:
+            continue
+
+        lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
+        tool_name = str(event.get("tool_name") or lever)
+        total_naive += tokens_saved
+        per_lever[lever] += tokens_saved
+        live_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        live_calls_saved += int(event.get("calls_saved", 0) or 0)
+        live_time_saved_ms += int(event.get("time_saved_ms", 0) or 0)
+
+        day_key = at_date.isoformat()
+        if day_key in by_day_seed:
+            by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + tokens_saved
+
+        key = (lever, tool_name)
+        source = source_totals.setdefault(
+            key,
+            {
+                "lever": lever,
+                "tool_name": tool_name,
+                "calls_saved": 0,
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "time_saved_ms": 0,
+            },
+        )
+        source["calls_saved"] += int(event.get("calls_saved", 0) or 0)
+        source["tokens_saved"] += tokens_saved
+        source["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        source["time_saved_ms"] += int(event.get("time_saved_ms", 0) or 0)
+
     reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
 
     # USD cost savings (from CostTracker baseline comparison).
     cost_summary = CostTracker(root).total_savings()
+    saved_usd = round(float(cost_summary["saved_usd"]) + live_cost_saved, 6)
+    would_have_cost = round(float(cost_summary["would_have_cost_usd"]) + live_cost_saved, 6)
+    actually_cost = float(cost_summary["actually_cost_usd"])
+    saved_pct = round(100.0 * saved_usd / would_have_cost, 2) if would_have_cost > 0 else 0.0
+    top_sources = sorted(source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+    for source in top_sources:
+        source["cost_saved_usd"] = round(float(source["cost_saved_usd"]), 6)
 
     return {
         "window_days": window_days,
@@ -205,11 +306,16 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         "reduction_pct": reduction_pct,
         "per_lever": sorted_levers,
         "by_day": list(by_day_seed.values()),
-        "saved_usd": cost_summary["saved_usd"],
-        "saved_pct": cost_summary["saved_pct"],
-        "would_have_cost_usd": cost_summary["would_have_cost_usd"],
-        "actually_cost_usd": cost_summary["actually_cost_usd"],
+        "saved_usd": saved_usd,
+        "saved_pct": saved_pct,
+        "would_have_cost_usd": would_have_cost,
+        "actually_cost_usd": round(actually_cost, 6),
         "total_calls": cost_summary["total_calls"],
+        "live_calls_saved": live_calls_saved,
+        "live_time_saved_ms": live_time_saved_ms,
+        "live_saved_usd": round(live_cost_saved, 6),
+        "top_sources": top_sources[:10],
+        "latest_benchmark": _latest_savings_benchmark(root),
     }
 
 
