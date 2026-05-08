@@ -62,7 +62,15 @@ def test_rich_edit_notebook_cell_operations_clear_outputs(tmp_path: Path) -> Non
     path.write_text(
         json.dumps(
             {
-                "cells": [{"cell_type": "code", "metadata": {}, "source": "print(1)", "outputs": [{"name": "stdout"}], "execution_count": 3}],
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "metadata": {},
+                        "source": "print(1)",
+                        "outputs": [{"name": "stdout"}],
+                        "execution_count": 3,
+                    }
+                ],
                 "metadata": {},
                 "nbformat": 4,
                 "nbformat_minor": 5,
@@ -74,7 +82,12 @@ def test_rich_edit_notebook_cell_operations_clear_outputs(tmp_path: Path) -> Non
     result = apply_rich_edits(
         [
             {"file_path": "nb.ipynb#cell=0", "overwrite": True, "new_string": "print(2)"},
-            {"file_path": "nb.ipynb#cell=0", "cell_action": "insert_after", "cell_type": "markdown", "new_string": "# note"},
+            {
+                "file_path": "nb.ipynb#cell=0",
+                "cell_action": "insert_after",
+                "cell_type": "markdown",
+                "new_string": "# note",
+            },
         ],
         repo_root=tmp_path,
     )

@@ -13,7 +13,9 @@ from typing import Any
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
 
 _PROTECTED_PARTS = {".git", ".atelier", "node_modules", ".venv"}
-_SMART_QUOTES = str.maketrans({"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u2013": "-", "\u2014": "-"})
+_SMART_QUOTES = str.maketrans(
+    {"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u2013": "-", "\u2014": "-"}
+)
 
 
 @dataclass(frozen=True)
@@ -34,7 +36,11 @@ def _parse_target(raw_path: str) -> TargetSpec:
         return TargetSpec(path=path, cell=cell)
     match = re.search(r"#(\d+)(?:-(\d+))?$", raw_path)
     if match:
-        return TargetSpec(path=raw_path[: match.start()], start_line=int(match.group(1)), end_line=int(match.group(2) or match.group(1)))
+        return TargetSpec(
+            path=raw_path[: match.start()],
+            start_line=int(match.group(1)),
+            end_line=int(match.group(2) or match.group(1)),
+        )
     return TargetSpec(path=raw_path)
 
 
@@ -79,7 +85,13 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     if not base_indent_text and len(old_lines) > 1:
         base_indent_text = _leading_whitespace(old_lines[1])
     if base_indent_text:
-        new_lines = [new_lines[0], *[(base_indent_text + line if line.strip() and not line.startswith((" ", "\t")) else line) for line in new_lines[1:]]]
+        new_lines = [
+            new_lines[0],
+            *[
+                (base_indent_text + line if line.strip() and not line.startswith((" ", "\t")) else line)
+                for line in new_lines[1:]
+            ],
+        ]
     old_indent = len(old_lines[0]) - len(old_lines[0].lstrip())
     matched_indent = len(matched_lines[0]) - len(matched_lines[0].lstrip())
     delta = matched_indent - old_indent
@@ -125,7 +137,11 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
-        return content[:start_offset] + fuzzed + content[end_offset:], line_start + content[:start_offset].count("\n"), line_end + content[:start_offset].count("\n")
+        return (
+            content[:start_offset] + fuzzed + content[end_offset:],
+            line_start + content[:start_offset].count("\n"),
+            line_end + content[:start_offset].count("\n"),
+        )
     raise ValueError("old_string not found in file")
 
 
@@ -190,7 +206,9 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
     if len(matches) != 1:
         raise ValueError("old_string must match exactly one notebook cell")
     cell = matches[0]
-    _set_cell_source(cell, _cell_source(cell).replace(str(edit.get("old_string", "")), str(edit.get("new_string", "")), 1))
+    _set_cell_source(
+        cell, _cell_source(cell).replace(str(edit.get("old_string", "")), str(edit.get("new_string", "")), 1)
+    )
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -201,7 +219,9 @@ def _atomic_write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def apply_rich_edits(edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True) -> dict[str, Any]:
+def apply_rich_edits(
+    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True
+) -> dict[str, Any]:
     """Apply rich Atelier edits in memory, writing each touched file once."""
     root = _repo_root(repo_root)
     backups: dict[Path, bytes | None] = {}
@@ -237,7 +257,9 @@ def apply_rich_edits(edits: list[dict[str, Any]], *, repo_root: str | Path | Non
             old_string = str(edit.get("old_string", ""))
             if not old_string:
                 raise ValueError("old_string is required unless overwrite=true or creating a new file")
-            new_content, line_start, line_end = _replace_in_scope(content, spec, old_string, str(edit.get("new_string", "")))
+            new_content, line_start, line_end = _replace_in_scope(
+                content, spec, old_string, str(edit.get("new_string", ""))
+            )
             file_state[path] = new_content
             applied.append({"path": raw_path, "hunks": [{"line_start": line_start, "line_end": line_end}]})
 
