@@ -31,43 +31,48 @@ done
 if $WORKSPACE_SET; then
     WORKSPACE="$(cd "$WORKSPACE" && pwd)"
     CODEX_HOME="${WORKSPACE}/.codex"
+    MARKETPLACE_JSON="${WORKSPACE}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
     WRAPPER_FILE="${WORKSPACE}/bin/atelier-codex"
     TASKS_DIR="${WORKSPACE}/.codex/tasks"
-    MCP_JSON="${WORKSPACE}/.codex/mcp.json"
 else
     CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
+    MARKETPLACE_JSON="${HOME}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
     WRAPPER_FILE="${HOME}/.local/bin/atelier-codex"
     TASKS_DIR=""
-    MCP_JSON=""
 fi
+
+PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
+PLUGIN_CACHE_DIR="${HOME}/.codex/plugins/cache/atelier"
 
 info()  { echo "[atelier:uninstall:codex] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-if $WORKSPACE_SET; then
-    if [ -f "$MCP_JSON" ]; then
-        run "python3 -c '
+if [ -f "$MARKETPLACE_JSON" ]; then
+    run "python3 -c '
 import json
 from pathlib import Path
-path = Path(\"$MCP_JSON\")
+path = Path(\"$MARKETPLACE_JSON\")
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
-servers = data.get(\"mcpServers\", {})
-servers.pop(\"atelier\", None)
-path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+plugins = [plugin for plugin in data.get(\"plugins\", []) if plugin.get(\"name\") != \"atelier\"]
+if plugins:
+    data[\"plugins\"] = plugins
+    path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+else:
+    path.unlink()
 '"
-        info "Removed atelier MCP entry from $MCP_JSON"
-    fi
-elif command -v codex &>/dev/null && codex mcp list 2>/dev/null | grep -q "^atelier "; then
-    run "codex mcp remove atelier"
-    info "Removed atelier MCP server via codex CLI"
+    info "Removed atelier marketplace entry from $MARKETPLACE_JSON"
 fi
 
-CODEX_SKILLS="${CODEX_HOME}/skills/atelier"
-if [ -d "$CODEX_SKILLS" ]; then
-    run "rm -rf '$CODEX_SKILLS'"
-    info "Removed $CODEX_SKILLS"
+if [ -d "$PLUGIN_DIR" ]; then
+    run "rm -rf '$PLUGIN_DIR'"
+    info "Removed $PLUGIN_DIR"
+fi
+
+if [ -d "$PLUGIN_CACHE_DIR" ]; then
+    run "rm -rf '$PLUGIN_CACHE_DIR'"
+    info "Removed $PLUGIN_CACHE_DIR"
 fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then

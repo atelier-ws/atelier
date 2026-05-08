@@ -12,7 +12,21 @@ from typing import Any
 from atelier.core.capabilities.plugin_runtime import postgres_try_auto_fix, sql_auto_limit
 
 _CONNECTION_KEYS = ("DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL", "MYSQL_URL", "SQLITE_URL")
-_WRITE_PREFIXES = {"insert", "update", "delete", "create", "alter", "drop", "truncate", "replace", "grant", "revoke", "vacuum", "attach", "detach"}
+_WRITE_PREFIXES = {
+    "insert",
+    "update",
+    "delete",
+    "create",
+    "alter",
+    "drop",
+    "truncate",
+    "replace",
+    "grant",
+    "revoke",
+    "vacuum",
+    "attach",
+    "detach",
+}
 
 
 def mask_connection_string(dsn: str) -> str:
@@ -45,7 +59,7 @@ def _dotenv_values(repo_root: Path) -> dict[str, str]:
             if not line or line.strip().startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            values.setdefault(key.strip(), value.strip().strip('"\''))
+            values.setdefault(key.strip(), value.strip().strip("\"'"))
     return values
 
 
@@ -85,7 +99,10 @@ def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
         return {"ok": False, "message": "sql is empty"}
     statements = [part.strip() for part in normalized.split(";") if part.strip()]
     if len(statements) > 1:
-        return {"ok": False, "message": "multiple statements are not allowed in one sql string; use queries[] for batching"}
+        return {
+            "ok": False,
+            "message": "multiple statements are not allowed in one sql string; use queries[] for batching",
+        }
     first = re.split(r"\s+", statements[0], maxsplit=1)[0].lower()
     if not allow_writes and first in _WRITE_PREFIXES:
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
@@ -93,11 +110,22 @@ def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
 
 
 def _sqlite_overview(conn: sqlite3.Connection) -> dict[str, Any]:
-    tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    tables = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
     table_info: dict[str, Any] = {}
     for table in tables[:20]:
-        columns = [dict(cid=row[0], name=row[1], type=row[2], notnull=bool(row[3]), pk=bool(row[5])) for row in conn.execute(f"PRAGMA table_info({table!r})")]
-        fks = [dict(table=row[2], from_column=row[3], to_column=row[4]) for row in conn.execute(f"PRAGMA foreign_key_list({table!r})")]
+        columns = [
+            dict(cid=row[0], name=row[1], type=row[2], notnull=bool(row[3]), pk=bool(row[5]))
+            for row in conn.execute(f"PRAGMA table_info({table!r})")
+        ]
+        fks = [
+            dict(table=row[2], from_column=row[3], to_column=row[4])
+            for row in conn.execute(f"PRAGMA foreign_key_list({table!r})")
+        ]
         table_info[table] = {"columns": columns, "foreign_keys": fks}
     return {"tables": tables, "table_count": len(tables), "schema": table_info}
 
@@ -106,7 +134,12 @@ def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, 
     cursor = conn.execute(sql)
     rows = cursor.fetchmany(max_rows + 1)
     columns = [col[0] for col in cursor.description or []]
-    return {"columns": columns, "rows": [dict(zip(columns, row, strict=False)) for row in rows[:max_rows]], "row_count": min(len(rows), max_rows), "truncated": len(rows) > max_rows}
+    return {
+        "columns": columns,
+        "rows": [dict(zip(columns, row, strict=False)) for row in rows[:max_rows]],
+        "row_count": min(len(rows), max_rows),
+        "truncated": len(rows) > max_rows,
+    }
 
 
 def sql_tool(
@@ -130,17 +163,49 @@ def sql_tool(
     discovered = discover_connection(root) if not connection_string else {}
     dsn = connection_string or discovered.get("connection_string")
     if action == "connect" and not dsn:
-        return {"isError": True, "content": [{"type": "text", "text": "No database connection configured. Pass connection_string or set DATABASE_URL in the environment or .env file."}]}
+        return {
+            "isError": True,
+            "content": [
+                {
+                    "type": "text",
+                    "text": "No database connection configured. Pass connection_string or set DATABASE_URL in the environment or .env file.",
+                }
+            ],
+        }
     if not dsn:
-        return {"isError": True, "content": [{"type": "text", "text": "No database connection configured. First run sql(action='connect', connection_string='...') or set DATABASE_URL."}]}
+        return {
+            "isError": True,
+            "content": [
+                {
+                    "type": "text",
+                    "text": "No database connection configured. First run sql(action='connect', connection_string='...') or set DATABASE_URL.",
+                }
+            ],
+        }
     resolved_dialect = detect_dialect(str(dsn), dialect)
     if resolved_dialect != "sqlite":
         if action == "connect":
-            return {"isError": False, "dialect": resolved_dialect, "connection": mask_connection_string(str(dsn)), "note": "Install the optional database driver to run live queries for this dialect."}
+            return {
+                "isError": False,
+                "dialect": resolved_dialect,
+                "connection": mask_connection_string(str(dsn)),
+                "note": "Install the optional database driver to run live queries for this dialect.",
+            }
         if resolved_dialect == "postgres" and sql:
             fixed = postgres_try_auto_fix(sql, "column does not exist")
-            return {"isError": True, "dialect": resolved_dialect, "connection": mask_connection_string(str(dsn)), "driver_required": True, "auto_fix_preview": fixed}
-        return {"isError": True, "dialect": resolved_dialect, "connection": mask_connection_string(str(dsn)), "message": "Optional live driver not installed for this dialect."}
+            return {
+                "isError": True,
+                "dialect": resolved_dialect,
+                "connection": mask_connection_string(str(dsn)),
+                "driver_required": True,
+                "auto_fix_preview": fixed,
+            }
+        return {
+            "isError": True,
+            "dialect": resolved_dialect,
+            "connection": mask_connection_string(str(dsn)),
+            "message": "Optional live driver not installed for this dialect.",
+        }
 
     db_path, uri = _sqlite_path(str(dsn), root)
     started = time.perf_counter()
@@ -149,12 +214,22 @@ def sql_tool(
         conn.row_factory = sqlite3.Row
         if action == "connect":
             overview = _sqlite_overview(conn)
-            return {"isError": False, "dialect": "sqlite", "connection": mask_connection_string(str(dsn)), "overview": overview, "source": discovered.get("source")}
+            return {
+                "isError": False,
+                "dialect": "sqlite",
+                "connection": mask_connection_string(str(dsn)),
+                "overview": overview,
+                "source": discovered.get("source"),
+            }
         if action in {"tables", "schema"}:
             return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
         if action == "table":
             table_name = str(name or "")
-            return {"isError": False, "table": table_name, "columns": _sqlite_overview(conn)["schema"].get(table_name, {}).get("columns", [])}
+            return {
+                "isError": False,
+                "table": table_name,
+                "columns": _sqlite_overview(conn)["schema"].get(table_name, {}).get("columns", []),
+            }
         if action == "lint":
             return lint_sql(sql or "", allow_writes=allow_writes)
         if action != "query":
@@ -174,7 +249,12 @@ def sql_tool(
                 outputs.append({"name": label, **result, "auto_limit_changed": limited.get("changed", False)})
             except sqlite3.Error as exc:
                 outputs.append({"name": label, "isError": True, "message": str(exc)})
-        return {"isError": any(item.get("isError") for item in outputs), "dialect": "sqlite", "results": outputs, "took_ms": int((time.perf_counter() - started) * 1000)}
+        return {
+            "isError": any(item.get("isError") for item in outputs),
+            "dialect": "sqlite",
+            "results": outputs,
+            "took_ms": int((time.perf_counter() - started) * 1000),
+        }
     finally:
         conn.close()
 

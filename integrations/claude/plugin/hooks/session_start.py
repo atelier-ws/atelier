@@ -198,9 +198,7 @@ def main() -> int:
         if not run_id:
             return 0
 
-        _append_session_start_event(
-            run_id, session_id, source, model, cwd, transcript_path
-        )
+        _append_session_start_event(run_id, session_id, source, model, cwd, transcript_path)
     except Exception:
         pass  # fail-open
 

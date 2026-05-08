@@ -34,41 +34,6 @@ const HOSTS = [
   },
 ];
 
-const CAPABILITY_ROWS = [
-  {
-    name: "Native setup",
-    claude: "Plugin manifest",
-    codex: "config + hooks",
-    opencode: "opencode.jsonc",
-    copilot: "VS Code MCP",
-    gemini: "settings.json",
-  },
-  {
-    name: "MCP tools",
-    claude: "all",
-    codex: "all",
-    opencode: "all",
-    copilot: "all",
-    gemini: "all",
-  },
-  {
-    name: "Savings accounting",
-    claude: "equivalent-call",
-    codex: "equivalent-call",
-    opencode: "equivalent-call",
-    copilot: "equivalent-call",
-    gemini: "equivalent-call",
-  },
-  {
-    name: "Learning reuse",
-    claude: "ReasonBlocks + memory",
-    codex: "ReasonBlocks + memory",
-    opencode: "ReasonBlocks + memory",
-    copilot: "ReasonBlocks + memory",
-    gemini: "ReasonBlocks + memory",
-  },
-];
-
 export default function Host() {
   const [hosts, setHosts] = useState<HostAdapter[] | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
@@ -93,35 +58,42 @@ export default function Host() {
     <div className="space-y-6">
       {/* Feature Info */}
       <div>
-        <button onClick={() => setInfoOpen(!infoOpen)} className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1">
+        <button
+          onClick={() => setInfoOpen(!infoOpen)}
+          className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1"
+        >
           <span>{infoOpen ? "▼" : "▶"}</span> about
         </button>
-        {infoOpen && <section className="border border-neutral-800 bg-neutral-900/50 p-5">
-        <div className="flex items-start gap-4">
-          <div className="text-3xl flex-shrink-0">🖥️</div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="font-mono font-bold text-neutral-200 text-lg">
-                Host Adapters
-              </h2>
-              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
-                stable
-              </span>
+        {infoOpen && (
+          <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl flex-shrink-0">🖥️</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                    Host Adapters
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                    stable
+                  </span>
+                </div>
+                <p className="font-mono text-[11px] text-neutral-500 mb-3">
+                  Agent-Native Integration
+                </p>
+                <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+                  Native integration for all major coding agents. Each host gets
+                  its native format — Claude Code plugin, Codex skills, opencode
+                  config, Copilot MCP, and Gemini CLI support.
+                </p>
+                <div className="text-xs text-emerald-300/90 space-y-1">
+                  <p>✓ Zero-code agent integration via MCP standard</p>
+                  <p>✓ All major coding agents supported</p>
+                  <p>✓ Each agent gets its native integration format</p>
+                </div>
+              </div>
             </div>
-            <p className="font-mono text-[11px] text-neutral-500 mb-3">
-              Agent-Native Integration
-            </p>
-            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
-              Native integration for all major coding agents. Each host gets its native format — Claude Code plugin, Codex skills, opencode config, Copilot MCP, and Gemini CLI support.
-            </p>
-            <div className="text-xs text-emerald-300/90 space-y-1">
-              <p>✓ Zero-code agent integration via MCP standard</p>
-              <p>✓ All major coding agents supported</p>
-              <p>✓ Each agent gets its native integration format</p>
-            </div>
-          </div>
-        </div>
-      </section>}
+          </section>
+        )}
       </div>
 
       <div className="space-y-6 text-sm">
@@ -133,7 +105,8 @@ export default function Host() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {HOSTS.map((h) => {
               const status = hosts?.find((host) => {
-                const hostId = (host as HostAdapter & { host_id?: string }).host_id;
+                const hostId = (host as HostAdapter & { host_id?: string })
+                  .host_id;
                 return host.name === h.id || hostId === h.id;
               });
               return (
@@ -178,46 +151,6 @@ export default function Host() {
             <QuickAction label="Install" cmd="make install" />
             <QuickAction label="Verify" cmd="make verify" />
           </div>
-        </section>
-
-        <section className="border border-neutral-800 bg-neutral-950/60 p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-amber-400">
-            Integration parity
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[11px]">
-              <thead className="uppercase tracking-widest text-neutral-500">
-                <tr>
-                  <th className="pb-2 pr-3">Capability</th>
-                  {HOSTS.map((host) => (
-                    <th key={host.id} className="pb-2 pr-3">
-                      {host.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {CAPABILITY_ROWS.map((row) => (
-                  <tr key={row.name} className="border-t border-neutral-900">
-                    <td className="py-2 pr-3 font-semibold text-neutral-200">
-                      {row.name}
-                    </td>
-                    <td className="py-2 pr-3 text-neutral-400">{row.claude}</td>
-                    <td className="py-2 pr-3 text-neutral-400">{row.codex}</td>
-                    <td className="py-2 pr-3 text-neutral-400">{row.opencode}</td>
-                    <td className="py-2 pr-3 text-neutral-400">{row.copilot}</td>
-                    <td className="py-2 pr-3 text-neutral-400">{row.gemini}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-xs text-neutral-500">
-            All hosts route through the same Atelier MCP tools and savings
-            recorder. Host-specific hooks add native lifecycle coverage where the
-            host exposes hooks; otherwise the shared MCP dispatch records the
-            same equivalent-call savings events.
-          </p>
         </section>
       </div>
     </div>

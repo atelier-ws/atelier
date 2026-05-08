@@ -19,8 +19,24 @@ _SKIP_DIRS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__p
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
 _TEXT_SUFFIXES = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".md", ".txt", ".toml", ".yaml", ".yml",
-    ".json", ".sql", ".sh", ".css", ".html", ".ipynb", ".csv", ".tsv",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".md",
+    ".txt",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".sql",
+    ".sh",
+    ".css",
+    ".html",
+    ".ipynb",
+    ".csv",
+    ".tsv",
 }
 _TYPE_ALIASES = {
     "python": ["**/*.py"],
@@ -81,7 +97,9 @@ def _parse_pattern(pattern: str) -> PatternSpec:
         return PatternSpec(pattern=pattern, graph_mode=graph_mode)
     start_line = int(match.group(1))
     end_line = int(match.group(2) or match.group(1))
-    return PatternSpec(pattern=pattern[: match.start()], start_line=start_line, end_line=end_line, graph_mode=graph_mode)
+    return PatternSpec(
+        pattern=pattern[: match.start()], start_line=start_line, end_line=end_line, graph_mode=graph_mode
+    )
 
 
 def _parse_when(value: str | None) -> datetime | None:
@@ -99,7 +117,9 @@ def _parse_when(value: str | None) -> datetime | None:
         return None
 
 
-def _iter_files(root: Path, base: Path, patterns: list[PatternSpec], type_alias: str | None) -> list[tuple[Path, PatternSpec]]:
+def _iter_files(
+    root: Path, base: Path, patterns: list[PatternSpec], type_alias: str | None
+) -> list[tuple[Path, PatternSpec]]:
     expanded = list(patterns)
     if type_alias:
         expanded.extend(PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), []))
@@ -158,7 +178,9 @@ def _python_summary(source: str) -> str:
 
 def _js_summary(source: str) -> str:
     rows: list[str] = []
-    pattern = re.compile(r"(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(?[^=]*?=>")
+    pattern = re.compile(
+        r"(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(?[^=]*?=>"
+    )
     for idx, line in enumerate(source.splitlines(), start=1):
         match = pattern.search(line)
         if match:
@@ -210,7 +232,10 @@ def _imports_for(path: Path, source: str) -> list[str]:
         for match in re.finditer(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", source, flags=re.M):
             imports.append(match.group(1) or match.group(2) or "")
     else:
-        for match in re.finditer(r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))", source):
+        for match in re.finditer(
+            r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))",
+            source,
+        ):
             imports.append(next(group for group in match.groups() if group))
     return [item for item in imports if item]
 
@@ -235,7 +260,11 @@ def _render_text_result(
     if unchanged and output_mode == "file_paths_with_content":
         return f"{rel} (unchanged)", 0
 
-    source = _extract_pdf(path) if path.suffix.lower() in _PDF_SUFFIXES else path.read_text(encoding="utf-8", errors="replace")
+    source = (
+        _extract_pdf(path)
+        if path.suffix.lower() in _PDF_SUFFIXES
+        else path.read_text(encoding="utf-8", errors="replace")
+    )
     if path.suffix.lower() == ".ipynb":
         source = _compact_notebook(source)
 
@@ -243,7 +272,7 @@ def _render_text_result(
         imports = _imports_for(path, source)
         return f"{rel}\nimports:\n" + "\n".join(f"- {item}" for item in imports), len(imports)
     if spec.graph_mode == "imported_by":
-        return f"{rel}\nimported-by graph lookup is available through search mode=map with seed_files=[\"{rel}\"]", 0
+        return f'{rel}\nimported-by graph lookup is available through search mode=map with seed_files=["{rel}"]', 0
 
     lines = source.splitlines()
     if spec.start_line is not None:
@@ -313,7 +342,11 @@ def search_workspace(
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
     if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {"isError": True, "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}], "_meta": {"fileMatchCount": 0}}
+        return {
+            "isError": True,
+            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
+            "_meta": {"fileMatchCount": 0},
+        }
 
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
@@ -334,7 +367,12 @@ def search_workspace(
     total_chars = 0
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    blocks.append({"type": "text", "text": f"Results as of {timestamp}. Pass this value as if_modified_since on next search to skip unchanged files."})
+    blocks.append(
+        {
+            "type": "text",
+            "text": f"Results as of {timestamp}. Pass this value as if_modified_since on next search to skip unchanged files.",
+        }
+    )
 
     for candidate, spec in candidates:
         if len(blocks) - 1 >= limit:

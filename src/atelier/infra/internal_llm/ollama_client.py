@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 
@@ -18,8 +19,18 @@ def _ollama_module() -> Any:
     return ollama
 
 
-def summarize(text: str, *, model: str = "qwen3.6:latest", max_tokens: int = 4096) -> str:
+def _resolve_model(model: str | None) -> str:
+    configured = os.environ.get("ATELIER_OLLAMA_MODEL", "").strip()
+    if model:
+        return model
+    if configured:
+        return configured
+    return "qwen3.6:latest"
+
+
+def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) -> str:
     """Summarize text with a local Ollama model."""
+    chosen_model = _resolve_model(model)
     prompt = (
         "Summarize the following material for later engineering recall. Keep concrete file, "
         "command, error, and verification details.\n\n"
@@ -27,7 +38,7 @@ def summarize(text: str, *, model: str = "qwen3.6:latest", max_tokens: int = 409
     )
     try:
         response = _ollama_module().generate(
-            model=model,
+            model=chosen_model,
             prompt=prompt,
             options={"num_predict": max_tokens},
         )
@@ -41,17 +52,18 @@ def summarize(text: str, *, model: str = "qwen3.6:latest", max_tokens: int = 409
 def chat(
     messages: list[dict[str, str]],
     *,
-    model: str = "qwen3.6:latest",
+    model: str | None = None,
     json_schema: dict[str, Any] | None = None,
 ) -> str | dict[str, Any]:
     """Call Ollama chat and optionally parse a JSON response."""
+    chosen_model = _resolve_model(model)
     options: dict[str, Any] = {}
     try:
         if json_schema is None:
-            response = _ollama_module().chat(model=model, messages=messages, options=options)
+            response = _ollama_module().chat(model=chosen_model, messages=messages, options=options)
         else:
             response = _ollama_module().chat(
-                model=model,
+                model=chosen_model,
                 messages=messages,
                 format="json",
                 options=options,
@@ -61,7 +73,7 @@ def chat(
             raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
         try:
             legacy_options = {**options, "format": "json"}
-            response = _ollama_module().chat(model=model, messages=messages, options=legacy_options)
+            response = _ollama_module().chat(model=chosen_model, messages=messages, options=legacy_options)
         except Exception as exc:  # pragma: no cover - depends on local server
             raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     except Exception as exc:  # pragma: no cover - depends on local server
