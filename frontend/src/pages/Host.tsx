@@ -6,31 +6,66 @@ const HOSTS = [
     id: "claude",
     label: "Claude Code",
     icon: "🧩",
-    desc: "Full plugin: agents + skills + MCP",
+    desc: "Full plugin: agents + skills + MCP + hooks",
   },
   {
     id: "codex",
     label: "Codex",
     icon: "📋",
-    desc: "Skills + AGENTS.md + MCP config",
+    desc: "MCP config + Codex savings/update hooks",
   },
   {
     id: "opencode",
     label: "opencode",
     icon: "🔌",
-    desc: "opencode.jsonc MCP config",
+    desc: "opencode.jsonc MCP config + shared telemetry",
   },
   {
     id: "copilot",
     label: "VS Code Copilot",
     icon: "💼",
-    desc: "MCP config + custom instructions",
+    desc: "MCP config + custom instructions + shared telemetry",
   },
   {
     id: "gemini",
     label: "Gemini CLI",
     icon: "📎",
-    desc: ".gemini/settings.json MCP",
+    desc: ".gemini/settings.json MCP + shared telemetry",
+  },
+];
+
+const CAPABILITY_ROWS = [
+  {
+    name: "Native setup",
+    claude: "Plugin manifest",
+    codex: "config + hooks",
+    opencode: "opencode.jsonc",
+    copilot: "VS Code MCP",
+    gemini: "settings.json",
+  },
+  {
+    name: "MCP tools",
+    claude: "all",
+    codex: "all",
+    opencode: "all",
+    copilot: "all",
+    gemini: "all",
+  },
+  {
+    name: "Savings accounting",
+    claude: "equivalent-call",
+    codex: "equivalent-call",
+    opencode: "equivalent-call",
+    copilot: "equivalent-call",
+    gemini: "equivalent-call",
+  },
+  {
+    name: "Learning reuse",
+    claude: "ReasonBlocks + memory",
+    codex: "ReasonBlocks + memory",
+    opencode: "ReasonBlocks + memory",
+    copilot: "ReasonBlocks + memory",
+    gemini: "ReasonBlocks + memory",
   },
 ];
 
@@ -97,7 +132,10 @@ export default function Host() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {HOSTS.map((h) => {
-              const status = hosts?.find((host) => host.name === h.id);
+              const status = hosts?.find((host) => {
+                const hostId = (host as HostAdapter & { host_id?: string }).host_id;
+                return host.name === h.id || hostId === h.id;
+              });
               return (
                 <div
                   key={h.id}
@@ -140,6 +178,46 @@ export default function Host() {
             <QuickAction label="Install" cmd="make install" />
             <QuickAction label="Verify" cmd="make verify" />
           </div>
+        </section>
+
+        <section className="border border-neutral-800 bg-neutral-950/60 p-4">
+          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-amber-400">
+            Integration parity
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[11px]">
+              <thead className="uppercase tracking-widest text-neutral-500">
+                <tr>
+                  <th className="pb-2 pr-3">Capability</th>
+                  {HOSTS.map((host) => (
+                    <th key={host.id} className="pb-2 pr-3">
+                      {host.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CAPABILITY_ROWS.map((row) => (
+                  <tr key={row.name} className="border-t border-neutral-900">
+                    <td className="py-2 pr-3 font-semibold text-neutral-200">
+                      {row.name}
+                    </td>
+                    <td className="py-2 pr-3 text-neutral-400">{row.claude}</td>
+                    <td className="py-2 pr-3 text-neutral-400">{row.codex}</td>
+                    <td className="py-2 pr-3 text-neutral-400">{row.opencode}</td>
+                    <td className="py-2 pr-3 text-neutral-400">{row.copilot}</td>
+                    <td className="py-2 pr-3 text-neutral-400">{row.gemini}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-xs text-neutral-500">
+            All hosts route through the same Atelier MCP tools and savings
+            recorder. Host-specific hooks add native lifecycle coverage where the
+            host exposes hooks; otherwise the shared MCP dispatch records the
+            same equivalent-call savings events.
+          </p>
         </section>
       </div>
     </div>

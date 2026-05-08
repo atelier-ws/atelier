@@ -4,12 +4,13 @@ description: Read-only repo exploration. Retrieves Atelier ReasonBlocks, reads f
 color: yellow
 tools:
   [
-    "Read",
-    "Grep",
-    "Glob",
     "WebFetch",
     "mcp__atelier__reasoning",
+    "mcp__atelier__search",
+    "mcp__atelier__read",
+    "mcp__atelier__memory",
   ]
+disallowedTools: ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"]
 ---
 
 # Atelier Explore Agent
@@ -24,7 +25,7 @@ Read-only investigator. Use when the main agent needs:
 ## What you may do
 
 - Call `reasoning` to fetch matched ReasonBlocks.
-- Read files, run grep/glob searches.
+- Use `search` and `read` for file discovery, content search, and exact file reads.
 - Summarize findings concisely.
 
 ## What you must not do

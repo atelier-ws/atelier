@@ -1,0 +1,1187 @@
+"""Claude plugin runtime helpers for Atelier.
+
+The functions in this module are intentionally small and deterministic. Hook
+scripts and tests call these helpers so lifecycle behavior stays consistent
+across the Claude plugin, MCP gateway, and validation fixtures.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+import re
+import tempfile
+from contextlib import suppress
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+RECALL_DIM = 256
+RECALL_TOP_K = 10
+RECALL_MAX_SESSIONS = 200
+RECALL_MAX_CHUNK_CHARS = 3000
+RECALL_MIN_SCORE_THRESHOLD = 0.15
+RECALL_RESCAN_DEBOUNCE_MS = 30_000
+
+FUZZY_ACCEPT_THRESHOLD = 0.95
+FUZZY_AMBIGUITY_MARGIN = 0.05
+COLUMN_REPAIR_THRESHOLD = 0.85
+
+LIVE_TIME_SAVED_PER_CALL_MS = 25_000
+BASELINE_TIME_SAVED_PER_CALL_MS = 7_000
+LIVE_INPUT_TOKENS_PER_CALL = 20_000
+LIVE_OUTPUT_TOKENS_PER_CALL = 50_000
+LIVE_CACHE_READ_TOKENS_PER_CALL = 1_000
+LIVE_CONTEXT_MULTIPLIER = 1.3
+
+PLUGIN_DEFAULT_SETTINGS: dict[str, bool] = {
+    "attribution": True,
+    "statusLine": True,
+    "statusLineSession": True,
+    "statusLineLifetime": True,
+    "statusLineTips": True,
+    "statusLineShare": True,
+    "spinnerVerbs": True,
+    "alwaysLoadTools": True,
+}
+SPINNER_VERBS = ["reasoning", "searching", "editing", "validating", "recalling"]
+AUTH_REFRESH_GRACE_SECONDS = 300
+UPDATE_CHECK_THROTTLE_SECONDS = 30 * 60
+
+
+def _read_json(path: Path, default: Any) -> Any:
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return default
+
+
+def _write_json(path: Path, data: Any, *, mode: int | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.tmp")
+    tmp_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp_path.replace(path)
+    if mode is not None:
+        with suppress(OSError):
+            os.chmod(path, mode)
+
+
+def plugin_settings_path(root: str | Path) -> Path:
+    return Path(root) / "plugin_settings.json"
+
+
+def auth_state_path(root: str | Path) -> Path:
+    return Path(root) / "auth.json"
+
+
+def update_flag_path(root: str | Path) -> Path:
+    return Path(root) / "update.json"
+
+
+def subscription_state_path(root: str | Path) -> Path:
+    return Path(root) / "subscription.json"
+
+
+def free_plan_state_path(root: str | Path) -> Path:
+    return Path(root) / "free_plan.json"
+
+
+def lifetime_savings_path(root: str | Path) -> Path:
+    return Path(root) / "lifetime_savings.json"
+
+
+def baseline_estimate_path(root: str | Path) -> Path:
+    return Path(root) / "baseline_estimate.json"
+
+
+def load_plugin_settings(root: str | Path) -> dict[str, bool]:
+    data = _read_json(plugin_settings_path(root), {})
+    if not isinstance(data, dict):
+        data = {}
+    nested = data.get("atelier") if isinstance(data.get("atelier"), dict) else None
+    raw = nested or data
+    settings = dict(PLUGIN_DEFAULT_SETTINGS)
+    for key in settings:
+        if key in raw:
+            settings[key] = bool(raw[key])
+    return settings
+
+
+def write_plugin_setting(root: str | Path, key: str, value: bool) -> dict[str, bool]:
+    if key not in PLUGIN_DEFAULT_SETTINGS:
+        raise ValueError(f"unknown plugin setting: {key}")
+    settings = load_plugin_settings(root)
+    settings[key] = bool(value)
+    _write_json(plugin_settings_path(root), settings)
+    return settings
+
+
+def _iso_now() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _fingerprint(seed: str | None = None) -> str:
+    raw = seed or os.environ.get("ATELIER_MACHINE_ID") or os.uname().nodename
+    return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def normalize_auth_credentials(raw: dict[str, Any], *, anonymous: bool = False) -> dict[str, Any]:
+    user_id = str(raw.get("userId") or raw.get("user_id") or raw.get("sub") or "")
+    email = str(raw.get("email") or raw.get("user_email") or "")
+    refresh_token = str(raw.get("refreshToken") or raw.get("refresh_token") or raw.get("token") or "")
+    access_token = str(raw.get("accessToken") or raw.get("access_token") or "")
+    if not user_id:
+        user_id = f"user-{_fingerprint(refresh_token or access_token or email or 'local')}"
+    if anonymous and not email:
+        email = "anonymous@local"
+    auth = {
+        "authenticated": True,
+        "isAnonymous": bool(raw.get("isAnonymous") or raw.get("is_anonymous") or anonymous),
+        "is_anonymous": bool(raw.get("isAnonymous") or raw.get("is_anonymous") or anonymous),
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "expiresAt": str(raw.get("expiresAt") or raw.get("expires_at") or ""),
+        "userId": user_id,
+        "email": email,
+        "organizationId": raw.get("organizationId") or raw.get("organization_id"),
+        "referralCode": raw.get("referralCode") or raw.get("referral_code"),
+        "subscriptionStatus": raw.get("subscriptionStatus") or raw.get("subscription_status") or {},
+    }
+    if not auth["expiresAt"]:
+        auth["expiresAt"] = "local"
+    if not auth["referralCode"]:
+        auth["referralCode"] = f"ATELIER-{_fingerprint(user_id)[:6].upper()}"
+    return auth
+
+
+def parse_login_token(token: str) -> dict[str, Any]:
+    text = token.strip()
+    candidates = [text]
+    try:
+        padded = text + "=" * (-len(text) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+        candidates.append(decoded)
+    except Exception:
+        pass
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            if isinstance(payload.get("credentials"), dict):
+                payload = payload["credentials"]
+            return normalize_auth_credentials(payload)
+    return normalize_auth_credentials({"refreshToken": text})
+
+
+def write_auth_state(root: str | Path, auth: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_auth_credentials(auth, anonymous=bool(auth.get("isAnonymous") or auth.get("is_anonymous")))
+    _write_json(auth_state_path(root), normalized, mode=0o600)
+    return normalized
+
+
+def claim_anonymous_trial(root: str | Path, *, monthly_limit_usd: float = 5.0) -> dict[str, Any]:
+    existing = _read_json(auth_state_path(root), None)
+    if isinstance(existing, dict) and existing.get("authenticated"):
+        return normalize_auth_credentials(existing, anonymous=bool(existing.get("isAnonymous")))
+    fp = _fingerprint()
+    subscription = {
+        "isValid": True,
+        "status": "FREE",
+        "plan": "LOCAL",
+        "monthlySavingsInUsd": 0.0,
+        "monthlyLimitInUsd": monthly_limit_usd,
+        "message": "Local anonymous trial active.",
+    }
+    auth = normalize_auth_credentials(
+        {
+            "accessToken": f"local-anonymous-{fp}",
+            "refreshToken": "",
+            "userId": f"anon-{fp}",
+            "email": "anonymous@local",
+            "isAnonymous": True,
+            "subscriptionStatus": subscription,
+            "referralCode": f"ATELIER-{fp[:6].upper()}",
+        },
+        anonymous=True,
+    )
+    _write_json(auth_state_path(root), auth, mode=0o600)
+    _write_json(free_plan_state_path(root), {"remaining": monthly_limit_usd, "limit": monthly_limit_usd, "unit": "usd"})
+    return auth
+
+
+def logout_local(root: str | Path, *, claim_trial: bool = True) -> dict[str, Any]:
+    path = auth_state_path(root)
+    if path.exists():
+        path.unlink()
+    if claim_trial:
+        return {"logged_out": True, "anonymous": claim_anonymous_trial(root)}
+    return {"logged_out": True, "anonymous": None}
+
+
+def auth_status(root: str | Path) -> dict[str, Any]:
+    auth = _read_json(auth_state_path(root), None)
+    if not isinstance(auth, dict):
+        return {"authenticated": False, "isAnonymous": False, "root": str(Path(root))}
+    normalized = normalize_auth_credentials(auth, anonymous=bool(auth.get("isAnonymous") or auth.get("is_anonymous")))
+    subscription = normalized.get("subscriptionStatus") or _read_json(subscription_state_path(root), {})
+    return {
+        "authenticated": bool(normalized.get("authenticated")),
+        "isAnonymous": bool(normalized.get("isAnonymous")),
+        "email": normalized.get("email"),
+        "userId": normalized.get("userId"),
+        "expiresAt": normalized.get("expiresAt"),
+        "subscription": subscription,
+        "referralCode": normalized.get("referralCode"),
+        "root": str(Path(root)),
+    }
+
+
+def begin_browser_login(root: str | Path, *, app_url: str | None = None, state: str | None = None, callback_port: int | None = None) -> dict[str, Any]:
+    fp = _fingerprint()
+    chosen_state = state or _fingerprint(f"state:{fp}:{_iso_now()}")
+    port = callback_port or 49152 + (int(fp[:4], 16) % (65535 - 49152))
+    base = (app_url or os.environ.get("ATELIER_APP_URL") or "https://atelier.local").rstrip("/")
+    url = f"{base}/auth?callback_port={port}&state={chosen_state}&fp={fp}"
+    pending = {"url": url, "state": chosen_state, "callbackPort": port, "fingerprint": fp, "createdAt": _iso_now()}
+    _write_json(Path(root) / "login_pending.json", pending, mode=0o600)
+    return pending
+
+
+def share_referral(root: str | Path, *, app_url: str | None = None) -> dict[str, Any]:
+    status = auth_status(root)
+    if not status.get("authenticated"):
+        return {"is_error": True, "message": "Log in or start a local trial before sharing."}
+    code = str(status.get("referralCode") or f"ATELIER-{_fingerprint(str(status.get('userId')))[:6].upper()}")
+    base = (app_url or os.environ.get("ATELIER_APP_URL") or "https://atelier.local").rstrip("/")
+    text = f"Use code {code} for Atelier: {base}?ref={code}"
+    return {"code": code, "url": f"{base}?ref={code}", "text": text}
+
+
+def compare_versions(left: str, right: str) -> int:
+    def parts(value: str) -> list[int]:
+        nums = [int(match.group(0)) for match in re.finditer(r"\d+", value or "0")]
+        return nums or [0]
+
+    a = parts(left)
+    b = parts(right)
+    width = max(len(a), len(b))
+    a.extend([0] * (width - len(a)))
+    b.extend([0] * (width - len(b)))
+    return (a > b) - (a < b)
+
+
+def validate_search_input(input_data: dict[str, Any]) -> dict[str, Any]:
+    selectors = (
+        input_data.get("content_regex"),
+        input_data.get("file_glob_patterns"),
+        input_data.get("type"),
+    )
+    if not any(selectors):
+        return {
+            "is_error": True,
+            "message": "Provide content_regex, file_glob_patterns, or type",
+        }
+    return {"is_error": False}
+
+
+def parse_line_suffix(pattern: str) -> dict[str, Any]:
+    match = re.search(r"#(\d+)(?:-(\d+))?$", pattern)
+    if not match:
+        return {"clean_pattern": pattern, "start_line": None, "end_line": None}
+    start_line = int(match.group(1))
+    end_line = int(match.group(2) or match.group(1))
+    return {
+        "clean_pattern": pattern[: match.start()],
+        "start_line": start_line,
+        "end_line": end_line,
+    }
+
+
+def should_summarize(
+    *,
+    file_glob_patterns: list[str] | None,
+    summary: bool | str | None,
+    ast_truncation: bool,
+    aggressive_truncation: bool,
+) -> dict[str, Any]:
+    if summary is not None:
+        return {"summary_mode": bool(summary), "reason": "explicit summary setting"}
+    patterns = file_glob_patterns or []
+    has_single_exact_path = len(patterns) == 1 and not re.search(r"[*?\[\]{}]", patterns[0])
+    if has_single_exact_path and ast_truncation and aggressive_truncation:
+        return {
+            "summary_mode": False,
+            "reason": "exact non-glob path should return full content unless summary is explicitly requested",
+        }
+    return {"summary_mode": bool(ast_truncation or aggressive_truncation), "reason": "default"}
+
+
+def _parse_timestamp(value: str) -> datetime:
+    normalized = value.replace("T", " ").replace("Z", "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    return datetime.fromisoformat(normalized)
+
+
+def apply_if_modified_since(
+    *,
+    output_mode: str,
+    if_modified_since: str | None,
+    file_mtime: str,
+    path: str,
+) -> dict[str, Any]:
+    if not if_modified_since or output_mode != "file_paths_with_content":
+        return {"include_content": True, "render": path}
+    include_content = _parse_timestamp(file_mtime) > _parse_timestamp(if_modified_since)
+    render = path if include_content else f"{path} (unchanged)"
+    return {"include_content": include_content, "render": render}
+
+
+def apply_text_file_edits(initial: str, edits: list[dict[str, str]]) -> dict[str, Any]:
+    content = initial
+    applied_count = 0
+    for edit in edits:
+        old_string = edit.get("old_string", "")
+        new_string = edit.get("new_string", "")
+        index = content.find(old_string)
+        if index == -1:
+            existed_before = old_string and old_string in initial
+            message = "old_string not found"
+            if existed_before:
+                message = "old_string existed in the pre-batch file but no longer matches current batch state"
+            return {"is_error": True, "message": message, "applied_count": applied_count}
+        content = content[:index] + new_string + content[index + len(old_string) :]
+        applied_count += 1
+    return {"final": content, "writes": 1 if applied_count else 0, "applied_count": applied_count}
+
+
+def fuzzy_acceptance_policy(
+    *, best_score: float, second_best_score: float, snippet_line_count: int
+) -> dict[str, Any]:
+    if best_score < FUZZY_ACCEPT_THRESHOLD:
+        return {"accepted": False, "reason": "public accepted fuzzy threshold is 0.95"}
+    if second_best_score and (best_score - second_best_score) < FUZZY_AMBIGUITY_MARGIN:
+        return {"accepted": False, "reason": "second best is within ambiguity margin 0.05"}
+    return {"accepted": True, "reason": f"accepted {snippet_line_count} line snippet"}
+
+
+def apply_notebook_source_edit(cell: dict[str, Any], old_string: str, new_string: str) -> dict[str, Any]:
+    source = cell.get("source", "")
+    if old_string not in source:
+        return {"is_error": True, "message": "old_string not found in cell"}
+    updated = dict(cell)
+    updated["source"] = source.replace(old_string, new_string, 1)
+    if updated.get("cell_type") == "code":
+        updated["outputs"] = []
+        updated["execution_count"] = None
+    return updated
+
+
+def find_notebook_match(
+    *, cell_target: int | str | None, cells: list[dict[str, Any]], old_string: str
+) -> dict[str, Any]:
+    matches = [idx for idx, cell in enumerate(cells) if old_string in str(cell.get("source", ""))]
+    if cell_target is not None:
+        target = int(cell_target)
+        if target < 0 or target >= len(cells):
+            return {"is_error": True, "message": "cell target out of range"}
+        return {"cell_index": target, "matched": old_string in str(cells[target].get("source", ""))}
+    if len(matches) > 1:
+        return {"is_error": True, "message": "old_string matched more than one cell"}
+    if not matches:
+        return {"is_error": True, "message": "old_string not found in notebook"}
+    return {"cell_index": matches[0], "matched": True}
+
+
+def sql_auto_limit(sql: str, max_rows: int, auto_limit: bool = True) -> dict[str, Any]:
+    if not auto_limit:
+        return {"sql": sql, "changed": False}
+    stripped = sql.strip().rstrip(";")
+    lowered = stripped.lower()
+    if not lowered.startswith("select"):
+        return {"sql": sql, "changed": False, "reason": "only select statements are auto-limited"}
+    if re.search(r"\blimit\b", lowered):
+        return {"sql": sql, "changed": False}
+    if re.search(r"\b(union|intersect|except)\b", lowered):
+        return {"sql": sql, "changed": False, "reason": "set operations are not auto-limited"}
+    return {"sql": f"{stripped} LIMIT {max_rows}", "changed": True}
+
+
+def discover_connection(
+    env: dict[str, str] | None = None,
+    dotenv_files: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    env = env or dict(os.environ)
+    dotenv_files = dotenv_files or {}
+    keys = ("DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL", "MYSQL_URL", "SQLITE_URL")
+    for key in keys:
+        if env.get(key):
+            return {"connection_string": env[key], "source": f"env:{key}"}
+    for filename in (".env", ".env.local", ".env.development", ".env.production"):
+        values = dotenv_files.get(filename) or {}
+        for key in keys:
+            if values.get(key):
+                return {"connection_string": values[key], "source": f"{filename}:{key}"}
+    return {"connection_string": None, "source": None}
+
+
+def column_typo_repair_policy(column_score: float, second_best_score: float) -> dict[str, Any]:
+    if column_score < COLUMN_REPAIR_THRESHOLD:
+        return {"repair": False, "reason": "column fuzzy threshold is 0.85"}
+    if second_best_score and (column_score - second_best_score) < FUZZY_AMBIGUITY_MARGIN:
+        return {"repair": False, "reason": "column match is ambiguous"}
+    return {"repair": True, "reason": "single confident column match"}
+
+
+def postgres_try_auto_fix(sql: str, error_signature: str) -> dict[str, Any]:
+    if "column" in error_signature.lower() and "date_trunc" in sql.lower():
+        fixed = re.sub(r'date_trunc\("([a-zA-Z_]+)",', r"date_trunc('\1',", sql)
+        if fixed != sql:
+            return {"fixed_sql": fixed, "retry": True}
+    return {"fixed_sql": sql, "retry": False}
+
+
+def recall_constants() -> dict[str, Any]:
+    return {
+        "dim": RECALL_DIM,
+        "top_k": RECALL_TOP_K,
+        "max_sessions": RECALL_MAX_SESSIONS,
+        "max_chunk_chars": RECALL_MAX_CHUNK_CHARS,
+        "min_score_threshold": RECALL_MIN_SCORE_THRESHOLD,
+        "rescan_debounce_ms": RECALL_RESCAN_DEBOUNCE_MS,
+    }
+
+
+def chunk_transcript(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    kept: list[str] = []
+    for message in messages:
+        content = str(message.get("content", ""))
+        if not content or "task-notification:" in content:
+            continue
+        kept.append(content)
+    if not kept:
+        return {"chunks": []}
+    content = "\n".join(kept)
+    return {"chunks": [{"content": content[:RECALL_MAX_CHUNK_CHARS]}]}
+
+
+def status_line_choose_message(
+    *, auth_present: bool = True, update_flag: dict[str, Any] | None = None,
+    session_id: str | None = None, total_tool_calls: int = 0,
+    turn_count: int = 0, enabled_families: list[str] | None = None,
+    subscription_warning: bool = False,
+    free_plan_remaining: int | None = None,
+    free_plan_limit: int | None = None,
+) -> dict[str, Any]:
+    if not auth_present:
+        return {"message_family": "login", "rotation_skipped": True}
+    if update_flag and update_flag.get("toVersion") != update_flag.get("fromVersion"):
+        return {"message_family": "update", "rotation_skipped": True}
+    if subscription_warning:
+        return {"message_family": "subscription", "rotation_skipped": True}
+    if free_plan_remaining is not None and free_plan_limit:
+        used = max(0, int(free_plan_limit) - int(free_plan_remaining))
+        usage_pct = round(100.0 * used / max(1, int(free_plan_limit)), 1)
+        if usage_pct >= 90.0:
+            return {"message_family": "free_plan", "rotation_skipped": True, "usage_pct": usage_pct}
+    if not session_id:
+        return {"message_family": "default", "rotation_skipped": True}
+    families = enabled_families or ["savings", "tip", "lifetime"]
+    if total_tool_calls <= 0 or not families:
+        return {"message_family": "savings", "rotation_skipped": False}
+    weights = {"savings": 6, "baseline": 1, "tip": 1, "lifetime": 1, "trial": 1, "share": 1}
+    expanded = [family for family in families for _ in range(weights.get(family, 1))]
+    return {"message_family": expanded[turn_count % len(expanded)], "rotation_skipped": False}
+
+
+def session_start_install_status_line(plugin_root: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
+    updated = dict(settings or {})
+    updated["statusLine"] = {
+        "type": "command",
+        "command": f"{plugin_root}/scripts/statusline.sh",
+    }
+    return {"settings": updated}
+
+
+def apply_status_line_setting(host_settings: dict[str, Any], plugin_root: str, enabled: bool) -> dict[str, Any]:
+    updated = dict(host_settings or {})
+    if enabled:
+        installed = session_start_install_status_line(plugin_root, updated).get("settings")
+        return installed if isinstance(installed, dict) else updated
+    current = updated.get("statusLine")
+    if isinstance(current, dict) and "statusline.sh" in str(current.get("command", "")):
+        updated.pop("statusLine", None)
+    return updated
+
+
+def apply_spinner_setting(host_settings: dict[str, Any], enabled: bool) -> dict[str, Any]:
+    updated = dict(host_settings or {})
+    namespace = dict(updated.get("atelier") or {})
+    if enabled:
+        namespace["spinnerVerbs"] = list(SPINNER_VERBS)
+    else:
+        namespace.pop("spinnerVerbs", None)
+    if namespace:
+        updated["atelier"] = namespace
+    else:
+        updated.pop("atelier", None)
+    return updated
+
+
+def apply_attribution_setting(host_settings: dict[str, Any], enabled: bool) -> dict[str, Any]:
+    updated = dict(host_settings or {})
+    namespace = dict(updated.get("atelier") or {})
+    if enabled:
+        namespace["attribution"] = {"enabled": True, "source": "Atelier"}
+    else:
+        namespace.pop("attribution", None)
+    if namespace:
+        updated["atelier"] = namespace
+    else:
+        updated.pop("atelier", None)
+    return updated
+
+
+def rewrite_mcp_always_load(
+    mcp_json: dict[str, Any] | None,
+    enabled: bool,
+    *,
+    server_name: str | None = None,
+) -> dict[str, Any]:
+    updated = json.loads(json.dumps(mcp_json or {"mcpServers": {}}))
+    servers = updated.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        updated["mcpServers"] = {}
+        servers = updated["mcpServers"]
+    names = [server_name] if server_name else list(servers.keys())
+    changed = False
+    for name in names:
+        server = servers.get(name)
+        if isinstance(server, dict) and server.get("alwaysLoad") != bool(enabled):
+            server["alwaysLoad"] = bool(enabled)
+            changed = True
+    return {"mcp_json": updated, "changed": changed}
+
+
+_REAL_COMMANDS = {
+    "git", "docker", "python", "python3", "node", "npm", "pnpm", "yarn", "make", "pytest",
+    "uv", "curl", "wget", "ssh", "scp", "tar", "unzip", "zip", "jq",
+}
+_BUILD_COMMANDS = {"npm", "pnpm", "yarn", "make", "pytest", "cargo", "go", "uv"}
+_READ_COMMANDS = {"cat", "sed", "grep", "rg", "find", "ls", "awk", "head", "tail", "less", "more"}
+_SQL_COMMANDS = {"psql", "pg_dump", "pg_restore", "mysql", "sqlite3"}
+
+
+def _first_commands(command: str) -> list[str]:
+    sanitized = re.sub(r"`[^`]*`|\$\([^)]*\)", "", command)
+    segments = re.split(r"&&|\|\||;|\n", sanitized)
+    firsts: list[str] = []
+    for segment in segments:
+        left = segment.split("|", 1)[0].strip()
+        if not left:
+            continue
+        firsts.append(left.split()[0])
+    return firsts
+
+
+def classify_bash(command: str, tool_names: dict[str, str] | None = None) -> dict[str, Any]:
+    tool_names = tool_names or {
+        "search": "mcp__plugin_atelier_atelier__search",
+        "edit": "mcp__plugin_atelier_atelier__edit",
+        "sql": "mcp__plugin_atelier_atelier__sql",
+    }
+    firsts = _first_commands(command)
+    if not firsts:
+        return {"no_output": True}
+    if firsts[0] in _BUILD_COMMANDS and re.search(r"\b(build|test|pytest|check|lint)\b", command):
+        return {"no_output": True, "reason": "build/test allowlist"}
+    if firsts[0] in _REAL_COMMANDS and firsts[0] not in _READ_COMMANDS:
+        return {"no_output": True, "reason": "real command skip list"}
+    target_tool = None
+    if re.search(r">|\bsed\s+-i\b|writeFileSync", command):
+        target_tool = "edit"
+    elif any(first in _SQL_COMMANDS for first in firsts):
+        target_tool = "sql"
+    elif any(first in _READ_COMMANDS for first in firsts):
+        target_tool = "search"
+    if not target_tool:
+        return {"no_output": True}
+    target_name = tool_names[target_tool]
+    return {
+        "decision": "allow",
+        "target_tool": target_tool,
+        "additional_context": f"use {target_name} for this kind of operation in subsequent calls.",
+    }
+
+
+def rewrite_agent(subagent_type: str | None, is_free_plan: bool = False) -> dict[str, Any]:
+    if is_free_plan and subagent_type == "explore":
+        return {"updated_input": {"subagent_type": "Explore"}}
+    if not is_free_plan and subagent_type == "Explore":
+        return {"updated_input": {"subagent_type": "explore"}}
+    return {"no_output": True}
+
+
+def edit_nudge(
+    *, state_before: dict[str, Any] | None = None, now: int | None = None,
+    payload: dict[str, Any], window_ms: int = 30_000,
+) -> dict[str, Any]:
+    edits = ((payload.get("tool_input") or {}).get("edits") or [])
+    if len(edits) != 1:
+        return {"no_output": True, "state_unchanged": True}
+    now_ms = int(now if now is not None else datetime.now().timestamp() * 1000)
+    recent = []
+    for edit in (state_before or {}).get("edits", []):
+        if edit.get("time_delta_ms") is not None:
+            delta = int(edit.get("time_delta_ms", window_ms + 1))
+        elif edit.get("at") is not None:
+            delta = now_ms - int(edit.get("at", 0))
+        else:
+            delta = window_ms + 1
+        if delta <= window_ms:
+            recent.append(edit)
+    one = edits[0]
+    recent.append({"at": now_ms, "file": one.get("file_path") or one.get("path") or one.get("file")})
+    result = {
+        "state_path": str(Path(tempfile.gettempdir()) / "atelier-edit-state.json"),
+        "state_after": {"edits": recent},
+        "state_after_count": len(recent),
+    }
+    if len(recent) >= 2:
+        result["stdout"] = {
+            "additionalContext": f"You've made {len(recent)} individual Edit calls in the last 30s. Batch related edits in one call when possible."
+        }
+    else:
+        result["no_output"] = True
+    return result
+
+
+def session_start(settings: dict[str, Any], plugin_root: str) -> dict[str, Any]:
+    return {"settings_write_contains": session_start_install_status_line(plugin_root, settings)["settings"], "stdout": ""}
+
+
+def session_start_bootstrap(
+    root: str | Path,
+    plugin_root: str,
+    *,
+    host_settings: dict[str, Any] | None = None,
+    mcp_json: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
+    current_version: str = "0.0.0",
+) -> dict[str, Any]:
+    settings = load_plugin_settings(root)
+    updated_host = dict(host_settings or {})
+    actions: list[str] = []
+    updated_host = apply_status_line_setting(updated_host, plugin_root, settings["statusLine"])
+    actions.append("status_line_installed" if settings["statusLine"] else "status_line_removed")
+    updated_host = apply_spinner_setting(updated_host, settings["spinnerVerbs"])
+    actions.append("spinner_verbs_installed" if settings["spinnerVerbs"] else "spinner_verbs_removed")
+    updated_host = apply_attribution_setting(updated_host, settings["attribution"])
+    actions.append("attribution_installed" if settings["attribution"] else "attribution_removed")
+    mcp_result = rewrite_mcp_always_load(mcp_json, settings["alwaysLoadTools"])
+    if mcp_result["changed"]:
+        actions.append("always_load_updated")
+    auth = claim_anonymous_trial(root)
+    update = update_notification(current_version, _read_json(update_flag_path(root), None))
+    if payload:
+        update_session_stats(root, {"hook_event_name": "SessionStart", **payload})
+    return {
+        "settings": settings,
+        "host_settings": updated_host,
+        "mcp_json": mcp_result["mcp_json"],
+        "auth": auth,
+        "actions": actions,
+        "stdout": update.get("stdout", "") if isinstance(update, dict) else "",
+        "update": update,
+    }
+
+
+def apply_session_start_files(
+    root: str | Path,
+    plugin_root: str | Path,
+    *,
+    config_dir: str | Path | None = None,
+    payload: dict[str, Any] | None = None,
+    current_version: str = "0.0.0",
+) -> dict[str, Any]:
+    plugin_root_path = Path(plugin_root)
+    config_path = Path(config_dir) if config_dir is not None else Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude")))
+    settings_path = config_path / "settings.json"
+    host_settings = _read_json(settings_path, {})
+    if not isinstance(host_settings, dict):
+        host_settings = {}
+    mcp_path = plugin_root_path / ".mcp.json"
+    mcp_json = _read_json(mcp_path, {"mcpServers": {}})
+    if not isinstance(mcp_json, dict):
+        mcp_json = {"mcpServers": {}}
+    result = session_start_bootstrap(
+        root,
+        str(plugin_root_path),
+        host_settings=host_settings,
+        mcp_json=mcp_json,
+        payload=payload,
+        current_version=current_version,
+    )
+    _write_json(settings_path, result["host_settings"])
+    if mcp_path.exists():
+        _write_json(mcp_path, result["mcp_json"])
+    return result
+
+
+def update_notification(current_version: str, flag: dict[str, Any] | None) -> dict[str, Any]:
+    if not flag:
+        return {"no_output": True}
+    to_version = str(flag.get("toVersion") or "")
+    if not to_version:
+        return {"no_output": True}
+    if compare_versions(to_version, current_version) <= 0:
+        return {"delete_flag": True, "no_output": True}
+    return {
+        "stdout": {
+            "hookSpecificOutput": {"hookEventName": "SessionStart"},
+            "additionalContext": f"Atelier v{to_version} is available. Use the update skill or CLI update flow when convenient.",
+            "message": f"Atelier v{to_version} available",
+        }
+    }
+
+
+def codex_update_notification(root: str | Path, *, current_version: str) -> dict[str, Any]:
+    result = update_notification(current_version, _read_json(update_flag_path(root), None))
+    if result.get("delete_flag"):
+        update_flag_path(root).unlink(missing_ok=True)
+    return result
+
+
+def _is_atelier_tool(tool_name: str) -> bool:
+    lowered = tool_name.lower()
+    suffixes = ("edit", "search", "sql", "recall")
+    if lowered in suffixes:
+        return True
+    return "atelier" in lowered and any(lowered.endswith(suffix) for suffix in suffixes)
+
+
+def build_codex_post_tool_use_savings_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("hook_event_name") != "PostToolUse":
+        return {"no_output": True}
+    tool_name = str(payload.get("tool_name") or "")
+    if not _is_atelier_tool(tool_name):
+        return {"no_output": True}
+    stats = update_session_stats(root, payload)
+    savings = stats.get("savings") or {}
+    calls = int(savings.get("calls_saved", 0) or 0)
+    tokens = int(savings.get("tokens_saved", 0) or 0)
+    return {
+        "systemMessage": f"Atelier saved about {calls} calls and {tokens} tokens in this session.",
+        "stats": stats,
+    }
+
+
+def equivalent_calls(tool_name: str, tool_input: dict[str, Any] | None = None) -> float:
+    tool_input = tool_input or {}
+    lowered = tool_name.lower()
+    if lowered.endswith("edit") or lowered in {"edit", "write", "multiedit"}:
+        edits = tool_input.get("edits") or [tool_input]
+        edit_count = max(1, len(edits))
+        files = {
+            str(edit.get("file_path") or edit.get("path") or edit.get("file") or "")
+            for edit in edits
+            if isinstance(edit, dict)
+        }
+        files.discard("")
+        return edit_count + max(1, len(files)) + 0.5
+    if lowered.endswith("search") or lowered in {"search", "grep", "glob"}:
+        globs = tool_input.get("file_glob_patterns") or []
+        equivalent = 2 + max(0, len(globs) - 1)
+        if tool_input.get("content_regex"):
+            equivalent += 1
+        if str(tool_input.get("output_mode") or "").lower() in {"summary", "type-summary", "type_summary"}:
+            equivalent += 1
+        return float(equivalent)
+    if lowered.endswith("sql") or lowered == "sql":
+        return 5.0
+    return 1.0
+
+
+def compute_live_savings(equivalent_call_count: float, model: str | None = None) -> dict[str, Any]:
+    calls_saved = max(0, int(equivalent_call_count - 1))
+    return {
+        "calls_saved": calls_saved,
+        "time_saved_ms": calls_saved * LIVE_TIME_SAVED_PER_CALL_MS,
+        "input_tokens_saved": int(calls_saved * LIVE_INPUT_TOKENS_PER_CALL * LIVE_CONTEXT_MULTIPLIER),
+        "output_tokens_saved": calls_saved * LIVE_OUTPUT_TOKENS_PER_CALL,
+        "cache_read_tokens_saved": int(calls_saved * LIVE_CACHE_READ_TOKENS_PER_CALL * LIVE_CONTEXT_MULTIPLIER),
+        "cache_write_tokens_saved": 0,
+        "model": model,
+    }
+
+
+def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
+    return [(idx, tool) for idx, turn in enumerate(turns) for tool in (turn.get("tool_uses") or [])]
+
+
+def detect_read_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
+    for _, turn in enumerate(turns):
+        reads = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Read"]
+        if len(reads) >= 2:
+            return {"workflows": 1, "calls_saved": len(reads) - 1, "consumed_tool_use_ids": [r.get("id") for r in reads]}
+    return {"workflows": 0, "calls_saved": 0, "consumed_tool_use_ids": []}
+
+
+def detect_edit_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
+    for turn in turns:
+        edits = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Edit", "Write", "MultiEdit"}]
+        if len(edits) >= 2:
+            return {"workflows": 1, "calls_saved": len(edits) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def detect_grep_read(turns: list[dict[str, Any]], max_gap_turns: int = 3) -> dict[str, Any]:
+    for idx, turn in enumerate(turns):
+        greps = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Grep", "Glob"}]
+        if not greps:
+            continue
+        reads: list[dict[str, Any]] = []
+        for later in turns[idx + 1 : idx + max_gap_turns + 1]:
+            reads.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") == "Read"])
+        if reads:
+            return {"workflows": 1, "calls_saved": len(greps) + len(reads) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def detect_failed_edit(turns: list[dict[str, Any]], max_gap_turns: int = 5) -> dict[str, Any]:
+    for idx, turn in enumerate(turns):
+        failed = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Edit" and tool.get("is_error")]
+        if not failed:
+            continue
+        chain = list(failed)
+        for later in turns[idx + 1 : idx + max_gap_turns + 1]:
+            chain.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") in {"Read", "Edit"}])
+        if len(chain) >= 2:
+            return {"workflows": 1, "calls_saved": len(chain) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def detect_bash_sql(turns: list[dict[str, Any]]) -> dict[str, Any]:
+    matches = []
+    for _, tool in _tool_uses(turns):
+        command = str((tool.get("input") or {}).get("command", ""))
+        if tool.get("name") == "Bash" and any(sql_cmd in command for sql_cmd in _SQL_COMMANDS):
+            matches.append(tool)
+    if len(matches) >= 2:
+        return {"workflows": 1, "calls_saved": len(matches) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def baseline_is_available(vanillaSessions: int, totalVanillaCostInUsd: float) -> dict[str, Any]:
+    available = vanillaSessions >= 5 and totalVanillaCostInUsd > 0
+    if not available:
+        return {"available": False, "reason": "requires at least 5 vanilla sessions"}
+    return {"available": True}
+
+
+def baseline_time_saved(calls_saved: int) -> dict[str, Any]:
+    return {"time_saved_ms": calls_saved * BASELINE_TIME_SAVED_PER_CALL_MS, "per_call_ms": BASELINE_TIME_SAVED_PER_CALL_MS}
+
+
+def efficiency_gain(actual_tool_calls: int, equivalent_baseline_calls: int) -> dict[str, Any]:
+    if equivalent_baseline_calls <= 0:
+        return {"efficiency_gain_percent": 0}
+    gain = round(100 * (equivalent_baseline_calls - actual_tool_calls) / equivalent_baseline_calls)
+    return {"efficiency_gain_percent": gain}
+
+
+def session_stats_path(root: str | Path, session_id: str) -> Path:
+    return Path(root) / "session_stats" / f"{session_id}.json"
+
+
+def _session_event_path(root: str | Path, session_id: str) -> Path:
+    return Path(root) / "session_events" / f"{session_id}.jsonl"
+
+
+def _now_ms(payload: dict[str, Any] | None = None) -> int:
+    payload = payload or {}
+    raw = payload.get("now_ms") or payload.get("timestamp_ms") or payload.get("now") or payload.get("timestamp")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, str) and raw.strip():
+        text = raw.replace("Z", "+00:00")
+        try:
+            return int(datetime.fromisoformat(text).timestamp() * 1000)
+        except ValueError:
+            try:
+                return int(float(raw))
+            except ValueError:
+                pass
+    return int(datetime.now().timestamp() * 1000)
+
+
+def _usage_numbers(raw: dict[str, Any]) -> dict[str, int]:
+    aliases = {
+        "input_tokens": ("input_tokens", "prompt_tokens"),
+        "output_tokens": ("output_tokens", "completion_tokens"),
+        "cache_read_tokens": ("cache_read_input_tokens", "cache_read_tokens"),
+        "cache_write_tokens": ("cache_creation_input_tokens", "cache_write_tokens"),
+    }
+    result: dict[str, int] = {key: 0 for key in aliases}
+    for target, names in aliases.items():
+        for name in names:
+            value = raw.get(name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                result[target] += int(value)
+                break
+    return result
+
+
+def _extract_usage(payload: dict[str, Any]) -> dict[str, int]:
+    usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    candidates = [payload.get("usage"), payload.get("token_usage")]
+    context_usage = ((payload.get("context_window") or {}).get("current_usage") if isinstance(payload.get("context_window"), dict) else None)
+    candidates.append(context_usage)
+    message_usage = (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None
+    candidates.append(message_usage)
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        found = _usage_numbers(candidate)
+        for key, value in found.items():
+            usage[key] += value
+    transcript_path = payload.get("transcript_path") or payload.get("transcriptPath")
+    if isinstance(transcript_path, str) and transcript_path:
+        for found in _usage_from_transcript(Path(transcript_path)):
+            for key, value in found.items():
+                usage[key] += value
+    return usage
+
+
+def _usage_from_transcript(path: Path) -> list[dict[str, int]]:
+    rows: list[dict[str, int]] = []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return rows
+    for line in lines:
+        try:
+            payload = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for candidate in (payload.get("usage"), (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None):
+            if isinstance(candidate, dict):
+                rows.append(_usage_numbers(candidate))
+    return rows
+
+
+def _merge_usage(state: dict[str, Any], usage: dict[str, int]) -> None:
+    totals = state.setdefault("usage", {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0})
+    for key, value in usage.items():
+        totals[key] = int(totals.get(key, 0) or 0) + max(0, int(value))
+
+
+def _append_session_event(root: str | Path, session_id: str, payload: dict[str, Any]) -> None:
+    event = str(payload.get("hook_event_name") or payload.get("event") or "")
+    if not event:
+        return
+    path = _session_event_path(root, session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "at_ms": _now_ms(payload),
+        "event": event,
+        "tool_name": payload.get("tool_name"),
+        "subagent_type": (payload.get("tool_input") or {}).get("subagent_type") if isinstance(payload.get("tool_input"), dict) else None,
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    session_id = str(payload.get("session_id") or "default")
+    path = session_stats_path(root, session_id)
+    try:
+        state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        state = {}
+    state.setdefault("session_id", session_id)
+    state.setdefault("total_tool_calls", 0)
+    state.setdefault("equivalent_baseline_calls", 0.0)
+    state.setdefault("savings", {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0})
+    state.setdefault("event_counts", {})
+    state.setdefault("usage", {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0})
+    state["last_event_at_ms"] = _now_ms(payload)
+    event = str(payload.get("hook_event_name") or payload.get("event") or "")
+    if event:
+        state["event_counts"][event] = int(state["event_counts"].get(event, 0) or 0) + 1
+    _merge_usage(state, _extract_usage(payload))
+    if event == "PostToolUse":
+        tool_name = str(payload.get("tool_name") or "")
+        tool_input = payload.get("tool_input") or {}
+        equiv = equivalent_calls(tool_name, tool_input if isinstance(tool_input, dict) else {})
+        savings = compute_live_savings(equiv)
+        state["total_tool_calls"] = int(state.get("total_tool_calls", 0)) + 1
+        state["equivalent_baseline_calls"] = float(state.get("equivalent_baseline_calls", 0.0)) + equiv
+        state["savings"]["calls_saved"] = int(state["savings"].get("calls_saved", 0)) + savings["calls_saved"]
+        state["savings"]["time_saved_ms"] = int(state["savings"].get("time_saved_ms", 0)) + savings["time_saved_ms"]
+        state["savings"]["tokens_saved"] = int(state["savings"].get("tokens_saved", 0)) + savings["input_tokens_saved"] + savings["output_tokens_saved"] + savings["cache_read_tokens_saved"]
+        if tool_name == "Agent":
+            state["subagents_started"] = int(state.get("subagents_started", 0) or 0) + 1
+            state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) + 1)
+    elif event == "PreCompact":
+        state["compaction_started_at_ms"] = _now_ms(payload)
+    elif event == "PostCompact":
+        state["compactions"] = int(state.get("compactions", 0)) + 1
+        started_at = int(state.pop("compaction_started_at_ms", _now_ms(payload)) or _now_ms(payload))
+        state["compaction_duration_ms"] = int(state.get("compaction_duration_ms", 0) or 0) + max(0, _now_ms(payload) - started_at)
+    elif event == "SubagentStop":
+        state["subagents_completed"] = int(state.get("subagents_completed", 0) or 0) + 1
+        state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) - 1)
+        state["completed"] = True
+    elif event in {"Stop", "SubagentStop"}:
+        state["completed"] = True
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    _append_session_event(root, session_id, payload)
+    return state
+
+
+def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
+    stats_dir = Path(root) / "session_stats"
+    files = [session_stats_path(root, session_id)] if session_id else sorted(stats_dir.glob("*.json")) if stats_dir.exists() else []
+    aggregate: dict[str, Any] = {
+        "session_count": 0,
+        "total_tool_calls": 0,
+        "equivalent_baseline_calls": 0.0,
+        "savings": {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0},
+        "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0},
+        "compactions": 0,
+        "compaction_duration_ms": 0,
+        "pending_subagents": 0,
+        "subagents_started": 0,
+        "subagents_completed": 0,
+    }
+    for file_path in files:
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        aggregate["session_count"] += 1
+        aggregate["total_tool_calls"] += int(data.get("total_tool_calls", 0) or 0)
+        aggregate["equivalent_baseline_calls"] += float(data.get("equivalent_baseline_calls", 0.0) or 0.0)
+        for key in aggregate["savings"]:
+            aggregate["savings"][key] += int((data.get("savings") or {}).get(key, 0) or 0)
+        for key in aggregate["usage"]:
+            aggregate["usage"][key] += int((data.get("usage") or {}).get(key, 0) or 0)
+        for key in ("compactions", "compaction_duration_ms", "pending_subagents", "subagents_started", "subagents_completed"):
+            aggregate[key] += int(data.get(key, 0) or 0)
+    aggregate["equivalent_baseline_calls"] = round(float(aggregate["equivalent_baseline_calls"]), 2)
+    return aggregate
+
+
+def _cost_history_summary(root: str | Path) -> dict[str, Any]:
+    path = Path(root) / "cost_history.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"operations": {}}
+    except Exception:
+        data = {"operations": {}}
+    operations = data.get("operations") if isinstance(data, dict) else {}
+    if not isinstance(operations, dict):
+        operations = {}
+    total_baseline = 0.0
+    total_current = 0.0
+    total_calls = 0
+    for entry in operations.values():
+        if not isinstance(entry, dict):
+            continue
+        calls = entry.get("calls") or []
+        if not calls:
+            continue
+        baseline = float(calls[0].get("cost_usd", 0.0) or 0.0)
+        current = float(calls[-1].get("cost_usd", 0.0) or 0.0)
+        total_baseline += baseline * len(calls)
+        total_current += current * len(calls)
+        total_calls += len(calls)
+    saved = max(0.0, total_baseline - total_current)
+    pct = round(100.0 * saved / total_baseline, 2) if total_baseline > 0 else 0.0
+    return {
+        "operations_tracked": len(operations),
+        "total_calls": total_calls,
+        "would_have_cost_usd": round(total_baseline, 6),
+        "actually_cost_usd": round(total_current, 6),
+        "saved_usd": round(saved, 6),
+        "saved_pct": pct,
+    }
+
+
+def build_savings_report(root: str | Path, *, session_id: str | None = None, usd_per_1k_tokens: float = 0.003) -> dict[str, Any]:
+    root_path = Path(root)
+    smart = {}
+    smart_path = root_path / "smart_state.json"
+    if smart_path.exists():
+        try:
+            smart = json.loads(smart_path.read_text(encoding="utf-8"))
+        except Exception:
+            smart = {}
+    smart_savings = smart.get("savings") if isinstance(smart, dict) else {}
+    if not isinstance(smart_savings, dict):
+        smart_savings = {}
+    session = aggregate_session_stats(root_path, session_id=session_id)
+    smart_calls = int(smart_savings.get("calls_avoided", 0) or 0)
+    smart_tokens = int(smart_savings.get("tokens_saved", 0) or 0)
+    session_calls = int(session["savings"].get("calls_saved", 0) or 0)
+    session_tokens = int(session["savings"].get("tokens_saved", 0) or 0)
+    tokens_saved = max(smart_tokens, session_tokens)
+    calls_avoided = max(smart_calls, session_calls)
+    estimated_saved_usd = round((tokens_saved / 1000.0) * float(usd_per_1k_tokens), 6)
+    cost = _cost_history_summary(root_path)
+    if cost["saved_usd"] <= 0 and estimated_saved_usd > 0:
+        cost["saved_usd"] = estimated_saved_usd
+    baseline = _read_json(baseline_estimate_path(root_path), {})
+    if not isinstance(baseline, dict):
+        baseline = {}
+    vanilla_sessions = int(baseline.get("vanillaSessions") or baseline.get("vanilla_sessions") or 0)
+    vanilla_cost = float(baseline.get("totalVanillaCostInUsd") or baseline.get("total_vanilla_cost_usd") or 0.0)
+    baseline_gate = baseline_is_available(vanilla_sessions, vanilla_cost)
+    lifetime = _read_json(lifetime_savings_path(root_path), {})
+    if not isinstance(lifetime, dict):
+        lifetime = {}
+    lifetime.setdefault("calls_saved", calls_avoided)
+    lifetime.setdefault("tokens_saved", tokens_saved)
+    lifetime.setdefault("estimated_saved_usd", max(estimated_saved_usd, float(cost.get("saved_usd", 0.0) or 0.0)))
+    auth = auth_status(root_path)
+    subscription = _read_json(subscription_state_path(root_path), auth.get("subscription") or {})
+    if not isinstance(subscription, dict):
+        subscription = {}
+    free_plan = _read_json(free_plan_state_path(root_path), {})
+    if not isinstance(free_plan, dict):
+        free_plan = {}
+    if free_plan:
+        limit = float(free_plan.get("limit") or free_plan.get("monthlyLimitInUsd") or 0.0)
+        remaining = float(free_plan.get("remaining") or max(0.0, limit - estimated_saved_usd))
+        used = max(0.0, limit - remaining)
+        free_plan["used"] = round(used, 6)
+        free_plan["usage_pct"] = round(100.0 * used / limit, 2) if limit > 0 else 0.0
+    return {
+        "calls_avoided": calls_avoided,
+        "tokens_saved": tokens_saved,
+        "estimated_saved_usd": estimated_saved_usd,
+        "session": session,
+        "lifetime": lifetime,
+        "baseline": {"available": baseline_gate.get("available", False), "estimate": baseline, **baseline_gate},
+        "subscription": subscription,
+        "free_plan": free_plan,
+        "cost": cost,
+        "bad_plans_blocked": 0,
+        "rescue_events": 0,
+        "rubric_failures_caught": 0,
+        "local_note": "Savings are local estimates for this workspace and reset if the Atelier store is cleared.",
+    }

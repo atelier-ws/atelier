@@ -50,8 +50,8 @@ configured. Letta is Apache-2.0 licensed, which makes client-level integration c
 posture, but Atelier will not copy or subclass Letta internals. If Letta is absent, the in-process
 memory store remains authoritative and functional.
 
-The wozcode-inspired context-savings plan is adopted as implementation guidance, not as vendored
-code. V2 reimplements the relevant concepts inside Atelier: combined search-read, batched edits,
+The context-savings plan is adopted as implementation guidance, not as vendored
+code. V2 implements the relevant concepts inside Atelier: combined search-read, batched edits,
 AST-aware truncation, SQL inspection as a deterministic tool, fuzzy edit matching, cached reads,
 scoped recall, and compact lifecycle support. Each lever must publish measurable savings data where
 the runtime can observe it.
@@ -107,4 +107,3 @@ what was avoided, not just that a smaller prompt was sent.
 - [Atelier V2 - Data Model](../../../architecture/IMPLEMENTATION_PLAN_V2_DATA_MODEL.md)
 - [Work-packets index](../../../architecture/work-packets/INDEX.md)
 - [Letta GitHub repository](https://github.com/letta-ai/letta)
-- [Wozcode](https://www.wozcode.com/)
