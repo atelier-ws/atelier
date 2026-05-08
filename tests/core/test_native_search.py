@@ -11,7 +11,9 @@ from atelier.core.capabilities.tool_supervision.native_search import (
 
 
 def _texts(result: dict[str, Any]) -> list[str]:
-    return [str(item.get("text", "")) for item in result["content"] if isinstance(item, dict) and item.get("type") == "text"]
+    return [
+        str(item.get("text", "")) for item in result["content"] if isinstance(item, dict) and item.get("type") == "text"
+    ]
 
 
 def test_native_search_glob_regex_context_and_counts(tmp_path: Path) -> None:
@@ -46,7 +48,9 @@ def test_native_search_type_alias_line_suffix_and_modified_since(tmp_path: Path)
     assert "two" in text
     assert "three" in text
 
-    skipped = search_workspace(path=".", file_glob_patterns=["example.py"], if_modified_since="2999-01-01", repo_root=tmp_path)
+    skipped = search_workspace(
+        path=".", file_glob_patterns=["example.py"], if_modified_since="2999-01-01", repo_root=tmp_path
+    )
     assert "unchanged" in "\n".join(_texts(skipped))
 
 
@@ -57,7 +61,9 @@ def test_native_search_notebook_and_image_blocks(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     image = tmp_path / "pixel.png"
-    image.write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="))
+    image.write_bytes(
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+    )
 
     notebook_result = search_workspace(path=".", file_glob_patterns=["*.ipynb"], repo_root=tmp_path)
     assert "cell 0" in "\n".join(_texts(notebook_result))

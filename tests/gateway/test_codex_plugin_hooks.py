@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / "integrations" / "codex" / "hooks"
 
 
-def _run_hook(script: str, root: Path, payload: dict[str, Any], version: str = "1.0.0") -> subprocess.CompletedProcess[str]:
+def _run_hook(
+    script: str, root: Path, payload: dict[str, Any], version: str = "1.0.0"
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update({"ATELIER_ROOT": str(root), "ATELIER_VERSION": version})
     return subprocess.run(

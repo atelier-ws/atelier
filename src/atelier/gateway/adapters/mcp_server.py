@@ -411,7 +411,7 @@ def _write_smart_state(state: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception:
-            pass
+        pass
 
 
 def _extract_tokens_saved(result: dict[str, Any]) -> int:
@@ -1308,6 +1308,61 @@ def tool_smart_read(
     }
 
 
+def _collect_touched_paths(edits: list[dict[str, Any]]) -> list[str]:
+    """Extract the file paths referenced in a list of edit descriptors."""
+    paths: set[str] = set()
+    for edit in edits:
+        raw = str(edit.get("file_path") or edit.get("path") or "")
+        if raw:
+            paths.add(raw)
+    return sorted(paths)
+
+
+def _snapshot_paths(paths: list[str]) -> dict[str, str | None]:
+    """Read each file's current content into a dict; None if file does not exist."""
+    snap: dict[str, str | None] = {}
+    for p in paths:
+        fp = Path(p)
+        try:
+            snap[p] = fp.read_text(encoding="utf-8") if fp.exists() else None
+        except Exception:
+            snap[p] = None
+    return snap
+
+
+def _compute_and_record_diffs(
+    snapshots: dict[str, str | None],
+    repo_root: str,
+) -> None:
+    """Compute unified diffs from *snapshots* vs current file content and record them in the ledger."""
+    import difflib
+
+    led = _get_ledger()
+    for path, old_content in snapshots.items():
+        fp = Path(path)
+        try:
+            new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
+        except Exception:
+            new_content = None
+        if old_content == new_content:
+            continue
+        if old_content is None and new_content is None:
+            continue
+        diff_lines = list(
+            difflib.unified_diff(
+                (old_content or "").splitlines(keepends=True),
+                (new_content or "").splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+            )
+        )
+        diff_text = "".join(diff_lines) if diff_lines else ""
+        if diff_text:
+            led.record_file_event(path=path, event="edit", diff=diff_text)
+        else:
+            led.record_file_event(path=path, event="edit")
+
+
 @mcp_tool(name="edit")
 def tool_smart_edit(
     edits: list[dict[str, Any]],
@@ -1321,11 +1376,21 @@ def tool_smart_edit(
     once after sequential in-memory edits.
     """
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    use_legacy_batch = edits and all("op" in edit and "file_path" not in edit and "cell_action" not in edit for edit in edits)
+
+    # Snapshot file contents before applying edits so we can compute diffs
+    paths = _collect_touched_paths(edits)
+    snapshots = _snapshot_paths(paths)
+
+    use_legacy_batch = edits and all(
+        "op" in edit and "file_path" not in edit and "cell_action" not in edit for edit in edits
+    )
     if not use_legacy_batch:
         from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
-        return apply_rich_edits(edits, atomic=atomic, repo_root=Path(workspace))
+        result = apply_rich_edits(edits, atomic=atomic, repo_root=Path(workspace))
+        if not result.get("failed") and not result.get("rolled_back"):
+            _compute_and_record_diffs(snapshots, workspace)
+        return result
 
     from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
 
@@ -1334,6 +1399,8 @@ def tool_smart_edit(
         atomic=atomic,
         repo_root=Path(workspace),
     )
+    if not result.get("failed") and not result.get("rolled_back"):
+        _compute_and_record_diffs(snapshots, workspace)
     return result
 
 
@@ -1515,7 +1582,9 @@ def tool_smart_search(
     budget_tokens: int = 2000,
     content_regex: str | None = None,
     file_glob_patterns: list[str] | None = None,
-    output_mode: Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"] = "file_paths_with_content",
+    output_mode: Literal[
+        "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"
+    ] = "file_paths_with_content",
     lines_before: int = 0,
     lines_after: int = 0,
     ignore_case: bool = False,
@@ -1696,7 +1765,9 @@ def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
     )
 
 
-def _record_context_budget_for_tool(tool_name: str, args: dict[str, Any], led: RunLedger, result: dict[str, Any]) -> None:
+def _record_context_budget_for_tool(
+    tool_name: str, args: dict[str, Any], led: RunLedger, result: dict[str, Any]
+) -> None:
     """Record context budget metrics for a tool execution.
 
     Args:
