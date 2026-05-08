@@ -379,6 +379,75 @@ def _runtime() -> ReasoningRuntime:
     return ReasoningRuntime(_atelier_root())
 
 
+def _smart_state_path() -> Path:
+    return _atelier_root() / "smart_state.json"
+
+
+def _read_smart_state() -> dict[str, Any]:
+    path = _smart_state_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _live_savings_events_path() -> Path:
+    return _atelier_root() / "live_savings_events.jsonl"
+
+
+def _append_live_savings_event(event: dict[str, Any]) -> None:
+    path = _live_savings_events_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def _write_smart_state(state: dict[str, Any]) -> None:
+    try:
+        path = _smart_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+            pass
+
+
+def _extract_tokens_saved(result: dict[str, Any]) -> int:
+    total = 0
+    for key in ("tokens_saved", "tokens_saved_vs_naive"):
+        value = result.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            total += max(0, value)
+            continue
+        if isinstance(value, float):
+            total += int(max(0.0, value))
+            continue
+        if isinstance(value, dict):
+            total += sum(
+                int(max(0.0, float(item_value)))
+                for item_value in value.values()
+                if isinstance(item_value, (int, float)) and not isinstance(item_value, bool)
+            )
+    return total
+
+
+def _record_smart_state_savings(tokens_saved: int, calls_avoided: int) -> None:
+    if tokens_saved <= 0 and calls_avoided <= 0:
+        return
+    state = _read_smart_state()
+    savings = state.get("savings")
+    if not isinstance(savings, dict):
+        savings = {"calls_avoided": 0, "tokens_saved": 0}
+    savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
+    savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
+    state["savings"] = savings
+    _write_smart_state(state)
+
+
 _REDACTION_PLACEHOLDER_RE = re.compile(r"<redacted[^>]*>")
 
 
@@ -1145,7 +1214,7 @@ def _memory_recall(
 
 @mcp_tool(name="memory")
 def tool_memory(
-    op: Literal["block_upsert", "block_get", "archive", "recall", "summarize"],
+    op: Literal["block_upsert", "block_get", "archive", "recall", "transcript_recall", "summarize"],
     agent_id: str | None = None,
     label: str | None = None,
     value: str | None = None,
@@ -1165,7 +1234,7 @@ def tool_memory(
     since: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Memory op-dispatch: block_upsert, block_get, archive, recall, or summarize."""
+    """Memory op-dispatch: block_upsert, block_get, archive, recall, transcript_recall, or summarize."""
 
     def require(name: str, current: str | None) -> str:
         if not current:
@@ -1203,6 +1272,10 @@ def tool_memory(
             tags=tags,
             since=since,
         )
+    if op == "transcript_recall":
+        from atelier.core.capabilities.local_recall import recall_transcripts
+
+        return recall_transcripts(query=require("query", query), top_k=top_k)
     return _memory_summary(require("run_id", run_id))
 
 
@@ -1242,30 +1315,61 @@ def tool_smart_edit(
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
-    This is an *optional* Atelier augmentation.  Host-native Edit/MultiEdit
-    tools remain the default path for ordinary coding.
-
-    Each edit must have ``path`` and ``op``.  Supported ops:
-
-    - ``replace``       — requires ``old_string``, ``new_string``
-    - ``insert_after``  — requires ``anchor``, ``new_string``
-    - ``replace_range`` — requires ``line_start``, ``line_end``, ``new_string``
-
-    When ``atomic=true`` (default) any failure causes all changes to be
-    reverted.  Files are snapshotted to ``.atelier/run/<id>/batch_edit_backup/``
-    before editing and the backup is removed on success.
-
-    Safety: never deletes files; never writes outside the repo root.
+    Legacy descriptors with ``op`` are routed through the deterministic batch
+    editor. Rich descriptors with ``file_path``, notebook cell operations, or
+    overwrite semantics use the native rich editor and write each touched file
+    once after sequential in-memory edits.
     """
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    use_legacy_batch = edits and all("op" in edit and "file_path" not in edit and "cell_action" not in edit for edit in edits)
+    if not use_legacy_batch:
+        from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
+
+        return apply_rich_edits(edits, atomic=atomic, repo_root=Path(workspace))
+
     from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
 
-    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     result = apply_batch_edit(
         edits,
         atomic=atomic,
         repo_root=Path(workspace),
     )
     return result
+
+
+@mcp_tool(name="sql")
+def tool_sql(
+    action: str,
+    name: str | list[str] | None = None,
+    prefix: str | None = None,
+    sql: str | None = None,
+    queries: list[dict[str, str]] | None = None,
+    schema_name: str | None = None,
+    connection_string: str | None = None,
+    dialect: str | None = None,
+    max_rows: int = 500,
+    timeout_ms: int = 30_000,
+    auto_limit: bool = True,
+    allow_writes: bool = True,
+) -> dict[str, Any]:
+    """SQL op-dispatch for connect, schema, table, lint, and bounded query batching."""
+    from atelier.core.capabilities.tool_supervision.sql_tool import sql_tool
+
+    return sql_tool(
+        action=action,
+        name=name,
+        prefix=prefix,
+        sql=sql,
+        queries=queries,
+        schema_name=schema_name,
+        connection_string=connection_string,
+        dialect=dialect,
+        max_rows=max_rows,
+        timeout_ms=timeout_ms,
+        auto_limit=auto_limit,
+        allow_writes=allow_writes,
+        repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
+    )
 
 
 def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
@@ -1401,7 +1505,7 @@ def _memory_summary(run_id: str) -> dict[str, Any]:
 
 @mcp_tool(name="search")
 def tool_smart_search(
-    query: str,
+    query: str | None = None,
     path: str = ".",
     mode: Literal["chunks", "full", "map"] = "chunks",
     max_files: int = 10,
@@ -1409,12 +1513,58 @@ def tool_smart_search(
     include_outline: bool = True,
     seed_files: list[str] | None = None,
     budget_tokens: int = 2000,
+    content_regex: str | None = None,
+    file_glob_patterns: list[str] | None = None,
+    output_mode: Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"] = "file_paths_with_content",
+    lines_before: int = 0,
+    lines_after: int = 0,
+    ignore_case: bool = False,
+    type: str | None = None,
+    file_limit: int | None = None,
+    lines_per_file: int | None = 500,
+    if_modified_since: str | None = None,
+    max_line_length: int | None = 1000,
+    multiline: bool = False,
+    summary: bool | None = None,
 ) -> dict[str, Any]:
-    """Smart search with lexical, semantic, graph, and chunk/full/map modes.
+    """Smart search/read with ranking plus a native glob/regex media-aware mode.
 
     Pass ``query`` for query-driven search; pass ``seed_files`` with ``mode="map"``
     for repo-map mode (replaces the former atelier_repo_map tool).
     """
+    if (
+        content_regex is not None
+        or file_glob_patterns is not None
+        or type is not None
+        or if_modified_since is not None
+        or lines_before
+        or lines_after
+        or output_mode != "file_paths_with_content"
+        or summary is not None
+        or multiline
+    ):
+        from atelier.core.capabilities.tool_supervision.native_search import search_workspace
+
+        return search_workspace(
+            path=path,
+            content_regex=content_regex or query,
+            file_glob_patterns=file_glob_patterns,
+            output_mode=output_mode,
+            lines_before=lines_before,
+            lines_after=lines_after,
+            ignore_case=ignore_case,
+            type=type,
+            file_limit=file_limit or max_files,
+            lines_per_file=lines_per_file,
+            if_modified_since=if_modified_since,
+            max_line_length=max_line_length,
+            multiline=multiline,
+            summary=summary,
+            repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
+        )
+
+    if query is None:
+        raise ValueError("query is required unless native search selectors are provided")
     from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 
     return smart_search(
@@ -1518,7 +1668,35 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def _record_context_budget_for_tool(tool_name: str, led: RunLedger, result: dict[str, Any]) -> None:
+def _lever_for_tool(tool_name: str) -> str:
+    lowered = tool_name.strip().lower().replace("-", "_").replace(" ", "_")
+    if lowered in {"read", "search"} or lowered.endswith("_read") or lowered.endswith("_search"):
+        return "search_read"
+    if lowered == "edit" or lowered.endswith("_edit"):
+        return "batch_edit"
+    if lowered == "sql" or lowered.endswith("_sql"):
+        return "sql_batch"
+    if lowered == "compact" or lowered.endswith("_compact"):
+        return "compact_lifecycle"
+    if lowered == "memory" or lowered.endswith("_memory"):
+        return "scoped_recall"
+    if lowered == "reasoning" or lowered.endswith("_reasoning"):
+        return "reasonblock_inject"
+    return lowered or "unknown"
+
+
+def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    pricing = get_model_pricing(model)
+    return pricing.cost_usd(
+        input_tokens=int(savings.get("input_tokens_saved", 0) or 0),
+        output_tokens=int(savings.get("output_tokens_saved", 0) or 0),
+        cache_read_tokens=int(savings.get("cache_read_tokens_saved", 0) or 0),
+    )
+
+
+def _record_context_budget_for_tool(tool_name: str, args: dict[str, Any], led: RunLedger, result: dict[str, Any]) -> None:
     """Record context budget metrics for a tool execution.
 
     Args:
@@ -1528,24 +1706,63 @@ def _record_context_budget_for_tool(tool_name: str, led: RunLedger, result: dict
     """
     try:
         recorder = _get_context_budget_recorder()
+        from atelier.core.capabilities.plugin_runtime import compute_live_savings, equivalent_calls
+
+        model = str(getattr(led, "model", "") or os.environ.get("ATELIER_MODEL") or "_default")
+        equivalent = equivalent_calls(tool_name, args if isinstance(args, dict) else {})
+        live_savings = compute_live_savings(equivalent, model=model)
+        live_tokens_saved = (
+            int(live_savings.get("input_tokens_saved", 0) or 0)
+            + int(live_savings.get("output_tokens_saved", 0) or 0)
+            + int(live_savings.get("cache_read_tokens_saved", 0) or 0)
+            + int(live_savings.get("cache_write_tokens_saved", 0) or 0)
+        )
+        tool_tokens_saved = _extract_tokens_saved(result)
+        tokens_saved = live_tokens_saved + tool_tokens_saved
+        calls_avoided = int(live_savings.get("calls_saved", 0) or 0)
+        lever = _lever_for_tool(tool_name)
 
         # Extract lever_savings from result if present, otherwise use empty dict
         lever_savings = result.get("tokens_saved", {})
         if not isinstance(lever_savings, dict):
-            lever_savings = {}
+            lever_savings = {tool_name: tokens_saved} if tokens_saved > 0 else {}
+        if tokens_saved > 0:
+            lever_savings[lever] = int(lever_savings.get(lever, 0) or 0) + tokens_saved
+
+        _record_smart_state_savings(tokens_saved=tokens_saved, calls_avoided=calls_avoided)
+        if calls_avoided > 0 or tokens_saved > 0:
+            _append_live_savings_event(
+                {
+                    "at": datetime.now(UTC).isoformat(),
+                    "run_id": led.run_id,
+                    "agent": led.agent or _detect_agent(),
+                    "tool_name": tool_name,
+                    "lever": lever,
+                    "equivalent_baseline_calls": equivalent,
+                    "calls_saved": calls_avoided,
+                    "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
+                    "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
+                    "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
+                    "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
+                    "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                    "tool_tokens_saved": tool_tokens_saved,
+                    "tokens_saved": tokens_saved,
+                    "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
+                    "model": model,
+                }
+            )
 
         # Record the tool execution metrics
-        # Note: actual token counts would come from the LLM provider
-        # For now we record with placeholder values
+        actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
         recorder.record(
             run_id=led.run_id,
-            turn_index=getattr(led, "turn_index", 0),
-            model=getattr(led, "model", "unknown"),
+            turn_index=max(0, len(led.events) - 1),
+            model=model,
             input_tokens=0,
             cache_read_tokens=0,
             cache_write_tokens=0,
-            output_tokens=0,
-            naive_input_tokens=0,
+            output_tokens=actual_output_tokens,
+            naive_input_tokens=actual_output_tokens + tokens_saved,
             lever_savings=lever_savings,
             tool_calls=1,
         )
@@ -1617,7 +1834,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             rtc.persist()
 
             # Record context budget metrics
-            _record_context_budget_for_tool(name, led, result)
+            _record_context_budget_for_tool(name, args if isinstance(args, dict) else {}, led, result)
 
             with contextlib.suppress(Exception):
                 from atelier.core.service.telemetry import emit_product
