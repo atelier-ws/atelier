@@ -40,7 +40,7 @@ A Letta-derived editable core-memory block. Lives in the prompt or is recalled i
 | Field                     | Type                                                     | Required | Default                  | Notes                                                                              |
 | ------------------------- | -------------------------------------------------------- | -------- | ------------------------ | ---------------------------------------------------------------------------------- |
 | `id`                    | `str`                                                  | yes      | —                       | Format: `mem-<uuid7>`                                                            |
-| `agent_id`              | `str`                                                  | yes      | —                       | Logical agent name (e.g. `atelier:code`, `beseam.shopify`)                     |
+| `agent_id`              | `str`                                                  | yes      | —                       | Logical agent name (e.g. `atelier:code`, `legacy.external-agent`)              |
 | `label`                 | `str`                                                  | yes      | —                       | Human-readable; unique per `(agent_id, label)`                                   |
 | `value`                 | `str`                                                  | yes      | —                       | Body text                                                                          |
 | `limit_chars`           | `int`                                                  | no       | `8000`                 | Hard cap; writes that exceed it are rejected                                       |
@@ -139,7 +139,7 @@ A draft ReasonBlock-or-rubric-edit waiting for human review.
 | Field                         | Type                                           | Required | Notes                                                                |
 | ----------------------------- | ---------------------------------------------- | -------- | -------------------------------------------------------------------- |
 | `id`                        | `str`                                        | yes      | `lc-<uuid7>`                                                       |
-| `domain`                    | `str`                                        | yes      | E.g. `beseam.shopify.publish`                                      |
+| `domain`                    | `str`                                        | yes      | E.g. `state.change`                                                |
 | `cluster_fingerprint`       | `str`                                        | yes      | Same as `FailureCluster.fingerprint` if derived from one          |
 | `kind`                      | `Literal["new_block","edit_block","new_rubric_check"]` | yes |                                                                      |
 | `target_id`                 | `str \| None`                                | no       | Existing block/rubric ID if `edit_*`                               |
