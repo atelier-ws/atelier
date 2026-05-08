@@ -1,4 +1,4 @@
-"""Deterministic batch-edit executor (WP-22 — wozcode lever 2).
+"""Deterministic batch-edit executor (WP-22).
 
 Applies many mechanical edits across many files in one explicit call.
 This is an *optional* Atelier augmentation; it does not intercept or replace

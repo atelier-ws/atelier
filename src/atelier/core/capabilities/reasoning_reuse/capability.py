@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 from collections import Counter
 from datetime import UTC, datetime
@@ -10,14 +11,23 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import (
     ScoredBlock,
     TaskContext,
     deduplicate_by_reasonblock,
     pack_by_reasonblock_token_budget,
     retrieve,
+    score_block,
 )
 from atelier.core.foundation.store import ReasoningStore
+from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.storage.vector import (
+    cosine_similarity,
+    get_cached_embedding,
+    put_cached_embedding,
+    vector_cache_key,
+)
 
 from .dead_ends import DeadEndTracker
 
@@ -69,12 +79,57 @@ _ANN_BOOST = 0.15
 _ADAPTIVE_MIN_MULTIPLIER = 0.90
 _ADAPTIVE_MAX_MULTIPLIER = 1.10
 _VECTOR_DIM = 128
+_TRACE_ENV = "ATELIER_RETRIEVAL_TRACE"
+_BASE_RETRIEVER_MIN_SCORE = 0.0
+_RETRIEVER_VERSION = 2
 
 
 def _tokenise(text: str) -> list[str]:
     """Tokenise with camelCase splitting for higher recall."""
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _retrieval_query_text(
+    *,
+    task: str,
+    domain: str | None,
+    files: list[str] | None,
+    tools: list[str] | None,
+    errors: list[str] | None,
+) -> str:
+    file_names = [Path(path_text).name for path_text in (files or []) if path_text]
+    parts = [
+        task,
+        domain or "",
+        " ".join(file_names),
+        " ".join(tools or []),
+        " ".join(errors or []),
+    ]
+    return " ".join(part.strip() for part in parts if part and part.strip())
+
+
+def _bm25_document_text(block: ReasonBlock) -> str:
+    return " ".join(
+        [
+            block.title,
+            block.title,
+            block.domain,
+            " ".join(block.triggers),
+            block.situation,
+            " ".join(block.failure_signals),
+            " ".join(block.dead_ends),
+            " ".join(block.procedure),
+        ]
+    )
+
+
+def _fts_query_text(*, task: str, errors: list[str] | None) -> str:
+    phrases = [task.strip(), *[error.strip() for error in (errors or []) if error.strip()]]
+    phrases = [phrase for phrase in phrases if phrase]
+    if not phrases:
+        return ""
+    return max(phrases, key=len)
 
 
 def _build_idf(docs: list[list[str]]) -> dict[str, float]:
@@ -153,8 +208,7 @@ def _hash_vector(tokens: list[str], *, dim: int = _VECTOR_DIM) -> list[float]:
 
 
 def _cosine_distance(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    return max(0.0, 1.0 - dot)
+    return max(0.0, 1.0 - cosine_similarity(a, b))
 
 
 class _AdaptivePriorTracker:
@@ -213,6 +267,8 @@ class ReasoningReuseCapability:
         self._root = Path(root)
         self._dead_ends = DeadEndTracker()
         self._adaptive_priors = _AdaptivePriorTracker()
+        self._embedder = make_embedder()
+        self._last_retrieval_trace: dict[str, Any] | None = None
         # Savings tracker for finalize() reporting
         self._avoided_failures = 0
         self._avoided_tool_calls = 0
@@ -246,6 +302,63 @@ class ReasoningReuseCapability:
                 active.append(b)
                 domain_seen.add(b.id)
         return active
+
+    def last_retrieval_trace(self) -> dict[str, Any] | None:
+        return self._last_retrieval_trace
+
+    def _query_vector(self, *, task: str, errors: list[str] | None) -> list[float]:
+        query_text = (
+            task.strip()
+            if not errors
+            else _retrieval_query_text(
+                task=task,
+                domain=None,
+                files=None,
+                tools=None,
+                errors=errors,
+            )
+        )
+        if not query_text:
+            return []
+
+        try:
+            vectors = self._embedder.embed([query_text])
+        except Exception:
+            vectors = [[]]
+
+        if vectors and vectors[0]:
+            return vectors[0]
+        return _hash_vector(_tokenise(query_text))
+
+    def _block_vectors(self, blocks: list[ReasonBlock]) -> dict[str, list[float]]:
+        embedder_name = getattr(self._embedder, "name", self._embedder.__class__.__name__)
+        vectors_by_id: dict[str, list[float]] = {}
+        uncached: list[tuple[ReasonBlock, str, str]] = []
+
+        for block in blocks:
+            rendered = render_block_for_agent(block)
+            cache_key = vector_cache_key(block.id, rendered)
+            cached = get_cached_embedding(self._root, cache_key=cache_key, embedder_name=embedder_name)
+            if cached is not None:
+                vectors_by_id[block.id] = cached
+                continue
+            uncached.append((block, rendered, cache_key))
+
+        embedded: list[list[float]] = []
+        if uncached:
+            try:
+                embedded = self._embedder.embed([rendered for _block, rendered, _cache_key in uncached])
+            except Exception:
+                embedded = [[] for _ in uncached]
+
+        for idx, (block, rendered, cache_key) in enumerate(uncached):
+            vector = embedded[idx] if idx < len(embedded) else []
+            if not vector:
+                vector = _hash_vector(_tokenise(rendered))
+            vectors_by_id[block.id] = vector
+            put_cached_embedding(self._root, cache_key=cache_key, embedder_name=embedder_name, vector=vector)
+
+        return vectors_by_id
 
     # ------------------------------------------------------------------
     # Primary ranking: Reciprocal Rank Fusion + rescue boost + Bayesian score
@@ -281,22 +394,74 @@ class ReasoningReuseCapability:
             tools=tools or [],
             errors=errors or [],
         )
+        trace_enabled = os.environ.get(_TRACE_ENV, "").lower() in ("1", "true", "yes")
+        self._last_retrieval_trace = None
 
         all_blocks = self._all_active_blocks()
         if not all_blocks:
             return []
 
-        # Expand query: task text + error phrases (first 200 chars each)
-        error_text = " ".join(e[:200] for e in (errors or []))
-        query_tokens = _tokenise(task + " " + error_text)
+        query_text = _retrieval_query_text(
+            task=task,
+            domain=domain,
+            files=files,
+            tools=tools,
+            errors=errors,
+        )
+        query_vector = self._query_vector(task=task, errors=errors)
+        block_vectors = self._block_vectors(all_blocks)
+        vector_scores = {
+            block_id: cosine_similarity(query_vector, vector)
+            for block_id, vector in block_vectors.items()
+            if query_vector and vector
+        }
+
+        trace_blocks: dict[str, ReasonBlock] = {}
+        trace_reasons: dict[str, set[str]] = {}
+        base_probe_scores: dict[str, float] = {}
+        bm25_score_lookup: dict[str, float] = {}
+        base_probe_candidate_ids: set[str] = set()
+
+        if trace_enabled:
+            for block in self._store.list_blocks():
+                trace_blocks.setdefault(block.id, block)
+            for block in self._domain_blocks():
+                trace_blocks.setdefault(block.id, block)
+
+            for block_id, block in trace_blocks.items():
+                trace_reasons[block_id] = set()
+                if block.status == "quarantined":
+                    trace_reasons[block_id].add("quarantined")
+
+            base_query = query_text
+            base_candidates: list[ReasonBlock] = []
+            if base_query:
+                base_candidates.extend(self._store.search_blocks(base_query, limit=50))
+            if ctx.domain:
+                base_candidates.extend(self._store.list_blocks(domain=ctx.domain))
+
+            seen_probe: set[str] = set()
+            unique_probe: list[ReasonBlock] = []
+            for block in base_candidates:
+                if block.id in seen_probe:
+                    continue
+                if block.status in ("quarantined", "deprecated"):
+                    continue
+                seen_probe.add(block.id)
+                unique_probe.append(block)
+
+            base_probe = [score_block(block, ctx) for block in unique_probe]
+            base_probe_candidate_ids = {entry.block.id for entry in base_probe}
+            base_probe_scores = {entry.block.id: entry.score for entry in base_probe}
+            for block_id, score in base_probe_scores.items():
+                if score < _BASE_RETRIEVER_MIN_SCORE:
+                    trace_reasons.setdefault(block_id, set()).add("sub_min_score")
+
+        error_text = " ".join(errors or [])
+        query_tokens = _tokenise(query_text)
 
         # BM25 scoring
-        doc_tokens_map = {
-            b.id: _tokenise(
-                f"{b.title} {b.title} {b.domain} {' '.join(b.triggers)} " f"{b.situation} {' '.join(b.failure_signals)}"
-            )
-            for b in all_blocks
-        }
+        doc_tokens_map = {b.id: _tokenise(_bm25_document_text(b)) for b in all_blocks}
         avg_len = sum(len(v) for v in doc_tokens_map.values()) / max(1, len(doc_tokens_map))
         idf = _build_idf(list(doc_tokens_map.values()))
 
@@ -305,22 +470,29 @@ class ReasoningReuseCapability:
             key=lambda x: x[1],
             reverse=True,
         )
+        bm25_score_lookup = {bid: score for bid, score in bm25_scored}
+        bm25_rank_trace: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(bm25_scored, start=1)}
 
         # FTS scoring (reciprocal rank from store)
-        fts_blocks = self._store.search_blocks(task, limit=max(limit * 5, 30))
+        fts_blocks = self._store.search_blocks(_fts_query_text(task=task, errors=errors), limit=max(limit * 5, 30))
         fts_rank: dict[str, int] = {b.id: rank for rank, b in enumerate(fts_blocks)}
+        fts_rank_trace: dict[str, int] = {b.id: rank for rank, b in enumerate(fts_blocks, start=1)}
 
         # Base retriever scoring (domain / trigger matching)
         learned = retrieve(
             self._store,
             ctx,
             limit=max(limit * 3, 20),
+            min_score=_BASE_RETRIEVER_MIN_SCORE,
+            vector_scores=vector_scores,
+            use_vector_weights=True,
             dedup=dedup,
             token_budget=token_budget,
         )
         base_scores: dict[str, float] = {item.block.id: item.score for item in learned}
         base_ranked = sorted(base_scores.items(), key=lambda x: x[1], reverse=True)
         base_rank: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked)}
+        base_rank_trace: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked, start=1)}
 
         # RRF fusion — merge three rank lists
         block_map: dict[str, ReasonBlock] = {b.id: b for b in all_blocks}
@@ -338,31 +510,33 @@ class ReasoningReuseCapability:
 
         results: list[_HybridResult] = []
         for bid, rrf in rrf_scores.items():
-            block = block_map.get(bid)
-            if block is None:
+            matched_block = block_map.get(bid)
+            if matched_block is None:
                 continue
 
             is_rescue = bool(
-                errors and block.failure_signals and any(fs.lower() in error_text_lower for fs in block.failure_signals)
+                errors
+                and matched_block.failure_signals
+                and any(fs.lower() in error_text_lower for fs in matched_block.failure_signals)
             )
 
             # Combine: RRF (rank quality) x recency x Bayesian success
             # + rescue boost when error signals match
-            quality = _bayesian_success(block) * _recency_score(block)
+            quality = 0.8 + (0.4 * _bayesian_success(matched_block) * _recency_score(matched_block))
             final = rrf * quality
             if is_rescue:
                 final = min(final + _RESCUE_BOOST, 1.0)
 
             results.append(
                 _HybridResult(
-                    block=block,
+                    block=matched_block,
                     fts_score=1.0 / (_RRF_K + fts_rank.get(bid, len(all_blocks))),
                     bm25_score=_bm25(query_tokens, doc_tokens_map.get(bid, []), idf, avg_len=avg_len),
-                    recency_score=_recency_score(block),
-                    success_score=_bayesian_success(block),
+                    recency_score=_recency_score(matched_block),
+                    success_score=_bayesian_success(matched_block),
                     final_score=final,
                     rescue=is_rescue,
-                    dead_ends=list(block.dead_ends),
+                    dead_ends=list(matched_block.dead_ends),
                 )
             )
 
@@ -371,7 +545,7 @@ class ReasoningReuseCapability:
 
         self._apply_adaptive_priors(results)
         self._apply_graph_propagation(results)
-        self._apply_ann_reranking(results, query_tokens=query_tokens)
+        self._apply_ann_reranking(results, query_vector=query_vector, block_vectors=block_vectors)
         results.sort(key=lambda r: r.final_score, reverse=True)
 
         if dedup:
@@ -404,12 +578,88 @@ class ReasoningReuseCapability:
 
             selected.append(best)
 
+        mmr_selected = list(selected)
         selected = pack_by_reasonblock_token_budget(
             selected,
             lambda item: item.block,
             limit=limit,
             token_budget=token_budget,
         )
+
+        if trace_enabled:
+            mmr_selected_ids = {item.block.id for item in mmr_selected}
+            final_ids = [item.block.id for item in selected]
+            final_rank = {block_id: rank for rank, block_id in enumerate(final_ids, start=1)}
+            result_rank = {item.block.id: rank for rank, item in enumerate(results, start=1)}
+
+            for item in results:
+                if item.block.id not in mmr_selected_ids:
+                    trace_reasons.setdefault(item.block.id, set()).add("mmr_suppressed")
+            for item in mmr_selected:
+                if item.block.id not in final_rank:
+                    trace_reasons.setdefault(item.block.id, set()).add("token_budget_evicted")
+
+            if ctx.domain:
+                domain_prefix = ctx.domain.split(".")[0]
+                for block_id, block in trace_blocks.items():
+                    if block.status == "quarantined":
+                        continue
+                    if block_id in fts_rank or block_id in base_rank:
+                        continue
+                    if block.domain == ctx.domain or block.domain.startswith(domain_prefix):
+                        continue
+                    trace_reasons.setdefault(block_id, set()).add("wrong_domain")
+
+            trace_candidates: list[dict[str, Any]] = []
+            for block_id, block in trace_blocks.items():
+                bm25_rank_value = bm25_rank_trace.get(block_id)
+                fts_rank_value = fts_rank_trace.get(block_id)
+                base_rank_value = base_rank_trace.get(block_id)
+                trace_candidates.append(
+                    {
+                        "block_id": block_id,
+                        "domain": block.domain,
+                        "status": block.status,
+                        "final_rank": final_rank.get(block_id),
+                        "result_rank": result_rank.get(block_id),
+                        "bm25_rank": bm25_rank_value,
+                        "fts_rank": fts_rank_value,
+                        "base_rank": base_rank_value,
+                        "bm25_score": round(float(bm25_score_lookup.get(block_id, 0.0)), 6),
+                        "base_probe_score": round(float(base_probe_scores.get(block_id, 0.0)), 6),
+                        "rrf": round(float(rrf_scores.get(block_id, 0.0)), 6),
+                        "rrf_contributions": {
+                            "bm25": round(0.0 if bm25_rank_value is None else 1.0 / (_RRF_K + bm25_rank_value - 1), 6),
+                            "fts": round(0.0 if fts_rank_value is None else 1.0 / (_RRF_K + fts_rank_value - 1), 6),
+                            "base": round(0.0 if base_rank_value is None else 1.0 / (_RRF_K + base_rank_value - 1), 6),
+                        },
+                        "drop_reasons": sorted(trace_reasons.get(block_id, set())),
+                    }
+                )
+
+            trace_candidates.sort(
+                key=lambda item: (
+                    item["final_rank"] is None,
+                    item["final_rank"] or item["result_rank"] or 10_000,
+                    -(item["rrf"]),
+                    item["block_id"],
+                )
+            )
+
+            self._last_retrieval_trace = {
+                "retriever_version": _RETRIEVER_VERSION,
+                "query": {
+                    "task": task,
+                    "domain": domain,
+                    "files": list(files or []),
+                    "tools": list(tools or []),
+                    "errors": list(errors or []),
+                },
+                "candidate_count": len(all_blocks),
+                "base_probe_candidate_count": len(base_probe_candidate_ids),
+                "final_block_ids": final_ids,
+                "candidates": trace_candidates,
+            }
 
         for picked in selected:
             self._adaptive_priors.observe(picked.block.domain, picked.success_score)
@@ -457,10 +707,15 @@ class ReasoningReuseCapability:
             item.graph_score = norm
             item.final_score += _GRAPH_BOOST * norm
 
-    def _apply_ann_reranking(self, results: list[Any], *, query_tokens: list[str]) -> None:
-        if not results or not query_tokens:
+    def _apply_ann_reranking(
+        self,
+        results: list[Any],
+        *,
+        query_vector: list[float],
+        block_vectors: dict[str, list[float]],
+    ) -> None:
+        if not results or not query_vector:
             return
-        query_vec = _hash_vector(query_tokens)
         candidate_count = min(len(results), 80)
         candidates = results[:candidate_count]
 
@@ -468,21 +723,17 @@ class ReasoningReuseCapability:
             index = HNSW(distance_func=_cosine_distance)
             vectors_by_id: dict[str, list[float]] = {}
             for item in candidates:
-                tokens = _tokenise(
-                    " ".join(
-                        [
-                            item.block.title,
-                            item.block.situation,
-                            " ".join(item.block.triggers),
-                            " ".join(item.block.failure_signals),
-                        ]
-                    )
-                )
                 item.ann_score = 0.0
-                vectors_by_id[item.block.id] = _hash_vector(tokens)
+                vector = block_vectors.get(item.block.id)
+                if not vector:
+                    continue
+                vectors_by_id[item.block.id] = vector
                 index.insert(item.block.id, vectors_by_id[item.block.id])
 
-            nearest = index.query(query_vec, k=min(len(candidates), 25))
+            if not vectors_by_id:
+                return
+
+            nearest = index.query(query_vector, k=min(len(vectors_by_id), 25))
             max_sim = 0.0
             sim_map: dict[str, float] = {}
             for candidate_id, dist in nearest:
@@ -500,18 +751,10 @@ class ReasoningReuseCapability:
 
         scored: list[tuple[float, Any]] = []
         for item in candidates:
-            tokens = _tokenise(
-                " ".join(
-                    [
-                        item.block.title,
-                        item.block.situation,
-                        " ".join(item.block.triggers),
-                        " ".join(item.block.failure_signals),
-                    ]
-                )
-            )
-            vec = _hash_vector(tokens)
-            sim = max(0.0, 1.0 - _cosine_distance(query_vec, vec))
+            vec = block_vectors.get(item.block.id)
+            if not vec:
+                continue
+            sim = cosine_similarity(query_vector, vec)
             scored.append((sim, item))
         max_sim = max((s for s, _ in scored), default=1.0) or 1.0
         for sim, item in scored:

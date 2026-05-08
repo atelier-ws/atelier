@@ -8,12 +8,12 @@ depends_on: []
 status: done
 ---
 
-# WP-11 — AST-aware truncation (wozcode 3)
+# WP-11 — AST-aware truncation
 
 ## Why
 
-Wozcode reports **40-60 % fewer tokens read** when large TS/JS files are returned as signatures
-during exploration and only expanded once narrowed. We extend the existing `semantic_file_memory`
+Large TS/JS files can use **40-60 % fewer tokens read** when returned as signatures during
+exploration and only expanded once narrowed. We extend the existing `semantic_file_memory`
 capability to do the same for Python and TypeScript. Tree-sitter is already a dep.
 
 ## Files touched

@@ -225,6 +225,33 @@ export interface SavingsByDay {
   actual: number;
 }
 
+export interface SavingsSource {
+  lever: string;
+  tool_name: string;
+  calls_saved: number;
+  tokens_saved: number;
+  cost_saved_usd: number;
+  time_saved_ms: number;
+}
+
+export interface SavingsBenchmark {
+  run_id: string;
+  model: string;
+  n_prompts: number;
+  total_tokens_baseline: number;
+  total_tokens_atelier: number;
+  tokens_saved: number;
+  reduction_pct: number;
+  total_cost_baseline_usd: number;
+  total_cost_atelier_usd: number;
+  cost_saved_usd: number;
+  total_time_baseline_ms: number;
+  total_time_atelier_ms: number;
+  time_saved_ms: number;
+  baseline_success_rate: number;
+  atelier_success_rate: number;
+}
+
 export interface SavingsSummaryV2 {
   window_days: number;
   total_naive_tokens: number;
@@ -237,6 +264,11 @@ export interface SavingsSummaryV2 {
   would_have_cost_usd?: number;
   actually_cost_usd?: number;
   total_calls?: number;
+  live_calls_saved?: number;
+  live_time_saved_ms?: number;
+  live_saved_usd?: number;
+  top_sources?: SavingsSource[];
+  latest_benchmark?: SavingsBenchmark | null;
 }
 
 export interface CallEntry {

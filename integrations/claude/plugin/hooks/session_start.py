@@ -26,8 +26,9 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import suppress
 from pathlib import Path
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # State helpers
@@ -39,17 +40,18 @@ def _session_state_path() -> Path:
     return Path(workspace) / ".atelier" / "session_state.json"
 
 
-def _read_session_state() -> dict:  # type: ignore[type-arg]
+def _read_session_state() -> dict[str, Any]:
     p = _session_state_path()
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text("utf-8"))  # type: ignore[no-any-return]
+        data = json.loads(p.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
 
-def _write_session_state(updates: dict) -> None:  # type: ignore[type-arg]
+def _write_session_state(updates: dict[str, Any]) -> None:
     p = _session_state_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     state = _read_session_state()
@@ -70,6 +72,42 @@ def _atelier_root() -> Path:
 
 def _active_run_id() -> str | None:
     return _read_session_state().get("active_run_id")
+
+
+def _claude_settings_path() -> Path:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir) / "settings.json"
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _apply_session_bootstrap(payload: dict[str, Any]) -> bool:
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not plugin_root:
+        return False
+    try:
+        from atelier.core.capabilities.plugin_runtime import apply_session_start_files
+    except Exception:
+        return False
+    with suppress(Exception):
+        apply_session_start_files(
+            _atelier_root(),
+            plugin_root,
+            config_dir=_claude_settings_path().parent,
+            payload=payload,
+            current_version=os.environ.get("ATELIER_VERSION", "0.0.0"),
+        )
+        return True
+    return False
+
+
+def _initialize_session_stats(payload: dict[str, Any]) -> None:
+    try:
+        from atelier.core.capabilities.plugin_runtime import update_session_stats
+
+        update_session_stats(_atelier_root(), payload)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +133,11 @@ def _append_session_start_event(
     except Exception:
         return
 
-    events: list[dict] = data.setdefault("events", [])  # type: ignore[assignment]
+    events: list[dict[str, Any]] = data.setdefault("events", [])
     events.append(
         {
             "kind": "note",
-            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "at": datetime.datetime.now(datetime.UTC).isoformat(),
             "summary": f"session {source} — {model or 'unknown model'}",
             "payload": {
                 "session_id": session_id,
@@ -127,10 +165,8 @@ def _append_session_start_event(
         Path(tmp_path).replace(run_file)
     except Exception:
         if tmp_path:
-            try:
+            with suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -153,15 +189,16 @@ def main() -> int:
     try:
         # Write session_id to session_state so other hooks/Stop can use it
         if session_id:
-            _write_session_state({"session_id": session_id})
+            _write_session_state({"session_id": session_id, "atelier_root": str(_atelier_root())})
+
+        if not _apply_session_bootstrap(payload):
+            _initialize_session_stats(payload)
 
         run_id = _active_run_id()
         if not run_id:
             return 0
 
-        _append_session_start_event(
-            run_id, session_id, source, model, cwd, transcript_path
-        )
+        _append_session_start_event(run_id, session_id, source, model, cwd, transcript_path)
     except Exception:
         pass  # fail-open
 

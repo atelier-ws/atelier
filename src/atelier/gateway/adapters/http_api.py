@@ -27,14 +27,17 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from atelier.core.foundation.paths import default_store_root, resolve_workspace_root
 from atelier.core.foundation.environments import load_environments_from_dir
+from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.foundation.models import (
     CommandRecord,
     Environment,
@@ -63,8 +66,8 @@ from atelier.infra.runtime.cost_tracker import CostTracker
 # Configuration                                                               #
 # --------------------------------------------------------------------------- #
 
-DEFAULT_WORKSPACE = Path(os.environ.get("ATELIER_WORKSPACE_ROOT", ".")).resolve()
-DEFAULT_STORE_ROOT = Path(os.environ.get("ATELIER_STORE_ROOT", DEFAULT_WORKSPACE / ".atelier")).resolve()
+DEFAULT_WORKSPACE = resolve_workspace_root()
+DEFAULT_STORE_ROOT = Path(os.environ.get("ATELIER_STORE_ROOT", str(default_store_root()))).resolve()
 DEFAULT_ENV_DIR = Path(
     os.environ.get(
         "ATELIER_ENV_DIR",
@@ -195,6 +198,35 @@ class CallEntry(BaseModel):
     at: str
 
 
+class MemoryUpsertRequest(BaseModel):
+    agent_id: str
+    label: str
+    value: str
+    limit_chars: int = 8000
+    description: str = ""
+    read_only: bool = False
+    pinned: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    expected_version: int | None = None
+    actor: str | None = None
+
+
+class MemoryArchiveRequest(BaseModel):
+    agent_id: str
+    text: str
+    source: str
+    source_ref: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class MemoryRecallRequest(BaseModel):
+    agent_id: str
+    query: str
+    top_k: int = 5
+    tags: list[str] = Field(default_factory=list)
+    since: str | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Token / cost estimators                                                     #
 # --------------------------------------------------------------------------- #
@@ -293,6 +325,10 @@ def create_app(
     analyzer = FailureAnalyzer(runs_dir)
     env_directory = env_dir or DEFAULT_ENV_DIR
     cost_tracker = CostTracker(store_root or DEFAULT_STORE_ROOT)
+
+    from atelier.infra.storage.factory import make_memory_store
+
+    mem_store = make_memory_store(store_root or DEFAULT_STORE_ROOT)
 
     app = FastAPI(
         title="Atelier Reasoning Runtime API",
@@ -589,6 +625,100 @@ def create_app(
         # Sort by 'at' descending
         all_calls.sort(key=lambda x: x.get("at", ""), reverse=True)
         return all_calls[:limit]
+
+    # ------------------------------------------------------------------ #
+    # Memory routes (/v1/memory/*)                                       #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/v1/memory/blocks", response_model=list[MemoryBlock] | MemoryBlock | None)
+    def memory_blocks(
+        agent_id: str = Query(...),
+        label: str | None = Query(None),
+        include_tombstoned: bool = Query(False),
+        limit: int = Query(200, ge=1, le=2000),
+    ) -> Any:
+        """List all memory blocks for an agent, or get a single block by label."""
+        if label is not None:
+            return mem_store.get_block(agent_id, label, include_tombstoned=include_tombstoned)
+        return mem_store.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
+
+    @app.post("/v1/memory/blocks", response_model=MemoryBlock)
+    def memory_upsert(req: MemoryUpsertRequest) -> MemoryBlock:
+        """Create or update a memory block (optimistic-locking via expected_version)."""
+        from atelier.infra.storage.memory_store import MemoryConcurrencyError
+
+        existing = mem_store.get_block(req.agent_id, req.label)
+        if existing is None:
+            block = MemoryBlock(
+                agent_id=req.agent_id,
+                label=req.label,
+                value=req.value,
+                limit_chars=req.limit_chars,
+                description=req.description,
+                read_only=req.read_only,
+                pinned=req.pinned,
+                metadata=req.metadata,
+            )
+        else:
+            if req.expected_version is not None and existing.version != req.expected_version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"version conflict: expected {req.expected_version}, got {existing.version}",
+                )
+            block = existing.model_copy(
+                update={
+                    "value": req.value,
+                    "limit_chars": req.limit_chars,
+                    "description": req.description,
+                    "read_only": req.read_only,
+                    "pinned": req.pinned,
+                    "metadata": req.metadata,
+                }
+            )
+        try:
+            return mem_store.upsert_block(block, actor=req.actor or f"api:{req.agent_id}")
+        except MemoryConcurrencyError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    @app.post("/v1/memory/archive")
+    def memory_archive(req: MemoryArchiveRequest) -> dict[str, Any]:
+        """Archive a text passage into long-term memory."""
+        import hashlib
+
+        from atelier.core.foundation.memory_models import ArchivalSource
+
+        src: ArchivalSource = req.source if req.source in ("trace", "block_evict", "user", "tool_output", "file_chunk") else "user"  # type: ignore[assignment]
+        dedup_hash = hashlib.sha256(f"{req.agent_id}:{req.text}".encode()).hexdigest()[:32]
+        passage = ArchivalPassage(
+            agent_id=req.agent_id,
+            text=req.text,
+            source=src,
+            source_ref=req.source_ref,
+            tags=req.tags,
+            dedup_hash=dedup_hash,
+        )
+        saved = mem_store.insert_passage(passage)
+        return {"id": saved.id, "dedup_hit": saved.dedup_hit}
+
+    @app.post("/v1/memory/recall")
+    def memory_recall(req: MemoryRecallRequest) -> dict[str, Any]:
+        """Recall relevant archived passages for a query."""
+        from datetime import datetime
+
+        since_dt: datetime | None = None
+        if req.since:
+            try:
+                since_dt = datetime.fromisoformat(req.since).replace(tzinfo=UTC)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"invalid since format: {req.since!r}") from None
+        passages = mem_store.search_passages(
+            req.agent_id,
+            req.query,
+            top_k=req.top_k,
+            tags=req.tags or None,
+            since=since_dt,
+        )
+        return {"passages": [p.model_dump(mode="json") for p in passages]}
 
     return app
 

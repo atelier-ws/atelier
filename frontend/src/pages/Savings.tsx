@@ -12,6 +12,14 @@ const usdFmt = new Intl.NumberFormat("en-US", {
 
 const fmt = new Intl.NumberFormat();
 
+function toTitle(label: string): string {
+  return label
+    .split(/[_\s:-]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function Sparkline({ values }: { values: number[] }) {
   if (values.length === 0) return null;
   const width = 240;
@@ -64,7 +72,8 @@ export default function Savings() {
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!data) return <div className="text-neutral-500">Loading…</div>;
 
-  const hasData = data.total_naive_tokens > 0;
+  const latestBenchmark = data.latest_benchmark ?? null;
+  const hasData = data.total_naive_tokens > 0 || latestBenchmark !== null;
   const sortedLevers = Object.entries(data.per_lever)
     .sort((a, b) => b[1] - a[1])
     .map(([label, value]) => ({ label, value }));
@@ -73,6 +82,7 @@ export default function Savings() {
     return Math.max(0, Math.round((1 - d.actual / d.naive) * 100));
   });
   const maxLever = sortedLevers[0]?.value ?? 0;
+  const topSources = data.top_sources ?? [];
 
   return (
     <div className="space-y-8">
@@ -121,18 +131,20 @@ export default function Savings() {
           <div className="text-2xl font-semibold text-neutral-200">
             {usdFmt.format(data.actually_cost_usd ?? 0)}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
-            would have been {usdFmt.format(data.would_have_cost_usd ?? 0)}
+            <div className="text-xs text-neutral-500 mt-1">
+              live estimate {usdFmt.format(data.live_saved_usd ?? 0)}
+            </div>
           </div>
-        </div>
         <div className="border border-neutral-800 bg-neutral-950/50 p-4">
           <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400/70 mb-1">
-            Total Calls
+            Calls Saved
           </div>
           <div className="text-2xl font-semibold text-neutral-200">
-            {fmt.format(data.total_calls ?? 0)}
+            {fmt.format(data.live_calls_saved ?? 0)}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">LLM calls tracked</div>
+          <div className="text-xs text-neutral-500 mt-1">
+            {fmt.format(data.total_calls ?? 0)} LLM calls tracked
+          </div>
         </div>
         <div className="border border-neutral-800 bg-neutral-950/50 p-4">
           <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400/70 mb-1">
@@ -167,7 +179,105 @@ export default function Savings() {
             </div>
           </section>
 
-          <SavingsTimeChart data={data.by_day} />
+            <SavingsTimeChart data={data.by_day} />
+
+          {latestBenchmark && (
+            <section className="border border-cyan-900/50 bg-cyan-950/20 p-5">
+              <h2 className="text-xs uppercase tracking-widest font-mono text-cyan-300 mb-4">
+                Latest paired benchmark
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    Token reduction
+                  </div>
+                  <div className="text-2xl font-semibold text-cyan-200">
+                    {latestBenchmark.reduction_pct.toFixed(1)}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    Cost saved
+                  </div>
+                  <div className="text-2xl font-semibold text-emerald-300">
+                    {usdFmt.format(latestBenchmark.cost_saved_usd)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    Tasks
+                  </div>
+                  <div className="text-2xl font-semibold text-neutral-200">
+                    {fmt.format(latestBenchmark.n_prompts)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    Success
+                  </div>
+                  <div className="text-2xl font-semibold text-neutral-200">
+                    {(latestBenchmark.atelier_success_rate * 100).toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-neutral-500">
+                Real paired command run: baseline{" "}
+                {fmt.format(latestBenchmark.total_tokens_baseline)} tokens vs
+                Atelier-enabled{" "}
+                {fmt.format(latestBenchmark.total_tokens_atelier)} tokens.
+              </p>
+            </section>
+          )}
+
+          {topSources.length > 0 && (
+            <section className="border border-neutral-800 bg-neutral-950/70 p-5">
+              <h2 className="text-xs uppercase tracking-widest font-mono text-amber-400 mb-4">
+                Top savings sources
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    <tr>
+                      <th className="pb-2 pr-4">Lever</th>
+                      <th className="pb-2 pr-4">Tool</th>
+                      <th className="pb-2 pr-4 text-right">Calls</th>
+                      <th className="pb-2 pr-4 text-right">Tokens</th>
+                      <th className="pb-2 text-right">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topSources.map((source) => (
+                      <tr
+                        key={`${source.lever}:${source.tool_name}`}
+                        className="border-t border-neutral-900 text-neutral-300"
+                      >
+                        <td className="py-2 pr-4 font-semibold text-cyan-200">
+                          {toTitle(source.lever)}
+                        </td>
+                        <td className="py-2 pr-4 text-neutral-400">
+                          {source.tool_name}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {fmt.format(source.calls_saved)}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          {fmt.format(source.tokens_saved)}
+                        </td>
+                        <td className="py-2 text-right text-emerald-300">
+                          {usdFmt.format(source.cost_saved_usd)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-neutral-500">
+                These rows use an equivalent-call estimator: search, edit, and
+                SQL tools count the built-in calls they replace, then apply live
+                token constants to estimate avoided cost.
+              </p>
+            </section>
+          )}
         </>
       )}
 
@@ -177,16 +287,7 @@ export default function Savings() {
         </h2>
         <p className="text-sm text-neutral-300 leading-relaxed">
           This view breaks savings down by lever so regressions are visible
-          immediately, not hidden in a single aggregate metric. See{" "}
-          <a
-            className="text-cyan-300 hover:text-cyan-200"
-            href="https://wozcode.com"
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            wozcode
-          </a>{" "}
-          and the
+          immediately, not hidden in a single aggregate metric. See the
           <a
             className="text-cyan-300 hover:text-cyan-200 ml-1"
             href="/docs/architecture/IMPLEMENTATION_PLAN_V2.md"
