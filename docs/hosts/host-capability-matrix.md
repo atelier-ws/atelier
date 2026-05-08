@@ -48,13 +48,13 @@ See `docs/engineering/trace-confidence.md` for the full specification.
 
 ## Capability Matrix
 
-| Host            | Native surfaces Atelier uses                          | MCP                      | Hooks / events                                          | Wrapper               | Routing enforcement                                            | Trace confidence                                               | Unsupported controls                                                                           | Fallback                                          |
-| --------------- | ----------------------------------------------------- | ------------------------ | ------------------------------------------------------- | --------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Claude Code     | Plugin package, commands, agents, skills, hooks, MCP  | Yes (stdio)              | Yes; hooks can warn/block/inject when enabled           | Optional              | `hook_enforced` with hooks, otherwise `advisory`               | `full_live` with hooks, otherwise `mcp_live`                   | `provider_enforced` (future-only, disabled), full model-provider override outside host surface | MCP-only mode with manual trace reminder          |
-| Codex CLI       | MCP, skills, AGENTS.md, task templates, wrapper       | Yes (stdio + HTTP)       | Limited compared with Claude hooks                      | Yes (`atelier-codex`) | `wrapper_enforced` for wrapper runs, otherwise `advisory`      | `mcp_live` + `wrapper_live`; imported sessions where available | `hook_enforced` parity with Claude hooks, `provider_enforced` (future-only, disabled)          | Native Codex flow with MCP tools and manual trace |
-| VS Code Copilot | Workspace MCP, instructions, chat mode, VS Code tasks | Yes (`.vscode/mcp.json`) | VS Code tasks/instructions; no Claude-style hook parity | Yes (task shortcuts)  | `advisory`                                                     | `mcp_live`; task outputs/manual trace for native chat edits    | Host-level hard blocking of model/tool calls, `provider_enforced` (future-only, disabled)      | Workspace instructions plus explicit MCP calls    |
-| opencode        | MCP config, agent profile, commands                   | Yes                      | Host-specific command/profile hooks only                | Yes                   | `wrapper_enforced` where wrapper is used, otherwise `advisory` | `mcp_live` + imported/manual trace                             | Cross-host hook parity and provider-owned execution (`provider_enforced`) disabled             | MCP-first workflow with agent profile             |
-| Gemini CLI      | MCP config, command presets, GEMINI context file      | Yes (stdio/SSE/HTTP)     | Host-specific command presets                           | Yes                   | `advisory` or `wrapper_enforced` when launched through wrapper | `mcp_live` + imported/manual trace                             | Host-native hard enforcement beyond wrapper, `provider_enforced` (future-only, disabled)       | Config-native MCP workflow                        |
+| Host            | Native surfaces Atelier uses                                    | MCP                      | Hooks / events                                          | Wrapper               | Routing enforcement                                            | Trace confidence                                               | Unsupported controls                                                                           | Fallback                                          |
+| --------------- | --------------------------------------------------------------- | ------------------------ | ------------------------------------------------------- | --------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Claude Code     | Plugin package, commands, agents, skills, hooks, MCP            | Yes (stdio)              | Yes; hooks can warn/block/inject when enabled           | Optional              | `hook_enforced` with hooks, otherwise `advisory`               | `full_live` with hooks, otherwise `mcp_live`                   | `provider_enforced` (future-only, disabled), full model-provider override outside host surface | MCP-only mode with manual trace reminder          |
+| Codex CLI       | Plugin package, marketplace, AGENTS.md, task templates, wrapper | Yes (stdio + HTTP)       | Limited compared with Claude hooks                      | Yes (`atelier-codex`) | `wrapper_enforced` for wrapper runs, otherwise `advisory`      | `mcp_live` + `wrapper_live`; imported sessions where available | `hook_enforced` parity with Claude hooks, `provider_enforced` (future-only, disabled)          | Native Codex flow with MCP tools and manual trace |
+| VS Code Copilot | Workspace MCP, instructions, chat mode, VS Code tasks           | Yes (`.vscode/mcp.json`) | VS Code tasks/instructions; no Claude-style hook parity | Yes (task shortcuts)  | `advisory`                                                     | `mcp_live`; task outputs/manual trace for native chat edits    | Host-level hard blocking of model/tool calls, `provider_enforced` (future-only, disabled)      | Workspace instructions plus explicit MCP calls    |
+| opencode        | MCP config, agent profile, commands                             | Yes                      | Host-specific command/profile hooks only                | Yes                   | `wrapper_enforced` where wrapper is used, otherwise `advisory` | `mcp_live` + imported/manual trace                             | Cross-host hook parity and provider-owned execution (`provider_enforced`) disabled             | MCP-first workflow with agent profile             |
+| Gemini CLI      | Extension package, command presets, skills, GEMINI context file | Yes (stdio/SSE/HTTP)     | Host-specific command presets                           | Yes                   | `advisory` or `wrapper_enforced` when launched through wrapper | `mcp_live` + imported/manual trace                             | Host-native hard enforcement beyond wrapper, `provider_enforced` (future-only, disabled)       | Extension-native MCP workflow                     |
 
 ## Notes By Host
 
@@ -67,9 +67,8 @@ See `docs/engineering/trace-confidence.md` for the full specification.
 
 ### Codex CLI
 
-- Codex supports MCP natively (`codex mcp add` / `config.toml`), skills, and subagents.
-- Codex can use reusable distribution and repo-local skills, but Atelier's current Codex surface is
-  an integration, not the same Claude plugin package.
+- Codex now supports Atelier through a packaged plugin and marketplace entry rather than only copied skills.
+- The installer materializes a local plugin source and generated MCP wrapper, then points the marketplace at that source.
 - Atelier adds a wrapper-style workflow to enforce reasoning preflight consistently.
 
 ### VS Code Copilot
@@ -85,8 +84,8 @@ See `docs/engineering/trace-confidence.md` for the full specification.
 
 ### Gemini CLI
 
-- Gemini CLI supports MCP server configuration, `/mcp` management, custom commands, and extensions.
-- Atelier installs a global MCP server entry and custom `atelier:*` command presets.
+- Gemini CLI supports extensions that can bundle MCP servers, commands, skills, and context.
+- Atelier uses a linked extension bundle instead of a raw settings merge.
 
 ## Install Surface Summary
 
