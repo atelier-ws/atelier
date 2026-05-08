@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -93,6 +94,8 @@ from atelier.infra.storage.factory import create_store
 _APP_STORE: Any = None
 _HOST_REGISTRY: HostRegistry | None = None
 
+logger = logging.getLogger("atelier.service")
+
 
 def _get_store() -> Any:
     """Return (or create) the module-level store singleton."""
@@ -149,6 +152,55 @@ def _normalize_lever(operation: str) -> str:
     return op
 
 
+def _live_savings_events_path(root: Path) -> Path:
+    return root / "live_savings_events.jsonl"
+
+
+def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
+    path = _live_savings_events_path(root)
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
+def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
+    path = root / "benchmarks" / "savings" / "latest.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    keys = {
+        "run_id",
+        "model",
+        "n_prompts",
+        "total_tokens_baseline",
+        "total_tokens_atelier",
+        "tokens_saved",
+        "reduction_pct",
+        "total_cost_baseline_usd",
+        "total_cost_atelier_usd",
+        "cost_saved_usd",
+        "total_time_baseline_ms",
+        "total_time_atelier_ms",
+        "time_saved_ms",
+        "baseline_success_rate",
+        "atelier_success_rate",
+    }
+    return {key: payload[key] for key in keys if key in payload}
+
+
 def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     """Build token-savings summary for API/dashboard rendering."""
     history = load_cost_history(root)
@@ -165,6 +217,10 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     total_naive = 0
     total_actual = 0
     per_lever: defaultdict[str, int] = defaultdict(int)
+    live_cost_saved = 0.0
+    live_calls_saved = 0
+    live_time_saved_ms = 0
+    source_totals: dict[tuple[str, str], dict[str, Any]] = {}
 
     for entry in ops.values() if isinstance(ops, dict) else []:
         calls = entry.get("calls", []) if isinstance(entry, dict) else []
@@ -192,11 +248,59 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
                 by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
                 by_day_seed[day_key]["actual"] = int(by_day_seed[day_key]["actual"]) + actual
 
+    for event in _iter_live_savings_events(root):
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        at_raw = str(event.get("at", ""))
+        try:
+            at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
+        except Exception:
+            at_date = today
+        if at_date < start_day:
+            continue
+
+        lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
+        tool_name = str(event.get("tool_name") or lever)
+        total_naive += tokens_saved
+        per_lever[lever] += tokens_saved
+        live_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        live_calls_saved += int(event.get("calls_saved", 0) or 0)
+        live_time_saved_ms += int(event.get("time_saved_ms", 0) or 0)
+
+        day_key = at_date.isoformat()
+        if day_key in by_day_seed:
+            by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + tokens_saved
+
+        key = (lever, tool_name)
+        source = source_totals.setdefault(
+            key,
+            {
+                "lever": lever,
+                "tool_name": tool_name,
+                "calls_saved": 0,
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "time_saved_ms": 0,
+            },
+        )
+        source["calls_saved"] += int(event.get("calls_saved", 0) or 0)
+        source["tokens_saved"] += tokens_saved
+        source["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        source["time_saved_ms"] += int(event.get("time_saved_ms", 0) or 0)
+
     reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
 
     # USD cost savings (from CostTracker baseline comparison).
     cost_summary = CostTracker(root).total_savings()
+    saved_usd = round(float(cost_summary["saved_usd"]) + live_cost_saved, 6)
+    would_have_cost = round(float(cost_summary["would_have_cost_usd"]) + live_cost_saved, 6)
+    actually_cost = float(cost_summary["actually_cost_usd"])
+    saved_pct = round(100.0 * saved_usd / would_have_cost, 2) if would_have_cost > 0 else 0.0
+    top_sources = sorted(source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+    for source in top_sources:
+        source["cost_saved_usd"] = round(float(source["cost_saved_usd"]), 6)
 
     return {
         "window_days": window_days,
@@ -205,11 +309,16 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         "reduction_pct": reduction_pct,
         "per_lever": sorted_levers,
         "by_day": list(by_day_seed.values()),
-        "saved_usd": cost_summary["saved_usd"],
-        "saved_pct": cost_summary["saved_pct"],
-        "would_have_cost_usd": cost_summary["would_have_cost_usd"],
-        "actually_cost_usd": cost_summary["actually_cost_usd"],
+        "saved_usd": saved_usd,
+        "saved_pct": saved_pct,
+        "would_have_cost_usd": would_have_cost,
+        "actually_cost_usd": round(actually_cost, 6),
         "total_calls": cost_summary["total_calls"],
+        "live_calls_saved": live_calls_saved,
+        "live_time_saved_ms": live_time_saved_ms,
+        "live_saved_usd": round(live_cost_saved, 6),
+        "top_sources": top_sources[:10],
+        "latest_benchmark": _latest_savings_benchmark(root),
     }
 
 
@@ -226,6 +335,16 @@ def create_app(*, store: Any = None) -> FastAPI:
                temporary SQLite instance without touching the filesystem.
     """
     _store = store
+
+    # Validation: Ensure the data store exists
+    root = Path(cfg.atelier_root)
+    if not root.exists():
+        logger.error(
+            "Atelier root directory missing: %s. "
+            "The service requires an initialized store to function correctly. "
+            "Please run 'make install' or the installation script to bootstrap the environment.",
+            root,
+        )
 
     def get_store() -> Any:
         nonlocal _store
@@ -1819,6 +1938,134 @@ def create_app(*, store: Any = None) -> FastAPI:
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # ------------------------------------------------------------------ #
+    # Memory routes (/v1/memory/*)                                       #
+    # ------------------------------------------------------------------ #
+
+    _mem_store: Any = None
+
+    def _get_mem_store() -> Any:
+        nonlocal _mem_store
+        if _mem_store is None:
+            from atelier.infra.storage.factory import make_memory_store
+
+            root = Path(cfg.atelier_root)
+            _mem_store = make_memory_store(root)
+        return _mem_store
+
+    @app.get("/v1/memory/blocks")
+    def memory_list_or_get(
+        agent_id: str,
+        label: str | None = None,
+        include_tombstoned: bool = False,
+        limit: int = 200,
+    ) -> Any:
+        """List all memory blocks for an agent, or get a single block by label."""
+        mem = _get_mem_store()
+        if label is not None:
+            block = mem.get_block(agent_id, label, include_tombstoned=include_tombstoned)
+            if block is None:
+                raise HTTPException(status_code=404, detail=f"Block not found: {label!r}")
+            return block
+        return mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
+
+    @app.post("/v1/memory/blocks")
+    def memory_upsert_block(payload: dict[str, Any]) -> Any:
+        """Create or update a memory block."""
+        from atelier.core.foundation.memory_models import MemoryBlock
+        from atelier.infra.storage.memory_store import MemoryConcurrencyError
+
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        label = payload.get("label")
+        if not agent_id or not label:
+            raise HTTPException(status_code=400, detail="agent_id and label are required")
+        existing = mem.get_block(agent_id, label)
+        if existing is None:
+            value = str(payload.get("value", ""))
+            limit_chars = int(payload.get("limit_chars", 8000))
+            if len(value) > limit_chars:
+                raise HTTPException(status_code=400, detail="value exceeds limit_chars")
+            block = MemoryBlock(
+                agent_id=agent_id,
+                label=label,
+                value=value,
+                limit_chars=limit_chars,
+                description=str(payload.get("description", "")),
+                read_only=bool(payload.get("read_only", False)),
+                pinned=bool(payload.get("pinned", False)),
+                metadata=payload.get("metadata") or {},
+            )
+        else:
+            expected_version = payload.get("expected_version")
+            if expected_version is not None and existing.version != int(expected_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"version conflict: expected {expected_version}, got {existing.version}",
+                )
+            update: dict[str, Any] = {}
+            for field in ("value", "description", "read_only", "pinned", "metadata", "limit_chars"):
+                if field in payload and payload[field] is not None:
+                    update[field] = payload[field]
+            block = existing.model_copy(update=update)
+        actor = str(payload.get("actor") or f"api:{agent_id}")
+        try:
+            return mem.upsert_block(block, actor=actor)
+        except MemoryConcurrencyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/memory/archive")
+    def memory_archive_passage(payload: dict[str, Any]) -> Any:
+        """Archive a text passage into long-term memory."""
+        import hashlib
+
+        from atelier.core.foundation.memory_models import ArchivalPassage
+
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        text = payload.get("text")
+        if not agent_id or not text:
+            raise HTTPException(status_code=400, detail="agent_id and text are required")
+        valid_sources = ("trace", "block_evict", "user", "tool_output", "file_chunk")
+        source = payload.get("source", "user")
+        if source not in valid_sources:
+            source = "user"
+        dedup_hash = hashlib.sha256(f"{agent_id}:{text}".encode()).hexdigest()[:32]
+        passage = ArchivalPassage(
+            agent_id=agent_id,
+            text=str(text),
+            source=source,
+            source_ref=str(payload.get("source_ref", "")),
+            tags=list(payload.get("tags") or []),
+            dedup_hash=dedup_hash,
+        )
+        saved = mem.insert_passage(passage)
+        return {"id": saved.id, "dedup_hit": saved.dedup_hit}
+
+    @app.post("/v1/memory/recall")
+    def memory_recall_passages(payload: dict[str, Any]) -> Any:
+        """Search archived passages for a query."""
+        mem = _get_mem_store()
+        agent_id = payload.get("agent_id")
+        query = payload.get("query")
+        if not agent_id or not query:
+            raise HTTPException(status_code=400, detail="agent_id and query are required")
+        since_str = payload.get("since")
+        since_dt: datetime | None = None
+        if since_str:
+            try:
+                since_dt = datetime.fromisoformat(since_str).replace(tzinfo=UTC)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"invalid since: {since_str!r}") from exc
+        passages = mem.search_passages(
+            agent_id,
+            str(query),
+            top_k=int(payload.get("top_k", 5)),
+            tags=list(payload.get("tags") or []) or None,
+            since=since_dt,
+        )
+        return {"passages": [p.model_dump(mode="json") for p in passages]}
 
     return app
 

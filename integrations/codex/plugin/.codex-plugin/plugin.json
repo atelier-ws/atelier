@@ -1,0 +1,25 @@
+{
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "AI reasoning/procedure/runtime layer for agentic workflows",
+  "author": {
+    "name": "Atelier Team"
+  },
+  "license": "MIT",
+  "keywords": ["reasoning", "mcp", "skills", "workflow"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Atelier",
+    "shortDescription": "Reasoning-first coding workflow for Codex.",
+    "longDescription": "Bundle Atelier skills and MCP tooling so Codex can reason, validate plans, and record traces in one package.",
+    "developerName": "Atelier Team",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use Atelier to reason about the current coding task before you edit anything.",
+      "Use Atelier to validate the current plan before running risky commands or declaring success."
+    ],
+    "brandColor": "#0f766e"
+  }
+}

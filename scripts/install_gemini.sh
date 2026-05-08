@@ -2,8 +2,8 @@
 # install_gemini.sh - Install Atelier into Gemini CLI
 #
 # What it does:
-#   Global mode: installs Gemini user settings, commands, and persona.
-#   Workspace mode (--workspace DIR): installs project-local Gemini artifacts under DIR.
+#   Global mode: links the packaged Atelier Gemini extension and enables it for the user.
+#   Workspace mode (--workspace DIR): links the packaged extension and enables it only for DIR.
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
@@ -15,7 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
+EXTENSION_DIR="${ATELIER_REPO}/integrations/gemini/extension"
+EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
 
 DRY_RUN=false
 PRINT_ONLY=false
@@ -48,15 +49,9 @@ fi
 
 if $WORKSPACE_SET; then
     INSTALL_SCOPE="workspace"
-    GEMINI_DIR="${WORKSPACE}/.gemini"
-    GEMINI_MD_DEST="${WORKSPACE}/GEMINI.md"
 else
     INSTALL_SCOPE="global"
-    GEMINI_DIR="${HOME}/.gemini"
-    GEMINI_MD_DEST="${GEMINI_DIR}/GEMINI.md"
 fi
-SETTINGS="${GEMINI_DIR}/settings.json"
-CMD_DEST="${GEMINI_DIR}/commands/atelier"
 
 info()  { echo "[atelier:gemini] $*"; }
 warn()  { echo "[atelier:gemini] WARN: $*" >&2; }
@@ -70,50 +65,30 @@ backup_file() {
     fi
 }
 
-if $WORKSPACE_SET; then
-    NEW_ENTRY=$(cat <<JSON
-{
-  "mcpServers": {
-    "atelier": {
-      "command": "${ATELIER_WRAPPER}",
-      "args": [],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${WORKSPACE}/.atelier"
-      }
-    }
-  }
-}
-JSON
-)
-else
-    NEW_ENTRY=$(cat <<JSON
-{
-  "mcpServers": {
-    "atelier": {
-      "command": "${ATELIER_WRAPPER}",
-      "args": []
-    }
-  }
-}
-JSON
-)
-fi
-
 # ---- print-only mode --------------------------------------------------------
 if $PRINT_ONLY; then
     echo ""
-    echo "=== Atelier Gemini CLI - Manual Install ==="
+        echo "=== Atelier Gemini CLI - Manual Install ==="
     echo ""
     echo "Scope: ${INSTALL_SCOPE}"
-    echo "Settings target: ${SETTINGS}"
-    echo "Commands target: ${CMD_DEST}"
-    echo "Persona target: ${GEMINI_MD_DEST}"
+        echo "Extension source: ${EXTENSION_DIR}"
+        echo "Manifest: ${EXTENSION_MANIFEST}"
     echo ""
-    echo "Merge/create settings:"
-    echo "$NEW_ENTRY"
+        echo "1. Validate the extension:"
+        echo "   gemini extensions validate '${EXTENSION_DIR}'"
     echo ""
-    echo "Note: Gemini CLI requires absolute command paths. The path above is resolved at install time."
+        echo "2. Link the local extension source:"
+        echo "   gemini extensions link '${EXTENSION_DIR}'"
+        if $WORKSPACE_SET; then
+                echo ""
+                echo "3. Enable the extension only for ${WORKSPACE}:"
+                echo "   (cd '${WORKSPACE}' && gemini extensions disable atelier --scope user || true)"
+                echo "   (cd '${WORKSPACE}' && gemini extensions enable atelier --scope workspace)"
+        else
+                echo ""
+                echo "3. Ensure the extension is enabled for the user:"
+                echo "   gemini extensions enable atelier --scope user"
+        fi
     exit 0
 fi
 
@@ -125,71 +100,39 @@ if ! command -v gemini &>/dev/null; then
     fi
     warn "'gemini' CLI not found - SKIPPING."
     warn "Install Gemini CLI, then run: make install-gemini"
-    exit 2
+    exit 0
 fi
 info "Found Gemini CLI: $(gemini --version 2>/dev/null || echo 'version unknown')"
 
-# ---- merge Gemini settings --------------------------------------------------
-run "mkdir -p '$GEMINI_DIR'"
-
-if [ -f "$SETTINGS" ]; then
-    backup_file "$SETTINGS"
-    if $DRY_RUN; then
-        echo "  [dry-run] merge atelier into $SETTINGS"
-    else
-        python3 - <<PYEOF
-import json
-from pathlib import Path
-
-path = Path('$SETTINGS')
-existing = json.loads(path.read_text(encoding='utf-8') or '{}')
-new_entry = json.loads('''$NEW_ENTRY''')
-existing.setdefault('mcpServers', {}).update(new_entry['mcpServers'])
-path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
-print("[atelier:gemini] merged atelier entry into $SETTINGS")
-PYEOF
+if ! command -v atelier-mcp &>/dev/null; then
+    if $STRICT; then
+        echo "[atelier:gemini] ERROR: 'atelier-mcp' not found on PATH. Install Atelier so the console script is available before enabling the Gemini extension." >&2
+        exit 1
     fi
-else
-    if $DRY_RUN; then
-        echo "  [dry-run] create $SETTINGS"
-    else
-        echo "$NEW_ENTRY" > "$SETTINGS"
-        info "created $SETTINGS"
-    fi
+    warn "'atelier-mcp' not found on PATH - SKIPPING. Install Atelier so the console script is available, then rerun this installer."
+    exit 0
 fi
+info "Found atelier-mcp: $(command -v atelier-mcp)"
 
-# ---- install custom slash commands -----------------------------------------
-CMD_SRC="${ATELIER_REPO}/integrations/gemini/commands/atelier"
-if [ -d "$CMD_SRC" ]; then
-    info "Installing custom commands -> $CMD_DEST"
-    run "mkdir -p '$CMD_DEST'"
-    run "cp -f '$CMD_SRC'/*.toml '$CMD_DEST/'"
-    info "commands installed: /atelier:status, /atelier:context"
-else
-    warn "Gemini commands source missing: $CMD_SRC"
-fi
-
-# ---- install GEMINI.md context ---------------------------------------------
-GEMINI_MD_SRC="${ATELIER_REPO}/integrations/gemini/GEMINI.atelier.md"
-if [ -f "$GEMINI_MD_SRC" ]; then
-    run "mkdir -p '$(dirname "$GEMINI_MD_DEST")'"
-    if [ ! -f "$GEMINI_MD_DEST" ]; then
-        run "cp '$GEMINI_MD_SRC' '$GEMINI_MD_DEST'"
-        info "created $GEMINI_MD_DEST"
-    elif grep -q "atelier:code" "$GEMINI_MD_DEST" 2>/dev/null; then
-        info "$GEMINI_MD_DEST already contains atelier persona - not overwriting"
-    else
-        backup_file "$GEMINI_MD_DEST"
-        run "cat '$GEMINI_MD_SRC' >> '$GEMINI_MD_DEST'"
-        info "appended atelier persona to $GEMINI_MD_DEST"
-    fi
-else
-    warn "atelier persona source missing: $GEMINI_MD_SRC"
-fi
+# ---- validate + link packaged extension ------------------------------------
+info "Validating extension manifest"
+run "gemini extensions validate '$EXTENSION_DIR'"
 
 if $DRY_RUN; then
-    info "Dry run complete; skipped post-install verification because no files were written."
+    info "Dry run complete; skipped install and scope changes because no files were written."
     exit 0
+fi
+
+gemini extensions uninstall atelier >/dev/null 2>&1 || true
+gemini extensions link "$EXTENSION_DIR"
+
+if $WORKSPACE_SET; then
+    (cd "$WORKSPACE" && gemini extensions disable atelier --scope user >/dev/null 2>&1) || true
+    (cd "$WORKSPACE" && gemini extensions enable atelier --scope workspace)
+    info "enabled atelier for workspace scope: $WORKSPACE"
+else
+    gemini extensions enable atelier --scope user >/dev/null 2>&1 || true
+    info "enabled atelier for user scope"
 fi
 
 # ---- post-install verification ---------------------------------------------
@@ -198,52 +141,41 @@ VFAIL=0
 vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:gemini] FAIL: $*" >&2; VFAIL=1; }
 
-if [ ! -f "$SETTINGS" ]; then
-    vfail "missing $SETTINGS"
+if [ -f "$EXTENSION_MANIFEST" ]; then
+    vpass "extension manifest present: $EXTENSION_MANIFEST"
 else
-    HAS=$(python3 - <<PYEOF
-import json
-try:
-    d = json.load(open('$SETTINGS'))
-    print('yes' if 'atelier' in d.get('mcpServers', {}) else 'no')
-except Exception:
-    print('parse-error')
-PYEOF
-)
-    if [ "$HAS" = "yes" ]; then
-        vpass "$SETTINGS contains atelier MCP entry"
-    elif [ "$HAS" = "parse-error" ]; then
-        vfail "$SETTINGS parse error"
-    else
-        vfail "$SETTINGS missing atelier MCP entry"
-    fi
-
-    WRAPPER=$(python3 - <<PYEOF
-import json
-try:
-    d = json.load(open('$SETTINGS'))
-    print(d.get('mcpServers', {}).get('atelier', {}).get('command', ''))
-except Exception:
-    print('')
-PYEOF
-)
-    if [ -n "$WRAPPER" ] && [ -x "$WRAPPER" ]; then
-        vpass "atelier wrapper command is executable: $WRAPPER"
-    else
-        vfail "atelier wrapper command missing or not executable in settings.json"
-    fi
+    vfail "missing extension manifest: $EXTENSION_MANIFEST"
 fi
 
-if [ -d "$CMD_DEST" ] && [ -f "$CMD_DEST/status.toml" ] && [ -f "$CMD_DEST/context.toml" ]; then
-    vpass "Gemini custom commands installed: $CMD_DEST"
+COMMAND=$(python3 - <<PYEOF
+import json
+from pathlib import Path
+data = json.loads(Path("$EXTENSION_MANIFEST").read_text(encoding="utf-8"))
+print(data.get("mcpServers", {}).get("atelier", {}).get("command", ""))
+PYEOF
+)
+if [ "$COMMAND" = "atelier-mcp" ]; then
+    vpass "extension manifest points at atelier-mcp"
 else
-    vfail "Gemini custom commands missing in $CMD_DEST"
+    vfail "extension manifest does not point at atelier-mcp"
 fi
 
-if [ -f "$GEMINI_MD_DEST" ] && grep -q "atelier:code" "$GEMINI_MD_DEST" 2>/dev/null; then
-        vpass "GEMINI context installed: $GEMINI_MD_DEST"
+if [ -d "${EXTENSION_DIR}/commands/atelier" ] && [ -f "${EXTENSION_DIR}/commands/atelier/status.toml" ] && [ -f "${EXTENSION_DIR}/commands/atelier/context.toml" ]; then
+    vpass "extension command bundle present: ${EXTENSION_DIR}/commands/atelier"
 else
-    vfail "GEMINI context missing or no atelier:code persona: $GEMINI_MD_DEST"
+    vfail "extension command bundle missing in ${EXTENSION_DIR}/commands/atelier"
+fi
+
+if [ -f "${EXTENSION_DIR}/GEMINI.md" ] && grep -q "atelier:code" "${EXTENSION_DIR}/GEMINI.md" 2>/dev/null; then
+    vpass "extension context installed: ${EXTENSION_DIR}/GEMINI.md"
+else
+    vfail "extension context missing or no atelier:code persona: ${EXTENSION_DIR}/GEMINI.md"
+fi
+
+if gemini extensions list 2>/dev/null | grep -qi "atelier"; then
+    vpass "Gemini lists the atelier extension"
+else
+    vfail "Gemini extension list does not include atelier"
 fi
 
 if [ "$VFAIL" -ne 0 ]; then
@@ -252,6 +184,6 @@ if [ "$VFAIL" -ne 0 ]; then
 fi
 info "All post-install checks passed"
 
-info "Done. Restart Gemini CLI - /atelier:status, /atelier:context are available."
-info "Note: Gemini CLI uses absolute paths - do not move atelier after installing."
+info "Done. Restart Gemini CLI - the Atelier extension contributes context, commands, skills, and MCP wiring."
+info "Note: the linked extension source is ${EXTENSION_DIR}; re-run install if the repo path changes."
 info "Tip: run 'atelier-status' in any shell to see current run state."

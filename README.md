@@ -86,6 +86,14 @@ bash scripts/install_claude.sh --dry-run
 bash scripts/install_codex.sh --print-only
 ```
 
+**One-line bootstrap install (Linux/macOS):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leanchain/atelier/main/scripts/install.sh | bash
+```
+
+This installs/updates Atelier under `~/.local/share/atelier`, installs host integrations, and adds global wrappers in `~/.local/bin` (`atelier`, `atelier-mcp`, `atelier-api`, `atelier-status`).
+
 → Full install guide: [docs/installation.md](docs/installation.md)
 → Per-host guides: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
 → V2 to V3 migration guide: [docs/migrations/v2-to-v3.md](docs/migrations/v2-to-v3.md)

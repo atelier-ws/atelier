@@ -315,4 +315,3 @@ The final contract/proof layer is implemented by Phase G:
 - [JetBrains Research: smarter context management for agents](https://blog.jetbrains.com/research/2025/12/efficient-context-management/)
 - [Letta GitHub repository](https://github.com/letta-ai/letta)
 - [Google Research: ReasoningBank](https://research.google/blog/reasoningbank-enabling-agents-to-learn-from-experience/)
-- [Wozcode](https://www.baseline.com/)

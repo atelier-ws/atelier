@@ -10,13 +10,23 @@ Validates that:
 from __future__ import annotations
 
 import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from click.testing import CliRunner
 
+from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import _REMOTE_TOOLS, _handle
+from atelier.infra.storage.sqlite_store import SQLiteStore
 
 # --------------------------------------------------------------------------- #
 # Fixtures                                                                    #
@@ -57,6 +67,79 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
     for method_name, retval in return_values.items():
         getattr(client, method_name).return_value = retval
     return client
+
+
+def _seed_store(root: Path) -> None:
+    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
+    assert result.exit_code == 0, result.output
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        return int(sock.getsockname()[1])
+
+
+def _wait_for_health(base_url: str, process: subprocess.Popen[str], timeout_s: float = 20.0) -> None:
+    deadline = time.time() + timeout_s
+    last_error = "service never became healthy"
+    while time.time() < deadline:
+        if process.poll() is not None:
+            stderr = process.stderr.read() if process.stderr else ""
+            raise AssertionError(f"service exited early with code {process.returncode}: {stderr}")
+        try:
+            with urllib.request.urlopen(f"{base_url}/health", timeout=1.0) as response:
+                if response.status == 200:
+                    return
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(0.2)
+    raise AssertionError(last_error)
+
+
+@contextmanager
+def _live_service(root: Path) -> Any:
+    pytest.importorskip("fastapi", reason="live remote-mode tests require the api extra")
+    pytest.importorskip("uvicorn", reason="live remote-mode tests require uvicorn")
+
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    env = {
+        **os.environ,
+        "ATELIER_ROOT": str(root),
+        "ATELIER_REQUIRE_AUTH": "false",
+        "ATELIER_EMBEDDER": "null",
+    }
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "atelier.core.service.api:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        _wait_for_health(base_url, process)
+        yield base_url
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
 
 
 # --------------------------------------------------------------------------- #
@@ -160,6 +243,64 @@ def test_remote_record_trace_same_shape(remote_mode: None, monkeypatch: pytest.M
     assert "result" in resp
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert "id" in payload
+
+
+def test_remote_mode_live_service_round_trip(
+    remote_mode: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / ".atelier"
+    _seed_store(root)
+
+    import atelier.gateway.adapters.mcp_server as m
+
+    m._current_ledger = None
+    m._realtime_ctx = None
+    m._remote_client = None
+
+    with _live_service(root) as base_url:
+        monkeypatch.setenv("ATELIER_SERVICE_URL", base_url)
+
+        reasoning = _call_tool("reasoning", {"task": "deploy the app"})
+        reasoning_payload = json.loads(reasoning["result"]["content"][0]["text"])
+        assert "context" in reasoning_payload
+
+        lint = _call_tool("lint", {"task": "deploy", "plan": ["write code", "run tests"]})
+        lint_payload = json.loads(lint["result"]["content"][0]["text"])
+        assert lint_payload["status"] in {"pass", "warn", "blocked"}
+
+        rescue = _call_tool("rescue", {"task": "deploy", "error": "connection refused"})
+        rescue_payload = json.loads(rescue["result"]["content"][0]["text"])
+        assert "rescue" in rescue_payload
+
+        verify = _call_tool(
+            "verify",
+            {
+                "rubric_id": "rubric_shopify_publish",
+                "checks": {
+                    "product_identity_uses_gid": True,
+                    "pre_publish_snapshot_exists": True,
+                    "write_result_checked": True,
+                    "post_publish_refetch_done": True,
+                    "post_publish_audit_passed": True,
+                    "rollback_available": True,
+                    "localized_url_test_passed": True,
+                    "changed_handle_test_passed": True,
+                },
+            },
+        )
+        verify_payload = json.loads(verify["result"]["content"][0]["text"])
+        assert verify_payload["status"] == "pass"
+
+        trace = _call_tool(
+            "trace",
+            {"agent": "codex", "domain": "coding", "task": "remote e2e", "status": "success"},
+        )
+        trace_payload = json.loads(trace["result"]["content"][0]["text"])
+        assert trace_payload["id"]
+
+    stored = SQLiteStore(root).get_trace(trace_payload["id"])
+    assert stored is not None
+    assert stored.task == "remote e2e"
 
 
 # --------------------------------------------------------------------------- #

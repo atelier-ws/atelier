@@ -6,31 +6,31 @@ const HOSTS = [
     id: "claude",
     label: "Claude Code",
     icon: "🧩",
-    desc: "Full plugin: agents + skills + MCP",
+    desc: "Full plugin: agents + skills + MCP + hooks",
   },
   {
     id: "codex",
     label: "Codex",
     icon: "📋",
-    desc: "Skills + AGENTS.md + MCP config",
+    desc: "MCP config + Codex savings/update hooks",
   },
   {
     id: "opencode",
     label: "opencode",
     icon: "🔌",
-    desc: "opencode.jsonc MCP config",
+    desc: "opencode.jsonc MCP config + shared telemetry",
   },
   {
     id: "copilot",
     label: "VS Code Copilot",
     icon: "💼",
-    desc: "MCP config + custom instructions",
+    desc: "MCP config + custom instructions + shared telemetry",
   },
   {
     id: "gemini",
     label: "Gemini CLI",
     icon: "📎",
-    desc: ".gemini/settings.json MCP",
+    desc: ".gemini/settings.json MCP + shared telemetry",
   },
 ];
 
@@ -58,35 +58,42 @@ export default function Host() {
     <div className="space-y-6">
       {/* Feature Info */}
       <div>
-        <button onClick={() => setInfoOpen(!infoOpen)} className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1">
+        <button
+          onClick={() => setInfoOpen(!infoOpen)}
+          className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1"
+        >
           <span>{infoOpen ? "▼" : "▶"}</span> about
         </button>
-        {infoOpen && <section className="border border-neutral-800 bg-neutral-900/50 p-5">
-        <div className="flex items-start gap-4">
-          <div className="text-3xl flex-shrink-0">🖥️</div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="font-mono font-bold text-neutral-200 text-lg">
-                Host Adapters
-              </h2>
-              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
-                stable
-              </span>
+        {infoOpen && (
+          <section className="border border-neutral-800 bg-neutral-900/50 p-5">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl flex-shrink-0">🖥️</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="font-mono font-bold text-neutral-200 text-lg">
+                    Host Adapters
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
+                    stable
+                  </span>
+                </div>
+                <p className="font-mono text-[11px] text-neutral-500 mb-3">
+                  Agent-Native Integration
+                </p>
+                <p className="text-xs text-neutral-300 leading-relaxed mb-3">
+                  Native integration for all major coding agents. Each host gets
+                  its native format — Claude Code plugin, Codex skills, opencode
+                  config, Copilot MCP, and Gemini CLI support.
+                </p>
+                <div className="text-xs text-emerald-300/90 space-y-1">
+                  <p>✓ Zero-code agent integration via MCP standard</p>
+                  <p>✓ All major coding agents supported</p>
+                  <p>✓ Each agent gets its native integration format</p>
+                </div>
+              </div>
             </div>
-            <p className="font-mono text-[11px] text-neutral-500 mb-3">
-              Agent-Native Integration
-            </p>
-            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
-              Native integration for all major coding agents. Each host gets its native format — Claude Code plugin, Codex skills, opencode config, Copilot MCP, and Gemini CLI support.
-            </p>
-            <div className="text-xs text-emerald-300/90 space-y-1">
-              <p>✓ Zero-code agent integration via MCP standard</p>
-              <p>✓ All major coding agents supported</p>
-              <p>✓ Each agent gets its native integration format</p>
-            </div>
-          </div>
-        </div>
-      </section>}
+          </section>
+        )}
       </div>
 
       <div className="space-y-6 text-sm">
@@ -97,7 +104,11 @@ export default function Host() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {HOSTS.map((h) => {
-              const status = hosts?.find((host) => host.name === h.id);
+              const status = hosts?.find((host) => {
+                const hostId = (host as HostAdapter & { host_id?: string })
+                  .host_id;
+                return host.name === h.id || hostId === h.id;
+              });
               return (
                 <div
                   key={h.id}

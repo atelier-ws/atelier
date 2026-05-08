@@ -79,6 +79,15 @@ class SqliteMemoryStore:
             next_version = int(existing["version"]) + 1 if existing is not None else block.version
             created_at = str(existing["created_at"]) if existing is not None else _iso(block.created_at)
 
+            history = MemoryBlockHistory(
+                block_id=block_id,
+                prev_value=previous_value,
+                new_value=block.value,
+                actor=actor,
+                reason=reason,
+                created_at=now,
+            )
+
             if existing is None:
                 conn.execute(
                     """
@@ -108,15 +117,6 @@ class SqliteMemoryStore:
                         _iso(now),
                     ),
                 )
-
-            history = MemoryBlockHistory(
-                block_id=block_id,
-                prev_value=previous_value,
-                new_value=block.value,
-                actor=actor,
-                reason=reason,
-                created_at=now,
-            )
             conn.execute(
                 """
                 INSERT INTO memory_block_history
@@ -139,7 +139,7 @@ class SqliteMemoryStore:
                     (history.id, block_id),
                 )
             else:
-                conn.execute(
+                updated = conn.execute(
                     """
                     UPDATE memory_block SET
                       value = ?,
@@ -154,7 +154,7 @@ class SqliteMemoryStore:
                       deprecated_by_block_id = ?,
                       deprecation_reason = ?,
                       updated_at = ?
-                    WHERE id = ?
+                                        WHERE id = ? AND version = ?
                     """,
                     (
                         block.value,
@@ -170,8 +170,14 @@ class SqliteMemoryStore:
                         block.deprecation_reason,
                         _iso(now),
                         block_id,
+                        block.version,
                     ),
                 )
+                if updated.rowcount != 1:
+                    raise MemoryConcurrencyError(
+                        f"stale memory block version for {block.agent_id}:{block.label}: "
+                        f"expected current version {block.version}"
+                    )
 
         stored = self.get_block(block.agent_id, block.label, include_tombstoned=True)
         if stored is None:  # pragma: no cover - defensive
