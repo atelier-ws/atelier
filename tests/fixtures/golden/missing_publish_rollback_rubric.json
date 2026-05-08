@@ -4,5 +4,8 @@
     "canonical_identifier_used",
     "pre_change_state_captured"
   ],
-  "checks_missing": ["read_after_write_completed", "observed_state_matches_intent"]
+  "checks_missing": [
+    "read_after_write_completed",
+    "observed_state_matches_intent"
+  ]
 }

@@ -13,15 +13,17 @@ Before starting any task in this repository, you MUST follow the Atelier reasoni
 
 1. **Check your plan** — Before editing files, consider whether your plan contains any known dead ends for this domain.
 
-  Known baseline dead ends (DO NOT USE):
-  - "Resolve target from URL slug alone" → resolve and record the canonical identifier first
-  - "Continue patching before validation" → run the cheapest focused validation after each edit
+Known baseline dead ends (DO NOT USE):
+
+- "Resolve target from URL slug alone" → resolve and record the canonical identifier first
+- "Continue patching before validation" → run the cheapest focused validation after each edit
 
 2. **Verify output** — After completing a task in `state.change` domain, all of the following must be true:
-  - `canonical_identifier_used: true`
-  - `pre_change_state_captured: true`
-  - `read_after_write_completed: true`
-  - `observed_state_matches_intent: true`
+
+- `canonical_identifier_used: true`
+- `pre_change_state_captured: true`
+- `read_after_write_completed: true`
+- `observed_state_matches_intent: true`
 
 3. **Record what happened** — After each task, state what commands you ran, what errors you saw, and what the outcome was.
 
