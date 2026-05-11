@@ -15,6 +15,22 @@ import json
 import re
 from typing import Any
 
+_NORMALIZED_SESSION_SOURCES = {
+    "antigravity",
+    "crush",
+    "cursor",
+    "cursor-agent",
+    "droid",
+    "goose",
+    "kiro",
+    "kilo-code",
+    "omp",
+    "openclaw",
+    "pi",
+    "qwen",
+    "roo-code",
+}
+
 # Maximum number of turns to return
 _MAX_TURNS = 1000
 
@@ -58,6 +74,8 @@ def parse_session_turns(content: str, source: str) -> list[dict[str, Any]]:
         turns = _parse_gemini(content)
     elif source == "copilot":
         turns = _parse_copilot(content)
+    elif source in _NORMALIZED_SESSION_SOURCES:
+        turns = _parse_normalized_session(content)
     else:
         turns = []
 
@@ -127,6 +145,92 @@ def _extract_text_from_claude_content(content: Any) -> str:
 
 def _is_codex_system_message(text: str) -> bool:
     return any(text.strip().startswith(p) for p in _SYSTEM_PREFIXES_CODEX)
+
+
+def _parse_normalized_session(content: str) -> list[dict[str, Any]]:
+    turns: list[dict[str, Any]] = []
+    for line in content.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if event.get("type") != "message":
+            continue
+        message = event.get("message") or {}
+        role = message.get("role")
+        at = event.get("timestamp")
+        usage = message.get("usage") or {}
+        tokens = {
+            "in": int(usage.get("input", 0) or 0),
+            "out": int(usage.get("output", 0) or 0),
+            "cache_read": int(usage.get("cacheRead", 0) or 0),
+            "cache_write": int(usage.get("cacheWrite", 0) or 0),
+        }
+        blocks = message.get("content") or []
+
+        if role == "user":
+            texts = [
+                str(block.get("text") or "").strip()
+                for block in blocks
+                if isinstance(block, dict) and block.get("type") == "text"
+            ]
+            combined = "\n\n".join(text for text in texts if text).strip()
+            if combined:
+                turns.append(_turn("user_message", combined[:80], combined, at=at, tokens=tokens, raw=event))
+            continue
+
+        if role != "assistant":
+            continue
+
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = str(block.get("type") or "")
+            if block_type == "text":
+                text = str(block.get("text") or "").strip()
+                if text:
+                    turns.append(_turn("agent_message", text[:80], text, at=at, tokens=tokens, raw=event))
+            elif block_type in {"reasoning", "thinking"}:
+                text = str(block.get("text") or "").strip()
+                if text:
+                    turns.append(_turn("thinking", text[:80], text, at=at, tokens=tokens, raw=event))
+            elif block_type in {"toolCall", "tool_use"}:
+                name = str(block.get("name") or "unknown")
+                arguments = block.get("arguments") if isinstance(block.get("arguments"), dict) else {}
+                command = str(arguments.get("command") or "").strip()
+                path = str(
+                    arguments.get("file_path") or arguments.get("path") or arguments.get("target_file") or ""
+                ).strip()
+                lowered = name.lower()
+                if command and (
+                    "bash" in lowered
+                    or lowered in {"exec", "execute", "run_shell_command", "execute_command", "run_command"}
+                ):
+                    turns.append(_turn("shell_command", command[:100], command, at=at, tokens=tokens, raw=event))
+                elif path and ("edit" in lowered or lowered in {"write", "create", "replace", "patch", "apply_patch"}):
+                    content_text = str(
+                        arguments.get("diff")
+                        or arguments.get("patch")
+                        or arguments.get("content")
+                        or arguments.get("new_string")
+                        or ""
+                    )
+                    turns.append(_turn("file_edit", f"{name}({path})", content_text, at=at, tokens=tokens, raw=event))
+                else:
+                    turns.append(
+                        _turn(
+                            "tool_call",
+                            f"{name}(...)" if arguments else name,
+                            json.dumps(arguments, indent=2, ensure_ascii=False),
+                            at=at,
+                            tokens=tokens,
+                            raw=event,
+                        )
+                    )
+
+    return turns
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +613,7 @@ def _parse_gemini(content: str) -> list[dict[str, Any]]:
 
 def _parse_copilot(content: str) -> list[dict[str, Any]]:
     turns: list[dict[str, Any]] = []
+    tool_names: dict[str, str] = {}  # toolCallId -> toolName from execution_start
     for line in content.splitlines():
         try:
             ev = json.loads(line)
@@ -517,19 +622,26 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
         et = ev.get("type")
         at = ev.get("timestamp")
         data = ev.get("data") or {}
-        if et == "user.message":
+        if et == "tool.execution_start":
+            tcid = data.get("toolCallId")
+            if tcid:
+                tool_names[tcid] = data.get("toolName") or "unknown"
+        elif et == "user.message":
             msg = str(data.get("content") or "")
             if msg:
                 turns.append(_turn("user_message", msg[:80], msg, at=at, raw=ev))
         elif et == "assistant.message":
             msg = str(data.get("content") or "")
             toks = {"out": data.get("outputTokens", 0)}
+            # reasoning text (skip encrypted opaque content)
+            reasoning = str(data.get("reasoningText") or "")
+            if reasoning:
+                turns.append(_turn("thinking", reasoning[:80], reasoning, at=at, tokens=toks, raw=ev))
             if msg:
                 turns.append(_turn("agent_message", msg[:80], msg, at=at, tokens=toks, raw=ev))
             for req in data.get("toolRequests") or []:
                 name = req.get("name", "unknown")
                 args = req.get("arguments") or {}
-                # Plain text extraction for Copilot
                 if name in ("edit", "write", "create"):
                     c_text = str(
                         args.get("content")
@@ -541,7 +653,8 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
                     c_text = json.dumps(args, ensure_ascii=False)
                 turns.append(_turn("tool_call", f"{name}(...)", c_text, at=at, tokens=toks, raw=ev))
         elif et == "tool.execution_complete":
-            tn = data.get("toolName") or "unknown"
+            tcid = data.get("toolCallId")
+            tn = tool_names.get(tcid or "", "") or data.get("toolName") or "unknown"
             metrics = (data.get("toolTelemetry") or {}).get("metrics") or {}
             out_t = int(metrics.get("resultForLlmLength", 0) or 0) // 4
             turns.append(_turn("tool_call", f"{tn} output", f"{out_t} tokens of output", at=at, raw=ev))

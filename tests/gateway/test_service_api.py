@@ -32,7 +32,7 @@ def store(tmp_path: Path) -> SQLiteStore:
 def app_no_auth(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """App with auth disabled."""
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
-    return TestClient(create_app(store=store))
+    return TestClient(create_app(store_root=store.root))
 
 
 @pytest.fixture()
@@ -40,7 +40,7 @@ def app_with_auth(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> TestCl
     """App with auth enabled and known key."""
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "true")
     monkeypatch.setenv("ATELIER_API_KEY", "test-secret-key-123")
-    return TestClient(create_app(store=store))
+    return TestClient(create_app(store_root=store.root))
 
 
 AUTH_HEADERS = {"Authorization": "Bearer test-secret-key-123"}
@@ -230,6 +230,47 @@ def test_trace_redacts_secrets(app_no_auth: TestClient, store: SQLiteStore) -> N
     trace = store.get_trace(trace_id)
     assert trace is not None
     assert "sk-supersecret" not in trace.task
+
+
+def test_external_analytics_endpoints_return_summary_and_detail(
+    app_no_auth: TestClient,
+    store: SQLiteStore,
+) -> None:
+    store.record_external_analytics_run(
+        tool="codeburn",
+        period="today",
+        source="servicectl",
+        ok=True,
+        command_display="codeburn report --format json -p today",
+        returncode=0,
+        summary={"highlights": [{"key": "cost_usd", "label": "cost usd", "value": 4.5}]},
+        payload={"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
+        collected_at="2026-05-11T12:00:00+00:00",
+    )
+    store.record_external_analytics_run(
+        tool="tokscale",
+        period="today",
+        source="servicectl",
+        ok=False,
+        command_display="tokscale --json --no-spinner --today",
+        returncode=1,
+        summary={"highlights": [{"key": "input_tokens", "label": "input tokens", "value": 1200}]},
+        payload={"summary": {"input_tokens": 1200}},
+        stderr="tool missing",
+        collected_at="2026-05-11T13:00:00+00:00",
+    )
+
+    external_resp = app_no_auth.get("/analytics/external")
+    assert external_resp.status_code == 200
+    external_data = external_resp.json()
+    assert external_data["totals"]["runs_total"] == 2
+    assert external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
+
+    dashboard_resp = app_no_auth.get("/analytics/dashboard")
+    assert dashboard_resp.status_code == 200
+    dashboard = dashboard_resp.json()
+    assert dashboard["external"]["runs_total"] == 2
+    assert {item["tool"] for item in dashboard["external"]["latest"]} == {"codeburn", "tokscale"}
 
 
 # --------------------------------------------------------------------------- #

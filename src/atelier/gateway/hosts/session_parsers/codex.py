@@ -55,6 +55,7 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ReasoningStore
+from atelier.gateway.hosts.session_parsers._common import _SIZE_LIMIT_BYTES
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -223,8 +224,17 @@ class CodexImporter:
         """Import all sessions. Returns IDs of successfully imported sessions."""
         imported_ids = []
         skipped = 0
-        for jsonl_path in find_codex_sessions(root):
+        all_sessions = list(find_codex_sessions(root))
+        total = len(all_sessions)
+        print(f"[atelier] codex: discovering sessions (found {total})")
+        for i, jsonl_path in enumerate(all_sessions):
             try:
+                size = jsonl_path.stat().st_size
+                if size > _SIZE_LIMIT_BYTES:
+                    print(f"[atelier] codex: skipping massive session {jsonl_path.name} ({size / 1e6:.1f}MB)")
+                    continue
+                if i % 10 == 0 and i > 0:
+                    print(f"[atelier] codex: importing {i}/{total}...")
                 sid = self.import_session(jsonl_path, force=force)
                 if sid:
                     imported_ids.append(sid)
@@ -499,7 +509,7 @@ class CodexImporter:
             validation_results=[],
             raw_artifact_ids=[artifact_id],
             reasoning=reasoning_snippets,
-            input_tokens=final_total_in,
+            input_tokens=final_total_in - final_total_cached,
             user_prompt_tokens=user_prompt_tokens,
             output_tokens=final_total_out,
             thinking_tokens=final_total_think,

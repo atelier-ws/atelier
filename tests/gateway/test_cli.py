@@ -445,4 +445,74 @@ def test_servicectl_tick_imports_only_new_or_updated_sessions(
     assert payload3["imported_sessions"]["codex"] == 1
 
 
+def test_servicectl_tick_collects_external_analytics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    monkeypatch.setattr(
+        "atelier.gateway.integrations.external_analytics.run_external_reports",
+        lambda tool="all", period="today", cwd=None: {
+            "generated_at": "2026-05-11T12:00:00+00:00",
+            "tool": tool,
+            "period": period,
+            "reports": [
+                {
+                    "tool": "tokscale",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": "tokscale --json --no-spinner --today",
+                    "payload": {"summary": {"cost": 3.25, "input_tokens": 1200}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+                {
+                    "tool": "codeburn",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": "codeburn report --format json -p today",
+                    "payload": {"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+            ],
+        },
+    )
+
+    def unavailable(messages: object, json_schema: object | None = None) -> None:
+        _ = (messages, json_schema)
+        raise OllamaUnavailable("offline")
+
+    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
+
+    res = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "-1",
+        "--external-analytics-interval-seconds",
+        "0",
+        "--external-analytics-period",
+        "today",
+        "--json",
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["external_analytics_ran"] is True
+    assert {item["tool"] for item in payload["external_analytics_runs"]} == {"tokscale", "codeburn"}
+
+    store = ReasoningStore(root)
+    runs = store.list_external_analytics_runs(limit=10)
+    assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
+    assert all(item["source"] == "servicectl" for item in runs)
+
+
 # `atelier task` command removed — cut in CLI consolidation.

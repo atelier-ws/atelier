@@ -191,7 +191,7 @@ Developer-focused references:
 ```python
 from atelier.sdk import AtelierClient
 
-client = AtelierClient.local(root=".atelier")
+client = AtelierClient.local()
 
 context = client.get_reasoning_context(
     task="Apply a live config update",

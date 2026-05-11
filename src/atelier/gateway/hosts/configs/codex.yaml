@@ -29,67 +29,76 @@ installation:
   macos: |
     # Install Atelier
     brew install atelier
-    
+
     # Setup Codex integration
     atelier host setup codex
-    
+
     # Add Atelier skills to Codex config
     atelier host configure codex --add-skills
-    
+
     # Verify installation
     atelier host info codex
 
   linux: |
     # Install Atelier
     sudo apt-get install atelier  # or your distro's package manager
-    
+
     # Setup Codex integration
     atelier host setup codex
-    
+
     # Add Atelier skills to Codex config
     atelier host configure codex --add-skills
-    
+
     # Verify installation
     atelier host info codex
 
   windows: |
     # Install Atelier
     choco install atelier
-    
+
     # Setup Codex integration
     atelier host setup codex
-    
+
     # Add Atelier skills to Codex config
     atelier host configure codex --add-skills
-    
+
     # Verify installation
     atelier host info codex
 
 prompt_templates:
+  - name: session-optimization
+    template: |
+      Atelier budget optimizer is active for Codex.
+      Before changing files, name the deliverable and summarize the smallest viable plan.
+      Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.
+      Restate working context in under 10 bullets before editing or after compaction.
+      If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
+      If the same approach fails twice, call rescue or change approach; do not retry a third time.
+
   - name: pack-context
     template: |
       Available Atelier pack: {pack.name}
       Domain: {pack.domain}
-      
+
       Reasoning patterns ({pack.reasonblocks_count}):
       {pack.reasonblocks_list}
-      
+
       Quality checks ({pack.rubrics_count}):
       {pack.rubrics_list}
-      
+
   - name: code-generation
     template: |
       Use pack '{pack.name}' for code generation in the {pack.domain} domain.
-      
+
       Available patterns for code generation:
       - {pack.patterns}
-      
+
       After generation, verify with checks: {pack.rubrics}
-      
+
   - name: task-context
     template: |
       Task: {task}
       Recommended pack: {pack.name}
-      
+
       This pack contains {pack.reasonblocks_count} patterns for {pack.domain} tasks.
       Apply rubric checks: {pack.rubrics_list}

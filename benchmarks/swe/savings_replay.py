@@ -343,7 +343,7 @@ def run_paired_command_benchmark(
     ``cost_usd``, and ``success`` for provider-native accounting. If omitted,
     this harness estimates prompt/output tokens locally from captured text.
     """
-    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", ".atelier"))
+    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
     store = SQLiteStore(resolved_root)
     store.init()
     selected_tasks = tasks or _default_command_tasks(max_prompts=max_prompts)
@@ -406,7 +406,7 @@ def run_replay(
     corpus_dir: Path = _CORPUS_DIR,
     csv_path: Path | None = None,
 ) -> ReplayResult:
-    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", ".atelier"))
+    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
     store = SQLiteStore(resolved_root)
     store.init()
     rows = _load_corpus(corpus_dir)

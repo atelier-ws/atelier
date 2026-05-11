@@ -33,16 +33,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     );
   }
   return res.json();
-  }
+}
 
-  async function getText(path: string): Promise<string> {
+async function getText(path: string): Promise<string> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok)
     throw new ApiError(res.status, `${res.status} ${res.statusText}`);
   return res.text();
-  }
+}
 
-  export interface OverviewStats {
+export interface OverviewStats {
   total_traces: number;
   total_blocks: number;
   total_rubrics: number;
@@ -394,6 +394,234 @@ export interface SavingsSummaryV2 {
   latest_benchmark?: SavingsBenchmark | null;
 }
 
+export interface OptimizationRule {
+  id: string;
+  title: string;
+  severity: string;
+  trigger: string;
+  action: string;
+}
+
+export interface OptimizationHostCoverage {
+  host: string;
+  mode: string;
+  automatic_at_start: boolean;
+  automatic_mid_session: boolean;
+  advisory_only: boolean;
+  surfaces: string[];
+  notes: string;
+}
+
+export interface OptimizationLever {
+  id: string;
+  title: string;
+  category: string;
+  automation: string;
+  status: string;
+  observed_tokens_saved: number;
+  applies_to: string[];
+  notes: string;
+  examples: string[];
+}
+
+export interface OptimizationGap {
+  id: string;
+  priority: string;
+  title: string;
+  hosts: string[];
+  notes: string;
+}
+
+export interface OptimizationRecommendationSession {
+  trace_id: string;
+  host?: string;
+  project?: string;
+  cost_usd?: number;
+  peer_average_usd?: number;
+  multiple?: number;
+  effective_input_tokens?: number;
+  output_tokens?: number;
+  input_output_ratio?: number;
+  previous_input_multiple?: number | null;
+  tools?: string[];
+  reason?: string;
+}
+
+export interface OptimizationRecommendation {
+  id: string;
+  title: string;
+  severity: string;
+  action: string;
+  session_count: number;
+  estimated_tokens_saved: number;
+  estimated_usd_saved: number;
+  sessions: OptimizationRecommendationSession[];
+}
+
+export interface OptimizationContextAuditComponent {
+  id: string;
+  title: string;
+  category: string;
+  mode: string;
+  estimated_tokens: number;
+  file_count: number;
+  optimizable: boolean;
+  notes: string;
+}
+
+export interface OptimizationContextAudit {
+  generated_at: string;
+  audited_tokens_total: number;
+  always_on_tokens: number;
+  optimizable_tokens: number;
+  component_count: number;
+  components: OptimizationContextAuditComponent[];
+  recommendations: string[];
+}
+
+export interface OptimizationQualitySignal {
+  id: string;
+  title: string;
+  weight_pct: number;
+  score: number;
+  detail: string;
+}
+
+export interface OptimizationQualitySummary {
+  generated_at: string;
+  trace_count: number;
+  score: number;
+  grade: string;
+  dominant_model: string | null;
+  dominant_context_window_tokens: number;
+  signals: OptimizationQualitySignal[];
+  recommendations: string[];
+  risk_flags: string[];
+}
+
+export interface OptimizationAutoOptimization {
+  id: string;
+  title: string;
+  tokens_saved: number;
+  cost_saved_usd: number;
+  calls_saved: number;
+  session_count: number;
+  tools: string[];
+}
+
+export interface OptimizationImpactWindow {
+  trace_count: number;
+  avg_tokens: number;
+  avg_cost_usd: number;
+  avg_cache_leverage: number;
+  avg_saved_tokens: number;
+  tracked_turns: number;
+  from: string | null;
+  to: string | null;
+}
+
+export interface OptimizationImpactValidation {
+  generated_at: string;
+  window_days: number;
+  strategy: string;
+  verdict: string;
+  before: OptimizationImpactWindow;
+  after: OptimizationImpactWindow;
+  deltas: {
+    tokens_pct: number;
+    cost_pct: number;
+    cache_leverage_pct: number;
+    saved_tokens_pct: number;
+  };
+  notes: string[];
+}
+
+export interface OptimizationRereadKind {
+  id: string;
+  title: string;
+  event_count: number;
+  tokens_saved: number;
+  cost_saved_usd: number;
+  path_count: number;
+  last_seen_at: string | null;
+}
+
+export interface OptimizationRereadPath {
+  path: string;
+  event_count: number;
+  tokens_saved: number;
+  kinds: string[];
+}
+
+export interface OptimizationRereadTelemetry {
+  generated_at: string;
+  window_days: number;
+  event_count: number;
+  total_tokens_saved: number;
+  total_cost_saved_usd: number;
+  kinds: OptimizationRereadKind[];
+  top_paths: OptimizationRereadPath[];
+}
+
+export interface OptimizationRoutingCandidate {
+  trace_id: string;
+  task: string;
+  current_model: string;
+  target_model: string;
+  current_cost_usd: number;
+  simulated_cost_usd: number;
+  estimated_cost_saved_usd: number;
+  total_tokens: number;
+  reason: string;
+}
+
+export interface OptimizationModelRoutingSimulation {
+  generated_at: string;
+  window_days: number;
+  candidate_count: number;
+  estimated_cost_saved_usd: number;
+  current_cost_usd: number;
+  simulated_cost_usd: number;
+  total_tokens_rerouted: number;
+  heuristic: string;
+  candidates: OptimizationRoutingCandidate[];
+}
+
+export interface OptimizationsSummary {
+  generated_at: string;
+  window_days: number;
+  automatic_hosts: number;
+  advisory_only_hosts: number;
+  observed_levers: number;
+  runtime_coverage: OptimizationHostCoverage[];
+  budget_guidance: string;
+  budget_rules: OptimizationRule[];
+  implemented_levers: OptimizationLever[];
+  implementation_gaps: OptimizationGap[];
+  recommendations: {
+    window_days: number;
+    host: string | null;
+    hosts_supported: string[];
+    trace_count: number;
+    recommendations: OptimizationRecommendation[];
+    estimated_tokens_saved: number;
+    estimated_usd_saved: number;
+    guidance: string;
+  };
+  context_audit: OptimizationContextAudit;
+  quality_score: OptimizationQualitySummary;
+  auto_optimizations: OptimizationAutoOptimization[];
+  impact_validation: OptimizationImpactValidation;
+  reread_telemetry: OptimizationRereadTelemetry;
+  model_routing_simulation: OptimizationModelRoutingSimulation;
+  savings: SavingsSummaryV2;
+  data_sources: Array<{
+    id: string;
+    label: string;
+    detail: string;
+  }>;
+}
+
 export interface CallEntry {
   run_id: string;
   domain?: string;
@@ -552,6 +780,136 @@ export interface GranularToolUsage {
   cost?: number;
 }
 
+export interface DashboardDaily {
+  date: string;
+  sessions: number;
+  cost: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface DashboardByDomain {
+  domain: string;
+  sessions: number;
+  cost: number;
+  avg_cost: number;
+}
+
+export interface DashboardByHost {
+  host: string;
+  sessions: number;
+  cost: number;
+  cache_pct: number;
+  input_tokens: number;
+  cached_tokens: number;
+}
+
+export interface DashboardByModel {
+  model: string;
+  sessions: number;
+  cost: number;
+  cache_pct: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+}
+
+export interface DashboardTopSession {
+  id: string;
+  host: string;
+  domain: string;
+  model: string;
+  date: string;
+  cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+}
+
+export interface DashboardTool {
+  name: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface ExternalAnalyticsMetric {
+  key: string;
+  label: string;
+  value: number;
+}
+
+export interface ExternalAnalyticsSection {
+  name: string;
+  kind: string;
+  count: number;
+}
+
+export interface ExternalAnalyticsSummary {
+  tool: string;
+  top_level_keys: string[];
+  sections: ExternalAnalyticsSection[];
+  highlights: ExternalAnalyticsMetric[];
+}
+
+export interface DashboardExternalLatest {
+  id: string;
+  tool: string;
+  period: string;
+  source: string;
+  ok: boolean;
+  returncode: number | null;
+  summary: ExternalAnalyticsSummary;
+  collected_at: string;
+}
+
+export interface DashboardExternalSummary {
+  runs_total: number;
+  successful_runs: number;
+  failed_runs: number;
+  latest: DashboardExternalLatest[];
+}
+
+export interface ExternalAnalyticsRun {
+  id: string;
+  tool: string;
+  period: string;
+  source: string;
+  command_display: string;
+  ok: boolean;
+  returncode: number | null;
+  summary: ExternalAnalyticsSummary;
+  payload: unknown;
+  stdout: string;
+  stderr: string;
+  collected_at: string;
+  created_at: string;
+}
+
+export interface ExternalAnalyticsResponse {
+  totals: {
+    runs_total: number;
+    successful_runs: number;
+    failed_runs: number;
+  };
+  latest_by_tool: Record<string, ExternalAnalyticsRun>;
+  runs: ExternalAnalyticsRun[];
+}
+
+export interface AnalyticsDashboard {
+  daily: DashboardDaily[];
+  by_domain: DashboardByDomain[];
+  by_host: DashboardByHost[];
+  by_model: DashboardByModel[];
+  top_sessions: DashboardTopSession[];
+  external: DashboardExternalSummary;
+  tools: {
+    core: DashboardTool[];
+    shell: DashboardTool[];
+    mcp: DashboardTool[];
+  };
+}
+
 export interface TelemetryConfigResponse {
   remote_enabled: boolean;
   lexical_frustration_enabled: boolean;
@@ -631,6 +989,21 @@ export const api = {
     params.set("grouped", "true");
     return get<GranularToolUsage[]>(`/analytics?${params.toString()}`);
   },
+  analyticsDashboard: (days = 30, host?: string) => {
+    const params = new URLSearchParams();
+    params.set("days", String(days));
+    if (host) params.set("host", host);
+    return get<AnalyticsDashboard>(`/analytics/dashboard?${params.toString()}`);
+  },
+  externalAnalytics: (days = 30, tool?: string, limit = 30) => {
+    const params = new URLSearchParams();
+    params.set("days", String(days));
+    params.set("limit", String(limit));
+    if (tool) params.set("tool", tool);
+    return get<ExternalAnalyticsResponse>(
+      `/analytics/external?${params.toString()}`
+    );
+  },
   pricing: () =>
     get<Record<string, { input: number; output: number; cache_read: number }>>(
       "/pricing"
@@ -652,6 +1025,10 @@ export const api = {
   savings: () => get<SavingsSummary>("/savings"),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
+  optimizationsSummary: (windowDays = 14) =>
+    get<OptimizationsSummary>(
+      `/v1/optimizations/summary?window_days=${windowDays}`
+    ),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
@@ -704,8 +1081,7 @@ export const api = {
     remote_enabled?: boolean;
     lexical_frustration_enabled?: boolean;
   }) => post<TelemetryConfigResponse>("/telemetry/config", payload),
-  telemetryAck: () =>
-    post<TelemetryConfigResponse>("/telemetry/ack", {}),
+  telemetryAck: () => post<TelemetryConfigResponse>("/telemetry/ack", {}),
   telemetryLocal: (limit = 100) =>
     get<TelemetryLocalResponse>(`/telemetry/local?limit=${limit}`),
   postTelemetryLocal: (event: string, props: Record<string, unknown>) =>
@@ -716,4 +1092,4 @@ export const api = {
     get<RawArtifact>(`/raw-artifacts/${artifactId}`),
   rawArtifactContent: (artifactId: string) =>
     getText(`/raw-artifacts/${artifactId}/content`),
-  };
+};

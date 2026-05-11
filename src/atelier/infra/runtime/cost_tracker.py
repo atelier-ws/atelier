@@ -284,14 +284,20 @@ class CostTracker:
         total_current = 0.0
         total_calls = 0
         per_op: list[dict[str, Any]] = []
-        for op_key in ops:
+        for op_key, entry in ops.items():
+            if not isinstance(entry, dict):
+                continue
+            calls = entry.get("calls") or []
+            if not calls:
+                continue
+            baseline = float(calls[0].get("cost_usd", 0.0) or 0.0)
+            actual_total = sum(float(c.get("cost_usd", 0.0) or 0.0) for c in calls)
+            total_baseline += baseline * len(calls)
+            total_current += actual_total
+            total_calls += len(calls)
             s = self.savings_for(op_key)
-            if s["calls_count"] >= 1:
-                total_baseline += s["baseline_cost_usd"] * s["calls_count"]
-                total_current += s["current_cost_usd"] * s["calls_count"]
-                total_calls += s["calls_count"]
-                per_op.append(s)
-        delta = total_baseline - total_current
+            per_op.append(s)
+        delta = max(0.0, total_baseline - total_current)
         pct = (delta / total_baseline * 100.0) if total_baseline > 0 else 0.0
         return {
             "operations_tracked": len(ops),

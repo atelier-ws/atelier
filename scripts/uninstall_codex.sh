@@ -33,13 +33,11 @@ if $WORKSPACE_SET; then
     CODEX_HOME="${WORKSPACE}/.codex"
     MARKETPLACE_JSON="${WORKSPACE}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-    WRAPPER_FILE="${WORKSPACE}/bin/atelier-codex"
     TASKS_DIR="${WORKSPACE}/.codex/tasks"
 else
     CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
     MARKETPLACE_JSON="${HOME}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
-    WRAPPER_FILE="${HOME}/.local/bin/atelier-codex"
     TASKS_DIR=""
 fi
 
@@ -78,11 +76,6 @@ fi
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
     run "rm -f '$AGENTS_FILE'"
     info "Removed $AGENTS_FILE"
-fi
-
-if [ -f "$WRAPPER_FILE" ]; then
-    run "rm -f '$WRAPPER_FILE'"
-    info "Removed $WRAPPER_FILE"
 fi
 
 if [ -n "$TASKS_DIR" ] && [ -d "$TASKS_DIR" ]; then

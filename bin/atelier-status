@@ -22,8 +22,8 @@ if [ -n "${ATELIER_ROOT:-}" ]; then
   ROOT="$ATELIER_ROOT"
 elif [ -n "${ATELIER_STORE_ROOT:-}" ]; then
   ROOT="$ATELIER_STORE_ROOT"
-elif [ -d "$PWD/.atelier" ]; then
-  ROOT="$PWD/.atelier"
+elif [ -n "${ATELIER_ROOT:-}" ]; then
+  ROOT="${ATELIER_ROOT}"
 else
   ROOT="${HOME}/.atelier"
 fi
