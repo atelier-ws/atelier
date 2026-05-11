@@ -21,7 +21,7 @@ import os
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS traces (
     domain TEXT NOT NULL,
     status TEXT NOT NULL,
     task TEXT NOT NULL,
+    workspace_path TEXT,
     created_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
@@ -287,7 +288,11 @@ class ReasoningStore:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE traces ADD COLUMN host TEXT")
 
-            for h in ("claude", "codex", "copilot", "gemini", "opencode"):
+            from atelier.gateway.hosts.session_parsers.registry import (
+                SUPPORTED_SESSION_IMPORT_HOSTS,
+            )
+
+            for h in SUPPORTED_SESSION_IMPORT_HOSTS:
                 conn.execute("UPDATE traces SET host = ? WHERE id LIKE ? AND host IS NULL", (h, f"{h}-%"))
 
             for ddl in (
@@ -316,10 +321,29 @@ class ReasoningStore:
         return conn
 
     def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
-        from atelier.infra.storage.migrations import sqlite_migration_scripts
+        from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
 
-        for sql in sqlite_migration_scripts():
-            conn.executescript(sql)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS _schema_migrations" " (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+        )
+        applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
+        for name in SQLITE_MIGRATIONS:
+            if name in applied:
+                continue
+            for stmt in (s.strip() for s in read_migration(name).split(";")):
+                if not stmt:
+                    continue
+                try:
+                    conn.execute(stmt)
+                except sqlite3.OperationalError as exc:
+                    msg = str(exc).lower()
+                    if "duplicate column name" not in msg and "already exists" not in msg:
+                        raise
+            conn.execute(
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at)" " VALUES (?, datetime('now'))",
+                (name,),
+            )
+            conn.commit()
 
     def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
         """Return True when every V2 table exists in SQLite."""
@@ -566,14 +590,15 @@ class ReasoningStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO traces (id, agent, host, domain, status, task, created_at, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent = excluded.agent,
                     host = excluded.host,
                     domain = excluded.domain,
                     status = excluded.status,
                     task = excluded.task,
+                    workspace_path = excluded.workspace_path,
                     payload = excluded.payload
                 """,
                 (
@@ -583,6 +608,7 @@ class ReasoningStore:
                     trace.domain,
                     trace.status,
                     trace.task,
+                    trace.workspace_path,
                     trace.created_at.isoformat(),
                     payload,
                 ),
@@ -934,6 +960,84 @@ class ReasoningStore:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_job(row) for row in rows]
 
+    # ----- external analytics -------------------------------------------- #
+
+    def record_external_analytics_run(
+        self,
+        *,
+        tool: str,
+        period: str,
+        source: str,
+        ok: bool,
+        command_display: str = "",
+        returncode: int | None = None,
+        summary: dict[str, Any] | None = None,
+        payload: Any | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        collected_at: str | None = None,
+    ) -> str:
+        run_id = uuid4().hex
+        created_at = datetime.now(UTC).isoformat()
+        collected = collected_at or created_at
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO external_analytics_runs (
+                    id, tool, period, source, command_display,
+                    ok, returncode, summary_json, payload_json,
+                    stdout, stderr, collected_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    tool,
+                    period,
+                    source,
+                    command_display,
+                    1 if ok else 0,
+                    returncode,
+                    json.dumps(summary or {}, ensure_ascii=False, sort_keys=True),
+                    json.dumps(payload if payload is not None else {}, ensure_ascii=False),
+                    stdout,
+                    stderr,
+                    collected,
+                    created_at,
+                ),
+            )
+        return run_id
+
+    def list_external_analytics_runs(
+        self,
+        *,
+        tool: str | None = None,
+        period: str | None = None,
+        ok: bool | None = None,
+        days: int | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM external_analytics_runs WHERE 1=1"
+        params: list[Any] = []
+        if tool:
+            sql += " AND tool = ?"
+            params.append(tool)
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        if ok is not None:
+            sql += " AND ok = ?"
+            params.append(1 if ok else 0)
+        if days is not None:
+            cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            sql += " AND collected_at >= ?"
+            params.append(cutoff)
+        sql += " ORDER BY collected_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_external_analytics_run(row) for row in rows]
+
     # ----- Lessons --------------------------------------------------------- #
 
     def upsert_lesson_candidate(self, candidate: LessonCandidate) -> None:
@@ -1128,6 +1232,31 @@ class ReasoningStore:
             "error": row["error"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+        }
+
+    def _row_to_external_analytics_run(self, row: sqlite3.Row) -> dict[str, Any]:
+        def _load_json(raw: Any, fallback: Any) -> Any:
+            if isinstance(raw, str):
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    return fallback
+            return raw if raw is not None else fallback
+
+        return {
+            "id": row["id"],
+            "tool": row["tool"],
+            "period": row["period"],
+            "source": row["source"],
+            "command_display": row["command_display"],
+            "ok": bool(row["ok"]),
+            "returncode": row["returncode"],
+            "summary": _load_json(row["summary_json"], {}),
+            "payload": _load_json(row["payload_json"], {}),
+            "stdout": row["stdout"] or "",
+            "stderr": row["stderr"] or "",
+            "collected_at": row["collected_at"],
+            "created_at": row["created_at"],
         }
 
     def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:

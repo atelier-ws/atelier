@@ -831,3 +831,102 @@ def test_record_context_budget_persists_tool_marker_for_zero_saved_turn(
             "tool_calls": 1,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_lever", "extra_args", "expected_range"),
+    [
+        ("outline", "structure_map", {}, None),
+        ("range", "delta_read", {"range": "12-40"}, "12-40"),
+    ],
+)
+def test_record_context_budget_classifies_smart_read_savings(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected_lever: str,
+    extra_args: dict[str, object],
+    expected_range: str | None,
+) -> None:
+    from atelier.core.capabilities import plugin_runtime
+    from atelier.gateway.adapters import mcp_server
+
+    events: list[dict[str, object]] = []
+    recorder_rows: list[dict[str, object]] = []
+
+    class Recorder:
+        def record(self, **kwargs: object) -> None:
+            recorder_rows.append(kwargs)
+
+        def record_compact_tool_output(self, **kwargs: object) -> None:
+            raise AssertionError("compact recording should not be used for smart read telemetry")
+
+    monkeypatch.setattr(mcp_server, "_get_context_budget_recorder", lambda: Recorder())
+    monkeypatch.setattr(mcp_server, "_record_smart_state_savings", lambda **_: None)
+    monkeypatch.setattr(mcp_server, "_append_live_savings_event", lambda event: events.append(event))
+    monkeypatch.setattr(plugin_runtime, "equivalent_calls", lambda *_args, **_kwargs: 0.0)
+    monkeypatch.setattr(
+        plugin_runtime,
+        "compute_live_savings",
+        lambda *_args, **_kwargs: {
+            "calls_saved": 0,
+            "time_saved_ms": 0,
+            "input_tokens_saved": 0,
+            "output_tokens_saved": 0,
+            "cache_read_tokens_saved": 0,
+            "cache_write_tokens_saved": 0,
+        },
+    )
+
+    led = SimpleNamespace(run_id="run-proof", agent="codex", model="claude-sonnet-4", events=[{}, {}, {}])
+    args = {"path": "/tmp/sample.py", **extra_args}
+    result = {
+        "mode": mode,
+        "path": "/tmp/sample.py",
+        "cache_hit": False,
+        "tokens_saved": 240,
+        "total_tokens": 180,
+    }
+    if expected_range is not None:
+        result["range"] = expected_range
+
+    mcp_server._record_context_budget_for_tool("read", args, led, result)
+
+    assert events == [
+        {
+            "agent": "codex",
+            "at": events[0]["at"],
+            "cache_hit": False,
+            "cache_read_tokens_saved": 0,
+            "cache_write_tokens_saved": 0,
+            "calls_saved": 0,
+            "cost_saved_usd": 0.0,
+            "equivalent_baseline_calls": 0.0,
+            "input_tokens_saved": 0,
+            "lever": expected_lever,
+            "live_tokens_saved": 0,
+            "model": "claude-sonnet-4",
+            "output_tokens_saved": 0,
+            "path": "/tmp/sample.py",
+            "read_mode": mode,
+            "run_id": "run-proof",
+            "time_saved_ms": 0,
+            "tokens_saved": 240,
+            "tool_name": "read",
+            "tool_tokens_saved": 240,
+            **({"range": expected_range} if expected_range is not None else {}),
+        }
+    ]
+    assert recorder_rows == [
+        {
+            "run_id": "run-proof",
+            "turn_index": 2,
+            "model": "claude-sonnet-4",
+            "input_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "output_tokens": 180,
+            "naive_input_tokens": 420,
+            "lever_savings": {expected_lever: 240, "tool:read": 0},
+            "tool_calls": 1,
+        }
+    ]

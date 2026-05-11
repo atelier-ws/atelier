@@ -107,14 +107,14 @@ LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py \
                      tests/gateway/test_cli_proof_gate.py -v
 
 # Generate the proof report manually:
-LOCAL=1 uv run atelier --root .atelier proof run --run-id <id> --json
+LOCAL=1 uv run atelier proof run --run-id <id> --json
 
 # Show the last saved proof report:
-LOCAL=1 uv run atelier --root .atelier proof report --json
+LOCAL=1 uv run atelier proof report --json
 
 # Assert the report exists and has a valid status:
-test -s .atelier/proof/proof-report.json
-python -c "import json; r=json.load(open('.atelier/proof/proof-report.json')); assert r['status'] in ('pass', 'fail')"
+test -s ~/.atelier/proof/proof-report.json
+python -c "import json, os; r=json.load(open(os.path.expanduser('~/.atelier/proof/proof-report.json'))); assert r['status'] in ('pass', 'fail')"
 ```
 
 ## Design notes

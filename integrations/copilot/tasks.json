@@ -2,6 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Atelier: Copilot Preflight",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "wrapper=\"$PWD/bin/atelier-copilot\"; if [ -x \"$wrapper\" ]; then exec \"$wrapper\" --task \"$1\" --step \"$2\" --step \"$3\"; else exec atelier-copilot --task \"$1\" --step \"$2\" --step \"$3\"; fi",
+        "bash",
+        "${input:atelierTask}",
+        "${input:atelierStep1}",
+        "${input:atelierStep2}"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Atelier: Reasoning Context",
       "type": "shell",
       "command": "uv",

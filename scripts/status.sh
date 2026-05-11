@@ -140,6 +140,22 @@ check_gemini() {
     fi
 }
 
+check_codeburn() {
+    if has_cmd codeburn; then
+        echo "installed"
+    else
+        echo "not installed"
+    fi
+}
+
+check_tokscale() {
+    if has_cmd tokscale; then
+        echo "installed"
+    else
+        echo "not installed"
+    fi
+}
+
 get_latest_run() {
     if [ -d "${WORKSPACE}/.atelier/runs" ]; then
         bash "${ATELIER_REPO}/bin/atelier-status" --root "${WORKSPACE}/.atelier" 2>/dev/null || echo "(no runs yet)"
@@ -155,8 +171,12 @@ CODEX_STATUS="$(check_codex)"
 OPENCODE_STATUS="$(check_opencode)"
 COPILOT_STATUS="$(check_copilot)"
 GEMINI_STATUS="$(check_gemini)"
+CODEBURN_STATUS="$(check_codeburn)"
+TOKSCALE_STATUS="$(check_tokscale)"
 
-if [ "$JSON" = true ]; then
+if [ "$WRITE" = true ]; then
+    : # write-only mode: skip human-readable output, just persist below
+elif [ "$JSON" = true ]; then
     RUNTIME_STATUS="$RUNTIME_STATUS" \
     SYMLINK_STATUS="$SYMLINK_STATUS" \
     CLAUDE_STATUS="$CLAUDE_STATUS" \
@@ -164,6 +184,8 @@ if [ "$JSON" = true ]; then
     OPENCODE_STATUS="$OPENCODE_STATUS" \
     COPILOT_STATUS="$COPILOT_STATUS" \
     GEMINI_STATUS="$GEMINI_STATUS" \
+    CODEBURN_STATUS="$CODEBURN_STATUS" \
+    TOKSCALE_STATUS="$TOKSCALE_STATUS" \
     python3 - <<'PYEOF'
 import json
 import os
@@ -176,6 +198,8 @@ print(json.dumps({
     "opencode": os.environ["OPENCODE_STATUS"],
     "copilot": os.environ["COPILOT_STATUS"],
     "gemini": os.environ["GEMINI_STATUS"],
+    "codeburn": os.environ["CODEBURN_STATUS"],
+    "tokscale": os.environ["TOKSCALE_STATUS"],
 }))
 PYEOF
 else
@@ -197,6 +221,10 @@ else
     echo "  Copilot         $COPILOT_STATUS"
     echo "  Gemini          $GEMINI_STATUS"
     echo ""
+    echo "External Reporting:"
+    echo "  codeburn        $CODEBURN_STATUS"
+    echo "  tokscale        $TOKSCALE_STATUS"
+    echo ""
     echo "Latest Run:"
     echo "  $(get_latest_run)"
 fi
@@ -211,6 +239,8 @@ if [ "$WRITE" = true ]; then
     OPENCODE_STATUS="$OPENCODE_STATUS" \
     COPILOT_STATUS="$COPILOT_STATUS" \
     GEMINI_STATUS="$GEMINI_STATUS" \
+    CODEBURN_STATUS="$CODEBURN_STATUS" \
+    TOKSCALE_STATUS="$TOKSCALE_STATUS" \
     python3 - <<'PYEOF'
 import json, os
 
@@ -224,6 +254,8 @@ status = {
     "opencode": installed(os.environ["OPENCODE_STATUS"]),
     "copilot": installed(os.environ["COPILOT_STATUS"]),
     "gemini": installed(os.environ["GEMINI_STATUS"]),
+    "codeburn": installed(os.environ["CODEBURN_STATUS"]),
+    "tokscale": installed(os.environ["TOKSCALE_STATUS"]),
 }
 path = os.path.join(hosts_dir, "status.json")
 with open(path, "w") as f:

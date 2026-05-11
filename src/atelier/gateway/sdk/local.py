@@ -45,7 +45,11 @@ from atelier.infra.storage.factory import make_memory_store
 
 
 class LocalClient(AtelierClient):
-    def __init__(self, *, root: str = ".atelier") -> None:
+    def __init__(self, *, root: str | Path | None = None) -> None:
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = default_store_root()
         self.root = Path(root)
         self.runtime = ReasoningRuntime(self.root)
         self.store = self.runtime.store

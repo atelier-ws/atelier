@@ -57,6 +57,16 @@ def test_mcp_stdio_wrapper_content() -> None:
     assert "exec " in content, "Wrapper should use exec to replace the process"
 
 
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ["atelier-preflight", "atelier-copilot", "atelier-gemini", "atelier-opencode"],
+)
+def test_host_preflight_wrappers_exist(wrapper_name: str) -> None:
+    wrapper = ATELIER_ROOT / "bin" / wrapper_name
+    assert wrapper.exists(), f"Missing: bin/{wrapper_name}"
+    assert is_executable(wrapper), f"Not executable: bin/{wrapper_name}"
+
+
 # ---------------------------------------------------------------------------
 # 3. Unified scripts
 # ---------------------------------------------------------------------------
@@ -322,12 +332,16 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     copilot = (SCRIPTS / "install_copilot.sh").read_text()
     assert "Code/User" in copilot
     assert ".copilot/instructions/atelier.instructions.md" in copilot
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in copilot
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in copilot
     assert "${HOME}/.vscode" not in copilot
     assert "${HOME}/.github" not in copilot
 
     opencode = (SCRIPTS / "install_opencode.sh").read_text()
     assert ".config}/opencode" in opencode
     assert 'OC_FILE="${WORKSPACE}/opencode.json"' in opencode
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in opencode
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in opencode
     assert "${HOME}/opencode.jsonc" not in opencode
     assert "${HOME}/.opencode" not in opencode
 
@@ -339,8 +353,20 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     gemini = (SCRIPTS / "install_gemini.sh").read_text()
     assert "gemini extensions validate" in gemini
     assert "gemini extensions link" in gemini
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in gemini
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in gemini
     assert "settings.json" not in gemini
     assert "atelier-mcp" in gemini
+
+
+def test_copilot_tasks_include_preflight_wrapper() -> None:
+    tasks = json.loads((INTEGRATIONS / "copilot" / "tasks.json").read_text(encoding="utf-8"))
+    labels = {task.get("label") for task in tasks.get("tasks", [])}
+    assert "Atelier: Copilot Preflight" in labels
+
+    preflight_task = next(task for task in tasks.get("tasks", []) if task.get("label") == "Atelier: Copilot Preflight")
+    assert preflight_task.get("command") == "bash"
+    assert any("atelier-copilot" in arg for arg in preflight_task.get("args", []))
 
 
 # ---------------------------------------------------------------------------

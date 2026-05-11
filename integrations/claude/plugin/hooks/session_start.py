@@ -90,13 +90,16 @@ def _apply_session_bootstrap(payload: dict[str, Any]) -> bool:
     except Exception:
         return False
     with suppress(Exception):
-        apply_session_start_files(
+        result = apply_session_start_files(
             _atelier_root(),
             plugin_root,
             config_dir=_claude_settings_path().parent,
             payload=payload,
             current_version=os.environ.get("ATELIER_VERSION", "0.0.0"),
         )
+        stdout = result.get("stdout") if isinstance(result, dict) else None
+        if stdout:
+            print(json.dumps(stdout) if isinstance(stdout, dict) else str(stdout))
         return True
     return False
 

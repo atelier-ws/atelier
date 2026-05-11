@@ -133,8 +133,8 @@ export default function RunInspectorDrawer({
               {title}
             </h2>
             <div className="flex gap-4 text-[10px] text-neutral-500 mt-1 font-mono uppercase tracking-widest">
-               {trace.run_id && <span>Run: {trace.run_id.slice(0, 12)}…</span>}
-               <span>Trace: {trace.id.slice(0, 12)}…</span>
+              {trace.run_id && <span>Run: {trace.run_id}</span>}
+              <span>Trace: {trace.id}</span>
             </div>
           </div>
           <button
@@ -156,28 +156,43 @@ export default function RunInspectorDrawer({
           <div className="pt-4 space-y-5">
             <section className="grid grid-cols-2 gap-2">
               <div className="bg-neutral-900/50 border border-neutral-800 p-2 rounded">
-                 <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">Host / Model</div>
-                 <div className="text-xs text-neutral-200 font-mono truncate">
-                    {trace.host || 'unknown'} · {trace.agent}
-                 </div>
+                <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">
+                  Host / Model
+                </div>
+                <div className="text-xs text-neutral-200 font-mono truncate">
+                  {trace.host || "unknown"} · {trace.agent}
+                </div>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 p-2 rounded">
-                 <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">Magnitude</div>
-                 <div className="text-xs text-neutral-200 font-mono">
-                    {((trace.input_tokens || 0) + (trace.output_tokens || 0) + (trace.thinking_tokens || 0) + (trace.cached_input_tokens || 0)).toLocaleString()} tokens
-                 </div>
+                <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">
+                  Magnitude
+                </div>
+                <div className="text-xs text-neutral-200 font-mono">
+                  {(
+                    (trace.input_tokens || 0) +
+                    (trace.output_tokens || 0) +
+                    (trace.thinking_tokens || 0) +
+                    (trace.cached_input_tokens || 0)
+                  ).toLocaleString()}{" "}
+                  tokens
+                </div>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 p-2 rounded">
-                 <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">Activity</div>
-                 <div className="text-xs text-neutral-200 font-mono">
-                    {trace.tools_called.length} tools · {trace.commands_run.length} commands
-                 </div>
+                <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">
+                  Activity
+                </div>
+                <div className="text-xs text-neutral-200 font-mono">
+                  {trace.tools_called.length} tools ·{" "}
+                  {trace.commands_run.length} commands
+                </div>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 p-2 rounded">
-                 <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">Files</div>
-                 <div className="text-xs text-neutral-200 font-mono">
-                    {trace.files_touched.length} paths touched
-                 </div>
+                <div className="text-[9px] uppercase text-neutral-500 font-bold mb-1">
+                  Files
+                </div>
+                <div className="text-xs text-neutral-200 font-mono">
+                  {trace.files_touched.length} paths touched
+                </div>
               </div>
             </section>
 

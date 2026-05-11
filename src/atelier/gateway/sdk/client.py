@@ -338,8 +338,13 @@ class AtelierClient(ABC):
         self.lessons = LessonClient(self)
 
     @classmethod
-    def local(cls, *, root: str = ".atelier") -> LocalClient:
+    def local(cls, *, root: str | None = None) -> LocalClient:
         from atelier.gateway.sdk.local import LocalClient
+
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = str(default_store_root())
 
         return LocalClient(root=root)
 

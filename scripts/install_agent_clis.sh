@@ -101,14 +101,21 @@ for h in "${PASS[@]+"${PASS[@]}"}"; do echo "  OK       $h"; done
 for h in "${SKIP[@]+"${SKIP[@]}"}"; do echo "  SKIPPED  $h (CLI not found)"; done
 for h in "${FAIL[@]+"${FAIL[@]}"}"; do echo "  FAILED   $h"; done
 echo ""
-echo "Next: make verify"
 
-# Persist host detection results for the Docker service
+if [ ${#FAIL[@]} -gt 0 ]; then
+    echo "Some installs failed. Scroll up for the error output from each failed host."
+    echo "Next: fix the errors above, then re-run: make install"
+else
+    echo "Next: make verify"
+fi
+
+# Persist host detection results for the Docker service (write-only, no terminal output)
 STATUS_SCRIPT="${SCRIPT_DIR}/status.sh"
 if [ -f "$STATUS_SCRIPT" ]; then
     bash "$STATUS_SCRIPT" --write 2>/dev/null || true
 fi
 
-# We exit 0 even if some hosts failed so the main installer can finish its work.
-# The user can see failures in the summary above.
+if [ ${#FAIL[@]} -gt 0 ]; then
+    exit 1
+fi
 exit 0
