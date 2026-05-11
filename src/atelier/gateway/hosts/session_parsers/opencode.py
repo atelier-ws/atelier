@@ -39,6 +39,26 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def find_opencode_sessions(db_path: Path | None = None) -> list[dict[str, Any]]:
+    if db_path is None:
+        db_path = Path.home() / ".local/share/opencode/opencode.db"
+
+    if not db_path.exists():
+        return []
+
+    try:
+        uri = f"file:{db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(row) for row in conn.execute("SELECT * FROM session ORDER BY time_created DESC").fetchall()]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        _traceback.print_exc()
+        return []
+
+
 class OpenCodeImporter:
     """OpenCode session importer."""
 
@@ -46,28 +66,19 @@ class OpenCodeImporter:
         self.store = store
 
     def import_all(self, db_path: Path | None = None, *, force: bool = False) -> list[str]:
-        if db_path is None:
-            db_path = Path.home() / ".local/share/opencode/opencode.db"
-
-        if not db_path.exists():
+        resolved_db_path = db_path or (Path.home() / ".local/share/opencode/opencode.db")
+        if not resolved_db_path.exists():
             return []
 
+        all_sessions = list(find_opencode_sessions(resolved_db_path))
+        print(f"[atelier] opencode: discovering sessions (found {len(all_sessions)})")
         imported_ids = []
-        try:
-            uri = f"file:{db_path}?mode=ro"
-            conn = sqlite3.connect(uri, uri=True)
-            conn.row_factory = sqlite3.Row
-            try:
-                # OpenCode sessions
-                sessions = conn.execute("SELECT * FROM session ORDER BY time_created DESC").fetchall()
-                for s in sessions:
-                    tid = self._import_session(dict(s), db_path, force=force)
-                    if tid:
-                        imported_ids.append(tid)
-            finally:
-                conn.close()
-        except sqlite3.Error:
-            _traceback.print_exc()
+        for i, session_row in enumerate(all_sessions):
+            if i % 10 == 0 and i > 0:
+                print(f"[atelier] opencode: importing {i}/{len(all_sessions)}...")
+            tid = self._import_session(session_row, resolved_db_path, force=force)
+            if tid:
+                imported_ids.append(tid)
 
         return imported_ids
 
@@ -144,12 +155,15 @@ class OpenCodeImporter:
                         user_prompt_tokens += max(1, len(txt) // 4)
 
                 if ptype == "tool":
-                    curr_tool_calls.append(
-                        (
-                            str(data.get("tool", "unknown")),
-                            (data.get("state") or {}).get("input") or {},
-                        )
-                    )
+                    tool_name = str(data.get("tool", "unknown"))
+                    state_inp = (data.get("state") or {}).get("input") or {}
+                    curr_tool_calls.append((tool_name, state_inp))
+                    cmd = str(state_inp.get("command", "") or state_inp.get("cmd", "")).strip()
+                    if cmd:
+                        commands_run.append(cmd[:200])
+                    fp = state_inp.get("file_path") or state_inp.get("path")
+                    if fp:
+                        files_touched[str(fp)] = state_inp
                 elif ptype == "step-finish":
                     ts_tok = data.get("tokens") or {}
                     in_t = int(ts_tok.get("input", 0) or 0)
@@ -158,7 +172,7 @@ class OpenCodeImporter:
                     cache_r = int(cache.get("read", 0) or 0)
                     cache_w = int(cache.get("write", 0) or 0)
 
-                    total_in += in_t + cache_r + cache_w
+                    total_in += in_t
                     total_out += out_t
                     total_reason += int(ts_tok.get("reasoning", 0) or 0)
                     total_cache_read += cache_r

@@ -22,54 +22,15 @@ import sqlite3
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Security
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from atelier.core.foundation.models import (
-    Trace,
-    to_jsonable,
-)
-from atelier.core.foundation.store import ReasoningStore
 from atelier.core.service.config import cfg
 
+if TYPE_CHECKING:
+    from atelier.core.foundation.models import Trace
+    from atelier.core.foundation.store import ReasoningStore
+
 _LOGGER = logging.getLogger(__name__)
-
-# --------------------------------------------------------------------------- #
-# Auth                                                                        #
-# --------------------------------------------------------------------------- #
-
-security = HTTPBearer(auto_error=False)
-
-
-def verify_api_key(
-    auth: HTTPAuthorizationCredentials | None = Security(security),  # noqa: B008
-) -> str:
-    """Validate Bearer token against cfg.api_key.
-
-    If cfg.require_auth is False, this is a no-op.
-    """
-    if not cfg.require_auth:
-        return "anonymous"
-
-    if auth is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # If key is not configured, we reject all authenticated requests
-    if not cfg.api_key:
-        _LOGGER.warning("API key not configured; rejecting request")
-        raise HTTPException(status_code=401, detail="Authentication required but no key configured")
-
-    if auth.credentials != cfg.api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-
-    return "authenticated"
 
 
 # --------------------------------------------------------------------------- #
@@ -96,6 +57,60 @@ def _normalize_lever(operation: str) -> str:
     if "reasonblock" in op or "reason_block" in op or "inject" in op:
         return "reasonblock_inject"
     return op
+
+
+def _build_external_analytics_summary(store: Any, *, days: int) -> dict[str, Any]:
+    runs = store.list_external_analytics_runs(days=days, limit=200)
+    latest: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    successful_runs = sum(1 for run in runs if run.get("ok"))
+    for run in runs:
+        tool = str(run.get("tool") or "unknown")
+        if tool in seen:
+            continue
+        latest.append(
+            {
+                "id": run.get("id"),
+                "tool": tool,
+                "period": run.get("period"),
+                "source": run.get("source"),
+                "ok": run.get("ok"),
+                "returncode": run.get("returncode"),
+                "summary": run.get("summary") or {},
+                "collected_at": run.get("collected_at"),
+            }
+        )
+        seen.add(tool)
+    return {
+        "runs_total": len(runs),
+        "successful_runs": successful_runs,
+        "failed_runs": len(runs) - successful_runs,
+        "latest": latest,
+    }
+
+
+def _build_external_analytics_detail(
+    store: Any,
+    *,
+    days: int,
+    tool: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    runs = store.list_external_analytics_runs(tool=tool, days=days, limit=limit)
+    latest_by_tool: dict[str, dict[str, Any]] = {}
+    successful_runs = sum(1 for run in runs if run.get("ok"))
+    for run in runs:
+        tool_name = str(run.get("tool") or "unknown")
+        latest_by_tool.setdefault(tool_name, run)
+    return {
+        "totals": {
+            "runs_total": len(runs),
+            "successful_runs": successful_runs,
+            "failed_runs": len(runs) - successful_runs,
+        },
+        "latest_by_tool": latest_by_tool,
+        "runs": runs,
+    }
 
 
 def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
@@ -141,6 +156,491 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
         "atelier_success_rate",
     }
     return {key: payload[key] for key in keys if key in payload}
+
+
+_OBSERVED_OPTIMIZATION_TITLES = {
+    "search_read": "Search/read compaction",
+    "batch_edit": "Batch edit",
+    "compact_lifecycle": "Tool-output compaction",
+    "scoped_recall": "Scoped recall",
+    "reasonblock_inject": "ReasonBlock injection",
+    "cached_read": "Cached reuse",
+    "delta_read": "Delta read",
+    "structure_map": "Structure map",
+}
+
+
+def _trace_created_at(trace: Trace) -> datetime:
+    created = trace.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return created
+
+
+def _trace_run_key(trace: Trace) -> str:
+    return str(trace.run_id or trace.id)
+
+
+def _trace_total_tokens(trace: Trace) -> int:
+    from atelier.core.capabilities.session_optimizer import effective_input_tokens
+
+    return effective_input_tokens(trace) + int(trace.output_tokens or 0)
+
+
+def _trace_cache_leverage(trace: Trace) -> float:
+    from atelier.core.capabilities.session_optimizer import effective_input_tokens
+
+    effective_input = effective_input_tokens(trace)
+    if effective_input <= 0:
+        return 0.0
+    return round(int(trace.cached_input_tokens or 0) / effective_input, 4)
+
+
+def _recent_traces(store: ReasoningStore, *, window_days: int) -> list[Trace]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    traces = store.list_traces(limit=5000)
+    recent = [trace for trace in traces if _trace_created_at(trace) >= cutoff]
+    return sorted(recent, key=_trace_created_at)
+
+
+def _tracked_saved_tokens(store: ReasoningStore, trace: Trace) -> tuple[int, int]:
+    try:
+        rows = store.list_context_budgets(_trace_run_key(trace))
+    except Exception:
+        return 0, 0
+
+    saved_tokens = 0
+    tracked_turns = 0
+    for row in rows:
+        tracked_turns += int(row.tool_calls or 0)
+        lever_keys = [str(key or "") for key in row.lever_savings]
+        non_marker_keys = [key for key in lever_keys if not key.startswith("tool:")]
+        if non_marker_keys and all(key.startswith("compact_tool_output:") for key in non_marker_keys):
+            continue
+        actual_tokens = (
+            int(row.input_tokens or 0)
+            + int(row.cache_read_tokens or 0)
+            + int(row.cache_write_tokens or 0)
+            + int(row.output_tokens or 0)
+        )
+        naive_tokens = int(row.naive_input_tokens or 0)
+        saved_tokens += max(0, naive_tokens - actual_tokens)
+    return saved_tokens, tracked_turns
+
+
+def _window_metrics(store: ReasoningStore, traces: list[Trace]) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import trace_cost_usd
+
+    entries: list[dict[str, Any]] = []
+    for trace in traces:
+        saved_tokens, tracked_turns = _tracked_saved_tokens(store, trace)
+        entries.append(
+            {
+                "trace_id": trace.id,
+                "tokens": _trace_total_tokens(trace),
+                "cost_usd": trace_cost_usd(trace),
+                "cache_leverage": _trace_cache_leverage(trace),
+                "saved_tokens": saved_tokens,
+                "tracked_turns": tracked_turns,
+                "created_at": _trace_created_at(trace).isoformat(),
+            }
+        )
+
+    count = len(entries)
+    if count == 0:
+        return {
+            "trace_count": 0,
+            "avg_tokens": 0,
+            "avg_cost_usd": 0.0,
+            "avg_cache_leverage": 0.0,
+            "avg_saved_tokens": 0,
+            "tracked_turns": 0,
+            "from": None,
+            "to": None,
+        }
+
+    return {
+        "trace_count": count,
+        "avg_tokens": round(sum(int(item["tokens"]) for item in entries) / count),
+        "avg_cost_usd": round(sum(float(item["cost_usd"]) for item in entries) / count, 6),
+        "avg_cache_leverage": round(sum(float(item["cache_leverage"]) for item in entries) / count, 4),
+        "avg_saved_tokens": round(sum(int(item["saved_tokens"]) for item in entries) / count),
+        "tracked_turns": sum(int(item["tracked_turns"]) for item in entries),
+        "from": entries[0]["created_at"],
+        "to": entries[-1]["created_at"],
+    }
+
+
+def _pct_change(before: float, after: float) -> float:
+    if before <= 0:
+        if after <= 0:
+            return 0.0
+        return 100.0
+    return round(((after - before) / before) * 100.0, 1)
+
+
+def _impact_verdict(tokens_delta_pct: float, cost_delta_pct: float, cache_delta_pct: float) -> str:
+    improvements = 0
+    regressions = 0
+
+    if tokens_delta_pct <= -5.0:
+        improvements += 1
+    elif tokens_delta_pct >= 5.0:
+        regressions += 1
+
+    if cost_delta_pct <= -5.0:
+        improvements += 1
+    elif cost_delta_pct >= 5.0:
+        regressions += 1
+
+    if cache_delta_pct >= 5.0:
+        improvements += 1
+    elif cache_delta_pct <= -5.0:
+        regressions += 1
+
+    if improvements >= 2 and regressions == 0:
+        return "improved"
+    if regressions >= 2 and improvements == 0:
+        return "regressed"
+    if improvements == 0 and regressions == 0:
+        return "no_change"
+    return "mixed"
+
+
+def _build_impact_validation(
+    store: ReasoningStore,
+    traces: list[Trace],
+    *,
+    window_days: int,
+) -> dict[str, Any]:
+    if len(traces) < 2:
+        return {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "window_days": window_days,
+            "strategy": "chronological_halves",
+            "verdict": "insufficient_data",
+            "before": _window_metrics(store, []),
+            "after": _window_metrics(store, []),
+            "deltas": {
+                "tokens_pct": 0.0,
+                "cost_pct": 0.0,
+                "cache_leverage_pct": 0.0,
+                "saved_tokens_pct": 0.0,
+            },
+            "notes": ["Need at least two traces in the selected window to compare before vs after behavior."],
+        }
+
+    midpoint = max(1, len(traces) // 2)
+    before = _window_metrics(store, traces[:midpoint])
+    after = _window_metrics(store, traces[midpoint:])
+
+    tokens_delta_pct = _pct_change(float(before["avg_tokens"]), float(after["avg_tokens"]))
+    cost_delta_pct = _pct_change(float(before["avg_cost_usd"]), float(after["avg_cost_usd"]))
+    cache_delta_pct = _pct_change(float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"]))
+    saved_tokens_delta_pct = _pct_change(float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"]))
+
+    notes: list[str] = []
+    if after["avg_tokens"] < before["avg_tokens"]:
+        notes.append("Average token load fell in the later half of the window.")
+    if after["avg_cost_usd"] < before["avg_cost_usd"]:
+        notes.append("Average per-trace cost dropped in the later half of the window.")
+    if after["avg_cache_leverage"] > before["avg_cache_leverage"]:
+        notes.append("Cache leverage improved in the later half of the window.")
+    if not notes:
+        notes.append("Later traces look materially similar to earlier traces in this window.")
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "strategy": "chronological_halves",
+        "verdict": _impact_verdict(tokens_delta_pct, cost_delta_pct, cache_delta_pct),
+        "before": before,
+        "after": after,
+        "deltas": {
+            "tokens_pct": tokens_delta_pct,
+            "cost_pct": cost_delta_pct,
+            "cache_leverage_pct": cache_delta_pct,
+            "saved_tokens_pct": saved_tokens_delta_pct,
+        },
+        "notes": notes,
+    }
+
+
+def _lever_title(lever: str) -> str:
+    return _OBSERVED_OPTIMIZATION_TITLES.get(lever, lever.replace("_", " ").title())
+
+
+def _build_auto_optimizations(
+    savings_payload: dict[str, Any],
+    live_events: list[dict[str, Any]],
+    *,
+    window_days: int,
+) -> list[dict[str, Any]]:
+    start_day = datetime.now(UTC).date() - timedelta(days=max(1, window_days) - 1)
+    per_lever = {
+        str(key): int(value or 0)
+        for key, value in (savings_payload.get("per_lever") or {}).items()
+        if isinstance(key, str) and int(value or 0) > 0
+    }
+    observed: dict[str, dict[str, Any]] = {}
+
+    for event in live_events:
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        try:
+            at_date = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00")).date()
+        except Exception:
+            at_date = datetime.now(UTC).date()
+        if at_date < start_day:
+            continue
+        lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
+        item = observed.setdefault(
+            lever,
+            {
+                "id": lever,
+                "title": _lever_title(lever),
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "calls_saved": 0,
+                "sessions": set(),
+                "tools": set(),
+            },
+        )
+        item["tokens_saved"] += tokens_saved
+        item["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        item["calls_saved"] += int(event.get("calls_saved", 0) or 0)
+        run_id = str(event.get("run_id") or "")
+        if run_id:
+            item["sessions"].add(run_id)
+        tool_name = str(event.get("tool_name") or "")
+        if tool_name:
+            item["tools"].add(tool_name)
+
+    rows: list[dict[str, Any]] = []
+    for lever, tokens_saved in per_lever.items():
+        item = observed.get(
+            lever,
+            {
+                "id": lever,
+                "title": _lever_title(lever),
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "calls_saved": 0,
+                "sessions": set(),
+                "tools": set(),
+            },
+        )
+        item["tokens_saved"] = max(int(item["tokens_saved"]), tokens_saved)
+        rows.append(
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "tokens_saved": int(item["tokens_saved"]),
+                "cost_saved_usd": round(float(item["cost_saved_usd"]), 6),
+                "calls_saved": int(item["calls_saved"]),
+                "session_count": len(item["sessions"]),
+                "tools": sorted(item["tools"]),
+            }
+        )
+
+    return sorted(rows, key=lambda row: int(row["tokens_saved"]), reverse=True)[:8]
+
+
+def _reread_kind(event: dict[str, Any]) -> str | None:
+    lever = _normalize_lever(str(event.get("lever") or ""))
+    if lever in {"delta_read", "structure_map"}:
+        return lever
+    mode = str(event.get("read_mode") or "").strip().lower()
+    if mode == "range":
+        return "delta_read"
+    if mode == "outline":
+        return "structure_map"
+    return None
+
+
+def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
+    start_day = datetime.now(UTC).date() - timedelta(days=max(1, window_days) - 1)
+    by_kind: dict[str, dict[str, Any]] = {}
+    by_path: dict[str, dict[str, Any]] = {}
+    total_tokens_saved = 0
+    total_cost_saved = 0.0
+    event_count = 0
+
+    for event in _iter_live_savings_events(root):
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        try:
+            at = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00"))
+        except Exception:
+            at = datetime.now(UTC)
+        if at.date() < start_day:
+            continue
+        kind = _reread_kind(event)
+        if kind is None:
+            continue
+
+        event_count += 1
+        total_tokens_saved += tokens_saved
+        total_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
+
+        kind_row = by_kind.setdefault(
+            kind,
+            {
+                "id": kind,
+                "title": _lever_title(kind),
+                "event_count": 0,
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "path_count": 0,
+                "last_seen_at": None,
+            },
+        )
+        kind_row["event_count"] += 1
+        kind_row["tokens_saved"] += tokens_saved
+        kind_row["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        kind_row["last_seen_at"] = at.isoformat()
+
+        path = str(event.get("path") or "(unknown file)")
+        path_row = by_path.setdefault(
+            path,
+            {
+                "path": path,
+                "event_count": 0,
+                "tokens_saved": 0,
+                "kinds": set(),
+            },
+        )
+        path_row["event_count"] += 1
+        path_row["tokens_saved"] += tokens_saved
+        path_row["kinds"].add(kind)
+
+    for kind_row in by_kind.values():
+        matching_paths = [row for row in by_path.values() if kind_row["id"] in row["kinds"]]
+        kind_row["path_count"] = len(matching_paths)
+        kind_row["cost_saved_usd"] = round(float(kind_row["cost_saved_usd"]), 6)
+
+    top_paths = []
+    for path_row in sorted(by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True)[:5]:
+        top_paths.append(
+            {
+                "path": path_row["path"],
+                "event_count": int(path_row["event_count"]),
+                "tokens_saved": int(path_row["tokens_saved"]),
+                "kinds": sorted(path_row["kinds"]),
+            }
+        )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "event_count": event_count,
+        "total_tokens_saved": total_tokens_saved,
+        "total_cost_saved_usd": round(total_cost_saved, 6),
+        "kinds": sorted(by_kind.values(), key=lambda row: int(row["tokens_saved"]), reverse=True),
+        "top_paths": top_paths,
+    }
+
+
+def _cheaper_model_for(model: str | None) -> str | None:
+    normalized = (model or "").strip().lower()
+    if not normalized:
+        return None
+    mappings = [
+        (("claude-opus", "claude-sonnet"), "claude-haiku-4-5"),
+        (("gpt-5.5", "gpt-5.4-pro", "chat-latest"), "gpt-5.4-mini"),
+        (("gpt-5.4", "gpt-5.3-codex"), "gpt-5.4-mini"),
+        (("o3",), "o4-mini-deep-research"),
+        (("gemini-3.1-pro", "gemini-2.5-pro"), "gemini-2.5-flash"),
+        (("gemini-3-flash", "gemini-2.5-flash"), "gemini-2.5-flash-lite"),
+        (("grok-4.3", "grok-4.20"), "grok-4-1-fast-non-reasoning"),
+        (("deepseek-v4-pro", "deepseek-reasoner"), "deepseek-chat"),
+    ]
+    for prefixes, target in mappings:
+        if any(prefix in normalized for prefix in prefixes):
+            return target
+    return None
+
+
+def _routine_trace_reason(trace: Trace) -> str | None:
+    tool_calls = sum(int(tool.count or 0) for tool in trace.tools_called)
+    file_count = len(trace.files_touched)
+    total_tokens = _trace_total_tokens(trace)
+    output_tokens = int(trace.output_tokens or 0)
+
+    if trace.status != "success":
+        return None
+    if trace.errors_seen or trace.repeated_failures:
+        return None
+    if total_tokens > 120_000:
+        return None
+    if output_tokens > 8_000:
+        return None
+    if tool_calls > 4:
+        return None
+    if file_count > 2:
+        return None
+    if any(not bool(result.passed) for result in trace.validation_results):
+        return None
+    return "Success with bounded tokens, limited tools, and no visible recovery work."
+
+
+def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    total_current_cost = 0.0
+    total_simulated_cost = 0.0
+    rerouted_tokens = 0
+
+    for trace in traces:
+        target_model = _cheaper_model_for(trace.model)
+        if target_model is None:
+            continue
+        reason = _routine_trace_reason(trace)
+        if reason is None:
+            continue
+
+        from atelier.core.capabilities.pricing import get_model_pricing
+        from atelier.core.capabilities.session_optimizer import trace_cost_usd
+
+        current_cost = trace_cost_usd(trace)
+        simulated_cost = get_model_pricing(target_model).cost_usd(
+            input_tokens=int(trace.input_tokens or 0),
+            output_tokens=int(trace.output_tokens or 0),
+            cache_read_tokens=int(trace.cached_input_tokens or 0),
+            cache_write_tokens=int(trace.cache_creation_input_tokens or 0),
+        )
+        if simulated_cost >= current_cost:
+            continue
+
+        total_current_cost += current_cost
+        total_simulated_cost += simulated_cost
+        rerouted_tokens += _trace_total_tokens(trace)
+        candidates.append(
+            {
+                "trace_id": trace.id,
+                "task": trace.task,
+                "current_model": trace.model or "_default",
+                "target_model": target_model,
+                "current_cost_usd": round(current_cost, 6),
+                "simulated_cost_usd": round(simulated_cost, 6),
+                "estimated_cost_saved_usd": round(current_cost - simulated_cost, 6),
+                "total_tokens": _trace_total_tokens(trace),
+                "reason": reason,
+            }
+        )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "candidate_count": len(candidates),
+        "estimated_cost_saved_usd": round(total_current_cost - total_simulated_cost, 6),
+        "current_cost_usd": round(total_current_cost, 6),
+        "simulated_cost_usd": round(total_simulated_cost, 6),
+        "total_tokens_rerouted": rerouted_tokens,
+        "heuristic": "Conservative routine-trace filter: success only, no errors, <=120K total tokens, <=4 tool calls, <=2 files touched.",
+        "candidates": sorted(candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True)[:8],
+    }
 
 
 def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
@@ -257,13 +757,441 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     }
 
 
+def _optimization_runtime_coverage() -> list[dict[str, Any]]:
+    return [
+        {
+            "host": "claude",
+            "mode": "runtime",
+            "automatic_at_start": True,
+            "automatic_mid_session": True,
+            "advisory_only": False,
+            "surfaces": [
+                "SessionStart hook",
+                "PostToolUse telemetry hook",
+                "Host instructions",
+            ],
+            "notes": (
+                "Live SessionStart guidance is emitted from the Claude plugin, and PostToolUse telemetry now "
+                "emits one-shot nudges for no-edit drift, session-quality degradation, and loop-rescue intervention."
+            ),
+        },
+        {
+            "host": "codex",
+            "mode": "runtime",
+            "automatic_at_start": True,
+            "automatic_mid_session": True,
+            "advisory_only": False,
+            "surfaces": [
+                "SessionStart update hook",
+                "Savings reporter hook",
+                "Host instructions",
+            ],
+            "notes": (
+                "Codex now gets live SessionStart budget guidance plus the same PostToolUse nudges for no-edit drift, "
+                "session-quality degradation, and loop-rescue intervention."
+            ),
+        },
+        {
+            "host": "copilot",
+            "mode": "task_wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "Copilot preflight task",
+                "atelier-copilot wrapper",
+                "Copilot instructions",
+                "Atelier chatmode",
+            ],
+            "notes": (
+                "Copilot now has a task-driven preflight wrapper that emits live start guidance before chat work begins. "
+                "Native Copilot chat remains instruction-backed if that wrapper path is skipped."
+            ),
+        },
+        {
+            "host": "gemini",
+            "mode": "wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "atelier-gemini wrapper",
+                "Gemini extension commands",
+                "Gemini extension instruction",
+            ],
+            "notes": (
+                "Gemini can now launch through an Atelier wrapper that emits live start guidance before handing off to Gemini CLI. "
+                "Extension-only startup still falls back to installed instructions."
+            ),
+        },
+        {
+            "host": "opencode",
+            "mode": "wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "atelier-opencode wrapper",
+                "OpenCode agent instruction",
+            ],
+            "notes": (
+                "OpenCode can now launch through an Atelier wrapper that emits live start guidance before handing off to opencode. "
+                "Agent-profile-only sessions still rely on installed instructions."
+            ),
+        },
+    ]
+
+
+def _optimization_lever_tokens(
+    per_lever: dict[str, int],
+    *,
+    exact: tuple[str, ...] = (),
+    prefixes: tuple[str, ...] = (),
+) -> int:
+    total = 0
+    for lever, tokens in per_lever.items():
+        if lever in exact or any(lever.startswith(prefix) for prefix in prefixes):
+            total += int(tokens or 0)
+    return total
+
+
+def _optimization_lever_examples(
+    top_sources: list[dict[str, Any]],
+    *,
+    exact: tuple[str, ...] = (),
+    prefixes: tuple[str, ...] = (),
+) -> list[str]:
+    examples: list[str] = []
+    for source in top_sources:
+        lever = str(source.get("lever") or "")
+        if lever in exact or any(lever.startswith(prefix) for prefix in prefixes):
+            tool_name = str(source.get("tool_name") or lever)
+            if tool_name not in examples:
+                examples.append(tool_name)
+    return examples[:3]
+
+
+def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import SUPPORTED_OPTIMIZER_HOSTS
+
+    supported_hosts = list(SUPPORTED_OPTIMIZER_HOSTS)
+    per_lever = {
+        str(key): int(value or 0)
+        for key, value in (savings_payload.get("per_lever") or {}).items()
+        if isinstance(key, str)
+    }
+    top_sources = [item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)]
+
+    catalog = [
+        {
+            "id": "session_budget_optimizer",
+            "title": "Session budget optimizer",
+            "category": "session_control",
+            "automation": "Automatic on Claude/Codex and wrapper/task-enforced at start for Copilot/Gemini/OpenCode",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "applies_to": supported_hosts,
+            "notes": (
+                "Injects smallest-plan, bounded-context, and delivery-or-stop guardrails. "
+                "Also powers the trace-based optimization recommendations shown below."
+            ),
+            "examples": ["SessionStart guidance", "No-edit 10m nudge", "atelier optimize"],
+        },
+        {
+            "id": "search_read",
+            "title": "Search + read compaction",
+            "category": "tool_supervision",
+            "automation": "Automatic when smart search/read tools are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("search_read",)),
+            "applies_to": supported_hosts,
+            "notes": "Targets grep/read workflows into bounded chunks instead of feeding whole-file context.",
+            "examples": _optimization_lever_examples(top_sources, exact=("search_read",)),
+        },
+        {
+            "id": "batch_edit",
+            "title": "Batch edit",
+            "category": "tool_supervision",
+            "automation": "Automatic when batch edit paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("batch_edit",)),
+            "applies_to": supported_hosts,
+            "notes": "Combines related edits into a single operation to reduce repeated edit context and tool chatter.",
+            "examples": _optimization_lever_examples(top_sources, exact=("batch_edit",)),
+        },
+        {
+            "id": "compact_tool_output",
+            "title": "Tool-output compaction",
+            "category": "output_control",
+            "automation": "Automatic in Atelier MCP paths, optional in Claude host hook",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever,
+                exact=("compact_lifecycle",),
+                prefixes=("compact_tool_output:",),
+            ),
+            "applies_to": supported_hosts,
+            "notes": "Reduces verbose tool output before it becomes future prompt context.",
+            "examples": _optimization_lever_examples(
+                top_sources,
+                exact=("compact_lifecycle",),
+                prefixes=("compact_tool_output:",),
+            ),
+        },
+        {
+            "id": "cached_read",
+            "title": "Cached read reuse",
+            "category": "cache",
+            "automation": "Automatic when cached token paths are available",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("cached_read",)),
+            "applies_to": supported_hosts,
+            "notes": "Prefers cached or discounted context where the host/provider exposes it.",
+            "examples": _optimization_lever_examples(top_sources, exact=("cached_read",)),
+        },
+        {
+            "id": "scoped_recall",
+            "title": "Scoped recall",
+            "category": "memory",
+            "automation": "Automatic when memory recall paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("scoped_recall",)),
+            "applies_to": supported_hosts,
+            "notes": "Pulls narrower memory slices instead of replaying broad historical context.",
+            "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
+        },
+        {
+            "id": "reasonblock_inject",
+            "title": "ReasonBlock injection",
+            "category": "reasoning_reuse",
+            "automation": "Automatic when matching reasoning blocks are selected",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "applies_to": supported_hosts,
+            "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
+            "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
+        },
+        {
+            "id": "ast_truncation",
+            "title": "AST-aware truncation",
+            "category": "context_pruning",
+            "automation": "Automatic when structured truncation paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("ast_truncation",)),
+            "applies_to": supported_hosts,
+            "notes": "Keeps syntax-relevant structure while trimming low-value surrounding text.",
+            "examples": _optimization_lever_examples(top_sources, exact=("ast_truncation",)),
+        },
+        {
+            "id": "loop_detection",
+            "title": "Loop detection + rescue",
+            "category": "control_plane",
+            "automation": "Automatic detection, partial host-native rescue surfacing",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "applies_to": supported_hosts,
+            "notes": (
+                "Detects repeated search/read or retry loops and redirects the agent toward rescue instead of repeated spend. "
+                "This is a qualitative safeguard rather than a direct savings counter today."
+            ),
+            "examples": ["search_read_loop", "repeated bash failures"],
+        },
+    ]
+    for item in catalog:
+        observed_tokens = item.get("observed_tokens_saved")
+        if isinstance(observed_tokens, int) and observed_tokens > 0 and item["status"] == "active":
+            item["status"] = "active_observed"
+    return catalog
+
+
+def _optimization_implementation_gaps() -> list[dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import SUPPORTED_OPTIMIZER_HOSTS
+
+    supported_hosts = list(SUPPORTED_OPTIMIZER_HOSTS)
+    return [
+        {
+            "id": "wrapper-adoption-visibility",
+            "priority": "medium",
+            "title": "Distinguish wrapper-launched sessions from instruction-only sessions",
+            "hosts": supported_hosts,
+            "notes": (
+                "These hosts now have live start-time wrapper/task entrypoints, but the dashboard still does not label which recorded runs actually used those enforced paths."
+            ),
+        },
+        {
+            "id": "mid-session-nudges-non-hook-hosts",
+            "priority": "medium",
+            "title": "Extend mid-session quality and loop nudges beyond Claude and Codex",
+            "hosts": supported_hosts,
+            "notes": (
+                "Claude and Codex now emit no-edit, quality-drop, and loop-rescue nudges through runtime telemetry. "
+                "Copilot, Gemini, and OpenCode still only get start-time automation today."
+            ),
+        },
+        {
+            "id": "host-native-output-compaction-rollout",
+            "priority": "medium",
+            "title": "Roll out host-native tool-output compaction more broadly",
+            "hosts": supported_hosts,
+            "notes": (
+                "Tool-output compaction exists in Atelier's supervised paths and optional Claude hook surfaces, "
+                "but the host-native rollout is not uniform yet."
+            ),
+        },
+        {
+            "id": "impact-validation-windows",
+            "priority": "medium",
+            "title": "Add before/after impact validation for optimization changes",
+            "hosts": supported_hosts,
+            "notes": (
+                "Atelier now audits static context surfaces and recent trace quality, but it still does not compare pre-change and post-change windows to prove whether an optimization improved tokens, cost, or cache leverage."
+            ),
+        },
+        {
+            "id": "delta-read-and-structure-map-telemetry",
+            "priority": "medium",
+            "title": "Measure smart re-read savings at the file-structure level",
+            "hosts": supported_hosts,
+            "notes": (
+                "Atelier has search/read compaction and AST-aware truncation, but it does not yet expose repeat-read telemetry comparable to delta-read and structure-map measurement."
+            ),
+        },
+        {
+            "id": "model-routing-simulation",
+            "priority": "low",
+            "title": "Simulate cheaper model routing for routine traces",
+            "hosts": supported_hosts,
+            "notes": (
+                "The current optimizer flags expensive sessions, but it still does not estimate what could have been saved by routing clearly routine work to a cheaper model tier."
+            ),
+        },
+    ]
+
+
+def _optimizations_summary_payload(root: Path, store: ReasoningStore, *, window_days: int) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import (
+        build_trace_optimization_report,
+        render_session_optimizer_guidance,
+        session_optimization_rules,
+    )
+
+    savings = _savings_summary_payload(root, window_days=window_days)
+    traces = store.list_traces(limit=5000)
+    recent_traces = _recent_traces(store, window_days=window_days)
+    live_events = _iter_live_savings_events(root)
+    recommendations = build_trace_optimization_report(traces, days=window_days)
+    project_root_candidate = root.parent if root.name.startswith(".atelier") else Path.cwd()
+    if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
+        project_root_candidate = Path.cwd()
+    from atelier.core.capabilities.optimization_audit import (
+        build_context_audit,
+        build_session_quality_summary,
+    )
+
+    context_audit = build_context_audit(
+        project_root=project_root_candidate,
+        blocks_dir=getattr(store, "blocks_dir", None),
+        rubrics_dir=getattr(store, "rubrics_dir", None),
+    )
+    quality_score = build_session_quality_summary(traces, window_days=window_days, context_audit=context_audit)
+    runtime_coverage = _optimization_runtime_coverage()
+    implemented_levers = _implemented_optimization_catalog(savings)
+    auto_optimizations = _build_auto_optimizations(savings, live_events, window_days=window_days)
+    impact_validation = _build_impact_validation(store, recent_traces, window_days=window_days)
+    reread_telemetry = _build_reread_telemetry(root, window_days=window_days)
+    model_routing_simulation = _build_model_routing_simulation(recent_traces, window_days=window_days)
+
+    automatic_hosts = sum(1 for item in runtime_coverage if item["automatic_at_start"])
+    advisory_only_hosts = sum(1 for item in runtime_coverage if item["advisory_only"])
+    observed_levers = sum(
+        1
+        for item in implemented_levers
+        if isinstance(item.get("observed_tokens_saved"), int) and item["observed_tokens_saved"] > 0
+    )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "automatic_hosts": automatic_hosts,
+        "advisory_only_hosts": advisory_only_hosts,
+        "observed_levers": observed_levers,
+        "runtime_coverage": runtime_coverage,
+        "budget_guidance": render_session_optimizer_guidance(),
+        "budget_rules": session_optimization_rules(),
+        "implemented_levers": implemented_levers,
+        "implementation_gaps": _optimization_implementation_gaps(),
+        "recommendations": recommendations,
+        "context_audit": context_audit,
+        "quality_score": quality_score,
+        "auto_optimizations": auto_optimizations,
+        "impact_validation": impact_validation,
+        "reread_telemetry": reread_telemetry,
+        "model_routing_simulation": model_routing_simulation,
+        "savings": savings,
+        "data_sources": [
+            {
+                "id": "runtime_coverage",
+                "label": "Host automation coverage",
+                "detail": "Static audit of current hook-backed and instruction-backed optimizer surfaces across the five supported hosts.",
+            },
+            {
+                "id": "trace_recommendations",
+                "label": "Trace-based opportunities",
+                "detail": "Recommendations generated from stored traces via the session optimizer heuristics.",
+            },
+            {
+                "id": "context_audit",
+                "label": "Static context audit",
+                "detail": "Prompt-relevant Atelier surfaces scanned for approximate token weight and optimization headroom.",
+            },
+            {
+                "id": "quality_score",
+                "label": "Recent trace quality scoring",
+                "detail": "Multi-signal quality scoring built from recent Atelier traces using context fill, delivery, outcome, cache, and redundancy signals.",
+            },
+            {
+                "id": "savings_telemetry",
+                "label": "Savings telemetry",
+                "detail": "Observed token savings pulled from cost history and live savings event streams.",
+            },
+        ],
+    }
+
+
 # --------------------------------------------------------------------------- #
 # App Factory                                                                 #
 # --------------------------------------------------------------------------- #
 
 
-def create_app(store_root: str | Path | None = None) -> FastAPI:
+def create_app(store_root: str | Path | None = None) -> Any:
     """Construct the FastAPI instance."""
+    from fastapi import Depends, FastAPI, HTTPException, Query, Security
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+    from atelier.core.foundation.models import Trace, to_jsonable
+    from atelier.core.foundation.store import ReasoningStore
+
+    security = HTTPBearer(auto_error=False)
+
+    def verify_api_key(
+        auth: HTTPAuthorizationCredentials | None = Security(security),  # noqa: B008
+    ) -> str:
+        if not cfg.require_auth:
+            return "anonymous"
+        if auth is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not cfg.api_key:
+            _LOGGER.warning("API key not configured; rejecting request")
+            raise HTTPException(status_code=401, detail="Authentication required but no key configured")
+        if auth.credentials != cfg.api_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        return "authenticated"
+
     app = FastAPI(
         title="Atelier",
         description="Agent Reasoning Runtime API",
@@ -762,6 +1690,236 @@ def create_app(store_root: str | Path | None = None) -> FastAPI:
                 result.append(d)
         return result
 
+    @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_dashboard(
+        days: int = Query(30, ge=1, le=365),
+        host: str | None = Query(None),
+    ) -> dict[str, Any]:
+        """Session-level aggregated analytics for the dashboard.
+
+        Returns daily activity, per-domain, per-host, per-model breakdowns,
+        top sessions, and tool-type distributions in one call.
+        """
+        from atelier.core.capabilities.pricing import get_model_pricing
+
+        db_path = store.db_path
+        host_filter = "AND agent = ?" if host else ""
+        sql = f"""
+            SELECT
+                id,
+                agent AS host,
+                domain,
+                json_extract(payload, '$.model') AS model,
+                CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
+                CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
+                CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
+                CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
+                CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
+                CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) AS user_prompt_tokens,
+                payload,
+                created_at,
+                date(created_at) AS day
+            FROM traces
+            WHERE created_at >= datetime('now', '-' || ? || ' days')
+            {host_filter}
+            ORDER BY created_at DESC
+        """
+        params: list[Any] = [days]
+        if host:
+            params.append(host)
+
+        sessions = []
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+            for row in rows:
+                d = dict(row)
+                model_id = d.get("model") or "_default"
+                pricing = get_model_pricing(model_id)
+
+                in_t = d.get("input_tokens") or 0
+                out_t = d.get("output_tokens") or 0
+                think_t = d.get("thinking_tokens") or 0
+                cache_r = d.get("cached_tokens") or 0
+                cache_w = d.get("cache_write_tokens") or 0
+
+                cost = pricing.cost_usd(
+                    input_tokens=in_t,
+                    output_tokens=out_t + think_t,
+                    cache_read_tokens=cache_r,
+                    cache_write_tokens=cache_w,
+                )
+
+                tools_called: list[dict] = []
+                try:
+                    payload_obj = json.loads(d.get("payload") or "{}")
+                    tools_called = payload_obj.get("tools_called") or []
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
+                sessions.append(
+                    {
+                        "id": d["id"],
+                        "host": d["host"] or "unknown",
+                        "domain": d["domain"] or "unknown",
+                        "model": d.get("model") or "",
+                        "day": d.get("day") or "",
+                        "created_at": d.get("created_at") or "",
+                        "input_tokens": in_t,
+                        "output_tokens": out_t,
+                        "thinking_tokens": think_t,
+                        "cached_tokens": cache_r,
+                        "cache_write_tokens": cache_w,
+                        "user_prompt_tokens": d.get("user_prompt_tokens") or 0,
+                        "cost": cost,
+                        "tools_called": tools_called,
+                    }
+                )
+
+        daily: dict[str, dict] = {}
+        for s in sessions:
+            day = s["day"]
+            if day not in daily:
+                daily[day] = {"date": day, "sessions": 0, "cost": 0.0, "input_tokens": 0, "output_tokens": 0}
+            daily[day]["sessions"] += 1
+            daily[day]["cost"] += s["cost"]
+            daily[day]["input_tokens"] += s["input_tokens"]
+            daily[day]["output_tokens"] += s["output_tokens"]
+        daily_list = sorted(daily.values(), key=lambda x: x["date"])
+
+        by_domain: dict[str, dict] = {}
+        for s in sessions:
+            dom = s["domain"]
+            if dom not in by_domain:
+                by_domain[dom] = {"domain": dom, "sessions": 0, "cost": 0.0}
+            by_domain[dom]["sessions"] += 1
+            by_domain[dom]["cost"] += s["cost"]
+        by_domain_list = sorted(by_domain.values(), key=lambda x: x["cost"], reverse=True)[:30]
+        for r in by_domain_list:
+            r["avg_cost"] = r["cost"] / r["sessions"] if r["sessions"] else 0.0
+
+        by_host: dict[str, dict] = {}
+        for s in sessions:
+            h = s["host"]
+            if h not in by_host:
+                by_host[h] = {"host": h, "sessions": 0, "cost": 0.0, "input_tokens": 0, "cached_tokens": 0}
+            by_host[h]["sessions"] += 1
+            by_host[h]["cost"] += s["cost"]
+            by_host[h]["input_tokens"] += s["input_tokens"]
+            by_host[h]["cached_tokens"] += s["cached_tokens"]
+        by_host_list = sorted(by_host.values(), key=lambda x: x["cost"], reverse=True)
+        for r in by_host_list:
+            total_in = r["input_tokens"] + r["cached_tokens"]
+            r["cache_pct"] = (r["cached_tokens"] / total_in * 100) if total_in else 0.0
+
+        by_model: dict[str, dict] = {}
+        for s in sessions:
+            mdl = s["model"] or "unknown"
+            if mdl not in by_model:
+                by_model[mdl] = {
+                    "model": mdl,
+                    "sessions": 0,
+                    "cost": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cached_tokens": 0,
+                }
+            by_model[mdl]["sessions"] += 1
+            by_model[mdl]["cost"] += s["cost"]
+            by_model[mdl]["input_tokens"] += s["input_tokens"]
+            by_model[mdl]["output_tokens"] += s["output_tokens"]
+            by_model[mdl]["cached_tokens"] += s["cached_tokens"]
+        by_model_list = sorted(by_model.values(), key=lambda x: x["cost"], reverse=True)
+        for r in by_model_list:
+            total_in = r["input_tokens"] + r["cached_tokens"]
+            r["cache_pct"] = (r["cached_tokens"] / total_in * 100) if total_in else 0.0
+
+        top_sessions_clean = [
+            {
+                "id": s["id"],
+                "host": s["host"],
+                "domain": s["domain"],
+                "model": s["model"],
+                "date": s["created_at"][:10] if s["created_at"] else "",
+                "cost": s["cost"],
+                "input_tokens": s["input_tokens"],
+                "output_tokens": s["output_tokens"],
+                "cached_tokens": s["cached_tokens"],
+            }
+            for s in sorted(sessions, key=lambda x: x["cost"], reverse=True)[:20]
+        ]
+
+        _CORE = {
+            "Read",
+            "Edit",
+            "Write",
+            "Grep",
+            "Glob",
+            "ListDir",
+            "NotebookRead",
+            "NotebookEdit",
+            "TodoRead",
+            "TodoWrite",
+            "WebSearch",
+            "WebFetch",
+            "MultiEdit",
+            "view",
+            "read_file",
+            "replace",
+            "apply_patch",
+        }
+        _SHELL = {"Bash", "bash", "run_shell_command", "exec_command", "shell", "run_code"}
+
+        core_tools: dict[str, dict] = {}
+        shell_tools: dict[str, dict] = {}
+        mcp_tools: dict[str, dict] = {}
+
+        for s in sessions:
+            for tool in s["tools_called"]:
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name") or ""
+                calls = tool.get("count") or 1
+                tin = tool.get("input_tokens") or 0
+                tout = tool.get("output_tokens") or 0
+
+                if name in _CORE:
+                    bucket = core_tools
+                elif name in _SHELL:
+                    bucket = shell_tools
+                elif name.startswith("mcp__") or name.startswith("mcp:"):
+                    bucket = mcp_tools
+                else:
+                    continue
+
+                if name not in bucket:
+                    bucket[name] = {"name": name, "calls": 0, "input_tokens": 0, "output_tokens": 0}
+                bucket[name]["calls"] += calls
+                bucket[name]["input_tokens"] += tin
+                bucket[name]["output_tokens"] += tout
+
+        return {
+            "daily": daily_list,
+            "by_domain": by_domain_list,
+            "by_host": by_host_list,
+            "by_model": by_model_list,
+            "top_sessions": top_sessions_clean,
+            "external": _build_external_analytics_summary(get_store(), days=days),
+            "tools": {
+                "core": sorted(core_tools.values(), key=lambda x: x["calls"], reverse=True)[:15],
+                "shell": sorted(shell_tools.values(), key=lambda x: x["calls"], reverse=True)[:10],
+                "mcp": sorted(mcp_tools.values(), key=lambda x: x["calls"], reverse=True)[:20],
+            },
+        }
+
+    @app.get("/analytics/external", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_external(
+        days: int = Query(30, ge=1, le=365),
+        tool: str | None = Query(None),
+        limit: int = Query(30, ge=1, le=200),
+    ) -> dict[str, Any]:
+        return _build_external_analytics_detail(get_store(), days=days, tool=tool, limit=limit)
+
     @app.get("/plans", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_plans(limit: int = 50) -> list[dict[str, Any]]:
         """Compatibility: GET /plans -> derives plan records from traces."""
@@ -848,7 +2006,11 @@ def create_app(store_root: str | Path | None = None) -> FastAPI:
 
         # 2. Try host-prefixed IDs (standard for imported sessions)
         if trace is None:
-            for host in ("copilot", "claude", "codex", "opencode", "gemini"):
+            from atelier.gateway.hosts.session_parsers.registry import (
+                SUPPORTED_SESSION_IMPORT_HOSTS,
+            )
+
+            for host in SUPPORTED_SESSION_IMPORT_HOSTS:
                 trace = store_inst.get_trace(f"{host}-{run_id}")
                 if trace:
                     break
@@ -881,38 +2043,6 @@ def create_app(store_root: str | Path | None = None) -> FastAPI:
                             pass
                         if conversations:
                             break
-
-            # If no conversation turns exist (e.g. native trace or aborted import),
-            # synthesize turns from reasoning and summaries.
-            if not conversations:
-                if trace.reasoning:
-                    for r in trace.reasoning:
-                        conversations.append(
-                            {
-                                "kind": "thinking",
-                                "summary": "Reasoning Step",
-                                "content": r,
-                                "at": trace.created_at.isoformat() if trace.created_at else None,
-                            }
-                        )
-                if trace.output_summary:
-                    conversations.append(
-                        {
-                            "kind": "agent_message",
-                            "summary": "Final Outcome",
-                            "content": trace.output_summary,
-                            "at": trace.created_at.isoformat() if trace.created_at else None,
-                        }
-                    )
-                if trace.diff_summary:
-                    conversations.append(
-                        {
-                            "kind": "file_edit",
-                            "summary": "Changes Applied",
-                            "content": trace.diff_summary,
-                            "at": trace.created_at.isoformat() if trace.created_at else None,
-                        }
-                    )
 
             # Calculate turn costs on the fly using backend pricing
             from atelier.core.capabilities.pricing import get_model_pricing
@@ -1090,6 +2220,10 @@ def create_app(store_root: str | Path | None = None) -> FastAPI:
     def savings_summary_v1(window_days: int = Query(14)) -> dict[str, Any]:
         return _savings_summary_payload(Path(cfg.atelier_root), window_days=window_days)
 
+    @app.get("/v1/optimizations/summary", tags=["metrics"], dependencies=[Depends(verify_api_key)])
+    def optimizations_summary(window_days: int = Query(14)) -> dict[str, Any]:
+        return _optimizations_summary_payload(Path(cfg.atelier_root), get_store(), window_days=window_days)
+
     @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_calls(limit: int = Query(200)) -> list[dict[str, Any]]:
         from atelier.infra.runtime.cost_tracker import load_cost_history
@@ -1176,13 +2310,6 @@ def create_app(store_root: str | Path | None = None) -> FastAPI:
     return app
 
 
-# --------------------------------------------------------------------------- #
-# Module-level app instance — used by uvicorn / atelier-api entrypoint       #
-# --------------------------------------------------------------------------- #
-
-app = create_app()
-
-
 def main(
     host: str | None = None,
     port: int | None = None,
@@ -1199,7 +2326,8 @@ def main(
     _host = host or cfg.host
     _port = port or cfg.port
     uvicorn.run(
-        "atelier.core.service.api:app",
+        "atelier.core.service.api:create_app",
+        factory=True,
         host=_host,
         port=_port,
         reload=reload,

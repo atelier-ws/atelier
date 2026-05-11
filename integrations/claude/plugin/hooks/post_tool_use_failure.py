@@ -10,6 +10,7 @@ Opt-in via hooks.json.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
 import json
@@ -80,7 +81,7 @@ def _append_failure_event(run_id: str, command: str, error: str, repeat: int) ->
         {
             "kind": "note",
             "at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "summary": f"bash failure (×{repeat}): {short_cmd}",
+            "summary": f"bash failure (*{repeat}): {short_cmd}",
             "payload": {
                 "command": command,
                 "error": error[:2000],
@@ -105,10 +106,8 @@ def _append_failure_event(run_id: str, command: str, error: str, repeat: int) ->
         Path(tmp_path).replace(run_file)
     except Exception:
         if tmp_path:
-            try:
+            with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 def _signature(command: str, error: str) -> str:
@@ -157,7 +156,7 @@ def main() -> int:
                         "Atelier: this command has now failed twice with the "
                         "same error signature. Call `rescue` "
                         "with the task, error, files, and recent_actions "
-                        "before running it again."
+                        "before running it again; do not retry the same fix a third time."
                     ),
                 }
             )

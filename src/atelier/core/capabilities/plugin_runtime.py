@@ -16,7 +16,7 @@ import tempfile
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 RECALL_DIM = 256
 RECALL_TOP_K = 10
@@ -736,13 +736,14 @@ def session_start_bootstrap(
     update = update_notification(current_version, _read_json(update_flag_path(root), None))
     if payload:
         update_session_stats(root, {"hook_event_name": "SessionStart", **payload})
+    stdout = _merge_session_start_stdout(update.get("stdout"), _session_optimizer_start_notice(root, host="claude"))
     return {
         "settings": settings,
         "host_settings": updated_host,
         "mcp_json": mcp_result["mcp_json"],
         "auth": auth,
         "actions": actions,
-        "stdout": update.get("stdout", "") if isinstance(update, dict) else "",
+        "stdout": stdout,
         "update": update,
     }
 
@@ -800,11 +801,50 @@ def update_notification(current_version: str, flag: dict[str, Any] | None) -> di
     }
 
 
+def _session_optimizer_start_notice(root: str | Path, *, host: str) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import build_session_start_notice
+
+    return build_session_start_notice(str(root), host=host)
+
+
+def _merge_session_start_stdout(*items: Any) -> dict[str, Any] | str:
+    contexts: list[str] = []
+    messages: list[str] = []
+    hook_output: dict[str, Any] = {"hookEventName": "SessionStart"}
+    for item in items:
+        if not item:
+            continue
+        if isinstance(item, str):
+            if item.strip():
+                contexts.append(item.strip())
+            continue
+        if not isinstance(item, dict):
+            continue
+        hook = item.get("hookSpecificOutput")
+        if isinstance(hook, dict):
+            hook_output.update(hook)
+        context = item.get("additionalContext")
+        if isinstance(context, str) and context.strip():
+            contexts.append(context.strip())
+        message = item.get("message")
+        if isinstance(message, str) and message.strip():
+            messages.append(message.strip())
+    if not contexts and not messages:
+        return ""
+    output: dict[str, Any] = {"hookSpecificOutput": hook_output}
+    if contexts:
+        output["additionalContext"] = "\n\n".join(contexts)
+    if messages:
+        output["message"] = " | ".join(messages)
+    return output
+
+
 def codex_update_notification(root: str | Path, *, current_version: str) -> dict[str, Any]:
     result = update_notification(current_version, _read_json(update_flag_path(root), None))
     if result.get("delete_flag"):
         update_flag_path(root).unlink(missing_ok=True)
-    return result
+    stdout = _merge_session_start_stdout(result.get("stdout"), _session_optimizer_start_notice(root, host="codex"))
+    return {**result, "stdout": stdout, "optimizer": {"host": "codex"}}
 
 
 def _is_atelier_tool(tool_name: str) -> bool:
@@ -825,10 +865,19 @@ def build_codex_post_tool_use_savings_output(root: str | Path, payload: dict[str
     savings = stats.get("savings") or {}
     calls = int(savings.get("calls_saved", 0) or 0)
     tokens = int(savings.get("tokens_saved", 0) or 0)
-    return {
+    output: dict[str, Any] = {
         "systemMessage": f"Atelier saved about {calls} calls and {tokens} tokens in this session.",
         "stats": stats,
     }
+    progress = build_session_progress_optimization_output(root, payload)
+    if not progress.get("no_output"):
+        message = progress.get("message")
+        if isinstance(message, str) and message.strip():
+            output["message"] = message
+        context = progress.get("additionalContext")
+        if isinstance(context, str) and context.strip():
+            output["additionalContext"] = context
+    return output
 
 
 def equivalent_calls(tool_name: str, tool_input: dict[str, Any] | None = None) -> float:
@@ -1087,7 +1136,9 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     except Exception:
         state = {}
     state.setdefault("session_id", session_id)
+    state.setdefault("started_at_ms", _now_ms(payload))
     state.setdefault("total_tool_calls", 0)
+    state.setdefault("edit_tool_calls", 0)
     state.setdefault("equivalent_baseline_calls", 0.0)
     state.setdefault("savings", {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0})
     state.setdefault("event_counts", {})
@@ -1106,6 +1157,11 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         equiv = equivalent_calls(tool_name, tool_input if isinstance(tool_input, dict) else {})
         savings = compute_live_savings(equiv)
         state["total_tool_calls"] = int(state.get("total_tool_calls", 0)) + 1
+        from atelier.core.capabilities.session_optimizer import tool_is_edit
+
+        if tool_is_edit(tool_name):
+            state["edit_tool_calls"] = int(state.get("edit_tool_calls", 0) or 0) + 1
+            state.setdefault("first_edit_at_ms", _now_ms(payload))
         state["equivalent_baseline_calls"] = float(state.get("equivalent_baseline_calls", 0.0)) + equiv
         state["savings"]["calls_saved"] = int(state["savings"].get("calls_saved", 0)) + savings["calls_saved"]
         state["savings"]["time_saved_ms"] = int(state["savings"].get("time_saved_ms", 0)) + savings["time_saved_ms"]
@@ -1136,6 +1192,307 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     _append_session_event(root, session_id, payload)
     return state
+
+
+def _merge_progress_outputs(*items: dict[str, Any]) -> dict[str, Any]:
+    contexts: list[str] = []
+    messages: list[str] = []
+    for item in items:
+        if not item or item.get("no_output"):
+            continue
+        context = item.get("additionalContext")
+        if isinstance(context, str) and context.strip():
+            contexts.append(context.strip())
+        message = item.get("message")
+        if isinstance(message, str) and message.strip():
+            messages.append(message.strip())
+    if not contexts and not messages:
+        return {"no_output": True}
+    output: dict[str, Any] = {}
+    if contexts:
+        output["additionalContext"] = "\n\n".join(contexts)
+    if messages:
+        output["message"] = " | ".join(messages)
+    return output
+
+
+def _session_quality_band(score: int) -> str:
+    if score >= 85:
+        return "healthy"
+    if score >= 70:
+        return "stable"
+    if score >= 55:
+        return "degrading"
+    return "at-risk"
+
+
+def _session_quality_snapshot(stats: dict[str, Any]) -> dict[str, Any]:
+    raw_usage = stats.get("usage")
+    usage: dict[str, Any] = raw_usage if isinstance(raw_usage, dict) else {}
+    input_tokens = int(usage.get("input_tokens", 0) or 0)
+    output_tokens = int(usage.get("output_tokens", 0) or 0)
+    cache_read_tokens = int(usage.get("cache_read_tokens", 0) or 0)
+    total_tool_calls = int(stats.get("total_tool_calls", 0) or 0)
+    edit_tool_calls = int(stats.get("edit_tool_calls", 0) or 0)
+    compactions = int(stats.get("compactions", 0) or 0)
+
+    score = 100
+    reasons: list[str] = []
+
+    if input_tokens >= 300_000:
+        score -= 25
+        reasons.append("input spend is already above 300k tokens")
+    elif input_tokens >= 180_000:
+        score -= 15
+        reasons.append("input spend is already above 180k tokens")
+    elif input_tokens >= 90_000:
+        score -= 8
+        reasons.append("input spend is climbing without a finished slice yet")
+
+    if total_tool_calls >= 8 and edit_tool_calls == 0:
+        score -= 22
+        reasons.append("8 or more tool calls landed without a single edit")
+    elif total_tool_calls >= 5 and edit_tool_calls == 0:
+        score -= 14
+        reasons.append("5 or more tool calls landed without a single edit")
+
+    if total_tool_calls >= 6 and edit_tool_calls / max(total_tool_calls, 1) < 0.15:
+        score -= 8
+        reasons.append("delivery is lagging behind exploration in this session")
+
+    if compactions >= 2:
+        score -= 14
+        reasons.append("the session already needed multiple compactions")
+    elif compactions >= 1:
+        score -= 8
+        reasons.append("the session already needed a compaction")
+
+    if input_tokens >= 120_000:
+        cache_ratio = cache_read_tokens / max(input_tokens, 1)
+        if cache_ratio == 0:
+            score -= 8
+            reasons.append("no cache reuse was observed on a large-input slice")
+        elif cache_ratio < 0.05:
+            score -= 5
+            reasons.append("cache reuse is low for the current input volume")
+        elif cache_ratio >= 0.15:
+            score += 4
+
+    if edit_tool_calls > 0 and total_tool_calls > 0:
+        score += 4
+
+    score = max(0, min(100, score))
+    return {
+        "score": score,
+        "band": _session_quality_band(score),
+        "reasons": reasons,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "tool_calls": total_tool_calls,
+        "edit_tool_calls": edit_tool_calls,
+        "compactions": compactions,
+    }
+
+
+def _loop_notice_text(report: dict[str, Any]) -> str:
+    rescue_scores = report.get("rescue_scores") if isinstance(report.get("rescue_scores"), dict) else {}
+    if rescue_scores:
+        ordered = [name for name, _score in sorted(rescue_scores.items(), key=lambda item: item[1], reverse=True)]
+    else:
+        ordered = [str(item) for item in (report.get("rescue_strategies") or [])]
+    cleaned = [item.replace("_", " ") for item in ordered if item][:2]
+    if not cleaned:
+        return "narrow the plan, validate the current slice, or call rescue"
+    return "; ".join(cleaned)
+
+
+def _normalized_loop_event(raw_event: Any) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import tool_is_edit
+
+    if isinstance(raw_event, dict):
+        kind = str(raw_event.get("kind") or "")
+        summary = str(raw_event.get("summary") or "")
+        raw_payload = raw_event.get("payload")
+        payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+    else:
+        kind = str(getattr(raw_event, "kind", "") or "")
+        summary = str(getattr(raw_event, "summary", "") or "")
+        raw_payload = getattr(raw_event, "payload", {})
+        payload = raw_payload if isinstance(raw_payload, dict) else {}
+
+    if kind != "tool_call":
+        return {"kind": kind, "summary": summary, "payload": dict(payload)}
+
+    tool_name = str(payload.get("tool") or "")
+    raw_args = payload.get("args")
+    args = cast(dict[str, Any], raw_args) if isinstance(raw_args, dict) else {}
+    normalized_payload = dict(args)
+    for key in ("path", "file_path", "file"):
+        value = args.get(key)
+        if value and "path" not in normalized_payload:
+            normalized_payload["path"] = value
+            break
+    for key in ("query", "content_regex", "pattern", "sql", "command"):
+        value = args.get(key)
+        if value and "query" not in normalized_payload:
+            normalized_payload["query"] = value
+            break
+    if "key" not in normalized_payload and tool_name:
+        normalized_payload["key"] = tool_name
+
+    lowered = tool_name.lower().strip()
+    if tool_is_edit(lowered):
+        normalized_kind = "file_edit"
+    elif lowered.endswith("search") or lowered in {"search", "grep", "glob", "file_search", "symbol_search"}:
+        normalized_kind = "search"
+    elif lowered in {"read", "smart_read", "read_file"} or lowered.endswith("read"):
+        normalized_kind = "read_file"
+    else:
+        normalized_kind = lowered or kind
+
+    return {
+        "kind": normalized_kind,
+        "summary": summary or tool_name,
+        "payload": normalized_payload,
+    }
+
+
+def _active_run_loop_report(root: str | Path) -> dict[str, Any] | None:
+    state_path = Path(root) / "session_state.json"
+    state = _read_json(state_path, {})
+    if not isinstance(state, dict):
+        return None
+    run_id = str(state.get("active_run_id") or "").strip()
+    if not run_id:
+        return None
+    atelier_root = Path(str(state.get("atelier_root") or root))
+    ledger_path = atelier_root / "runs" / f"{run_id}.json"
+    if not ledger_path.exists():
+        return None
+
+    from atelier.core.capabilities.loop_detection.capability import LoopDetectionCapability
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    ledger = RunLedger.load(ledger_path)
+    normalized = RunLedger(run_id=ledger.run_id, agent=ledger.agent, task=ledger.task, domain=ledger.domain)
+    normalized.events = cast(Any, [_normalized_loop_event(event) for event in ledger.events])
+    if not normalized.events:
+        return None
+    report = LoopDetectionCapability().check(normalized)
+    return report.to_dict()
+
+
+def _maybe_emit_quality_notice(stats: dict[str, Any], *, now_ms: int) -> tuple[dict[str, Any], dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import mark_session_optimizer_notice
+
+    snapshot = _session_quality_snapshot(stats)
+    raw_previous = stats.get("optimizer_quality")
+    previous: dict[str, Any] = raw_previous if isinstance(raw_previous, dict) else {}
+    previous_score = int(previous.get("score", snapshot["score"]) or snapshot["score"])
+
+    updated = dict(stats)
+    updated["optimizer_quality"] = {
+        **snapshot,
+        "previous_score": previous_score,
+        "updated_at_ms": now_ms,
+    }
+
+    already_sent = bool((updated.get("optimizer_notices") or {}).get("quality_drop"))
+    score_drop = previous_score - int(snapshot["score"])
+    should_emit = (
+        int(snapshot["tool_calls"]) >= 4
+        and not already_sent
+        and (int(snapshot["score"]) <= 70 or (score_drop >= 10 and int(snapshot["score"]) <= 80))
+    )
+    if not should_emit:
+        return updated, {"no_output": True}
+
+    updated = mark_session_optimizer_notice(updated, "quality_drop")
+    reasons = "; ".join(snapshot["reasons"][:2]) or "token spend is growing faster than delivery"
+    return updated, {
+        "message": "Atelier quality guard: narrow the slice before more token spend",
+        "additionalContext": (
+            f"Atelier quality guard: session quality is {snapshot['score']}/100 ({snapshot['band']}). "
+            f"Signals: {reasons}. Next move: narrow the slice, make an edit or run a validation step, "
+            "and compact before broadening context again."
+        ),
+    }
+
+
+def _maybe_emit_loop_notice(
+    root: str | Path, stats: dict[str, Any], *, now_ms: int
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import mark_session_optimizer_notice
+
+    updated = dict(stats)
+    report = _active_run_loop_report(root)
+    updated["optimizer_loop"] = {
+        "updated_at_ms": now_ms,
+        "report": report,
+    }
+    already_sent = bool((updated.get("optimizer_notices") or {}).get("loop_detected"))
+    if not report or already_sent:
+        return updated, {"no_output": True}
+    if not report.get("loop_detected") or report.get("severity") not in {"medium", "high"}:
+        return updated, {"no_output": True}
+
+    updated = mark_session_optimizer_notice(updated, "loop_detected")
+    loop_types = [str(item).replace("_", " ") for item in (report.get("loop_types") or [])[:2]]
+    loop_text = ", ".join(loop_types) if loop_types else "repeated work loop"
+    risk_score = float(report.get("risk_score") or 0.0)
+    wasted_tokens = int(report.get("wasted_tokens") or 0)
+    return updated, {
+        "message": "Atelier loop detector: change approach before another retry",
+        "additionalContext": (
+            f"Atelier loop detector: {report['severity']} loop risk detected ({loop_text}), "
+            f"risk {risk_score:.2f}, with about {wasted_tokens} tokens likely wasted already. "
+            f"Next move: {_loop_notice_text(report)}."
+        ),
+    }
+
+
+def build_session_progress_optimization_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Return one-shot hook nudges for no-edit drift, quality drop, and live loop risk."""
+    event = str(payload.get("hook_event_name") or payload.get("event") or "")
+    if event not in {"PostToolUse", "PostToolUseFailure"}:
+        return {"no_output": True}
+    session_id = str(payload.get("session_id") or "default")
+    path = session_stats_path(root, session_id)
+    try:
+        stats = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return {"no_output": True}
+    from atelier.core.capabilities.session_optimizer import (
+        mark_session_optimizer_notice,
+        session_stats_need_no_edit_notice,
+    )
+
+    now_ms = _now_ms(payload)
+    updated = dict(stats)
+    outputs: list[dict[str, Any]] = []
+
+    if session_stats_need_no_edit_notice(updated, now_ms=now_ms):
+        updated = mark_session_optimizer_notice(updated, "no_edit_10m")
+        outputs.append(
+            {
+                "additionalContext": (
+                    "Atelier budget optimizer: more than 10 minutes have passed without an edit in this session. "
+                    "Name the deliverable and expected output now, or pause for user review before continuing broad exploration."
+                ),
+                "message": "Atelier budget optimizer: check delivery before more exploration",
+            }
+        )
+
+    updated, quality_output = _maybe_emit_quality_notice(updated, now_ms=now_ms)
+    outputs.append(quality_output)
+
+    updated, loop_output = _maybe_emit_loop_notice(root, updated, now_ms=now_ms)
+    outputs.append(loop_output)
+
+    if updated != stats:
+        path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+    return _merge_progress_outputs(*outputs)
 
 
 def get_session_stats_from_trace(trace: Any) -> dict[str, Any]:

@@ -124,7 +124,9 @@ def _get_mcp_client() -> Any:
         from atelier.gateway.sdk import MCPClient
 
         server_name = _server_name()
-        root = os.environ.get("ATELIER_ROOT", ".atelier")
+        from atelier.core.foundation.paths import default_store_root
+
+        root = os.environ.get("ATELIER_ROOT", str(default_store_root()))
         _timeout()
 
         _mcp_client = MCPClient(root=root)

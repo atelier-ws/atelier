@@ -18,37 +18,6 @@ ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 EXTENSION_DIR="${ATELIER_REPO}/integrations/gemini/extension"
 EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
 
-# ---- check dev mode ---------------------------------------------------------
-DEV_MODE="${ATELIER_DEV_MODE:-0}"
-if [[ "$DEV_MODE" != "1" ]]; then
-    info "Dev mode disabled; installing slim extension (no skills/reasoning context)"
-    # We create a staging directory in .atelier and link that instead
-    STAGING_DIR="${ATELIER_REPO}/.atelier/gemini-extension-slim"
-    run "mkdir -p '$STAGING_DIR'"
-    run "cp '${EXTENSION_DIR}/gemini-extension.json' '$STAGING_DIR/'"
-    run "cp -r '${EXTENSION_DIR}/commands' '$STAGING_DIR/'"
-    # Create neutral GEMINI.md that still satisfies the persona check but skips reasoning loop
-    if ! $DRY_RUN; then
-        cat > "$STAGING_DIR/GEMINI.md" <<EOF
-# Atelier — Gemini CLI Default Identity
-
-This file is loaded by Gemini CLI as \`GEMINI.md\` (project context). When
-present in the workspace root, it tells Gemini to operate as \`atelier:code\`.
-
----
-
-## You are atelier:code
-
-Atelier is currently in **Passive Mode**. Active reasoning tools and skills
-are disabled. Only session tracking and analytics are active.
-
-To enable full reasoning features, set \`ATELIER_DEV_MODE=1\` and re-run install.
-EOF
-    fi
-    EXTENSION_DIR="$STAGING_DIR"
-    EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
-fi
-
 DRY_RUN=false
 PRINT_ONLY=false
 STRICT=false
@@ -84,9 +53,43 @@ else
     INSTALL_SCOPE="global"
 fi
 
+
 info()  { echo "[atelier:gemini] $*"; }
 warn()  { echo "[atelier:gemini] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+
+# ---- check dev mode ---------------------------------------------------------
+DEV_MODE="${ATELIER_DEV_MODE:-0}"
+if [[ "$DEV_MODE" != "1" ]]; then
+    info "Dev mode disabled; installing slim extension (no skills/reasoning context)"
+    # We create a staging directory in .atelier and link that instead
+    STAGING_DIR="${ATELIER_REPO}/.atelier/gemini-extension-slim"
+    run "mkdir -p '$STAGING_DIR'"
+    run "cp '${EXTENSION_DIR}/gemini-extension.json' '$STAGING_DIR/'"
+    run "cp -r '${EXTENSION_DIR}/commands' '$STAGING_DIR/'"
+    # Create neutral GEMINI.md that still satisfies the persona check but skips reasoning loop
+    if ! $DRY_RUN; then
+        cat > "$STAGING_DIR/GEMINI.md" <<EOF
+# Atelier — Gemini CLI Default Identity
+
+This file is loaded by Gemini CLI as \`GEMINI.md\` (project context). When
+present in the workspace root, it tells Gemini to operate as \`atelier:code\`.
+
+---
+
+## You are atelier:code
+
+Atelier is currently in **Passive Mode**. Active reasoning tools and skills
+are disabled. Only session tracking and analytics are active.
+
+To enable full reasoning features, set \`ATELIER_DEV_MODE=1\` and re-run install.
+
+Budget optimizer guardrails still apply: name the deliverable and smallest viable plan before edits, keep context narrow, restate context in under 10 bullets before editing or after compaction, pause if 10 minutes pass without an edit, and do not retry the same failed approach a third time.
+EOF
+    fi
+    EXTENSION_DIR="$STAGING_DIR"
+    EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
+fi
 backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
@@ -120,6 +123,7 @@ if $PRINT_ONLY; then
                 echo "3. Ensure the extension is enabled for the user:"
                 echo "   gemini extensions enable atelier --scope user"
         fi
+        echo ""
     exit 0
 fi
 
@@ -166,6 +170,7 @@ else
     gemini extensions enable atelier --scope user >/dev/null 2>&1 || true
     info "enabled atelier for user scope"
 fi
+
 
 # ---- post-install verification ---------------------------------------------
 info "Running post-install verification..."

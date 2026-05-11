@@ -387,7 +387,9 @@ def _write_session_state(updates: dict[str, Any]) -> None:
 
 
 def _atelier_root() -> Path:
-    return Path(os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
+    from atelier.core.foundation.paths import default_store_root
+
+    return Path(os.environ.get("ATELIER_ROOT", str(default_store_root())))
 
 
 # --------------------------------------------------------------------------- #
@@ -1573,7 +1575,7 @@ def tool_memory(
     return _memory_summary(require("run_id", run_id))
 
 
-@mcp_tool(name="read")
+@mcp_tool(name="read", is_dev=True)
 def tool_smart_read(
     path: str | None = None,
     file_path: str | None = None,
@@ -1657,7 +1659,7 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
-@mcp_tool(name="edit")
+@mcp_tool(name="edit", is_dev=True)
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
@@ -1698,7 +1700,7 @@ def tool_smart_edit(
     return result
 
 
-@mcp_tool(name="sql")
+@mcp_tool(name="sql", is_dev=True)
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
@@ -1864,7 +1866,7 @@ def _memory_summary(run_id: str) -> dict[str, Any]:
         return {"error": str(exc)}
 
 
-@mcp_tool(name="search")
+@mcp_tool(name="search", is_dev=True)
 def tool_smart_search(
     query: str | None = None,
     path: str = ".",
@@ -2001,7 +2003,7 @@ _REMOTE_TOOLS = frozenset(
 )
 
 
-@mcp_tool(name="run")
+@mcp_tool(name="run", is_dev=True)
 def tool_run(
     command: str,
     timeout: int = 30,
@@ -2090,6 +2092,38 @@ def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
     )
 
 
+def _classify_read_savings(
+    tool_name: str,
+    args: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    tokens_saved: int,
+    default_lever: str,
+) -> tuple[str, dict[str, Any]]:
+    lowered = tool_name.strip().lower().replace("-", "_").replace(" ", "_")
+    if lowered not in {"read", "smart_read"}:
+        return default_lever, {}
+
+    mode = str(result.get("mode") or "").strip().lower()
+    if mode == "outline" and tokens_saved > 0:
+        classified = "structure_map"
+    elif mode == "range" and tokens_saved > 0:
+        classified = "delta_read"
+    else:
+        classified = default_lever
+
+    path = result.get("path") or args.get("file_path") or args.get("path")
+    metadata: dict[str, Any] = {"read_mode": mode or "full"}
+    if isinstance(path, str) and path:
+        metadata["path"] = path
+    range_spec = result.get("range") or args.get("range")
+    if isinstance(range_spec, str) and range_spec:
+        metadata["range"] = range_spec
+    if "cache_hit" in result:
+        metadata["cache_hit"] = bool(result.get("cache_hit"))
+    return classified, metadata
+
+
 def _record_context_budget_for_tool(
     tool_name: str, args: dict[str, Any], led: RunLedger, result: dict[str, Any]
 ) -> None:
@@ -2120,7 +2154,14 @@ def _record_context_budget_for_tool(
         # both together inflates event-level token savings for the same tool run.
         tokens_saved = tool_tokens_saved if tool_tokens_saved > 0 else live_tokens_saved
         calls_avoided = int(live_savings.get("calls_saved", 0) or 0)
-        lever = _lever_for_tool(tool_name)
+        base_lever = _lever_for_tool(tool_name)
+        lever, savings_metadata = _classify_read_savings(
+            tool_name,
+            args if isinstance(args, dict) else {},
+            result,
+            tokens_saved=tokens_saved,
+            default_lever=base_lever,
+        )
 
         # Extract lever_savings from result if present, otherwise use empty dict
         raw_lever_savings = result.get("tokens_saved")
@@ -2128,7 +2169,7 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if tool_name and tool_name != lever and tool_name not in lever_savings:
+            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
                 lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
@@ -2136,27 +2177,28 @@ def _record_context_budget_for_tool(
 
         _record_smart_state_savings(tokens_saved=tokens_saved, calls_avoided=calls_avoided)
         if calls_avoided > 0 or tokens_saved > 0:
-            _append_live_savings_event(
-                {
-                    "at": datetime.now(UTC).isoformat(),
-                    "run_id": led.run_id,
-                    "agent": led.agent or _detect_agent(),
-                    "tool_name": tool_name,
-                    "lever": lever,
-                    "equivalent_baseline_calls": equivalent,
-                    "calls_saved": calls_avoided,
-                    "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
-                    "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
-                    "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
-                    "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                    "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
-                    "live_tokens_saved": live_tokens_saved,
-                    "tool_tokens_saved": tool_tokens_saved,
-                    "tokens_saved": tokens_saved,
-                    "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
-                    "model": model,
-                }
-            )
+            event = {
+                "at": datetime.now(UTC).isoformat(),
+                "run_id": led.run_id,
+                "agent": led.agent or _detect_agent(),
+                "tool_name": tool_name,
+                "lever": lever,
+                "equivalent_baseline_calls": equivalent,
+                "calls_saved": calls_avoided,
+                "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
+                "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
+                "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
+                "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
+                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                "live_tokens_saved": live_tokens_saved,
+                "tool_tokens_saved": tool_tokens_saved,
+                "tokens_saved": tokens_saved,
+                "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
+                "model": model,
+            }
+            if savings_metadata:
+                event.update(savings_metadata)
+            _append_live_savings_event(event)
 
         # Record the tool execution metrics
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)

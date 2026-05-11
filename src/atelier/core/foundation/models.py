@@ -184,6 +184,7 @@ class Trace(BaseModel):
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     model: str = ""
+    workspace_path: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
     @classmethod

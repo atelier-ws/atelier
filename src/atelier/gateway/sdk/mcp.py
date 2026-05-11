@@ -7,6 +7,7 @@ read operations like listing ReasonBlocks it falls back to a local store at
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 from atelier.core.foundation.memory_models import MemoryBlock
@@ -48,7 +49,7 @@ class _LoopbackTransport(MCPToolTransport):
 
 
 class MCPClient(LocalClient):
-    def __init__(self, *, root: str = ".atelier", transport: MCPToolTransport | None = None) -> None:
+    def __init__(self, *, root: str | Path | None = None, transport: MCPToolTransport | None = None) -> None:
         self._transport = transport or _LoopbackTransport()
         super().__init__(root=root)
 

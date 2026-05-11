@@ -31,6 +31,7 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ReasoningStore
+from atelier.gateway.hosts.session_parsers._common import _SIZE_LIMIT_BYTES
 
 _FILE_TOOLS = {
     "read",
@@ -149,23 +150,30 @@ class ClaudeImporter:
         if not root.is_dir():
             return []
 
-        imported_ids = []
-        for project_dir in sorted(root.iterdir()):
-            if not project_dir.is_dir():
-                continue
+        all_sessions = [
+            (project_dir.name, jsonl_path)
+            for project_dir in sorted(root.iterdir())
+            if project_dir.is_dir()
+            for jsonl_path in sorted(project_dir.glob("*.jsonl"))
+        ]
+        total = len(all_sessions)
+        print(f"[atelier] claude: discovering sessions (found {total})")
 
-            # Claude projects contain many .jsonl files.
-            # Files in the root are main sessions.
-            # Files in <session-uuid>/subagents/ are sub-agent calls.
-            main_sessions = sorted(project_dir.glob("*.jsonl"))
-            for jsonl_path in main_sessions:
-                try:
-                    sid = self.import_session(project_dir.name, jsonl_path, force=force)
-                    if sid:
-                        imported_ids.append(sid)
-                except Exception as exc:
-                    _traceback.print_exc()
-                    print(f"[atelier] skipping claude session {jsonl_path.name}: {exc}")
+        imported_ids = []
+        for i, (workspace_slug, jsonl_path) in enumerate(all_sessions):
+            try:
+                size = jsonl_path.stat().st_size
+                if size > _SIZE_LIMIT_BYTES:
+                    print(f"[atelier] claude: skipping massive session {jsonl_path.name} ({size / 1e6:.1f}MB)")
+                    continue
+                if i % 10 == 0 and i > 0:
+                    print(f"[atelier] claude: importing {i}/{total}...")
+                sid = self.import_session(workspace_slug, jsonl_path, force=force)
+                if sid:
+                    imported_ids.append(sid)
+            except Exception as exc:
+                _traceback.print_exc()
+                print(f"[atelier] skipping claude session {jsonl_path.name}: {exc}")
         return imported_ids
 
     def import_session(self, workspace_slug: str, jsonl_path: Path, *, force: bool = False) -> str | None:
@@ -196,6 +204,7 @@ class ClaudeImporter:
         user_prompt_tokens = 0
 
         processed_msg_ids: set[str] = set()
+        last_assistant_tokens: dict[str, tuple[int, int, int, int, int]] = {}
         pending_tool_uses: dict[str, dict[str, Any]] = {}
         file_index_by_tool_use_id: dict[str, int] = {}
         command_index_by_tool_use_id: dict[str, int] = {}
@@ -314,18 +323,13 @@ class ClaudeImporter:
                                         files_touched[idx] = FileEditRecord(path=path, diff=diff[:4096], event="edit")
                 elif ev_type == "assistant":
                     usage = msg.get("usage", {}) or {}
-                    if msg_id and msg_id not in processed_msg_ids:
+                    if msg_id:
                         in_t = int(usage.get("input_tokens", 0) or 0)
                         out_t = int(usage.get("output_tokens", 0) or 0)
                         cr = int(usage.get("cache_read_input_tokens", 0) or 0)
                         cw = int(usage.get("cache_creation_input_tokens", 0) or 0)
                         th = int(usage.get("thinking_tokens", 0) or 0)
-                        total_in_tokens += in_t + cr + cw
-                        total_out_tokens += out_t
-                        total_cache_read += cr
-                        total_cache_create += cw
-                        total_thinking_tokens += th
-                        processed_msg_ids.add(msg_id)
+                        last_assistant_tokens[msg_id] = (in_t, out_t, cr, cw, th)
                     m = msg.get("model") or ev.get("model")
                     if m:
                         model_seen = str(m)
@@ -384,6 +388,13 @@ class ClaudeImporter:
                                 commands_run.append(cmd[:200])
                                 if tid:
                                     command_index_by_tool_use_id[tid] = len(commands_run) - 1
+
+        for _in, _out, _cr, _cw, _th in last_assistant_tokens.values():
+            total_in_tokens += _in
+            total_out_tokens += _out
+            total_cache_read += _cr
+            total_cache_create += _cw
+            total_thinking_tokens += _th
 
         if task == "untitled claude session" and title:
             task = title

@@ -25,6 +25,7 @@ bash scripts/install_copilot.sh --workspace /path/to/workspace
 | MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                      |
 | Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md`       |
 | Chat mode            | not installed globally                            | `<workspace>/.github/chatmodes/atelier.chatmode.md` |
+| Preflight wrapper    | `~/.local/bin/atelier-copilot`                    | `<workspace>/bin/atelier-copilot`                   |
 | Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)           |
 
 The MCP config registers Atelier as a stdio server:
@@ -70,7 +71,7 @@ Use atelier to check the plan for: [your task here]
 - Copilot Chat can invoke Atelier MCP tools
 - `copilot-instructions.md` provides Atelier context to every Copilot session
 - `atelier` chat mode is available from the chat mode selector
-- Task presets can run reasoning preflight from the VS Code task runner
+- `Atelier: Copilot Preflight` can emit live start-time optimizer guidance from the VS Code task runner before you continue in Copilot Chat
 
 ## Reload Required
 

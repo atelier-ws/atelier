@@ -161,7 +161,11 @@ class ProofReport(BaseModel):
 class ProofGateCapability:
     """Assembles and evaluates the cost-quality proof gate."""
 
-    def __init__(self, root: str | Path = ".atelier") -> None:
+    def __init__(self, root: str | Path | None = None) -> None:
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = default_store_root()
         self._root = Path(root)
 
     def _load_host_enforcement_matrix(self) -> list[HostEnforcementSnapshot]:

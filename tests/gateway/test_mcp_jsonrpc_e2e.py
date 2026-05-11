@@ -32,7 +32,7 @@ EXPECTED_TOOLS = {
     "run",
 }
 
-SLIM_TOOLS = {"trace", "read", "edit", "sql", "search", "run"}
+SLIM_TOOLS = {"trace"}
 
 
 def _seed_store(root: Path) -> None:

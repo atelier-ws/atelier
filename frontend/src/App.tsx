@@ -16,6 +16,7 @@ import Tools from "./pages/Tools";
 import Insights from "./pages/Insights";
 import Watchdogs from "./pages/Watchdogs";
 import Analytics from "./pages/Analytics";
+import Optimizations from "./pages/Optimizations";
 import {
   acknowledgeTelemetry,
   getTelemetryConfig,
@@ -41,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/agents", label: "Agents", icon: "☷" },
   { to: "/insights", label: "Telemetry", icon: "◎" },
   { to: "/analytics", label: "Analytics", icon: "📊" },
+  { to: "/optimizations", label: "Optimizations", icon: "⇲" },
 ];
 
 function TelemetryDisclosure() {
@@ -181,6 +183,7 @@ export default function App() {
             <Route path="/host" element={<Host />} />
             <Route path="/watchdogs" element={<Watchdogs />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/optimizations" element={<Optimizations />} />
           </Routes>
         </div>
       </main>

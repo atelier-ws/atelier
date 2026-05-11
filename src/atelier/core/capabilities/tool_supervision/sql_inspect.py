@@ -35,8 +35,12 @@ _WRITE_PREFIXES = {
 class SqlInspectCapability:
     """Execute deterministic SQL introspection with safety guards."""
 
-    def __init__(self, root: str | Path = ".atelier") -> None:
-        self.root = Path(root)
+    def __init__(self, root: str | Path | None = None) -> None:
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = default_store_root()
+        self._root = Path(root)
 
     def inspect(
         self,
