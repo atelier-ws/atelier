@@ -4,7 +4,7 @@ Usage:
 
     from atelier.gateway.adapters.runtime import ReasoningRuntime
 
-    rt = ReasoningRuntime(root=".atelier")
+    rt = ReasoningRuntime()
         with rt.run(domain="state.change", task=task,
             tools=["api.write"]) as session:
         session.inject_reasoning_context()
@@ -335,12 +335,15 @@ class RuntimeSession:
             else:
                 commands_enriched.append(cmd)
 
+        from atelier.core.foundation.paths import resolve_workspace_root
+
         trace = Trace(
             id=Trace.make_id(self.task, self.agent),
             agent=self.agent,
             domain=self.domain,
             task=redact(self.task),
             status=status,  # type: ignore[arg-type]
+            workspace_path=str(resolve_workspace_root(self.store.db_path)),
             files_touched=files_enriched,
             tools_called=list(tool_call_merged.values()),
             commands_run=commands_enriched,

@@ -41,6 +41,7 @@ from atelier.core.foundation.renderer import (
     render_rubric_result,
 )
 from atelier.core.foundation.store import ReasoningStore
+from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
 
 DEFAULT_ROOT = default_store_root()
 
@@ -445,6 +446,8 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
         "last_enqueued_jobs": state.get("last_enqueued_jobs", []),
         "last_imported_sessions": state.get("last_imported_sessions", {}),
         "last_session_import_at": state.get("last_session_import_at"),
+        "last_external_analytics_runs": state.get("last_external_analytics_runs", []),
+        "last_external_analytics_at": state.get("last_external_analytics_at"),
         "last_exit_reason": state.get("last_exit_reason"),
         "started_at": state.get("started_at"),
     }
@@ -507,20 +510,10 @@ def _servicectl_import_sessions(store: ReasoningStore) -> dict[str, int]:
     Each importer already skips unchanged sessions by comparing source timestamp
     against the previously imported RawArtifact timestamp.
     """
-    from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
-    from atelier.gateway.hosts.session_parsers.codex import CodexImporter
-    from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter
-    from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter
-    from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
+    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     counts: dict[str, int] = {}
-    importers: list[tuple[str, Any]] = [
-        ("copilot", CopilotImporter(store)),
-        ("claude", ClaudeImporter(store)),
-        ("codex", CodexImporter(store)),
-        ("opencode", OpenCodeImporter(store)),
-        ("gemini", GeminiImporter(store)),
-    ]
+    importers: list[tuple[str, Any]] = [(host, importer_cls(store)) for host, importer_cls in iter_importer_classes()]
     all_imported_ids = []
     for host, importer in importers:
         try:
@@ -544,17 +537,34 @@ def _servicectl_import_sessions(store: ReasoningStore) -> dict[str, int]:
     return counts
 
 
+def _servicectl_collect_external_analytics(
+    store: Any,
+    *,
+    period: str,
+) -> list[dict[str, Any]]:
+    from atelier.gateway.integrations.external_analytics import (
+        persist_external_reports,
+        run_external_reports,
+    )
+
+    batch = run_external_reports(tool="all", period=period, cwd=Path.cwd())
+    return persist_external_reports(store, batch, source="servicectl")
+
+
 def _servicectl_tick(
     root: Path,
     *,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
+    external_analytics_interval_seconds: int,
+    external_analytics_period: str,
 ) -> dict[str, Any]:
     from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
     from atelier.core.service.worker import Worker
     from atelier.infra.storage.factory import create_store
 
     SESSION_IMPORT_KEY = "import_host_sessions"
+    EXTERNAL_ANALYTICS_KEY = "external_analytics_reports"
 
     store = create_store(root)
     store.init()
@@ -583,6 +593,14 @@ def _servicectl_tick(
         except ValueError:
             last_session_import_at = None
 
+    last_external_analytics_raw = periodic.get(EXTERNAL_ANALYTICS_KEY)
+    last_external_analytics_at: datetime | None = None
+    if isinstance(last_external_analytics_raw, str):
+        try:
+            last_external_analytics_at = datetime.fromisoformat(last_external_analytics_raw)
+        except ValueError:
+            last_external_analytics_at = None
+
     if session_import_interval_seconds < 0:
         import_due = False
     elif session_import_interval_seconds == 0 or last_session_import_at is None:
@@ -593,6 +611,23 @@ def _servicectl_tick(
     if import_due:
         imported_sessions = _servicectl_import_sessions(store)
         periodic[SESSION_IMPORT_KEY] = now.isoformat()
+
+    if external_analytics_interval_seconds < 0:
+        external_analytics_due = False
+    elif external_analytics_interval_seconds == 0 or last_external_analytics_at is None:
+        external_analytics_due = True
+    else:
+        external_analytics_due = (
+            now - last_external_analytics_at
+        ).total_seconds() >= external_analytics_interval_seconds
+    external_analytics_runs: list[dict[str, Any]] = []
+    if external_analytics_due:
+        with suppress(Exception):
+            external_analytics_runs = _servicectl_collect_external_analytics(
+                store,
+                period=external_analytics_period,
+            )
+        periodic[EXTERNAL_ANALYTICS_KEY] = now.isoformat()
 
     enqueued: list[str] = []
     if maintenance_interval_seconds <= 0 or last_enqueue_at is None:
@@ -627,6 +662,10 @@ def _servicectl_tick(
         "last_enqueued_jobs": enqueued,
         "last_imported_sessions": imported_sessions if import_due else state.get("last_imported_sessions", {}),
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
+        "last_external_analytics_runs": (
+            external_analytics_runs if external_analytics_due else state.get("last_external_analytics_runs", [])
+        ),
+        "last_external_analytics_at": periodic.get(EXTERNAL_ANALYTICS_KEY),
         "last_exit_reason": state.get("last_exit_reason"),
         "periodic_jobs": periodic,
         "started_at": state.get("started_at"),
@@ -637,6 +676,8 @@ def _servicectl_tick(
         "processed_jobs": processed,
         "imported_sessions": imported_sessions,
         "session_import_ran": import_due,
+        "external_analytics_runs": external_analytics_runs,
+        "external_analytics_ran": external_analytics_due,
         "pending_jobs": len(
             [job for job in store.list_jobs(limit=200) if job["status"] in {"pending", "running", "failed"}]
         ),
@@ -1684,7 +1725,7 @@ def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
 @cli.command("import")
 @click.option(
     "--host",
-    type=click.Choice(["claude", "codex", "copilot", "opencode", "gemini"]),
+    type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)),
     default=None,
     help="Import from only one specific host.",
 )
@@ -1704,11 +1745,7 @@ def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
 def global_import(ctx: click.Context, host: str | None, force: bool, export_dir: Path | None) -> None:
     """Unified import for ALL agent sessions (Claude, Gemini, Codex, etc.)."""
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
-    from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
-    from atelier.gateway.hosts.session_parsers.codex import CodexImporter
-    from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter
-    from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter
-    from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
+    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     store = _load_store(ctx.obj["root"])
     store.init()
@@ -1717,13 +1754,7 @@ def global_import(ctx: click.Context, host: str | None, force: bool, export_dir:
         export_dir.mkdir(parents=True, exist_ok=True)
         click.echo(f"exporting reconstructed sessions to {export_dir}")
 
-    hosts = [
-        ("claude", ClaudeImporter),
-        ("codex", CodexImporter),
-        ("copilot", CopilotImporter),
-        ("opencode", OpenCodeImporter),
-        ("gemini", GeminiImporter),
-    ]
+    hosts = iter_importer_classes()
 
     total = 0
     reconstructable = 0
@@ -1759,7 +1790,6 @@ def global_import(ctx: click.Context, host: str | None, force: bool, export_dir:
                             except Exception:
                                 pass
 
-                click.echo(f"{name}: imported {count} new sessions")
             except Exception as e:
                 click.secho(f"FATAL: {name} importer raised: {e!r}", fg="red", err=True)
 
@@ -3259,6 +3289,7 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
 def savings_cmd(ctx: click.Context, as_json: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     from atelier.core.capabilities.plugin_runtime import build_savings_report
+    from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
     runs = _ledger_dir(ctx.obj["root"])
     bad_plans_blocked = 0
@@ -3279,6 +3310,8 @@ def savings_cmd(ctx: click.Context, as_json: bool) -> None:
                 if kind == "rubric_run" and (ev.get("payload") or {}).get("status") == "blocked":
                     rubric_failures += 1
     payload = build_savings_report(ctx.obj["root"])
+    store = _load_store(ctx.obj["root"])
+    payload["optimization"] = build_trace_optimization_report(store.list_traces(limit=5000), days=7)
     payload["bad_plans_blocked"] = bad_plans_blocked
     payload["rescue_events"] = rescue_events
     payload["rubric_failures_caught"] = rubric_failures
@@ -3292,6 +3325,124 @@ def savings_cmd(ctx: click.Context, as_json: bool) -> None:
                     click.echo(f"  {k2}: {v2}")
             else:
                 click.echo(f"{k}: {v}")
+
+
+@cli.command("optimize")
+@click.option(
+    "--host",
+    type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)),
+    default=None,
+)
+@click.option("--days", default=7, show_default=True, type=int)
+@click.option("--limit", default=6, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_cmd(ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool) -> None:
+    """Show session cost optimization recommendations from Atelier traces."""
+    from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
+
+    store = _load_store(ctx.obj["root"])
+    report = build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
+    if as_json:
+        _emit(report, as_json=True)
+        return
+    click.echo(f"Atelier Optimize  {report['window_days']} days")
+    click.echo(f"Hosts: {', '.join(report['hosts_supported'])}")
+    click.echo(
+        f"Estimated savings: {report['estimated_tokens_saved']} tokens, " f"${report['estimated_usd_saved']:.4f}"
+    )
+    if not report["recommendations"]:
+        click.echo("No optimization recommendations found for this window.")
+        return
+    for index, recommendation in enumerate(report["recommendations"], start=1):
+        click.echo("")
+        click.echo(f"{index}. {recommendation['title']}  {recommendation['severity']}")
+        click.echo(f"   Sessions: {recommendation['session_count']}")
+        click.echo(
+            f"   Savings: {recommendation['estimated_tokens_saved']} tokens, ${recommendation['estimated_usd_saved']:.4f}"
+        )
+        click.echo(f"   Action: {recommendation['action']}")
+
+
+@cli.command("external-status")
+@click.option("--json", "as_json", is_flag=True)
+def external_status_cmd(as_json: bool) -> None:
+    """Show optional upstream analyzer availability and integration posture."""
+    from atelier.gateway.integrations.external_analytics import external_status
+
+    payload = {"tools": external_status(cwd=Path.cwd())}
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo("External analyzers")
+    click.echo("")
+    for item in payload["tools"]:
+        state = "available" if item["available"] else "missing"
+        click.echo(f"- {item['display_name']} [{state}]")
+        click.echo(f"  license: {item['license']}")
+        click.echo(f"  mode: {item['execution_mode']}")
+        if item.get("path"):
+            click.echo(f"  path: {item['path']}")
+        click.echo(f"  update: {item['update_strategy']}")
+        for note in item.get("notes", []):
+            click.echo(f"  note: {note}")
+        warning = item.get("warning")
+        if warning:
+            click.echo(f"  warning: {warning}")
+        click.echo(f"  install: {item['install_hint']}")
+        click.echo("")
+
+
+@cli.command("external-report")
+@click.option("--tool", type=click.Choice(["all", "tokscale", "codeburn"]), default="all", show_default=True)
+@click.option(
+    "--period", type=click.Choice(["today", "week", "month", "30days", "all"]), default="week", show_default=True
+)
+@click.option("--json", "as_json", is_flag=True)
+def external_report_cmd(tool: str, period: str, as_json: bool) -> None:
+    """Run upstream JSON reports from supported external analyzers."""
+    from atelier.gateway.integrations.external_analytics import run_external_reports
+
+    try:
+        payload = run_external_reports(tool=tool, period=period, cwd=Path.cwd())
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+
+    click.echo(f"External reports  period={payload['period']}")
+    click.echo("")
+    for report in payload["reports"]:
+        click.echo(f"- {report['tool']}")
+        click.echo(f"  cmd: {report.get('command_display') or '-'}")
+        if report["ok"]:
+            click.echo("  status: ok")
+        else:
+            click.echo(f"  status: failed ({report.get('error') or report.get('returncode')})")
+            message = report.get("message")
+            if message:
+                click.echo(f"  detail: {message}")
+            stderr = report.get("stderr")
+            if stderr:
+                click.echo(f"  stderr: {stderr[:240]}")
+            parse_error = report.get("parse_error")
+            if parse_error:
+                click.echo(f"  parse: {parse_error}")
+            continue
+
+        body = report.get("payload")
+        if isinstance(body, dict):
+            if report["tool"] == "codeburn":
+                overview = body.get("overview") or {}
+                click.echo(
+                    "  summary: "
+                    f"cost={overview.get('cost', '-') } calls={overview.get('calls', '-') } sessions={overview.get('sessions', '-') }"
+                )
+            elif report["tool"] == "tokscale":
+                click.echo("  summary: " f"keys={', '.join(sorted(body.keys())[:6])}")
+        click.echo("")
 
 
 @cli.command("savings-detail")
@@ -3994,12 +4145,16 @@ def servicectl_group() -> None:
 @servicectl_group.command("tick")
 @click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--external-analytics-period", type=click.Choice(["today", "week", "month"]), default="today")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def servicectl_tick(
     ctx: click.Context,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
+    external_analytics_interval_seconds: int,
+    external_analytics_period: str,
     as_json: bool,
 ) -> None:
     """Run one maintenance tick: enqueue due jobs and process pending work."""
@@ -4007,6 +4162,8 @@ def servicectl_tick(
         ctx.obj["root"],
         maintenance_interval_seconds=maintenance_interval_seconds,
         session_import_interval_seconds=session_import_interval_seconds,
+        external_analytics_interval_seconds=external_analytics_interval_seconds,
+        external_analytics_period=external_analytics_period,
     )
     _emit(payload, as_json=as_json) if as_json else click.echo(json.dumps(payload, indent=2))
 
@@ -4015,6 +4172,8 @@ def servicectl_tick(
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
 @click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--external-analytics-period", type=click.Choice(["today", "week", "month"]), default="today")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def servicectl_start(
@@ -4022,6 +4181,8 @@ def servicectl_start(
     interval_seconds: int,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
+    external_analytics_interval_seconds: int,
+    external_analytics_period: str,
     as_json: bool,
 ) -> None:
     """Start the detached background controller."""
@@ -4051,6 +4212,10 @@ def servicectl_start(
         str(maintenance_interval_seconds),
         "--session-import-interval-seconds",
         str(session_import_interval_seconds),
+        "--external-analytics-interval-seconds",
+        str(external_analytics_interval_seconds),
+        "--external-analytics-period",
+        external_analytics_period,
     ]
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(root)
@@ -4181,12 +4346,16 @@ def servicectl_logs(ctx: click.Context, follow: bool, lines: int) -> None:
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
 @click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--external-analytics-period", type=click.Choice(["today", "week", "month"]), default="today")
 @click.pass_context
 def servicectl_run(
     ctx: click.Context,
     interval_seconds: int,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
+    external_analytics_interval_seconds: int,
+    external_analytics_period: str,
 ) -> None:
     """Internal long-running background loop."""
     root = ctx.obj["root"]
@@ -4196,6 +4365,8 @@ def servicectl_run(
                 root,
                 maintenance_interval_seconds=maintenance_interval_seconds,
                 session_import_interval_seconds=session_import_interval_seconds,
+                external_analytics_interval_seconds=external_analytics_interval_seconds,
+                external_analytics_period=external_analytics_period,
             )
             time.sleep(max(1, interval_seconds))
     except KeyboardInterrupt:

@@ -47,7 +47,7 @@ In your Codex MCP config:
       "command": "uv",
       "args": ["run", "atelier-mcp"],
       "cwd": "/path/to/repo/atelier",
-      "env": { "ATELIER_ROOT": ".atelier" }
+      "env": {}
     }
   }
 }

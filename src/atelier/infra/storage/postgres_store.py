@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -834,6 +834,85 @@ class PostgresStore:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_job(row) for row in rows]
 
+    # ----- external analytics -------------------------------------------- #
+
+    def record_external_analytics_run(
+        self,
+        *,
+        tool: str,
+        period: str,
+        source: str,
+        ok: bool,
+        command_display: str = "",
+        returncode: int | None = None,
+        summary: dict[str, Any] | None = None,
+        payload: Any | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        collected_at: str | None = None,
+    ) -> str:
+        run_id = str(uuid4())
+        created_at = datetime.now(UTC).isoformat()
+        collected = collected_at or created_at
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO external_analytics_runs (
+                    id, tool, period, source, command_display,
+                    ok, returncode, summary_json, payload_json,
+                    stdout, stderr, collected_at, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    run_id,
+                    tool,
+                    period,
+                    source,
+                    command_display,
+                    ok,
+                    returncode,
+                    json.dumps(summary or {}),
+                    json.dumps(payload if payload is not None else {}),
+                    stdout,
+                    stderr,
+                    collected,
+                    created_at,
+                ),
+            )
+            conn.commit()
+        return run_id
+
+    def list_external_analytics_runs(
+        self,
+        *,
+        tool: str | None = None,
+        period: str | None = None,
+        ok: bool | None = None,
+        days: int | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM external_analytics_runs WHERE 1=1"
+        params: list[Any] = []
+        if tool:
+            sql += " AND tool = %s"
+            params.append(tool)
+        if period:
+            sql += " AND period = %s"
+            params.append(period)
+        if ok is not None:
+            sql += " AND ok = %s"
+            params.append(ok)
+        if days is not None:
+            cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            sql += " AND collected_at >= %s"
+            params.append(cutoff)
+        sql += " ORDER BY collected_at DESC LIMIT %s"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_external_analytics_run(row) for row in rows]
+
     # ----- bulk import ----------------------------------------------------- #
 
     def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
@@ -1057,6 +1136,33 @@ class PostgresStore:
             "error": d.get("error"),
             "created_at": str(d.get("created_at") or ""),
             "updated_at": str(d.get("updated_at") or ""),
+        }
+
+    def _row_to_external_analytics_run(self, row: Any) -> dict[str, Any]:
+        d = dict(row)
+
+        def _load_json(raw: Any, fallback: Any) -> Any:
+            if isinstance(raw, str):
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    return fallback
+            return raw if raw is not None else fallback
+
+        return {
+            "id": str(d["id"]),
+            "tool": d["tool"],
+            "period": d["period"],
+            "source": d["source"],
+            "command_display": d.get("command_display") or "",
+            "ok": bool(d.get("ok")),
+            "returncode": d.get("returncode"),
+            "summary": _load_json(d.get("summary_json"), {}),
+            "payload": _load_json(d.get("payload_json"), {}),
+            "stdout": d.get("stdout") or "",
+            "stderr": d.get("stderr") or "",
+            "collected_at": str(d.get("collected_at") or ""),
+            "created_at": str(d.get("created_at") or ""),
         }
 
     # ----- run_ledger convenience ------------------------------------------ #

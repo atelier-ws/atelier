@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   api,
   type Trace,
@@ -11,6 +12,7 @@ import RunInspectorDrawer from "../components/RunInspectorDrawer";
 import { MetricCard, SectionHeader } from "../components/WorkbenchUI";
 
 export default function Traces() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<Trace[] | null>(null);
   const [metrics, setMetrics] = useState<TraceListResponse["metrics"] | null>(
     null
@@ -27,6 +29,17 @@ export default function Traces() {
   const [loading, setLoading] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [inspectorTrace, setInspectorTrace] = useState<Trace | null>(null);
+  const deepLinkedTraceId = searchParams.get("trace");
+
+  const setTraceQuery = (traceId: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (traceId) {
+      next.set("trace", traceId);
+    } else {
+      next.delete("trace");
+    }
+    setSearchParams(next);
+  };
 
   // Fetch traces when filters change
   useEffect(() => {
@@ -45,6 +58,43 @@ export default function Traces() {
         setLoading(false);
       });
   }, [domainFilter, hostFilter]);
+
+  useEffect(() => {
+    if (!deepLinkedTraceId) {
+      setInspectorTrace(null);
+      return;
+    }
+
+    const localTrace = items?.find((trace) => trace.id === deepLinkedTraceId);
+    if (localTrace) {
+      setExpandedId(localTrace.id);
+      setInspectorTrace(localTrace);
+      return;
+    }
+
+    let cancelled = false;
+    api
+      .trace(deepLinkedTraceId)
+      .then((trace) => {
+        if (cancelled) return;
+        setExpandedId(trace.id);
+        setInspectorTrace(trace);
+        setItems((prev) => {
+          if (!prev) return [trace];
+          if (prev.some((item) => item.id === trace.id)) return prev;
+          return [trace, ...prev];
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setErr(String(error));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkedTraceId, items]);
 
   const loadMore = () => {
     if (loading || !hasMore) return;
@@ -96,6 +146,8 @@ export default function Traces() {
   };
 
   const openInspector = (trace: Trace) => {
+    setTraceQuery(trace.id);
+    setExpandedId(trace.id);
     setInspectorTrace(trace);
   };
 
@@ -256,7 +308,10 @@ export default function Traces() {
       <RunInspectorDrawer
         open={Boolean(inspectorTrace)}
         trace={inspectorTrace}
-        onClose={() => setInspectorTrace(null)}
+        onClose={() => {
+          setInspectorTrace(null);
+          setTraceQuery(null);
+        }}
       />
     </div>
   );
@@ -923,20 +978,20 @@ function extractHost(trace: Trace | string): string {
   const id = typeof trace === "string" ? "" : trace.id;
 
   if (host) return host;
-  
+
   // Derivations for legacy/imported sessions
   const a = agent.toLowerCase();
   const i = id.toLowerCase();
-  
+
   if (i.startsWith("gemini-") || a === "gemini") return "gemini";
   if (i.startsWith("claude-") || a === "claude") return "claude";
   if (i.startsWith("codex-") || a === "codex") return "codex";
   if (i.startsWith("copilot-") || a === "copilot") return "copilot";
   if (i.startsWith("opencode-") || a === "opencode") return "opencode";
-  
+
   // For native atelier runs where host wasn't recorded
   if (a.startsWith("atelier:")) return "atelier";
-  
+
   return "unknown";
 }
 
@@ -962,4 +1017,3 @@ function HostBadge({ trace }: { trace: Trace }) {
     </span>
   );
 }
-

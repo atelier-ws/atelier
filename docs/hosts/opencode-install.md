@@ -24,6 +24,7 @@ bash scripts/install_opencode.sh --workspace /path/to/workspace
 | ----------------- | -------------------------------------- | ----------------------------------------- |
 | MCP server config | `~/.config/opencode/opencode.json`     | `<workspace>/opencode.json`               |
 | Agent profile     | `~/.config/opencode/agents/atelier.md` | `<workspace>/.opencode/agents/atelier.md` |
+| Wrapper launcher  | `~/.local/bin/atelier-opencode`        | `<workspace>/bin/atelier-opencode`        |
 
 The installer merges an `atelier` entry into the `mcp` key:
 
@@ -62,6 +63,7 @@ use atelier to check this plan
 - Workspace Atelier agent profile is installed at `.opencode/agents/atelier.md`
 - Canonical MCP tools (`lint`, `reasoning`, etc.) are available
 - Compatibility aliases (`lint`, `atelier_status`, etc.) are also available
+- `atelier-opencode --task "..."` can emit live start-time optimizer guidance before handing off to opencode
 
 ## Troubleshooting
 

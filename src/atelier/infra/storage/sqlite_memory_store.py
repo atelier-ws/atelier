@@ -7,7 +7,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from atelier.core.foundation.memory_models import (
     ArchivalPassage,
@@ -432,7 +432,8 @@ class SqliteMemoryStore:
             summarized_events=_loads_list(str(row["summarized_events"])),
             tokens_pre_summary=int(row["tokens_pre_summary"]),
             tokens_post_summary=int(row["tokens_post_summary"]),
-            compaction_strategy=str(row["compaction_strategy"]),  # type: ignore[arg-type]
+            compaction_strategy=cast(Any, row["compaction_strategy"]),
+            workspace_path=str(row["workspace_path"]) if row.get("workspace_path") else None,
             created_at=datetime.fromisoformat(str(row["created_at"])),
         )
 

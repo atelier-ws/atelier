@@ -109,6 +109,7 @@ if $PRINT_ONLY; then
     echo "Scope: ${INSTALL_SCOPE}"
     echo "Config target: ${OC_FILE}"
     echo "Agent target: ${AGENT_DEST_DIR}/atelier.md"
+    echo "Wrapper target: ${WRAPPER_DEST_DIR}/atelier-opencode"
     echo ""
     echo "Merge/create config:"
     echo "$NEW_ENTRY"
@@ -176,6 +177,8 @@ if [[ "$DEV_MODE" != "1" ]]; then
 
 Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
 To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
+
+Budget optimizer guardrails still apply: name the deliverable and smallest viable plan before edits, keep context narrow, restate context in under 10 bullets before editing or after compaction, pause if 10 minutes pass without an edit, and do not retry the same failed approach a third time.
 EOF
     fi
     AGENT_SRC="$STAGING_DIR/atelier.md"
@@ -188,6 +191,7 @@ if [ -f "$AGENT_SRC" ]; then
 else
     warn "agent source missing: $AGENT_SRC"
 fi
+
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."

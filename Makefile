@@ -27,16 +27,8 @@ install: ## Install Atelier (use ARGS="--local" to install from current dir)
 	bash scripts/install.sh $$INSTALL_ARGS
 	@echo "[atelier] Installation complete."
 
-uninstall: ## Remove generated agent CLI integrations and wrappers
-	@rm -f "$(HOME)/.local/bin/atelier-status"
-	@rm -f "$(HOME)/.local/bin/atelier"
-	@rm -f "$(HOME)/.local/bin/atelier-mcp"
-	@rm -f "$(HOME)/.local/bin/atelier-api"
-	@for host in claude codex opencode copilot gemini; do \
-		script="scripts/uninstall_$${host}.sh"; \
-		[ -f "$$script" ] && bash "$$script" || true; \
-	done
-	@echo "[atelier] Uninstall complete."
+uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
+	@bash scripts/uninstall.sh $${ARGS:-}
 
 status: ## Show Atelier installation status
 	@bash scripts/status.sh
@@ -93,7 +85,7 @@ pre-commit: format lint typecheck test ## Format, lint, typecheck, and test
 # --------------------------------------------------------------------------- #
 
 benchmark: ## Run the full benchmark suite
-	LOCAL=1 uv run atelier --root .atelier benchmark-full --json
+	LOCAL=1 uv run atelier benchmark-full --json
 
 bench-savings: ## Run the context-savings benchmark
 	LOCAL=1 uv run python -m benchmarks.swe.savings_bench --json
@@ -104,8 +96,8 @@ bench-savings-honest: ## Run the V3 honest replay context-savings benchmark
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v
-	LOCAL=1 uv run atelier --root .atelier proof run --run-id wp32-proof --json
-	@test -s .atelier/proof/proof-report.json
+	LOCAL=1 uv run atelier proof run --run-id wp32-proof --json
+	@test -s $(ATELIER_STORE)/proof/proof-report.json
 
 demo: ## Run a small blocked-plan demo in a temporary store
 	@DEMO_ROOT=$$(mktemp -d); \

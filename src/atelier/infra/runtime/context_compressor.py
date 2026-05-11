@@ -1,6 +1,6 @@
 """Compresses a run ledger into a tiny state packet for the next turn.
 
-The compressor is the token-optimizer in the spec. Instead of feeding
+The compressor is the compact-state reducer in the spec. Instead of feeding
 the next agent turn the entire raw transcript, we feed it:
 
   - the files changed (with most recent action per file)

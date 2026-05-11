@@ -24,6 +24,7 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ReasoningStore
+from atelier.gateway.hosts.session_parsers._common import _SIZE_LIMIT_BYTES
 
 
 def _utcnow() -> datetime:
@@ -62,7 +63,7 @@ class GeminiImporter:
         for i, jsonl_path in enumerate(all_sessions):
             try:
                 # Performance safety: skip massive files (>50MB) for now
-                if jsonl_path.stat().st_size > 50 * 1024 * 1024:
+                if jsonl_path.stat().st_size > _SIZE_LIMIT_BYTES:
                     print(
                         f"[atelier] gemini: skipping massive session {jsonl_path.name} ({jsonl_path.stat().st_size / 1e6:.1f}MB)"
                     )
@@ -249,7 +250,7 @@ class GeminiImporter:
             validation_results=[],
             raw_artifact_ids=[artifact.id],
             reasoning=reasoning_snippets,
-            input_tokens=total_in_tokens,
+            input_tokens=total_in_tokens - total_cached,
             user_prompt_tokens=user_prompt_tokens,
             cached_input_tokens=total_cached,
             cache_creation_input_tokens=0,

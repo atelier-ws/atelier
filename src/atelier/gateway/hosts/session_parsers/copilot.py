@@ -122,13 +122,23 @@ def _parse_workspace_dt(val: Any) -> datetime:
 
 def find_copilot_sessions(root: Path | None = None) -> Iterator[Path]:
     """Yield session directories that contain an events.jsonl file."""
-    if root is None:
-        root = Path("~/.copilot/session-state").expanduser()
-    if not root.is_dir():
-        return
-    for p in sorted(root.iterdir()):
-        if p.is_dir() and (p / "events.jsonl").exists():
-            yield p
+    roots: list[Path]
+    if root is not None:
+        roots = [root]
+    else:
+        roots = [Path("~/.copilot/session-state").expanduser()]
+        for vscode_base in [
+            Path("~/.config/Code/User/workspaceStorage").expanduser(),
+            Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
+        ]:
+            if vscode_base.is_dir():
+                roots.extend(sorted(vscode_base.glob("*/GitHub.copilot-chat")))
+    for r in roots:
+        if not r.is_dir():
+            continue
+        for p in sorted(r.iterdir()):
+            if p.is_dir() and (p / "events.jsonl").exists():
+                yield p
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +172,13 @@ class CopilotImporter:
         """Import all sessions under *root*. Returns the IDs of successfully imported sessions."""
         imported_ids = []
         skipped = 0
-        for session_dir in find_copilot_sessions(root):
+        all_sessions = list(find_copilot_sessions(root))
+        total = len(all_sessions)
+        print(f"[atelier] copilot: discovering sessions (found {total})")
+        for i, session_dir in enumerate(all_sessions):
             try:
+                if i % 10 == 0 and i > 0:
+                    print(f"[atelier] copilot: importing {i}/{total}...")
                 sid = self.import_session(session_dir, force=force)
                 if sid:
                     imported_ids.append(sid)
@@ -188,21 +203,21 @@ class CopilotImporter:
         except OSError:
             file_mtime = _utcnow()
         if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
-            return False  # unchanged, skip
+            return None  # unchanged, skip
 
         # --- workspace metadata ---
         workspace_path = session_dir / "workspace.yaml"
         if not workspace_path.exists():
-            return False
+            return None
         try:
             workspace_data: dict[str, Any] = yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
         except (OSError, yaml.YAMLError):
-            return False
+            return None
 
         # --- events ---
         events_path = session_dir / "events.jsonl"
         if not events_path.exists():
-            return False
+            return None
 
         # ── Step 1: write redacted raw artifacts ─────────────────────────────
         artifact_ids: list[str] = []
@@ -291,7 +306,7 @@ class CopilotImporter:
             # Extract reasoning from assistant.message (chain-of-thought)
             if etype == "assistant.message":
                 data = ev.get("data") or {}
-                reasoning = data.get("reasoningOpaque") or data.get("reasoningText") or ""
+                reasoning = data.get("reasoningText") or data.get("reasoningOpaque") or ""
                 if reasoning and len(str(reasoning)) > 10:
                     reasoning_snippets.append(str(reasoning)[:500])
 

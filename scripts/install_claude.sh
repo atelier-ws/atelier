@@ -18,34 +18,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
+SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
-
-# ---- check dev mode ---------------------------------------------------------
-DEV_MODE="${ATELIER_DEV_MODE:-0}"
-if [[ "$DEV_MODE" != "1" ]]; then
-    info "Dev mode disabled; installing slim plugin (no skills/reasoning loop)"
-    STAGING_DIR="${ATELIER_REPO}/.atelier/claude-plugin-slim"
-    run "mkdir -p '$STAGING_DIR/.claude-plugin'"
-    run "cp '${PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
-    run "mkdir -p '$STAGING_DIR/agents'"
-    # Copy agents and neutralize
-    for agent in code explore review repair; do
-        if ! $DRY_RUN; then
-            cat > "$STAGING_DIR/agents/${agent}.md" <<EOF
-# atelier:${agent}
-
-Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
-To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
-EOF
-        fi
-    done
-    run "cp -r '${PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
-    run "cp -r '${PLUGIN_DIR}/servers' '$STAGING_DIR/'"
-    run "cp '${PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
-    
-    PLUGIN_DIR="$STAGING_DIR"
-    INSTALL_SOURCE_DIR="$STAGING_DIR"
-fi
 
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 PLUGIN_REF="atelier@atelier"
@@ -92,6 +66,35 @@ CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
 info()  { echo "[atelier:claude] $*"; }
 warn()  { echo "[atelier:claude] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+
+# ---- check dev mode ---------------------------------------------------------
+DEV_MODE="${ATELIER_DEV_MODE:-0}"
+if [[ "$DEV_MODE" != "1" ]]; then
+    info "Dev mode disabled; installing slim plugin (no skills/reasoning loop)"
+    STAGING_DIR="${ATELIER_REPO}/.atelier/claude-plugin-slim"
+    run "mkdir -p '$STAGING_DIR/.claude-plugin'"
+    run "cp '${PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
+    run "cp '${PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"
+    run "mkdir -p '$STAGING_DIR/agents'"
+    # Copy agents and neutralize
+    for agent in code explore review repair; do
+        if ! $DRY_RUN; then
+            cat > "$STAGING_DIR/agents/${agent}.md" <<EOF
+# atelier:${agent}
+
+Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
+To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
+
+Budget optimizer guardrails still apply: name the deliverable and smallest viable plan before edits, keep context narrow, restate context in under 10 bullets before editing or after compaction, pause if 10 minutes pass without an edit, and do not retry the same failed approach a third time.
+EOF
+        fi
+    done
+    run "cp -r '${PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
+    run "cp -r '${PLUGIN_DIR}/servers' '$STAGING_DIR/'"
+    run "cp '${PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
+    PLUGIN_DIR="$STAGING_DIR"
+    INSTALL_SOURCE_DIR="$STAGING_DIR"
+fi
 
 if $WORKSPACE_SET; then
     NEW_MCP_ENTRY=$(cat <<JSON
@@ -167,19 +170,20 @@ CLAUDE_VERSION="$(claude --version 2>/dev/null || echo 'unknown')"
 info "Found Claude Code: $CLAUDE_VERSION"
 
 # ---- structural validation --------------------------------------------------
-info "Running structural validation on plugin package at ${PLUGIN_DIR}"
+# Always validate the original source plugin dir, not the slim staging copy.
+info "Running structural validation on plugin package at ${SOURCE_PLUGIN_DIR}"
 
 STRUCT_FAIL=0
 struct_pass() { info "PASS: $*"; }
 struct_fail() { echo "[atelier:claude] FAIL: $*" >&2; STRUCT_FAIL=1; }
 
-if [ -d "${PLUGIN_DIR}" ]; then
+if [ -d "${SOURCE_PLUGIN_DIR}" ]; then
     struct_pass "plugin directory exists: integrations/claude/plugin/"
-else
-    struct_fail "plugin directory missing: ${PLUGIN_DIR}"
-fi
+    else
+    struct_fail "plugin directory missing: ${SOURCE_PLUGIN_DIR}"
+    fi
 
-PLUGIN_JSON="${PLUGIN_DIR}/.claude-plugin/plugin.json"
+    PLUGIN_JSON="${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json"
 if [ -f "${PLUGIN_JSON}" ]; then
     NAME=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
     if [ "$NAME" = "atelier" ]; then
@@ -207,7 +211,7 @@ if [ -f "${PLUGIN_JSON}" ]; then
 fi
 
 for agent in code explore review repair; do
-    AGENT_FILE="${PLUGIN_DIR}/agents/${agent}.md"
+    AGENT_FILE="${SOURCE_PLUGIN_DIR}/agents/${agent}.md"
     if [ -f "${AGENT_FILE}" ]; then
         struct_pass "agent exists: agents/${agent}.md"
     else
@@ -215,14 +219,14 @@ for agent in code explore review repair; do
     fi
 done
 
-HOOKS_JSON="${PLUGIN_DIR}/hooks/hooks.json"
+HOOKS_JSON="${SOURCE_PLUGIN_DIR}/hooks/hooks.json"
 if [ -f "${HOOKS_JSON}" ]; then
     struct_pass "hooks/hooks.json exists"
 else
     struct_fail "hooks/hooks.json missing: ${HOOKS_JSON}"
 fi
 
-PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
+PLUGIN_MCP_JSON="${SOURCE_PLUGIN_DIR}/.mcp.json"
 if [ -f "${PLUGIN_MCP_JSON}" ]; then
     if grep -q 'CLAUDE_PLUGIN_ROOT' "${PLUGIN_MCP_JSON}"; then
         struct_pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT}"
@@ -233,7 +237,7 @@ else
     struct_fail ".mcp.json missing: ${PLUGIN_MCP_JSON}"
 fi
 
-WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
+WRAPPER="${SOURCE_PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
 if [ -f "${WRAPPER}" ]; then
     struct_pass "MCP wrapper exists: servers/atelier-mcp-wrapper.js"
 else
