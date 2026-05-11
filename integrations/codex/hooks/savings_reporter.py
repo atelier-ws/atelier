@@ -26,7 +26,12 @@ def main() -> int:
         payload = json.loads(sys.stdin.read() or "{}")
         output = build_codex_post_tool_use_savings_output(_atelier_root(), payload)
         if not output.get("no_output"):
-            print(json.dumps({"systemMessage": output["systemMessage"]}))
+            rendered = {"systemMessage": output["systemMessage"]}
+            if output.get("message"):
+                rendered["message"] = output["message"]
+            if output.get("additionalContext"):
+                rendered["additionalContext"] = output["additionalContext"]
+            print(json.dumps(rendered))
     except Exception:
         pass
     return 0

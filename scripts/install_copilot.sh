@@ -193,6 +193,8 @@ if [[ "$DEV_MODE" != "1" ]]; then
 
 Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
 To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
+
+Budget optimizer guardrails still apply: name the deliverable and smallest viable plan before edits, keep context narrow, restate context in under 10 bullets before editing or after compaction, pause if 10 minutes pass without an edit, and do not retry the same failed approach a third time.
 EOF
     fi
     ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
@@ -296,6 +298,7 @@ PYEOF
 else
     warn "task preset source missing: $TASKS_SRC"
 fi
+
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."

@@ -158,6 +158,15 @@ main() {
         uv --directory "$ATELIER_INSTALL_DIR" sync --all-extras
     fi
 
+    if command -v npm >/dev/null 2>&1; then
+        info "Installing codeburn (token/cost reporting)..."
+        run npm install -g codeburn
+        info "Installing tokscale (token/cost reporting)..."
+        run npm install -g tokscale
+    else
+        warn "npm not found — skipping codeburn and tokscale (install Node.js 20+ to enable)"
+    fi
+
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
         info "Installing Atelier host integrations (skip if host CLI is missing)..."
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
@@ -253,6 +262,23 @@ main() {
     echo "    atelier stack stop          - Stop the visualization stack"
     echo "    atelier stack logs          - View stack logs"
     echo "    atelier-status              - Show one-line status of the active reasoning run"
+
+    if [[ "$ATELIER_DRY_RUN" != "1" ]]; then
+        echo ""
+        info "Importing agent sessions (all available history)..."
+        "$ATELIER_BIN_DIR/atelier" import --force \
+            && info "Session import complete." \
+            || warn "Session import failed or no sessions found (non-fatal)."
+
+        echo ""
+        info "Collecting external reports (codeburn: all-time, tokscale: month)..."
+        "$ATELIER_BIN_DIR/atelier" external-report --tool codeburn --period all \
+            && info "codeburn report collected." \
+            || warn "codeburn not installed or failed (non-fatal)."
+        "$ATELIER_BIN_DIR/atelier" external-report --tool tokscale --period month \
+            && info "tokscale report collected." \
+            || warn "tokscale not installed or failed (non-fatal)."
+    fi
 }
 
 main "$@"

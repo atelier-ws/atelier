@@ -27,11 +27,11 @@ from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
 # =========================================================================
 
 
-def _get_trace(store: ReasoningStore, agent: str) -> Trace:
-    """Return the most recent trace for *agent*."""
+def _get_trace(store: ReasoningStore, host: str) -> Trace:
+    """Return the most recent trace for *host*."""
 
-    traces = store.list_traces(agent=agent, limit=1)
-    assert len(traces) == 1, f"Expected 1 trace for {agent}, got {len(traces)}"
+    traces = store.list_traces(host=host, limit=1)
+    assert len(traces) == 1, f"Expected 1 trace for host={host}, got {len(traces)}"
     return traces[0]
 
 
@@ -67,6 +67,7 @@ class TestClaudeImporterTokens:
         {
             "type": "assistant",
             "message": {
+                "id": "msg_turn1",
                 "model": "claude-sonnet-4-6",
                 "usage": {
                     "input_tokens": 100,
@@ -81,6 +82,7 @@ class TestClaudeImporterTokens:
         {
             "type": "assistant",
             "message": {
+                "id": "msg_turn2",
                 "model": "claude-sonnet-4-6",
                 "usage": {
                     "input_tokens": 80,
@@ -99,7 +101,7 @@ class TestClaudeImporterTokens:
 
         importer = ClaudeImporter(store)
         result = importer.import_session("test-slug", jsonl_path, force=True)
-        assert result is True
+        assert result is not None
 
         trace = _get_trace(store, "claude")
 
@@ -202,7 +204,7 @@ class TestCodexImporterTokens:
 
         importer = CodexImporter(store)
         result = importer.import_session(jsonl_path, force=True)
-        assert result is True
+        assert result is not None
 
         trace = _get_trace(store, "codex")
 
@@ -311,7 +313,7 @@ class TestCopilotImporterTokens:
 
         importer = CopilotImporter(store)
         result = importer.import_session(session_dir, force=True)
-        assert result is True
+        assert result is not None
 
         trace = _get_trace(store, "copilot")
 
@@ -466,14 +468,14 @@ class TestOpenCodeImporterTokens:
         db_path = tmp_path / "opencode.db"
         self._create_db(db_path)
 
-        importer = OpenCodeImporter(store, db_path=db_path)
+        importer = OpenCodeImporter(store)
         session_row = {
             "id": "test-session",
             "title": "test opencode session",
             "time_created": self.TS_MS,
         }
         result = importer._import_session(session_row, db_path, force=True)
-        assert result is True
+        assert result is not None
 
         trace = _get_trace(store, "opencode")
 
@@ -549,7 +551,7 @@ class TestGeminiImporterTokens:
 
         importer = GeminiImporter(store)
         result = importer.import_session(jsonl_path, force=True)
-        assert result is True
+        assert result is not None
 
         trace = _get_trace(store, "gemini")
 

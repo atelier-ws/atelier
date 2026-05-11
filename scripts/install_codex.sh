@@ -17,26 +17,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_TEMPLATE="${ATELIER_REPO}/integrations/codex/plugin"
 
-# ---- check dev mode ---------------------------------------------------------
-DEV_MODE="${ATELIER_DEV_MODE:-0}"
-if [[ "$DEV_MODE" != "1" ]]; then
-    info "Dev mode disabled; installing slim plugin (no skills)"
-    STAGING_DIR="${ATELIER_REPO}/.atelier/codex-plugin-slim"
-    run "mkdir -p '$STAGING_DIR/.codex-plugin'"
-    run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
-    run "mkdir -p '$STAGING_DIR/agents'"
-    # Create neutral instructions for Codex
-    if ! $DRY_RUN; then
-        cat > "$STAGING_DIR/agents/atelier.md" <<EOF
-# Atelier
-
-Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
-To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
-EOF
-    fi
-    PLUGIN_TEMPLATE="$STAGING_DIR"
-fi
-
 DRY_RUN=false
 PRINT_ONLY=false
 STRICT=false
@@ -72,7 +52,6 @@ if $WORKSPACE_SET; then
     PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"
     MARKETPLACE_JSON="${WORKSPACE}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-    WRAPPER_DEST_DIR="${WORKSPACE}/bin"
     TASKS_DEST_DIR="${WORKSPACE}/.codex/tasks"
 else
     INSTALL_SCOPE="global"
@@ -80,7 +59,6 @@ else
     PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
     MARKETPLACE_JSON="${HOME}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
-    WRAPPER_DEST_DIR="${HOME}/.local/bin"
     TASKS_DEST_DIR=""
 fi
 
@@ -91,6 +69,29 @@ MARKETPLACE_PLUGIN_PATH="./.codex/plugins/atelier"
 info()  { echo "[atelier:codex] $*"; }
 warn()  { echo "[atelier:codex] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+
+# ---- check dev mode ---------------------------------------------------------
+DEV_MODE="${ATELIER_DEV_MODE:-0}"
+if [[ "$DEV_MODE" != "1" ]]; then
+    info "Dev mode disabled; installing slim plugin (no skills)"
+    STAGING_DIR="${ATELIER_REPO}/.atelier/codex-plugin-slim"
+    run "mkdir -p '$STAGING_DIR/.codex-plugin'"
+    run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
+    run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
+    run "mkdir -p '$STAGING_DIR/agents'"
+    # Create neutral instructions for Codex
+    if ! $DRY_RUN; then
+        cat > "$STAGING_DIR/agents/atelier.md" <<EOF
+# Atelier
+
+Atelier is currently in **Passive Mode**. Active reasoning features are disabled.
+To enable active reasoning, set ATELIER_DEV_MODE=1 and re-run install.
+
+Budget optimizer guardrails still apply: name the deliverable and smallest viable plan before edits, keep context narrow, restate context in under 10 bullets before editing or after compaction, pause if 10 minutes pass without an edit, and do not retry the same failed approach a third time.
+EOF
+    fi
+    PLUGIN_TEMPLATE="$STAGING_DIR"
+fi
 backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
@@ -293,10 +294,6 @@ JSON
         echo "5. Install Codex instructions:"
     echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${AGENTS_FILE}'"
     echo ""
-        echo "6. Install wrapper:"
-    echo "   mkdir -p '${WRAPPER_DEST_DIR}'"
-    echo "   cp '${ATELIER_REPO}/bin/atelier-codex' '${WRAPPER_DEST_DIR}/atelier-codex'"
-    echo "   chmod +x '${WRAPPER_DEST_DIR}/atelier-codex'"
     if $WORKSPACE_SET; then
         echo ""
                 echo "7. Install task templates:"
@@ -323,22 +320,7 @@ else
     info "manually copy if needed: cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
 fi
 
-# ---- wrapper + task templates ---------------------------------------------
-WRAPPER_SRC="${ATELIER_REPO}/bin/atelier-codex"
-WRAPPER_DEST="${WRAPPER_DEST_DIR}/atelier-codex"
-if [ -f "$WRAPPER_SRC" ]; then
-    if [ -e "$WRAPPER_DEST" ] && [ "$(realpath "$WRAPPER_SRC")" = "$(realpath "$WRAPPER_DEST")" ]; then
-        info "wrapper already in place: $WRAPPER_DEST"
-    else
-        run "mkdir -p '$WRAPPER_DEST_DIR'"
-        run "cp '$WRAPPER_SRC' '$WRAPPER_DEST'"
-        run "chmod +x '$WRAPPER_DEST'"
-        info "installed wrapper: $WRAPPER_DEST"
-    fi
-else
-    warn "wrapper source missing: $WRAPPER_SRC"
-fi
-
+# ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
 if $WORKSPACE_SET && [ -d "$TASKS_SRC_DIR" ]; then
     run "mkdir -p '$TASKS_DEST_DIR'"
@@ -410,12 +392,6 @@ if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; t
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"
 else
     vfail "AGENTS.md missing or has no atelier:code persona: $AGENTS_FILE"
-fi
-
-if [ -x "$WRAPPER_DEST" ]; then
-    vpass "Codex preflight wrapper installed: $WRAPPER_DEST"
-else
-    vfail "Codex preflight wrapper missing or not executable: $WRAPPER_DEST"
 fi
 
 if $WORKSPACE_SET; then

@@ -57,6 +57,16 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 - Use `Bash` for commands that genuinely need a shell: tests, builds, git inspection, package tools, and environment checks.
 - If Atelier MCP tools are unavailable, switch to `atelier:native` and say why in the trace.
 
+## Budget optimizer
+
+Atelier automatically applies CodeBurn-style budget guardrails:
+
+- Before changing files, name the deliverable and summarize the smallest viable plan.
+- Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.
+- Restate working context in under 10 bullets before editing or after compaction.
+- If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
+- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+
 ## Hard rules
 
 - Do not ignore `high`-severity Atelier warnings.
