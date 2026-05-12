@@ -805,13 +805,13 @@ def _optimization_runtime_coverage() -> list[dict[str, Any]]:
             "advisory_only": False,
             "surfaces": [
                 "Copilot preflight task",
-                "atelier-copilot wrapper",
+                "atelier CLI shell task",
                 "Copilot instructions",
                 "Atelier chatmode",
             ],
             "notes": (
-                "Copilot now has a task-driven preflight wrapper that emits live start guidance before chat work begins. "
-                "Native Copilot chat remains instruction-backed if that wrapper path is skipped."
+                "Copilot now has a task-driven preflight that runs atelier CLI checks before chat work begins. "
+                "Native Copilot chat remains instruction-backed if that task path is skipped."
             ),
         },
         {
@@ -2254,6 +2254,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
     # Skills                                                              #
     # ------------------------------------------------------------------ #
 
+    DEV_ONLY_SKILLS = {"reasoning", "lint", "rescue", "trace"}
+
     @app.get("/skills", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def list_skills() -> list[dict[str, Any]]:
         root = Path(__file__).parent.parent.parent.parent.parent
@@ -2262,6 +2264,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
         if skills_dir.exists():
             for skill_dir in sorted(skills_dir.iterdir()):
                 if skill_dir.is_dir():
+                    if not cfg.dev_mode and skill_dir.name in DEV_ONLY_SKILLS:
+                        continue
                     md = skill_dir / "SKILL.md"
                     if md.exists():
                         content = md.read_text(encoding="utf-8")
@@ -2277,6 +2281,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
     @app.get("/skills/{name}", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def get_skill(name: str) -> dict[str, Any]:
+        if not cfg.dev_mode and name in DEV_ONLY_SKILLS:
+            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"
         if not md.exists():

@@ -18,6 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 
 DRY_RUN=false
@@ -180,37 +181,47 @@ fi
 # ---- install Copilot instructions ------------------------------------------
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
-# ---- check dev mode ---------------------------------------------------------
+# ---- resolve install profile ------------------------------------------------
 DEV_MODE="${ATELIER_DEV_MODE:-0}"
-STAGING_DIR="${HOME}/.atelier/copilot-slim"
+INSTALL_PROFILE="${ATELIER_PROFILE:-}"
+if [[ -z "$INSTALL_PROFILE" ]]; then
+    if [[ "$DEV_MODE" == "1" ]]; then
+        INSTALL_PROFILE="dev"
+    else
+        INSTALL_PROFILE="stable"
+    fi
+fi
+if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
+    echo "[atelier:copilot] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
+    exit 1
+fi
+if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
+    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+fi
+STAGING_DIR="${HOME}/.atelier/copilot-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"
 COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
-if [[ "$DEV_MODE" == "1" ]]; then
-    info "Dev mode enabled; using full instructions with reasoning loop"
-    run "cp '${COPILOT_SRC/.md/.dev.md}' '$STAGING_DIR/instructions.md'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full instructions with reasoning loop"
+    atelier_write_managed_copy "${COPILOT_SRC/.md/.dev.md}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 else
-    info "Dev mode disabled; using slim instructions"
-    run "cp '${COPILOT_SRC}' '$STAGING_DIR/instructions.md'"
+    info "Install profile: stable; staging stable instructions"
+    atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 fi
 ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
 
 if [ -f "$ATELIER_INSTRUCTIONS" ]; then
     run "mkdir -p '$(dirname "$INSTRUCTIONS")'"
     if [ -f "$INSTRUCTIONS" ]; then
-        if grep -q "Atelier.*Copilot Instructions" "$INSTRUCTIONS" 2>/dev/null; then
-            info "$INSTRUCTIONS already contains Atelier section - skipping"
-        else
-            backup_file "$INSTRUCTIONS"
-            if $DRY_RUN; then
-                echo "  [dry-run] append Atelier section to $INSTRUCTIONS"
-            else
-                echo "" >> "$INSTRUCTIONS"
-                cat "$ATELIER_INSTRUCTIONS" >> "$INSTRUCTIONS"
-                info "appended Atelier instructions to $INSTRUCTIONS"
-            fi
-        fi
+        backup_file "$INSTRUCTIONS"
+        atelier_upsert_managed_block "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "$DRY_RUN"
+        info "merged Atelier instructions into $INSTRUCTIONS"
     elif $WORKSPACE_SET; then
-        run "cp '$ATELIER_INSTRUCTIONS' '$INSTRUCTIONS'"
+        if $DRY_RUN; then
+            atelier_write_managed_copy "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "true"
+        else
+            run "cp '$ATELIER_INSTRUCTIONS' '$INSTRUCTIONS'"
+        fi
         info "created $INSTRUCTIONS"
     else
         if $DRY_RUN; then
@@ -220,9 +231,8 @@ if [ -f "$ATELIER_INSTRUCTIONS" ]; then
                 echo "---"
                 echo 'applyTo: "**"'
                 echo "---"
-                echo ""
-                cat "$ATELIER_INSTRUCTIONS"
             } > "$INSTRUCTIONS"
+            atelier_upsert_managed_block "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "false"
             info "created $INSTRUCTIONS"
         fi
     fi

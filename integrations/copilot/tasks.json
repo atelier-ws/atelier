@@ -7,7 +7,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "wrapper=\"$PWD/bin/atelier-copilot\"; if [ -x \"$wrapper\" ]; then exec \"$wrapper\" --task \"$1\" --step \"$2\" --step \"$3\"; else exec atelier-copilot --task \"$1\" --step \"$2\" --step \"$3\"; fi",
+        "atelier context --task \"$1\" --json && atelier check-plan --task \"$1\" --step \"$2\" --step \"$3\" --json",
         "bash",
         "${input:atelierTask}",
         "${input:atelierStep1}",
@@ -18,12 +18,8 @@
     {
       "label": "Atelier: Reasoning Context",
       "type": "shell",
-      "command": "uv",
+      "command": "atelier",
       "args": [
-        "run",
-        "atelier",
-        "--root",
-        ".atelier",
         "context",
         "--task",
         "${input:atelierTask}",
@@ -34,12 +30,8 @@
     {
       "label": "Atelier: Check Plan",
       "type": "shell",
-      "command": "uv",
+      "command": "atelier",
       "args": [
-        "run",
-        "atelier",
-        "--root",
-        ".atelier",
         "check-plan",
         "--task",
         "${input:atelierTask}",

@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 
 DRY_RUN=false
@@ -164,16 +165,31 @@ fi
 # ---- install opencode atelier agent ----------------------------------------
 AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
 
-# ---- check dev mode ---------------------------------------------------------
+# ---- resolve install profile ------------------------------------------------
 DEV_MODE="${ATELIER_DEV_MODE:-0}"
-STAGING_DIR="${HOME}/.atelier/opencode-slim"
+INSTALL_PROFILE="${ATELIER_PROFILE:-}"
+if [[ -z "$INSTALL_PROFILE" ]]; then
+    if [[ "$DEV_MODE" == "1" ]]; then
+        INSTALL_PROFILE="dev"
+    else
+        INSTALL_PROFILE="stable"
+    fi
+fi
+if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
+    echo "[atelier:opencode] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
+    exit 1
+fi
+if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
+    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+fi
+STAGING_DIR="${HOME}/.atelier/opencode-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"
-if [[ "$DEV_MODE" == "1" ]]; then
-    info "Dev mode enabled; using full agent instructions with reasoning loop"
-    run "cp '${AGENT_SRC/.md/.dev.md}' '$STAGING_DIR/atelier.md'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full agent instructions with reasoning loop"
+    atelier_write_managed_copy "${AGENT_SRC/.md/.dev.md}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
 else
-    info "Dev mode disabled; using slim agent instructions"
-    run "cp '${AGENT_SRC}' '$STAGING_DIR/atelier.md'"
+    info "Install profile: stable; staging stable agent instructions"
+    atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
 fi
 AGENT_SRC="$STAGING_DIR/atelier.md"
 

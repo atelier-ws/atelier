@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 PLUGIN_TEMPLATE="${ATELIER_REPO}/integrations/codex/plugin"
 
 DRY_RUN=false
@@ -65,25 +66,46 @@ fi
 PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
 PLUGIN_WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.sh"
 MARKETPLACE_PLUGIN_PATH="./.codex/plugins/atelier"
+SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
 
 info()  { echo "[atelier:codex] $*"; }
 warn()  { echo "[atelier:codex] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# ---- check dev mode ---------------------------------------------------------
+# ---- resolve install profile ------------------------------------------------
 DEV_MODE="${ATELIER_DEV_MODE:-0}"
-STAGING_DIR="${HOME}/.atelier/codex-plugin-slim"
+INSTALL_PROFILE="${ATELIER_PROFILE:-}"
+if [[ -z "$INSTALL_PROFILE" ]]; then
+    if [[ "$DEV_MODE" == "1" ]]; then
+        INSTALL_PROFILE="dev"
+    else
+        INSTALL_PROFILE="stable"
+    fi
+fi
+if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
+    echo "[atelier:codex] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
+    exit 1
+fi
+if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
+    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+fi
+STAGING_DIR="${HOME}/.atelier/codex-plugin-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR/.codex-plugin'"
 run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
 run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
 run "mkdir -p '$STAGING_DIR/agents'"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
-if [[ "$DEV_MODE" == "1" ]]; then
-    info "Dev mode enabled; installing full agent instructions"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full agent instructions"
     run "cp '${AGENT_SRC/.md/.dev.md}' '$STAGING_DIR/agents/atelier.md'"
 else
-    info "Dev mode disabled; installing slim agent instructions"
+    info "Install profile: stable; staging stable agent instructions"
     run "cp '${AGENT_SRC}' '$STAGING_DIR/agents/atelier.md'"
+fi
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills' --include-dev"
+else
+    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills'"
 fi
 PLUGIN_TEMPLATE="$STAGING_DIR"
 backup_file() {
@@ -141,9 +163,28 @@ fi
 >&2 echo "[atelier-mcp] repo=\$ATELIER_REPO workspace=\${ATELIER_WORKSPACE_ROOT} root=\${ATELIER_ROOT:-\${ATELIER_STORE_ROOT:-unset}}"
 
 cd "\$ATELIER_REPO"
-exec uv run python -m atelier.gateway.adapters.mcp_server "\$@"
+exec atelier-mcp "\$@"
 EOF
     chmod +x "$dest"
+}
+
+merge_agents_file() {
+    local source_file="$1"
+    local dest_file="$2"
+
+    if [ ! -f "$dest_file" ]; then
+        if $DRY_RUN; then
+            atelier_write_managed_copy "$source_file" "$dest_file" "true"
+        else
+            atelier_write_managed_copy "$source_file" "$dest_file" "false"
+        fi
+        info "created $dest_file"
+        return
+    fi
+
+    backup_file "$dest_file"
+    atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"
+    info "merged Atelier Codex instructions into $dest_file"
 }
 
 install_plugin_bundle() {
@@ -305,14 +346,7 @@ patch_plugin_mcp "$PLUGIN_WRAPPER"
 merge_marketplace
 
 # ---- AGENTS.md --------------------------------------------------------------
-if [ ! -f "$AGENTS_FILE" ]; then
-    run "mkdir -p '$(dirname "$AGENTS_FILE")'"
-    run "cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
-    info "created $AGENTS_FILE"
-else
-    info "$AGENTS_FILE already exists — not overwriting"
-    info "manually copy if needed: cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
-fi
+merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
 
 # ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
@@ -339,6 +373,24 @@ if [ -f "${PLUGIN_DIR}/.codex-plugin/plugin.json" ]; then
     vpass "Codex plugin manifest installed: ${PLUGIN_DIR}/.codex-plugin/plugin.json"
 else
     vfail "Codex plugin manifest missing: ${PLUGIN_DIR}/.codex-plugin/plugin.json"
+fi
+
+if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/status/SKILL.md" ]; then
+    if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+        if [ -f "${PLUGIN_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "Codex skill bundle installed with dev skills: ${PLUGIN_DIR}/skills"
+        else
+            vfail "Codex dev skill bundle missing reasoning skill: ${PLUGIN_DIR}/skills"
+        fi
+    else
+        if [ ! -f "${PLUGIN_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "Codex stable skill bundle installed without dev-only skills: ${PLUGIN_DIR}/skills"
+        else
+            vfail "Codex stable skill bundle unexpectedly contains dev-only skills: ${PLUGIN_DIR}/skills"
+        fi
+    fi
+else
+    vfail "Codex skill bundle missing required shared skills: ${PLUGIN_DIR}/skills"
 fi
 
 if [ -f "$PLUGIN_MCP_JSON" ]; then

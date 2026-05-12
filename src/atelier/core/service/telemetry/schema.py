@@ -77,6 +77,9 @@ EVENTS: dict[str, EventSpec] = {
             "blocks_applied": INT,
         }
     ),
+    "code_index_completed": EventSpec({"repo_id": STR, "files_indexed": INT, "symbols_indexed": INT}),
+    "code_context_retrieved": EventSpec({"repo_id": STR, "operation": STR, "result_count": INT}),
+    "code_symbol_retrieved": EventSpec({"repo_id": STR, "kind": STR}),
 }
 
 

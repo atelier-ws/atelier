@@ -15,8 +15,24 @@
 #   ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS Periodic maintenance interval (default: 21600)
 #   ATELIER_DRY_RUN    If set to 1, print planned actions and exit
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
+#
+# Notes:
+#   Codex host install manages its Atelier AGENTS block with explicit START/END
+#   sentinels so re-install can replace that block without overwriting user content.
 
 set -euo pipefail
+
+if [[ -t 1 ]]; then
+    C_RESET="$(printf '\033[0m')"
+    C_BOLD="$(printf '\033[1m')"
+    C_RED="$(printf '\033[31m')"
+    C_YELLOW="$(printf '\033[33m')"
+else
+    C_RESET=""
+    C_BOLD=""
+    C_RED=""
+    C_YELLOW=""
+fi
 
 ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}"
 ATELIER_REF="${ATELIER_REF:-main}"
@@ -35,6 +51,9 @@ else
     ATELIER_LOCAL=0
 fi
 PASSTHROUGH=()
+WARNINGS=()
+ERRORS=()
+FINAL_EXIT_CODE=0
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -50,8 +69,68 @@ while [[ $# -gt 0 ]]; do
 done
 
 info() { echo "[atelier-install] $*"; }
-warn() { echo "[atelier-install] WARN: $*" >&2; }
-fail() { echo "[atelier-install] ERROR: $*" >&2; exit 1; }
+warn() {
+    WARNINGS+=("$*")
+    printf "%b[atelier-install] WARN:%b %s\n" "$C_YELLOW" "$C_RESET" "$*" >&2
+}
+error() {
+    ERRORS+=("$*")
+    printf "%b[atelier-install] ERROR:%b %s\n" "$C_RED" "$C_RESET" "$*" >&2
+}
+fail() { error "$*"; exit 1; }
+
+collect_issues_from_output() {
+    local output="$1"
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            *"] WARN:"*)
+                WARNINGS+=("${line#*WARN: }")
+                ;;
+            *"] ERROR:"*)
+                ERRORS+=("${line#*ERROR: }")
+                ;;
+        esac
+    done <<<"$output"
+}
+
+print_issue_group() {
+    local title="$1"
+    local color="$2"
+    shift 2
+    local entries=("$@")
+    local -A counted=()
+    local -A printed=()
+    local entry
+    local count=0
+
+    for entry in "${entries[@]+"${entries[@]}"}"; do
+        [[ -n "$entry" && -z "${counted[$entry]+x}" ]] || continue
+        counted["$entry"]=1
+        count=$((count + 1))
+    done
+
+    [[ $count -gt 0 ]] || return 0
+    printf "%b%s (%d)%b\n" "$color" "$title" "$count" "$C_RESET"
+    for entry in "${entries[@]+"${entries[@]}"}"; do
+        [[ -n "$entry" && -z "${printed[$entry]+x}" ]] || continue
+        printed["$entry"]=1
+        printf "  %b-%b %s\n" "$color" "$C_RESET" "$entry"
+    done
+}
+
+print_final_report() {
+    echo ""
+    echo "══════════════════════════════════════════════"
+    echo " Atelier Install Report"
+    echo "══════════════════════════════════════════════"
+    if [[ ${#ERRORS[@]} -eq 0 && ${#WARNINGS[@]} -eq 0 ]]; then
+        echo "  No warnings or errors detected."
+        return
+    fi
+    print_issue_group "Errors" "$C_RED" "${ERRORS[@]+"${ERRORS[@]}"}"
+    print_issue_group "Warnings" "$C_YELLOW" "${WARNINGS[@]+"${WARNINGS[@]}"}"
+}
 
 run() {
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
@@ -167,25 +246,6 @@ main() {
         warn "npm not found — skipping codeburn and tokscale (install Node.js 20+ to enable)"
     fi
 
-    if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
-        info "Installing Atelier host integrations (skip if host CLI is missing)..."
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
-        else
-            bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
-        fi
-        # Persist host detection results for the Docker service
-        if [[ "$ATELIER_DRY_RUN" != "1" && -f "$ATELIER_INSTALL_DIR/scripts/status.sh" ]]; then
-            bash "$ATELIER_INSTALL_DIR/scripts/status.sh" --write 2>/dev/null || true
-        fi
-    else
-        info "Skipping host integrations because ATELIER_NO_HOSTS=1"
-        # Still persist current detection state even when skipping install
-        if [[ "$ATELIER_DRY_RUN" != "1" && -f "$ATELIER_INSTALL_DIR/scripts/status.sh" ]]; then
-            bash "$ATELIER_INSTALL_DIR/scripts/status.sh" --write 2>/dev/null || true
-        fi
-    fi
-
     run mkdir -p "$ATELIER_BIN_DIR"
     write_wrapper atelier
     write_wrapper atelier-mcp
@@ -213,6 +273,35 @@ main() {
         echo "[dry-run] $ATELIER_BIN_DIR/atelier init"
     else
         "$ATELIER_BIN_DIR/atelier" init >/dev/null
+    fi
+
+    if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
+        info "Installing Atelier host integrations (skip if host CLI is missing)..."
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
+        else
+            local host_output host_ret
+            set +e
+            host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} 2>&1)"
+            host_ret=$?
+            set -e
+            printf "%s\n" "$host_output"
+            collect_issues_from_output "$host_output"
+            if [[ $host_ret -ne 0 ]]; then
+                ERRORS+=("One or more host integrations failed")
+                FINAL_EXIT_CODE=1
+            fi
+        fi
+        # Persist host detection results for the Docker service
+        if [[ "$ATELIER_DRY_RUN" != "1" && -f "$ATELIER_INSTALL_DIR/scripts/status.sh" ]]; then
+            bash "$ATELIER_INSTALL_DIR/scripts/status.sh" --write 2>/dev/null || true
+        fi
+    else
+        info "Skipping host integrations because ATELIER_NO_HOSTS=1"
+        # Still persist current detection state even when skipping install
+        if [[ "$ATELIER_DRY_RUN" != "1" && -f "$ATELIER_INSTALL_DIR/scripts/status.sh" ]]; then
+            bash "$ATELIER_INSTALL_DIR/scripts/status.sh" --write 2>/dev/null || true
+        fi
     fi
 
     if [[ "$ATELIER_NO_SERVICECTL" != "1" ]]; then
@@ -246,8 +335,6 @@ main() {
         info "Skipping visualization stack because ATELIER_NO_STACK=1"
     fi
 
-    info "Install complete."
-    echo ""
     if [[ "$STACK_STARTED" == "1" ]]; then
         echo "  Visualization stack is running:"
         echo "    frontend: http://localhost:3125"
@@ -282,6 +369,17 @@ main() {
             && info "tokscale report collected." \
             || warn "tokscale not installed or failed (non-fatal)."
     fi
+
+    print_final_report
+    if [[ ${#ERRORS[@]} -gt 0 ]]; then
+        info "${C_BOLD}${C_RED}Completed with errors.${C_RESET}"
+    elif [[ ${#WARNINGS[@]} -gt 0 ]]; then
+        info "${C_BOLD}${C_YELLOW}Completed with warnings.${C_RESET}"
+    else
+        info "Installation complete."
+    fi
+
+    return "$FINAL_EXIT_CODE"
 }
 
 main "$@"

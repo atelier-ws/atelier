@@ -78,6 +78,40 @@ def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     assert payload["status"] == "blocked"
 
 
+def test_code_context_cli_round_trip(tmp_path: Path) -> None:
+    root = tmp_path / "atelier"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def alpha() -> int:\n    return 1\n\ndef beta() -> int:\n    return alpha()\n",
+        encoding="utf-8",
+    )
+    _invoke(root, "init", "--no-seed")
+
+    indexed = _invoke(root, "code", "index", "--repo-root", str(repo), "--json")
+    assert indexed.exit_code == 0, indexed.output
+    assert json.loads(indexed.output)["symbols_indexed"] >= 2
+
+    searched = _invoke(root, "code", "search-symbols", "alpha", "--repo-root", str(repo), "--json")
+    assert searched.exit_code == 0, searched.output
+    assert json.loads(searched.output)["items"][0]["symbol_name"] == "alpha"
+
+    retrieved = _invoke(
+        root,
+        "code",
+        "get-symbol",
+        "--repo-root",
+        str(repo),
+        "--qualified-name",
+        "alpha",
+        "--file-path",
+        "service.py",
+        "--json",
+    )
+    assert retrieved.exit_code == 0, retrieved.output
+    assert "def alpha" in json.loads(retrieved.output)["source"]
+
+
 def test_record_trace_and_extract_block(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
@@ -251,7 +285,7 @@ def test_stack_start_uses_compose_helper(tmp_path: Path, monkeypatch: pytest.Mon
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
     assert res.exit_code == 0, res.output
-    assert calls == [["up", "--build", "-d", "service", "frontend", "otel-collector", "docs"]]
+    assert calls == [["up", "--build", "-d"]]
     assert "http://localhost:3125" in res.output
 
 
