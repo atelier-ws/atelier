@@ -62,7 +62,7 @@ For shared use, multi-agent concurrency, or when you have 1000+ blocks and want 
 ```bash
 ATELIER_STORAGE_BACKEND=postgres \
 ATELIER_DATABASE_URL=postgresql://user:pass@host:5432/atelier \
-uv run atelier init
+atelier init
 ```
 
 ### pgvector Extension (Optional)
@@ -75,7 +75,7 @@ ATELIER_DATABASE_URL=postgresql://... \
 ATELIER_VECTOR_SEARCH_ENABLED=true \
 ATELIER_EMBEDDING_MODEL=text-embedding-3-small \
 ATELIER_EMBEDDING_DIM=1536 \
-uv run atelier init
+atelier init
 ```
 
 **Note:** pgvector is an enhancement. The system works without it. Do not add pgvector just to have vectors — add it only when you have 100+ blocks and FTS quality is insufficient.
@@ -108,7 +108,7 @@ Enable the client with:
 ```bash
 ATELIER_LETTA_URL=http://localhost:8283 \
 ATELIER_LETTA_API_KEY=change-me \
-uv run atelier init
+atelier init
 ```
 
 If the sidecar is down or unavailable, Atelier falls back to `SqliteMemoryStore` transparently.

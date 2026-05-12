@@ -77,8 +77,8 @@ LOCAL=1 uv run pytest tests/core/test_archival_ranking.py -v
 LOCAL=1 uv run pytest tests/infra/test_archival_recall_recall_at_5.py -v
 
 # CLI smoke
-LOCAL=1 uv run atelier memory archive --agent-id atelier:code --text "GIDs are stable, handles are not" --source user --tags shopify
-LOCAL=1 uv run atelier memory recall --agent-id atelier:code --query "shopify product identity" --top-k 3 --json
+LOCAL=1 atelier memory archive --agent-id atelier:code --text "GIDs are stable, handles are not" --source user --tags shopify
+LOCAL=1 atelier memory recall --agent-id atelier:code --query "shopify product identity" --top-k 3 --json
 
 make verify
 ```

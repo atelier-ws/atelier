@@ -87,6 +87,6 @@ Contributor/source flow:
 ```bash
 cd atelier
 uv sync --all-extras
-uv run atelier init
+atelier init
 make verify
 ```

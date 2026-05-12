@@ -22,6 +22,12 @@ make install
 Use `bash scripts/install_claude.sh --workspace /path/to/workspace` to write a
 project-local `.mcp.json` instead of Claude user MCP scope.
 
+Install profile selection:
+
+- `ATELIER_PROFILE=stable` is the default install profile.
+- `ATELIER_PROFILE=dev` stages the dev-oriented plugin/instructions.
+- `ATELIER_DEV_MODE=1` is still required to expose runtime-gated dev tools.
+
 ## Verify
 
 ```bash

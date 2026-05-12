@@ -66,6 +66,12 @@ claude --plugin-dir /abs/path/to/integrations/claude/plugin
 No `claude plugin install` or marketplace registration needed. Changes to skill
 files are picked up on restart.
 
+Install profile selection:
+
+- `ATELIER_PROFILE=stable` is the default install profile.
+- `ATELIER_PROFILE=dev` stages the dev-oriented plugin artifacts.
+- `ATELIER_DEV_MODE=1` is still required for runtime-gated dev tools.
+
 ---
 
 ## Mode 3: MCP-Only Fallback

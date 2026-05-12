@@ -139,8 +139,8 @@ LOCAL=1 uv run pytest tests/infra/test_lesson_promotion_precision.py \
                      tests/infra/test_recall_refinement_retry.py -v
 
 # Manual smoke: re-embed a small dataset.
-ATELIER_LOCAL_DB=/tmp/test.db LOCAL=1 uv run atelier reembed --dry-run
-ATELIER_LOCAL_DB=/tmp/test.db LOCAL=1 uv run atelier reembed
+ATELIER_LOCAL_DB=/tmp/test.db LOCAL=1 atelier reembed --dry-run
+ATELIER_LOCAL_DB=/tmp/test.db LOCAL=1 atelier reembed
 
 make verify
 ```

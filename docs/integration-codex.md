@@ -39,13 +39,13 @@ Codex CLI / IDE configuration:
 ```bash
 cd atelier
 uv sync --all-extras
-uv run atelier init   # creates .atelier/ + seeds 10 blocks + 7 rubrics
+atelier init   # creates .atelier/ + seeds 10 blocks + 7 rubrics
 ```
 
 ## 4. Smoke test
 
 ```bash
-uv run atelier lint \
+atelier lint \
   --task "Fix a live state change" \
   --domain state.change \
   --step "Resolve target from URL slug alone" \

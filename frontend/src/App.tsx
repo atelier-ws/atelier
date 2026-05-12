@@ -16,6 +16,7 @@ import Tools from "./pages/Tools";
 import Insights from "./pages/Insights";
 import Watchdogs from "./pages/Watchdogs";
 import Analytics from "./pages/Analytics";
+import External from "./pages/External";
 import Optimizations from "./pages/Optimizations";
 import {
   acknowledgeTelemetry,
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/agents", label: "Agents", icon: "☷" },
   { to: "/insights", label: "Telemetry", icon: "◎" },
   { to: "/analytics", label: "Analytics", icon: "📊" },
+  { to: "/external", label: "External", icon: "◬" },
   { to: "/optimizations", label: "Optimizations", icon: "⇲" },
 ];
 
@@ -224,6 +226,7 @@ export default function App() {
               }
             />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/external" element={<External />} />
             <Route path="/optimizations" element={<Optimizations />} />
           </Routes>
         </div>

@@ -15,8 +15,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
+ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 EXTENSION_DIR="${ATELIER_REPO}/integrations/gemini/extension"
 EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
+SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
 
 DRY_RUN=false
 PRINT_ONLY=false
@@ -58,22 +61,72 @@ info()  { echo "[atelier:gemini] $*"; }
 warn()  { echo "[atelier:gemini] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# ---- check dev mode ---------------------------------------------------------
+patch_extension_manifest() {
+    local workspace_root='${workspacePath}'
+    if $WORKSPACE_SET; then
+        workspace_root="$WORKSPACE"
+    fi
+
+    if $DRY_RUN; then
+        echo "  [dry-run] patch $EXTENSION_MANIFEST to use $ATELIER_WRAPPER"
+        return
+    fi
+
+    python3 - <<PYEOF
+import json
+from pathlib import Path
+
+path = Path("$EXTENSION_MANIFEST")
+data = json.loads(path.read_text(encoding="utf-8"))
+server = data.setdefault("mcpServers", {}).setdefault("atelier", {})
+server["command"] = "$ATELIER_WRAPPER"
+server["args"] = server.get("args", [])
+server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
+server["env"]["ATELIER_ROOT"] = "${HOME}/.atelier"
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PYEOF
+
+    info "patched linked extension manifest to use ${ATELIER_WRAPPER}"
+}
+
+# ---- resolve install profile ------------------------------------------------
 DEV_MODE="${ATELIER_DEV_MODE:-0}"
-STAGING_DIR="${HOME}/.atelier/gemini-extension-slim"
+INSTALL_PROFILE="${ATELIER_PROFILE:-}"
+if [[ -z "$INSTALL_PROFILE" ]]; then
+    if [[ "$DEV_MODE" == "1" ]]; then
+        INSTALL_PROFILE="dev"
+    else
+        INSTALL_PROFILE="stable"
+    fi
+fi
+if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
+    echo "[atelier:gemini] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
+    exit 1
+fi
+if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
+    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+fi
+STAGING_DIR="${HOME}/.atelier/gemini-extension-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"
 run "cp '${EXTENSION_DIR}/gemini-extension.json' '$STAGING_DIR/'"
 run "cp -r '${EXTENSION_DIR}/commands' '$STAGING_DIR/'"
 GEMINI_SRC="${ATELIER_REPO}/integrations/gemini/GEMINI.atelier.md"
-if [[ "$DEV_MODE" == "1" ]]; then
-    info "Dev mode enabled; installing full GEMINI.md with reasoning loop"
-    run "cp '${GEMINI_SRC/.md/.dev.md}' '$STAGING_DIR/GEMINI.md'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full GEMINI.md with reasoning loop"
+    atelier_write_managed_copy "${GEMINI_SRC/.md/.dev.md}" "$STAGING_DIR/GEMINI.md" "$DRY_RUN"
 else
-    info "Dev mode disabled; installing slim GEMINI.md (no skills/reasoning context)"
-    run "cp '${GEMINI_SRC}' '$STAGING_DIR/GEMINI.md'"
+    info "Install profile: stable; staging stable GEMINI.md without dev skills/reasoning context"
+    atelier_write_managed_copy "${GEMINI_SRC}" "$STAGING_DIR/GEMINI.md" "$DRY_RUN"
+fi
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    run "bash '$SKILL_BUILDER' --host gemini --dest '$STAGING_DIR/skills' --include-dev"
+else
+    run "bash '$SKILL_BUILDER' --host gemini --dest '$STAGING_DIR/skills'"
 fi
 EXTENSION_DIR="$STAGING_DIR"
 EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
+patch_extension_manifest
+
 backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
@@ -124,15 +177,11 @@ if ! command -v gemini &>/dev/null; then
 fi
 info "Found Gemini CLI: $(gemini --version 2>/dev/null || echo 'version unknown')"
 
-if ! command -v atelier-mcp &>/dev/null; then
-    if $STRICT; then
-        echo "[atelier:gemini] ERROR: 'atelier-mcp' not found on PATH. Install Atelier so the console script is available before enabling the Gemini extension." >&2
-        exit 1
-    fi
-    warn "'atelier-mcp' not found on PATH - SKIPPING. Install Atelier so the console script is available, then rerun this installer."
-    exit 0
+if [ ! -x "$ATELIER_WRAPPER" ]; then
+    echo "[atelier:gemini] ERROR: Atelier MCP wrapper missing or not executable: $ATELIER_WRAPPER" >&2
+    exit 1
 fi
-info "Found atelier-mcp: $(command -v atelier-mcp)"
+info "Using Atelier MCP wrapper: $ATELIER_WRAPPER"
 
 # ---- validate + link packaged extension ------------------------------------
 info "Validating extension manifest"
@@ -175,16 +224,40 @@ data = json.loads(Path("$EXTENSION_MANIFEST").read_text(encoding="utf-8"))
 print(data.get("mcpServers", {}).get("atelier", {}).get("command", ""))
 PYEOF
 )
-if [ "$COMMAND" = "atelier-mcp" ]; then
-    vpass "extension manifest points at atelier-mcp"
+if [ "$COMMAND" = "$ATELIER_WRAPPER" ]; then
+    vpass "extension manifest points at repo MCP wrapper"
 else
-    vfail "extension manifest does not point at atelier-mcp"
+    vfail "extension manifest does not point at repo MCP wrapper"
+fi
+
+if [ -x "$ATELIER_WRAPPER" ]; then
+    vpass "Atelier MCP wrapper exists: $ATELIER_WRAPPER"
+else
+    vfail "Atelier MCP wrapper missing or not executable: $ATELIER_WRAPPER"
 fi
 
 if [ -d "${EXTENSION_DIR}/commands/atelier" ] && [ -f "${EXTENSION_DIR}/commands/atelier/status.toml" ] && [ -f "${EXTENSION_DIR}/commands/atelier/context.toml" ]; then
     vpass "extension command bundle present: ${EXTENSION_DIR}/commands/atelier"
 else
     vfail "extension command bundle missing in ${EXTENSION_DIR}/commands/atelier"
+fi
+
+if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
+    if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+        if [ -f "${EXTENSION_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "extension skill bundle installed with dev skills: ${EXTENSION_DIR}/skills"
+        else
+            vfail "extension dev skill bundle missing reasoning skill: ${EXTENSION_DIR}/skills"
+        fi
+    else
+        if [ ! -f "${EXTENSION_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "extension stable skill bundle installed without dev-only skills: ${EXTENSION_DIR}/skills"
+        else
+            vfail "extension stable skill bundle unexpectedly contains dev-only skills: ${EXTENSION_DIR}/skills"
+        fi
+    fi
+else
+    vfail "extension skill bundle missing required shared skills: ${EXTENSION_DIR}/skills"
 fi
 
 if [ -f "${EXTENSION_DIR}/GEMINI.md" ] && grep -q "atelier:code" "${EXTENSION_DIR}/GEMINI.md" 2>/dev/null; then
