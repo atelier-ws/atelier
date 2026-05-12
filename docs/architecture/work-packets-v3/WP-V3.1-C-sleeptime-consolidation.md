@@ -115,7 +115,7 @@ LOCAL=1 uv run pytest tests/core/test_consolidation_dedup_pass.py \
                      tests/gateway/test_consolidation_inbox_decide.py -v
 
 # Manual smoke:
-LOCAL=1 uv run atelier consolidate --since 7d --dry-run --json
+LOCAL=1 atelier consolidate --since 7d --dry-run --json
 
 make verify
 ```

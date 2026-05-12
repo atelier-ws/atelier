@@ -8,7 +8,7 @@
 #      (works regardless of which directory the host spawns the process from)
 #   2. Sets ATELIER_ROOT to ~/.atelier if not already set
 #   3. Sets ATELIER_KNOWLEDGE_ROOT to <workspace>/.knowledge if not already set
-#   4. Runs: uv run python -m atelier.gateway.adapters.mcp_server
+#   4. Runs: atelier-mcp
 #   5. All log/debug output → stderr ONLY (never contaminates MCP JSON-RPC stdout)
 #
 # Environment variables honoured:
@@ -50,4 +50,4 @@ fi
 
 # --- exec MCP server --------------------------------------------------------
 cd "$ATELIER_REPO"
-exec uv run python -m atelier.gateway.adapters.mcp_server "$@"
+exec atelier-mcp "$@"

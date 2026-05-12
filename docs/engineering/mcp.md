@@ -5,13 +5,13 @@ Atelier ships a full MCP (Model Context Protocol) server that any compatible AI 
 ## Starting the Server
 
 ```bash
-uv run atelier-mcp
+atelier-mcp
 ```
 
 Or with an explicit root:
 
 ```bash
-uv run atelier-mcp --root /path/to/.atelier
+atelier-mcp --root /path/to/.atelier
 ```
 
 The server speaks JSON-RPC 2.0 over stdio. It is designed to be spawned by the agent host process, not run as a persistent daemon.
@@ -29,7 +29,7 @@ Remote mode is used when a team shares a central Atelier instance:
 ATELIER_MCP_MODE=remote \
 ATELIER_SERVICE_URL=http://atelier.internal:8787 \
 ATELIER_API_KEY=my-key \
-uv run atelier-mcp
+atelier-mcp
 ```
 
 ## Tool Registry
@@ -204,7 +204,7 @@ When a match is found at a different indentation level than `old_string` implies
 cd atelier && bash scripts/verify_atelier_mcp_stdio.sh
 
 # Manual test
-echo '&#123;"jsonrpc":"2.0","method":"tools/list","id":1&#125;' | uv run atelier-mcp
+echo '&#123;"jsonrpc":"2.0","method":"tools/list","id":1&#125;' | atelier-mcp
 ```
 
 Expected: a `tools/list` response containing all V1 + V2 tools.

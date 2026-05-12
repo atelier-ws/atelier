@@ -57,17 +57,17 @@ cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_mcp_memory_tools.py tests/gateway/test_cli_memory_commands.py -v
 
 # CLI smoke
-LOCAL=1 uv run atelier memory upsert-block --agent-id atelier:code --label scratch --value "hello"
-LOCAL=1 uv run atelier memory get-block --agent-id atelier:code --label scratch --json | grep -q "hello"
+LOCAL=1 atelier memory upsert-block --agent-id atelier:code --label scratch --value "hello"
+LOCAL=1 atelier memory get-block --agent-id atelier:code --label scratch --json | grep -q "hello"
 
 # Redaction guard
-echo "AKIAIOSFODNN7EXAMPLE secretvalue" | LOCAL=1 uv run atelier memory upsert-block --agent-id t --label leak --value @/dev/stdin || echo "rejected as expected"
+echo "AKIAIOSFODNN7EXAMPLE secretvalue" | LOCAL=1 atelier memory upsert-block --agent-id t --label leak --value @/dev/stdin || echo "rejected as expected"
 
 make verify
 ```
 
 ## Definition of done
-- [ ] Two MCP tools registered, both reachable via `uv run atelier-mcp` (verify with the existing
+- [ ] Two MCP tools registered, both reachable via `atelier-mcp` (verify with the existing
       MCP test harness)
 - [ ] CLI mirrors work
 - [ ] Redaction filter applied

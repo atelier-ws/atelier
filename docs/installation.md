@@ -204,7 +204,7 @@ If you are developing Atelier itself instead of using the installed product:
 ```bash
 cd atelier
 uv sync --all-extras
-uv run atelier init
+atelier init
 ```
 
 Contributor verification flow:

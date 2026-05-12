@@ -176,7 +176,7 @@ If you are working from a source checkout instead of the installed product:
 ```bash
 cd atelier
 uv sync --all-extras
-uv run atelier init
+atelier init
 make verify
 ```
 

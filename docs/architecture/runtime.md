@@ -64,7 +64,7 @@ All three interfaces call the same internal runtime:
 
 | Interface        | How                                     | Use case                         |
 | ---------------- | --------------------------------------- | -------------------------------- |
-| **MCP stdio**    | `uv run atelier-mcp`                    | Agent host integration (primary) |
-| **CLI**          | `uv run atelier <command>`              | Developer workflow / debugging   |
+| **MCP stdio**    | `atelier-mcp`                    | Agent host integration (primary) |
+| **CLI**          | `atelier <command>`              | Developer workflow / debugging   |
 | **Python SDK**   | `from atelier.sdk import AtelierClient` | Programmatic integration         |
 | **HTTP service** | `make service` (optional)               | Remote / multi-host deployments  |
