@@ -124,7 +124,7 @@ ATELIER_SERVICE_ENABLED=true ATELIER_API_KEY=dev-key make service
 ATELIER_MCP_MODE=remote \
 ATELIER_SERVICE_URL=http://localhost:8787 \
 ATELIER_API_KEY=dev-key \
-uv run atelier-mcp
+atelier-mcp
 ```
 
 ## Swagger UI

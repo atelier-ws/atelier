@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type MCPStatus } from "../api";
 import { getTelemetryConfig, type TelemetryConfig } from "../lib/insightsApi";
 
-// Namespace grouping — maps canonical tool names (without atelier_ prefix) to namespaces
+// Namespace grouping — maps canonical tool names to UI groups.
 const NS_MAP: Record<string, string> = {
   // brain — plan / validate / rescue / quality-gate
   reasoning: "brain",
@@ -10,18 +10,46 @@ const NS_MAP: Record<string, string> = {
   route: "brain",
   rescue: "brain",
   verify: "brain",
+  // code — code intelligence and file operations
+  read: "code",
+  edit: "code",
+  search: "code",
+  sql: "code",
+  code_index: "code",
+  code_search: "code",
+  code_symbol: "code",
+  code_outline: "code",
+  code_context: "code",
+  code_impact: "code",
+  shell: "shell",
   // capture — observability & recording
   trace: "capture",
   // storage — memory and retrieval
   memory: "storage",
-  // files — file system operations
-  read: "files",
-  edit: "files",
-  search: "files",
-  sql: "files",
   // infra — context lifecycle
   compact: "infra",
 };
+
+const DEV_TOOL_NAMES = new Set<string>([
+  "reasoning",
+  "lint",
+  "route",
+  "rescue",
+  "verify",
+  "memory",
+  "read",
+  "edit",
+  "sql",
+  "search",
+  "code_index",
+  "code_search",
+  "code_symbol",
+  "code_outline",
+  "code_context",
+  "code_impact",
+  "compact",
+  "shell",
+]);
 
 const NS_META: Record<string, { icon: string; label: string; color: string }> =
   {
@@ -29,6 +57,16 @@ const NS_META: Record<string, { icon: string; label: string; color: string }> =
       icon: "🧠",
       label: "brain",
       color: "text-purple-400 border-purple-900/50 bg-purple-950/10",
+    },
+    code: {
+      icon: "⌘",
+      label: "code",
+      color: "text-cyan-300 border-cyan-900/50 bg-cyan-950/10",
+    },
+    shell: {
+      icon: ">_",
+      label: "shell",
+      color: "text-orange-300 border-orange-900/50 bg-orange-950/10",
     },
     capture: {
       icon: "📇",
@@ -40,11 +78,6 @@ const NS_META: Record<string, { icon: string; label: string; color: string }> =
       label: "storage",
       color: "text-emerald-400 border-emerald-900/50 bg-emerald-950/10",
     },
-    files: {
-      icon: "📁",
-      label: "files",
-      color: "text-neutral-400 border-neutral-800 bg-neutral-900/30",
-    },
     infra: {
       icon: "⚙️",
       label: "infra",
@@ -54,6 +87,20 @@ const NS_META: Record<string, { icon: string; label: string; color: string }> =
 
 function canonicalName(name: string): string {
   return name.startsWith("atelier_") ? name.slice("atelier_".length) : name;
+}
+
+function getNamespace(name: string): string {
+  return NS_MAP[name] ?? "other";
+}
+
+function descriptionIndicatesDev(description?: string): boolean {
+  return !!description && description.startsWith("[DEV]");
+}
+
+function isDevTool(tool: MCPStatus): boolean {
+  return (
+    DEV_TOOL_NAMES.has(tool.tool_name) || descriptionIndicatesDev(tool.description)
+  );
 }
 
 export default function Tools() {
@@ -139,25 +186,18 @@ export default function Tools() {
             // Group by namespace; unknowns go to "other"
             const groups: Record<string, MCPStatus[]> = {};
             for (const t of deduped) {
-              const ns = NS_MAP[t.tool_name] ?? "other";
+              const ns = getNamespace(t.tool_name);
               if (!groups[ns]) groups[ns] = [];
               groups[ns].push(t);
             }
 
-            const nsOrder = [
-              "brain",
-              "capture",
-              "storage",
-              "infra",
-              "files",
-              "other",
-            ];
+            const nsOrder = ["brain", "code", "shell", "capture", "storage", "infra", "other"];
 
             return (
               <div className="space-y-5">
                 <p className="text-[10px] font-mono text-neutral-600">
                   {deduped.length} tools on stdio server:{" "}
-                  <code>uv run atelier-mcp</code>
+                  <code>atelier-mcp</code>
                 </p>
                 {nsOrder
                   .filter((ns) => groups[ns]?.length)
@@ -168,6 +208,12 @@ export default function Tools() {
                       color:
                         "text-neutral-400 border-neutral-800 bg-neutral-900/30",
                     };
+                    const tools = groups[ns];
+                    const visibleTools = tools.filter(
+                      (tool) => !isDevTool(tool) || config?.dev_mode
+                    );
+                    const hiddenCount = tools.length - visibleTools.length;
+                    const groupDisabled = visibleTools.length === 0 && hiddenCount > 0;
                     return (
                       <div key={ns}>
                         <div className="flex items-center gap-2 mb-2">
@@ -176,26 +222,24 @@ export default function Tools() {
                             {meta.label}
                           </span>
                           <span className="text-[10px] text-neutral-700 font-mono">
-                            ({groups[ns].length})
+                            ({tools.length})
                           </span>
+                          {groupDisabled && (
+                            <span className="text-[9px] uppercase tracking-wider font-mono text-neutral-600 border border-neutral-800 px-1.5 py-0.5">
+                              disabled
+                            </span>
+                          )}
                         </div>
                         <div className="space-y-px">
-                          {groups[ns]
-                            .filter((tool) => {
-                              const isDev =
-                                !!tool.description &&
-                                tool.description.startsWith("[DEV]");
-                              return !isDev || config?.dev_mode;
-                            })
-                            .map((tool) => {
-                              const isExpanded = expandedTool === tool.tool_name;
-                              const desc = tool.description;
-                              const isDev = !!desc && desc.startsWith("[DEV]");
-                              const cleanDescription = isDev
-                                ? desc!.slice("[DEV]".length).trim()
-                                : desc;
+                          {visibleTools.map((tool) => {
+                            const isExpanded = expandedTool === tool.tool_name;
+                            const desc = tool.description;
+                            const isDev = isDevTool(tool);
+                            const cleanDescription = descriptionIndicatesDev(desc)
+                              ? desc!.slice("[DEV]".length).trim()
+                              : desc;
 
-                              return (
+                            return (
                               <div
                                 key={tool.tool_name}
                                 className={`border cursor-pointer transition-colors ${meta.color} ${isExpanded ? "border-b-0" : ""}`}
@@ -249,6 +293,14 @@ export default function Tools() {
                               </div>
                             );
                           })}
+                          {groupDisabled && (
+                            <div className="border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-3">
+                              <p className="text-[11px] font-mono text-neutral-500">
+                                {hiddenCount} dev tools hidden. Enable dev mode with{" "}
+                                <code>ATELIER_DEV_MODE=1</code> to inspect them.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

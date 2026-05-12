@@ -241,6 +241,7 @@ class CopilotImporter:
         tool_call_in_buffer: dict[str, dict[str, Any]] = {}
         fallback_model = ""
         user_prompt_tokens = 0
+        assistant_output_tokens = 0
         start_time: datetime | None = None
 
         for line in redacted_events.splitlines():
@@ -261,6 +262,9 @@ class CopilotImporter:
                     if ts:
                         start_time = _parse_workspace_dt(ts)
 
+            if etype == "session.model_change":
+                fallback_model = (ev.get("data") or {}).get("newModel") or fallback_model
+
             if etype == "user.message":
                 data = ev.get("data") or {}
                 content = data.get("content")
@@ -280,6 +284,7 @@ class CopilotImporter:
                 if reasoning and len(str(reasoning)) > 10:
                     reasoning_snippets.append(str(reasoning)[:500])
                 out_t = int(data.get("outputTokens", 0) or 0)
+                assistant_output_tokens += out_t
                 calls = data.get("toolRequests") or []
                 if calls and out_t:
                     dist_out = out_t // len(calls)
@@ -345,6 +350,12 @@ class CopilotImporter:
             tot_cache_read += bucket["cache_read"]
             tot_cache_write += bucket["cache_write"]
             tot_reasoning += bucket["reasoning"]
+
+        if assistant_output_tokens > 0:
+            if tot_out == 0:
+                tot_out = assistant_output_tokens
+            if tot_in == 0:
+                tot_in = user_prompt_tokens
 
         primary_model = ""
         if last_model_metrics:

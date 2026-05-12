@@ -99,7 +99,7 @@ LOCAL=1 uv run pytest tests/core/test_batch_edit_atomicity.py \
 
 # CLI smoke
 echo '&#123;"edits":[&#123;"path":"/tmp/x.txt","op":"replace","old_string":"a","new_string":"b"&#125;]&#125;' | \
-  LOCAL=1 uv run atelier batch-edit --from-stdin --json
+  LOCAL=1 atelier batch-edit --from-stdin --json
 
 make verify
 ```

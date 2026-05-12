@@ -80,7 +80,9 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            annotation = (
+                param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            )
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -108,15 +110,12 @@ def mcp_tool(
             def handler_wrapper(args: dict[str, Any]) -> Any:
                 return func()
 
-        from atelier.core.service.config import cfg
-
-        if not is_dev or cfg.dev_mode:
-            TOOLS[tool_name] = {
-                "handler": handler_wrapper,
-                "description": tool_description,
-                "inputSchema": schema,
-                "is_dev": is_dev,
-            }
+        TOOLS[tool_name] = {
+            "handler": handler_wrapper,
+            "description": tool_description,
+            "inputSchema": schema,
+            "is_dev": is_dev,
+        }
         return handler_wrapper
 
     return decorator
@@ -279,7 +278,9 @@ def _observe_plan_result(result: Any, domain: str | None, plan: list[str]) -> No
         emit_product(
             "plan_check_blocked",
             domain=domain or "",
-            blocking_rule_id=hash_identifier(str(matched_blocks[0] if matched_blocks else "blocked")),
+            blocking_rule_id=hash_identifier(
+                str(matched_blocks[0] if matched_blocks else "blocked")
+            ),
             severity="high",
             session_id=session_id,
         )
@@ -910,7 +911,9 @@ def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
     repo_root: str = ".",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
+    task_type: Literal[
+        "debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"
+    ] = "feature",
     risk_level: Literal["low", "medium", "high"] = "medium",
     changed_files: list[str] | None = None,
     domain: str | None = None,
@@ -1426,7 +1429,9 @@ def _memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = expected_version if expected_version is not None else (existing.version if existing else 1)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1462,7 +1467,9 @@ def _memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1572,7 +1579,9 @@ def tool_memory(
             actor=actor,
         )
     if op == "block_get":
-        return _memory_get_block(agent_id=require("agent_id", agent_id), label=require("label", label))
+        return _memory_get_block(
+            agent_id=require("agent_id", agent_id), label=require("label", label)
+        )
     if op == "archive":
         return _memory_archive(
             agent_id=require("agent_id", agent_id),
@@ -1893,6 +1902,138 @@ def _memory_summary(session_id: str) -> dict[str, Any]:
         return {"error": str(exc)}
 
 
+def _code_context_engine(repo_root: str = ".") -> Any:
+    from atelier.core.capabilities.code_context import CodeContextEngine
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    root = Path(repo_root)
+    resolved = root if root.is_absolute() else Path(workspace) / root
+    return CodeContextEngine(resolved)
+
+
+@mcp_tool(name="atelier_code_index", is_dev=True)
+def tool_atelier_code_index(
+    repo_root: str = ".",
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Index a repository/folder into Atelier's SQLite FTS5 symbol store."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root)
+        .index_repo(include_globs=include_globs, exclude_globs=exclude_globs)
+        .model_dump(mode="json"),
+    )
+
+
+@mcp_tool(name="atelier_code_search", is_dev=True)
+def tool_atelier_code_search(
+    query: str,
+    repo_root: str = ".",
+    limit: int = 20,
+    kind: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """BM25/FTS symbol search over the Atelier code index."""
+    results = _code_context_engine(repo_root).search_symbols(
+        query,
+        limit=limit,
+        kind=kind,
+        language=language,
+    )
+    return {"items": [item.model_dump(mode="json") for item in results]}
+
+
+@mcp_tool(name="atelier_code_symbol", is_dev=True)
+def tool_atelier_code_symbol(
+    repo_root: str = ".",
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    file_path: str | None = None,
+) -> dict[str, Any]:
+    """Retrieve exact symbol source by byte offsets."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root).get_symbol(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+        ),
+    )
+
+
+@mcp_tool(name="atelier_code_outline", is_dev=True)
+def tool_atelier_code_outline(
+    repo_root: str = ".",
+    file_path: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Return compact file/repo outline from the code index."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root).file_outline(file_path=file_path, limit=limit),
+    )
+
+
+def _run_shell_tool(
+    command: str,
+    timeout: int = 30,
+    cwd: str | None = None,
+    max_lines: int = 200,
+) -> dict[str, Any]:
+    """Execute a shell command and return compact structured output."""
+    from atelier.core.capabilities.tool_supervision.bash_exec import run_command
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    result = run_command(
+        command,
+        cwd=cwd or workspace,
+        timeout=timeout,
+        max_lines=max_lines,
+    )
+    return {
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "exit_code": result.exit_code,
+        "duration_ms": result.duration_ms,
+        "truncated": result.truncated,
+        "lines_omitted": result.lines_omitted,
+    }
+
+@mcp_tool(name="atelier_code_context", is_dev=True)
+def tool_atelier_code_context(
+    task: str,
+    repo_root: str = ".",
+    seed_files: list[str] | None = None,
+    budget_tokens: int = 4000,
+    max_symbols: int = 8,
+) -> dict[str, Any]:
+    """Build a task-specific token-budgeted context bundle."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root)
+        .context_pack(
+            task=task,
+            seed_files=seed_files,
+            budget_tokens=budget_tokens,
+            max_symbols=max_symbols,
+        )
+        .model_dump(mode="json"),
+    )
+
+
+@mcp_tool(name="atelier_code_impact", is_dev=True)
+def tool_atelier_code_impact(repo_root: str = ".", file_path: str = "") -> dict[str, Any]:
+    """Return importers, blast radius, tests, and approximate dead-code candidates."""
+    if not file_path:
+        raise ValueError("file_path is required")
+    return cast(
+        dict[str, Any], _code_context_engine(repo_root).impact(file_path).model_dump(mode="json")
+    )
+
+
 @mcp_tool(name="search", is_dev=True)
 def tool_smart_search(
     query: str | None = None,
@@ -1922,7 +2063,7 @@ def tool_smart_search(
     """Smart search/read with ranking plus a native glob/regex media-aware mode.
 
     Pass ``query`` for query-driven search; pass ``seed_files`` with ``mode="map"``
-    for repo-map mode (replaces the former atelier_repo_map tool).
+    for repo-map mode.
     """
     if (
         content_regex is not None
@@ -2030,31 +2171,15 @@ _REMOTE_TOOLS = frozenset(
 )
 
 
-@mcp_tool(name="run", is_dev=True)
-def tool_run(
+@mcp_tool(name="shell", is_dev=True)
+def tool_shell(
     command: str,
     timeout: int = 30,
     cwd: str | None = None,
     max_lines: int = 200,
 ) -> dict[str, Any]:
     """Execute a shell command. Output is ANSI-stripped and line-truncated for token efficiency."""
-    from atelier.core.capabilities.tool_supervision.bash_exec import run_command
-
-    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    result = run_command(
-        command,
-        cwd=cwd or workspace,
-        timeout=timeout,
-        max_lines=max_lines,
-    )
-    return {
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "exit_code": result.exit_code,
-        "duration_ms": result.duration_ms,
-        "truncated": result.truncated,
-        "lines_omitted": result.lines_omitted,
-    }
+    return _run_shell_tool(command, timeout=timeout, cwd=cwd, max_lines=max_lines)
 
 
 _remote_client: Any = None
@@ -2196,7 +2321,12 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
+            if (
+                tool_name
+                and tool_name != lever
+                and tool_name not in lever_savings
+                and lever == base_lever
+            ):
                 lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
@@ -2216,7 +2346,9 @@ def _record_context_budget_for_tool(
                 "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
                 "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
                 "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                "cache_write_tokens_saved": int(
+                    live_savings.get("cache_write_tokens_saved", 0) or 0
+                ),
                 "live_tokens_saved": live_tokens_saved,
                 "tool_tokens_saved": tool_tokens_saved,
                 "tokens_saved": tokens_saved,
@@ -2230,7 +2362,9 @@ def _record_context_budget_for_tool(
         # Record the tool execution metrics
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
-            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+            actual_output_tokens = max(
+                0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4
+            )
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -2314,7 +2448,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
             led = _get_ledger()
             result_text = json.dumps(result, ensure_ascii=False, default=str)
-            compact_text = result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
+            compact_text = (
+                result_text
+                if len(result_text) <= 1200
+                else result_text[:600] + "..." + result_text[-600:]
+            )
             led.record(
                 "tool_result",
                 f"{name} result",
@@ -2328,7 +2466,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             rtc.persist()
 
             # Record context budget metrics
-            _record_context_budget_for_tool(name, args if isinstance(args, dict) else {}, led, result)
+            _record_context_budget_for_tool(
+                name, args if isinstance(args, dict) else {}, led, result
+            )
 
             with contextlib.suppress(Exception):
                 from atelier.core.service.telemetry import emit_product
@@ -2338,14 +2478,18 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     "mcp_tool_called",
                     tool_name=name,
                     session_id=_get_product_session_id(),
-                    duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                    duration_ms_bucket=bucket_duration_ms(
+                        (time.perf_counter() - started_at) * 1000
+                    ),
                     ok=True,
                 )
 
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
+                    ],
                     "structuredContent": result,
                 },
             )
@@ -2362,7 +2506,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     "mcp_tool_called",
                     tool_name=name,
                     session_id=_get_product_session_id(),
-                    duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                    duration_ms_bucket=bucket_duration_ms(
+                        (time.perf_counter() - started_at) * 1000
+                    ),
                     ok=False,
                 )
             return _err(rid, _tool_error_code(exc), str(exc))

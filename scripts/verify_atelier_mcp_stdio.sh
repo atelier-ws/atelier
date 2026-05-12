@@ -14,7 +14,7 @@ echo "=== Atelier MCP stdio verification ==="
 TMP_ROOT=$(mktemp -d)
 trap 'rm -rf "$TMP_ROOT"' EXIT
 export ATELIER_ROOT="$TMP_ROOT"
-uv run atelier init --seed >/dev/null
+atelier init --seed >/dev/null
 
 # Build the JSON-RPC batch
 MESSAGES=$(cat <<'JSONRPC'
@@ -86,5 +86,5 @@ print("PASS rescue: no error")
 print("=== PASS: all MCP stdio checks passed ===")
 EOF
 
-echo "$MESSAGES" | uv run atelier-mcp | python3 "$PY_SCRIPT"
+echo "$MESSAGES" | atelier-mcp | python3 "$PY_SCRIPT"
 rm "$PY_SCRIPT"

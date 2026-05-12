@@ -1,8 +1,7 @@
 """Convenience entry-point shims.
 
-These wrap subcommands of the main `atelier` CLI so users can type
-``atelier-task ...`` instead of ``atelier task ...``. Each script forwards
-``sys.argv[1:]`` to the corresponding Click subcommand.
+These wrap stable command names such as ``atelier-context`` and translate them
+to the current Click subcommands exposed by the main ``atelier`` CLI.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from atelier import __version__ as atelier_version
 from atelier.gateway.adapters.cli import cli
 
 
-def _invoke(subcommand: str) -> None:
+def _invoke(subcommand: str, *, wrapper_name: str | None = None) -> None:
     from atelier.core.foundation.identity import (
         get_anon_id,
         new_session_id,
@@ -35,13 +34,20 @@ def _invoke(subcommand: str) -> None:
         session_id=session_id,
         **payload,
     )
+    command_name = (wrapper_name or subcommand).replace("-", "_")
+
     emit_product(
         "cli_command_invoked",
-        command_name=subcommand.replace("-", "_"),
+        command_name=command_name,
         session_id=session_id,
         anon_id=get_anon_id(),
     )
-    sys.argv = [f"atelier-{subcommand}", subcommand, *sys.argv[1:]]
+    args = sys.argv[1:]
+    prefix: list[str] = []
+    while args[:1] == ["--root"] and len(args) >= 2:
+        prefix.extend(args[:2])
+        args = args[2:]
+    sys.argv = [f"atelier-{wrapper_name or subcommand}", *prefix, subcommand, *args]
     try:
         try:
             cli(obj={"_telemetry_session_id": session_id, "_telemetry_command_name": subcommand})
@@ -50,7 +56,7 @@ def _invoke(subcommand: str) -> None:
             elapsed = time.perf_counter() - started_at
             emit_product(
                 "cli_command_completed",
-                command_name=subcommand.replace("-", "_"),
+                command_name=command_name,
                 session_id=session_id,
                 duration_ms_bucket=bucket_duration_ms(elapsed * 1000),
                 ok=code == 0,
@@ -66,7 +72,7 @@ def _invoke(subcommand: str) -> None:
             elapsed = time.perf_counter() - started_at
             emit_product(
                 "cli_command_completed",
-                command_name=subcommand.replace("-", "_"),
+                command_name=command_name,
                 session_id=session_id,
                 duration_ms_bucket=bucket_duration_ms(elapsed * 1000),
                 ok=True,
@@ -84,15 +90,19 @@ def _invoke(subcommand: str) -> None:
 
 
 def task_main() -> None:
-    _invoke("task")
+    sys.stderr.write(
+        "atelier-task was removed during CLI consolidation; use atelier-context, "
+        "atelier-check-plan, or the MCP reasoning/lint tools instead.\n"
+    )
+    raise SystemExit(2)
 
 
 def context_main() -> None:
-    _invoke("context")
+    _invoke("reasoning", wrapper_name="context")
 
 
 def check_plan_main() -> None:
-    _invoke("check-plan")
+    _invoke("lint", wrapper_name="check-plan")
 
 
 def rescue_main() -> None:

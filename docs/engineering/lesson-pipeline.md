@@ -26,7 +26,7 @@ Set both values only in secure runtime environments where GitHub PR automation i
 Dry run (safe preview):
 
 ```bash
-uv run atelier --root .atelier lesson sync-pr <lesson_id> --dry-run --json
+atelier --root .atelier lesson sync-pr <lesson_id> --dry-run --json
 ```
 
 Enabled execution:
@@ -34,7 +34,7 @@ Enabled execution:
 ```bash
 export ATELIER_LESSON_PR_BOT_ENABLED=true
 export GITHUB_TOKEN=...
-uv run atelier --root .atelier lesson sync-pr <lesson_id> --json
+atelier --root .atelier lesson sync-pr <lesson_id> --json
 ```
 
 ## Behavior

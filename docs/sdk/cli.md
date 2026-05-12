@@ -5,7 +5,7 @@ Atelier ships a full CLI for runtime operations, packs, benchmarking, and servic
 ## Global Usage
 
 ```bash
-uv run atelier [--root PATH] COMMAND [OPTIONS]
+atelier [--root PATH] COMMAND [OPTIONS]
 ```
 
 | Option        | Default                         | Description                             |
@@ -28,7 +28,7 @@ All commands that return data support `--json` to emit a machine-readable JSON e
 ### `init`
 
 ```bash
-uv run atelier init [--no-seed]
+atelier init [--no-seed]
 ```
 
 Create the store directory, run schema migrations, and seed 10 ReasonBlocks + 7 rubrics.
@@ -44,7 +44,7 @@ Create the store directory, run schema migrations, and seed 10 ReasonBlocks + 7 
 ### `context`
 
 ```bash
-uv run atelier context \
+atelier context \
     [--task TEXT] \
     [--domain TEXT] \
     [--file PATH]... \
@@ -61,7 +61,7 @@ Retrieve a structured reasoning context prompt for an agent about to start a tas
 ### `task`
 
 ```bash
-uv run atelier task TASK_DESCRIPTION... \
+atelier task TASK_DESCRIPTION... \
     [--domain TEXT] \
     [--file PATH]... \
     [--tool TEXT]... \
@@ -75,7 +75,7 @@ Like `context` but accepts the task as positional arguments. Convenient for shel
 ### `check-plan`
 
 ```bash
-uv run atelier check-plan \
+atelier check-plan \
     --task TEXT \
     --step TEXT... \
     [--domain TEXT] \
@@ -95,7 +95,7 @@ Validate a proposed agent plan against known dead ends and required checks. Each
 **Example (blocked):**
 
 ```bash
-uv run atelier check-plan \
+atelier check-plan \
     --task "Apply a live state change" \
     --domain state.change \
     --step "Resolve target from URL slug alone" \
@@ -106,7 +106,7 @@ uv run atelier check-plan \
 ### `rescue`
 
 ```bash
-uv run atelier rescue \
+atelier rescue \
     --task TEXT \
     --error TEXT \
     [--domain TEXT] \
@@ -120,11 +120,11 @@ Given a task and an error message, suggest a rescue procedure from the stored fa
 ## Pack Commands
 
 ```bash
-uv run atelier pack create my-pack --type reasonblocks --path ./examples
-uv run atelier pack validate ./examples/my-pack --json
-uv run atelier pack install ./examples/my-pack
-uv run atelier pack search coding-general
-uv run atelier pack info atelier-pack-coding-general --json
+atelier pack create my-pack --type reasonblocks --path ./examples
+atelier pack validate ./examples/my-pack --json
+atelier pack install ./examples/my-pack
+atelier pack search coding-general
+atelier pack info atelier-pack-coding-general --json
 ```
 
 Packs are production-scoped for internal use. External git/http sources are disabled by default.
@@ -133,11 +133,11 @@ The local catalog writes installed pack checksums and compatibility metadata to 
 ## Benchmark Commands
 
 ```bash
-uv run atelier benchmark --prompt "Fix live state drift" --json
-uv run atelier benchmark run --prompt "Fix live state drift" --rounds 2 --json
-uv run atelier benchmark compare --input .atelier/benchmarks/runtime/latest.json --input other.json
-uv run atelier benchmark report --input .atelier/benchmarks/runtime/latest.json
-uv run atelier benchmark export --input .atelier/benchmarks/runtime/latest.json --output report.csv --format csv
+atelier benchmark --prompt "Fix live state drift" --json
+atelier benchmark run --prompt "Fix live state drift" --rounds 2 --json
+atelier benchmark compare --input .atelier/benchmarks/runtime/latest.json --input other.json
+atelier benchmark report --input .atelier/benchmarks/runtime/latest.json
+atelier benchmark export --input .atelier/benchmarks/runtime/latest.json --output report.csv --format csv
 ```
 
 The legacy no-action invocation remains valid; `run` is the new explicit action.
@@ -149,9 +149,9 @@ The legacy no-action invocation remains valid; `run` is the new explicit action.
 ### `record-trace`
 
 ```bash
-uv run atelier record-trace [--input PATH]
+atelier record-trace [--input PATH]
 # or via stdin:
-echo '&#123;...trace json...&#125;' | uv run atelier record-trace
+echo '&#123;...trace json...&#125;' | atelier record-trace
 ```
 
 Record an execution trace. Accepts JSON from stdin or a file. Required fields:
@@ -193,7 +193,7 @@ All string fields are redacted before persistence (secrets removed).
 ### `extract-block`
 
 ```bash
-uv run atelier extract-block TRACE_ID [--save] [--json]
+atelier extract-block TRACE_ID [--save] [--json]
 ```
 
 Analyze a trace and extract a candidate ReasonBlock. Shows confidence score and reasoning.
@@ -210,7 +210,7 @@ Analyze a trace and extract a candidate ReasonBlock. Shows confidence score and 
 ### `list-blocks`
 
 ```bash
-uv run atelier list-blocks [--domain TEXT] [--query TEXT] [--json]
+atelier list-blocks [--domain TEXT] [--query TEXT] [--json]
 ```
 
 List all ReasonBlocks, optionally filtered by domain or full-text query.
@@ -218,7 +218,7 @@ List all ReasonBlocks, optionally filtered by domain or full-text query.
 ### `add-block`
 
 ```bash
-uv run atelier add-block --title TEXT --domain TEXT --procedure TEXT [--json]
+atelier add-block --title TEXT --domain TEXT --procedure TEXT [--json]
 ```
 
 Add a new ReasonBlock to the store.
@@ -234,7 +234,7 @@ There are also individual subcommands for block management. Use `list-blocks` an
 ### `run-rubric`
 
 ```bash
-echo '&#123;"check_name": true, ...&#125;' | uv run atelier run-rubric RUBRIC_ID [--json]
+echo '&#123;"check_name": true, ...&#125;' | atelier run-rubric RUBRIC_ID [--json]
 ```
 
 Run a rubric gate against a set of check results (JSON from stdin). Returns pass/blocked + which checks failed.
@@ -254,7 +254,7 @@ echo '&#123;
     "observed_state_matches_intent": true,
     "rollback_plan_available": true,
     "user_visible_surface_checked": true
-&#125;' | uv run atelier run-rubric rubric_state_change_safety
+&#125;' | atelier run-rubric rubric_state_change_safety
 ```
 
 ---
@@ -264,10 +264,10 @@ echo '&#123;
 The run ledger tracks per-run state for long-running agent sessions.
 
 ```bash
-uv run atelier ledger show [--session-id ID] [--json]
-uv run atelier ledger update --session-id ID --key TEXT --value TEXT
-uv run atelier ledger summarize [--session-id ID] [--json]
-uv run atelier ledger reset [--session-id ID]
+atelier ledger show [--session-id ID] [--json]
+atelier ledger update --session-id ID --key TEXT --value TEXT
+atelier ledger summarize [--session-id ID] [--json]
+atelier ledger reset [--session-id ID]
 ```
 
 ---
@@ -275,13 +275,13 @@ uv run atelier ledger reset [--session-id ID]
 ## Failure Commands
 
 ```bash
-uv run atelier failure list [--json]
-uv run atelier failure show CLUSTER_ID [--json]
-uv run atelier failure accept CLUSTER_ID
-uv run atelier failure reject CLUSTER_ID
+atelier failure list [--json]
+atelier failure show CLUSTER_ID [--json]
+atelier failure accept CLUSTER_ID
+atelier failure reject CLUSTER_ID
 
-uv run atelier analyze-failures [--domain TEXT] [--limit N] [--json]
-uv run atelier eval-from-cluster CLUSTER_ID [--save] [--json]
+atelier analyze-failures [--domain TEXT] [--limit N] [--json]
+atelier eval-from-cluster CLUSTER_ID [--save] [--json]
 ```
 
 ---
@@ -289,11 +289,11 @@ uv run atelier eval-from-cluster CLUSTER_ID [--save] [--json]
 ## Eval Commands
 
 ```bash
-uv run atelier eval list [--json]
-uv run atelier eval show EVAL_ID [--json]
-uv run atelier eval promote EVAL_ID
-uv run atelier eval deprecate EVAL_ID
-uv run atelier eval run [--eval-id ID] [--domain TEXT] [--json]
+atelier eval list [--json]
+atelier eval show EVAL_ID [--json]
+atelier eval promote EVAL_ID
+atelier eval deprecate EVAL_ID
+atelier eval run [--eval-id ID] [--domain TEXT] [--json]
 ```
 
 ---
@@ -301,8 +301,8 @@ uv run atelier eval run [--eval-id ID] [--domain TEXT] [--json]
 ## Tool-Mode Commands
 
 ```bash
-uv run atelier tool-mode show [--json]
-uv run atelier tool-mode set MODE   # e.g. "smart" or "standard"
+atelier tool-mode show [--json]
+atelier tool-mode set MODE   # e.g. "smart" or "standard"
 ```
 
 ---
@@ -310,11 +310,11 @@ uv run atelier tool-mode set MODE   # e.g. "smart" or "standard"
 ## Smart-Tool Commands (V2 MCP counterparts)
 
 ```bash
-uv run atelier smart-read PATH [--json]
-uv run atelier smart-search QUERY [--json]
-uv run atelier cached-grep PATTERN PATH... [--json]
-uv run atelier compress-context [--json]
-uv run atelier monitor-event --event-type TEXT [--data TEXT] [--json]
+atelier smart-read PATH [--json]
+atelier smart-search QUERY [--json]
+atelier cached-grep PATTERN PATH... [--json]
+atelier compress-context [--json]
+atelier monitor-event --event-type TEXT [--data TEXT] [--json]
 ```
 
 ---
@@ -322,9 +322,9 @@ uv run atelier monitor-event --event-type TEXT [--data TEXT] [--json]
 ## Savings Commands
 
 ```bash
-uv run atelier savings [--json]
-uv run atelier savings-reset
-uv run atelier benchmark [--json]
+atelier savings [--json]
+atelier savings-reset
+atelier benchmark [--json]
 ```
 
 ---
@@ -332,8 +332,8 @@ uv run atelier benchmark [--json]
 ## Service Commands
 
 ```bash
-uv run atelier service start [--host HOST] [--port PORT] [--reload]
-uv run atelier service config
+atelier service start [--host HOST] [--port PORT] [--reload]
+atelier service config
 ```
 
 Or via Makefile:
@@ -347,7 +347,7 @@ cd atelier && make service
 ## Worker Commands
 
 ```bash
-uv run atelier worker start [OPTIONS]
+atelier worker start [OPTIONS]
 ```
 
 ---
@@ -357,9 +357,9 @@ uv run atelier worker start [OPTIONS]
 OpenMemory bridge commands (require `ATELIER_OPENMEMORY_ENABLED=true`):
 
 ```bash
-uv run atelier openmemory status
-uv run atelier openmemory link-trace TRACE_ID [--context-id ID]
-uv run atelier openmemory fetch-context TASK_DESCRIPTION [--project-id ID]
+atelier openmemory status
+atelier openmemory link-trace TRACE_ID [--context-id ID]
+atelier openmemory fetch-context TASK_DESCRIPTION [--project-id ID]
 ```
 
 By default these are stubs that print instructions for enabling the integration.

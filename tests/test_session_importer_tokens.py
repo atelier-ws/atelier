@@ -387,6 +387,79 @@ class TestCopilotImporterTokens:
         #   tool.output_tokens (edit) = resultForLlmLength // 4 = 400 // 4 = 100
         _assert_tool_tokens(trace, "edit", input_t=80, output_t=100)
 
+    def test_copilot_falls_back_to_assistant_output_tokens(self, store: ReasoningStore, tmp_path: Path) -> None:
+        session_dir = tmp_path / "copilot-session-fallback"
+        session_dir.mkdir(parents=True)
+
+        events = [
+            json.dumps(
+                {
+                    "type": "session.start",
+                    "data": {"startTime": "2026-05-09T12:00:00Z"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "session.model_change",
+                    "data": {"newModel": "gpt-5.5", "reasoningEffort": "high"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user.message",
+                    "data": {"content": "x" * 500},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool.execution_start",
+                    "data": {"toolName": "edit", "arguments": {"file_path": "/tmp/test.py"}},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant.message",
+                    "data": {
+                        "outputTokens": 80,
+                        "toolRequests": [{"toolCallId": "tc1", "name": "edit"}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool.execution_complete",
+                    "data": {
+                        "toolCallId": "tc1",
+                        "toolTelemetry": {"metrics": {"resultForLlmLength": 400}},
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant.message",
+                    "data": {"outputTokens": 30},
+                }
+            ),
+        ]
+
+        (session_dir / "events.jsonl").write_text("\n".join(events))
+        (session_dir / "workspace.yaml").write_text(self.WORKSPACE_YAML)
+
+        importer = CopilotImporter(store)
+        result = importer.import_session(session_dir, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "copilot")
+
+        assert trace.input_tokens == 125
+        assert trace.output_tokens == 110
+        assert trace.thinking_tokens == 0
+        assert trace.cached_input_tokens == 0
+        assert trace.cache_creation_input_tokens == 0
+        assert trace.model == "gpt-5.5"
+
+        _assert_tool_tokens(trace, "edit", input_t=80, output_t=100)
+
 
 # =========================================================================
 # OpenCode (SQLite)
@@ -612,12 +685,12 @@ class TestGeminiImporterTokens:
 
         trace = _get_trace(store, "gemini")
 
-        # Totals: sum across both gemini events
-        #   input = 100 + 80 = 180
+        # Totals: sum across both gemini events, with cached tokens split out.
+        #   non-cached input = (100 - 20) + (80 - 5) = 155
         #   output = 50 + 30 = 80
         #   thoughts = 5 + 2 = 7
-        #   cached = 20 + 5 = 25  (subset of input, not double-counted in trace.input_tokens)
-        assert trace.input_tokens == 180
+        #   cached = 20 + 5 = 25  (subset of input, stored separately)
+        assert trace.input_tokens == 155
         assert trace.output_tokens == 80
         assert trace.thinking_tokens == 7
         assert trace.cached_input_tokens == 25
@@ -627,4 +700,71 @@ class TestGeminiImporterTokens:
         # Turn 1: in=100, out=50, 1 tool
         #   tool.input_tokens (run_shell_command) = dist_out = 50 // 1 = 50
         #   tool.output_tokens (run_shell_command) = dist_in = 100 // 1 = 100
+        _assert_tool_tokens(trace, "run_shell_command", input_t=50, output_t=100)
+
+    def test_gemini_counts_same_id_events_when_payload_differs(self, store: ReasoningStore, tmp_path: Path) -> None:
+        jsonl_path = tmp_path / "session-duplicate-ids.jsonl"
+        fixture_lines = [
+            json.dumps(
+                {
+                    "startTime": "2026-05-09T12:00:00Z",
+                    "sessionId": "duplicate-session",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "content": [{"text": "List files please"}],
+                }
+            ),
+            json.dumps(
+                {
+                    "id": "turn-1",
+                    "type": "gemini",
+                    "model": "gemini-3-flash",
+                    "tokens": {"input": 100, "output": 50, "thoughts": 5, "cached": 20},
+                }
+            ),
+            json.dumps(
+                {
+                    "id": "turn-1",
+                    "type": "gemini",
+                    "model": "gemini-3-flash",
+                    "tokens": {"input": 100, "output": 50, "thoughts": 5, "cached": 20},
+                    "toolCalls": [{"name": "run_shell_command", "args": {"command": "ls"}}],
+                }
+            ),
+            json.dumps(
+                {
+                    "id": "turn-2",
+                    "type": "gemini",
+                    "model": "gemini-3-flash",
+                    "tokens": {"input": 80, "output": 30, "thoughts": 2, "cached": 5},
+                }
+            ),
+            json.dumps(
+                {
+                    "id": "turn-2",
+                    "type": "gemini",
+                    "model": "gemini-3-flash",
+                    "tokens": {"input": 80, "output": 30, "thoughts": 2, "cached": 5},
+                }
+            ),
+        ]
+        jsonl_path.write_text("\n".join(fixture_lines))
+
+        importer = GeminiImporter(store)
+        result = importer.import_session(jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "gemini")
+
+        # Same-id events with different payloads should both count.
+        # Exact duplicate lines should still collapse.
+        assert trace.input_tokens == 235
+        assert trace.output_tokens == 130
+        assert trace.thinking_tokens == 12
+        assert trace.cached_input_tokens == 45
+        assert trace.model == "gemini-3-flash"
+
         _assert_tool_tokens(trace, "run_shell_command", input_t=50, output_t=100)

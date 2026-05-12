@@ -76,12 +76,25 @@ SPECS: tuple[ExternalAnalyzerSpec, ...] = (TOKSCALE, CODEBURN)
 REPORTABLE_TOOL_IDS: tuple[str, ...] = tuple(spec.id for spec in SPECS if spec.reportable)
 
 _SUMMARY_METRIC_ALIASES: dict[str, tuple[str, ...]] = {
-    "cost_usd": ("cost", "cost_usd", "total_cost", "total_usd", "usd_cost", "estimated_cost"),
+    "cost_usd": (
+        "cost",
+        "cost_usd",
+        "total_cost",
+        "total_usd",
+        "totalCost",
+        "usd_cost",
+        "estimated_cost",
+    ),
     "calls": ("calls", "tool_calls", "call_count", "requests", "total_calls"),
     "sessions": ("sessions", "session_count", "runs", "total_sessions"),
-    "input_tokens": ("input_tokens", "prompt_tokens", "total_input_tokens"),
-    "output_tokens": ("output_tokens", "completion_tokens", "total_output_tokens"),
-    "tokens": ("tokens", "total_tokens"),
+    "input_tokens": ("input_tokens", "prompt_tokens", "total_input_tokens", "totalInput"),
+    "output_tokens": (
+        "output_tokens",
+        "completion_tokens",
+        "total_output_tokens",
+        "totalOutput",
+    ),
+    "tokens": ("tokens", "total_tokens", "totalTokens"),
     "saved_tokens": ("saved_tokens", "waste_tokens", "redundant_tokens", "estimated_tokens_saved"),
     "savings_usd": ("savings_usd", "saved_usd", "estimated_usd_saved"),
     "one_shot_rate": ("one_shot_rate", "success_rate", "yield", "yield_rate"),
@@ -358,7 +371,7 @@ def persist_external_reports(
     return persisted
 
 
-def _tokscale_command(binary: str, period: str) -> list[str]:
+def _tokscale_period_flags(period: str) -> list[str]:
     flags = {
         "today": ["--today"],
         "week": ["--week"],
@@ -366,7 +379,96 @@ def _tokscale_command(binary: str, period: str) -> list[str]:
     }
     if period not in flags:
         raise ValueError(f"Tokscale supports only: {', '.join(TOKSCALE.supports_periods)}")
-    return [binary, "--json", "--no-spinner", *flags[period]]
+    return flags[period]
+
+
+def _tokscale_command(binary: str, period: str, *, view: str = "overview") -> list[str]:
+    period_flags = _tokscale_period_flags(period)
+    if view == "overview":
+        return [binary, "--json", "--no-spinner", *period_flags]
+    if view in {"models", "monthly", "hourly"}:
+        return [binary, view, "--json", "--no-spinner", *period_flags]
+    if view == "graph":
+        return [binary, "graph", "--no-spinner", *period_flags]
+    raise ValueError(f"Unsupported tokscale view: {view}")
+
+
+def _tokscale_capture_metadata(command: list[str], result: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "command_display": shlex.join(command),
+        "returncode": result.get("returncode"),
+    }
+    payload = result.get("payload")
+    if isinstance(payload, dict):
+        metadata["keys"] = sorted(str(key) for key in payload)[:20]
+    parse_error = str(result.get("parse_error") or "").strip()
+    if parse_error:
+        metadata["parse_error"] = parse_error
+    stderr = str(result.get("stderr") or "").strip()
+    if stderr:
+        metadata["stderr"] = _truncate_text(stderr, limit=600)
+    return metadata
+
+
+def _tokscale_payload_dict(result: dict[str, Any]) -> dict[str, Any]:
+    payload = result.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _run_tokscale_report_bundle(binary: str, period: str, *, cwd: Path | None = None) -> dict[str, Any]:
+    commands = {
+        view: _tokscale_command(binary, period, view=view)
+        for view in ("overview", "models", "monthly", "hourly", "graph")
+    }
+    results = {view: _run_json_command(command, cwd=cwd) for view, command in commands.items()}
+
+    overview_payload = _tokscale_payload_dict(results["overview"])
+    models_payload = _tokscale_payload_dict(results["models"])
+    monthly_payload = _tokscale_payload_dict(results["monthly"])
+    hourly_payload = _tokscale_payload_dict(results["hourly"])
+    graph_payload = _tokscale_payload_dict(results["graph"])
+
+    payload: dict[str, Any] = dict(overview_payload)
+    payload["reportKind"] = "tokscale_bundle"
+    payload["modelEntries"] = list(models_payload.get("entries") or [])
+    payload["modelGroupBy"] = models_payload.get("groupBy")
+    payload["monthlyEntries"] = list(monthly_payload.get("entries") or [])
+    payload["monthlyTotalCost"] = monthly_payload.get("totalCost")
+    payload["hourlyEntries"] = list(hourly_payload.get("entries") or [])
+    payload["hourlyTotalCost"] = hourly_payload.get("totalCost")
+    payload["dailyEntries"] = list(graph_payload.get("contributions") or [])
+    payload["dailySummary"] = dict(graph_payload.get("summary") or {})
+    payload["dailyMeta"] = dict(graph_payload.get("meta") or {})
+    payload["dailyYears"] = list(graph_payload.get("years") or [])
+    payload["captures"] = {view: _tokscale_capture_metadata(commands[view], results[view]) for view in commands}
+
+    combined_stdout = "\n\n".join(
+        f"[{view}]\n{stdout}" for view, result in results.items() if (stdout := str(result.get("stdout") or "").strip())
+    )
+    combined_stderr = "\n\n".join(
+        f"[{view}]\n{stderr}" for view, result in results.items() if (stderr := str(result.get("stderr") or "").strip())
+    )
+    parse_errors = [
+        f"{view}: {parse_error}"
+        for view, result in results.items()
+        if (parse_error := str(result.get("parse_error") or "").strip())
+    ]
+    first_failure = next(
+        (result for result in results.values() if not bool(result.get("ok"))),
+        None,
+    )
+
+    return {
+        "ok": all(bool(result.get("ok")) for result in results.values()),
+        "returncode": first_failure.get("returncode") if first_failure else 0,
+        "stdout": combined_stdout,
+        "stderr": combined_stderr,
+        "payload": payload,
+        "parse_error": "; ".join(parse_errors) or None,
+        "command": commands["overview"],
+        "command_display": " && ".join(shlex.join(command) for command in commands.values()),
+    }
 
 
 def _codeburn_command(binary: str, period: str, subcommand: str = "report") -> list[str]:
@@ -431,7 +533,12 @@ def run_external_report(tool: str, *, period: str = "week", cwd: Path | None = N
                 "error": "not_installed",
                 "message": TOKSCALE.install_hint,
             }
-        command = _tokscale_command(binary, period)
+        result = _run_tokscale_report_bundle(binary, period, cwd=cwd)
+        return {
+            "tool": normalized,
+            "period": period,
+            **result,
+        }
     elif normalized == CODEBURN.id:
         binary = _find_executable(CODEBURN)
         if not binary:

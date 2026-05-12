@@ -175,20 +175,39 @@ export default function RunInspectorDrawer({
   }, [trace?.id]);
 
   useEffect(() => {
-    // Use trace.id as the primary lookup key for the backend
     if (!open || !trace?.id) return;
 
     setLoading(true);
     setError(null);
-    api
-      .ledger(trace.id)
-      .then((ledger) => {
-        setData(parseInspectorData(trace.session_id || trace.id, ledger));
-      })
-      .catch((err) => {
-        setError(String(err));
+    const sessionLookupId = trace.session_id || trace.id;
+    const fallbackLookupId =
+      trace.session_id && trace.session_id !== trace.id ? trace.id : null;
+
+    let cancelled = false;
+
+    const loadLedger = async () => {
+      try {
+        const ledger = await api.ledger(sessionLookupId);
+        if (!cancelled) {
+          setData(parseInspectorData(sessionLookupId, ledger));
+        }
+        return;
+      } catch (sessionError) {
+        if (!fallbackLookupId) {
+          throw sessionError;
+        }
+      }
+
+      try {
+        const ledger = await api.ledger(fallbackLookupId);
+        if (!cancelled) {
+          setData(parseInspectorData(sessionLookupId, ledger));
+        }
+      } catch (fallbackError) {
+        if (cancelled) return;
+        setError(String(fallbackError));
         setData({
-          session_id: trace.session_id || trace.id,
+          session_id: sessionLookupId,
           pinned_blocks: [],
           recalled_passages: [],
           summarized_events_count: 0,
@@ -197,8 +216,18 @@ export default function RunInspectorDrawer({
           source_paths: [],
           conversations: [],
         });
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadLedger();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, trace]);
 
   const title = useMemo(() => {

@@ -148,22 +148,21 @@ class GeminiImporter:
         total_cached = 0
         user_prompt_tokens = 0
         model_seen = ""
-        processed_ids: set[str] = set()
+        seen_event_lines: set[str] = set()
 
         for line in raw_content.splitlines():
             line = line.strip()
             if not line:
                 continue
+            # Gemini can reuse the same event id across separate billable records.
+            # Only drop exact duplicate lines, not repeated ids with new payload.
+            if line in seen_event_lines:
+                continue
+            seen_event_lines.add(line)
             try:
                 ev = json.loads(line)
             except Exception:
                 continue
-
-            msg_id = str(ev.get("id") or "")
-            if msg_id and msg_id in processed_ids:
-                continue
-            if msg_id:
-                processed_ids.add(msg_id)
 
             if "startTime" in ev and "sessionId" in ev:
                 with contextlib.suppress(BaseException):

@@ -17,6 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
@@ -67,22 +68,37 @@ info()  { echo "[atelier:claude] $*"; }
 warn()  { echo "[atelier:claude] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# ---- check dev mode ---------------------------------------------------------
+# ---- resolve install profile ------------------------------------------------
 DEV_MODE="${ATELIER_DEV_MODE:-0}"
-STAGING_DIR="${HOME}/.atelier/claude-plugin-slim"
+INSTALL_PROFILE="${ATELIER_PROFILE:-}"
+if [[ -z "$INSTALL_PROFILE" ]]; then
+    if [[ "$DEV_MODE" == "1" ]]; then
+        INSTALL_PROFILE="dev"
+    else
+        INSTALL_PROFILE="stable"
+    fi
+fi
+if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
+    echo "[atelier:claude] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
+    exit 1
+fi
+if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
+    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+fi
+STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR/.claude-plugin'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"
 run "mkdir -p '$STAGING_DIR/agents'"
-if [[ "$DEV_MODE" == "1" ]]; then
-    info "Dev mode enabled; installing full plugin with reasoning loop"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full plugin with reasoning loop"
     for agent in code explore review repair; do
-        run "cp '${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md' '$STAGING_DIR/agents/${agent}.md'"
+        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 else
-    info "Dev mode disabled; installing slim plugin (no skills/reasoning loop)"
+    info "Install profile: stable; staging stable plugin without dev reasoning loop"
     for agent in code explore review repair; do
-        run "cp '${SOURCE_PLUGIN_DIR}/agents/${agent}.md' '$STAGING_DIR/agents/${agent}.md'"
+        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 fi
 run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
@@ -165,7 +181,7 @@ CLAUDE_VERSION="$(claude --version 2>/dev/null || echo 'unknown')"
 info "Found Claude Code: $CLAUDE_VERSION"
 
 # ---- structural validation --------------------------------------------------
-# Always validate the original source plugin dir, not the slim staging copy.
+# Always validate the original source plugin dir, not the generated staging copy.
 info "Running structural validation on plugin package at ${SOURCE_PLUGIN_DIR}"
 
 STRUCT_FAIL=0

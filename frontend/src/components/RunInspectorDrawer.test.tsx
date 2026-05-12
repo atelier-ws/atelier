@@ -20,7 +20,7 @@ describe("RunInspectorDrawer", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/ledgers/trace-1")) {
+        if (url.includes("/api/ledgers/run-123")) {
           return Promise.resolve(
             jsonResponse({
               session_id: "run-123",
@@ -90,7 +90,7 @@ describe("RunInspectorDrawer", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/ledgers/trace-search")) {
+        if (url.includes("/api/ledgers/run-search")) {
           return Promise.resolve(
             jsonResponse({
               session_id: "run-search",
@@ -164,5 +164,47 @@ describe("RunInspectorDrawer", () => {
     expect(screen.getByText("/tmp/timeout.log")).toBeInTheDocument();
     expect(screen.queryByText("/tmp/healthy.log")).not.toBeInTheDocument();
     expect(screen.queryByText("block.safe")).not.toBeInTheDocument();
+  });
+
+  it("falls back to trace id when the session id lookup is unavailable", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/ledgers/run-fallback")) {
+          return Promise.resolve(new Response("not found", { status: 404 }));
+        }
+        if (url.includes("/api/ledgers/trace-fallback")) {
+          return Promise.resolve(
+            jsonResponse({
+              session_id: "run-fallback",
+              active_reasonblocks: ["block.fallback"],
+              events: [],
+            })
+          );
+        }
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+    );
+
+    const trace = {
+      id: "trace-fallback",
+      session_id: "run-fallback",
+      agent: "atelier:code",
+      task: "Fallback lookup",
+      status: "success",
+      files_touched: [],
+      tools_called: [],
+      commands_run: [],
+      errors_seen: [],
+      repeated_failures: [],
+      validation_results: [],
+      created_at: new Date().toISOString(),
+    } as Trace;
+
+    render(<RunInspectorDrawer open trace={trace} onClose={() => {}} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("block.fallback")).toBeInTheDocument();
+    });
   });
 });

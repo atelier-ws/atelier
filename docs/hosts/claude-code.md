@@ -23,7 +23,7 @@ Then bootstrap the engine:
 
 ```bash
 cd atelier && uv sync
-uv run atelier init
+atelier init
 ```
 
 ## Manual MCP Setup
@@ -75,10 +75,10 @@ Skills auto-trigger based on context:
 
 | Skill                  | Trigger                                                   |
 | ---------------------- | --------------------------------------------------------- |
-| `atelier-task`         | Start of every coding task — runs the full reasoning loop |
-| `atelier-check-plan`   | Explicit plan validation                                  |
-| `atelier-rescue`       | Invoked on repeated failures                              |
-| `atelier-record-trace` | End-of-task observable summary                            |
+| `reasoning`            | Start of every coding task — runs the full reasoning loop |
+| `lint`                 | Explicit plan validation                                  |
+| `rescue`               | Invoked on repeated failures                              |
+| `trace`                | End-of-task observable summary                            |
 
 ## Hooks (Optional)
 
@@ -158,7 +158,7 @@ To enable the compact lifecycle:
 
 ## Reasoning Loop (Full)
 
-The `atelier:code` agent and `atelier-task` skill enforce this loop on every task:
+The `atelier:code` agent and `reasoning` skill enforce this loop on every task:
 
 1. `reasoning` — inject relevant procedures
 2. `lint` — validate plan before editing (exit 2 = abort)

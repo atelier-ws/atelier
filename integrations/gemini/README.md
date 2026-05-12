@@ -8,15 +8,17 @@ Connects the [Gemini CLI](https://github.com/google-gemini/gemini-cli) to Atelie
    ```bash
    cd atelier
    uv sync
-   uv run atelier init
+   atelier init
    ```
 2. Make sure the `atelier-mcp` console script is on your `PATH`, then link the packaged extension from this repo:
    ```bash
+   make build-host-skills
    atelier-mcp --help
    gemini extensions validate integrations/gemini/extension
    gemini extensions link integrations/gemini/extension
    ```
-3. Restart Gemini CLI. The extension contributes `GEMINI.md`, `commands/`, `skills/`, and the Atelier MCP server in one bundle.
+3. Restart Gemini CLI. The extension contributes `GEMINI.md`, `commands/`,
+   a generated `skills/` bundle, and the Atelier MCP server in one bundle.
 
 The repo install script automates this flow:
 
@@ -42,7 +44,7 @@ If Gemini returns the plan list from `<workspace>/.atelier/plans/`, the extensio
 
 - `extension/gemini-extension.json` — extension manifest.
 - `extension/commands/` — bundled Gemini commands.
-- `extension/skills/` — bundled agent skills.
+- `extension/skills/` — generated from `integrations/skills`.
 - `verify.sh` — non-destructive smoke test (lists plans, prints the first reasoning block).
 
 ## See also

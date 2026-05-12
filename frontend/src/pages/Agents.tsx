@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { api } from "../api";
+import { api, type Skill } from "../api";
+import { getTelemetryConfig, type TelemetryConfig } from "../lib/insightsApi";
 
 interface AgentDef {
   id: string;
@@ -89,14 +90,24 @@ const AGENTS: AgentDef[] = [
 
 export default function Agents() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [skills, setSkills] = useState<any[] | null>(null);
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [config, setConfig] = useState<TelemetryConfig | null>(null);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+
+  const hiddenSkillCount = config === null ? 0 : config.dev_mode ? 0 : 4;
+  const visibleSkills = skills ?? [];
+  const totalSkillCount =
+    skills === null ? null : visibleSkills.length + hiddenSkillCount;
 
   useEffect(() => {
     api
       .skills()
       .then(setSkills)
       .catch((e) => console.error("Failed to load skills:", e));
+
+    getTelemetryConfig()
+      .then(setConfig)
+      .catch(() => undefined);
   }, []);
 
   return (
@@ -121,12 +132,13 @@ export default function Agents() {
           Skills
         </h2>
         <p className="text-xs text-neutral-400 mb-3">
-          11 common skills available to all agent hosts. Click to expand and see
-          full documentation.
+          {totalSkillCount === null
+            ? "Loading skill catalog..."
+            : `${totalSkillCount} common skills in the repo. Click to expand and see full documentation for the ones available in this mode.`}
         </p>
         <div className="grid grid-cols-1 gap-2">
-          {skills && skills.length > 0 ? (
-            skills.map((s) => (
+          {visibleSkills.length > 0 ? (
+            visibleSkills.map((s) => (
               <SkillCard
                 key={s.name}
                 skill={{
@@ -142,6 +154,14 @@ export default function Agents() {
             ))
           ) : (
             <div className="text-neutral-500 text-xs">Loading skills...</div>
+          )}
+          {hiddenSkillCount > 0 && (
+            <div className="border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-3">
+              <p className="text-[11px] font-mono text-neutral-500">
+                {hiddenSkillCount} dev-only skills hidden. Enable dev mode with{" "}
+                <code>ATELIER_DEV_MODE=1</code> to install and inspect them.
+              </p>
+            </div>
           )}
         </div>
       </section>
@@ -277,9 +297,7 @@ function SkillCard({
     }
     setLoading(true);
     try {
-      const response = await fetch(`/api/skills?name=${skill.name}`);
-      const data = await response.json();
-      const skillData = data.length > 0 ? data[0] : null;
+      const skillData = await api.skill(skill.name);
       if (skillData) {
         setContent(skillData.content);
         onToggle();
