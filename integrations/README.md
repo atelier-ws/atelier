@@ -55,7 +55,7 @@ All installers write the same MCP command pointing to the stable wrapper script:
 The wrapper locates the atelier repo, sets `ATELIER_ROOT`, and runs:
 
 ```
-uv run python -m atelier.gateway.adapters.mcp_server
+atelier-mcp
 ```
 
 Never hardcodes a path; resolves at runtime from the script's own location.

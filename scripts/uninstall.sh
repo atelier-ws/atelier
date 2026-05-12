@@ -7,6 +7,10 @@
 # Optional environment variables:
 #   ATELIER_BIN_DIR    Global bin dir for command wrappers (default: ~/.local/bin)
 #   ATELIER_DRY_RUN    If set to 1, print planned actions and exit
+#
+# Notes:
+#   Codex host uninstall removes only the managed Atelier AGENTS block when the
+#   destination file uses explicit Atelier START/END sentinels.
 
 set -euo pipefail
 

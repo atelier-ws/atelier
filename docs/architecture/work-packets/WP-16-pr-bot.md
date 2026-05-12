@@ -67,7 +67,7 @@ LOCAL=1 uv run pytest tests/core/test_pr_bot_dry_run.py \
 
 # Disabled-default smoke
 unset ATELIER_LESSON_PR_BOT_ENABLED
-LOCAL=1 uv run atelier lesson sync-pr <some_id> --dry-run | grep -q "skipped"
+LOCAL=1 atelier lesson sync-pr <some_id> --dry-run | grep -q "skipped"
 
 make verify
 ```

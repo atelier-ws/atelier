@@ -631,18 +631,18 @@ IF context is empty:
 
 ```
 # See all available commands:
-uv run atelier -h
+atelier -h
 
 # Get help on specific command:
-uv run atelier COMMAND -h
+atelier COMMAND -h
 
 # Examples:
-uv run atelier check-plan -h
-uv run atelier context -h
-uv run atelier list-blocks -h
-uv run atelier record-trace -h
-uv run atelier rescue -h
-uv run atelier run-rubric -h
+atelier check-plan -h
+atelier context -h
+atelier list-blocks -h
+atelier record-trace -h
+atelier rescue -h
+atelier run-rubric -h
 ```
 
 ---

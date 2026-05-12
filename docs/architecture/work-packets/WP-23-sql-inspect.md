@@ -67,7 +67,7 @@ cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/gateway/test_sql_inspect_mcp.py -v
 
 # Smoke: read-only must reject INSERT
-LOCAL=1 uv run atelier sql inspect --alias atelier_local "INSERT INTO foo VALUES(1)" || echo "rejected as expected"
+LOCAL=1 atelier sql inspect --alias atelier_local "INSERT INTO foo VALUES(1)" || echo "rejected as expected"
 
 make verify
 ```

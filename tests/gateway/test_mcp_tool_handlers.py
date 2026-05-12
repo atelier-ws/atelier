@@ -25,6 +25,13 @@ EXPECTED_TOOLS = {
     "search",
     "compact",
     "run",
+    "atelier_code_index",
+    "atelier_code_search",
+    "atelier_code_symbol",
+    "atelier_code_outline",
+    "atelier_repo_map",
+    "atelier_code_context",
+    "atelier_code_impact",
 }
 
 SLIM_TOOLS = {"trace"}
@@ -83,7 +90,9 @@ def test_initialize_returns_server_info() -> None:
 
 
 def test_notifications_initialized_returns_none() -> None:
-    resp = _handle({"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}})
+    resp = _handle(
+        {"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}}
+    )
     assert resp is None
 
 
@@ -198,7 +207,9 @@ def test_run_rubric_gate_pass(store_root: Path) -> None:
 
 def test_compact_output_op_passthrough(store_root: Path) -> None:
     _ = store_root
-    payload = _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
+    payload = _result(
+        _call("compact", {"op": "output", "content": "short output", "content_type": "bash"})
+    )
     assert payload["compacted"] == "short output"
     assert payload["method"] == "passthrough"
 
@@ -223,7 +234,9 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert search_payload["matches"]
 
 
-def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_smart_edit_surface_applies_patch(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _ = store_root
     monkeypatch.chdir(tmp_path)
     target = Path("edit.txt")
@@ -260,3 +273,48 @@ def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
         )
     )
     assert "ranked_files" in payload
+
+
+def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text(
+        "from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8"
+    )
+
+    indexed = _result(_call("atelier_code_index", {"repo_root": str(tmp_path)}))
+    assert indexed["symbols_indexed"] >= 2
+
+    searched = _result(_call("atelier_code_search", {"repo_root": str(tmp_path), "query": "alpha"}))
+    assert searched["items"]
+
+    symbol = _result(
+        _call(
+            "atelier_code_symbol",
+            {"repo_root": str(tmp_path), "qualified_name": "alpha", "file_path": "a.py"},
+        )
+    )
+    assert "def alpha" in symbol["source"]
+
+    outline = _result(
+        _call("atelier_code_outline", {"repo_root": str(tmp_path), "file_path": "a.py"})
+    )
+    assert "a.py" in outline["files"]
+
+    context = _result(
+        _call(
+            "atelier_code_context",
+            {
+                "repo_root": str(tmp_path),
+                "task": "change alpha",
+                "seed_files": ["a.py"],
+                "budget_tokens": 300,
+            },
+        )
+    )
+    assert context["token_count"] <= context["budget_tokens"]
+
+    impact = _result(
+        _call("atelier_code_impact", {"repo_root": str(tmp_path), "file_path": "a.py"})
+    )
+    assert "b.py" in impact["direct_importers"]
