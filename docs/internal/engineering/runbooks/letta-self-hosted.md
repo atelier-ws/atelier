@@ -5,8 +5,8 @@ Atelier V3 supports a single-primary memory backend. SQLite remains the default.
 ## Start
 
 ```bash
-uv run atelier letta up
-uv run atelier letta status
+atelier letta up
+atelier letta status
 ```
 
 The compose stack is defined in `deploy/letta/docker-compose.yml` and exposes Letta at `http://localhost:8283` by default.
@@ -35,14 +35,14 @@ Atelier must not dual-write memory blocks/passages into SQLite while Letta is pr
 ## Operate
 
 ```bash
-uv run atelier letta logs
-uv run atelier letta down
+atelier letta logs
+atelier letta down
 ```
 
 `down` preserves the named Docker volume. To remove the sidecar data volume:
 
 ```bash
-uv run atelier letta reset --yes
+atelier letta reset --yes
 ```
 
 Use reset only for local development or disposable test environments.

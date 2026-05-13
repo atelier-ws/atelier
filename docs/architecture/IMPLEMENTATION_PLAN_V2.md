@@ -300,7 +300,7 @@ assertion (see WP-19, WP-28, and WP-32).
 | Memory-block round-trip latency (p99, in-proc)                         |                       n/a |                        ≤ 5 ms | `tests/infra/test_memory_store_perf.py`               |
 | Archival recall@5 on the 50-question synthetic eval                    |                       n/a |                         ≥ 0.8 | `tests/infra/test_archival_recall.py`                 |
 | Lesson promotion precision on the 200-trace fixture                    |                       n/a |                         ≥ 0.7 | `tests/infra/test_lesson_promotion.py`                |
-| Cold-start time (`uv run atelier init` end-to-end)                     |                       ~2s |                          ≤ 4s | `tests/infra/test_init_perf.py`                       |
+| Cold-start time (`atelier init` end-to-end)                     |                       ~2s |                          ≤ 4s | `tests/infra/test_init_perf.py`                       |
 | End-to-end agent loop overhead (median, no LLM call) added by Atelier  |                    ~12 ms |                       ≤ 25 ms | `tests/infra/test_loop_overhead.py`                   |
 | Frontend Lighthouse Performance score                                  |                        90 |                          ≥ 90 | `frontend/scripts/lighthouse.sh` (manual gate)        |
 | `atelier verify` (lint + typecheck + tests) wall time on a fresh clone |                      ~25s |                         ≤ 60s | CI                                                    |

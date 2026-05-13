@@ -37,10 +37,14 @@ else
     CLAUDE_SETTINGS_DIR="${HOME}/.claude"
 fi
 
+CLAUDE_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.json"
+CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
+
 info()  { echo "[atelier:uninstall:claude] $*"; }
 warn()  { echo "[atelier:uninstall:claude] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
+# ---- workspace MCP entry ----------------------------------------------------
 if $WORKSPACE_SET; then
     if [ -f "$MCP_JSON" ] && grep -q "atelier" "$MCP_JSON" 2>/dev/null; then
         run "python3 -c '
@@ -54,7 +58,6 @@ path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
         info "Removed atelier MCP entry from $MCP_JSON"
     fi
 
-    CLAUDE_LOCAL_SETTINGS="${CLAUDE_SETTINGS_DIR}/settings.local.json"
     if [ -f "$CLAUDE_LOCAL_SETTINGS" ] && grep -q "CLAUDE_WORKSPACE_ROOT" "$CLAUDE_LOCAL_SETTINGS" 2>/dev/null; then
         run "python3 -c '
 import json
@@ -73,12 +76,96 @@ else
     warn "claude CLI not found, skipping user-scope MCP removal"
 fi
 
-if ! $WORKSPACE_SET && command -v claude &>/dev/null; then
-    if claude plugin list 2>&1 | grep -q "atelier@atelier"; then
-        run "claude plugin uninstall atelier@atelier"
-        info "Removed Claude plugin atelier@atelier"
+# ---- PreToolUse hook in settings.json ---------------------------------------
+if [ -f "$CLAUDE_SETTINGS" ] && grep -q "Atelier loop required" "$CLAUDE_SETTINGS" 2>/dev/null; then
+    if $DRY_RUN; then
+        echo "  [dry-run] remove Atelier PreToolUse hook from $CLAUDE_SETTINGS"
     else
-        info "No atelier plugin found in Claude Code"
+        python3 - <<PYEOF
+import json
+from pathlib import Path
+
+path = Path("$CLAUDE_SETTINGS")
+data = json.loads(path.read_text(encoding="utf-8") or "{}")
+hooks = data.get("hooks", {})
+pre = hooks.get("PreToolUse", [])
+pre = [
+    entry for entry in pre
+    if not (
+        entry.get("matcher") == "Edit|Write"
+        and any(
+            "Atelier loop required" in h.get("command", "")
+            for h in entry.get("hooks", [])
+        )
+    )
+]
+if pre:
+    hooks["PreToolUse"] = pre
+else:
+    hooks.pop("PreToolUse", None)
+if not hooks:
+    data.pop("hooks", None)
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+print("[atelier:uninstall:claude] Removed Atelier PreToolUse hook from $CLAUDE_SETTINGS")
+PYEOF
+    fi
+fi
+
+# ---- project-local and user-global agent files ------------------------------
+# Claude Code writes plugin agents into the CWD's .claude/agents/ at install time.
+# Remove them from the current directory and from ~/.claude/agents/ (user-global).
+for agents_dir in ".claude/agents" "${HOME}/.claude/agents"; do
+    if [ -d "$agents_dir" ]; then
+        for f in "$agents_dir"/atelier-*.md "$agents_dir"/atelier_*.md; do
+            [ -f "$f" ] || continue
+            run "rm -f '$f'"
+            info "Removed agent file: $f"
+        done
+    fi
+done
+
+# ---- statusLine setting in ~/.claude/settings.json --------------------------
+if [ -f "${CLAUDE_SETTINGS}" ] && grep -q "atelier" "${CLAUDE_SETTINGS}" 2>/dev/null; then
+    if $DRY_RUN; then
+        echo "  [dry-run] remove atelier statusLine from ${CLAUDE_SETTINGS}"
+    else
+        python3 - <<PYEOF2
+import json
+from pathlib import Path
+path = Path("${CLAUDE_SETTINGS}")
+data = json.loads(path.read_text(encoding="utf-8") or "{}")
+sl = data.get("statusLine", {})
+if isinstance(sl, dict) and "atelier" in sl.get("command", ""):
+    data.pop("statusLine", None)
+    print("[atelier:uninstall:claude] Removed atelier statusLine from ${CLAUDE_SETTINGS}")
+if data.get("agent") == "atelier:code":
+    data.pop("agent", None)
+    print("[atelier:uninstall:claude] Removed atelier-code default agent from ${CLAUDE_SETTINGS}")
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PYEOF2
+    fi
+fi
+
+# ---- plugin uninstall -------------------------------------------------------
+CLAUDE_PLUGINS="${HOME}/.claude/plugins"
+if ! $WORKSPACE_SET && command -v claude &>/dev/null; then
+    if $DRY_RUN; then
+        echo "  [dry-run] claude plugin uninstall atelier@atelier"
+        echo "  [dry-run] claude plugin marketplace remove atelier"
+        echo "  [dry-run] rm -rf ${CLAUDE_PLUGINS}/atelier* ${CLAUDE_PLUGINS}/cache/atelier ${CLAUDE_PLUGINS}/data/atelier-atelier"
+    else
+        # Remove via CLI (cleans registry entries)
+        claude plugin uninstall atelier@atelier 2>/dev/null \
+            || claude plugin uninstall atelier 2>/dev/null \
+            || true
+        claude plugin marketplace remove atelier 2>/dev/null || true
+        # CLI removes registry entries but leaves files on disk — remove directly
+        rm -rf "${CLAUDE_PLUGINS}/atelier"
+        rm -rf "${CLAUDE_PLUGINS}/cache/atelier"
+        rm -rf "${CLAUDE_PLUGINS}/data/atelier-atelier"
+        # Clean up any timestamped backups the CLI left (e.g. atelier.atelier-backup.*)
+        rm -rf "${CLAUDE_PLUGINS}"/atelier.atelier-backup.*
+        info "Removed Claude plugin files and cache"
     fi
 elif ! $WORKSPACE_SET; then
     warn "claude CLI not found, skipping plugin removal"

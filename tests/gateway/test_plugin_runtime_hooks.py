@@ -162,7 +162,53 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
     assert result["host_settings"]["atelier"]["attribution"]["source"] == "Atelier"
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
     assert result["auth"]["isAnonymous"] is True
+    assert "Atelier budget optimizer" in result["stdout"]["additionalContext"]
     assert (root / "session_stats" / "s1.json").exists()
+
+
+def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    plugin_root = tmp_path / "plugin"
+    config_dir = tmp_path / "claude"
+    plugin_root.mkdir()
+    (plugin_root / ".mcp.json").write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+
+    result = _run_hook(
+        "session_start.py",
+        {"hook_event_name": "SessionStart", "session_id": "s1", "source": "startup"},
+        env={
+            "ATELIER_ROOT": str(root),
+            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "CLAUDE_CONFIG_DIR": str(config_dir),
+        },
+    )
+
+    output = json.loads(result.stdout)
+    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "smallest viable plan" in output["additionalContext"]
+
+
+def test_claude_session_telemetry_emits_quality_guard_once(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    env = {"ATELIER_ROOT": str(root)}
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s1",
+        "tool_name": "Search",
+        "tool_input": {},
+        "usage": {"input_tokens": 90_000, "output_tokens": 500},
+    }
+
+    for now_ms in (1_000, 1_001, 1_002):
+        _run_hook("session_telemetry.py", {**payload, "now_ms": now_ms}, env=env)
+
+    fourth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_003}, env=env)
+    fifth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_004}, env=env)
+
+    fourth_output = json.loads(fourth.stdout)
+    assert "quality guard" in fourth_output["message"].lower()
+    assert "session quality" in fourth_output["additionalContext"].lower()
+    assert fifth.stdout == ""
 
 
 def test_apply_session_start_files_mutates_host_settings_and_plugin_mcp(tmp_path: Path) -> None:

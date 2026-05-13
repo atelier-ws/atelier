@@ -24,6 +24,7 @@ from atelier.core.foundation.models import (
     ToolCall,
     Trace,
     ValidationResult,
+    coerce_trace_json,
 )
 from atelier.core.foundation.store import ReasoningStore
 
@@ -249,7 +250,7 @@ def _list_traces_between(store: ReasoningStore, start: datetime, end: datetime) 
             """,
             (start.isoformat(), end.isoformat()),
         ).fetchall()
-    return [Trace.model_validate_json(row["payload"]) for row in rows]
+    return [Trace.model_validate_json(coerce_trace_json(row["payload"])) for row in rows]
 
 
 def _rubric_rates(traces: Iterable[Trace]) -> tuple[RateMetric, list[DomainRubricRate]]:
@@ -440,12 +441,12 @@ def _rescue_rate(traces: list[Trace]) -> float | None:
 def _average_context_budget_usage(store: ReasoningStore, traces: Iterable[Trace]) -> float | None:
     input_tokens = 0
     naive_tokens = 0
-    seen_run_ids: set[str] = set()
+    seen_session_ids: set[str] = set()
     for trace in traces:
-        if not trace.run_id or trace.run_id in seen_run_ids:
+        if not trace.session_id or trace.session_id in seen_session_ids:
             continue
-        seen_run_ids.add(trace.run_id)
-        for record in store.list_context_budgets(trace.run_id):
+        seen_session_ids.add(trace.session_id)
+        for record in store.list_context_budgets(trace.session_id):
             if record.naive_input_tokens <= 0:
                 continue
             input_tokens += int(record.input_tokens)
