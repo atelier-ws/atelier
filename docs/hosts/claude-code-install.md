@@ -160,7 +160,7 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 | ----------------------- | ------------------------ | -------------------------------------------------------------------------------- |
 | `search`                | **Atelier augmentation** | Token-saving combined search + read; deduplicates repeated context fetches       |
 | `edit`                  | **Atelier augmentation** | Deterministic multi-file batch edits (optional — host MultiEdit remains default) |
-| `atelier bench runtime` | **Atelier augmentation** | Capability efficiency metrics                                                    |
+| `atelier benchmark runtime` | **Atelier augmentation** | Capability efficiency metrics                                                    |
 
 ### Lesson pipeline
 
