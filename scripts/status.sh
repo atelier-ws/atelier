@@ -4,6 +4,8 @@
 # Options:
 #   --workspace DIR  Workspace root to inspect (default: cwd)
 #   --json           Output in JSON format
+#   --write          Persist detection results to .atelier/hosts/status.json
+#                    for the Docker service to consume (via mounted volume)
 
 set -euo pipefail
 
@@ -12,10 +14,12 @@ ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WORKSPACE="${PWD}"
 JSON=false
+WRITE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --json) JSON=true ;;
+        --write) WRITE=true ;;
         --workspace)
             if [ $# -lt 2 ]; then
                 echo "Missing value for --workspace" >&2
@@ -38,9 +42,9 @@ has_cmd() { command -v "$1" &> /dev/null; }
 has_atelier() { grep -q "atelier" "$1" 2>/dev/null; }
 
 check_runtime() {
-    if [ -f "${WORKSPACE}/.atelier/ledger.json" ] || [ -f "${WORKSPACE}/.atelier/atelier.db" ]; then
+    if [ -f "${HOME}/.atelier/ledger.json" ] || [ -f "${HOME}/.atelier/atelier.db" ]; then
         echo "initialized"
-    elif [ -d "${WORKSPACE}/.atelier" ]; then
+    elif [ -d "${HOME}/.atelier" ]; then
         echo "exists but not initialized"
     else
         echo "not initialized"
@@ -136,9 +140,25 @@ check_gemini() {
     fi
 }
 
+check_codeburn() {
+    if has_cmd codeburn; then
+        echo "installed"
+    else
+        echo "not installed"
+    fi
+}
+
+check_tokscale() {
+    if has_cmd tokscale; then
+        echo "installed"
+    else
+        echo "not installed"
+    fi
+}
+
 get_latest_run() {
-    if [ -d "${WORKSPACE}/.atelier/runs" ]; then
-        bash "${ATELIER_REPO}/bin/atelier-status" --root "${WORKSPACE}/.atelier" 2>/dev/null || echo "(no runs yet)"
+    if [ -d "${HOME}/.atelier/runs" ]; then
+        bash "${ATELIER_REPO}/bin/atelier-status" --root "${HOME}/.atelier" 2>/dev/null || echo "(no runs yet)"
     else
         echo "(no runs yet)"
     fi
@@ -151,8 +171,12 @@ CODEX_STATUS="$(check_codex)"
 OPENCODE_STATUS="$(check_opencode)"
 COPILOT_STATUS="$(check_copilot)"
 GEMINI_STATUS="$(check_gemini)"
+CODEBURN_STATUS="$(check_codeburn)"
+TOKSCALE_STATUS="$(check_tokscale)"
 
-if [ "$JSON" = true ]; then
+if [ "$WRITE" = true ]; then
+    : # write-only mode: skip human-readable output, just persist below
+elif [ "$JSON" = true ]; then
     RUNTIME_STATUS="$RUNTIME_STATUS" \
     SYMLINK_STATUS="$SYMLINK_STATUS" \
     CLAUDE_STATUS="$CLAUDE_STATUS" \
@@ -160,6 +184,8 @@ if [ "$JSON" = true ]; then
     OPENCODE_STATUS="$OPENCODE_STATUS" \
     COPILOT_STATUS="$COPILOT_STATUS" \
     GEMINI_STATUS="$GEMINI_STATUS" \
+    CODEBURN_STATUS="$CODEBURN_STATUS" \
+    TOKSCALE_STATUS="$TOKSCALE_STATUS" \
     python3 - <<'PYEOF'
 import json
 import os
@@ -172,6 +198,8 @@ print(json.dumps({
     "opencode": os.environ["OPENCODE_STATUS"],
     "copilot": os.environ["COPILOT_STATUS"],
     "gemini": os.environ["GEMINI_STATUS"],
+    "codeburn": os.environ["CODEBURN_STATUS"],
+    "tokscale": os.environ["TOKSCALE_STATUS"],
 }))
 PYEOF
 else
@@ -181,7 +209,7 @@ else
     echo "  $WORKSPACE"
     echo ""
     echo "Runtime Store:"
-    echo "  .atelier/       $RUNTIME_STATUS"
+    echo "  ${HOME}/.atelier/       $RUNTIME_STATUS"
     echo ""
     echo "CLI Symlink:"
     echo "  $SYMLINK_STATUS"
@@ -193,6 +221,45 @@ else
     echo "  Copilot         $COPILOT_STATUS"
     echo "  Gemini          $GEMINI_STATUS"
     echo ""
+    echo "External Reporting:"
+    echo "  codeburn        $CODEBURN_STATUS"
+    echo "  tokscale        $TOKSCALE_STATUS"
+    echo ""
     echo "Latest Run:"
     echo "  $(get_latest_run)"
+fi
+
+# Persist detection results for the Docker service (--write flag)
+if [ "$WRITE" = true ]; then
+    HOSTS_DIR="${HOME}/.atelier/hosts"
+    mkdir -p "$HOSTS_DIR"
+    HOSTS_DIR="$HOSTS_DIR" \
+    CLAUDE_STATUS="$CLAUDE_STATUS" \
+    CODEX_STATUS="$CODEX_STATUS" \
+    OPENCODE_STATUS="$OPENCODE_STATUS" \
+    COPILOT_STATUS="$COPILOT_STATUS" \
+    GEMINI_STATUS="$GEMINI_STATUS" \
+    CODEBURN_STATUS="$CODEBURN_STATUS" \
+    TOKSCALE_STATUS="$TOKSCALE_STATUS" \
+    python3 - <<'PYEOF'
+import json, os
+
+def installed(s: str) -> str:
+    return "installed" if s == "installed" else "not_installed"
+
+hosts_dir = os.environ["HOSTS_DIR"]
+status = {
+    "claude": installed(os.environ["CLAUDE_STATUS"]),
+    "codex": installed(os.environ["CODEX_STATUS"]),
+    "opencode": installed(os.environ["OPENCODE_STATUS"]),
+    "copilot": installed(os.environ["COPILOT_STATUS"]),
+    "gemini": installed(os.environ["GEMINI_STATUS"]),
+    "codeburn": installed(os.environ["CODEBURN_STATUS"]),
+    "tokscale": installed(os.environ["TOKSCALE_STATUS"]),
+}
+path = os.path.join(hosts_dir, "status.json")
+with open(path, "w") as f:
+    json.dump(status, f, indent=2)
+print(f"Wrote host status to {path}")
+PYEOF
 fi

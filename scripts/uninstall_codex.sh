@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
+
 DRY_RUN=false
 WORKSPACE=""
 WORKSPACE_SET=false
@@ -33,18 +36,18 @@ if $WORKSPACE_SET; then
     CODEX_HOME="${WORKSPACE}/.codex"
     MARKETPLACE_JSON="${WORKSPACE}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-    WRAPPER_FILE="${WORKSPACE}/bin/atelier-codex"
     TASKS_DIR="${WORKSPACE}/.codex/tasks"
 else
     CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
     MARKETPLACE_JSON="${HOME}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
-    WRAPPER_FILE="${HOME}/.local/bin/atelier-codex"
     TASKS_DIR=""
 fi
 
 PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
 PLUGIN_CACHE_DIR="${HOME}/.codex/plugins/cache/atelier"
+AGENT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/integrations/codex/AGENTS.atelier.md"
+STAGING_DIRS=("${HOME}/.atelier/codex-plugin-stable" "${HOME}/.atelier/codex-plugin-dev")
 
 info()  { echo "[atelier:uninstall:codex] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
@@ -75,14 +78,53 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
     info "Removed $PLUGIN_CACHE_DIR"
 fi
 
-if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
-    run "rm -f '$AGENTS_FILE'"
-    info "Removed $AGENTS_FILE"
-fi
+for staging_dir in "${STAGING_DIRS[@]}"; do
+    if [ -d "$staging_dir" ]; then
+        run "rm -rf '$staging_dir'"
+        info "Removed $staging_dir"
+    fi
+done
 
-if [ -f "$WRAPPER_FILE" ]; then
-    run "rm -f '$WRAPPER_FILE'"
-    info "Removed $WRAPPER_FILE"
+if [ -f "$AGENTS_FILE" ]; then
+    if $DRY_RUN; then
+        if grep -q "$ATELIER_CODE_BLOCK_START" "$AGENTS_FILE" 2>/dev/null; then
+            echo "  [dry-run] remove managed Atelier Codex instructions from $AGENTS_FILE"
+        elif grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
+            echo "  [dry-run] remove legacy Atelier Codex instructions file $AGENTS_FILE"
+        fi
+    else
+        REMOVE_RESULT="$(atelier_remove_managed_block "$AGENTS_FILE" "false")"
+        if [ "$REMOVE_RESULT" = "unchanged" ] && [ -f "$AGENTS_FILE" ]; then
+            REMOVE_RESULT=$(python3 - <<PYEOF
+from pathlib import Path
+
+agents_path = Path("$AGENTS_FILE")
+source_path = Path("$AGENT_SRC")
+text = agents_path.read_text(encoding="utf-8")
+source = source_path.read_text(encoding="utf-8").strip()
+
+if text.strip() == source:
+    agents_path.unlink()
+    print("removed-legacy-exact")
+elif "atelier:code" in text:
+    backup_path = agents_path.with_suffix(agents_path.suffix + ".atelier-removed-backup")
+    backup_path.write_text(text, encoding="utf-8")
+    agents_path.unlink()
+    print("removed-legacy-unmanaged")
+else:
+    print("unchanged")
+PYEOF
+)
+        fi
+        case "$REMOVE_RESULT" in
+            updated)
+                info "Removed managed Atelier Codex instructions from $AGENTS_FILE"
+                ;;
+            removed|removed-legacy-exact|removed-legacy-unmanaged)
+                info "Removed $AGENTS_FILE"
+                ;;
+        esac
+    fi
 fi
 
 if [ -n "$TASKS_DIR" ] && [ -d "$TASKS_DIR" ]; then

@@ -32,7 +32,7 @@ Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent 
 │                                                              │
 │  ┌──────────────────┐    ┌──────────────────────────────┐   │
 │  │   MCP Server     │    │   CLI                        │   │
-│  │  (atelier-mcp)   │    │   (uv run atelier ...)       │   │
+│  │  (atelier-mcp)   │    │   (atelier ...)       │   │
 │  └────────┬─────────┘    └──────────────┬───────────────┘   │
 │           │                             │                   │
 │  ┌────────▼─────────────────────────────▼───────────────┐   │

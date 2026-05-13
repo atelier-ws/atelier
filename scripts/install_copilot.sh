@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install_copilot.sh — Install Atelier into VS Code Copilot Chat
+# install_copilot.sh — Install Atelier into Copilot Chat
 #
 # What it does:
 #   Global mode: installs VS Code MCP/user instructions in the user profile.
@@ -11,13 +11,14 @@
 #   --workspace DIR  Install project-local artifacts into DIR instead of global user config
 #   --strict       Exit nonzero if 'code' CLI not on PATH
 #
-# Note: VS Code Copilot does not have a standalone CLI; 'code' (VS Code) is
+# Note: Copilot does not have a standalone CLI; 'code' (VS Code) is
 # used as the proxy check. If 'code' is absent, gracefully skip.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 
 DRY_RUN=false
@@ -102,7 +103,7 @@ if $WORKSPACE_SET; then
       "args": [],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${WORKSPACE}/.atelier"
+        "ATELIER_ROOT": "${HOME}/.atelier"
       }
     }
   }
@@ -127,7 +128,7 @@ fi
 # ---- print-only mode --------------------------------------------------------
 if $PRINT_ONLY; then
     echo ""
-    echo "=== Atelier VS Code Copilot - Manual Install Steps ==="
+    echo "=== Atelier Copilot - Manual Install Steps ==="
     echo ""
     echo "Scope: ${INSTALL_SCOPE}"
     echo ""
@@ -180,23 +181,52 @@ fi
 # ---- install Copilot instructions ------------------------------------------
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
+# ---- resolve install profile ------------------------------------------------
+eval "$(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import install_profile_warning, resolve_install_profile
+import shlex
+import sys
+
+try:
+    profile = resolve_install_profile()
+except ValueError as exc:
+    print(f"echo '[atelier:copilot] ERROR: {exc}' >&2")
+    print("exit 1")
+    raise SystemExit(0)
+
+warning = install_profile_warning(profile)
+print(f"INSTALL_PROFILE={shlex.quote(profile)}")
+print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
+PY
+)"
+if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
+    warn "$ATELIER_INSTALL_PROFILE_WARNING"
+fi
+STAGING_DIR="${HOME}/.atelier/copilot-${INSTALL_PROFILE}"
+run "mkdir -p '$STAGING_DIR'"
+COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full instructions with reasoning loop"
+    atelier_write_managed_copy "${COPILOT_SRC/.md/.dev.md}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
+else
+    info "Install profile: stable; staging stable instructions"
+    atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
+fi
+ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
+
 if [ -f "$ATELIER_INSTRUCTIONS" ]; then
     run "mkdir -p '$(dirname "$INSTRUCTIONS")'"
     if [ -f "$INSTRUCTIONS" ]; then
-        if grep -q "Atelier.*Copilot Instructions" "$INSTRUCTIONS" 2>/dev/null; then
-            info "$INSTRUCTIONS already contains Atelier section - skipping"
-        else
-            backup_file "$INSTRUCTIONS"
-            if $DRY_RUN; then
-                echo "  [dry-run] append Atelier section to $INSTRUCTIONS"
-            else
-                echo "" >> "$INSTRUCTIONS"
-                cat "$ATELIER_INSTRUCTIONS" >> "$INSTRUCTIONS"
-                info "appended Atelier instructions to $INSTRUCTIONS"
-            fi
-        fi
+        backup_file "$INSTRUCTIONS"
+        atelier_upsert_managed_block "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "$DRY_RUN"
+        info "merged Atelier instructions into $INSTRUCTIONS"
     elif $WORKSPACE_SET; then
-        run "cp '$ATELIER_INSTRUCTIONS' '$INSTRUCTIONS'"
+        if $DRY_RUN; then
+            atelier_write_managed_copy "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "true"
+        else
+            run "cp '$ATELIER_INSTRUCTIONS' '$INSTRUCTIONS'"
+        fi
         info "created $INSTRUCTIONS"
     else
         if $DRY_RUN; then
@@ -206,9 +236,8 @@ if [ -f "$ATELIER_INSTRUCTIONS" ]; then
                 echo "---"
                 echo 'applyTo: "**"'
                 echo "---"
-                echo ""
-                cat "$ATELIER_INSTRUCTIONS"
             } > "$INSTRUCTIONS"
+            atelier_upsert_managed_block "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "false"
             info "created $INSTRUCTIONS"
         fi
     fi
@@ -278,6 +307,7 @@ PYEOF
 else
     warn "task preset source missing: $TASKS_SRC"
 fi
+
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."

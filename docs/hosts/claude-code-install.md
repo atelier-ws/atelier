@@ -66,6 +66,12 @@ claude --plugin-dir /abs/path/to/integrations/claude/plugin
 No `claude plugin install` or marketplace registration needed. Changes to skill
 files are picked up on restart.
 
+Install profile selection:
+
+- `ATELIER_PROFILE=stable` is the default install profile.
+- `ATELIER_PROFILE=dev` stages the dev-oriented plugin artifacts.
+- `ATELIER_DEV_MODE=1` is still required for runtime-gated dev tools.
+
 ---
 
 ## Mode 3: MCP-Only Fallback
@@ -109,7 +115,7 @@ All commands use the `/atelier:name` format (colon, not dash):
 
 | Command                               | Description                                             |
 | ------------------------------------- | ------------------------------------------------------- |
-| `/atelier:status [run_id]`            | Show current run ledger — plan, facts, blockers, alerts |
+| `/atelier:status [session_id]`        | Show current run ledger — plan, facts, blockers, alerts |
 | `/atelier:context <domain>`           | Show environment context for a domain                   |
 | `/atelier:savings`                    | Report savings metrics                                  |
 | `/atelier:benchmark [--apply]`        | Run eval suite (dry-run by default)                     |
@@ -140,7 +146,7 @@ The following V2 MCP tools are available once Atelier is installed. These are **
 | `memory` | Retrieve a named memory block              | `memory(&#123;agent_id: 'atelier:code', label: 'last_gid'&#125;)`                     |
 | `memory` | FTS + vector search over archival memory   | `memory(&#123;agent_id: 'atelier:code', query: 'Shopify GID pattern'&#125;)`          |
 | `memory` | Persist a text passage to archival memory  | `memory(&#123;agent_id: 'atelier:code', text: '...', source: 'run_123'&#125;)`        |
-| `memory` | Summarize sleeptime memory to save context | `memory(&#123;run_id: 'run_123'&#125;)`                                               |
+| `memory` | Summarize sleeptime memory to save context | `memory(&#123;session_id: 'run_123'&#125;)`                                           |
 
 ### Compact lifecycle
 

@@ -13,8 +13,10 @@ from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
 from atelier.gateway.hosts.session_parsers.codex import CodexImporter
 from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter
 from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
+from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
 
 __all__ = [
+    "SUPPORTED_SESSION_IMPORT_HOSTS",
     "ClaudeImporter",
     "CodexImporter",
     "CopilotImporter",

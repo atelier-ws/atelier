@@ -80,8 +80,8 @@ LOCAL=1 uv run pytest tests/core/test_lesson_drafting.py \
                      tests/infra/test_lesson_promotion_precision.py -v
 
 # CLI
-LOCAL=1 uv run atelier lesson list --json | head
-LOCAL=1 uv run atelier lesson approve <id> --reviewer pankaj --reason "matches our standard"
+LOCAL=1 atelier lesson list --json | head
+LOCAL=1 atelier lesson approve <id> --reviewer pankaj --reason "matches our standard"
 
 make verify
 ```

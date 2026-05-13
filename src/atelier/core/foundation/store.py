@@ -14,13 +14,15 @@ Design:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
+import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -35,11 +37,53 @@ from atelier.core.foundation.models import (
     ReasonBlock,
     Rubric,
     Trace,
+    coerce_trace_json,
     to_jsonable,
 )
 from atelier.core.foundation.paths import resolve_knowledge_root
 
 logger = logging.getLogger(__name__)
+
+TRACE_FTS_COLUMNS = [
+    "id",
+    "task",
+    "reasoning",
+    "tools",
+    "commands",
+    "errors",
+    "output",
+    "files",
+    "validations",
+    "meta",
+]
+
+TRACE_FTS_SNIPPETS = [
+    (1, "Task"),
+    (2, "Reasoning"),
+    (3, "Tools"),
+    (4, "Commands"),
+    (5, "Errors"),
+    (6, "Summary"),
+    (7, "Files"),
+    (8, "Validations"),
+    (9, "Run"),
+]
+
+TRACE_FTS_DDL = """
+CREATE VIRTUAL TABLE traces_fts USING fts5(
+    id UNINDEXED,
+    task,
+    reasoning,
+    tools,
+    commands,
+    errors,
+    output,
+    files,
+    validations,
+    meta,
+    tokenize = 'porter'
+)
+"""
 
 # --------------------------------------------------------------------------- #
 # Schema                                                                      #
@@ -75,14 +119,31 @@ CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
 CREATE TABLE IF NOT EXISTS traces (
     id TEXT PRIMARY KEY,
     agent TEXT NOT NULL,
-    domain TEXT NOT NULL,
+    host TEXT,
+    domain TEXT,
     status TEXT NOT NULL,
     task TEXT NOT NULL,
+    workspace_path TEXT,
     created_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_traces_domain ON traces(domain);
 CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
+    id UNINDEXED,
+    task,
+    reasoning,
+    tools,
+    commands,
+    errors,
+    output,
+    files,
+    validations,
+    meta,
+    tokenize = 'porter'
+);
+
 
 CREATE TABLE IF NOT EXISTS raw_artifacts (
     id TEXT PRIMARY KEY,
@@ -96,7 +157,8 @@ CREATE TABLE IF NOT EXISTS raw_artifacts (
     byte_count_original INTEGER NOT NULL,
     byte_count_redacted INTEGER NOT NULL,
     created_at TEXT NOT NULL,
-    source_file_mtime TEXT
+    source_file_mtime TEXT,
+    payload TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_raw_artifacts_source_session
     ON raw_artifacts(source, source_session_id);
@@ -138,7 +200,6 @@ CREATE TABLE IF NOT EXISTS lesson_promotion (
     pr_url              TEXT NOT NULL DEFAULT '',
     created_at          TEXT NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS consolidation_candidate (
     id                  TEXT PRIMARY KEY,
     kind                TEXT NOT NULL,
@@ -153,6 +214,12 @@ CREATE TABLE IF NOT EXISTS consolidation_candidate (
 );
 CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
     ON consolidation_candidate(decided_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sync_status (
+    session_id TEXT PRIMARY KEY,
+    synced_at TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS benchmark_run (
     id TEXT PRIMARY KEY,
@@ -170,12 +237,17 @@ CREATE TABLE IF NOT EXISTS benchmark_run (
 
 CREATE TABLE IF NOT EXISTS benchmark_prompt_result (
     id TEXT PRIMARY KEY,
-    run_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
     prompt_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
+    input_tokens_baseline INTEGER NOT NULL,
+    input_tokens_optimized INTEGER NOT NULL,
+    reduction_pct REAL NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL,
     baseline_input_tokens INTEGER NOT NULL,
     optimized_input_tokens INTEGER NOT NULL,
-    reduction_pct REAL NOT NULL,
     lever_attribution_json TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -222,6 +294,35 @@ class ReasoningStore:
         self.traces_dir = self.root / "traces"
         self.raw_dir = self.root / "raw"
 
+        self._initialized = False
+        self._connection: sqlite3.Connection | None = None
+
+    @contextlib.contextmanager
+    def batch_mode(self) -> Iterator[sqlite3.Connection]:
+        """Wrap multiple operations in a single connection and transaction.
+
+        Optimized for bulk imports with high-performance PRAGMAs.
+        """
+        conn = self._connect()
+        # High-performance settings for bulk import (must be outside transaction)
+        conn.execute("PRAGMA synchronous = OFF")
+        conn.execute(f"PRAGMA cache_size = -{512 * 1024}")  # 512MB cache
+
+        conn.execute("BEGIN TRANSACTION")
+        old_conn = self._connection
+        self._connection = conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._connection = old_conn
+            with contextlib.suppress(sqlite3.Error):
+                conn.execute("PRAGMA synchronous = NORMAL")
+            conn.close()
+
     # ----- lifecycle ------------------------------------------------------- #
 
     def init(self) -> None:
@@ -237,6 +338,31 @@ class ReasoningStore:
 
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE raw_artifacts ADD COLUMN payload TEXT NOT NULL DEFAULT '{}'")
+
+            # Data recovery: Infer host from ID prefix for existing imported runs
+
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE traces ADD COLUMN host TEXT")
+
+            from atelier.gateway.hosts.session_parsers.registry import (
+                SUPPORTED_SESSION_IMPORT_HOSTS,
+            )
+
+            for h in SUPPORTED_SESSION_IMPORT_HOSTS:
+                conn.execute("UPDATE traces SET host = ? WHERE id LIKE ? AND host IS NULL", (h, f"{h}-%"))
+
+            # Strip legacy fields (e.g. run_id) from stored trace payloads so old
+            # data doesn't crash Trace.model_validate_json() during FTS reindex.
+            conn.execute(
+                "UPDATE traces SET payload = json_remove(payload, '$.run_id')"
+                " WHERE json_extract(payload, '$.run_id') IS NOT NULL"
+            )
+
+            recreated_trace_fts = self._ensure_trace_search_schema(conn)
+            self._reindex_traces_fts_if_needed(conn, force=recreated_trace_fts)
+
             for ddl in (
                 "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE lesson_candidate ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'",
@@ -249,60 +375,167 @@ class ReasoningStore:
                 with contextlib.suppress(sqlite3.OperationalError):
                     conn.execute(ddl)
             self._apply_v2_migrations(conn)
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS consolidation_candidate (
-                    id                  TEXT PRIMARY KEY,
-                    kind                TEXT NOT NULL,
-                    affected_block_ids  TEXT NOT NULL,
-                    proposed_action     TEXT NOT NULL,
-                    proposed_body       TEXT,
-                    evidence_json       TEXT NOT NULL DEFAULT '{}',
-                    created_at          TEXT NOT NULL,
-                    decided_at          TEXT,
-                    decided_by          TEXT,
-                    decision            TEXT
-                );
-                CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
-                    ON consolidation_candidate(decided_at, created_at DESC);
-                CREATE TABLE IF NOT EXISTS benchmark_run (
-                    id TEXT PRIMARY KEY,
-                    started_at TEXT NOT NULL,
-                    completed_at TEXT,
-                    suite TEXT NOT NULL,
-                    git_sha TEXT NOT NULL,
-                    config_fingerprint TEXT NOT NULL,
-                    n_prompts INTEGER NOT NULL DEFAULT 0,
-                    median_input_tokens_baseline INTEGER,
-                    median_input_tokens_optimized INTEGER,
-                    reduction_pct REAL,
-                    notes TEXT
-                );
-                CREATE TABLE IF NOT EXISTS benchmark_prompt_result (
-                    id TEXT PRIMARY KEY,
-                    run_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
-                    prompt_id TEXT NOT NULL,
-                    task_type TEXT NOT NULL,
-                    baseline_input_tokens INTEGER NOT NULL,
-                    optimized_input_tokens INTEGER NOT NULL,
-                    reduction_pct REAL NOT NULL,
-                    lever_attribution_json TEXT NOT NULL DEFAULT '{}'
-                );
-                """)
             self.verify_v2_schema(conn)
             self.sync_knowledge()
+        self._initialized = True
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        if self._connection:
+            return self._connection
+
+        conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
     def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
-        from atelier.infra.storage.migrations import sqlite_migration_scripts
+        from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
 
-        for sql in sqlite_migration_scripts():
-            conn.executescript(sql)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS _schema_migrations" " (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+        )
+        applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
+        for name in SQLITE_MIGRATIONS:
+            if name in applied:
+                continue
+            for stmt in (s.strip() for s in read_migration(name).split(";")):
+                if not stmt:
+                    continue
+                try:
+                    conn.execute(stmt)
+                except sqlite3.OperationalError as exc:
+                    msg = str(exc).lower()
+                    if "duplicate column name" not in msg and "already exists" not in msg:
+                        raise
+            conn.execute(
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at)" " VALUES (?, datetime('now'))",
+                (name,),
+            )
+            conn.commit()
+
+    def _ensure_trace_search_schema(self, conn: sqlite3.Connection) -> bool:
+        rows = conn.execute("PRAGMA table_info(traces_fts)").fetchall()
+        actual_columns = [row[1] for row in rows]
+        if actual_columns == TRACE_FTS_COLUMNS:
+            return False
+        conn.execute("DROP TABLE IF EXISTS traces_fts")
+        conn.execute(TRACE_FTS_DDL)
+        return True
+
+    def _reindex_traces_fts_if_needed(self, conn: sqlite3.Connection, *, force: bool = False) -> None:
+        trace_count = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
+        fts_count = conn.execute("SELECT COUNT(*) FROM traces_fts").fetchone()[0]
+        if not force and trace_count == fts_count:
+            return
+        self._reindex_traces_fts(conn)
+
+    def _reindex_traces_fts(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute("SELECT payload FROM traces").fetchall()
+        with closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM traces_fts")
+            for row in rows:
+                self._update_trace_fts(cur, Trace.model_validate_json(coerce_trace_json(row["payload"])))
+
+    def _build_trace_search_document(self, trace: Trace) -> tuple[str, ...]:
+        reasoning = "\n".join(trace.reasoning)
+
+        tools_parts = []
+        for tool in trace.tools_called:
+            sections = [tool.name]
+            if tool.result_summary:
+                sections.append(tool.result_summary)
+            if tool.args:
+                sections.append(json.dumps(tool.args, ensure_ascii=False, sort_keys=True))
+            tools_parts.append("\n".join(part for part in sections if part))
+        tools = "\n\n".join(tools_parts)
+
+        command_parts = []
+        for command in trace.commands_run:
+            if isinstance(command, str):
+                command_parts.append(command)
+                continue
+            command_parts.append(
+                "\n".join(part for part in [command.command, command.stdout or "", command.stderr or ""] if part)
+            )
+        commands = "\n\n".join(command_parts)
+
+        errors = "\n".join(trace.errors_seen)
+        output = "\n\n".join(part for part in [trace.diff_summary, trace.output_summary] if part)
+
+        file_parts = []
+        for file_record in trace.files_touched:
+            if isinstance(file_record, str):
+                file_parts.append(file_record)
+                continue
+            sections = [file_record.path]
+            if file_record.event:
+                sections.append(file_record.event)
+            if file_record.diff:
+                sections.append(file_record.diff)
+            file_parts.append("\n".join(part for part in sections if part))
+        files = "\n\n".join(file_parts)
+
+        validation_parts = []
+        for validation in trace.validation_results:
+            status = "passed" if validation.passed else "failed"
+            validation_parts.append(
+                " ".join(part for part in [validation.name, status, validation.detail or ""] if part)
+            )
+        validations = "\n".join(validation_parts)
+
+        meta = "\n".join(
+            part
+            for part in [
+                trace.id,
+                trace.session_id or "",
+                trace.agent,
+                trace.host or "",
+                trace.domain or "",
+                trace.status,
+                trace.model,
+            ]
+            if part
+        )
+
+        return (
+            trace.task,
+            reasoning,
+            tools,
+            commands,
+            errors,
+            output,
+            files,
+            validations,
+            meta,
+        )
+
+    def _build_trace_search_query(self, query: str) -> str:
+        clauses: list[str] = []
+        for phrase, token in re.findall(r'"([^"]+)"|(\S+)', query):
+            term = (phrase or token).strip().lower()
+            if not term:
+                continue
+            if phrase:
+                escaped_term = term.replace('"', '""')
+                clauses.append(f'"{escaped_term}"')
+                continue
+            pieces = [piece for piece in re.split(r"[^0-9a-z_]+", term) if piece]
+            clauses.extend(f"{piece}*" for piece in pieces)
+        if clauses:
+            return " AND ".join(clauses)
+        escaped = query.strip().replace('"', '""')
+        return f'"{escaped}"'
+
+    def _trace_search_snippets(self, row: sqlite3.Row) -> list[str]:
+        snippets: list[str] = []
+        for _, label in TRACE_FTS_SNIPPETS:
+            value = row[f"s_{label.lower()}"]
+            if not value or "[[" not in value:
+                continue
+            cleaned_value = re.sub(r"\s+", " ", value).strip()
+            snippets.append(f"{label}: {cleaned_value}")
+        return snippets
 
     def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
         """Return True when every V2 table exists in SQLite."""
@@ -546,34 +779,100 @@ class ReasoningStore:
 
     def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
         payload = json.dumps(to_jsonable(trace), ensure_ascii=False)
-        with self._connect() as conn:
-            conn.execute(
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute(
                 """
-                INSERT INTO traces (id, agent, domain, status, task, created_at, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    agent = excluded.agent,
+                    host = excluded.host,
+                    domain = excluded.domain,
                     status = excluded.status,
+                    task = excluded.task,
+                    workspace_path = excluded.workspace_path,
                     payload = excluded.payload
                 """,
                 (
                     trace.id,
                     trace.agent,
+                    trace.host,
                     trace.domain,
                     trace.status,
                     trace.task,
+                    trace.workspace_path,
                     trace.created_at.isoformat(),
                     payload,
                 ),
             )
+            # Update FTS index
+            self._update_trace_fts(cur, trace)
+
         if write_json:
             self._write_trace_json(trace)
+
+    def _update_trace_fts(self, cur: sqlite3.Cursor, trace: Trace) -> None:
+        """Update the FTS5 index for a single trace."""
+        task, reasoning, tools, commands, errors, output, files, validations, meta = self._build_trace_search_document(
+            trace
+        )
+
+        cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace.id,))
+        cur.execute(
+            """
+            INSERT INTO traces_fts (
+                id,
+                task,
+                reasoning,
+                tools,
+                commands,
+                errors,
+                output,
+                files,
+                validations,
+                meta
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (trace.id, task, reasoning, tools, commands, errors, output, files, validations, meta),
+        )
 
     def get_trace(self, trace_id: str) -> Trace | None:
         with self._connect() as conn:
             row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
         if row is None:
             return None
-        return Trace.model_validate_json(row["payload"])
+        return Trace.model_validate_json(coerce_trace_json(row["payload"]))
+
+    def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
+        """Return IDs of traces that have not been successfully synced."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id FROM traces t
+                LEFT JOIN sync_status s ON t.id = s.session_id
+                WHERE s.session_id IS NULL
+                ORDER BY t.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def mark_synced(self, session_id: str, payload_hash: str) -> None:
+        """Mark a session as successfully synced."""
+        synced_at = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sync_status (session_id, synced_at, payload_hash)
+                VALUES (?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    synced_at = excluded.synced_at,
+                    payload_hash = excluded.payload_hash
+                """,
+                (session_id, synced_at, payload_hash),
+            )
 
     def list_traces(
         self,
@@ -581,11 +880,59 @@ class ReasoningStore:
         domain: str | None = None,
         status: str | None = None,
         agent: str | None = None,
+        host: str | None = None,
+        query: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Trace]:
+        if query and query.strip():
+            search_query = self._build_trace_search_query(query)
+            sql = (
+                "SELECT t.payload, "
+                "snippet(traces_fts, 1, '[[', ']]', '...', 12) as s_task, "
+                "snippet(traces_fts, 2, '[[', ']]', '...', 12) as s_reasoning, "
+                "snippet(traces_fts, 3, '[[', ']]', '...', 12) as s_tools, "
+                "snippet(traces_fts, 4, '[[', ']]', '...', 12) as s_commands, "
+                "snippet(traces_fts, 5, '[[', ']]', '...', 12) as s_errors, "
+                "snippet(traces_fts, 6, '[[', ']]', '...', 12) as s_summary, "
+                "snippet(traces_fts, 7, '[[', ']]', '...', 12) as s_files, "
+                "snippet(traces_fts, 8, '[[', ']]', '...', 12) as s_validations, "
+                "snippet(traces_fts, 9, '[[', ']]', '...', 12) as s_run "
+                "FROM traces_fts "
+                "JOIN traces t ON t.id = traces_fts.id "
+                "WHERE traces_fts MATCH ? "
+            )
+            params: list[Any] = [search_query]
+            if domain:
+                sql += " AND t.domain = ?"
+                params.append(domain)
+            if status:
+                sql += " AND t.status = ?"
+                params.append(status)
+            if agent:
+                sql += " AND t.agent = ?"
+                params.append(agent)
+            if host:
+                sql += " AND t.host = ?"
+                params.append(host)
+
+            sql += " ORDER BY bm25(traces_fts), t.created_at DESC LIMIT ? OFFSET ?"
+            params.append(limit)
+            params.append(offset)
+
+            with self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+
+            results = []
+            for row in rows:
+                trace = Trace.model_validate_json(coerce_trace_json(row["payload"]))
+                trace.snippets = self._trace_search_snippets(row)
+                results.append(trace)
+            return results
+
+        # Standard filter path
         sql = "SELECT payload FROM traces WHERE 1=1"
-        params: list[Any] = []
+        params = []
         if domain:
             sql += " AND domain = ?"
             params.append(domain)
@@ -595,12 +942,65 @@ class ReasoningStore:
         if agent:
             sql += " AND agent = ?"
             params.append(agent)
+        if host:
+            sql += " AND host = ?"
+            params.append(host)
         sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.append(limit)
         params.append(offset)
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [Trace.model_validate_json(r["payload"]) for r in rows]
+        return [Trace.model_validate_json(coerce_trace_json(r["payload"])) for r in rows]
+
+    def get_traces_metrics(
+        self,
+        *,
+        domain: str | None = None,
+        agent: str | None = None,
+        host: str | None = None,
+    ) -> dict[str, Any]:
+        """Return aggregate metrics for traces matching the filters."""
+        base_sql = "FROM traces WHERE 1=1"
+        params: list[Any] = []
+        if domain:
+            base_sql += " AND domain = ?"
+            params.append(domain)
+        if agent:
+            base_sql += " AND agent = ?"
+            params.append(agent)
+        if host:
+            base_sql += " AND host = ?"
+            params.append(host)
+
+        with self._connect() as conn:
+            # 1. Total and status breakdown
+            status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
+            status_rows = conn.execute(status_sql, params).fetchall()
+
+            # 2. Distinct hosts, agents, and domains
+            host_sql = f"SELECT DISTINCT host {base_sql}"
+            host_rows = conn.execute(host_sql, params).fetchall()
+
+            agent_sql = f"SELECT DISTINCT agent {base_sql}"
+            agent_rows = conn.execute(agent_sql, params).fetchall()
+
+            domain_sql = f"SELECT DISTINCT domain {base_sql}"
+            domain_rows = conn.execute(domain_sql, params).fetchall()
+
+        stats = {"total": 0, "success": 0, "failed": 0, "partial": 0}
+        for row in status_rows:
+            s = row["status"]
+            c = row["COUNT(*)"]
+            stats["total"] += c
+            if s in stats:
+                stats[s] = c
+
+        return {
+            "stats": stats,
+            "hosts": [r["host"] for r in host_rows if r["host"]],
+            "agents": [r["agent"] for r in agent_rows if r["agent"]],
+            "domains": [r["domain"] for r in domain_rows if r["domain"]],
+        }
 
     # ----- Raw artifacts -------------------------------------------------- #
 
@@ -828,6 +1228,84 @@ class ReasoningStore:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_job(row) for row in rows]
 
+    # ----- external analytics -------------------------------------------- #
+
+    def record_external_analytics_run(
+        self,
+        *,
+        tool: str,
+        period: str,
+        source: str,
+        ok: bool,
+        command_display: str = "",
+        returncode: int | None = None,
+        summary: dict[str, Any] | None = None,
+        payload: Any | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        collected_at: str | None = None,
+    ) -> str:
+        session_id = uuid4().hex
+        created_at = datetime.now(UTC).isoformat()
+        collected = collected_at or created_at
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO external_analytics_runs (
+                    id, tool, period, source, command_display,
+                    ok, returncode, summary_json, payload_json,
+                    stdout, stderr, collected_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    tool,
+                    period,
+                    source,
+                    command_display,
+                    1 if ok else 0,
+                    returncode,
+                    json.dumps(summary or {}, ensure_ascii=False, sort_keys=True),
+                    json.dumps(payload if payload is not None else {}, ensure_ascii=False),
+                    stdout,
+                    stderr,
+                    collected,
+                    created_at,
+                ),
+            )
+        return session_id
+
+    def list_external_analytics_runs(
+        self,
+        *,
+        tool: str | None = None,
+        period: str | None = None,
+        ok: bool | None = None,
+        days: int | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM external_analytics_runs WHERE 1=1"
+        params: list[Any] = []
+        if tool:
+            sql += " AND tool = ?"
+            params.append(tool)
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        if ok is not None:
+            sql += " AND ok = ?"
+            params.append(1 if ok else 0)
+        if days is not None:
+            cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            sql += " AND collected_at >= ?"
+            params.append(cutoff)
+        sql += " ORDER BY collected_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_external_analytics_run(row) for row in rows]
+
     # ----- Lessons --------------------------------------------------------- #
 
     def upsert_lesson_candidate(self, candidate: LessonCandidate) -> None:
@@ -1024,6 +1502,31 @@ class ReasoningStore:
             "updated_at": row["updated_at"],
         }
 
+    def _row_to_external_analytics_run(self, row: sqlite3.Row) -> dict[str, Any]:
+        def _load_json(raw: Any, fallback: Any) -> Any:
+            if isinstance(raw, str):
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    return fallback
+            return raw if raw is not None else fallback
+
+        return {
+            "id": row["id"],
+            "tool": row["tool"],
+            "period": row["period"],
+            "source": row["source"],
+            "command_display": row["command_display"],
+            "ok": bool(row["ok"]),
+            "returncode": row["returncode"],
+            "summary": _load_json(row["summary_json"], {}),
+            "payload": _load_json(row["payload_json"], {}),
+            "stdout": row["stdout"] or "",
+            "stderr": row["stderr"] or "",
+            "collected_at": row["collected_at"],
+            "created_at": row["created_at"],
+        }
+
     def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:
         return ConsolidationCandidate(
             id=row["id"],
@@ -1126,21 +1629,21 @@ class ReasoningStore:
         """Persist a ContextBudget record to the store.
 
         Args:
-            record: A ContextBudget instance with run_id, turn_index, model,
+            record: A ContextBudget instance with session_id, turn_index, model,
                     token counts, lever_savings dict, and tool_calls count.
         """
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO context_budget (
-                    id, run_id, turn_index, model, input_tokens,
+                    id, session_id, turn_index, model, input_tokens,
                     cache_read_tokens, cache_write_tokens, output_tokens,
                     naive_input_tokens, lever_savings_json, tool_calls, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
-                    record.run_id,
+                    record.session_id,
                     record.turn_index,
                     record.model,
                     record.input_tokens,
@@ -1155,11 +1658,11 @@ class ReasoningStore:
             )
             conn.commit()
 
-    def list_context_budgets(self, run_id: str) -> list[Any]:
+    def list_context_budgets(self, session_id: str) -> list[Any]:
         """List all ContextBudget records for a run.
 
         Args:
-            run_id: The run identifier.
+            session_id: The run identifier.
 
         Returns:
             A list of ContextBudget records (as dicts), ordered by turn_index.
@@ -1169,14 +1672,14 @@ class ReasoningStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, run_id, turn_index, model, input_tokens,
+                SELECT id, session_id, turn_index, model, input_tokens,
                        cache_read_tokens, cache_write_tokens, output_tokens,
                        naive_input_tokens, lever_savings_json, tool_calls, created_at
                 FROM context_budget
-                WHERE run_id = ?
+                WHERE session_id = ?
                 ORDER BY turn_index ASC
                 """,
-                (run_id,),
+                (session_id,),
             ).fetchall()
 
         results = []
@@ -1184,7 +1687,7 @@ class ReasoningStore:
             results.append(
                 ContextBudget(
                     id=row[0],
-                    run_id=row[1],
+                    session_id=row[1],
                     turn_index=row[2],
                     model=row[3],
                     input_tokens=row[4],
@@ -1214,7 +1717,7 @@ class ReasoningStore:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT id, run_id, turn_index, model, input_tokens,
+                SELECT id, session_id, turn_index, model, input_tokens,
                        cache_read_tokens, cache_write_tokens, output_tokens,
                        naive_input_tokens, lever_savings_json, tool_calls, created_at
                 FROM context_budget
@@ -1228,7 +1731,7 @@ class ReasoningStore:
 
         return ContextBudget(
             id=row[0],
-            run_id=row[1],
+            session_id=row[1],
             turn_index=row[2],
             model=row[3],
             input_tokens=row[4],

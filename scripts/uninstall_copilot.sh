@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall_copilot.sh - Remove Atelier from VS Code Copilot
+# uninstall_copilot.sh - Remove Atelier from Copilot
 #
 # Options:
 #   --workspace DIR  Remove project-local artifacts from DIR instead of global user config
@@ -53,7 +53,13 @@ path = Path(\"$MCP_JSON\")
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 for key in (\"servers\", \"mcpServers\"):
     data.get(key, {}).pop(\"atelier\", None)
-path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+for key in (\"servers\", \"mcpServers\"):
+    if key in data and not data[key]:
+        del data[key]
+if not data:
+    path.unlink()
+else:
+    path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
     info "Removed atelier MCP entry from $MCP_JSON"
 fi
@@ -93,5 +99,6 @@ path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
     info "Removed Atelier task presets from $TASKS_JSON"
 fi
+
 
 info "Done."

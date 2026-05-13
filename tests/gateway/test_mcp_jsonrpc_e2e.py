@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 from click.testing import CliRunner
 
+from atelier.core.environment import NON_DEV_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
@@ -29,6 +30,13 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "compact",
+    "atelier_code_index",
+    "atelier_code_search",
+    "atelier_code_symbol",
+    "atelier_code_outline",
+    "atelier_code_context",
+    "atelier_code_impact",
+    "shell",
 }
 
 
@@ -58,7 +66,9 @@ def _payload(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def _session_state(workspace: Path) -> dict[str, Any]:
-    path = workspace / ".atelier" / "session_state.json"
+    from atelier.core.foundation.paths import resolve_session_state_path
+
+    path = resolve_session_state_path(workspace)
     assert path.exists(), f"missing session state at {path}"
     data = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
@@ -76,6 +86,7 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
     monkeypatch.setenv("ATELIER_EMBEDDER", "null")
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
 
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
@@ -97,6 +108,32 @@ def test_tools_list_matches_registered_surface(mcp_env: Path) -> None:
     names = {tool["name"] for tool in response["result"]["tools"]}
     assert names == EXPECTED_TOOLS
     assert set(TOOLS) == EXPECTED_TOOLS
+
+
+def test_tools_list_only_passive_decision_tools_without_dev_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / ".atelier"
+    _seed_store(root)
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    mcp_server._current_ledger = None
+    mcp_server._realtime_ctx = None
+    response = _handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    assert response is not None
+    tools = response["result"]["tools"]
+    names = {tool["name"] for tool in tools}
+    assert names == NON_DEV_LLM_TOOLS
+    assert "read" not in names
+    assert "search" not in names
+    assert "edit" not in names
+    assert "memory" not in names
+    assert "compact" not in names
+    assert "shell" not in names
+    lint = next(tool for tool in tools if tool["name"] == "lint")
+    assert "passive" in lint["description"]
+    assert "no-op/pass" in lint["description"]
 
 
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
@@ -387,14 +424,14 @@ def test_read_search_edit_and_memory_summary_e2e(mcp_env: Path) -> None:
     assert non_atomic["failed"]
     assert partial.read_text(encoding="utf-8") == "OK\n"
 
-    run_id = str(_session_state(mcp_env)["active_run_id"])
-    summary = _payload(_call("memory", {"op": "summarize", "run_id": run_id}))
+    session_id = str(_session_state(mcp_env)["active_session_id"])
+    summary = _payload(_call("memory", {"op": "summarize", "session_id": session_id}))
     assert summary["tokens_pre"] >= summary["tokens_post"]
-    assert run_id in summary["summary_md"]
+    assert session_id in summary["summary_md"]
 
-    frame = SqliteMemoryStore(mcp_env / ".atelier").get_run_frame(run_id)
+    frame = SqliteMemoryStore(mcp_env / ".atelier").get_run_frame(session_id)
     assert frame is not None
-    assert frame.run_id == run_id
+    assert frame.session_id == session_id
 
 
 def test_edit_atomic_rollback_e2e(mcp_env: Path) -> None:
@@ -575,8 +612,8 @@ def test_lint_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
     assert "should_compact" in compact_advise
     assert "suggested_prompt" in compact_advise
 
-    run_id = str(_session_state(mcp_env)["active_run_id"])
-    compact_session = _payload(_call("compact", {"op": "session", "run_id": run_id}))
+    session_id = str(_session_state(mcp_env)["active_session_id"])
+    compact_session = _payload(_call("compact", {"op": "session", "session_id": session_id}))
     assert "prompt_block" in compact_session
     assert "realtime" in compact_session
 
@@ -599,7 +636,7 @@ def test_lint_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
         )
     )
     assert trace["id"]
-    assert trace["run_id"] == run_id
+    assert trace["session_id"] == session_id
 
     stored_trace = SQLiteStore(mcp_env / ".atelier").get_trace(trace["id"])
     assert stored_trace is not None

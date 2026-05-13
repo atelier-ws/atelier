@@ -7,6 +7,7 @@ read operations like listing ReasonBlocks it falls back to a local store at
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 from atelier.core.foundation.memory_models import MemoryBlock
@@ -48,7 +49,7 @@ class _LoopbackTransport(MCPToolTransport):
 
 
 class MCPClient(LocalClient):
-    def __init__(self, *, root: str = ".atelier", transport: MCPToolTransport | None = None) -> None:
+    def __init__(self, *, root: str | Path | None = None, transport: MCPToolTransport | None = None) -> None:
         self._transport = transport or _LoopbackTransport()
         super().__init__(root=root)
 
@@ -65,7 +66,6 @@ class MCPClient(LocalClient):
         dedup: bool = True,
         include_telemetry: bool = False,
         include_run_ledger: bool = False,
-        include_environment: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
     ) -> ReasoningContextResult:
@@ -82,7 +82,6 @@ class MCPClient(LocalClient):
                 "dedup": dedup,
                 "include_telemetry": include_telemetry,
                 "include_run_ledger": include_run_ledger,
-                "include_environment": include_environment,
                 "agent_id": agent_id,
                 "recall": recall,
             },
@@ -195,8 +194,8 @@ class MCPClient(LocalClient):
         )
         return MemoryRecallResult.model_validate(payload)
 
-    def memory_summary(self, *, run_id: str) -> dict[str, Any]:
-        return self._transport.call_tool("memory", {"op": "summarize", "run_id": run_id})
+    def memory_summary(self, *, session_id: str) -> dict[str, Any]:
+        return self._transport.call_tool("memory", {"op": "summarize", "session_id": session_id})
 
     def route(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
         return self._transport.call_tool("route", {"op": op, **kwargs})
@@ -272,5 +271,5 @@ class MCPClient(LocalClient):
                 "validation_results": [result.model_dump(mode="json") for result in (validation_results or [])],
             },
         )
-        payload = {"id": str(payload.get("id") or payload.get("run_id") or "")}
+        payload = {"id": str(payload.get("id") or payload.get("session_id") or "")}
         return TraceRecordResult.model_validate(payload)
