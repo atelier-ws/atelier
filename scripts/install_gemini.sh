@@ -81,8 +81,8 @@ data = json.loads(path.read_text(encoding="utf-8"))
 server = data.setdefault("mcpServers", {}).setdefault("atelier", {})
 server["command"] = "$ATELIER_WRAPPER"
 server["args"] = server.get("args", [])
-server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
-server["env"]["ATELIER_ROOT"] = "${HOME}/.atelier"
+    server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
+    server["env"]["ATELIER_SERVICE_URL"] = "http://127.0.0.1:8787"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
 
@@ -100,10 +100,10 @@ run "cp '${EXTENSION_DIR}/gemini-extension.json' '$STAGING_DIR/'"
 run "cp -r '${EXTENSION_DIR}/commands' '$STAGING_DIR/'"
 GEMINI_SRC="${ATELIER_REPO}/integrations/gemini/GEMINI.atelier.md"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full GEMINI.md with reasoning loop"
+    info "Install profile: dev; staging full GEMINI.md with task loop"
     atelier_write_managed_copy "${GEMINI_SRC/.md/.dev.md}" "$STAGING_DIR/GEMINI.md" "$DRY_RUN"
 else
-    info "Install profile: stable; staging stable GEMINI.md without dev skills/reasoning context"
+    info "Install profile: stable; staging stable GEMINI.md without dev-only task guidance"
     atelier_write_managed_copy "${GEMINI_SRC}" "$STAGING_DIR/GEMINI.md" "$DRY_RUN"
 fi
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
@@ -232,13 +232,13 @@ fi
 
 if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
     if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-        if [ -f "${EXTENSION_DIR}/skills/reasoning/SKILL.md" ]; then
+        if [ -f "${EXTENSION_DIR}/skills/task/SKILL.md" ]; then
             vpass "extension skill bundle installed with dev skills: ${EXTENSION_DIR}/skills"
         else
-            vfail "extension dev skill bundle missing reasoning skill: ${EXTENSION_DIR}/skills"
+            vfail "extension dev skill bundle missing task skill: ${EXTENSION_DIR}/skills"
         fi
     else
-        if [ ! -f "${EXTENSION_DIR}/skills/reasoning/SKILL.md" ]; then
+        if [ ! -f "${EXTENSION_DIR}/skills/task/SKILL.md" ]; then
             vpass "extension stable skill bundle installed without dev-only skills: ${EXTENSION_DIR}/skills"
         else
             vfail "extension stable skill bundle unexpectedly contains dev-only skills: ${EXTENSION_DIR}/skills"
