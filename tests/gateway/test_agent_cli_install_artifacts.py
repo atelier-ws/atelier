@@ -409,16 +409,16 @@ def test_install_codex_merges_existing_agents_file() -> None:
     assert "merge_agents_file()" in content
     assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
     assert 'backup_file "$dest_file"' in content
-    assert 'merged Atelier Codex instructions into $dest_file' in content
+    assert "merged Atelier Codex instructions into $dest_file" in content
     assert 'atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"' in content
 
 
 def test_uninstall_codex_removes_managed_agents_block() -> None:
     content = (SCRIPTS / "uninstall_codex.sh").read_text()
     assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
-    assert 'Removed managed Atelier Codex instructions from $AGENTS_FILE' in content
-    assert 'Left legacy unmanaged Atelier Codex instructions in $AGENTS_FILE' in content
-    assert 'Manual cleanup may be needed for pre-marker installs' in content
+    assert "Removed managed Atelier Codex instructions from $AGENTS_FILE" in content
+    assert "Left legacy unmanaged Atelier Codex instructions in $AGENTS_FILE" in content
+    assert "Manual cleanup may be needed for pre-marker installs" in content
 
 
 def test_managed_context_helper_shared_across_host_installs() -> None:
@@ -435,19 +435,26 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         "install_opencode.sh",
     ]:
         content = (SCRIPTS / script_name).read_text()
-        assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content, (
-            f"{script_name} must use the shared managed context helper"
-        )
+        assert (
+            'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
+        ), f"{script_name} must use the shared managed context helper"
 
 
 def test_install_sh_bootstraps_atelier_before_host_installers() -> None:
     content = (SCRIPTS / "install.sh").read_text()
-    mkdir_pos = content.index('run mkdir -p "$ATELIER_BIN_DIR"')
+    install_pos = content.index('info "Installing Atelier console commands..."')
     init_pos = content.index('"$ATELIER_BIN_DIR/atelier" init >/dev/null')
     hosts_pos = content.index('info "Installing Atelier host integrations (skip if host CLI is missing)..."')
 
-    assert mkdir_pos < hosts_pos
+    assert install_pos < hosts_pos
     assert init_pos < hosts_pos
+
+
+def test_install_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
+    content = (SCRIPTS / "install.sh").read_text()
+    assert "uv tool install" in content
+    assert "UV_TOOL_BIN_DIR" in content
+    assert 'exec uv --directory "$ATELIER_INSTALL_DIR" run' not in content
 
 
 def test_copilot_tasks_include_preflight_wrapper() -> None:

@@ -693,7 +693,7 @@ function BlockDetail({ block }: { block: ReasonBlock }) {
           <p className="mt-2 text-xs leading-relaxed text-neutral-300">
             {block.verification[0] ||
               block.when_not_to_apply ||
-              "It gives the runtime a reusable, reviewable procedure instead of rediscovering the path in every run."}
+              "It gives the runtime a reusable, reviewable procedure instead of rediscovering the path in every session."}
           </p>
         </div>
       </section>

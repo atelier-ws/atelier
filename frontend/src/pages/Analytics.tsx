@@ -3,10 +3,12 @@ import {
   api,
   type GranularToolUsage,
   type AnalyticsDashboard,
+  type AnalyticsSummary,
   type DashboardTool,
   type DashboardHostModelOverview,
 } from "../api";
 import { MetricCard } from "../components/WorkbenchUI";
+import { useTimeRange } from "../lib/TimeRangeContext";
 
 const AGENTS = ["Claude", "Codex", "Copilot", "Opencode", "Gemini"];
 const CATEGORIES = [
@@ -22,8 +24,15 @@ const TABS = [
   "Domains",
   "Tool Breakdown",
   "Analysis",
+  "Details",
+] as const;
+const TIMELINE_BREAKDOWN_OPTIONS = [
+  { value: "daily", label: "Daily" },
+  { value: "hourly", label: "Hourly" },
 ] as const;
 type Tab = (typeof TABS)[number];
+type TimelineBreakdownValue =
+  (typeof TIMELINE_BREAKDOWN_OPTIONS)[number]["value"];
 
 // ---- Shared helpers --------------------------------------------------------
 
@@ -42,6 +51,21 @@ function fmtM(n: number) {
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
   return String(n);
 }
+
+const EMPTY_SUMMARY: AnalyticsSummary = {
+  total_cost: 0,
+  estimated_monthly_cost: 0,
+  top_cost_driver: "—",
+  user_input_tokens: 0,
+  model_thinking_tokens: 0,
+  llm_output_tokens: 0,
+  tool_output_tokens: 0,
+  cached_prompt_tokens: 0,
+  tool_calls: 0,
+  unique_tools: 0,
+  total_output_tokens: 0,
+  row_count: 0,
+};
 
 // ---- Mini bar chart --------------------------------------------------------
 
@@ -65,33 +89,361 @@ function MiniBar({
   );
 }
 
-// ---- Daily activity chart --------------------------------------------------
+type CompactLeaderboardRow = {
+  label: string;
+  sublabel?: string;
+  value: string;
+  detail?: string;
+  barValue: number;
+};
 
-function DailyChart({ daily }: { daily: AnalyticsDashboard["daily"] }) {
-  if (!daily.length)
+function OverviewBar({
+  value,
+  max,
+  color = "bg-emerald-500/50",
+}: {
+  value: number;
+  max: number;
+  color?: string;
+}) {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  return (
+    <div className="h-1.5 w-full bg-neutral-900 rounded-full overflow-hidden">
+      <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function CompactLeaderboard({
+  title,
+  rows,
+  color = "bg-cyan-500/60",
+  emptyMessage = "No data.",
+}: {
+  title: string;
+  rows: CompactLeaderboardRow[];
+  color?: string;
+  emptyMessage?: string;
+}) {
+  const maxValue = Math.max(...rows.map((row) => row.barValue), 0.0001);
+
+  return (
+    <section className="border border-neutral-800 bg-neutral-950/40 p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+          {title}
+        </div>
+        <div className="text-[9px] font-mono text-neutral-600">
+          Top {rows.length}
+        </div>
+      </div>
+
+      {rows.length ? (
+        <div className="space-y-4">
+          {rows.map((row, index) => (
+            <div key={`${title}:${row.label}:${index}`} className="space-y-1.5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 shrink-0 font-mono text-[9px] text-neutral-600">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span className="truncate text-sm text-neutral-200">
+                      {row.label}
+                    </span>
+                  </div>
+                  {row.sublabel && (
+                    <div className="pl-7 pt-0.5 text-[10px] text-neutral-500 truncate">
+                      {row.sublabel}
+                    </div>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-sm text-neutral-100">
+                    {row.value}
+                  </div>
+                  {row.detail && (
+                    <div className="text-[10px] text-neutral-500">
+                      {row.detail}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="pl-7">
+                <OverviewBar
+                  value={row.barValue}
+                  max={maxValue}
+                  color={color}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-neutral-600 italic text-xs">{emptyMessage}</div>
+      )}
+    </section>
+  );
+}
+
+function OverviewHostModelSpotlight({
+  rows,
+  emptyMessage = "No data.",
+}: {
+  rows: DashboardHostModelOverview[];
+  emptyMessage?: string;
+}) {
+  const spotlight = rows.slice(0, 4);
+  const maxCost = Math.max(...spotlight.map((row) => row.cost), 0.0001);
+
+  return (
+    <section className="border border-neutral-800 bg-neutral-950/40 p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+          Heavy Host / Model Pairs
+        </div>
+        <div className="text-[9px] font-mono text-neutral-600">
+          Top {spotlight.length}
+        </div>
+      </div>
+
+      {spotlight.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {spotlight.map((row, index) => (
+            <article
+              key={`${row.host}:${row.model}:${index}`}
+              className="border border-neutral-900 bg-black/20 p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[9px] uppercase tracking-widest text-cyan-300/80 font-bold">
+                    {row.host}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-100 break-words">
+                    {row.model || "—"}
+                  </div>
+                </div>
+                <div className="text-[9px] font-mono text-neutral-600">
+                  #{index + 1}
+                </div>
+              </div>
+
+              <OverviewBar
+                value={row.cost}
+                max={maxCost}
+                color="bg-violet-500/60"
+              />
+
+              <div className="grid grid-cols-2 gap-3 text-[10px]">
+                <div>
+                  <div className="uppercase tracking-widest text-neutral-500">
+                    Cost
+                  </div>
+                  <div className="mt-1 font-mono text-emerald-300">
+                    ${fmt(row.cost)}
+                  </div>
+                </div>
+                <div>
+                  <div className="uppercase tracking-widest text-neutral-500">
+                    Sessions
+                  </div>
+                  <div className="mt-1 font-mono text-neutral-200">
+                    {row.sessions.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="uppercase tracking-widest text-neutral-500">
+                    Tool Calls
+                  </div>
+                  <div className="mt-1 font-mono text-neutral-200">
+                    {row.tool_calls.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="uppercase tracking-widest text-neutral-500">
+                    Billable Out
+                  </div>
+                  <div className="mt-1 font-mono text-neutral-200">
+                    {(row.billable_output_tokens / 1_000_000).toFixed(1)}M
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-neutral-500">
+                {(row.base_context_tokens / 1_000_000).toFixed(1)}M base context
+                · {(row.tool_output_tokens / 1_000_000).toFixed(1)}M tool out
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="text-neutral-600 italic text-xs">{emptyMessage}</div>
+      )}
+    </section>
+  );
+}
+
+// ---- Timeline activity chart ----------------------------------------------
+
+type TimelineBucket = AnalyticsDashboard["daily"][number];
+
+function utcDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addUtcHours(date: Date, hours: number) {
+  const next = new Date(date);
+  next.setUTCHours(next.getUTCHours() + hours);
+  return next;
+}
+
+function utcHourKey(date: Date) {
+  return `${utcDateKey(date)} ${String(date.getUTCHours()).padStart(2, "0")}:00`;
+}
+
+function timelineEndDate(daily: AnalyticsDashboard["daily"]) {
+  const lastDate = daily
+    .map((bucket) => bucket.date)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  return lastDate ? new Date(`${lastDate}T00:00:00Z`) : new Date();
+}
+
+function fillDailyBuckets(
+  daily: AnalyticsDashboard["daily"],
+  days: number
+): TimelineBucket[] {
+  const byDate = new Map(daily.map((bucket) => [bucket.date, bucket]));
+  const totalDays = Math.min(Math.max(days, 1), 365);
+  const end = timelineEndDate(daily);
+  const start = addUtcDays(end, -(totalDays - 1));
+
+  return Array.from({ length: totalDays }, (_, index) => {
+    const date = utcDateKey(addUtcDays(start, index));
     return (
-      <div className="text-neutral-600 italic text-xs p-4">No daily data.</div>
+      byDate.get(date) ?? {
+        date,
+        sessions: 0,
+        cost: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+      }
+    );
+  });
+}
+
+function fillHourlyBuckets(
+  hourly: AnalyticsDashboard["hourly"],
+  daily: AnalyticsDashboard["daily"],
+  days: number
+): TimelineBucket[] {
+  const byHour = new Map(hourly.map((bucket) => [bucket.date, bucket]));
+  const lastHour = hourly
+    .map((bucket) => bucket.date)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const end = lastHour
+    ? new Date(`${lastHour.replace(" ", "T")}:00Z`)
+    : addUtcHours(timelineEndDate(daily), 23);
+  const totalHours = Math.min(Math.max(days, 1), 365) * 24;
+  const start = addUtcHours(end, -(totalHours - 1));
+
+  return Array.from({ length: totalHours }, (_, index) => {
+    const date = utcHourKey(addUtcHours(start, index));
+    return (
+      byHour.get(date) ?? {
+        date,
+        sessions: 0,
+        cost: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+      }
+    );
+  });
+}
+
+function SpendTimelineChart({
+  dashboard,
+  breakdown,
+  days,
+  onBreakdownChange,
+}: {
+  dashboard: AnalyticsDashboard;
+  breakdown: TimelineBreakdownValue;
+  days: number;
+  onBreakdownChange: (breakdown: TimelineBreakdownValue) => void;
+}) {
+  const buckets =
+    breakdown === "hourly"
+      ? fillHourlyBuckets(dashboard.hourly ?? [], dashboard.daily, days)
+      : fillDailyBuckets(dashboard.daily, days);
+
+  if (!buckets.length)
+    return (
+      <div className="text-neutral-600 italic text-xs p-4">
+        No timeline data.
+      </div>
     );
 
-  const maxCost = Math.max(...daily.map((d) => d.cost), 0.0001);
-  const recent = daily.slice(-30);
+  const maxCost = Math.max(...buckets.map((d) => d.cost), 0.0001);
+  const totalCost = buckets.reduce((a, d) => a + d.cost, 0);
+  const activeBuckets = buckets.filter((d) => d.sessions > 0).length;
 
   return (
     <section className="border border-neutral-800 bg-neutral-950/40 p-5 space-y-3">
-      <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold">
-        Spend by Day
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold">
+          Spend by {breakdown === "hourly" ? "Hour" : "Day"}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {TIMELINE_BREAKDOWN_OPTIONS.map((option) => {
+            const selected = option.value === breakdown;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onBreakdownChange(option.value)}
+                className={`border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                  selected
+                    ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                    : "border-neutral-800 bg-neutral-950 text-neutral-500 hover:border-neutral-700 hover:text-neutral-300"
+                }`}
+                aria-pressed={selected}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="flex items-end gap-1 h-20 overflow-x-auto pb-1">
-        {recent.map((d, i) => {
+      <div
+        className="grid items-end gap-px h-20 w-full pb-1"
+        style={{
+          gridTemplateColumns: `repeat(${buckets.length}, minmax(1px, 1fr))`,
+        }}
+      >
+        {buckets.map((d) => {
           const h = Math.max(4, (d.cost / maxCost) * 80);
           return (
             <div
-              key={i}
-              className="flex flex-col items-center gap-0.5 shrink-0"
+              key={d.date}
+              className="flex h-20 min-w-0 items-end"
               title={`${d.date}: $${d.cost.toFixed(3)} · ${d.sessions} sessions`}
             >
               <div
-                className="w-4 bg-emerald-500/60 rounded-sm hover:bg-emerald-400/80 transition-colors cursor-default"
+                className={`w-full min-w-px rounded-sm transition-colors cursor-default ${
+                  d.sessions > 0
+                    ? "bg-emerald-500/60 hover:bg-emerald-400/80"
+                    : "bg-neutral-800/70"
+                }`}
                 style={{ height: `${h}px` }}
               />
             </div>
@@ -99,32 +451,32 @@ function DailyChart({ daily }: { daily: AnalyticsDashboard["daily"] }) {
         })}
       </div>
       <div className="flex justify-between text-[9px] text-neutral-600 font-mono">
-        <span>{recent[0]?.date}</span>
-        <span>{recent[recent.length - 1]?.date}</span>
+        <span>{buckets[0]?.date}</span>
+        <span>{buckets[buckets.length - 1]?.date}</span>
       </div>
       <div className="grid grid-cols-3 gap-3 pt-2 border-t border-neutral-800/60">
         <div>
           <div className="text-[9px] uppercase text-neutral-500 mb-0.5">
-            Total Days
+            Buckets
           </div>
           <div className="text-sm font-mono text-neutral-200">
-            {daily.length}
+            {buckets.length}
           </div>
         </div>
         <div>
           <div className="text-[9px] uppercase text-neutral-500 mb-0.5">
-            Avg/Day
+            Active
           </div>
           <div className="text-sm font-mono text-neutral-200">
-            ${(daily.reduce((a, d) => a + d.cost, 0) / daily.length).toFixed(2)}
+            {activeBuckets}
           </div>
         </div>
         <div>
           <div className="text-[9px] uppercase text-neutral-500 mb-0.5">
-            Peak Day
+            Avg/Bucket
           </div>
           <div className="text-sm font-mono text-emerald-300">
-            ${Math.max(...daily.map((d) => d.cost)).toFixed(2)}
+            ${(totalCost / buckets.length).toFixed(2)}
           </div>
         </div>
       </div>
@@ -655,6 +1007,7 @@ function CostDriversChart({
 export default function Analytics() {
   const [data, setData] = useState<GranularToolUsage[]>([]);
   const [dashboard, setDashboard] = useState<AnalyticsDashboard | null>(null);
+  const [summary, setSummary] = useState<AnalyticsSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [dashLoading, setDashLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -665,23 +1018,53 @@ export default function Analytics() {
   const [modelFilter, setModelFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [dateRange, setDateRange] = useState({ days: 30 });
+  const { days, range } = useTimeRange();
+  const [timelineBreakdown, setTimelineBreakdown] =
+    useState<TimelineBreakdownValue>("daily");
+
+  useEffect(() => {
+    setTimelineBreakdown(range === "1d" ? "hourly" : "daily");
+  }, [range]);
 
   useEffect(() => {
     setLoading(true);
     api
-      .granularAnalytics(undefined, undefined, 5000, dateRange.days)
+      .granularAnalytics(undefined, undefined, 5000, days)
       .then(setData)
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
 
     setDashLoading(true);
     api
-      .analyticsDashboard(dateRange.days)
+      .analyticsDashboard(days)
       .then(setDashboard)
       .catch(() => setDashboard(null))
       .finally(() => setDashLoading(false));
-  }, [dateRange.days]);
+  }, [days]);
+
+  useEffect(() => {
+    let active = true;
+
+    api
+      .analyticsSummary(
+        agentFilter !== "all" ? agentFilter : undefined,
+        modelFilter !== "all" ? modelFilter : undefined,
+        categoryFilter !== "all" ? categoryFilter : undefined,
+        search || undefined,
+        5000,
+        days
+      )
+      .then((nextSummary) => {
+        if (active) setSummary(nextSummary);
+      })
+      .catch(() => {
+        if (active) setSummary(EMPTY_SUMMARY);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [days, agentFilter, modelFilter, categoryFilter, search]);
 
   const filteredData = useMemo(() => {
     const agentMatch = agentFilter.toLowerCase();
@@ -712,71 +1095,7 @@ export default function Analytics() {
     return Array.from(set).sort();
   }, [data]);
 
-  const stats = useMemo(() => {
-    const totalOutputTokens = filteredData
-      .filter((d) => ["result", "thinking", "tool_call"].includes(d.event_type))
-      .reduce((acc, item) => acc + item.output_tokens, 0);
-    const userInputTokens = filteredData
-      .filter((d) => d.event_type === "user_string")
-      .reduce((acc, item) => acc + item.input_tokens, 0);
-    const toolCalls = filteredData
-      .filter((d) => d.event_type === "tool_call")
-      .reduce((acc, item) => acc + (item.call_count ?? 1), 0);
-    const uniqueTools = new Set(
-      filteredData
-        .filter((d) => d.event_type === "tool_call")
-        .map((item) => item.tool_name)
-    ).size;
-    const cachedPromptTokens = filteredData
-      .filter((d) => d.event_type === "cached_prompt")
-      .reduce((acc, item) => acc + item.input_tokens, 0);
-    const modelResponseTokens = filteredData
-      .filter((d) => d.event_type === "result")
-      .reduce((acc, item) => acc + item.output_tokens, 0);
-    const modelThinkingTokens = filteredData
-      .filter((d) => d.event_type === "thinking")
-      .reduce((acc, item) => acc + item.output_tokens, 0);
-    const toolInputTokens = filteredData
-      .filter((d) => d.event_type === "tool_call")
-      .reduce((acc, item) => acc + item.input_tokens, 0);
-    const toolOutputTokens = filteredData
-      .filter((d) => d.event_type === "tool_call")
-      .reduce((acc, item) => acc + item.output_tokens, 0);
-    const totalCost = filteredData.reduce((acc, item) => {
-      if (
-        [
-          "prompt",
-          "cached_prompt",
-          "cache_create",
-          "result",
-          "thinking",
-        ].includes(item.event_type)
-      ) {
-        return acc + (item.cost || 0);
-      }
-      return acc;
-    }, 0);
-    const estimatedMonthlyCost = totalCost * (30 / (dateRange.days || 1));
-    const toolCosts = defaultdict_int();
-    filteredData.forEach((item) => {
-      toolCosts[item.tool_name] += item.cost || 0;
-    });
-    const topCostDriver =
-      Object.entries(toolCosts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-    return {
-      totalCost,
-      estimatedMonthlyCost,
-      topCostDriver,
-      userInputTokens,
-      modelThinkingTokens,
-      llmOutputTokens: modelResponseTokens + toolInputTokens,
-      toolOutputTokens,
-      cachedPromptTokens,
-      toolCalls,
-      uniqueTools,
-      totalOutputTokens,
-    };
-  }, [filteredData, dateRange.days]);
+  const stats = summary;
 
   const hostModelStats = dashboard?.host_model_overview ?? [];
 
@@ -814,11 +1133,99 @@ export default function Analytics() {
           cost,
           costPerCall: cost / calls,
           pctOfTotal:
-            (item.output_tokens / (stats.totalOutputTokens || 1)) * 100,
+            (item.output_tokens / (stats.total_output_tokens || 1)) * 100,
         };
       })
       .sort((a, b) => b.cost - a.cost);
-  }, [filteredData, stats.totalOutputTokens]);
+  }, [filteredData, stats.total_output_tokens]);
+
+  const overviewCards = useMemo(() => {
+    const topHost = dashboard?.by_host[0];
+    const topModel = dashboard?.by_model[0];
+    const topDomain = dashboard?.by_domain[0];
+    const topTool = costDriversData[0];
+
+    return [
+      {
+        label: "Top Host",
+        value: topHost?.host || "—",
+        detail: topHost
+          ? `$${fmt(topHost.cost)} over ${topHost.sessions.toLocaleString()} sessions · ${fmt(topHost.cache_pct, 1)}% cache`
+          : dashLoading
+            ? "Loading dashboard..."
+            : "No host data.",
+        tone: "cyan" as const,
+      },
+      {
+        label: "Top Model",
+        value: topModel?.model || "—",
+        detail: topModel
+          ? `$${fmt(topModel.cost)} over ${topModel.sessions.toLocaleString()} sessions · ${fmt(topModel.cache_pct, 1)}% cache`
+          : dashLoading
+            ? "Loading dashboard..."
+            : "No model data.",
+        tone: "emerald" as const,
+      },
+      {
+        label: "Top Domain",
+        value: topDomain?.domain || "—",
+        detail: topDomain
+          ? `$${fmt(topDomain.cost)} total · $${fmt(topDomain.avg_cost, 3)}/session`
+          : dashLoading
+            ? "Loading dashboard..."
+            : "No domain data.",
+        tone: "violet" as const,
+      },
+      {
+        label: "Top Tool Driver",
+        value: topTool?.tool || "—",
+        detail: topTool
+          ? `$${fmt(topTool.cost)} · ${topTool.calls.toLocaleString()} calls · ${fmtM(topTool.tokens)} out`
+          : "No tool usage found.",
+        tone: "amber" as const,
+      },
+    ];
+  }, [costDriversData, dashboard, dashLoading]);
+
+  const topHostRows = useMemo<CompactLeaderboardRow[]>(() => {
+    return (dashboard?.by_host ?? []).slice(0, 5).map((row) => ({
+      label: row.host,
+      sublabel: `${row.sessions.toLocaleString()} sessions`,
+      value: `$${fmt(row.cost)}`,
+      detail: `${fmt(row.cache_pct, 1)}% cache`,
+      barValue: row.cost,
+    }));
+  }, [dashboard]);
+
+  const topModelRows = useMemo<CompactLeaderboardRow[]>(() => {
+    return (dashboard?.by_model ?? []).slice(0, 5).map((row) => ({
+      label: row.model || "—",
+      sublabel: `${(row.input_tokens / 1_000_000).toFixed(2)}M in · ${(row.output_tokens / 1_000_000).toFixed(2)}M out`,
+      value: `$${fmt(row.cost)}`,
+      detail: `${row.sessions.toLocaleString()} sessions · ${fmt(row.cache_pct, 1)}% cache`,
+      barValue: row.cost,
+    }));
+  }, [dashboard]);
+
+  const topDomainRows = useMemo<CompactLeaderboardRow[]>(() => {
+    return (dashboard?.by_domain ?? []).slice(0, 5).map((row) => ({
+      label: row.domain,
+      sublabel: `${row.sessions.toLocaleString()} sessions`,
+      value: `$${fmt(row.cost)}`,
+      detail: `$${fmt(row.avg_cost, 3)}/session`,
+      barValue: row.cost,
+    }));
+  }, [dashboard]);
+
+  const topToolRows = useMemo<CompactLeaderboardRow[]>(() => {
+    return costDriversData.slice(0, 5).map((row) => ({
+      label: row.tool,
+      sublabel: `${row.calls.toLocaleString()} calls`,
+      value: `$${fmt(row.cost)}`,
+      detail: `${fmtM(row.tokens)} out · $${row.costPerCall.toFixed(4)}/call`,
+      barValue: row.cost,
+    }));
+  }, [costDriversData]);
 
   if (err) return <div className="text-red-400 p-6">Error: {err}</div>;
   if (loading && data.length === 0)
@@ -836,25 +1243,8 @@ export default function Analytics() {
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Cost & Efficiency
           </h1>
-          <p className="text-neutral-500 text-sm mt-1">
-            Real-time token attribution and economic breakdown.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase font-bold text-neutral-500">
-              Days
-            </span>
-            <input
-              type="number"
-              value={dateRange.days}
-              onChange={(e) =>
-                setDateRange({ days: parseInt(e.target.value) || 30 })
-              }
-              className="w-16 bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs font-mono text-neutral-300 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div className="h-4 w-px bg-neutral-800 mx-1 hidden md:block" />
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase font-bold text-neutral-500">
               Agent
@@ -912,30 +1302,6 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Summary metrics */}
-      <section className="grid gap-4 md:grid-cols-4">
-        <MetricCard
-          label="Total Estimated Cost"
-          value={`$${stats.totalCost.toFixed(2)}`}
-          tone="emerald"
-        />
-        <MetricCard
-          label="Projected Month-End"
-          value={`$${stats.estimatedMonthlyCost.toFixed(2)}`}
-          tone="emerald"
-        />
-        <MetricCard
-          label="Total Tool Calls"
-          value={stats.toolCalls.toLocaleString()}
-          tone="cyan"
-        />
-        <MetricCard
-          label="Unique Tools"
-          value={stats.uniqueTools.toString()}
-          tone="cyan"
-        />
-      </section>
-
       {/* Tab navigation */}
       <div className="flex gap-1 border-b border-neutral-800">
         {TABS.map((tab) => (
@@ -956,6 +1322,201 @@ export default function Analytics() {
       {/* Overview tab */}
       {activeTab === "Overview" && (
         <div className="space-y-6">
+          {/* Summary metrics */}
+          <section className="grid gap-4 md:grid-cols-4">
+            <MetricCard
+              label="Total Estimated Cost"
+              value={`$${stats.total_cost.toFixed(2)}`}
+              tone="emerald"
+            />
+            <MetricCard
+              label="Projected Month-End"
+              value={`$${stats.estimated_monthly_cost.toFixed(2)}`}
+              tone="emerald"
+            />
+            <MetricCard
+              label="Total Tool Calls"
+              value={stats.tool_calls.toLocaleString()}
+              tone="cyan"
+            />
+            <MetricCard
+              label="Unique Tools"
+              value={stats.unique_tools.toString()}
+              tone="cyan"
+            />
+          </section>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {overviewCards.map((card) => (
+              <MetricCard
+                key={card.label}
+                label={card.label}
+                value={card.value}
+                detail={card.detail}
+                tone={card.tone}
+              />
+            ))}
+          </section>
+
+          <CostDriversChart
+            stats={{
+              userInputTokens: stats.user_input_tokens,
+              modelThinkingTokens: stats.model_thinking_tokens,
+              llmOutputTokens: stats.llm_output_tokens,
+              toolOutputTokens: stats.tool_output_tokens,
+            }}
+          />
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <CompactLeaderboard
+              title="Top Hosts"
+              rows={topHostRows}
+              color="bg-cyan-500/60"
+              emptyMessage={
+                dashLoading ? "Loading dashboard..." : "No host data."
+              }
+            />
+            <CompactLeaderboard
+              title="Top Models"
+              rows={topModelRows}
+              color="bg-emerald-500/60"
+              emptyMessage={
+                dashLoading ? "Loading dashboard..." : "No model data."
+              }
+            />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <CompactLeaderboard
+              title="Top Domains"
+              rows={topDomainRows}
+              color="bg-violet-500/60"
+              emptyMessage={
+                dashLoading ? "Loading dashboard..." : "No domain data."
+              }
+            />
+            <CompactLeaderboard
+              title="Top Tool Drivers"
+              rows={topToolRows}
+              color="bg-amber-500/60"
+              emptyMessage="No tool usage found."
+            />
+          </div>
+
+          <OverviewHostModelSpotlight
+            rows={hostModelStats}
+            emptyMessage={
+              dashLoading ? "Loading dashboard..." : "No host/model data."
+            }
+          />
+        </div>
+      )}
+
+      {/* Timeline tab */}
+      {activeTab === "Timeline" && (
+        <div className="space-y-6">
+          {dashLoading ? (
+            <div className="text-neutral-500 italic text-sm animate-pulse">
+              Loading...
+            </div>
+          ) : dashboard ? (
+            <>
+              <SpendTimelineChart
+                dashboard={dashboard}
+                breakdown={timelineBreakdown}
+                days={days}
+                onBreakdownChange={setTimelineBreakdown}
+              />
+              <div className="grid md:grid-cols-2 gap-6">
+                <ByHostTable byHost={dashboard.by_host} />
+                <ByModelTable byModel={dashboard.by_model} />
+              </div>
+            </>
+          ) : (
+            <div className="text-neutral-600 italic text-sm">
+              Data unavailable.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Domains tab */}
+      {activeTab === "Domains" && (
+        <div className="space-y-6">
+          {dashLoading ? (
+            <div className="text-neutral-500 italic text-sm animate-pulse">
+              Loading...
+            </div>
+          ) : dashboard ? (
+            <ByProjectTable domains={dashboard.by_domain} />
+          ) : (
+            <div className="text-neutral-600 italic text-sm">
+              Data unavailable.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tool Breakdown tab */}
+      {activeTab === "Tool Breakdown" && (
+        <div className="space-y-6">
+          {dashLoading ? (
+            <div className="text-neutral-500 italic text-sm animate-pulse">
+              Loading...
+            </div>
+          ) : dashboard ? (
+            <>
+              <ToolTable
+                title="File & Search Tools"
+                tools={dashboard.tools.core}
+                color="bg-blue-500/50"
+              />
+              <ToolTable
+                title="Bash & Exec Usage"
+                tools={dashboard.tools.shell}
+                color="bg-yellow-500/50"
+              />
+              <ToolTable
+                title="MCP Tool Usage"
+                tools={dashboard.tools.mcp}
+                color="bg-purple-500/50"
+              />
+            </>
+          ) : (
+            <div className="text-neutral-600 italic text-sm">
+              Data unavailable.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Analysis tab */}
+      {activeTab === "Analysis" && (
+        <div className="space-y-6">
+          {dashLoading ? (
+            <div className="text-neutral-500 italic text-sm animate-pulse">
+              Loading...
+            </div>
+          ) : dashboard ? (
+            <>
+              <SavingsInsights dashboard={dashboard} />
+            </>
+          ) : (
+            <div className="text-neutral-600 italic text-sm">
+              Data unavailable.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Details tab */}
+      {activeTab === "Details" && (
+        <div className="space-y-6">
+          <section className="border border-neutral-800 bg-neutral-950/40 p-4 text-sm leading-relaxed text-neutral-500">
+            Granular tables live here so the Overview tab stays readable. Use
+            the filters above plus search to inspect host/model groups, tool
+            rankings, and individual raw rows.
+          </section>
+
           <section className="border border-neutral-800 bg-neutral-950/40 overflow-hidden">
             <div className="bg-neutral-900/80 border-b border-neutral-800 p-4 flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
@@ -990,7 +1551,7 @@ export default function Analytics() {
                         colSpan={12}
                         className="px-4 py-8 text-center text-neutral-600 italic"
                       >
-                        No data.
+                        {dashLoading ? "Loading dashboard..." : "No data."}
                       </td>
                     </tr>
                   ) : (
@@ -1046,8 +1607,6 @@ export default function Analytics() {
               </table>
             </div>
           </section>
-
-          <CostDriversChart stats={stats} />
 
           <section className="border border-neutral-800 bg-neutral-950/40">
             <div className="bg-neutral-900/80 border-b border-neutral-800 p-4">
@@ -1113,7 +1672,7 @@ export default function Analytics() {
                           <div className="flex items-center justify-end gap-2">
                             <span className="font-mono text-[10px] text-neutral-500">
                               {(
-                                (item.tokens / (stats.toolOutputTokens || 1)) *
+                                (item.tokens / (stats.tool_output_tokens || 1)) *
                                 100
                               ).toFixed(1)}
                               %
@@ -1122,7 +1681,7 @@ export default function Analytics() {
                               <div
                                 className="h-full bg-amber-500/50"
                                 style={{
-                                  width: `${(item.tokens / (stats.toolOutputTokens || 1)) * 100}%`,
+                                  width: `${(item.tokens / (stats.tool_output_tokens || 1)) * 100}%`,
                                 }}
                               />
                             </div>
@@ -1265,98 +1824,6 @@ export default function Analytics() {
               </table>
             </div>
           </section>
-        </div>
-      )}
-
-      {/* Timeline tab */}
-      {activeTab === "Timeline" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <>
-              <DailyChart daily={dashboard.daily} />
-              <div className="grid md:grid-cols-2 gap-6">
-                <ByHostTable byHost={dashboard.by_host} />
-                <ByModelTable byModel={dashboard.by_model} />
-              </div>
-            </>
-          ) : (
-            <div className="text-neutral-600 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Domains tab */}
-      {activeTab === "Domains" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <ByProjectTable domains={dashboard.by_domain} />
-          ) : (
-            <div className="text-neutral-600 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tool Breakdown tab */}
-      {activeTab === "Tool Breakdown" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <>
-              <ToolTable
-                title="File & Search Tools"
-                tools={dashboard.tools.core}
-                color="bg-blue-500/50"
-              />
-              <ToolTable
-                title="Bash & Exec Usage"
-                tools={dashboard.tools.shell}
-                color="bg-yellow-500/50"
-              />
-              <ToolTable
-                title="MCP Tool Usage"
-                tools={dashboard.tools.mcp}
-                color="bg-purple-500/50"
-              />
-            </>
-          ) : (
-            <div className="text-neutral-600 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Analysis tab */}
-      {activeTab === "Analysis" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <>
-              <SavingsInsights dashboard={dashboard} />
-            </>
-          ) : (
-            <div className="text-neutral-600 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
         </div>
       )}
     </div>

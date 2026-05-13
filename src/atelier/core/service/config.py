@@ -7,14 +7,12 @@ from __future__ import annotations
 
 import os
 
+from atelier.core.environment import bool_env, is_dev_mode
 from atelier.core.foundation.paths import default_store_root
 
 
 def _bool_env(name: str, default: bool) -> bool:
-    val = os.environ.get(name, "").lower()
-    if not val:
-        return default
-    return val in ("1", "true", "yes")
+    return bool_env(name, default)
 
 
 class ServiceConfig:
@@ -63,7 +61,7 @@ class ServiceConfig:
         """Whether the runtime is in developer mode. Gated features (Lint, Reasoning, Verify)
         require this to be enabled. Tracking and analytics remain active in all modes.
         """
-        return _bool_env("ATELIER_DEV_MODE", False)
+        return is_dev_mode()
 
     def as_dict(self) -> dict[str, object]:
         """Return config summary — never includes the api_key value."""
