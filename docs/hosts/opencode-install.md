@@ -36,7 +36,7 @@ The installer merges an `atelier` entry into the `mcp` key:
       "command": ["<atelier_repo>/scripts/atelier_mcp_stdio.sh"],
       "environment": &#123;
         "ATELIER_WORKSPACE_ROOT": "<workspace>",
-        "ATELIER_ROOT": "~/.atelier"
+        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
       &#125;
     &#125;
   &#125;
@@ -54,15 +54,15 @@ make verify
 Start opencode in your workspace and ask:
 
 ```
-use atelier to check this plan
+use skill: task
 ```
 
 ## Expected Behavior
 
-- opencode connects to Atelier via MCP stdio
+- opencode connects to the local Atelier HTTP service via the MCP stdio wrapper
 - Workspace Atelier agent profile is installed at `.opencode/agents/atelier.md`
-- Canonical MCP tools (`lint`, `reasoning`, etc.) are available
-- Compatibility aliases (`lint`, `atelier_status`, etc.) are also available
+- Service-backed tools include `task`, `memory`, `rescue`, `trace`, and `verify`
+- Only `read`, `search`, and `compact` remain host-local
 - `atelier-opencode --task "..."` can emit live start-time optimizer guidance before handing off to opencode
 
 ## Troubleshooting
