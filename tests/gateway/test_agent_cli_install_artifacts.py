@@ -101,7 +101,6 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
         "savings",
         "settings",
         "status",
-        "task",
     }
 
 

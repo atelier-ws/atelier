@@ -81,8 +81,8 @@ data = json.loads(path.read_text(encoding="utf-8"))
 server = data.setdefault("mcpServers", {}).setdefault("atelier", {})
 server["command"] = "$ATELIER_WRAPPER"
 server["args"] = server.get("args", [])
-    server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
-    server["env"]["ATELIER_SERVICE_URL"] = "http://127.0.0.1:8787"
+server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
+server["env"]["ATELIER_SERVICE_URL"] = "http://127.0.0.1:8787"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
 
