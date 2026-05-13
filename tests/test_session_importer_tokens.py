@@ -8,6 +8,7 @@ runs the importer, and asserts every token field on the resulting Trace.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any, ClassVar
@@ -768,3 +769,80 @@ class TestGeminiImporterTokens:
         assert trace.model == "gemini-3-flash"
 
         _assert_tool_tokens(trace, "run_shell_command", input_t=50, output_t=100)
+
+    def test_gemini_tracks_per_model_usage_for_mixed_model_sessions(
+        self, store: ReasoningStore, tmp_path: Path
+    ) -> None:
+        jsonl_path = tmp_path / "session-mixed-models.jsonl"
+        fixture_lines = [
+            json.dumps({"startTime": "2026-05-09T12:00:00Z", "sessionId": "mixed-model-session"}),
+            json.dumps({"type": "user", "content": [{"text": "Compare models"}]}),
+            json.dumps(
+                {
+                    "type": "gemini",
+                    "model": "gemini-3-flash-preview",
+                    "tokens": {"input": 100, "output": 50, "thoughts": 5, "cached": 20},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "gemini",
+                    "model": "gemini-3.1-pro-preview",
+                    "tokens": {"input": 80, "output": 30, "thoughts": 2, "cached": 5},
+                }
+            ),
+        ]
+        jsonl_path.write_text("\n".join(fixture_lines))
+
+        importer = GeminiImporter(store)
+        result = importer.import_session(jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "gemini")
+        usage_by_model = {usage.model: usage for usage in trace.model_usages}
+
+        assert trace.model == "gemini-3.1-pro-preview"
+        assert set(usage_by_model) == {"gemini-3-flash-preview", "gemini-3.1-pro-preview"}
+        assert usage_by_model["gemini-3-flash-preview"].input_tokens == 80
+        assert usage_by_model["gemini-3-flash-preview"].cached_input_tokens == 20
+        assert usage_by_model["gemini-3-flash-preview"].output_tokens == 50
+        assert usage_by_model["gemini-3.1-pro-preview"].input_tokens == 75
+        assert usage_by_model["gemini-3.1-pro-preview"].cached_input_tokens == 5
+        assert usage_by_model["gemini-3.1-pro-preview"].output_tokens == 30
+
+    def test_gemini_reimports_when_content_changes_without_newer_mtime(
+        self,
+        store: ReasoningStore,
+        tmp_path: Path,
+    ) -> None:
+        jsonl_path = tmp_path / "session-growing.jsonl"
+        jsonl_path.write_text("\n".join(self.FIXTURE_LINES))
+        original_stat = jsonl_path.stat()
+
+        importer = GeminiImporter(store)
+        first_result = importer.import_session(jsonl_path, force=False)
+        assert first_result is not None
+
+        first_trace = _get_trace(store, "gemini")
+        assert first_trace.output_tokens == 80
+
+        updated_lines = [
+            *self.FIXTURE_LINES,
+            json.dumps(
+                {
+                    "type": "gemini",
+                    "model": "gemini-3-flash",
+                    "tokens": {"input": 40, "output": 10, "thoughts": 1, "cached": 5},
+                }
+            ),
+        ]
+        jsonl_path.write_text("\n".join(updated_lines))
+        os.utime(jsonl_path, (original_stat.st_atime, original_stat.st_mtime))
+
+        second_result = importer.import_session(jsonl_path, force=False)
+        assert second_result == first_result
+
+        updated_trace = _get_trace(store, "gemini")
+        assert updated_trace.input_tokens == 190
+        assert updated_trace.output_tokens == 90
+        assert updated_trace.cached_input_tokens == 30

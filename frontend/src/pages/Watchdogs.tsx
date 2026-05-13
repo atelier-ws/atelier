@@ -162,7 +162,7 @@ export default function Watchdogs() {
           tone="emerald"
         />
         <MetricCard
-          label="Observed runs"
+          label="Observed sessions"
           value={String(traces.length)}
           tone="cyan"
         />

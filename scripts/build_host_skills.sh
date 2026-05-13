@@ -56,7 +56,14 @@ if [[ ! -d "$SKILLS_SRC" ]]; then
     exit 1
 fi
 
-DEV_ONLY_SKILLS=("reasoning" "lint" "rescue" "trace")
+mapfile -t DEV_ONLY_SKILLS < <(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import DEV_ONLY_SKILLS
+
+for name in sorted(DEV_ONLY_SKILLS):
+    print(name)
+PY
+)
 
 is_dev_only_skill() {
     local name="$1"

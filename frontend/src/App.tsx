@@ -24,6 +24,7 @@ import {
   type TelemetryConfig,
 } from "./lib/insightsApi";
 import { Chip, cx } from "./components/WorkbenchUI";
+import { useTimeRange, TIME_RANGE_OPTIONS } from "./lib/TimeRangeContext";
 
 interface NavItem {
   to: string;
@@ -34,7 +35,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/overview", label: "Overview", icon: "◫" },
-  { to: "/runs", label: "Runs", icon: "▶" },
+  { to: "/sessions", label: "Sessions", icon: "▶" },
   { to: "/savings", label: "Savings", icon: "₿", isDev: true },
   { to: "/watchdogs", label: "Watchdogs", icon: "⚑", isDev: true },
   { to: "/knowledge/blocks", label: "Knowledge", icon: "🧠", isDev: true },
@@ -86,6 +87,7 @@ function TelemetryDisclosure() {
 export default function App() {
   const location = useLocation();
   const [config, setConfig] = useState<TelemetryConfig | null>(null);
+  const { range, setRange } = useTimeRange();
 
   useEffect(() => {
     getTelemetryConfig()
@@ -111,7 +113,30 @@ export default function App() {
               </span>
             )}
           </div>
-          <Chip tone="amber">{pageTitle}</Chip>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 border border-neutral-800 bg-neutral-900/40 px-3 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                Window
+              </span>
+              <select
+                value={range}
+                onChange={(e) => setRange(e.target.value as any)}
+                className="bg-transparent text-xs font-mono text-neutral-300 outline-none hover:text-[#ff8566]"
+                aria-label="Global time window"
+              >
+                {TIME_RANGE_OPTIONS.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    className="bg-neutral-900"
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Chip tone="amber">{pageTitle}</Chip>
+          </div>
         </div>
       </header>
 
@@ -155,9 +180,19 @@ export default function App() {
               path="/quickstart"
               element={<Navigate to="/host" replace />}
             />
-            <Route path="/runs" element={<Traces />} />
-            <Route path="/trace" element={<Navigate to="/runs" replace />} />
-            <Route path="/traces" element={<Navigate to="/runs" replace />} />
+            <Route path="/sessions" element={<Traces />} />
+            <Route
+              path="/runs"
+              element={<Navigate to="/sessions" replace />}
+            />
+            <Route
+              path="/trace"
+              element={<Navigate to="/sessions" replace />}
+            />
+            <Route
+              path="/traces"
+              element={<Navigate to="/sessions" replace />}
+            />
             <Route
               path="/knowledge"
               element={<Navigate to="/knowledge/blocks" replace />}

@@ -1,4 +1,5 @@
 const BASE = "/api";
+const TELEMETRY_ACK_STORAGE_KEY = "atelier.telemetry.acknowledged";
 
 export interface TelemetryConfig {
   remote_enabled: boolean;
@@ -67,7 +68,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function getTelemetryConfig(): Promise<TelemetryConfig> {
-  return request<TelemetryConfig>("/telemetry/config");
+  return request<TelemetryConfig>("/telemetry/config").then((config) => ({
+    ...config,
+    acknowledged: config.acknowledged || hasLocalTelemetryAcknowledgement(),
+  }));
 }
 
 export function updateTelemetryConfig(payload: {
@@ -82,7 +86,29 @@ export function updateTelemetryConfig(payload: {
 }
 
 export function acknowledgeTelemetry(): Promise<TelemetryConfig> {
-  return request<TelemetryConfig>("/telemetry/ack", { method: "POST" });
+  markLocalTelemetryAcknowledged();
+  return request<TelemetryConfig>("/telemetry/ack", { method: "POST" }).then(
+    (config) => ({
+      ...config,
+      acknowledged: true,
+    })
+  );
+}
+
+export function hasLocalTelemetryAcknowledgement(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(TELEMETRY_ACK_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markLocalTelemetryAcknowledged(): void {
+  try {
+    globalThis.localStorage?.setItem(TELEMETRY_ACK_STORAGE_KEY, "1");
+  } catch {
+    // Storage can be disabled in private contexts; the server ack remains.
+  }
 }
 
 function buildTelemetryQuery(params: TelemetryQuery = {}): string {
