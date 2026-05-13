@@ -222,6 +222,11 @@ install_console_scripts() {
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
         uv "${install_args[@]}"
+
+    rm -f \
+        "$ATELIER_BIN_DIR/atelier-api" \
+        "$ATELIER_BIN_DIR/atelier-codex" \
+        "$ATELIER_BIN_DIR/atelier-bench"
 }
 
 persist_install_record() {
