@@ -16,6 +16,7 @@ import {
   SectionHeader,
   cx,
 } from "../components/WorkbenchUI";
+import { useTimeRange } from "../lib/TimeRangeContext";
 
 const usdFmt = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -769,10 +770,10 @@ function Recommendations({ rows }: { rows: OptimizationRecommendation[] }) {
                     </div>
                   )}
                   <Link
-                    to={`/runs?trace=${encodeURIComponent(session.trace_id)}`}
+                    to={`/sessions?trace=${encodeURIComponent(session.trace_id)}`}
                     className="mt-3 inline-flex border border-neutral-700 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-neutral-300 transition hover:border-amber-500/50 hover:text-amber-300"
                   >
-                    Open in Runs
+                    Open in Sessions
                   </Link>
                 </div>
               ))}
@@ -885,7 +886,7 @@ function CodeBurnOptimizations({
 
 export default function Optimizations() {
   const [summary, setSummary] = useState<OptimizationsSummary | null>(null);
-  const [days, setDays] = useState(14);
+  const { days } = useTimeRange();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -919,22 +920,11 @@ export default function Optimizations() {
           <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
             Window
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <input
-              type="number"
-              value={days}
-              min={1}
-              max={30}
-              aria-label="Optimization summary window in days"
-              title="Optimization summary window in days"
-              onChange={(e) =>
-                setDays(Math.max(1, parseInt(e.target.value, 10) || 14))
-              }
-              className="w-20 border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 focus:border-amber-500 focus:outline-none"
-            />
-            <div className="text-xs text-neutral-500">
-              Generated {new Date(summary.generated_at).toLocaleString()}
-            </div>
+          <div className="mt-2 text-xs text-neutral-400">
+            {days} day{days === 1 ? "" : "s"} window active globally.
+          </div>
+          <div className="mt-1 text-[10px] text-neutral-500 italic">
+            Generated {new Date(summary.generated_at).toLocaleString()}
           </div>
         </div>
       </PageHero>

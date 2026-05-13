@@ -9,6 +9,7 @@ import {
   type TelemetrySummary,
 } from "../lib/insightsApi";
 import { Chip, MetricCard, cx } from "../components/WorkbenchUI";
+import { useTimeRange } from "../lib/TimeRangeContext";
 
 const RECENT_EVENT_LIMIT = 20;
 const TIMELINE_LIMIT = 5000;
@@ -32,18 +33,6 @@ const EVENT_COLORS = [
   "#facc15",
   "#2dd4bf",
 ];
-
-const WINDOW_OPTIONS = [
-  { value: "300", label: "Last 5 minutes", shortLabel: "5m" },
-  { value: "900", label: "Last 15 minutes", shortLabel: "15m" },
-  { value: "3600", label: "Last hour", shortLabel: "1h" },
-  { value: "21600", label: "Last 6 hours", shortLabel: "6h" },
-  { value: "86400", label: "Last 24 hours", shortLabel: "24h" },
-  { value: "604800", label: "Last 7 days", shortLabel: "7d" },
-  { value: "all", label: "All retained telemetry", shortLabel: "All" },
-] as const;
-
-type WindowValue = (typeof WINDOW_OPTIONS)[number]["value"];
 
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -220,17 +209,12 @@ function formatAxisTick(ts: number, rangeSeconds: number): string {
   return DAY_FORMAT.format(date);
 }
 
-function getWindowSeconds(windowValue: WindowValue): number | null {
-  return windowValue === "all" ? null : Number(windowValue);
-}
-
 function buildQuery(
-  windowValue: WindowValue,
+  windowSeconds: number | null,
   host: string,
   event: string
 ): Omit<TelemetryQuery, "limit"> {
   const query: Omit<TelemetryQuery, "limit"> = {};
-  const windowSeconds = getWindowSeconds(windowValue);
   if (windowSeconds !== null) {
     query.since = Date.now() / 1000 - windowSeconds;
   }
@@ -504,7 +488,7 @@ export default function Insights() {
   const [summary, setSummary] = useState<TelemetrySummary | null>(null);
   const [schema, setSchema] = useState<TelemetrySchema | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [windowValue, setWindowValue] = useState<WindowValue>("300");
+  const { seconds: windowSeconds } = useTimeRange();
   const [hostFilter, setHostFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
   const [knownHosts, setKnownHosts] = useState<string[]>([]);
@@ -529,7 +513,7 @@ export default function Insights() {
   useEffect(() => {
     let active = true;
     const refresh = async () => {
-      const query = buildQuery(windowValue, hostFilter, eventFilter);
+      const query = buildQuery(windowSeconds, hostFilter, eventFilter);
       const [nextEvents, nextSummary] = await Promise.all([
         getTelemetryEvents({ ...query, limit: TIMELINE_LIMIT }),
         getTelemetrySummary(query),
@@ -562,9 +546,8 @@ export default function Insights() {
       active = false;
       window.clearInterval(id);
     };
-  }, [windowValue, hostFilter, eventFilter]);
+  }, [windowSeconds, hostFilter, eventFilter]);
 
-  const windowSeconds = getWindowSeconds(windowValue);
   const rangeEnd = Math.max(Date.now() / 1000, summary?.last_event_ts ?? 0);
   const rangeStart =
     windowSeconds === null
@@ -672,17 +655,6 @@ export default function Insights() {
         hint={liveHint}
         action={
           <div className="flex flex-wrap items-end gap-3">
-            <FilterSelect
-              label="Time window"
-              value={windowValue}
-              onChange={(value) => setWindowValue(value as WindowValue)}
-            >
-              {WINDOW_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </FilterSelect>
             <FilterSelect
               label="Host"
               value={hostFilter}

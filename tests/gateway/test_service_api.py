@@ -5,6 +5,7 @@ Uses FastAPI TestClient with an in-memory SQLite store so no server starts.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ pytest.importorskip("fastapi", reason="FastAPI API tests require the api extra")
 
 from fastapi.testclient import TestClient
 
+from atelier.core.environment import NON_DEV_LLM_TOOLS
 from atelier.core.service.api import create_app
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
@@ -72,6 +74,23 @@ def test_metrics_accessible_no_auth(app_no_auth: TestClient) -> None:
     data = resp.json()
     assert "block_count" in data
     assert "trace_count" in data
+
+
+def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    app = create_app(store_root=store.root)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/mcp/status")
+
+    tools = route.endpoint()
+
+    names = {tool["tool_name"] for tool in tools}
+    assert names == NON_DEV_LLM_TOOLS
+    assert all(tool["mode"] == "passive" for tool in tools if tool["is_dev"])
+    assert "trace" in names
+    assert "memory" not in names
+    assert "compact" not in names
+    assert "shell" not in names
 
 
 # --------------------------------------------------------------------------- #
@@ -344,6 +363,116 @@ def test_dashboard_excludes_prompt_only_stub_sessions_from_usage_breakdowns(
 
     total_daily_sessions = sum(row["sessions"] for row in dashboard["daily"])
     assert total_daily_sessions == 2
+
+
+def test_dashboard_returns_hourly_usage_buckets(
+    app_no_auth: TestClient,
+    store: SQLiteStore,
+) -> None:
+    from atelier.core.foundation.models import Trace
+
+    created_at = datetime.now(UTC).replace(minute=15, second=0, microsecond=0)
+    store.record_trace(
+        Trace(
+            id="trace-hourly-usage",
+            agent="atelier:code",
+            host="codex",
+            domain="coding",
+            task="hourly dashboard usage",
+            status="success",
+            output_tokens=60,
+            created_at=created_at,
+        ),
+        write_json=False,
+    )
+
+    resp = app_no_auth.get("/analytics/dashboard?days=1")
+    assert resp.status_code == 200
+    dashboard = resp.json()
+
+    expected_hour = created_at.isoformat()[:13].replace("T", " ") + ":00"
+    hourly = {row["date"]: row for row in dashboard["hourly"]}
+    assert hourly[expected_hour]["sessions"] == 1
+
+
+def test_analytics_summary_uses_backend_pricing(app_no_auth: TestClient, store: SQLiteStore) -> None:
+    from atelier.core.capabilities.pricing import usage_cost_usd
+    from atelier.core.foundation.models import ToolCall, Trace
+
+    store.record_trace(
+        Trace(
+            id="trace-summary-priced",
+            agent="atelier:code",
+            host="claude",
+            domain="coding",
+            task="summary pricing",
+            status="success",
+            model="claude-sonnet-4-5",
+            input_tokens=120,
+            output_tokens=40,
+            user_prompt_tokens=12,
+            tools_called=[ToolCall(name="exec_command", args_hash="", count=2, output_tokens=60)],
+        ),
+        write_json=False,
+    )
+
+    resp = app_no_auth.get("/analytics/summary?days=1")
+    assert resp.status_code == 200
+    summary = resp.json()
+
+    assert summary["total_cost"] == usage_cost_usd("claude-sonnet-4-5", input_tokens=120, output_tokens=40)
+    assert summary["tool_calls"] == 2
+    assert summary["unique_tools"] == 1
+
+
+def test_dashboard_splits_multi_model_usage_into_by_model_breakdown(
+    app_no_auth: TestClient,
+    store: SQLiteStore,
+) -> None:
+    from atelier.core.foundation.models import ModelUsage, Trace
+
+    store.record_trace(
+        Trace(
+            id="trace-mixed-model-dashboard",
+            agent="atelier:code",
+            host="gemini",
+            domain="coding",
+            task="mixed model session",
+            status="success",
+            model="gemini-3.1-pro-preview",
+            model_usages=[
+                ModelUsage(
+                    model="gemini-3-flash-preview",
+                    input_tokens=80,
+                    cached_input_tokens=20,
+                    output_tokens=50,
+                    thinking_tokens=5,
+                ),
+                ModelUsage(
+                    model="gemini-3.1-pro-preview",
+                    input_tokens=75,
+                    cached_input_tokens=5,
+                    output_tokens=30,
+                    thinking_tokens=2,
+                ),
+            ],
+            input_tokens=155,
+            cached_input_tokens=25,
+            output_tokens=80,
+            thinking_tokens=7,
+        ),
+        write_json=False,
+    )
+
+    resp = app_no_auth.get("/analytics/dashboard?days=1")
+    assert resp.status_code == 200
+    dashboard = resp.json()
+
+    by_model = {row["model"]: row for row in dashboard["by_model"]}
+    assert by_model["gemini-3-flash-preview"]["input_tokens"] == 80
+    assert by_model["gemini-3-flash-preview"]["cached_tokens"] == 20
+    assert by_model["gemini-3.1-pro-preview"]["input_tokens"] == 75
+    assert by_model["gemini-3.1-pro-preview"]["cached_tokens"] == 5
 
 
 # --------------------------------------------------------------------------- #

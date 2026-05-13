@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from atelier.core.capabilities.pricing import get_model_pricing
+from atelier.core.capabilities.pricing import get_model_pricing, usage_cost_usd
 from atelier.core.foundation.models import ToolCall, Trace
 from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
 
@@ -112,12 +112,13 @@ def effective_input_tokens(trace: Trace) -> int:
 
 
 def trace_cost_usd(trace: Trace) -> float:
-    pricing = get_model_pricing(trace.model or "_default")
-    return pricing.cost_usd(
+    return usage_cost_usd(
+        trace.model or "_default",
         input_tokens=int(trace.input_tokens or 0),
         output_tokens=int(trace.output_tokens or 0),
         cache_read_tokens=int(trace.cached_input_tokens or 0),
         cache_write_tokens=int(trace.cache_creation_input_tokens or 0),
+        thinking_tokens=int(trace.thinking_tokens or 0),
     )
 
 

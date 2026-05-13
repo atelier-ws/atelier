@@ -37,6 +37,7 @@ from atelier.core.foundation.models import (
     ReasonBlock,
     Rubric,
     Trace,
+    coerce_trace_json,
     to_jsonable,
 )
 from atelier.core.foundation.paths import resolve_knowledge_root
@@ -352,6 +353,13 @@ class ReasoningStore:
             for h in SUPPORTED_SESSION_IMPORT_HOSTS:
                 conn.execute("UPDATE traces SET host = ? WHERE id LIKE ? AND host IS NULL", (h, f"{h}-%"))
 
+            # Strip legacy fields (e.g. run_id) from stored trace payloads so old
+            # data doesn't crash Trace.model_validate_json() during FTS reindex.
+            conn.execute(
+                "UPDATE traces SET payload = json_remove(payload, '$.run_id')"
+                " WHERE json_extract(payload, '$.run_id') IS NOT NULL"
+            )
+
             recreated_trace_fts = self._ensure_trace_search_schema(conn)
             self._reindex_traces_fts_if_needed(conn, force=recreated_trace_fts)
 
@@ -427,7 +435,7 @@ class ReasoningStore:
         with closing(conn.cursor()) as cur:
             cur.execute("DELETE FROM traces_fts")
             for row in rows:
-                self._update_trace_fts(cur, Trace.model_validate_json(row["payload"]))
+                self._update_trace_fts(cur, Trace.model_validate_json(coerce_trace_json(row["payload"])))
 
     def _build_trace_search_document(self, trace: Trace) -> tuple[str, ...]:
         reasoning = "\n".join(trace.reasoning)
@@ -834,7 +842,7 @@ class ReasoningStore:
             row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
         if row is None:
             return None
-        return Trace.model_validate_json(row["payload"])
+        return Trace.model_validate_json(coerce_trace_json(row["payload"]))
 
     def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
         """Return IDs of traces that have not been successfully synced."""
@@ -917,7 +925,7 @@ class ReasoningStore:
 
             results = []
             for row in rows:
-                trace = Trace.model_validate_json(row["payload"])
+                trace = Trace.model_validate_json(coerce_trace_json(row["payload"]))
                 trace.snippets = self._trace_search_snippets(row)
                 results.append(trace)
             return results
@@ -942,7 +950,7 @@ class ReasoningStore:
         params.append(offset)
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [Trace.model_validate_json(r["payload"]) for r in rows]
+        return [Trace.model_validate_json(coerce_trace_json(r["payload"])) for r in rows]
 
     def get_traces_metrics(
         self,

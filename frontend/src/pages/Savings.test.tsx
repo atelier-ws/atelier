@@ -79,7 +79,7 @@ describe("Savings page", () => {
                 dominant_run: {
                   session_id: "run-proof-1",
                   agent: "codex",
-                  task: "prove the savings run",
+                  task: "prove the savings session",
                   saved_tokens: 10000,
                   saved_cost_usd: 0.015,
                 },
@@ -103,7 +103,7 @@ describe("Savings page", () => {
                   session_id: "run-proof-1",
                   trace_id: "trace-proof-1",
                   agent: "codex",
-                  task: "prove the savings run",
+                  task: "prove the savings session",
                   status: "success",
                   trace_confidence: "mcp_live",
                   created_at: "2026-04-12T10:00:00Z",
@@ -326,12 +326,12 @@ describe("Savings page", () => {
 
     expect(
       await screen.findByText(
-        /No detailed tool-call, command, or conversation proof was stored for this run\./
+        /No detailed tool-call, command, or conversation proof was stored for this session\./
       )
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        /This run only has persisted context-budget rows\./
+        /This session only has persisted context-budget rows\./
       )
     ).toBeInTheDocument();
   });

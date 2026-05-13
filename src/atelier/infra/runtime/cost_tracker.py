@@ -23,8 +23,8 @@ demonstrate compounding savings).  Per-call delta uses the *previous* call
 of the same op_key as a reference (``last_cost - new_cost``) — exactly what
 the user asked for.
 
-Pricing table is intentionally local + overridable so we can run offline
-benchmarks without contacting an LLM provider.
+Pricing resolution is LiteLLM-backed + overridable so we can stay aligned
+with one catalog while still forcing deterministic values in tests.
 """
 
 from __future__ import annotations
@@ -40,17 +40,16 @@ from typing import Any
 # --------------------------------------------------------------------------- #
 # Pricing                                                                     #
 # --------------------------------------------------------------------------- #
-# Model pricing is now read from src/atelier/model_pricing.toml via the
-# pricing module.  The dict below is kept only for backward-compatibility
-# with any code that imports MODEL_PRICING directly — it delegates to the
-# loader so edits to the TOML file are reflected automatically.
+# Model pricing now comes from the shared LiteLLM-backed pricing module.
+# The dict below is kept only for backward-compatibility with any code that
+# imports MODEL_PRICING directly.
 from atelier.core.capabilities.pricing import get_model_pricing as _get_model_pricing
 
 
 # Backward-compat shim — behaves like the old dict for code that does
 # ``MODEL_PRICING.get(model)`` but always reads from the TOML config.
 class _PricingProxy(dict):  # type: ignore[type-arg]
-    """Dict-like proxy that falls through to the TOML-backed pricing table."""
+    """Dict-like proxy that falls through to the shared pricing table."""
 
     def get(self, model: str, default: Any = None) -> Any:
         p = _get_model_pricing(model)
@@ -66,11 +65,10 @@ def estimate_cost(
     output_tokens: int,
     cache_read_tokens: int = 0,
 ) -> float:
-    """Compute USD cost using the TOML-backed model pricing table.
+    """Compute USD cost using the shared LiteLLM-backed pricing table.
 
-    Falls back to the ``[default]`` entry when the model id is unknown.
-    Edit ``src/atelier/model_pricing.toml`` (or set ``ATELIER_PRICING_FILE``)
-    to add new models or update prices.
+    Unknown models fall back to the zero-cost default until LiteLLM or a test
+    override provides pricing data for them.
     """
     return _get_model_pricing(model).cost_usd(input_tokens, output_tokens, cache_read_tokens)
 

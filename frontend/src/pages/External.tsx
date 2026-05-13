@@ -4,7 +4,8 @@ import {
   type ExternalAnalyticsResponse,
   type ExternalAnalyticsRun,
 } from "../api";
-import { MetricCard, SectionHeader } from "../components/WorkbenchUI";
+import { MetricCard } from "../components/WorkbenchUI";
+import { useTimeRange } from "../lib/TimeRangeContext";
 
 const TOOL_PRIORITY = ["codeburn", "codeburn:optimize", "tokscale"] as const;
 const TOKSCALE_TABS = [
@@ -22,7 +23,6 @@ const EXTERNAL_PERIOD_DAY_SPAN: Record<string, number> = {
   "30days": 30,
   all: 3650,
 };
-const EXTERNAL_MAX_DAYS = 365;
 const EXTERNAL_MAX_LIMIT = 200;
 
 type TokscaleTab = (typeof TOKSCALE_TABS)[number];
@@ -122,6 +122,19 @@ function displayToolName(tool: string) {
       return "Tokscale";
     default:
       return titleCaseKey(tool);
+  }
+}
+
+function toolDescription(tool: string) {
+  switch (tool) {
+    case "codeburn":
+      return "CodeBurn is best at showing where spend clusters by project, model, activity, and session. This view keeps the high-signal slices visible without dumping the whole payload at once.";
+    case "codeburn:optimize":
+      return "CodeBurn Optimize captures historical waste patterns and explicit next actions. This keeps the recommendations readable instead of burying them in one long terminal dump.";
+    case "tokscale":
+      return "Tokscale is now captured as a bundled report: the overview snapshot plus native models, hourly, monthly, and graph outputs. Older stored snapshots still show limited data until they are refreshed.";
+    default:
+      return "This tool does not have a specialized Atelier renderer yet, so this page keeps the important capture metadata visible and falls back to a shallow payload summary.";
   }
 }
 
@@ -257,20 +270,6 @@ function RelativeBar({
   );
 }
 
-function ExternalStatusBadge({ run }: { run: ExternalAnalyticsRun }) {
-  return (
-    <span
-      className={`inline-flex items-center border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
-        run.ok
-          ? "border-emerald-800/80 bg-emerald-950/30 text-emerald-300"
-          : "border-red-900/80 bg-red-950/30 text-red-300"
-      }`}
-    >
-      {run.ok ? "ok" : `error ${run.returncode ?? ""}`.trim()}
-    </span>
-  );
-}
-
 function toolTabClasses(tool: string, active: boolean) {
   if (tool === "tokscale") {
     return active
@@ -357,109 +356,6 @@ function EmptyPanel({ title, detail }: { title: string; detail: string }) {
       <div className="text-sm font-semibold text-neutral-100">{title}</div>
       <div className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-400">
         {detail}
-      </div>
-    </section>
-  );
-}
-
-function ToolHeader({
-  toolWindow,
-  blurb,
-}: {
-  toolWindow: ToolWindow;
-  blurb: string;
-}) {
-  const selectedPeriodLabel = titleCaseKey(
-    toolWindow.selectedPeriod || toolWindow.latest.period || "latest"
-  );
-  return (
-    <section className="border border-neutral-800 bg-neutral-950/50 p-5">
-      <SectionHeader
-        eyebrow="External Analyzer"
-        title={displayToolName(toolWindow.tool)}
-        description={blurb}
-        action={<ExternalStatusBadge run={toolWindow.latest} />}
-      />
-
-      <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
-        <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="border border-neutral-900 bg-black/30 p-3">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                Selected Window
-              </div>
-              <div className="mt-2 text-sm font-semibold text-neutral-100">
-                {selectedPeriodLabel}
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">
-                {toolWindow.selectedRuns.length} run
-                {toolWindow.selectedRuns.length === 1 ? "" : "s"} chosen for
-                this view
-              </div>
-            </div>
-            <div className="border border-neutral-900 bg-black/30 p-3">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                Observed Periods
-              </div>
-              <div className="mt-2 text-sm font-semibold text-neutral-100 break-words">
-                {toolWindow.observedPeriods.length
-                  ? toolWindow.observedPeriods.map(titleCaseKey).join(", ")
-                  : "Latest only"}
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">
-                {toolWindow.allRuns.length} stored snapshot
-                {toolWindow.allRuns.length === 1 ? "" : "s"}
-              </div>
-            </div>
-          </div>
-
-          <div className="border border-neutral-900 bg-black/30 p-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-              Latest Command
-            </div>
-            <div className="mt-2 break-all font-mono text-[11px] text-neutral-300">
-              {toolWindow.latest.command_display || "-"}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="border border-neutral-900 bg-black/30 p-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-              Capture Info
-            </div>
-            <div className="mt-2 space-y-1 text-sm text-neutral-300">
-              <div>
-                Collected {fmtTimestamp(toolWindow.latest.collected_at)}
-              </div>
-              <div>Source {toolWindow.latest.source || "-"}</div>
-            </div>
-          </div>
-
-          <div className="border border-neutral-900 bg-black/30 p-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-              Recent Captures
-            </div>
-            <div className="mt-3 space-y-2">
-              {toolWindow.selectedRuns.slice(0, 3).map((run) => (
-                <div
-                  key={run.id}
-                  className="flex items-center justify-between gap-3 border border-neutral-900 bg-neutral-950/40 px-3 py-2"
-                >
-                  <div>
-                    <div className="font-mono text-[11px] text-neutral-200">
-                      {fmtTimestamp(run.collected_at)}
-                    </div>
-                    <div className="mt-1 text-[10px] uppercase tracking-widest text-neutral-500">
-                      {titleCaseKey(run.period || "latest")}
-                    </div>
-                  </div>
-                  <ExternalStatusBadge run={run} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );
@@ -611,11 +507,6 @@ function CodeBurnPanel({ toolWindow }: { toolWindow: ToolWindow }) {
 
   return (
     <div className="space-y-6">
-      <ToolHeader
-        toolWindow={toolWindow}
-        blurb="CodeBurn is best at showing where spend clusters by project, model, activity, and session. This view keeps the high-signal slices visible without dumping the whole payload at once."
-      />
-
       <section className="border border-neutral-800 bg-neutral-950/50 p-5">
         <div className="grid gap-4 md:grid-cols-4">
           <div>
@@ -962,12 +853,6 @@ function CodeBurnPanel({ toolWindow }: { toolWindow: ToolWindow }) {
   );
 }
 
-function healthTone(grade: string) {
-  if (grade === "A" || grade === "B") return "emerald" as const;
-  if (grade === "C") return "amber" as const;
-  return "red" as const;
-}
-
 function CodeBurnOptimizePanel({ toolWindow }: { toolWindow: ToolWindow }) {
   const payload = asRecord(toolWindow.latest.payload);
   const overview = asRecord(payload.overview);
@@ -978,11 +863,6 @@ function CodeBurnOptimizePanel({ toolWindow }: { toolWindow: ToolWindow }) {
 
   return (
     <div className="space-y-6">
-      <ToolHeader
-        toolWindow={toolWindow}
-        blurb="CodeBurn Optimize captures historical waste patterns and explicit next actions. This keeps the recommendations readable instead of burying them in one long terminal dump."
-      />
-
       <section className="border border-neutral-800 bg-neutral-950/50 p-5">
         <div className="grid gap-4 md:grid-cols-4">
           <div>
@@ -1205,7 +1085,7 @@ function TokscaleContributionGraph({
                 )}
 
                 {/* Day cells */}
-                {week.map((entry, dayIdx) => (
+                {week.map((entry) => (
                   <div
                     key={`${entry.dateStr}`}
                     className={`h-4 w-4 rounded-sm border border-neutral-700 cursor-help transition-opacity hover:opacity-80 ${getCellColor(
@@ -1243,7 +1123,7 @@ function TokscaleContributionGraph({
             <div className="mt-1 text-sm font-semibold text-neutral-100">
               {toText(row.value)}
             </div>
-            {row.detail && (
+            {Boolean(row.detail) && (
               <div className="mt-0.5 text-[10px] text-neutral-500">
                 {toText(row.detail)}
               </div>
@@ -1393,11 +1273,6 @@ function TokscalePanel({ toolWindow }: { toolWindow: ToolWindow }) {
 
   return (
     <div className="space-y-6">
-      <ToolHeader
-        toolWindow={toolWindow}
-        blurb="Tokscale is now captured as a bundled report: the overview snapshot plus native models, hourly, monthly, and graph outputs. Older stored runs still show limited data until they are refreshed."
-      />
-
       <section className="grid gap-4 md:grid-cols-4">
         <MetricCard
           label="Spend"
@@ -1548,7 +1423,7 @@ function TokscalePanel({ toolWindow }: { toolWindow: ToolWindow }) {
           subtitle={
             modelEntries.length
               ? "Native tokscale models report captured alongside the overview snapshot."
-              : "This stored run predates the bundled Tokscale collector, so Atelier is falling back to the original grouped entries snapshot."
+              : "This stored snapshot predates the bundled Tokscale collector, so Atelier is falling back to the original grouped entries snapshot."
           }
           rows={modelRows}
           columns={[
@@ -1699,7 +1574,7 @@ function TokscalePanel({ toolWindow }: { toolWindow: ToolWindow }) {
         ) : (
           <TokscaleUnavailable
             title="Daily View Missing From This Snapshot"
-            detail="This stored Tokscale run predates the bundled collector. Refresh Tokscale after this change to capture day-level graph data."
+            detail="This stored Tokscale snapshot predates the bundled collector. Refresh Tokscale after this change to capture day-level graph data."
           />
         ))}
 
@@ -1771,7 +1646,7 @@ function TokscalePanel({ toolWindow }: { toolWindow: ToolWindow }) {
         ) : (
           <TokscaleUnavailable
             title="Hourly View Missing From This Snapshot"
-            detail="This stored Tokscale run predates the bundled collector. Refresh Tokscale after this change to capture the native hourly report."
+            detail="This stored Tokscale snapshot predates the bundled collector. Refresh Tokscale after this change to capture the native hourly report."
           />
         ))}
 
@@ -1785,7 +1660,7 @@ function TokscalePanel({ toolWindow }: { toolWindow: ToolWindow }) {
           ) : (
             <TokscaleUnavailable
               title="Contribution Graph Missing From This Snapshot"
-              detail="This stored Tokscale run predates the bundled collector. Refresh Tokscale after this change to capture day-level contribution data."
+              detail="This stored Tokscale snapshot predates the bundled collector. Refresh Tokscale after this change to capture day-level contribution data."
             />
           )}
 
@@ -1924,11 +1799,6 @@ function GenericToolPanel({ toolWindow }: { toolWindow: ToolWindow }) {
   const keys = Object.keys(payload).sort();
   return (
     <div className="space-y-6">
-      <ToolHeader
-        toolWindow={toolWindow}
-        blurb="This tool does not have a specialized Atelier renderer yet, so this page keeps the important capture metadata visible and falls back to a shallow payload summary."
-      />
-
       <section className="border border-neutral-800 bg-neutral-950/50 p-5">
         <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
           Payload Keys
@@ -1957,9 +1827,9 @@ function GenericToolPanel({ toolWindow }: { toolWindow: ToolWindow }) {
 function ExternalHistory({ runs }: { runs: ExternalAnalyticsRun[] }) {
   return (
     <CompactTableSection
-      title="Run History"
+      title="Snapshot History"
       subtitle="Recent stored snapshots for the active tool."
-      rows={runs.slice(0, 12)}
+      rows={runs.slice(0, 12).map((run) => run as unknown as TableRow)}
       columns={[
         {
           label: "Period",
@@ -2008,18 +1878,19 @@ export default function External() {
     useState<ExternalAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState({ days: 30 });
+  const { days } = useTimeRange();
   const [activeTool, setActiveTool] = useState("");
+  const selectedWindowDays = days;
 
   useEffect(() => {
     const externalLimit = Math.min(
       EXTERNAL_MAX_LIMIT,
-      Math.max(180, dateRange.days * 12)
+      Math.max(180, days * 12)
     );
     setLoading(true);
     setErr(null);
     api
-      .externalAnalytics(dateRange.days, undefined, externalLimit)
+      .externalAnalytics(days, undefined, externalLimit)
       .then((payload) => {
         setExternalData(payload);
       })
@@ -2028,11 +1899,11 @@ export default function External() {
         setExternalData(null);
       })
       .finally(() => setLoading(false));
-  }, [dateRange.days]);
+  }, [days]);
 
   const toolWindows = useMemo(
-    () => buildToolWindows(externalData?.runs ?? [], dateRange.days),
-    [externalData, dateRange.days]
+    () => buildToolWindows(externalData?.runs ?? [], selectedWindowDays),
+    [externalData, selectedWindowDays]
   );
 
   useEffect(() => {
@@ -2049,40 +1920,6 @@ export default function External() {
 
   return (
     <div className="min-h-screen max-w-7xl space-y-6 bg-black p-6 font-sans text-neutral-200 mx-auto">
-      <div className="flex flex-col gap-4 border-b border-neutral-800 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            External Reports
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-neutral-500">
-            Sidecar analyzers are now separated from Atelier's first-party
-            analytics. Each tool gets its own focused view so the stored
-            snapshots are readable and the missing fields are explicit.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase text-neutral-500">
-            Days
-          </span>
-          <input
-            type="number"
-            value={dateRange.days}
-            min={1}
-            max={EXTERNAL_MAX_DAYS}
-            onChange={(event) =>
-              setDateRange({
-                days: Math.min(
-                  EXTERNAL_MAX_DAYS,
-                  Math.max(1, parseInt(event.target.value, 10) || 30)
-                ),
-              })
-            }
-            className="w-16 border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-mono text-neutral-300 focus:border-cyan-500 focus:outline-none"
-          />
-        </div>
-      </div>
-
       {loading ? (
         <div className="p-6 text-sm italic text-neutral-500 animate-pulse">
           Loading external analyzer snapshots...
@@ -2098,50 +1935,23 @@ export default function External() {
         />
       ) : (
         <>
-          <section className="grid gap-4 md:grid-cols-4">
-            <MetricCard
-              label={`Captured Runs (${dateRange.days}d)`}
-              value={externalData.totals.runs_total.toString()}
-              tone="neutral"
-            />
-            <MetricCard
-              label="Successful"
-              value={externalData.totals.successful_runs.toString()}
-              tone="emerald"
-            />
-            <MetricCard
-              label="Failed"
-              value={externalData.totals.failed_runs.toString()}
-              tone="amber"
-            />
-            <MetricCard
-              label="Tools"
-              value={Object.keys(externalData.latest_by_tool).length.toString()}
-              tone="cyan"
-            />
-          </section>
-
-          <section className="border border-neutral-800 bg-neutral-950/40 p-4 text-sm leading-relaxed text-neutral-500">
-            Atelier stores the closest upstream period available for the
-            selected day range. This page prefers month snapshots for 30-day
-            windows, week snapshots for 7-day windows, and keeps gaps visible
-            instead of filling them with guessed data.
-          </section>
-
-          <div className="flex flex-wrap gap-2 border-b border-neutral-800 pb-2">
-            {toolWindows.map((toolWindow) => (
-              <button
-                key={toolWindow.tool}
-                type="button"
-                onClick={() => setActiveTool(toolWindow.tool)}
-                className={`border px-3 py-2 text-xs font-semibold uppercase tracking-wider transition ${toolTabClasses(
-                  toolWindow.tool,
-                  toolWindow.tool === activeToolWindow?.tool
-                )}`}
-              >
-                {displayToolName(toolWindow.tool)}
-              </button>
-            ))}
+          <div className="flex flex-col gap-3 border-b border-neutral-800 pb-2 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {toolWindows.map((toolWindow) => (
+                <button
+                  key={toolWindow.tool}
+                  type="button"
+                  onClick={() => setActiveTool(toolWindow.tool)}
+                  title={toolDescription(toolWindow.tool)}
+                  className={`border px-3 py-2 text-xs font-semibold uppercase tracking-wider transition ${toolTabClasses(
+                    toolWindow.tool,
+                    toolWindow.tool === activeToolWindow?.tool
+                  )}`}
+                >
+                  {displayToolName(toolWindow.tool)}
+                </button>
+              ))}
+            </div>
           </div>
 
           {activeToolWindow?.tool === "codeburn" && (
