@@ -16,7 +16,7 @@ describe("Traces page", () => {
     vi.restoreAllMocks();
   });
 
-  it("searches all runs in place and shows surrounding match snippets", async () => {
+  it("searches all sessions in place and shows surrounding match snippets", async () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -34,7 +34,8 @@ describe("Traces page", () => {
                   agent: "copilot",
                   host: "copilot",
                   domain: "coding",
-                  task: hasQuery ? "Search shell timeout" : "Baseline run",
+                  task:
+                    hasQuery ? "Search shell timeout" : "Baseline session",
                   status: "failed",
                   files_touched: [],
                   tools_called: [],
@@ -68,15 +69,15 @@ describe("Traces page", () => {
       });
 
     render(
-      <MemoryRouter initialEntries={["/runs"]}>
+      <MemoryRouter initialEntries={["/sessions"]}>
         <Routes>
-          <Route path="/runs" element={<Traces />} />
+          <Route path="/sessions" element={<Traces />} />
         </Routes>
       </MemoryRouter>
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Baseline run")).toBeInTheDocument();
+      expect(screen.getByText("Baseline session")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /^copilot$/i }));

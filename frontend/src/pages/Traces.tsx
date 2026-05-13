@@ -188,7 +188,7 @@ export default function Traces() {
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
           <label className="block">
             <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest text-neutral-500">
-              <span>Search All Runs</span>
+              <span>Search All Sessions</span>
               {searchPending && (
                 <span className="text-amber-300/70">Updating…</span>
               )}
@@ -283,9 +283,9 @@ export default function Traces() {
             </div>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-            Each run card shows surrounding matched text so you can jump
+            Each session card shows surrounding matched text so you can jump
             straight to the right session without leaving{" "}
-            <span className="font-mono text-neutral-400">/runs</span>.
+            <span className="font-mono text-neutral-400">/sessions</span>.
           </p>
         </section>
       )}
@@ -309,7 +309,7 @@ export default function Traces() {
         {!loading && filtered.length === 0 && (
           <div className="text-neutral-500 text-sm italic py-4 font-mono">
             {searchActive
-              ? "No runs match the current cross-session search."
+              ? "No sessions match the current cross-session search."
               : "No traces match the current filters."}
           </div>
         )}
@@ -386,7 +386,7 @@ function TraceCard({
                     {trace.domain}
                   </span>
                 )}
-                <HostBadge trace={trace} />
+                <HostAgentBadges trace={trace} />
               </div>
             </div>
             <p className="font-mono text-sm text-neutral-200 mb-1">
@@ -483,11 +483,11 @@ function TraceDetail({
         <div className="mt-3">
           <button
             type="button"
-            aria-label="Open run inspector"
+            aria-label="Open session inspector"
             onClick={onOpenInspector}
             className="text-[11px] px-2.5 py-1 border border-neutral-700 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50 transition"
           >
-            Open run inspector
+            Open session inspector
           </button>
         </div>
       </header>
@@ -1052,16 +1052,49 @@ const HOST_COLORS: Record<string, string> = {
   opencode: "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
 };
 
-function HostBadge({ trace }: { trace: Trace }) {
+const AGENT_COLORS: Record<string, string> = {
+  "atelier:code": "bg-amber-900/40 text-amber-300 border-amber-700/50",
+  "atelier:explore": "bg-cyan-900/40 text-cyan-300 border-cyan-700/50",
+  "atelier:general": "bg-neutral-700/60 text-neutral-300 border-neutral-600/50",
+  claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
+  gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
+  copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",
+  codex: "bg-teal-900/40 text-teal-300 border-teal-700/50",
+  opencode: "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
+};
+
+function HostAgentBadges({ trace }: { trace: Trace }) {
   const host = extractHost(trace);
+  const agent = trace.agent;
+
+  return (
+    <>
+      {/* Host badge — only shown for non-atelier hosts (atelier is the default runtime everywhere) */}
+      {host !== "atelier" && (
+        <span
+          className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${
+            HOST_COLORS[host] ??
+            "bg-neutral-800/60 text-neutral-400 border-neutral-700/50"
+          }`}
+        >
+          {host}
+        </span>
+      )}
+      <AgentBadge agent={agent} />
+    </>
+  );
+}
+
+function AgentBadge({ agent }: { agent: string }) {
+  const displayName = agent;
   const cls =
-    HOST_COLORS[host] ??
+    AGENT_COLORS[agent] ??
     "bg-neutral-800/60 text-neutral-400 border-neutral-700/50";
   return (
     <span
       className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${cls}`}
     >
-      {host}
+      {displayName}
     </span>
   );
 }

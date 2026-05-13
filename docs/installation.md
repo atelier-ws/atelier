@@ -10,11 +10,15 @@ curl -fsSL https://raw.githubusercontent.com/leanchain/atelier/main/scripts/inst
 
 What the installer does:
 
-- installs `atelier` and `atelier-mcp` into `~/.local/bin`
+- installs `atelier` and `atelier-mcp` as user-level console commands in `~/.local/bin`
 - clones or updates Atelier under `~/.local/share/atelier`
 - initializes `~/.atelier`
 - starts the detached `servicectl` loop
 - installs host integrations when compatible CLIs are found on `PATH`
+
+The installer uses uv at install time to create a managed tool environment.
+After install, `atelier` and `atelier-mcp` run directly from that environment;
+normal CLI usage does not shell through `uv run`.
 
 Verify the install:
 

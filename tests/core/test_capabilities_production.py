@@ -875,9 +875,11 @@ def test_pricing_unknown_model_returns_known_false() -> None:
 def test_pricing_tokens_to_usd_output() -> None:
     from atelier.core.capabilities.pricing import tokens_to_usd
 
-    # claude-sonnet-4 output = $15/1M → 1M tokens should cost $15
+    # LiteLLM exposes Anthropic long-context tiers for Claude Sonnet 4.
+    # Output tokens above 200k are billed at the higher tier.
     usd = tokens_to_usd("claude-sonnet-4", 1_000_000, "output")
-    assert abs(usd - 15.0) < 0.0001
+    expected = (200_000 * 15.0 + 800_000 * 22.5) / 1_000_000
+    assert abs(usd - expected) < 0.0001
 
 
 def test_pricing_cost_usd_multitype() -> None:

@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from atelier.core.capabilities.pricing import usage_cost_usd
 from atelier.core.service.config import cfg
 
 if TYPE_CHECKING:
@@ -112,6 +113,441 @@ def _build_external_analytics_detail(
         "latest_by_tool": latest_by_tool,
         "runs": runs,
     }
+
+
+_BILLABLE_ANALYTICS_EVENTS = {"prompt", "cached_prompt", "cache_create", "result", "thinking"}
+_NATIVE_ANALYTICS_TOOLS = {
+    "Read",
+    "Bash",
+    "Edit",
+    "Grep",
+    "Glob",
+    "Write",
+    "Agent",
+    "ListDir",
+    "bash",
+    "run_shell_command",
+    "exec_command",
+    "shell",
+    "read_file",
+    "replace",
+    "apply_patch",
+    "view",
+}
+
+
+def _llm_usage_cost(
+    model_id: str | None,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    thinking_tokens: int = 0,
+) -> float:
+    return usage_cost_usd(
+        model_id or "_default",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        thinking_tokens=thinking_tokens,
+    )
+
+
+def _usage_total_tokens(usage: dict[str, Any]) -> int:
+    return sum(
+        int(usage.get(field) or 0)
+        for field in (
+            "input_tokens",
+            "cached_input_tokens",
+            "cache_creation_input_tokens",
+            "output_tokens",
+            "thinking_tokens",
+        )
+    )
+
+
+def _model_usage_cost(usage: dict[str, Any]) -> float:
+    return _llm_usage_cost(
+        str(usage.get("model") or "_default"),
+        input_tokens=int(usage.get("input_tokens") or 0),
+        output_tokens=int(usage.get("output_tokens") or 0),
+        cache_read_tokens=int(usage.get("cached_input_tokens") or 0),
+        cache_write_tokens=int(usage.get("cache_creation_input_tokens") or 0),
+        thinking_tokens=int(usage.get("thinking_tokens") or 0),
+    )
+
+
+def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    aggregated: dict[str, dict[str, Any]] = {}
+    raw_usages = payload.get("model_usages")
+    if isinstance(raw_usages, list):
+        for raw_usage in raw_usages:
+            if not isinstance(raw_usage, dict):
+                continue
+            model_id = str(raw_usage.get("model") or payload.get("model") or "").strip()
+            usage = {
+                "input_tokens": int(raw_usage.get("input_tokens") or 0),
+                "output_tokens": int(raw_usage.get("output_tokens") or 0),
+                "thinking_tokens": int(raw_usage.get("thinking_tokens") or 0),
+                "cached_input_tokens": int(raw_usage.get("cached_input_tokens") or 0),
+                "cache_creation_input_tokens": int(raw_usage.get("cache_creation_input_tokens") or 0),
+            }
+            if not model_id and not any(usage.values()):
+                continue
+            bucket = aggregated.setdefault(model_id, {"model": model_id, **{key: 0 for key in usage}})
+            for field, value in usage.items():
+                bucket[field] += value
+
+    if not aggregated:
+        model_id = str(payload.get("model") or "").strip()
+        usage = {
+            "model": model_id,
+            "input_tokens": int(payload.get("input_tokens") or 0),
+            "output_tokens": int(payload.get("output_tokens") or 0),
+            "thinking_tokens": int(payload.get("thinking_tokens") or 0),
+            "cached_input_tokens": int(payload.get("cached_input_tokens") or 0),
+            "cache_creation_input_tokens": int(payload.get("cache_creation_input_tokens") or 0),
+        }
+        if model_id or any(value for key, value in usage.items() if key != "model"):
+            aggregated[model_id] = usage
+
+    usages = list(aggregated.values())
+    usages.sort(key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True)
+    return usages
+
+
+def _trace_primary_model(payload: dict[str, Any], model_usages: list[dict[str, Any]] | None = None) -> str:
+    usages = model_usages if model_usages is not None else _trace_model_usages(payload)
+    if usages:
+        return str(usages[0].get("model") or payload.get("model") or "")
+    return str(payload.get("model") or "")
+
+
+def _trace_cost_from_payload(payload: dict[str, Any]) -> float:
+    model_usages = _trace_model_usages(payload)
+    if model_usages:
+        return round(sum(_model_usage_cost(usage) for usage in model_usages), 8)
+    return _llm_usage_cost(
+        str(payload.get("model") or "_default"),
+        input_tokens=int(payload.get("input_tokens") or 0),
+        output_tokens=int(payload.get("output_tokens") or 0),
+        cache_read_tokens=int(payload.get("cached_input_tokens") or 0),
+        cache_write_tokens=int(payload.get("cache_creation_input_tokens") or 0),
+        thinking_tokens=int(payload.get("thinking_tokens") or 0),
+    )
+
+
+def _analytics_event_cost(model_id: str | None, event_type: str, input_tokens: int, output_tokens: int) -> float:
+    if event_type == "prompt":
+        return _llm_usage_cost(model_id, input_tokens=input_tokens)
+    if event_type == "cached_prompt":
+        return _llm_usage_cost(model_id, cache_read_tokens=input_tokens)
+    if event_type == "cache_create":
+        return _llm_usage_cost(model_id, cache_write_tokens=input_tokens)
+    if event_type == "result":
+        return _llm_usage_cost(model_id, output_tokens=output_tokens)
+    if event_type == "thinking":
+        return _llm_usage_cost(model_id, thinking_tokens=output_tokens)
+    if event_type == "tool_call":
+        # Tool outputs re-enter the next prompt window and use input pricing.
+        return _llm_usage_cost(model_id, input_tokens=output_tokens)
+    return 0.0
+
+
+def _filter_analytics_rows(
+    rows: list[dict[str, Any]],
+    *,
+    agent: str | None = None,
+    model: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+) -> list[dict[str, Any]]:
+    agent_match = (agent or "").strip().lower()
+    model_match = (model or "").strip().lower()
+    search_match = (search or "").strip().lower()
+
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        row_agent = str(row.get("agent") or "").strip().lower()
+        row_model = str(row.get("model") or "").strip().lower()
+        if agent_match and row_agent != agent_match:
+            continue
+        if model_match and row_model != model_match:
+            continue
+        if category and row.get("category") != category:
+            continue
+        if search_match:
+            tool_name = str(row.get("tool_name") or "").lower()
+            sub_command = str(row.get("sub_command") or "").lower()
+            if search_match not in tool_name and search_match not in sub_command:
+                continue
+        filtered.append(row)
+    return filtered
+
+
+def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) -> dict[str, Any]:
+    total_output_tokens = sum(
+        int(row.get("output_tokens") or 0)
+        for row in rows
+        if row.get("event_type") in {"result", "thinking", "tool_call"}
+    )
+    user_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string")
+    tool_calls = sum(int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call")
+    unique_tools = len(
+        {
+            str(row.get("tool_name") or "")
+            for row in rows
+            if row.get("event_type") == "tool_call" and row.get("tool_name")
+        }
+    )
+    cached_prompt_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "cached_prompt"
+    )
+    model_response_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result")
+    model_thinking_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "thinking"
+    )
+    tool_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    tool_output_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    total_cost = round(
+        sum(float(row.get("cost") or 0.0) for row in rows if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS),
+        6,
+    )
+    effective_days = max(1, days or 1)
+    estimated_monthly_cost = round(total_cost * (30 / effective_days), 6)
+
+    tool_costs: defaultdict[str, float] = defaultdict(float)
+    for row in rows:
+        tool_costs[str(row.get("tool_name") or "—")] += float(row.get("cost") or 0.0)
+    top_cost_driver = max(tool_costs.items(), key=lambda item: item[1])[0] if tool_costs else "—"
+
+    return {
+        "total_cost": total_cost,
+        "estimated_monthly_cost": estimated_monthly_cost,
+        "top_cost_driver": top_cost_driver,
+        "user_input_tokens": user_input_tokens,
+        "model_thinking_tokens": model_thinking_tokens,
+        "llm_output_tokens": model_response_tokens + tool_input_tokens,
+        "tool_output_tokens": tool_output_tokens,
+        "cached_prompt_tokens": cached_prompt_tokens,
+        "tool_calls": tool_calls,
+        "unique_tools": unique_tools,
+        "total_output_tokens": total_output_tokens,
+        "row_count": len(rows),
+    }
+
+
+def _tool_category(tool_name: str) -> str:
+    return "Native / Unoptimized" if tool_name in _NATIVE_ANALYTICS_TOOLS else "Atelier Optimized"
+
+
+def _trace_analytics_events(
+    trace_id: str,
+    agent: str,
+    host: str | None,
+    created_at: str,
+    payload: dict[str, Any],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    model_usages = _trace_model_usages(payload)
+    primary_model = _trace_primary_model(payload, model_usages)
+    session_host = host or agent
+
+    def _append_event(
+        *,
+        model: str,
+        event_type: str,
+        tool_name: str,
+        category: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        call_count: int = 1,
+        sub_command: str | None = None,
+    ) -> None:
+        events.append(
+            {
+                "trace_id": trace_id,
+                "host": session_host,
+                "agent": agent,
+                "model": model,
+                "event_type": event_type,
+                "tool_name": tool_name,
+                "sub_command": sub_command,
+                "category": category,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "first_seen": created_at,
+                "last_seen": created_at,
+                "call_count": call_count,
+                "session_count": 1,
+                "cost": _analytics_event_cost(model, event_type, input_tokens, output_tokens),
+            }
+        )
+
+    user_prompt_tokens = int(payload.get("user_prompt_tokens") or 0)
+    if user_prompt_tokens > 0:
+        _append_event(
+            model=primary_model,
+            event_type="user_string",
+            tool_name="User Entered String",
+            category="User Activity",
+            input_tokens=user_prompt_tokens,
+        )
+
+    for usage in model_usages:
+        model_id = str(usage.get("model") or primary_model)
+        input_tokens = int(usage.get("input_tokens") or 0)
+        cached_input_tokens = int(usage.get("cached_input_tokens") or 0)
+        cache_write_tokens = int(usage.get("cache_creation_input_tokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or 0)
+        thinking_tokens = int(usage.get("thinking_tokens") or 0)
+
+        if input_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="prompt",
+                tool_name="Context Window (Base)",
+                category="LLM Context",
+                input_tokens=input_tokens,
+            )
+        if cached_input_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="cached_prompt",
+                tool_name="Cached Prompt (Cache Read)",
+                category="LLM Context (Cache Read)",
+                input_tokens=cached_input_tokens,
+            )
+        if cache_write_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="cache_create",
+                tool_name="Cache Write",
+                category="LLM Context (Cache Write)",
+                input_tokens=cache_write_tokens,
+            )
+        if output_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="result",
+                tool_name="Assistant Response",
+                category="LLM Generation",
+                output_tokens=output_tokens,
+            )
+        if thinking_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="thinking",
+                tool_name="Thinking",
+                category="LLM Generation",
+                output_tokens=thinking_tokens,
+            )
+
+    for raw_tool in payload.get("tools_called") or []:
+        if not isinstance(raw_tool, dict):
+            continue
+        tool_name = str(raw_tool.get("name") or "unknown")
+        _append_event(
+            model=primary_model,
+            event_type="tool_call",
+            tool_name=tool_name,
+            category=_tool_category(tool_name),
+            input_tokens=int(raw_tool.get("input_tokens") or 0),
+            output_tokens=int(raw_tool.get("output_tokens") or 0),
+            call_count=int(raw_tool.get("count") or 1),
+        )
+
+    return events
+
+
+def _group_analytics_rows(events: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    grouped_rows: dict[tuple[Any, ...], dict[str, Any]] = {}
+    session_ids: dict[tuple[Any, ...], set[str]] = {}
+
+    for event in events:
+        key = (
+            event["host"],
+            event["agent"],
+            event["model"],
+            event["event_type"],
+            event["tool_name"],
+            event["sub_command"],
+            event["category"],
+        )
+        row = grouped_rows.get(key)
+        if row is None:
+            row = dict(event)
+            grouped_rows[key] = row
+            session_ids[key] = {str(event["trace_id"])}
+            continue
+
+        row["input_tokens"] += int(event.get("input_tokens") or 0)
+        row["output_tokens"] += int(event.get("output_tokens") or 0)
+        row["call_count"] += int(event.get("call_count") or 0)
+        row["cost"] = round(float(row.get("cost") or 0.0) + float(event.get("cost") or 0.0), 8)
+        row["first_seen"] = min(str(row.get("first_seen") or ""), str(event.get("first_seen") or ""))
+        row["last_seen"] = max(str(row.get("last_seen") or ""), str(event.get("last_seen") or ""))
+        session_ids[key].add(str(event["trace_id"]))
+
+    rows: list[dict[str, Any]] = []
+    for key, row in grouped_rows.items():
+        row["session_count"] = len(session_ids[key])
+        row.pop("trace_id", None)
+        rows.append(row)
+
+    rows.sort(key=lambda row: str(row.get("last_seen") or ""), reverse=True)
+    return rows[:limit]
+
+
+def _query_analytics_rows(
+    db_path: str | Path,
+    *,
+    grouped: bool,
+    days: int | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    params: list[Any] = []
+
+    sql = f"""
+        SELECT id, agent, host, payload, created_at
+        FROM traces
+        WHERE 1=1 {"AND created_at >= datetime('now', '-' || ? || ' days')" if days else ""}
+        ORDER BY created_at DESC
+    """
+
+    if days:
+        params.append(days)
+
+    events: list[dict[str, Any]] = []
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(sql, params).fetchall():
+            try:
+                payload = json.loads(row["payload"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            events.extend(
+                _trace_analytics_events(
+                    str(row["id"]),
+                    str(row["agent"] or ""),
+                    str(row["host"] or ""),
+                    str(row["created_at"] or ""),
+                    payload,
+                )
+            )
+
+    if grouped:
+        return _group_analytics_rows(events, limit=limit)
+
+    events.sort(key=lambda event: str(event.get("last_seen") or ""), reverse=True)
+    rows = [dict(event) for event in events[:limit]]
+    for row in rows:
+        row.pop("trace_id", None)
+    return rows
 
 
 def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
@@ -1182,7 +1618,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-    from atelier.core.foundation.models import Trace, to_jsonable
+    from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
     from atelier.core.foundation.store import ReasoningStore
 
     security = HTTPBearer(auto_error=False)
@@ -1256,7 +1692,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
         store = get_store()
         summary = summarize(store)
 
-        # Calculate tokens/cost from ALL traces in database (high-fidelity)
+        # Calculate tokens/cost from ALL traces in database using the shared
+        # backend pricing path.
         total_raw_tokens = 0
         total_cost_usd = 0.0
 
@@ -1273,8 +1710,14 @@ def create_app(store_root: str | Path | None = None) -> Any:
             if row:
                 inp, out, cr, th = row
                 total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
-                # Heuristic pricing for overview totals ($3/$15)
-                total_cost_usd = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1000000.0
+
+            conn.row_factory = sqlite3.Row
+            for trace_row in conn.execute("SELECT payload FROM traces"):
+                try:
+                    payload = json.loads(trace_row["payload"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                total_cost_usd += _trace_cost_from_payload(payload)
 
         tracker = CostTracker(root)
         savings = tracker.total_savings()
@@ -1552,176 +1995,23 @@ def create_app(store_root: str | Path | None = None) -> Any:
         Calculated on the fly from the JSON payloads in the traces table
         to ensure 100% lossless session-level accuracy.
         """
-        import sqlite3
-
-        from atelier.core.capabilities.pricing import get_model_pricing
-
         db_path = store.db_path
-        params: list[Any] = []
+        rows = _query_analytics_rows(db_path, grouped=grouped, days=days, limit=limit)
+        return _filter_analytics_rows(rows, agent=agent, category=category)
 
-        if grouped:
-            sql = f"""
-                WITH
-                trace_data AS (
-                    SELECT
-                        id as trace_id,
-                        agent,
-                        host,
-                        json_extract(payload, '$.model') as model,
-                        CAST(json_extract(payload, '$.input_tokens') AS INTEGER) as input_tokens,
-                        CAST(json_extract(payload, '$.output_tokens') AS INTEGER) as output_tokens,
-                        CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) as thinking_tokens,
-                        CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) as cached_input_tokens,
-                        CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) as cache_creation_input_tokens,
-                        CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) as user_prompt_tokens,
-                        payload,
-                        created_at
-                    FROM traces
-                    WHERE 1=1 {"AND agent = ?" if agent else ""} {"AND created_at >= datetime('now', '-' || ? || ' days')" if days else ""}
-                ),
-                events AS (
-                    SELECT trace_id, agent, host, model, 'user_string' as event_type, 'User Entered String' as tool_name,
-                           NULL as sub_command, 'User Activity' as category,
-                           user_prompt_tokens as input_tokens, 0 as output_tokens, created_at, 1 as call_count
-                    FROM trace_data WHERE user_prompt_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'prompt' as event_type, 'Context Window (Base)' as tool_name,
-                           NULL as sub_command, 'LLM Context' as category,
-                           COALESCE(input_tokens, 0) as input_tokens, 0 as output_tokens, created_at, 1 as call_count
-                    FROM trace_data WHERE input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'cached_prompt', 'Cached Prompt (Cache Read)', NULL, 'LLM Context (Cache Read)',
-                           cached_input_tokens, 0, created_at, 1 as call_count
-                    FROM trace_data WHERE cached_input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'cache_create', 'Cache Write (Anthropic)', NULL, 'LLM Context (Cache Write)',
-                           cache_creation_input_tokens, 0, created_at, 1 as call_count
-                    FROM trace_data WHERE cache_creation_input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'result', 'Assistant Response', NULL, 'LLM Generation',
-                           0, output_tokens, created_at, 1 as call_count
-                    FROM trace_data WHERE output_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'thinking', 'Thinking', NULL, 'LLM Generation',
-                           0, thinking_tokens, created_at, 1 as call_count
-                    FROM trace_data WHERE thinking_tokens > 0
-                    UNION ALL
-                    SELECT
-                        t.trace_id, t.agent, t.host, t.model, 'tool_call', json_extract(tc.value, '$.name'), NULL,
-                        CASE WHEN json_extract(tc.value, '$.name') IN ('Read', 'Bash', 'Edit', 'Grep', 'Glob', 'Write', 'Agent', 'ListDir', 'bash', 'run_shell_command', 'exec_command', 'shell', 'read_file', 'replace', 'apply_patch', 'view') THEN 'Native / Unoptimized' ELSE 'Atelier Optimized' END,
-                        CAST(json_extract(tc.value, '$.input_tokens') AS INTEGER),
-                        CAST(json_extract(tc.value, '$.output_tokens') AS INTEGER),
-                        t.created_at,
-                        CAST(json_extract(tc.value, '$.count') AS INTEGER)
-                    FROM trace_data t, json_each(t.payload, '$.tools_called') tc
-                )
-                SELECT
-                    host, agent, model, event_type, tool_name, sub_command, category,
-                    SUM(input_tokens) as input_tokens,
-                    SUM(output_tokens) as output_tokens,
-                    MIN(created_at) as first_seen,
-                    MAX(created_at) as last_seen,
-                    SUM(call_count) as call_count,
-                    COUNT(DISTINCT trace_id) as session_count
-                FROM events
-                WHERE 1=1 {"AND category = ?" if category else ""}
-                GROUP BY host, agent, model, event_type, tool_name, sub_command, category
-                ORDER BY last_seen DESC LIMIT ?
-            """
-        else:
-            sql = f"""
-                WITH
-                trace_data AS (
-                    SELECT
-                        id as trace_id,
-                        agent,
-                        host,
-                        json_extract(payload, '$.model') as model,
-                        CAST(json_extract(payload, '$.input_tokens') AS INTEGER) as input_tokens,
-                        CAST(json_extract(payload, '$.output_tokens') AS INTEGER) as output_tokens,
-                        CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) as thinking_tokens,
-                        CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) as cached_input_tokens,
-                        CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) as cache_creation_input_tokens,
-                        CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) as user_prompt_tokens,
-                        payload,
-                        created_at
-                    FROM traces
-                    WHERE 1=1 {"AND agent = ?" if agent else ""} {"AND created_at >= datetime('now', '-' || ? || ' days')" if days else ""}
-                ),
-                events AS (
-                    SELECT trace_id, agent, host, model, 'user_string' as event_type, 'User Entered String' as tool_name, NULL as sub_command, 'User Activity' as category, user_prompt_tokens as input_tokens, 0 as output_tokens, created_at FROM trace_data WHERE user_prompt_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'prompt' as event_type, 'Context Window (Base)' as tool_name, NULL as sub_command, 'LLM Context' as category, COALESCE(input_tokens, 0) as input_tokens, 0 as output_tokens, created_at FROM trace_data WHERE input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'cached_prompt', 'Cached Prompt (Cache Read)', NULL, 'LLM Context (Cache Read)', cached_input_tokens, 0, created_at FROM trace_data WHERE cached_input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'cache_create', 'Cache Write (Anthropic)', NULL, 'LLM Context (Cache Write)', cache_creation_input_tokens, 0, created_at FROM trace_data WHERE cache_creation_input_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'result', 'Assistant Response', NULL, 'LLM Generation', 0, output_tokens, created_at FROM trace_data WHERE output_tokens > 0
-                    UNION ALL
-                    SELECT trace_id, agent, host, model, 'thinking', 'Thinking', NULL, 'LLM Generation', 0, thinking_tokens, created_at FROM trace_data WHERE thinking_tokens > 0
-                    UNION ALL
-                    SELECT
-                        t.trace_id, t.agent, t.host, t.model, 'tool_call', json_extract(tc.value, '$.name'), NULL,
-                        CASE WHEN json_extract(tc.value, '$.name') IN ('Read', 'Bash', 'Edit', 'Grep', 'Glob', 'Write', 'Agent', 'ListDir', 'bash', 'run_shell_command', 'exec_command', 'shell', 'read_file', 'replace', 'apply_patch', 'view') THEN 'Native / Unoptimized' ELSE 'Atelier Optimized' END,
-                        CAST(json_extract(tc.value, '$.input_tokens') AS INTEGER),
-                        CAST(json_extract(tc.value, '$.output_tokens') AS INTEGER),
-                        t.created_at
-                    FROM trace_data t, json_each(t.payload, '$.tools_called') tc
-                )
-                SELECT host, agent, model, event_type, tool_name, sub_command, category, input_tokens, output_tokens, created_at as first_seen, created_at as last_seen, 1 as call_count, 1 as session_count
-                FROM events
-                WHERE 1=1 {"AND category = ?" if category else ""}
-                ORDER BY created_at DESC LIMIT ?
-            """
-
-        if agent:
-            params.append(agent)
-        if days:
-            params.append(days)
-        if category:
-            params.append(category)
-        params.append(limit)
-
-        result = []
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(sql, params).fetchall()
-            for r in rows:
-                d = dict(r)
-                model_id = d.get("model") or "_default"
-                pricing = get_model_pricing(model_id)
-
-                etype = d.get("event_type")
-                in_t = d.get("input_tokens", 0) or 0
-                out_t = d.get("output_tokens", 0) or 0
-
-                cache_r = 0
-                cache_w = 0
-                bill_in = 0
-                bill_out = 0
-
-                if etype == "prompt" or etype == "user_string":
-                    # NOTE: user_string is informational; ONLY bill 'prompt'
-                    bill_in = in_t if etype == "prompt" else 0
-                elif etype == "cache_create":
-                    cache_w = in_t
-                elif etype == "cached_prompt":
-                    cache_r = in_t
-                elif etype == "result" or etype == "thinking":
-                    bill_out = out_t
-                elif etype == "tool_call":
-                    # Tool output attributed as future context (input rate)
-                    bill_in = out_t
-
-                d["cost"] = pricing.cost_usd(
-                    input_tokens=bill_in,
-                    output_tokens=bill_out,
-                    cache_read_tokens=cache_r,
-                    cache_write_tokens=cache_w,
-                )
-                result.append(d)
-        return result
+    @app.get("/analytics/summary", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_summary(
+        agent: str | None = Query(None),
+        model: str | None = Query(None),
+        category: str | None = Query(None),
+        search: str | None = Query(None),
+        limit: int = Query(5000, ge=1, le=10000),
+        grouped: bool = Query(True),
+        days: int | None = Query(None),
+    ) -> dict[str, Any]:
+        rows = _query_analytics_rows(store.db_path, grouped=grouped, days=days, limit=limit)
+        filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
+        return _build_analytics_summary(filtered, days=days)
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
     def analytics_dashboard(
@@ -1733,8 +2023,6 @@ def create_app(store_root: str | Path | None = None) -> Any:
         Returns daily activity, per-domain, per-host, per-model breakdowns,
         top sessions, and tool-type distributions in one call.
         """
-        from atelier.core.capabilities.pricing import get_model_pricing
-
         db_path = store.db_path
         host_filter = "AND COALESCE(host, agent) = ?" if host else ""
         sql = f"""
@@ -1767,8 +2055,28 @@ def create_app(store_root: str | Path | None = None) -> Any:
             rows = conn.execute(sql, params).fetchall()
             for row in rows:
                 d = dict(row)
-                model_id = d.get("model") or "_default"
-                pricing = get_model_pricing(model_id)
+                payload_obj: dict[str, Any] = {}
+                tools_called: list[dict[str, Any]] = []
+                try:
+                    parsed_payload = json.loads(d.get("payload") or "{}")
+                    if isinstance(parsed_payload, dict):
+                        payload_obj = parsed_payload
+                        raw_tools = payload_obj.get("tools_called") or []
+                        if isinstance(raw_tools, list):
+                            tools_called = [tool for tool in raw_tools if isinstance(tool, dict)]
+                except (json.JSONDecodeError, TypeError) as exc:
+                    logger.warning("Failed to parse trace payload: %s", exc)
+
+                payload_for_usage = payload_obj or {
+                    "model": d.get("model") or "",
+                    "input_tokens": d.get("input_tokens") or 0,
+                    "output_tokens": d.get("output_tokens") or 0,
+                    "thinking_tokens": d.get("thinking_tokens") or 0,
+                    "cached_input_tokens": d.get("cached_tokens") or 0,
+                    "cache_creation_input_tokens": d.get("cache_write_tokens") or 0,
+                }
+                model_usages = _trace_model_usages(payload_for_usage)
+                primary_model = _trace_primary_model(payload_for_usage, model_usages)
 
                 in_t = d.get("input_tokens") or 0
                 out_t = d.get("output_tokens") or 0
@@ -1776,26 +2084,15 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 cache_r = d.get("cached_tokens") or 0
                 cache_w = d.get("cache_write_tokens") or 0
 
-                cost = pricing.cost_usd(
-                    input_tokens=in_t,
-                    output_tokens=out_t + think_t,
-                    cache_read_tokens=cache_r,
-                    cache_write_tokens=cache_w,
-                )
-
-                tools_called: list[dict] = []
-                try:
-                    payload_obj = json.loads(d.get("payload") or "{}")
-                    tools_called = payload_obj.get("tools_called") or []
-                except (json.JSONDecodeError, AttributeError) as exc:
-                    logger.warning("Failed to parse tools_called payload: %s", exc)
+                cost = _trace_cost_from_payload(payload_for_usage)
 
                 sessions.append(
                     {
                         "id": d["id"],
                         "host": d["host"] or "unknown",
                         "domain": d["domain"] or "unknown",
-                        "model": d.get("model") or "",
+                        "model": primary_model,
+                        "model_usages": model_usages,
                         "day": d.get("day") or "",
                         "created_at": d.get("created_at") or "",
                         "input_tokens": in_t,
@@ -1842,7 +2139,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
         # Excluding them keeps dashboard breakdowns aligned with real usage sessions.
         dashboard_sessions = [session for session in sessions if _has_usage_signal(session)]
 
-        daily: dict[str, dict] = {}
+        daily: dict[str, dict[str, Any]] = {}
+        hourly: dict[str, dict[str, Any]] = {}
         for s in dashboard_sessions:
             day = s["day"]
             if day not in daily:
@@ -1851,9 +2149,26 @@ def create_app(store_root: str | Path | None = None) -> Any:
             daily[day]["cost"] += s["cost"]
             daily[day]["input_tokens"] += s["input_tokens"]
             daily[day]["output_tokens"] += s["output_tokens"]
-        daily_list = sorted(daily.values(), key=lambda x: x["date"])
 
-        by_domain: dict[str, dict] = {}
+            created_at = str(s.get("created_at") or "")
+            if len(created_at) >= 13:
+                hour = created_at[:13].replace("T", " ") + ":00"
+                if hour not in hourly:
+                    hourly[hour] = {
+                        "date": hour,
+                        "sessions": 0,
+                        "cost": 0.0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+                hourly[hour]["sessions"] += 1
+                hourly[hour]["cost"] += s["cost"]
+                hourly[hour]["input_tokens"] += s["input_tokens"]
+                hourly[hour]["output_tokens"] += s["output_tokens"]
+        daily_list = sorted(daily.values(), key=lambda x: x["date"])
+        hourly_list = sorted(hourly.values(), key=lambda x: x["date"])
+
+        by_domain: dict[str, dict[str, Any]] = {}
         for s in dashboard_sessions:
             dom = s["domain"]
             if dom not in by_domain:
@@ -1864,7 +2179,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
         for r in by_domain_list:
             r["avg_cost"] = r["cost"] / r["sessions"] if r["sessions"] else 0.0
 
-        by_host: dict[str, dict] = {}
+        by_host: dict[str, dict[str, Any]] = {}
         for s in dashboard_sessions:
             h = s["host"]
             if h not in by_host:
@@ -1878,23 +2193,27 @@ def create_app(store_root: str | Path | None = None) -> Any:
             total_in = r["input_tokens"] + r["cached_tokens"]
             r["cache_pct"] = (r["cached_tokens"] / total_in * 100) if total_in else 0.0
 
-        by_model: dict[str, dict] = {}
+        by_model: dict[str, dict[str, Any]] = {}
         for s in dashboard_sessions:
-            mdl = s["model"] or "unknown"
-            if mdl not in by_model:
-                by_model[mdl] = {
-                    "model": mdl,
-                    "sessions": 0,
-                    "cost": 0.0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_tokens": 0,
-                }
-            by_model[mdl]["sessions"] += 1
-            by_model[mdl]["cost"] += s["cost"]
-            by_model[mdl]["input_tokens"] += s["input_tokens"]
-            by_model[mdl]["output_tokens"] += s["output_tokens"]
-            by_model[mdl]["cached_tokens"] += s["cached_tokens"]
+            seen_models: set[str] = set()
+            for usage in s.get("model_usages") or []:
+                mdl = str(usage.get("model") or "unknown") or "unknown"
+                if mdl not in by_model:
+                    by_model[mdl] = {
+                        "model": mdl,
+                        "sessions": 0,
+                        "cost": 0.0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                    }
+                if mdl not in seen_models:
+                    by_model[mdl]["sessions"] += 1
+                    seen_models.add(mdl)
+                by_model[mdl]["cost"] += _model_usage_cost(usage)
+                by_model[mdl]["input_tokens"] += int(usage.get("input_tokens") or 0)
+                by_model[mdl]["output_tokens"] += int(usage.get("output_tokens") or 0)
+                by_model[mdl]["cached_tokens"] += int(usage.get("cached_input_tokens") or 0)
         by_model_list = sorted(by_model.values(), key=lambda x: x["cost"], reverse=True)
         for r in by_model_list:
             total_in = r["input_tokens"] + r["cached_tokens"]
@@ -1903,34 +2222,40 @@ def create_app(store_root: str | Path | None = None) -> Any:
         host_model_overview: dict[tuple[str, str], dict[str, Any]] = {}
         for s in dashboard_sessions:
             host_name = s["host"] or "unknown"
-            model_name = s["model"] or "unknown"
-            key = (host_name, model_name)
-            if key not in host_model_overview:
-                host_model_overview[key] = {
-                    "host": host_name,
-                    "model": model_name,
-                    "sessions": 0,
-                    "user_typed_tokens": 0,
-                    "base_context_tokens": 0,
-                    "cached_prompt_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "billable_output_tokens": 0,
-                    "tool_output_tokens": 0,
-                    "thinking_tokens": 0,
-                    "tool_calls": 0,
-                    "cost": 0.0,
-                }
-            row = host_model_overview[key]
-            row["sessions"] += 1
-            row["user_typed_tokens"] += s["user_prompt_tokens"]
-            row["base_context_tokens"] += s["input_tokens"]
-            row["cached_prompt_tokens"] += s["cached_tokens"]
-            row["cache_write_tokens"] += s["cache_write_tokens"]
-            row["billable_output_tokens"] += s["output_tokens"]
-            row["tool_output_tokens"] += _tool_output_tokens(s)
-            row["thinking_tokens"] += s["thinking_tokens"]
-            row["tool_calls"] += _tool_call_count(s)
-            row["cost"] += s["cost"]
+            primary_model = s["model"] or "unknown"
+            seen_pairs: set[tuple[str, str]] = set()
+            for usage in s.get("model_usages") or []:
+                model_name = str(usage.get("model") or primary_model) or "unknown"
+                key = (host_name, model_name)
+                if key not in host_model_overview:
+                    host_model_overview[key] = {
+                        "host": host_name,
+                        "model": model_name,
+                        "sessions": 0,
+                        "user_typed_tokens": 0,
+                        "base_context_tokens": 0,
+                        "cached_prompt_tokens": 0,
+                        "cache_write_tokens": 0,
+                        "billable_output_tokens": 0,
+                        "tool_output_tokens": 0,
+                        "thinking_tokens": 0,
+                        "tool_calls": 0,
+                        "cost": 0.0,
+                    }
+                row = host_model_overview[key]
+                if key not in seen_pairs:
+                    row["sessions"] += 1
+                    seen_pairs.add(key)
+                row["base_context_tokens"] += int(usage.get("input_tokens") or 0)
+                row["cached_prompt_tokens"] += int(usage.get("cached_input_tokens") or 0)
+                row["cache_write_tokens"] += int(usage.get("cache_creation_input_tokens") or 0)
+                row["billable_output_tokens"] += int(usage.get("output_tokens") or 0)
+                row["thinking_tokens"] += int(usage.get("thinking_tokens") or 0)
+                row["cost"] += _model_usage_cost(usage)
+                if model_name == primary_model:
+                    row["user_typed_tokens"] += s["user_prompt_tokens"]
+                    row["tool_output_tokens"] += _tool_output_tokens(s)
+                    row["tool_calls"] += _tool_call_count(s)
         host_model_overview_list = sorted(
             host_model_overview.values(),
             key=lambda row: (row["cost"], row["sessions"]),
@@ -1973,9 +2298,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
         }
         _SHELL = {"Bash", "bash", "run_shell_command", "exec_command", "shell", "run_code"}
 
-        core_tools: dict[str, dict] = {}
-        shell_tools: dict[str, dict] = {}
-        mcp_tools: dict[str, dict] = {}
+        core_tools: dict[str, dict[str, Any]] = {}
+        shell_tools: dict[str, dict[str, Any]] = {}
+        mcp_tools: dict[str, dict[str, Any]] = {}
 
         for s in dashboard_sessions:
             for tool in s["tools_called"]:
@@ -2002,7 +2327,16 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 bucket[name]["output_tokens"] += tout
 
         return {
+            "summary": {
+                "total_cost": round(sum(float(session["cost"]) for session in dashboard_sessions), 6),
+                "projected_monthly_cost": round(
+                    sum(float(session["cost"]) for session in dashboard_sessions) * (30 / max(days, 1)),
+                    6,
+                ),
+                "total_sessions": len(dashboard_sessions),
+            },
             "daily": daily_list,
+            "hourly": hourly_list,
             "by_domain": by_domain_list,
             "by_host": by_host_list,
             "by_model": by_model_list,
@@ -2127,7 +2461,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
                     "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?", (session_id,)
                 ).fetchone()
                 if row:
-                    trace = Trace.model_validate_json(row[0])
+                    trace = Trace.model_validate_json(coerce_trace_json(row[0]))
 
         conversations: list[dict[str, Any]] = []
         source_paths: list[str] = []
@@ -2213,11 +2547,23 @@ def create_app(store_root: str | Path | None = None) -> Any:
     @app.get("/mcp/status", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def mcp_status() -> list[dict[str, Any]]:
         try:
-            from atelier.gateway.adapters.mcp_server import TOOLS
+            from atelier.gateway.adapters.mcp_server import (
+                TOOLS,
+                _tool_description,
+                _tool_mode,
+                _tool_visible_to_llm,
+            )
 
             return [
-                {"tool_name": name, "available": True, "description": spec.get("description", "")}
+                {
+                    "tool_name": name,
+                    "available": True,
+                    "description": _tool_description(spec),
+                    "is_dev": bool(spec.get("is_dev")),
+                    "mode": _tool_mode(spec),
+                }
                 for name, spec in TOOLS.items()
+                if _tool_visible_to_llm(name, spec)
             ]
         except Exception as exc:
             logger.warning("Failed to load MCP tool status: %s", exc, exc_info=True)
@@ -2254,17 +2600,17 @@ def create_app(store_root: str | Path | None = None) -> Any:
     # Skills                                                              #
     # ------------------------------------------------------------------ #
 
-    DEV_ONLY_SKILLS = {"reasoning", "lint", "rescue", "trace"}
-
     @app.get("/skills", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def list_skills() -> list[dict[str, Any]]:
+        from atelier.core.environment import skill_visible
+
         root = Path(__file__).parent.parent.parent.parent.parent
         skills: list[dict[str, Any]] = []
         skills_dir = root / "integrations" / "skills"
         if skills_dir.exists():
             for skill_dir in sorted(skills_dir.iterdir()):
                 if skill_dir.is_dir():
-                    if not cfg.dev_mode and skill_dir.name in DEV_ONLY_SKILLS:
+                    if not skill_visible(skill_dir.name):
                         continue
                     md = skill_dir / "SKILL.md"
                     if md.exists():
@@ -2281,7 +2627,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
     @app.get("/skills/{name}", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def get_skill(name: str) -> dict[str, Any]:
-        if not cfg.dev_mode and name in DEV_ONLY_SKILLS:
+        from atelier.core.environment import skill_visible
+
+        if not skill_visible(name):
             raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"

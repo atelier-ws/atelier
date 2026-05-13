@@ -687,6 +687,8 @@ export interface MCPStatus {
   tool_name: string;
   available: boolean;
   description?: string;
+  is_dev?: boolean;
+  mode?: "active" | "passive";
 }
 
 export interface HostAdapter {
@@ -946,7 +948,13 @@ export interface ExternalAnalyticsResponse {
 }
 
 export interface AnalyticsDashboard {
+  summary: {
+    total_cost: number;
+    projected_monthly_cost: number;
+    total_sessions: number;
+  };
   daily: DashboardDaily[];
+  hourly: DashboardDaily[];
   by_domain: DashboardByDomain[];
   by_host: DashboardByHost[];
   by_model: DashboardByModel[];
@@ -958,6 +966,21 @@ export interface AnalyticsDashboard {
     shell: DashboardTool[];
     mcp: DashboardTool[];
   };
+}
+
+export interface AnalyticsSummary {
+  total_cost: number;
+  estimated_monthly_cost: number;
+  top_cost_driver: string;
+  user_input_tokens: number;
+  model_thinking_tokens: number;
+  llm_output_tokens: number;
+  tool_output_tokens: number;
+  cached_prompt_tokens: number;
+  tool_calls: number;
+  unique_tools: number;
+  total_output_tokens: number;
+  row_count: number;
 }
 
 export interface TelemetryConfigResponse {
@@ -1044,6 +1067,24 @@ export const api = {
     params.set("days", String(days));
     if (host) params.set("host", host);
     return get<AnalyticsDashboard>(`/analytics/dashboard?${params.toString()}`);
+  },
+  analyticsSummary: (
+    agent?: string,
+    model?: string,
+    category?: string,
+    search?: string,
+    limit = 5000,
+    days?: number
+  ) => {
+    const params = new URLSearchParams();
+    if (agent) params.set("agent", agent);
+    if (model) params.set("model", model);
+    if (category) params.set("category", category);
+    if (search) params.set("search", search);
+    if (days) params.set("days", String(days));
+    params.set("limit", String(limit));
+    params.set("grouped", "true");
+    return get<AnalyticsSummary>(`/analytics/summary?${params.toString()}`);
   },
   externalAnalytics: (days = 30, tool?: string, limit = 30) => {
     const params = new URLSearchParams();

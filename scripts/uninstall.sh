@@ -5,7 +5,7 @@
 #   bash scripts/uninstall.sh [--dry-run] [--no-hosts] [--workspace DIR]
 #
 # Optional environment variables:
-#   ATELIER_BIN_DIR    Global bin dir for command wrappers (default: ~/.local/bin)
+#   ATELIER_BIN_DIR    Global bin dir for console scripts (default: ~/.local/bin)
 #   ATELIER_DRY_RUN    If set to 1, print planned actions and exit
 #
 # Notes:
@@ -70,9 +70,9 @@ else
     info "Skipping host integrations because ATELIER_NO_HOSTS=1"
 fi
 
-# ---- remove main bin wrappers -----------------------------------------------
-info "Removing Atelier bin wrappers from ${ATELIER_BIN_DIR}..."
-for cmd in atelier atelier-mcp atelier-api atelier-status; do
+# ---- remove main bin commands ------------------------------------------------
+info "Removing Atelier bin commands from ${ATELIER_BIN_DIR}..."
+for cmd in atelier atelier-mcp atelier-api atelier-codex atelier-status; do
     target="${ATELIER_BIN_DIR}/${cmd}"
     if [ -f "$target" ] || [ -L "$target" ]; then
         run "rm -f '$target'"

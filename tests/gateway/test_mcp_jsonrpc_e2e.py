@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 from click.testing import CliRunner
 
+from atelier.core.environment import NON_DEV_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
@@ -29,10 +30,14 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "compact",
-    "run",
+    "atelier_code_index",
+    "atelier_code_search",
+    "atelier_code_symbol",
+    "atelier_code_outline",
+    "atelier_code_context",
+    "atelier_code_impact",
+    "shell",
 }
-
-SLIM_TOOLS = {"trace"}
 
 
 def _seed_store(root: Path) -> None:
@@ -105,7 +110,9 @@ def test_tools_list_matches_registered_surface(mcp_env: Path) -> None:
     assert set(TOOLS) == EXPECTED_TOOLS
 
 
-def test_tools_list_slim_surface_without_dev_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_list_only_passive_decision_tools_without_dev_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / ".atelier"
     _seed_store(root)
     monkeypatch.setenv("ATELIER_ROOT", str(root))
@@ -115,8 +122,18 @@ def test_tools_list_slim_surface_without_dev_mode(tmp_path: Path, monkeypatch: p
     mcp_server._realtime_ctx = None
     response = _handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     assert response is not None
-    names = {tool["name"] for tool in response["result"]["tools"]}
-    assert names == SLIM_TOOLS
+    tools = response["result"]["tools"]
+    names = {tool["name"] for tool in tools}
+    assert names == NON_DEV_LLM_TOOLS
+    assert "read" not in names
+    assert "search" not in names
+    assert "edit" not in names
+    assert "memory" not in names
+    assert "compact" not in names
+    assert "shell" not in names
+    lint = next(tool for tool in tools if tool["name"] == "lint")
+    assert "passive" in lint["description"]
+    assert "no-op/pass" in lint["description"]
 
 
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
