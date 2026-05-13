@@ -90,24 +90,7 @@ PYEOF
 }
 
 # ---- resolve install profile ------------------------------------------------
-eval "$(
-    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
-from atelier.core.environment import install_profile_warning, resolve_install_profile
-import shlex
-import sys
-
-try:
-    profile = resolve_install_profile()
-except ValueError as exc:
-    print(f"echo '[atelier:gemini] ERROR: {exc}' >&2")
-    print("exit 1")
-    raise SystemExit(0)
-
-warning = install_profile_warning(profile)
-print(f"INSTALL_PROFILE={shlex.quote(profile)}")
-print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
-PY
-)"
+atelier_resolve_install_profile "atelier:gemini"
 if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
     warn "$ATELIER_INSTALL_PROFILE_WARNING"
 fi

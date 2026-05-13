@@ -350,11 +350,29 @@ def _project_root() -> Path:
     env = os.environ.get("ATELIER_INSTALL_DIR", "").strip()
     if env:
         return Path(env).expanduser().resolve()
+    install_record = Path.home() / ".atelier" / "install_dir"
+    with contextlib.suppress(OSError):
+        recorded = install_record.read_text(encoding="utf-8").strip()
+        if recorded:
+            recorded_path = Path(recorded).expanduser().resolve()
+            if recorded_path.exists():
+                return recorded_path
     return Path(__file__).resolve().parents[4]
 
 
 def _stack_compose_file() -> Path:
     return _project_root() / "docker-compose.yml"
+
+
+def _configured_stack_services(requested: list[str]) -> list[str]:
+    compose_file = _stack_compose_file()
+    with contextlib.suppress(OSError, yaml.YAMLError):
+        payload = yaml.safe_load(compose_file.read_text(encoding="utf-8")) or {}
+        services = payload.get("services")
+        if isinstance(services, dict):
+            available = {str(name) for name in services}
+            return [name for name in requested if name in available]
+    return requested
 
 
 def _run_stack_compose(args: list[str]) -> None:
@@ -3233,13 +3251,13 @@ def stack_group() -> None:
 @click.option("--with-docs", is_flag=True, help="Also start the docs site on port 3200.")
 def stack_start(with_docs: bool) -> None:
     """Start the optional visualization stack via Docker Compose."""
-    services = ["service", "frontend", "otel-collector"]
+    services = _configured_stack_services(["service", "frontend", "otel-collector"])
     if with_docs:
-        services.append("docs")
+        services = _configured_stack_services([*services, "docs"])
     _run_stack_compose(["up", "--build", "-d", *services])
     click.echo("frontend: http://localhost:3125")
     click.echo("service: http://localhost:8787")
-    if with_docs:
+    if with_docs and "docs" in services:
         click.echo("docs: http://localhost:3200")
 
 
