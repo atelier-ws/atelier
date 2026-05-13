@@ -107,7 +107,7 @@ Start Claude Code in your workspace and type:
 /atelier:status
 ```
 
-You should see the Atelier runtime info (run ledger, store path, version).
+You should see the Atelier runtime info (run ledger, service-backed state, version).
 
 ## Slash Commands (Skills)
 
@@ -129,7 +129,7 @@ Select from the `/agents` list in Claude Code:
 
 | Agent             | Role                                         |
 | ----------------- | -------------------------------------------- |
-| `atelier:code`    | Main coding agent — full reasoning loop      |
+| `atelier:code`    | Main coding agent — full task loop           |
 | `atelier:explore` | Read-only repo exploration                   |
 | `atelier:review`  | Verifier — plan checks + rubric gate         |
 | `atelier:repair`  | Repair specialist — rescue repeated failures |

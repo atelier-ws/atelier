@@ -75,14 +75,14 @@ if $WORKSPACE_SET; then
 {
   "default_agent": "atelier",
   "mcp": {
-    "atelier": {
-      "type": "local",
-      "command": ["${ATELIER_WRAPPER}"],
-      "environment": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${HOME}/.atelier"
+      "atelier": {
+        "type": "local",
+        "command": ["${ATELIER_WRAPPER}"],
+        "environment": {
+          "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
+          "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
+        }
       }
-    }
   }
 }
 JSON
@@ -173,7 +173,7 @@ fi
 STAGING_DIR="${HOME}/.atelier/opencode-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full agent instructions with reasoning loop"
+    info "Install profile: dev; staging full agent instructions with task loop"
     atelier_write_managed_copy "${AGENT_SRC/.md/.dev.md}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
 else
     info "Install profile: stable; staging stable agent instructions"
