@@ -29,8 +29,9 @@ bash scripts/install_codex.sh --workspace /path/to/workspace
 | Task templates           | not installed globally               | `<workspace>/.codex/tasks/*.md`                |
 
 The installer also writes a generated `servers/atelier-mcp-wrapper.sh` inside
-the installed plugin source and patches the plugin `.mcp.json` to use that
-repo-pinned wrapper.
+the installed plugin source, patches the plugin `.mcp.json` to use that
+repo-pinned wrapper, and merges the Atelier Codex instructions into an
+existing `AGENTS.md` instead of failing when one is already present.
 
 ## Verify
 
@@ -43,7 +44,7 @@ make verify
 Start Codex in your workspace, restart once so the marketplace is reloaded, and use the bundled skill:
 
 ```text
-use skill: atelier-lint
+use skill: lint
 ```
 
 Or run the Atelier preflight wrapper:

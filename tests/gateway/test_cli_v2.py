@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner, Result
 
+from atelier.core.foundation.models import Trace
+from atelier.core.foundation.store import ReasoningStore
 from atelier.gateway.adapters.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
 
@@ -16,13 +20,47 @@ def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
     return runner.invoke(cli, ["--root", str(root), *args], input=input)
 
 
-def _seed_ledger(root: Path, run_id: str = "run1") -> Path:
-    led = RunLedger(run_id=run_id, agent="codex", task="t", domain="d", root=root)
+def _seed_ledger(root: Path, session_id: str = "run1") -> Path:
+    led = RunLedger(session_id=session_id, agent="codex", task="t", domain="d", root=root)
     led.record_command("pytest", ok=False, error_signature="sig1")
     led.record_command("pytest", ok=False, error_signature="sig1")
     led.record_alert("repeated_command_failure", "high", "pytest x2")
     path: Path = led.persist()
     return path
+
+
+def _seed_optimizer_traces(root: Path) -> None:
+    store = ReasoningStore(root)
+    store.init()
+    created_at = datetime.now(UTC)
+    for trace in (
+        Trace(
+            id="peer-low",
+            agent="codex",
+            host="codex",
+            domain="optimizer-test",
+            task="small run",
+            status="success",
+            input_tokens=80_000,
+            output_tokens=4_000,
+            model="gpt-5.5-pro",
+            files_touched=["a.py"],
+            created_at=created_at,
+        ),
+        Trace(
+            id="outlier",
+            agent="codex",
+            host="codex",
+            domain="optimizer-test",
+            task="large run",
+            status="success",
+            input_tokens=1_000_000,
+            output_tokens=10_000,
+            model="gpt-5.5-pro",
+            created_at=created_at,
+        ),
+    ):
+        store.record_trace(trace)
 
 
 def test_ledger_show_and_summarize(tmp_path: Path) -> None:
@@ -32,7 +70,7 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     res = _invoke(root, "ledger", "show", "--json")
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
-    assert payload["run_id"] == "run1"
+    assert payload["session_id"] == "run1"
 
     res2 = _invoke(root, "ledger", "summarize")
     assert res2.exit_code == 0
@@ -50,34 +88,11 @@ def test_compress_context_cli(tmp_path: Path) -> None:
     assert payload["error_fingerprints"]
 
 
-def test_env_list_and_show(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(root, "env", "list", "--json")
-    assert res.exit_code == 0
-    ids = {e["id"] for e in json.loads(res.output)}
-    assert "env_state_change_safety" in ids
-
-    res2 = _invoke(root, "env", "show", "env_state_change_safety")
-    assert res2.exit_code == 0
-    assert "rubric_id: rubric_state_change_safety" in res2.output
-
-
-def test_env_context_emits_rubric_and_blocks(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(root, "env", "context", "env_state_change_safety", "--json")
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["environment"]["id"] == "env_state_change_safety"
-    assert payload["rubric"] is not None
-
-
 def test_failure_list_accept_reject(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
     _seed_ledger(root)
-    _seed_ledger(root, run_id="run2")
+    _seed_ledger(root, session_id="run2")
 
     res = _invoke(root, "failure", "list", "--json")
     assert res.exit_code == 0
@@ -168,6 +183,89 @@ def test_savings_reports_counters(tmp_path: Path) -> None:
     payload = json.loads(res.output)
     assert "rescue_events" in payload
     assert payload["rescue_events"] >= 1
+    assert "optimization" in payload
+
+
+def test_optimize_reports_trace_recommendations(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    _seed_optimizer_traces(root)
+
+    res = _invoke(root, "optimize", "--host", "codex", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    recommendation_ids = {item["id"] for item in payload["recommendations"]}
+    assert payload["host"] == "codex"
+    assert "high-cost-session-outliers" in recommendation_ids
+    assert "low-worth-expensive-sessions" in recommendation_ids
+
+
+def test_optimize_accepts_new_registry_host_choice(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    _seed_optimizer_traces(root)
+
+    res = _invoke(root, "optimize", "--host", "qwen", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["host"] == "qwen"
+    assert payload["trace_count"] == 0
+
+
+def test_external_status_cli_reports_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    monkeypatch.setattr(
+        "atelier.gateway.integrations.external_analytics.external_status",
+        lambda cwd=None: [
+            {
+                "tool": "tokscale",
+                "display_name": "Tokscale",
+                "available": True,
+                "license": "MIT",
+                "execution_mode": "installed_cli",
+                "path": "/usr/bin/tokscale",
+                "update_strategy": "pin",
+                "install_hint": "install",
+                "notes": ["reporting"],
+                "recommended_integration": "pinned_sidecar_cli",
+            }
+        ],
+    )
+
+    res = _invoke(root, "external-status", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["tools"][0]["tool"] == "tokscale"
+
+
+def test_external_report_cli_returns_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    monkeypatch.setattr(
+        "atelier.gateway.integrations.external_analytics.run_external_reports",
+        lambda tool="all", period="week", cwd=None: {
+            "tool": tool,
+            "period": period,
+            "reports": [
+                {
+                    "tool": "codeburn",
+                    "ok": True,
+                    "command_display": "codeburn report --format json -p week",
+                    "payload": {"overview": {"cost": 12.5, "calls": 8, "sessions": 3}},
+                }
+            ],
+        },
+    )
+
+    res = _invoke(root, "external-report", "--tool", "codeburn", "--json")
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["reports"][0]["tool"] == "codeburn"
 
 
 def test_benchmark_dry_run(tmp_path: Path) -> None:

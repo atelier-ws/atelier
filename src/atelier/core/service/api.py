@@ -6,132 +6,41 @@ over HTTP with optional Bearer auth.
 Usage (import-safe — no server starts on import)::
 
     from atelier.core.service.api import create_app
-    app = create_app()
+    app = create_app(store_root="/path/to/data")
 
-Start with uvicorn::
+Run via CLI::
 
-    uvicorn atelier.core.service.api:app --host 127.0.0.1 --port 8787
+    atelier runtime start
 
-Or via CLI::
-
-    atelier service start
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
-import time
+import sqlite3
+import threading
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-
-from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
-from atelier.core.foundation.extractor import extract_candidate
-from atelier.core.foundation.models import (
-    ReasonBlock,
-    Rubric,
-    Trace,
-    to_jsonable,
-)
-from atelier.core.foundation.plan_checker import check_plan
-from atelier.core.foundation.redaction import redact, redact_list
-from atelier.core.foundation.rubric_gate import run_rubric
-from atelier.core.service.auth import verify_api_key
+from atelier.core.capabilities.pricing import usage_cost_usd
 from atelier.core.service.config import cfg
-from atelier.core.service.schemas import (
-    AnalyzeFailuresRequest,
-    CheckPlanRequest,
-    ExtractReasonBlockRequest,
-    FinishTraceRequest,
-    HealthResponse,
-    HostDetailResponse,
-    HostListItemResponse,
-    HostRegisterRequest,
-    HostRegisterResponse,
-    HostStatusRequest,
-    HostStatusResponse,
-    PatchBlockRequest,
-    ReadyResponse,
-    ReasoningContextRequest,
-    ReasoningContextResponse,
-    RecordTraceRequest,
-    RecordTraceResponse,
-    RescueRequest,
-    RunEvalsRequest,
-    RunRubricRequest,
-    UpsertBlockRequest,
-    UpsertEnvironmentRequest,
-    UpsertRubricRequest,
-)
-from atelier.core.service.telemetry import (
-    emit_audit,
-    emit_product,
-    emit_product_local,
-    init_product_telemetry,
-    set_remote_enabled,
-)
-from atelier.core.service.telemetry.banner import mark_acknowledged
-from atelier.core.service.telemetry.config import save_telemetry_config
-from atelier.core.service.telemetry.exporters.posthog_frontend import frontend_telemetry_config
-from atelier.core.service.telemetry.frustration import match_frustration
-from atelier.core.service.telemetry.local_store import LocalTelemetryStore
-from atelier.core.service.telemetry.schema import bucket_duration_ms, hash_identifier, schema_dump
-from atelier.gateway.hosts import HostRegistry, HostStatus
-from atelier.infra.runtime.cost_tracker import CostTracker, load_cost_history
-from atelier.infra.storage.factory import create_store
+
+if TYPE_CHECKING:
+    from atelier.core.foundation.models import Trace
+    from atelier.core.foundation.store import ReasoningStore
+
+logger = logging.getLogger(__name__)
+
 
 # --------------------------------------------------------------------------- #
-# Store factory — lazily created per-app instance                            #
+# Savings helpers                                                             #
 # --------------------------------------------------------------------------- #
-
-_APP_STORE: Any = None
-_HOST_REGISTRY: HostRegistry | None = None
-
-logger = logging.getLogger("atelier.service")
-
-
-def _get_store() -> Any:
-    """Return (or create) the module-level store singleton."""
-    global _APP_STORE
-    if _APP_STORE is None:
-        root = Path(cfg.atelier_root)
-        _APP_STORE = create_store(root)
-        _APP_STORE.init()
-    return _APP_STORE
-
-
-def _get_host_registry() -> HostRegistry:
-    """Return (or create) the module-level host registry singleton."""
-    global _HOST_REGISTRY
-    if _HOST_REGISTRY is None:
-        root = Path(cfg.atelier_root)
-        storage_dir = root / "hosts"
-        _HOST_REGISTRY = HostRegistry(storage_dir=storage_dir)
-    return _HOST_REGISTRY
-
-
-def _runtime(store: Any) -> Any:
-    """Build a lightweight ReasoningRuntime backed by *store*."""
-    from atelier.core.runtime import AtelierRuntimeCore
-    from atelier.gateway.adapters.runtime import ReasoningRuntime
-
-    rt = ReasoningRuntime.__new__(ReasoningRuntime)
-    runtime_root = Path(getattr(store, "root", cfg.atelier_root))
-    rt.core_runtime = AtelierRuntimeCore(runtime_root)
-    rt.core_runtime.store = store
-    rt.store = store
-    return rt
 
 
 def _normalize_lever(operation: str) -> str:
-    """Map call operation names to stable savings lever keys."""
     op = (operation or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
     if "search_read" in op or "smart_read" in op:
         return "search_read"
@@ -152,12 +61,497 @@ def _normalize_lever(operation: str) -> str:
     return op
 
 
-def _live_savings_events_path(root: Path) -> Path:
-    return root / "live_savings_events.jsonl"
+def _build_external_analytics_summary(store: Any, *, days: int) -> dict[str, Any]:
+    runs = store.list_external_analytics_runs(days=days, limit=200)
+    latest: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    successful_runs = sum(1 for run in runs if run.get("ok"))
+    for run in runs:
+        tool = str(run.get("tool") or "unknown")
+        if tool in seen:
+            continue
+        latest.append(
+            {
+                "id": run.get("id"),
+                "tool": tool,
+                "period": run.get("period"),
+                "source": run.get("source"),
+                "ok": run.get("ok"),
+                "returncode": run.get("returncode"),
+                "summary": run.get("summary") or {},
+                "collected_at": run.get("collected_at"),
+            }
+        )
+        seen.add(tool)
+    return {
+        "runs_total": len(runs),
+        "successful_runs": successful_runs,
+        "failed_runs": len(runs) - successful_runs,
+        "latest": latest,
+    }
+
+
+def _build_external_analytics_detail(
+    store: Any,
+    *,
+    days: int,
+    tool: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    runs = store.list_external_analytics_runs(tool=tool, days=days, limit=limit)
+    latest_by_tool: dict[str, dict[str, Any]] = {}
+    successful_runs = sum(1 for run in runs if run.get("ok"))
+    for run in runs:
+        tool_name = str(run.get("tool") or "unknown")
+        latest_by_tool.setdefault(tool_name, run)
+    return {
+        "totals": {
+            "runs_total": len(runs),
+            "successful_runs": successful_runs,
+            "failed_runs": len(runs) - successful_runs,
+        },
+        "latest_by_tool": latest_by_tool,
+        "runs": runs,
+    }
+
+
+_BILLABLE_ANALYTICS_EVENTS = {"prompt", "cached_prompt", "cache_create", "result", "thinking"}
+_NATIVE_ANALYTICS_TOOLS = {
+    "Read",
+    "Bash",
+    "Edit",
+    "Grep",
+    "Glob",
+    "Write",
+    "Agent",
+    "ListDir",
+    "bash",
+    "run_shell_command",
+    "exec_command",
+    "shell",
+    "read_file",
+    "replace",
+    "apply_patch",
+    "view",
+}
+
+
+def _llm_usage_cost(
+    model_id: str | None,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    thinking_tokens: int = 0,
+) -> float:
+    return usage_cost_usd(
+        model_id or "_default",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        thinking_tokens=thinking_tokens,
+    )
+
+
+def _usage_total_tokens(usage: dict[str, Any]) -> int:
+    return sum(
+        int(usage.get(field) or 0)
+        for field in (
+            "input_tokens",
+            "cached_input_tokens",
+            "cache_creation_input_tokens",
+            "output_tokens",
+            "thinking_tokens",
+        )
+    )
+
+
+def _model_usage_cost(usage: dict[str, Any]) -> float:
+    return _llm_usage_cost(
+        str(usage.get("model") or "_default"),
+        input_tokens=int(usage.get("input_tokens") or 0),
+        output_tokens=int(usage.get("output_tokens") or 0),
+        cache_read_tokens=int(usage.get("cached_input_tokens") or 0),
+        cache_write_tokens=int(usage.get("cache_creation_input_tokens") or 0),
+        thinking_tokens=int(usage.get("thinking_tokens") or 0),
+    )
+
+
+def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    aggregated: dict[str, dict[str, Any]] = {}
+    raw_usages = payload.get("model_usages")
+    if isinstance(raw_usages, list):
+        for raw_usage in raw_usages:
+            if not isinstance(raw_usage, dict):
+                continue
+            model_id = str(raw_usage.get("model") or payload.get("model") or "").strip()
+            usage = {
+                "input_tokens": int(raw_usage.get("input_tokens") or 0),
+                "output_tokens": int(raw_usage.get("output_tokens") or 0),
+                "thinking_tokens": int(raw_usage.get("thinking_tokens") or 0),
+                "cached_input_tokens": int(raw_usage.get("cached_input_tokens") or 0),
+                "cache_creation_input_tokens": int(raw_usage.get("cache_creation_input_tokens") or 0),
+            }
+            if not model_id and not any(usage.values()):
+                continue
+            bucket = aggregated.setdefault(model_id, {"model": model_id, **{key: 0 for key in usage}})
+            for field, value in usage.items():
+                bucket[field] += value
+
+    if not aggregated:
+        model_id = str(payload.get("model") or "").strip()
+        usage = {
+            "model": model_id,
+            "input_tokens": int(payload.get("input_tokens") or 0),
+            "output_tokens": int(payload.get("output_tokens") or 0),
+            "thinking_tokens": int(payload.get("thinking_tokens") or 0),
+            "cached_input_tokens": int(payload.get("cached_input_tokens") or 0),
+            "cache_creation_input_tokens": int(payload.get("cache_creation_input_tokens") or 0),
+        }
+        if model_id or any(value for key, value in usage.items() if key != "model"):
+            aggregated[model_id] = usage
+
+    usages = list(aggregated.values())
+    usages.sort(key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True)
+    return usages
+
+
+def _trace_primary_model(payload: dict[str, Any], model_usages: list[dict[str, Any]] | None = None) -> str:
+    usages = model_usages if model_usages is not None else _trace_model_usages(payload)
+    if usages:
+        return str(usages[0].get("model") or payload.get("model") or "")
+    return str(payload.get("model") or "")
+
+
+def _trace_cost_from_payload(payload: dict[str, Any]) -> float:
+    model_usages = _trace_model_usages(payload)
+    if model_usages:
+        return round(sum(_model_usage_cost(usage) for usage in model_usages), 8)
+    return _llm_usage_cost(
+        str(payload.get("model") or "_default"),
+        input_tokens=int(payload.get("input_tokens") or 0),
+        output_tokens=int(payload.get("output_tokens") or 0),
+        cache_read_tokens=int(payload.get("cached_input_tokens") or 0),
+        cache_write_tokens=int(payload.get("cache_creation_input_tokens") or 0),
+        thinking_tokens=int(payload.get("thinking_tokens") or 0),
+    )
+
+
+def _analytics_event_cost(model_id: str | None, event_type: str, input_tokens: int, output_tokens: int) -> float:
+    if event_type == "prompt":
+        return _llm_usage_cost(model_id, input_tokens=input_tokens)
+    if event_type == "cached_prompt":
+        return _llm_usage_cost(model_id, cache_read_tokens=input_tokens)
+    if event_type == "cache_create":
+        return _llm_usage_cost(model_id, cache_write_tokens=input_tokens)
+    if event_type == "result":
+        return _llm_usage_cost(model_id, output_tokens=output_tokens)
+    if event_type == "thinking":
+        return _llm_usage_cost(model_id, thinking_tokens=output_tokens)
+    if event_type == "tool_call":
+        # Tool outputs re-enter the next prompt window and use input pricing.
+        return _llm_usage_cost(model_id, input_tokens=output_tokens)
+    return 0.0
+
+
+def _filter_analytics_rows(
+    rows: list[dict[str, Any]],
+    *,
+    agent: str | None = None,
+    model: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+) -> list[dict[str, Any]]:
+    agent_match = (agent or "").strip().lower()
+    model_match = (model or "").strip().lower()
+    search_match = (search or "").strip().lower()
+
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        row_agent = str(row.get("agent") or "").strip().lower()
+        row_model = str(row.get("model") or "").strip().lower()
+        if agent_match and row_agent != agent_match:
+            continue
+        if model_match and row_model != model_match:
+            continue
+        if category and row.get("category") != category:
+            continue
+        if search_match:
+            tool_name = str(row.get("tool_name") or "").lower()
+            sub_command = str(row.get("sub_command") or "").lower()
+            if search_match not in tool_name and search_match not in sub_command:
+                continue
+        filtered.append(row)
+    return filtered
+
+
+def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) -> dict[str, Any]:
+    total_output_tokens = sum(
+        int(row.get("output_tokens") or 0)
+        for row in rows
+        if row.get("event_type") in {"result", "thinking", "tool_call"}
+    )
+    user_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string")
+    tool_calls = sum(int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call")
+    unique_tools = len(
+        {
+            str(row.get("tool_name") or "")
+            for row in rows
+            if row.get("event_type") == "tool_call" and row.get("tool_name")
+        }
+    )
+    cached_prompt_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "cached_prompt"
+    )
+    model_response_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result")
+    model_thinking_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "thinking"
+    )
+    tool_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    tool_output_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    total_cost = round(
+        sum(float(row.get("cost") or 0.0) for row in rows if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS),
+        6,
+    )
+    effective_days = max(1, days or 1)
+    estimated_monthly_cost = round(total_cost * (30 / effective_days), 6)
+
+    tool_costs: defaultdict[str, float] = defaultdict(float)
+    for row in rows:
+        tool_costs[str(row.get("tool_name") or "—")] += float(row.get("cost") or 0.0)
+    top_cost_driver = max(tool_costs.items(), key=lambda item: item[1])[0] if tool_costs else "—"
+
+    return {
+        "total_cost": total_cost,
+        "estimated_monthly_cost": estimated_monthly_cost,
+        "top_cost_driver": top_cost_driver,
+        "user_input_tokens": user_input_tokens,
+        "model_thinking_tokens": model_thinking_tokens,
+        "llm_output_tokens": model_response_tokens + tool_input_tokens,
+        "tool_output_tokens": tool_output_tokens,
+        "cached_prompt_tokens": cached_prompt_tokens,
+        "tool_calls": tool_calls,
+        "unique_tools": unique_tools,
+        "total_output_tokens": total_output_tokens,
+        "row_count": len(rows),
+    }
+
+
+def _tool_category(tool_name: str) -> str:
+    return "Native / Unoptimized" if tool_name in _NATIVE_ANALYTICS_TOOLS else "Atelier Optimized"
+
+
+def _trace_analytics_events(
+    trace_id: str,
+    agent: str,
+    host: str | None,
+    created_at: str,
+    payload: dict[str, Any],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    model_usages = _trace_model_usages(payload)
+    primary_model = _trace_primary_model(payload, model_usages)
+    session_host = host or agent
+
+    def _append_event(
+        *,
+        model: str,
+        event_type: str,
+        tool_name: str,
+        category: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        call_count: int = 1,
+        sub_command: str | None = None,
+    ) -> None:
+        events.append(
+            {
+                "trace_id": trace_id,
+                "host": session_host,
+                "agent": agent,
+                "model": model,
+                "event_type": event_type,
+                "tool_name": tool_name,
+                "sub_command": sub_command,
+                "category": category,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "first_seen": created_at,
+                "last_seen": created_at,
+                "call_count": call_count,
+                "session_count": 1,
+                "cost": _analytics_event_cost(model, event_type, input_tokens, output_tokens),
+            }
+        )
+
+    user_prompt_tokens = int(payload.get("user_prompt_tokens") or 0)
+    if user_prompt_tokens > 0:
+        _append_event(
+            model=primary_model,
+            event_type="user_string",
+            tool_name="User Entered String",
+            category="User Activity",
+            input_tokens=user_prompt_tokens,
+        )
+
+    for usage in model_usages:
+        model_id = str(usage.get("model") or primary_model)
+        input_tokens = int(usage.get("input_tokens") or 0)
+        cached_input_tokens = int(usage.get("cached_input_tokens") or 0)
+        cache_write_tokens = int(usage.get("cache_creation_input_tokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or 0)
+        thinking_tokens = int(usage.get("thinking_tokens") or 0)
+
+        if input_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="prompt",
+                tool_name="Context Window (Base)",
+                category="LLM Context",
+                input_tokens=input_tokens,
+            )
+        if cached_input_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="cached_prompt",
+                tool_name="Cached Prompt (Cache Read)",
+                category="LLM Context (Cache Read)",
+                input_tokens=cached_input_tokens,
+            )
+        if cache_write_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="cache_create",
+                tool_name="Cache Write",
+                category="LLM Context (Cache Write)",
+                input_tokens=cache_write_tokens,
+            )
+        if output_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="result",
+                tool_name="Assistant Response",
+                category="LLM Generation",
+                output_tokens=output_tokens,
+            )
+        if thinking_tokens > 0:
+            _append_event(
+                model=model_id,
+                event_type="thinking",
+                tool_name="Thinking",
+                category="LLM Generation",
+                output_tokens=thinking_tokens,
+            )
+
+    for raw_tool in payload.get("tools_called") or []:
+        if not isinstance(raw_tool, dict):
+            continue
+        tool_name = str(raw_tool.get("name") or "unknown")
+        _append_event(
+            model=primary_model,
+            event_type="tool_call",
+            tool_name=tool_name,
+            category=_tool_category(tool_name),
+            input_tokens=int(raw_tool.get("input_tokens") or 0),
+            output_tokens=int(raw_tool.get("output_tokens") or 0),
+            call_count=int(raw_tool.get("count") or 1),
+        )
+
+    return events
+
+
+def _group_analytics_rows(events: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    grouped_rows: dict[tuple[Any, ...], dict[str, Any]] = {}
+    session_ids: dict[tuple[Any, ...], set[str]] = {}
+
+    for event in events:
+        key = (
+            event["host"],
+            event["agent"],
+            event["model"],
+            event["event_type"],
+            event["tool_name"],
+            event["sub_command"],
+            event["category"],
+        )
+        row = grouped_rows.get(key)
+        if row is None:
+            row = dict(event)
+            grouped_rows[key] = row
+            session_ids[key] = {str(event["trace_id"])}
+            continue
+
+        row["input_tokens"] += int(event.get("input_tokens") or 0)
+        row["output_tokens"] += int(event.get("output_tokens") or 0)
+        row["call_count"] += int(event.get("call_count") or 0)
+        row["cost"] = round(float(row.get("cost") or 0.0) + float(event.get("cost") or 0.0), 8)
+        row["first_seen"] = min(str(row.get("first_seen") or ""), str(event.get("first_seen") or ""))
+        row["last_seen"] = max(str(row.get("last_seen") or ""), str(event.get("last_seen") or ""))
+        session_ids[key].add(str(event["trace_id"]))
+
+    rows: list[dict[str, Any]] = []
+    for key, row in grouped_rows.items():
+        row["session_count"] = len(session_ids[key])
+        row.pop("trace_id", None)
+        rows.append(row)
+
+    rows.sort(key=lambda row: str(row.get("last_seen") or ""), reverse=True)
+    return rows[:limit]
+
+
+def _query_analytics_rows(
+    db_path: str | Path,
+    *,
+    grouped: bool,
+    days: int | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    params: list[Any] = []
+
+    sql = f"""
+        SELECT id, agent, host, payload, created_at
+        FROM traces
+        WHERE 1=1 {"AND created_at >= datetime('now', '-' || ? || ' days')" if days else ""}
+        ORDER BY created_at DESC
+    """
+
+    if days:
+        params.append(days)
+
+    events: list[dict[str, Any]] = []
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(sql, params).fetchall():
+            try:
+                payload = json.loads(row["payload"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            events.extend(
+                _trace_analytics_events(
+                    str(row["id"]),
+                    str(row["agent"] or ""),
+                    str(row["host"] or ""),
+                    str(row["created_at"] or ""),
+                    payload,
+                )
+            )
+
+    if grouped:
+        return _group_analytics_rows(events, limit=limit)
+
+    events.sort(key=lambda event: str(event.get("last_seen") or ""), reverse=True)
+    rows = [dict(event) for event in events[:limit]]
+    for row in rows:
+        row.pop("trace_id", None)
+    return rows
 
 
 def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
-    path = _live_savings_events_path(root)
+    path = root / "live_savings_events.jsonl"
     if not path.exists():
         return []
     events: list[dict[str, Any]] = []
@@ -182,7 +576,7 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
     keys = {
-        "run_id",
+        "session_id",
         "model",
         "n_prompts",
         "total_tokens_baseline",
@@ -201,8 +595,497 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
     return {key: payload[key] for key in keys if key in payload}
 
 
+_OBSERVED_OPTIMIZATION_TITLES = {
+    "search_read": "Search/read compaction",
+    "batch_edit": "Batch edit",
+    "compact_lifecycle": "Tool-output compaction",
+    "scoped_recall": "Scoped recall",
+    "reasonblock_inject": "ReasonBlock injection",
+    "cached_read": "Cached reuse",
+    "delta_read": "Delta read",
+    "structure_map": "Structure map",
+}
+
+
+def _trace_created_at(trace: Trace) -> datetime:
+    created = trace.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return created
+
+
+def _trace_run_key(trace: Trace) -> str:
+    return str(trace.session_id or trace.id)
+
+
+def _trace_total_tokens(trace: Trace) -> int:
+    from atelier.core.capabilities.session_optimizer import effective_input_tokens
+
+    return effective_input_tokens(trace) + int(trace.output_tokens or 0)
+
+
+def _trace_cache_leverage(trace: Trace) -> float:
+    from atelier.core.capabilities.session_optimizer import effective_input_tokens
+
+    effective_input = effective_input_tokens(trace)
+    if effective_input <= 0:
+        return 0.0
+    return round(int(trace.cached_input_tokens or 0) / effective_input, 4)
+
+
+def _recent_traces(store: ReasoningStore, *, window_days: int) -> list[Trace]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    traces = store.list_traces(limit=5000)
+    recent = [trace for trace in traces if _trace_created_at(trace) >= cutoff]
+    return sorted(recent, key=_trace_created_at)
+
+
+def _tracked_saved_tokens(store: ReasoningStore, trace: Trace) -> tuple[int, int]:
+    try:
+        rows = store.list_context_budgets(_trace_run_key(trace))
+    except Exception as exc:
+        logger.warning("Failed to load context budgets for trace %s: %s", trace.id, exc)
+        return 0, 0
+
+    saved_tokens = 0
+    tracked_turns = 0
+    for row in rows:
+        tracked_turns += int(row.tool_calls or 0)
+        lever_keys = [str(key or "") for key in row.lever_savings]
+        non_marker_keys = [key for key in lever_keys if not key.startswith("tool:")]
+        if non_marker_keys and all(key.startswith("compact_tool_output:") for key in non_marker_keys):
+            continue
+        actual_tokens = (
+            int(row.input_tokens or 0)
+            + int(row.cache_read_tokens or 0)
+            + int(row.cache_write_tokens or 0)
+            + int(row.output_tokens or 0)
+        )
+        naive_tokens = int(row.naive_input_tokens or 0)
+        saved_tokens += max(0, naive_tokens - actual_tokens)
+    return saved_tokens, tracked_turns
+
+
+def _window_metrics(store: ReasoningStore, traces: list[Trace]) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import trace_cost_usd
+
+    entries: list[dict[str, Any]] = []
+    for trace in traces:
+        saved_tokens, tracked_turns = _tracked_saved_tokens(store, trace)
+        entries.append(
+            {
+                "trace_id": trace.id,
+                "tokens": _trace_total_tokens(trace),
+                "cost_usd": trace_cost_usd(trace),
+                "cache_leverage": _trace_cache_leverage(trace),
+                "saved_tokens": saved_tokens,
+                "tracked_turns": tracked_turns,
+                "created_at": _trace_created_at(trace).isoformat(),
+            }
+        )
+
+    count = len(entries)
+    if count == 0:
+        return {
+            "trace_count": 0,
+            "avg_tokens": 0,
+            "avg_cost_usd": 0.0,
+            "avg_cache_leverage": 0.0,
+            "avg_saved_tokens": 0,
+            "tracked_turns": 0,
+            "from": None,
+            "to": None,
+        }
+
+    return {
+        "trace_count": count,
+        "avg_tokens": round(sum(int(item["tokens"]) for item in entries) / count),
+        "avg_cost_usd": round(sum(float(item["cost_usd"]) for item in entries) / count, 6),
+        "avg_cache_leverage": round(sum(float(item["cache_leverage"]) for item in entries) / count, 4),
+        "avg_saved_tokens": round(sum(int(item["saved_tokens"]) for item in entries) / count),
+        "tracked_turns": sum(int(item["tracked_turns"]) for item in entries),
+        "from": entries[0]["created_at"],
+        "to": entries[-1]["created_at"],
+    }
+
+
+def _pct_change(before: float, after: float) -> float:
+    if before <= 0:
+        if after <= 0:
+            return 0.0
+        return 100.0
+    return round(((after - before) / before) * 100.0, 1)
+
+
+def _impact_verdict(tokens_delta_pct: float, cost_delta_pct: float, cache_delta_pct: float) -> str:
+    improvements = 0
+    regressions = 0
+
+    if tokens_delta_pct <= -5.0:
+        improvements += 1
+    elif tokens_delta_pct >= 5.0:
+        regressions += 1
+
+    if cost_delta_pct <= -5.0:
+        improvements += 1
+    elif cost_delta_pct >= 5.0:
+        regressions += 1
+
+    if cache_delta_pct >= 5.0:
+        improvements += 1
+    elif cache_delta_pct <= -5.0:
+        regressions += 1
+
+    if improvements >= 2 and regressions == 0:
+        return "improved"
+    if regressions >= 2 and improvements == 0:
+        return "regressed"
+    if improvements == 0 and regressions == 0:
+        return "no_change"
+    return "mixed"
+
+
+def _build_impact_validation(
+    store: ReasoningStore,
+    traces: list[Trace],
+    *,
+    window_days: int,
+) -> dict[str, Any]:
+    if len(traces) < 2:
+        return {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "window_days": window_days,
+            "strategy": "chronological_halves",
+            "verdict": "insufficient_data",
+            "before": _window_metrics(store, []),
+            "after": _window_metrics(store, []),
+            "deltas": {
+                "tokens_pct": 0.0,
+                "cost_pct": 0.0,
+                "cache_leverage_pct": 0.0,
+                "saved_tokens_pct": 0.0,
+            },
+            "notes": ["Need at least two traces in the selected window to compare before vs after behavior."],
+        }
+
+    midpoint = max(1, len(traces) // 2)
+    before = _window_metrics(store, traces[:midpoint])
+    after = _window_metrics(store, traces[midpoint:])
+
+    tokens_delta_pct = _pct_change(float(before["avg_tokens"]), float(after["avg_tokens"]))
+    cost_delta_pct = _pct_change(float(before["avg_cost_usd"]), float(after["avg_cost_usd"]))
+    cache_delta_pct = _pct_change(float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"]))
+    saved_tokens_delta_pct = _pct_change(float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"]))
+
+    notes: list[str] = []
+    if after["avg_tokens"] < before["avg_tokens"]:
+        notes.append("Average token load fell in the later half of the window.")
+    if after["avg_cost_usd"] < before["avg_cost_usd"]:
+        notes.append("Average per-trace cost dropped in the later half of the window.")
+    if after["avg_cache_leverage"] > before["avg_cache_leverage"]:
+        notes.append("Cache leverage improved in the later half of the window.")
+    if not notes:
+        notes.append("Later traces look materially similar to earlier traces in this window.")
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "strategy": "chronological_halves",
+        "verdict": _impact_verdict(tokens_delta_pct, cost_delta_pct, cache_delta_pct),
+        "before": before,
+        "after": after,
+        "deltas": {
+            "tokens_pct": tokens_delta_pct,
+            "cost_pct": cost_delta_pct,
+            "cache_leverage_pct": cache_delta_pct,
+            "saved_tokens_pct": saved_tokens_delta_pct,
+        },
+        "notes": notes,
+    }
+
+
+def _lever_title(lever: str) -> str:
+    return _OBSERVED_OPTIMIZATION_TITLES.get(lever, lever.replace("_", " ").title())
+
+
+def _build_auto_optimizations(
+    savings_payload: dict[str, Any],
+    live_events: list[dict[str, Any]],
+    *,
+    window_days: int,
+) -> list[dict[str, Any]]:
+    start_day = datetime.now(UTC).date() - timedelta(days=max(1, window_days) - 1)
+    per_lever = {
+        str(key): int(value or 0)
+        for key, value in (savings_payload.get("per_lever") or {}).items()
+        if isinstance(key, str) and int(value or 0) > 0
+    }
+    observed: dict[str, dict[str, Any]] = {}
+
+    for event in live_events:
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        try:
+            at_date = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00")).date()
+        except Exception as exc:
+            logger.debug("Bad timestamp %r in savings event, using today: %s", event.get("at"), exc)
+            at_date = datetime.now(UTC).date()
+        if at_date < start_day:
+            continue
+        lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
+        item = observed.setdefault(
+            lever,
+            {
+                "id": lever,
+                "title": _lever_title(lever),
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "calls_saved": 0,
+                "sessions": set(),
+                "tools": set(),
+            },
+        )
+        item["tokens_saved"] += tokens_saved
+        item["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        item["calls_saved"] += int(event.get("calls_saved", 0) or 0)
+        session_id = str(event.get("session_id") or "")
+        if session_id:
+            item["sessions"].add(session_id)
+        tool_name = str(event.get("tool_name") or "")
+        if tool_name:
+            item["tools"].add(tool_name)
+
+    rows: list[dict[str, Any]] = []
+    for lever, tokens_saved in per_lever.items():
+        item = observed.get(
+            lever,
+            {
+                "id": lever,
+                "title": _lever_title(lever),
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "calls_saved": 0,
+                "sessions": set(),
+                "tools": set(),
+            },
+        )
+        item["tokens_saved"] = max(int(item["tokens_saved"]), tokens_saved)
+        rows.append(
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "tokens_saved": int(item["tokens_saved"]),
+                "cost_saved_usd": round(float(item["cost_saved_usd"]), 6),
+                "calls_saved": int(item["calls_saved"]),
+                "session_count": len(item["sessions"]),
+                "tools": sorted(item["tools"]),
+            }
+        )
+
+    return sorted(rows, key=lambda row: int(row["tokens_saved"]), reverse=True)[:8]
+
+
+def _reread_kind(event: dict[str, Any]) -> str | None:
+    lever = _normalize_lever(str(event.get("lever") or ""))
+    if lever in {"delta_read", "structure_map"}:
+        return lever
+    mode = str(event.get("read_mode") or "").strip().lower()
+    if mode == "range":
+        return "delta_read"
+    if mode == "outline":
+        return "structure_map"
+    return None
+
+
+def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
+    start_day = datetime.now(UTC).date() - timedelta(days=max(1, window_days) - 1)
+    by_kind: dict[str, dict[str, Any]] = {}
+    by_path: dict[str, dict[str, Any]] = {}
+    total_tokens_saved = 0
+    total_cost_saved = 0.0
+    event_count = 0
+
+    for event in _iter_live_savings_events(root):
+        tokens_saved = int(event.get("tokens_saved", 0) or 0)
+        if tokens_saved <= 0:
+            continue
+        try:
+            at = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00"))
+        except Exception as exc:
+            logger.debug("Bad timestamp %r in reread event, using now: %s", event.get("at"), exc)
+            at = datetime.now(UTC)
+        if at.date() < start_day:
+            continue
+        kind = _reread_kind(event)
+        if kind is None:
+            continue
+
+        event_count += 1
+        total_tokens_saved += tokens_saved
+        total_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
+
+        kind_row = by_kind.setdefault(
+            kind,
+            {
+                "id": kind,
+                "title": _lever_title(kind),
+                "event_count": 0,
+                "tokens_saved": 0,
+                "cost_saved_usd": 0.0,
+                "path_count": 0,
+                "last_seen_at": None,
+            },
+        )
+        kind_row["event_count"] += 1
+        kind_row["tokens_saved"] += tokens_saved
+        kind_row["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        kind_row["last_seen_at"] = at.isoformat()
+
+        path = str(event.get("path") or "(unknown file)")
+        path_row = by_path.setdefault(
+            path,
+            {
+                "path": path,
+                "event_count": 0,
+                "tokens_saved": 0,
+                "kinds": set(),
+            },
+        )
+        path_row["event_count"] += 1
+        path_row["tokens_saved"] += tokens_saved
+        path_row["kinds"].add(kind)
+
+    for kind_row in by_kind.values():
+        matching_paths = [row for row in by_path.values() if kind_row["id"] in row["kinds"]]
+        kind_row["path_count"] = len(matching_paths)
+        kind_row["cost_saved_usd"] = round(float(kind_row["cost_saved_usd"]), 6)
+
+    top_paths = []
+    for path_row in sorted(by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True)[:5]:
+        top_paths.append(
+            {
+                "path": path_row["path"],
+                "event_count": int(path_row["event_count"]),
+                "tokens_saved": int(path_row["tokens_saved"]),
+                "kinds": sorted(path_row["kinds"]),
+            }
+        )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "event_count": event_count,
+        "total_tokens_saved": total_tokens_saved,
+        "total_cost_saved_usd": round(total_cost_saved, 6),
+        "kinds": sorted(by_kind.values(), key=lambda row: int(row["tokens_saved"]), reverse=True),
+        "top_paths": top_paths,
+    }
+
+
+def _cheaper_model_for(model: str | None) -> str | None:
+    normalized = (model or "").strip().lower()
+    if not normalized:
+        return None
+    mappings = [
+        (("claude-opus", "claude-sonnet"), "claude-haiku-4-5"),
+        (("gpt-5.5", "gpt-5.4-pro", "chat-latest"), "gpt-5.4-mini"),
+        (("gpt-5.4", "gpt-5.3-codex"), "gpt-5.4-mini"),
+        (("o3",), "o4-mini-deep-research"),
+        (("gemini-3.1-pro", "gemini-2.5-pro"), "gemini-2.5-flash"),
+        (("gemini-3-flash", "gemini-2.5-flash"), "gemini-2.5-flash-lite"),
+        (("grok-4.3", "grok-4.20"), "grok-4-1-fast-non-reasoning"),
+        (("deepseek-v4-pro", "deepseek-reasoner"), "deepseek-chat"),
+    ]
+    for prefixes, target in mappings:
+        if any(prefix in normalized for prefix in prefixes):
+            return target
+    return None
+
+
+def _routine_trace_reason(trace: Trace) -> str | None:
+    tool_calls = sum(int(tool.count or 0) for tool in trace.tools_called)
+    file_count = len(trace.files_touched)
+    total_tokens = _trace_total_tokens(trace)
+    output_tokens = int(trace.output_tokens or 0)
+
+    if trace.status != "success":
+        return None
+    if trace.errors_seen or trace.repeated_failures:
+        return None
+    if total_tokens > 120_000:
+        return None
+    if output_tokens > 8_000:
+        return None
+    if tool_calls > 4:
+        return None
+    if file_count > 2:
+        return None
+    if any(not bool(result.passed) for result in trace.validation_results):
+        return None
+    return "Success with bounded tokens, limited tools, and no visible recovery work."
+
+
+def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    total_current_cost = 0.0
+    total_simulated_cost = 0.0
+    rerouted_tokens = 0
+
+    for trace in traces:
+        target_model = _cheaper_model_for(trace.model)
+        if target_model is None:
+            continue
+        reason = _routine_trace_reason(trace)
+        if reason is None:
+            continue
+
+        from atelier.core.capabilities.pricing import get_model_pricing
+        from atelier.core.capabilities.session_optimizer import trace_cost_usd
+
+        current_cost = trace_cost_usd(trace)
+        simulated_cost = get_model_pricing(target_model).cost_usd(
+            input_tokens=int(trace.input_tokens or 0),
+            output_tokens=int(trace.output_tokens or 0),
+            cache_read_tokens=int(trace.cached_input_tokens or 0),
+            cache_write_tokens=int(trace.cache_creation_input_tokens or 0),
+        )
+        if simulated_cost >= current_cost:
+            continue
+
+        total_current_cost += current_cost
+        total_simulated_cost += simulated_cost
+        rerouted_tokens += _trace_total_tokens(trace)
+        candidates.append(
+            {
+                "trace_id": trace.id,
+                "task": trace.task,
+                "current_model": trace.model or "_default",
+                "target_model": target_model,
+                "current_cost_usd": round(current_cost, 6),
+                "simulated_cost_usd": round(simulated_cost, 6),
+                "estimated_cost_saved_usd": round(current_cost - simulated_cost, 6),
+                "total_tokens": _trace_total_tokens(trace),
+                "reason": reason,
+            }
+        )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "candidate_count": len(candidates),
+        "estimated_cost_saved_usd": round(total_current_cost - total_simulated_cost, 6),
+        "current_cost_usd": round(total_current_cost, 6),
+        "simulated_cost_usd": round(total_simulated_cost, 6),
+        "total_tokens_rerouted": rerouted_tokens,
+        "heuristic": "Conservative routine-trace filter: success only, no errors, <=120K total tokens, <=4 tool calls, <=2 files touched.",
+        "candidates": sorted(candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True)[:8],
+    }
+
+
 def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
-    """Build token-savings summary for API/dashboard rendering."""
+    from atelier.infra.runtime.cost_tracker import CostTracker, load_cost_history
+
     history = load_cost_history(root)
     ops = history.get("operations", {}) if isinstance(history, dict) else {}
     today = datetime.now(UTC).date()
@@ -222,7 +1105,7 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     live_time_saved_ms = 0
     source_totals: dict[tuple[str, str], dict[str, Any]] = {}
 
-    for entry in ops.values() if isinstance(ops, dict) else []:
+    for entry in (ops.values() if isinstance(ops, dict) else []):
         calls = entry.get("calls", []) if isinstance(entry, dict) else []
         for call in calls:
             if not isinstance(call, dict):
@@ -232,17 +1115,15 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
             cache_read_tokens = int(call.get("cache_read_tokens", 0) or 0)
             actual = input_tokens + output_tokens
             naive = actual + cache_read_tokens
-
             total_naive += naive
             total_actual += actual
             per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(0, naive - actual)
-
             at_raw = str(call.get("at", ""))
             try:
                 at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
-            except Exception:
+            except Exception as exc:
+                logger.debug("Bad timestamp %r in savings call, using today: %s", at_raw, exc)
                 at_date = today
-
             day_key = at_date.isoformat()
             if day_key in by_day_seed:
                 by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + naive
@@ -255,11 +1136,11 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         at_raw = str(event.get("at", ""))
         try:
             at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
-        except Exception:
+        except Exception as exc:
+            logger.debug("Bad timestamp %r in live savings event, using today: %s", at_raw, exc)
             at_date = today
         if at_date < start_day:
             continue
-
         lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
         tool_name = str(event.get("tool_name") or lever)
         total_naive += tokens_saved
@@ -267,11 +1148,9 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         live_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
         live_calls_saved += int(event.get("calls_saved", 0) or 0)
         live_time_saved_ms += int(event.get("time_saved_ms", 0) or 0)
-
         day_key = at_date.isoformat()
         if day_key in by_day_seed:
             by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + tokens_saved
-
         key = (lever, tool_name)
         source = source_totals.setdefault(
             key,
@@ -291,16 +1170,14 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
 
     reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
-
-    # USD cost savings (from CostTracker baseline comparison).
     cost_summary = CostTracker(root).total_savings()
     saved_usd = round(float(cost_summary["saved_usd"]) + live_cost_saved, 6)
     would_have_cost = round(float(cost_summary["would_have_cost_usd"]) + live_cost_saved, 6)
     actually_cost = float(cost_summary["actually_cost_usd"])
     saved_pct = round(100.0 * saved_usd / would_have_cost, 2) if would_have_cost > 0 else 0.0
     top_sources = sorted(source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True)
-    for source in top_sources:
-        source["cost_saved_usd"] = round(float(source["cost_saved_usd"]), 6)
+    for src in top_sources:
+        src["cost_saved_usd"] = round(float(src["cost_saved_usd"]), 6)
 
     return {
         "window_days": window_days,
@@ -322,1625 +1199,584 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Application factory                                                         #
-# --------------------------------------------------------------------------- #
+def _optimization_runtime_coverage() -> list[dict[str, Any]]:
+    return [
+        {
+            "host": "claude",
+            "mode": "runtime",
+            "automatic_at_start": True,
+            "automatic_mid_session": True,
+            "advisory_only": False,
+            "surfaces": [
+                "SessionStart hook",
+                "PostToolUse telemetry hook",
+                "Host instructions",
+            ],
+            "notes": (
+                "Live SessionStart guidance is emitted from the Claude plugin, and PostToolUse telemetry now "
+                "emits one-shot nudges for no-edit drift, session-quality degradation, and loop-rescue intervention."
+            ),
+        },
+        {
+            "host": "codex",
+            "mode": "runtime",
+            "automatic_at_start": True,
+            "automatic_mid_session": True,
+            "advisory_only": False,
+            "surfaces": [
+                "SessionStart update hook",
+                "Savings reporter hook",
+                "Host instructions",
+            ],
+            "notes": (
+                "Codex now gets live SessionStart budget guidance plus the same PostToolUse nudges for no-edit drift, "
+                "session-quality degradation, and loop-rescue intervention."
+            ),
+        },
+        {
+            "host": "copilot",
+            "mode": "task_wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "Copilot preflight task",
+                "atelier CLI shell task",
+                "Copilot instructions",
+                "Atelier chatmode",
+            ],
+            "notes": (
+                "Copilot now has a task-driven preflight that runs atelier CLI checks before chat work begins. "
+                "Native Copilot chat remains instruction-backed if that task path is skipped."
+            ),
+        },
+        {
+            "host": "gemini",
+            "mode": "wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "atelier-gemini wrapper",
+                "Gemini extension commands",
+                "Gemini extension instruction",
+            ],
+            "notes": (
+                "Gemini can now launch through an Atelier wrapper that emits live start guidance before handing off to Gemini CLI. "
+                "Extension-only startup still falls back to installed instructions."
+            ),
+        },
+        {
+            "host": "opencode",
+            "mode": "wrapper",
+            "automatic_at_start": True,
+            "automatic_mid_session": False,
+            "advisory_only": False,
+            "surfaces": [
+                "atelier-opencode wrapper",
+                "OpenCode agent instruction",
+            ],
+            "notes": (
+                "OpenCode can now launch through an Atelier wrapper that emits live start guidance before handing off to opencode. "
+                "Agent-profile-only sessions still rely on installed instructions."
+            ),
+        },
+    ]
 
 
-def create_app(*, store: Any = None) -> FastAPI:
-    """Create and return the FastAPI application.
+def _optimization_lever_tokens(
+    per_lever: dict[str, int],
+    *,
+    exact: tuple[str, ...] = (),
+    prefixes: tuple[str, ...] = (),
+) -> int:
+    total = 0
+    for lever, tokens in per_lever.items():
+        if lever in exact or any(lever.startswith(prefix) for prefix in prefixes):
+            total += int(tokens or 0)
+    return total
 
-    Args:
-        store: Optional pre-built store — used in tests to inject a
-               temporary SQLite instance without touching the filesystem.
-    """
-    _store = store
 
-    # Validation: Ensure the data store exists
-    root = Path(cfg.atelier_root)
-    if not root.exists():
-        logger.error(
-            "Atelier root directory missing: %s. "
-            "The service requires an initialized store to function correctly. "
-            "Please run 'make install' or the installation script to bootstrap the environment.",
-            root,
-        )
+def _optimization_lever_examples(
+    top_sources: list[dict[str, Any]],
+    *,
+    exact: tuple[str, ...] = (),
+    prefixes: tuple[str, ...] = (),
+) -> list[str]:
+    examples: list[str] = []
+    for source in top_sources:
+        lever = str(source.get("lever") or "")
+        if lever in exact or any(lever.startswith(prefix) for prefix in prefixes):
+            tool_name = str(source.get("tool_name") or lever)
+            if tool_name not in examples:
+                examples.append(tool_name)
+    return examples[:3]
 
-    def get_store() -> Any:
-        nonlocal _store
-        if _store is None:
-            _store = _get_store()
-        return _store
 
-    app = FastAPI(
-        title="Atelier Service API",
-        version="0.1.0",
-        docs_url="/docs",
-        redoc_url=None,
+def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import SUPPORTED_OPTIMIZER_HOSTS
+
+    supported_hosts = list(SUPPORTED_OPTIMIZER_HOSTS)
+    per_lever = {
+        str(key): int(value or 0)
+        for key, value in (savings_payload.get("per_lever") or {}).items()
+        if isinstance(key, str)
+    }
+    top_sources = [item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)]
+
+    catalog = [
+        {
+            "id": "session_budget_optimizer",
+            "title": "Session budget optimizer",
+            "category": "session_control",
+            "automation": "Automatic on Claude/Codex and wrapper/task-enforced at start for Copilot/Gemini/OpenCode",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "applies_to": supported_hosts,
+            "notes": (
+                "Injects smallest-plan, bounded-context, and delivery-or-stop guardrails. "
+                "Also powers the trace-based optimization recommendations shown below."
+            ),
+            "examples": ["SessionStart guidance", "No-edit 10m nudge", "atelier optimize"],
+        },
+        {
+            "id": "search_read",
+            "title": "Search + read compaction",
+            "category": "tool_supervision",
+            "automation": "Automatic when smart search/read tools are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("search_read",)),
+            "applies_to": supported_hosts,
+            "notes": "Targets grep/read workflows into bounded chunks instead of feeding whole-file context.",
+            "examples": _optimization_lever_examples(top_sources, exact=("search_read",)),
+        },
+        {
+            "id": "batch_edit",
+            "title": "Batch edit",
+            "category": "tool_supervision",
+            "automation": "Automatic when batch edit paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("batch_edit",)),
+            "applies_to": supported_hosts,
+            "notes": "Combines related edits into a single operation to reduce repeated edit context and tool chatter.",
+            "examples": _optimization_lever_examples(top_sources, exact=("batch_edit",)),
+        },
+        {
+            "id": "compact_tool_output",
+            "title": "Tool-output compaction",
+            "category": "output_control",
+            "automation": "Automatic in Atelier MCP paths, optional in Claude host hook",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever,
+                exact=("compact_lifecycle",),
+                prefixes=("compact_tool_output:",),
+            ),
+            "applies_to": supported_hosts,
+            "notes": "Reduces verbose tool output before it becomes future prompt context.",
+            "examples": _optimization_lever_examples(
+                top_sources,
+                exact=("compact_lifecycle",),
+                prefixes=("compact_tool_output:",),
+            ),
+        },
+        {
+            "id": "cached_read",
+            "title": "Cached read reuse",
+            "category": "cache",
+            "automation": "Automatic when cached token paths are available",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("cached_read",)),
+            "applies_to": supported_hosts,
+            "notes": "Prefers cached or discounted context where the host/provider exposes it.",
+            "examples": _optimization_lever_examples(top_sources, exact=("cached_read",)),
+        },
+        {
+            "id": "scoped_recall",
+            "title": "Scoped recall",
+            "category": "memory",
+            "automation": "Automatic when memory recall paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("scoped_recall",)),
+            "applies_to": supported_hosts,
+            "notes": "Pulls narrower memory slices instead of replaying broad historical context.",
+            "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
+        },
+        {
+            "id": "reasonblock_inject",
+            "title": "ReasonBlock injection",
+            "category": "reasoning_reuse",
+            "automation": "Automatic when matching reasoning blocks are selected",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "applies_to": supported_hosts,
+            "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
+            "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
+        },
+        {
+            "id": "ast_truncation",
+            "title": "AST-aware truncation",
+            "category": "context_pruning",
+            "automation": "Automatic when structured truncation paths are used",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("ast_truncation",)),
+            "applies_to": supported_hosts,
+            "notes": "Keeps syntax-relevant structure while trimming low-value surrounding text.",
+            "examples": _optimization_lever_examples(top_sources, exact=("ast_truncation",)),
+        },
+        {
+            "id": "loop_detection",
+            "title": "Loop detection + rescue",
+            "category": "control_plane",
+            "automation": "Automatic detection, partial host-native rescue surfacing",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "applies_to": supported_hosts,
+            "notes": (
+                "Detects repeated search/read or retry loops and redirects the agent toward rescue instead of repeated spend. "
+                "This is a qualitative safeguard rather than a direct savings counter today."
+            ),
+            "examples": ["search_read_loop", "repeated bash failures"],
+        },
+    ]
+    for item in catalog:
+        observed_tokens = item.get("observed_tokens_saved")
+        if isinstance(observed_tokens, int) and observed_tokens > 0 and item["status"] == "active":
+            item["status"] = "active_observed"
+    return catalog
+
+
+def _optimization_implementation_gaps() -> list[dict[str, Any]]:
+    from atelier.core.capabilities.session_optimizer import SUPPORTED_OPTIMIZER_HOSTS
+
+    supported_hosts = list(SUPPORTED_OPTIMIZER_HOSTS)
+    return [
+        {
+            "id": "wrapper-adoption-visibility",
+            "priority": "medium",
+            "title": "Distinguish wrapper-launched sessions from instruction-only sessions",
+            "hosts": supported_hosts,
+            "notes": (
+                "These hosts now have live start-time wrapper/task entrypoints, but the dashboard still does not label which recorded runs actually used those enforced paths."
+            ),
+        },
+        {
+            "id": "mid-session-nudges-non-hook-hosts",
+            "priority": "medium",
+            "title": "Extend mid-session quality and loop nudges beyond Claude and Codex",
+            "hosts": supported_hosts,
+            "notes": (
+                "Claude and Codex now emit no-edit, quality-drop, and loop-rescue nudges through runtime telemetry. "
+                "Copilot, Gemini, and OpenCode still only get start-time automation today."
+            ),
+        },
+        {
+            "id": "host-native-output-compaction-rollout",
+            "priority": "medium",
+            "title": "Roll out host-native tool-output compaction more broadly",
+            "hosts": supported_hosts,
+            "notes": (
+                "Tool-output compaction exists in Atelier's supervised paths and optional Claude hook surfaces, "
+                "but the host-native rollout is not uniform yet."
+            ),
+        },
+        {
+            "id": "impact-validation-windows",
+            "priority": "medium",
+            "title": "Add before/after impact validation for optimization changes",
+            "hosts": supported_hosts,
+            "notes": (
+                "Atelier now audits static context surfaces and recent trace quality, but it still does not compare pre-change and post-change windows to prove whether an optimization improved tokens, cost, or cache leverage."
+            ),
+        },
+        {
+            "id": "delta-read-and-structure-map-telemetry",
+            "priority": "medium",
+            "title": "Measure smart re-read savings at the file-structure level",
+            "hosts": supported_hosts,
+            "notes": (
+                "Atelier has search/read compaction and AST-aware truncation, but it does not yet expose repeat-read telemetry comparable to delta-read and structure-map measurement."
+            ),
+        },
+        {
+            "id": "model-routing-simulation",
+            "priority": "low",
+            "title": "Simulate cheaper model routing for routine traces",
+            "hosts": supported_hosts,
+            "notes": (
+                "The current optimizer flags expensive sessions, but it still does not estimate what could have been saved by routing clearly routine work to a cheaper model tier."
+            ),
+        },
+    ]
+
+
+def _optimizations_summary_payload(root: Path, store: ReasoningStore, *, window_days: int) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import (
+        build_trace_optimization_report,
+        render_session_optimizer_guidance,
+        session_optimization_rules,
     )
 
+    savings = _savings_summary_payload(root, window_days=window_days)
+    traces = store.list_traces(limit=5000)
+    recent_traces = _recent_traces(store, window_days=window_days)
+    live_events = _iter_live_savings_events(root)
+    recommendations = build_trace_optimization_report(traces, days=window_days)
+    from atelier.core.foundation.paths import resolve_workspace_root
+
+    project_root_candidate = resolve_workspace_root(root)
+    if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
+        project_root_candidate = Path.cwd()
+    from atelier.core.capabilities.optimization_audit import (
+        build_context_audit,
+        build_session_quality_summary,
+    )
+
+    context_audit = build_context_audit(
+        project_root=project_root_candidate,
+        blocks_dir=getattr(store, "blocks_dir", None),
+        rubrics_dir=getattr(store, "rubrics_dir", None),
+    )
+    quality_score = build_session_quality_summary(traces, window_days=window_days, context_audit=context_audit)
+    runtime_coverage = _optimization_runtime_coverage()
+    implemented_levers = _implemented_optimization_catalog(savings)
+    auto_optimizations = _build_auto_optimizations(savings, live_events, window_days=window_days)
+    impact_validation = _build_impact_validation(store, recent_traces, window_days=window_days)
+    reread_telemetry = _build_reread_telemetry(root, window_days=window_days)
+    model_routing_simulation = _build_model_routing_simulation(recent_traces, window_days=window_days)
+
+    # Fetch latest codeburn:optimize report
+    external_optimizations = store.list_external_analytics_runs(tool="codeburn:optimize", days=window_days, limit=1)
+    latest_external = external_optimizations[0] if external_optimizations else None
+
+    automatic_hosts = sum(1 for item in runtime_coverage if item["automatic_at_start"])
+    advisory_only_hosts = sum(1 for item in runtime_coverage if item["advisory_only"])
+    observed_levers = sum(
+        1
+        for item in implemented_levers
+        if isinstance(item.get("observed_tokens_saved"), int) and item["observed_tokens_saved"] > 0
+    )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "automatic_hosts": automatic_hosts,
+        "advisory_only_hosts": advisory_only_hosts,
+        "observed_levers": observed_levers,
+        "runtime_coverage": runtime_coverage,
+        "budget_guidance": render_session_optimizer_guidance(),
+        "budget_rules": session_optimization_rules(),
+        "implemented_levers": implemented_levers,
+        "implementation_gaps": _optimization_implementation_gaps(),
+        "recommendations": recommendations,
+        "context_audit": context_audit,
+        "quality_score": quality_score,
+        "auto_optimizations": auto_optimizations,
+        "impact_validation": impact_validation,
+        "reread_telemetry": reread_telemetry,
+        "model_routing_simulation": model_routing_simulation,
+        "external_optimizations": latest_external,
+        "savings": savings,
+        "data_sources": [
+            {
+                "id": "runtime_coverage",
+                "label": "Host automation coverage",
+                "detail": "Static audit of current hook-backed and instruction-backed optimizer surfaces across the five supported hosts.",
+            },
+            {
+                "id": "trace_recommendations",
+                "label": "Trace-based opportunities",
+                "detail": "Recommendations generated from stored traces via the session optimizer heuristics.",
+            },
+            {
+                "id": "context_audit",
+                "label": "Static context audit",
+                "detail": "Prompt-relevant Atelier surfaces scanned for approximate token weight and optimization headroom.",
+            },
+            {
+                "id": "quality_score",
+                "label": "Recent trace quality scoring",
+                "detail": "Multi-signal quality scoring built from recent Atelier traces using context fill, delivery, outcome, cache, and redundancy signals.",
+            },
+            {
+                "id": "savings_telemetry",
+                "label": "Savings telemetry",
+                "detail": "Observed token savings pulled from cost history and live savings event streams.",
+            },
+        ],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# App Factory                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+def create_app(store_root: str | Path | None = None) -> Any:
+    """Construct the FastAPI instance."""
+    from fastapi import Depends, FastAPI, HTTPException, Query, Security
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+    from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
+    from atelier.core.foundation.store import ReasoningStore
+
+    security = HTTPBearer(auto_error=False)
+
+    def verify_api_key(
+        auth: HTTPAuthorizationCredentials | None = Security(security),  # noqa: B008
+    ) -> str:
+        if not cfg.require_auth:
+            return "anonymous"
+        if auth is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not cfg.api_key:
+            logger.warning("API key not configured; rejecting request")
+            raise HTTPException(status_code=401, detail="Authentication required but no key configured")
+        if auth.credentials != cfg.api_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        return "authenticated"
+
+    app = FastAPI(
+        title="Atelier",
+        description="Agent Reasoning Runtime API",
+        version="0.1.0",
+        docs_url="/docs",
+    )
+
+    # CORS for local dev
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    init_product_telemetry(service_version="0.1.0")
+    # Late load store
+    store_path = Path(store_root or cfg.atelier_root)
+    store = ReasoningStore(store_path)
+    _store_init_lock = threading.Lock()
 
-    @app.middleware("http")
-    async def product_telemetry_middleware(request: Request, call_next: Any) -> Any:
-        started_at = time.perf_counter()
-        try:
-            response = await call_next(request)
-        except Exception:
-            emit_product(
-                "api_request",
-                endpoint=_route_path(request),
-                method=request.method,
-                status_code=500,
-                duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
-            )
-            raise
-        emit_product(
-            "api_request",
-            endpoint=_route_path(request),
-            method=request.method,
-            status_code=int(getattr(response, "status_code", 0) or 0),
-            duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
-        )
-        return response
-
-    def _route_path(request: Request) -> str:
-        route = request.scope.get("route")
-        path = getattr(route, "path", None)
-        return str(path or request.url.path)
+    def get_store() -> ReasoningStore:
+        if not store._initialized:
+            with _store_init_lock:
+                if not store._initialized:  # double-checked locking
+                    store.init()
+        return store
 
     # ------------------------------------------------------------------ #
-    # Liveness / readiness                                                #
+    # Metadata & Health                                                   #
     # ------------------------------------------------------------------ #
 
-    @app.get("/health", response_model=HealthResponse, tags=["ops"])
-    def health() -> HealthResponse:
-        return HealthResponse(status="ok")
+    @app.get("/health", tags=["system"])
+    def health_check() -> dict[str, str]:
+        return {"status": "ok", "timestamp": datetime.now(UTC).isoformat()}
 
-    @app.get("/ready", response_model=ReadyResponse, tags=["ops"])
-    def ready() -> dict[str, Any]:
-        try:
-            store = _get_store()
-            return {
-                "status": "ok",
-                "storage": {"ok": store is not None, "backend": cfg.storage_backend},
-            }
-        except Exception:
-            return {
-                "status": "degraded",
-                "storage": {"ok": False, "backend": cfg.storage_backend},
-            }
+    @app.get("/config", tags=["system"], dependencies=[Depends(verify_api_key)])
+    def get_config() -> dict[str, Any]:
+        return cfg.as_dict()
 
-    @app.get("/mcp/status", tags=["ops"])
-    def mcp_status() -> list[dict[str, Any]]:
-        """Return status of all MCP tools (always present in atelier-mcp)."""
-        from atelier.gateway.adapters.mcp_server import TOOLS
+    @app.get("/overview", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_overview() -> dict[str, Any]:
+        """Compatibility: GET /overview -> basic summary stats."""
+        from atelier.core.foundation.metrics import summarize
+        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+        from atelier.infra.runtime.cost_tracker import CostTracker
 
-        return [
-            {
-                "tool_name": name,
-                "available": True,
-                "description": spec.get("description", ""),
-            }
-            for name, spec in TOOLS.items()
-        ]
+        root = Path(cfg.atelier_root)
+        store = get_store()
+        summary = summarize(store)
 
-    # ------------------------------------------------------------------ #
-    # Product telemetry                                                   #
-    # ------------------------------------------------------------------ #
+        # Calculate tokens/cost from ALL traces in database using the shared
+        # backend pricing path.
+        total_raw_tokens = 0
+        total_cost_usd = 0.0
 
-    @app.get("/telemetry/local", tags=["telemetry"])
-    def telemetry_local(
-        since: float | None = None,
-        event: str | None = None,
-        limit: int = 500,
-    ) -> dict[str, Any]:
-        return {"events": LocalTelemetryStore().list_events(since=since, event=event, limit=limit)}
+        with sqlite3.connect(store.db_path) as conn:
+            sql = """
+                SELECT 
+                    SUM(json_extract(payload, '$.input_tokens')),
+                    SUM(json_extract(payload, '$.output_tokens')),
+                    SUM(json_extract(payload, '$.cached_input_tokens')),
+                    SUM(json_extract(payload, '$.thinking_tokens'))
+                FROM traces
+            """
+            row = conn.execute(sql).fetchone()
+            if row:
+                inp, out, cr, th = row
+                total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
 
-    @app.post("/telemetry/local", tags=["telemetry"])
-    def telemetry_local_write(payload: dict[str, Any]) -> dict[str, Any]:
-        event = str(payload.get("event", ""))
-        props = payload.get("props", {})
-        if not isinstance(props, dict):
-            raise HTTPException(status_code=400, detail="props must be an object")
-        emit_product_local(event, **props)
-        return {"ok": True}
+            conn.row_factory = sqlite3.Row
+            for trace_row in conn.execute("SELECT payload FROM traces"):
+                try:
+                    payload = json.loads(trace_row["payload"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                total_cost_usd += _trace_cost_from_payload(payload)
 
-    @app.get("/telemetry/summary", tags=["telemetry"])
-    def telemetry_summary(since: float | None = None) -> dict[str, Any]:
-        return LocalTelemetryStore().summary(since=since)
+        tracker = CostTracker(root)
+        savings = tracker.total_savings()
 
-    @app.get("/telemetry/schema", tags=["telemetry"])
-    def telemetry_schema() -> dict[str, Any]:
-        return schema_dump()
+        analyzer = FailureAnalyzer(store=store)
+        clusters = analyzer.analyze()
 
-    @app.get("/telemetry/config", tags=["telemetry"])
-    def telemetry_config() -> dict[str, Any]:
-        return frontend_telemetry_config()
-
-    @app.post("/telemetry/config", tags=["telemetry"])
-    def telemetry_config_update(payload: dict[str, Any]) -> dict[str, Any]:
-        remote = payload.get("remote_enabled")
-        lexical = payload.get("lexical_frustration_enabled")
-        if remote is not None and not isinstance(remote, bool):
-            raise HTTPException(status_code=400, detail="remote_enabled must be boolean")
-        if lexical is not None and not isinstance(lexical, bool):
-            raise HTTPException(
-                status_code=400,
-                detail="lexical_frustration_enabled must be boolean",
-            )
-        if lexical is not None:
-            save_telemetry_config(lexical_frustration_enabled=lexical)
-        if remote is not None:
-            set_remote_enabled(remote)
-        return frontend_telemetry_config()
-
-    @app.post("/telemetry/ack", tags=["telemetry"])
-    def telemetry_ack() -> dict[str, Any]:
-        mark_acknowledged()
-        return frontend_telemetry_config()
-
-    @app.post("/api/hosts/register", tags=["hosts"], response_model=HostRegisterResponse)
-    def register_host(request: HostRegisterRequest) -> HostRegisterResponse:
-        """Register a new host with Atelier.
-
-        Generates a UUID and fingerprint for the host, stores in registry.
-        """
-        registry = _get_host_registry()
-        registration = registry.register(request.atelier_version)
-        return HostRegisterResponse(
-            host_id=str(registration.host_id),
-            fingerprint=registration.fingerprint.model_dump(),
-            registered_at=registration.registered_at.isoformat(),
-            atelier_version=registration.atelier_version,
-        )
-
-    @app.get("/api/hosts", tags=["hosts"], response_model=list[HostListItemResponse])
-    def list_all_hosts() -> list[HostListItemResponse]:
-        """List all registered and detected hosts.
-
-        Includes both registered hosts from HostRegistry and legacy hosts
-        detected via CLI/config file checks.
-        """
-        import shutil
-
-        registry = _get_host_registry()
-        result: list[HostListItemResponse] = []
-
-        # Add registered hosts from HostRegistry
-        for registration in registry.list_all():
-            result.append(
-                HostListItemResponse(
-                    host_id=str(registration.host_id),
-                    label=str(registration.fingerprint.hostname),
-                    status="registered",
-                    active_domains=registration.metadata.get("active_domains", []),
-                    mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
-                    atelier_version=registration.atelier_version,
-                )
-            )
-
-        # Add legacy detected hosts
-        legacy_hosts = [
-            ("claude", "Claude Code", "claude"),
-            ("codex", "Codex", "codex"),
-            ("opencode", "OpenCode", None),
-            ("copilot", "VS Code Copilot", None),
-            ("gemini", "Gemini CLI", "gemini"),
-        ]
-        for hid, label, check in legacy_hosts:
-            if check == "claude":
-                installed = shutil.which("claude") is not None
-            elif check == "codex":
-                installed = shutil.which("codex") is not None
-            elif check == "gemini":
-                installed = shutil.which("gemini") is not None
-            elif hid == "opencode":
-                installed = (Path.home() / ".opencode").exists()
-            elif hid == "copilot":
-                installed = (Path.home() / ".vscode").exists()
-            else:
-                installed = False
-
-            if installed and not any(h.host_id == hid for h in result):
-                result.append(
-                    HostListItemResponse(
-                        host_id=hid,
-                        label=label,
-                        status="installed",
-                        active_domains=[],
-                        mcp_tools=[],
-                    )
-                )
-
-        return result
-
-    @app.get("/api/hosts/{host_id}", tags=["hosts"], response_model=HostDetailResponse)
-    def get_host_details(host_id: str) -> HostDetailResponse:
-        """Get detailed information about a host.
-
-        Returns full host information including fingerprint, metadata,
-        installed packs, and MCP tools.
-        """
-        registry = _get_host_registry()
-
-        # Try to get from registry
-        try:
-            registration = registry.get(host_id)
-            if registration:
-                return HostDetailResponse(
-                    host_id=str(registration.host_id),
-                    label=str(registration.fingerprint.hostname),
-                    fingerprint=registration.fingerprint.model_dump(),
-                    status="registered",
-                    active_domains=registration.metadata.get("active_domains", []),
-                    mcp_tools=registration.metadata.get("mcp_tools", []),
-                    last_seen=(registration.last_seen.isoformat() if registration.last_seen else None),
-                    registered_at=registration.registered_at.isoformat(),
-                    atelier_version=registration.atelier_version,
-                )
-        except Exception:
-            pass
-
-        # Check for legacy hosts
-        import shutil
-
-        legacy_hosts = {
-            "claude": ("Claude Code", "claude"),
-            "codex": ("Codex", "codex"),
-            "opencode": ("OpenCode", None),
-            "copilot": ("VS Code Copilot", None),
-            "gemini": ("Gemini CLI", "gemini"),
-        }
-
-        if host_id in legacy_hosts:
-            label, check = legacy_hosts[host_id]
-            if check == "claude":
-                installed = shutil.which("claude") is not None
-            elif check == "codex":
-                installed = shutil.which("codex") is not None
-            elif check == "gemini":
-                installed = shutil.which("gemini") is not None
-            elif host_id == "opencode":
-                installed = (Path.home() / ".opencode").exists()
-            elif host_id == "copilot":
-                installed = (Path.home() / ".vscode").exists()
-            else:
-                installed = False
-
-            if installed:
-                return HostDetailResponse(
-                    host_id=host_id,
-                    label=label,
-                    fingerprint={},
-                    status="installed",
-                    active_domains=[],
-                    mcp_tools=[],
-                )
-
-        raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
-
-    @app.get("/api/hosts/{host_id}/status", tags=["hosts"], response_model=HostStatusResponse)
-    def get_host_status(host_id: str) -> HostStatusResponse:
-        """Get current status of a host.
-
-        Returns last seen timestamp, installed packs, and available MCP tools.
-        """
-        registry = _get_host_registry()
-        registration = registry.get(host_id)
-
-        if not registration:
-            raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
-
-        return HostStatusResponse(
-            host_id=str(registration.host_id),
-            last_seen=(registration.last_seen.isoformat() if registration.last_seen else datetime.utcnow().isoformat()),
-            active_domains=registration.metadata.get("active_domains", []),
-            available_mcp_tools=registration.metadata.get("mcp_tools", []),
-            atelier_version=registration.atelier_version,
-        )
-
-    @app.patch("/api/hosts/{host_id}/status", tags=["hosts"], response_model=HostStatusResponse)
-    def update_host_status(host_id: str, request: HostStatusRequest) -> HostStatusResponse:
-        """Update host status with installed packs and MCP tools.
-
-        The host reports its current state, and we update last_seen timestamp.
-        """
-        registry = _get_host_registry()
-        registration = registry.get(host_id)
-
-        if not registration:
-            raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
-
-        # Update metadata with new status
-        status_update = HostStatus(
-            host_id=UUID(str(registration.host_id)),
-            atelier_version=registration.atelier_version,
-            active_domains=request.active_domains,
-            available_mcp_tools=request.available_mcp_tools,
-        )
-
-        updated = registry.update_status(host_id, status_update)
-        if not updated:
-            raise HTTPException(status_code=500, detail="Failed to update host status")
-
-        return HostStatusResponse(
-            host_id=str(updated.host_id),
-            last_seen=updated.last_seen.isoformat(),
-            active_domains=updated.metadata.get("active_domains", []),
-            available_mcp_tools=updated.metadata.get("mcp_tools", []),
-            atelier_version=updated.atelier_version,
-        )
-
-    @app.get("/hosts", tags=["ops"])
-    def list_hosts() -> list[dict[str, Any]]:
-        """Return status of agent host installations (legacy endpoint)."""
-        import shutil
-
-        hosts = [
-            ("claude", "Claude Code", "claude"),
-            ("codex", "Codex", "codex"),
-            ("opencode", "opencode", None),
-            ("copilot", "VS Code Copilot", None),
-            ("gemini", "Gemini CLI", "gemini"),
-        ]
-        result = []
-        for hid, label, check in hosts:
-            if check == "claude":
-                installed = shutil.which("claude") is not None
-            elif check == "codex":
-                installed = shutil.which("codex") is not None
-            elif check == "gemini":
-                installed = shutil.which("gemini") is not None
-            elif hid == "opencode":
-                installed = (Path.home() / ".opencode").exists()
-            elif hid == "copilot":
-                installed = (Path.home() / ".vscode").exists()
-            else:
-                installed = False
-            result.append(
-                {
-                    "name": hid,
-                    "label": label,
-                    "status": "installed" if installed else "not_installed",
-                    "mcp_connected": False,
-                }
-            )
-        return result
-
-    @app.get("/skills", tags=["ops"])
-    def list_skills() -> list[dict[str, Any]]:
-        """Return available skills with full markdown content (no duplication by source)."""
-        from pathlib import Path
-
-        # Go up from src/atelier/core/service/api.py to project root (4 levels)
-        root = Path(__file__).parent.parent.parent.parent.parent
-        skills: list[dict[str, Any]] = []
-
-        # Shared skills - atelier/integrations/skills/
-        skills_dir = root / "integrations" / "skills"
-        if skills_dir.exists():
-            for skill_dir in sorted(skills_dir.iterdir()):
-                if skill_dir.is_dir():
-                    md = skill_dir / "SKILL.md"
-                    if md.exists():
-                        content = md.read_text(encoding="utf-8")
-                        desc = ""
-                        if content.startswith("---"):
-                            end = content.find("---", 3)
-                            if end > 0:
-                                for line in content[3:end].split("\n"):
-                                    if line.startswith("description:"):
-                                        desc = line.split(":", 1)[1].strip()
-
-                        skills.append(
-                            {
-                                "name": skill_dir.name,
-                                "description": desc,
-                                "content": content,
-                            }
-                        )
-
-        return skills
-
-    @app.get("/mcp-servers", tags=["ops"])
-    def list_mcp_servers() -> dict[str, Any]:
-        """Return available MCP server tools."""
-        from pathlib import Path
-
-        root = Path(__file__).parent.parent.parent.parent
-        tools_file = root / ".atelier" / "mcp_tools.json"
-
-        if tools_file.exists():
-            import json
-
-            try:
-                return json.loads(tools_file.read_text())  # type: ignore[no-any-return]
-            except Exception:
-                pass
-
-        # Fallback: return empty structure
         return {
-            "tools": [],
-            "description": "MCP Server tools - query /mcp/status for current availability",
+            "total_traces": summary.traces_total,
+            "total_blocks": summary.blocks_active,
+            "total_rubrics": summary.rubrics_total,
+            "total_clusters": len(clusters),
+            "total_raw_tokens_estimate": total_raw_tokens,
+            "estimated_total_cost_usd": max(total_cost_usd, savings["actually_cost_usd"]),
+            "estimated_saved_cost_usd": savings["saved_usd"],
+            "average_compression_ratio": 1.0,
+            "is_estimate": False,
         }
-
-    @app.get("/skills/{source}/{name}", tags=["ops"])
-    def get_skill(source: str, name: str) -> dict[str, Any]:
-        """Return a specific skill by source and name."""
-        from pathlib import Path
-
-        root = Path(__file__).parent.parent.parent.parent
-
-        if source == "claude":
-            skill_dir = root / "integrations" / "claude" / "plugin" / "skills" / name
-        elif source == "codex":
-            skill_dir = root / ".codex" / "skills" / "atelier" / name
-        else:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=404, detail=f"Unknown source: {source}")
-
-        if not skill_dir.exists():
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=404, detail=f"Skill not found: {name}")
-
-        md = skill_dir / "SKILL.md"
-        if not md.exists():
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=404, detail=f"SKILL.md not found for: {name}")
-
-        content = md.read_text(encoding="utf-8")
-        return {
-            "name": name,
-            "source": source,
-            "content": content,
-            "path": str(md),
-        }
-
-    @app.get("/metrics", tags=["ops"])
-    def metrics(request: Request, _auth: None = Depends(verify_api_key)) -> Any:
-        """Return Prometheus metrics in text format.
-
-        Includes:
-        - Block and trace counts
-        - Context budget and token savings metrics (if prometheus_client is available)
-        """
-        st = get_store()
-        blocks = st.list_blocks()
-        traces = st.list_traces(limit=1000)
-
-        # Basic metrics as JSON (for backward compatibility)
-        basic_metrics = {
-            "block_count": len(blocks),
-            "trace_count": len(traces),
-            "success_traces": sum(1 for t in traces if t.status == "success"),
-            "failed_traces": sum(1 for t in traces if t.status == "failed"),
-        }
-
-        wants_prometheus = request.query_params.get("format") == "prometheus" or (
-            "text/plain" in request.headers.get("accept", "")
-        )
-        if not wants_prometheus:
-            return basic_metrics
-
-        # Try to expose Prometheus metrics in text format
-        try:
-            from prometheus_client import REGISTRY, generate_latest
-
-            # Collect all metrics from the default registry
-            metrics_text = generate_latest(REGISTRY).decode("utf-8")
-
-            # Add basic metrics as comments if Prometheus is available
-            metrics_lines = [
-                "# HELP atelier_basic_metrics Basic Atelier metrics",
-                "# TYPE atelier_basic_metrics gauge",
-                f"atelier_basic_metrics{{type=\"block_count\"}} {basic_metrics['block_count']}",
-                f"atelier_basic_metrics{{type=\"trace_count\"}} {basic_metrics['trace_count']}",
-                f"atelier_basic_metrics{{type=\"success_traces\"}} {basic_metrics['success_traces']}",
-                f"atelier_basic_metrics{{type=\"failed_traces\"}} {basic_metrics['failed_traces']}",
-                "",
-                metrics_text,
-            ]
-
-            # Return as text/plain for Prometheus
-            from fastapi.responses import PlainTextResponse
-
-            return PlainTextResponse("\n".join(metrics_lines))
-        except ImportError:
-            # If Prometheus is not available, return basic metrics as JSON
-            return basic_metrics
-
-    # ------------------------------------------------------------------ #
-    # Reasoning                                                           #
-    # ------------------------------------------------------------------ #
-
-    @app.post(
-        "/v1/reasoning/context",
-        response_model=ReasoningContextResponse,
-        tags=["reasoning"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def reasoning_context(req: ReasoningContextRequest) -> ReasoningContextResponse:
-        rt = _runtime(get_store())
-        match_frustration(req.task, surface="api_body")
-        with contextlib.suppress(Exception):
-            scored = rt.core_runtime.reasoning_reuse.retrieve(
-                task=req.task,
-                domain=req.domain,
-                files=req.files,
-                tools=req.tools,
-                errors=req.errors,
-                limit=req.max_blocks,
-                token_budget=req.token_budget,
-                dedup=req.dedup,
-            )
-            for rank, item in enumerate(scored, start=1):
-                block = getattr(item, "block", None)
-                emit_product(
-                    "reasonblock_retrieved",
-                    block_id_hash=hash_identifier(str(getattr(block, "id", ""))),
-                    domain=str(getattr(block, "domain", req.domain or "")),
-                    retrieval_score=float(getattr(item, "score", 0.0)),
-                    rank=rank,
-                )
-        text = rt.get_reasoning_context(
-            task=req.task,
-            domain=req.domain,
-            files=req.files,
-            tools=req.tools,
-            errors=req.errors,
-            max_blocks=req.max_blocks,
-            token_budget=req.token_budget,
-            dedup=req.dedup,
-            include_telemetry=req.include_telemetry,
-            agent_id=req.agent_id,
-            recall=req.recall,
-        )
-        payload = text if isinstance(text, dict) else {"context": text}
-        tokens_saved = payload.get("tokens_saved_vs_naive") if isinstance(payload, dict) else None
-        if isinstance(tokens_saved, int):
-            emit_product(
-                "value_estimate",
-                tokens_saved_estimate=tokens_saved,
-                cache_hits=0,
-                blocks_applied=len(payload.get("matched_blocks", []) or []),
-            )
-        return ReasoningContextResponse.model_validate(payload)
-
-    @app.post(
-        "/v1/reasoning/check-plan",
-        tags=["reasoning"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def check_plan_endpoint(req: CheckPlanRequest) -> dict[str, Any]:
-        match_frustration(req.task, surface="api_body")
-        result = check_plan(
-            get_store(),
-            task=req.task,
-            plan=req.plan,
-            domain=req.domain,
-            files=req.files,
-            tools=req.tools,
-            errors=req.errors,
-        )
-        matched_blocks = list(getattr(result, "matched_blocks", []) or [])
-        if getattr(result, "status", "") == "blocked":
-            emit_product(
-                "plan_check_blocked",
-                domain=req.domain or "",
-                blocking_rule_id=hash_identifier(str(matched_blocks[0] if matched_blocks else "blocked")),
-                severity="high",
-            )
-        else:
-            emit_product(
-                "plan_check_passed",
-                domain=req.domain or "",
-                rule_count=len(matched_blocks),
-            )
-        return to_jsonable(result)
-
-    @app.post(
-        "/v1/reasoning/rescue",
-        tags=["reasoning"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def rescue(req: RescueRequest) -> dict[str, Any]:
-        rt = _runtime(get_store())
-        match_frustration(req.task, surface="api_body")
-        match_frustration(req.error, surface="api_body")
-        result = rt.rescue_failure(
-            task=req.task,
-            error=req.error,
-            domain=req.domain,
-            files=req.files,
-            recent_actions=req.recent_actions,
-        )
-        matched = list(getattr(result, "matched_blocks", []) or [])
-        emit_product(
-            "rescue_offered",
-            cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
-            rescue_type="reasonblock" if matched else "summary",
-        )
-        return to_jsonable(result)
-
-    # ------------------------------------------------------------------ #
-    # Rubrics                                                             #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/v1/rubrics", tags=["rubrics"], dependencies=[Depends(verify_api_key)])
-    def list_rubrics(domain: str | None = None) -> list[dict[str, Any]]:
-        rubrics = get_store().list_rubrics(domain=domain)
-        return [to_jsonable(r) for r in rubrics]
-
-    @app.get("/v1/rubrics/{rubric_id}", tags=["rubrics"], dependencies=[Depends(verify_api_key)])
-    def get_rubric(rubric_id: str) -> dict[str, Any]:
-        rubric = get_store().get_rubric(rubric_id)
-        if rubric is None:
-            raise HTTPException(status_code=404, detail=f"Rubric not found: {rubric_id}")
-        return to_jsonable(rubric)
-
-    @app.post("/v1/rubrics", tags=["rubrics"], dependencies=[Depends(verify_api_key)])
-    def create_rubric(req: UpsertRubricRequest) -> dict[str, Any]:
-        rubric = Rubric(**req.model_dump())
-        get_store().upsert_rubric(rubric, write_yaml=False)
-        emit_audit(
-            actor="api",
-            action="upsert_rubric",
-            resource_type="rubric",
-            resource_id=rubric.id,
-            store=get_store(),
-        )
-        return to_jsonable(rubric)
-
-    @app.post(
-        "/v1/rubrics/run",
-        tags=["rubrics"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def run_rubric_endpoint(req: RunRubricRequest) -> dict[str, Any]:
-        rubric = get_store().get_rubric(req.rubric_id)
-        if rubric is None:
-            raise HTTPException(status_code=404, detail=f"Rubric not found: {req.rubric_id}")
-        result = run_rubric(rubric, req.checks)
-        return to_jsonable(result)
 
     # ------------------------------------------------------------------ #
     # Traces                                                              #
     # ------------------------------------------------------------------ #
 
-    @app.get(
-        "/v1/traces",
-        tags=["traces"],
-        dependencies=[Depends(verify_api_key)],
-    )
+    @app.get("/traces", tags=["traces"], dependencies=[Depends(verify_api_key)])
     def list_traces(
-        limit: int = 50,
-        offset: int = 0,
-        domain: str | None = None,
-        status: str | None = None,
-        agent: str | None = None,
-    ) -> list[dict[str, Any]]:
-        traces = get_store().list_traces(limit=limit, offset=offset, domain=domain, status=status, agent=agent)
-        return [to_jsonable(t) for t in traces]
+        domain: str | None = Query(None),
+        status: str | None = Query(None),
+        agent: str | None = Query(None),
+        host: str | None = Query(None),
+        query: str | None = Query(None),
+        limit: int = Query(50, ge=1, le=1000),
+        offset: int = Query(0, ge=0),
+    ) -> dict[str, Any]:
+        store = get_store()
+        traces = store.list_traces(
+            domain=domain, status=status, agent=agent, host=host, query=query, limit=limit, offset=offset
+        )
+        # Fetch global metrics for the current domain/agent/host filters
+        metrics = store.get_traces_metrics(domain=domain, agent=agent, host=host)
 
-    @app.get(
-        "/v1/traces/{trace_id}",
-        tags=["traces"],
-        dependencies=[Depends(verify_api_key)],
-    )
+        return {"items": [to_jsonable(t) for t in traces], "metrics": metrics}
+
+    @app.get("/v1/traces/{trace_id}", tags=["traces"], dependencies=[Depends(verify_api_key)])
     def get_trace(trace_id: str) -> dict[str, Any]:
         trace = get_store().get_trace(trace_id)
-        if trace is not None:
-            return to_jsonable(trace)
-        # Fallback: look for a RunLedger JSON in runs/ (live/unrecorded sessions).
-        ledger_path = Path(cfg.atelier_root) / "runs" / f"{trace_id}.json"
-        if ledger_path.exists():
-            from atelier.infra.runtime.run_ledger import RunLedger as _RunLedger
+        if not trace:
+            raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
+        return to_jsonable(trace)
 
-            try:
-                led = _RunLedger.load(ledger_path)
-                snap = led.snapshot()
-                summary = led.to_trace_summary()
-                raw_status = snap.get("status", "running")
-                if raw_status in ("complete", "success"):
-                    mapped_status = "success"
-                elif raw_status in ("error", "failed"):
-                    mapped_status = "failed"
-                else:
-                    mapped_status = "partial"
-                return {
-                    "id": snap.get("run_id", trace_id),
-                    "run_id": snap.get("run_id", trace_id),
-                    "agent": snap.get("agent") or "unknown",
-                    "domain": snap.get("domain") or "",
-                    "task": snap.get("task") or "",
-                    "status": mapped_status,
-                    "files_touched": summary["files_touched"],
-                    "tools_called": summary["tools_called"],
-                    "commands_run": summary["commands_run"],
-                    "errors_seen": snap.get("errors_seen", []),
-                    "repeated_failures": [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])],
-                    "diff_summary": "",
-                    "output_summary": "",
-                    "validation_results": [],
-                    "created_at": snap.get("created_at", ""),
-                    "_live": True,
-                }
-            except Exception:
-                pass
-        raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
-
-    @app.post(
-        "/v1/traces",
-        response_model=RecordTraceResponse,
-        tags=["traces"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def record_trace(req: RecordTraceRequest) -> RecordTraceResponse:
-        payload = req.model_dump()
-        # Redact secrets from user-supplied fields.
-        for key in ("task", "diff_summary", "output_summary"):
-            if isinstance(payload.get(key), str):
-                payload[key] = redact(payload[key])
-        for key in ("errors_seen",):
-            if isinstance(payload.get(key), list):
-                payload[key] = redact_list([str(v) for v in payload[key]])
-        # Redact string values inside enriched records
-        for key in ("files_touched", "commands_run"):
-            items = payload.get(key)
-            if not isinstance(items, list):
-                continue
-            redacted_items: list[Any] = []
-            for item in items:
-                if isinstance(item, str):
-                    redacted_items.append(redact(item))
-                elif isinstance(item, dict):
-                    # Redact string fields within dicts (CommandRecord, FileEditRecord)
-                    redacted_item = {}
-                    for k, v in item.items():
-                        redacted_item[k] = redact(v) if isinstance(v, str) else v
-                    redacted_items.append(redacted_item)
-                else:
-                    redacted_items.append(item)
-            payload[key] = redacted_items
+    @app.post("/v1/traces", tags=["traces"], dependencies=[Depends(verify_api_key)])
+    def record_trace(payload: dict[str, Any]) -> dict[str, str]:
         if "id" not in payload:
             payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
         trace = Trace.model_validate(payload)
-        get_store().record_trace(trace, write_json=False)
-        emit_audit(
-            actor="api",
-            action="record_trace",
-            resource_type="trace",
-            resource_id=trace.id,
-            store=get_store(),
-        )
-        return RecordTraceResponse(id=trace.id)
-
-    @app.post(
-        "/v1/traces/{trace_id}/events",
-        status_code=status.HTTP_204_NO_CONTENT,
-        tags=["traces"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def add_trace_event(trace_id: str, req: dict[str, Any]) -> None:
-        # Lightweight stub — events stored to audit log only for now.
-        emit_audit(
-            actor="api",
-            action="trace_event",
-            resource_type="trace",
-            resource_id=trace_id,
-            store=get_store(),
-        )
-
-    @app.post(
-        "/v1/traces/{trace_id}/finish",
-        status_code=status.HTTP_204_NO_CONTENT,
-        tags=["traces"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def finish_trace(trace_id: str, req: FinishTraceRequest) -> None:
-        st = get_store()
-        trace = st.get_trace(trace_id)
-        if trace is None:
-            raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
-        # Update status field by re-recording with updated values.
-        updated = Trace(
-            **{
-                **to_jsonable(trace),
-                "status": req.status,
-                "diff_summary": redact(req.diff_summary),
-                "output_summary": redact(req.output_summary),
-            }
-        )
-        st.record_trace(updated, write_json=False)
+        get_store().record_trace(trace)
+        return {"id": trace.id}
 
     # ------------------------------------------------------------------ #
-    # ReasonBlocks                                                        #
-    # ------------------------------------------------------------------ #
-
-    @app.get(
-        "/v1/reasonblocks",
-        tags=["reasonblocks"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def list_blocks(
-        domain: str | None = None,
-        query: str | None = None,
-    ) -> list[dict[str, Any]]:
-        st = get_store()
-        blocks = st.search_blocks(query) if query else st.list_blocks(domain=domain)
-        return [to_jsonable(b) for b in blocks]
-
-    @app.post(
-        "/v1/reasonblocks",
-        tags=["reasonblocks"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def create_block(req: UpsertBlockRequest) -> dict[str, Any]:
-        block = ReasonBlock(**req.model_dump())
-        get_store().upsert_block(block, write_markdown=False)
-        emit_audit(
-            actor="api",
-            action="upsert_block",
-            resource_type="reasonblock",
-            resource_id=block.id,
-            store=get_store(),
-        )
-        return to_jsonable(block)
-
-    @app.patch(
-        "/v1/reasonblocks/{block_id}",
-        tags=["reasonblocks"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def patch_block(block_id: str, req: PatchBlockRequest) -> dict[str, Any]:
-        st = get_store()
-        if req.status is not None:
-            changed = st.update_block_status(block_id, req.status)
-            if not changed:
-                raise HTTPException(status_code=404, detail=f"Block not found: {block_id}")
-            emit_audit(
-                actor="api",
-                action="patch_block_status",
-                resource_type="reasonblock",
-                resource_id=block_id,
-                store=st,
-            )
-        block = st.get_block(block_id)
-        if block is None:
-            raise HTTPException(status_code=404, detail=f"Block not found: {block_id}")
-        return to_jsonable(block)
-
-    # ------------------------------------------------------------------ #
-    # Environments                                                        #
-    # ------------------------------------------------------------------ #
-
-    @app.get(
-        "/v1/environments",
-        tags=["environments"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def list_environments() -> list[dict[str, Any]]:
-        from atelier.core.foundation.environments import load_packaged_environments
-
-        envs = load_packaged_environments()
-        return [to_jsonable(e) for e in envs]
-
-    @app.post(
-        "/v1/environments",
-        tags=["environments"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def create_environment(req: UpsertEnvironmentRequest) -> dict[str, Any]:
-        from atelier.core.foundation.models import Environment
-
-        env = Environment(**req.model_dump())
-        # Environments are file-backed — validate and echo back.
-        return to_jsonable(env)
-
-    # ------------------------------------------------------------------ #
-    # Evals                                                               #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/v1/evals", tags=["evals"], dependencies=[Depends(verify_api_key)])
-    def list_evals(domain: str | None = None) -> dict[str, Any]:
-        return {"evals": [], "note": "eval storage not yet wired"}
-
-    @app.post("/v1/evals/run", tags=["evals"], dependencies=[Depends(verify_api_key)])
-    def run_evals(req: RunEvalsRequest) -> dict[str, Any]:
-        return {"status": "queued", "note": "eval runner not yet wired"}
-
-    # ------------------------------------------------------------------ #
-    # Benchmarks (removed — pack benchmark runner deprecated)             #
-    # ------------------------------------------------------------------ #
-
-    @app.post("/api/benchmarks/run", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
-    def run_benchmark(req: dict[str, Any]) -> dict[str, Any]:
-        """Pack benchmark runner has been removed. Use domain bundles instead."""
-        raise HTTPException(status_code=410, detail="Pack benchmark runner removed. Use domain bundles.")
-
-    @app.get("/api/benchmarks", tags=["benchmarks"], dependencies=[Depends(verify_api_key)])
-    def list_benchmarks(bundle_id: str | None = None, limit: int = 50) -> dict[str, Any]:
-        """Returns empty benchmark list (pack benchmarks removed)."""
-        return {"benchmarks": [], "total": 0}
-
-    @app.get(
-        "/api/benchmarks/{benchmark_id}",
-        tags=["benchmarks"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def get_benchmark(benchmark_id: str) -> dict[str, Any]:
-        """Pack benchmark runner has been removed."""
-        raise HTTPException(status_code=410, detail="Pack benchmark runner removed.")
-
-        # ------------------------------------------------------------------ #
-
-    # Extract / Failures                                                  #
-    # ------------------------------------------------------------------ #
-
-    @app.post(
-        "/v1/extract/reasonblock",
-        tags=["extract"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def extract_reasonblock(req: ExtractReasonBlockRequest) -> dict[str, Any]:
-        st = get_store()
-        trace = st.get_trace(req.trace_id)
-        if trace is None:
-            raise HTTPException(status_code=404, detail=f"Trace not found: {req.trace_id}")
-        candidate = extract_candidate(trace)
-        if req.save:
-            st.upsert_block(candidate.block, write_markdown=False)
-            emit_audit(
-                actor="api",
-                action="extract_reasonblock",
-                resource_type="reasonblock",
-                resource_id=candidate.block.id,
-                store=st,
-            )
-        return {
-            "block": to_jsonable(candidate.block),
-            "confidence": candidate.confidence,
-            "reasons": candidate.reasons,
-            "saved": req.save,
-        }
-
-    @app.post(
-        "/v1/failures/analyze",
-        tags=["failures"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def analyze_failures(req: AnalyzeFailuresRequest) -> dict[str, Any]:
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
-
-        st = get_store()
-        traces = st.list_traces(domain=req.domain, status="failed", limit=req.limit)
-        snapshots = [to_jsonable(t) for t in traces]
-        analyzer = FailureAnalyzer(store=st)
-        try:
-            clusters = analyzer.analyze()
-            return {"clusters": [to_jsonable(c) for c in clusters]}
-        except Exception:
-            # Fall back to standalone analysis when store-based analyzer fails.
-            from atelier.core.improvement.failure_analyzer import analyze_failures as _af
-
-            clusters = _af(snapshots)
-            return {"clusters": [to_jsonable(c) for c in clusters]}
-
-    @app.get(
-        "/v1/lessons/inbox",
-        tags=["lessons"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def lesson_inbox(domain: str | None = None, limit: int = 25) -> dict[str, Any]:
-        promoter = LessonPromoterCapability(get_store())
-        lessons = promoter.inbox(domain=domain, limit=limit)
-        return {"lessons": [lesson.model_dump(mode="json") for lesson in lessons]}
-
-    @app.post(
-        "/v1/lessons/decide",
-        tags=["lessons"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def lesson_decide(payload: dict[str, Any]) -> dict[str, Any]:
-        promoter = LessonPromoterCapability(get_store())
-        try:
-            return promoter.decide(
-                lesson_id=str(payload.get("lesson_id", "")),
-                decision=str(payload.get("decision", "")),
-                reviewer=str(payload.get("reviewer", "")),
-                reason=str(payload.get("reason", "")),
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # ------------------------------------------------------------------ #
-    # Metrics / savings                                                   #
-    # ------------------------------------------------------------------ #
-
-    @app.get(
-        "/v1/metrics/savings",
-        tags=["metrics"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def metrics_savings() -> dict[str, Any]:
-        root = Path(cfg.atelier_root)
-        tracker = CostTracker(root)
-        return tracker.total_savings()
-
-    @app.get(
-        "/v1/savings/summary",
-        tags=["metrics"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def savings_summary(window_days: int = 14) -> dict[str, Any]:
-        root = Path(cfg.atelier_root)
-        return _savings_summary_payload(root, window_days=window_days)
-
-    # ------------------------------------------------------------------ #
-    # Compatibility endpoints (frontend dashboard)                        #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/blocks", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_blocks() -> list[dict[str, Any]]:
-        """Compatibility: GET /blocks -> maps to /v1/reasonblocks."""
-        st = get_store()
-        blocks = st.list_blocks()
-        return [to_jsonable(b) for b in blocks]
-
-    @app.get("/blocks/{block_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_block(block_id: str) -> dict[str, Any]:
-        """Compatibility: GET /blocks/{block_id} -> maps to /v1/reasonblocks/{block_id}."""
-        st = get_store()
-        block = st.get_block(block_id)
-        if block is None:
-            raise HTTPException(status_code=404, detail=f"Block not found: {block_id}")
-        return to_jsonable(block)
-
-    @app.get("/traces", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_traces(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
-        """Compatibility: GET /traces -> maps to /v1/traces with proper frontend format.
-
-        Also surfaces live sessions from RunLedger JSON files that have not yet
-        been committed to the SQLite store via atelier_record_trace.
-        """
-        traces = get_store().list_traces(limit=limit, offset=offset)
-        result = [to_jsonable(t) for t in traces]
-
-        # Collect run_ids already persisted in SQLite so we don't duplicate them.
-        known_run_ids: set[str] = {t.run_id for t in traces if t.run_id}
-
-        # Scan the runs/ directory for RunLedger JSON files (live + unrecorded sessions).
-        runs_dir = Path(cfg.atelier_root) / "runs"
-        if runs_dir.exists():
-            # local import avoids circular dependency
-            from atelier.infra.runtime.run_ledger import RunLedger as _RunLedger
-
-            live: list[dict[str, Any]] = []
-            for ledger_path in sorted(runs_dir.glob("*.json"), reverse=True):
-                try:
-                    led = _RunLedger.load(ledger_path)
-                    # Read raw JSON for fields snapshot() recomputes (created_at, updated_at).
-                    raw_json: dict[str, Any] = json.loads(ledger_path.read_text("utf-8"))
-                except Exception:
-                    continue
-                if led.run_id in known_run_ids:
-                    continue  # already recorded in SQLite
-                snap = led.snapshot()
-                raw_status = snap.get("status", "running")
-                if raw_status in ("complete", "success"):
-                    mapped_status = "success"
-                elif raw_status in ("running",):
-                    mapped_status = "partial"
-                elif raw_status in ("error", "failed"):
-                    mapped_status = "failed"
-                else:
-                    mapped_status = "partial"  # unknown → treat as in-progress
-                tools_called = [{"name": t, "args_hash": "", "count": 1} for t in snap.get("tools_called", [])]
-                repeated_failures = [{"signature": f, "count": 1} for f in snap.get("repeated_failures", [])]
-                live.append(
-                    {
-                        "id": snap.get("run_id", ""),
-                        "run_id": snap.get("run_id"),
-                        "agent": snap.get("agent") or "unknown",
-                        "domain": snap.get("domain") or "",
-                        "task": snap.get("task") or "",
-                        "status": mapped_status,
-                        "files_touched": snap.get("files_touched", []),
-                        "tools_called": tools_called,
-                        "commands_run": snap.get("commands_run", []),
-                        "errors_seen": snap.get("errors_seen", []),
-                        "repeated_failures": repeated_failures,
-                        "diff_summary": "",
-                        "output_summary": "",
-                        "validation_results": [],
-                        # Use raw JSON timestamps — snapshot() regenerates them on the fly.
-                        "created_at": raw_json.get("created_at", ""),
-                        "_live": True,  # frontend hint: this is a live/unsaved session
-                    }
-                )
-            result = live + result
-
-        # Sort combined result newest-first before applying the limit slice.
-        def _ts(rec: dict[str, Any]) -> float:
-            raw = rec.get("created_at") or ""
-            try:
-                from datetime import datetime
-
-                if isinstance(raw, str) and raw:
-                    dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                    return dt.timestamp()
-            except Exception:
-                pass
-            return 0.0
-
-        result.sort(key=_ts, reverse=True)
-        return result[:limit]
-
-    @app.get("/savings", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_savings() -> dict[str, Any]:
-        """Compatibility: GET /savings -> maps to /v1/metrics/savings."""
-        root = Path(cfg.atelier_root)
-        tracker = CostTracker(root)
-        return tracker.total_savings()
-
-    @app.get("/savings/summary", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_savings_summary(window_days: int = 14) -> dict[str, Any]:
-        """Compatibility: GET /savings/summary -> maps to /v1/savings/summary."""
-        root = Path(cfg.atelier_root)
-        return _savings_summary_payload(root, window_days=window_days)
-
-    @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_calls(limit: int = 200) -> list[dict[str, Any]]:
-        """Compatibility: GET /calls -> reads call entries from cost history."""
-        root = Path(cfg.atelier_root)
-        history = load_cost_history(root)
-        ops = history.get("operations", {})
-        all_calls: list[dict[str, Any]] = []
-        for op_key, entry in ops.items():
-            for call in entry.get("calls", []):
-                all_calls.append(
-                    {
-                        "run_id": call.get("run_id", ""),
-                        "domain": entry.get("domain"),
-                        "task": entry.get("task_sample"),
-                        "operation": call.get("operation"),
-                        "model": call.get("model"),
-                        "input_tokens": call.get("input_tokens"),
-                        "output_tokens": call.get("output_tokens"),
-                        "cache_read_tokens": call.get("cache_read_tokens"),
-                        "cost_usd": call.get("cost_usd"),
-                        "lessons_used": call.get("lessons_used"),
-                        "op_key": op_key,
-                        "at": call.get("at"),
-                    }
-                )
-        all_calls.sort(key=lambda c: c.get("at", ""), reverse=True)
-        return all_calls[:limit]
-
-    @app.get("/clusters", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_clusters(limit: int = 100) -> list[dict[str, Any]]:
-        """Compatibility: GET /clusters -> maps to /v1/failures/analyze."""
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
-
-        st = get_store()
-        traces = st.list_traces(status="failed", limit=limit)
-        snapshots = [to_jsonable(t) for t in traces]
-        runs_dir = Path(cfg.atelier_root) / "runs"
-        analyzer = FailureAnalyzer(runs_dir=runs_dir)
-        try:
-            clusters = analyzer.analyze()
-            return [to_jsonable(c) for c in clusters]
-        except Exception:
-            from atelier.core.improvement.failure_analyzer import analyze_failures as _af
-
-            clusters = _af(snapshots)
-            return [to_jsonable(c) for c in clusters]
-
-    @app.get("/environments", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_environments() -> list[dict[str, Any]]:
-        """Compatibility: GET /environments -> maps to /v1/environments with frontend format."""
-        from atelier.core.foundation.environments import load_packaged_environments
-
-        envs = load_packaged_environments()
-        result = []
-        for e in envs:
-            env_dict = to_jsonable(e)
-            result.append(
-                {
-                    "environment": {
-                        "id": env_dict["id"],
-                        "name": env_dict.get("name", ""),
-                        "status": "active",
-                        "details": {k: v for k, v in env_dict.items() if k not in ("id", "name")},
-                    },
-                    "rubric": None,
-                }
-            )
-        return result
-
-    @app.get("/overview", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_overview() -> dict[str, Any]:
-        """Compatibility: GET /overview -> returns stats summary."""
-        from atelier.core.foundation.environments import load_packaged_environments
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
-
-        st = get_store()
-        blocks = st.list_blocks()
-        traces = st.list_traces(limit=10000)
-
-        total_raw_tokens = sum(
-            sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in entry.get("calls", []))
-            for entry in load_cost_history(Path(cfg.atelier_root)).get("operations", {}).values()
-        )
-
-        root = Path(cfg.atelier_root)
-        history = load_cost_history(root)
-        ops = history.get("operations", {})
-        total_cost = 0.0
-        total_saved = 0.0
-        for op_key in ops:
-            s = CostTracker(root).savings_for(op_key)
-            calls = s.get("calls_count", 0)
-            if calls > 0:
-                total_cost += s.get("current_cost_usd", 0.0) * calls
-                total_saved += s.get("delta_vs_base_usd", 0.0) * calls
-
-        return {
-            "total_traces": len(traces),
-            "total_blocks": len([b for b in blocks if b.status == "active"]),
-            "total_rubrics": len(st.list_rubrics()),
-            "total_environments": len(load_packaged_environments()),
-            "total_clusters": len(
-                [
-                    to_jsonable(c)
-                    for c in FailureAnalyzer(Path(cfg.atelier_root) / "runs").analyze()
-                    if len(getattr(c, "trace_ids", [])) > 0
-                ]
-            ),
-            "total_raw_tokens_estimate": total_raw_tokens,
-            "total_saved_tokens_estimate": int(total_saved * 1000000 / 3.0),
-            "total_compressed_tokens_estimate": 0,
-            "average_compression_ratio": 1.0,
-            "estimated_total_cost_usd": round(total_cost, 6),
-            "estimated_saved_cost_usd": round(total_saved, 6),
-            "usd_per_1k_tokens": 3.0,
-            "is_estimate": True,
-        }
-
-    @app.get("/plans", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_plans(limit: int = 50) -> list[dict[str, Any]]:
-        """Compatibility: GET /plans -> derives plan records from traces."""
-        traces = get_store().list_traces(limit=limit)
-        result = []
-        for t in traces:
-            if t.run_id:
-                result.append(
-                    {
-                        "trace_id": t.id,
-                        "domain": t.domain,
-                        "task": t.task,
-                        "status": t.status,
-                        "plan_checks": [{"name": "plan_valid", "passed": t.status == "success"}],
-                    }
-                )
-        return result
-
-    # ------------------------------------------------------------------ #
-    # Raw artifacts                                                       #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
-    def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
-        """Return metadata for a stored raw artifact."""
-        store_inst = get_store()
-        artifact = store_inst.get_raw_artifact(artifact_id)
-        if not artifact:
-            raise HTTPException(status_code=404, detail=f"Raw artifact not found: {artifact_id}")
-        return artifact.model_dump(mode="json")  # type: ignore[no-any-return]
-
-    @app.get(
-        "/raw-artifacts/{artifact_id}/content",
-        tags=["artifacts"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def get_raw_artifact_content(artifact_id: str) -> Any:
-        """Return the raw JSONL content of a stored artifact as plain text."""
-        from fastapi.responses import PlainTextResponse
-
-        store_inst = get_store()
-        artifact = store_inst.get_raw_artifact(artifact_id)
-        if not artifact:
-            raise HTTPException(status_code=404, detail=f"Raw artifact not found: {artifact_id}")
-        try:
-            content = store_inst.read_raw_artifact_content(artifact)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="Content file not found on disk") from exc
-        return PlainTextResponse(content, media_type="text/plain")
-
-    @app.get("/ledgers/{run_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_ledger(run_id: str) -> dict[str, Any]:
-        """Compatibility: GET /ledgers/{run_id} -> returns run ledger data.
-
-        First checks for a live RunLedger JSON file (written by the reasoning
-        runtime).  When that is absent, falls back to an imported Trace that
-        carries the same run_id so that sessions imported from Claude / Codex /
-        OpenCode / Copilot are still surfaced here.
-        """
-        from atelier.infra.runtime.run_ledger import RunLedger
-
-        ledger_path = Path(cfg.atelier_root) / "runs" / f"{run_id}.json"
-        snap = None
-        if ledger_path.exists():
-            try:
-                ledger = RunLedger.load(ledger_path)
-                snap = ledger.snapshot()
-            except Exception as e:
-                return {"run_id": run_id, "error": str(e)}
-
-        # Always check if there's a corresponding trace to fetch the full conversation history
-        # for imported sessions, as the RunLedger JSON doesn't store the full chat history.
-        store_inst = get_store()
-        traces = store_inst.list_traces(limit=10000)
-        trace = next((t for t in traces if getattr(t, "run_id", None) == run_id), None)
-
-        conversations: list[dict[str, Any]] = []
-        if trace and trace.raw_artifact_ids:
-            for art_id in trace.raw_artifact_ids:
-                artifact = store_inst.get_raw_artifact(art_id)
-                if artifact:
-                    try:
-                        raw_content = store_inst.read_raw_artifact_content(artifact)
-                        from atelier.gateway.integrations._session_parser import parse_session_turns
-
-                        conversations = parse_session_turns(raw_content, artifact.source)
-                    except Exception:
-                        pass
-                    break  # use first artifact only
-
-        if snap:
-            if conversations:
-                snap["conversations"] = conversations
-            return snap
-        if trace:
-            return {
-                "run_id": run_id,
-                "status": trace.status,
-                "task": trace.task,
-                "agent": trace.agent,
-                "domain": trace.domain,
-                "created_at": trace.created_at.isoformat() if trace.created_at else None,
-                "files_touched": trace.files_touched,
-                "commands_run": trace.commands_run,
-                "errors_seen": trace.errors_seen,
-                "tools_called": [tc.model_dump() for tc in trace.tools_called],
-                "conversations": conversations,
-                "raw_artifact_ids": trace.raw_artifact_ids,
-                "note": "Imported from session file — no live ledger exists.",
-                "trace": trace.model_dump(mode="json"),
-            }
-
-        return {"run_id": run_id, "status": "not_found"}
-
-    @app.post("/install/{host_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_install_host(host_id: str) -> dict[str, Any]:
-        """Compatibility: POST /install/{host_id} -> installs MCP config for host."""
-        import json
-        from pathlib import Path
-
-        configs: dict[str, dict[str, Any]] = {
-            "claude": {
-                "mcpServers": {
-                    "atelier": {
-                        "command": "uv",
-                        "args": ["run", "atelier-mcp"],
-                        "env": {"ATELIER_ROOT": str(Path.home() / ".atelier")},
-                    }
-                }
-            },
-            "codex": {
-                "agents": {
-                    "skills": [
-                        "atelier-task",
-                        "atelier-check-plan",
-                        "atelier-rescue",
-                        "atelier-record-trace",
-                    ]
-                },
-                "mcp": {
-                    "servers": {
-                        "atelier": {
-                            "command": "uv",
-                            "args": ["run", "atelier-mcp"],
-                            "env": {"ATELIER_ROOT": str(Path.home() / ".atelier")},
-                        }
-                    }
-                },
-            },
-            "opencode": {
-                "mcpServers": {
-                    "atelier": {
-                        "command": "uv",
-                        "args": ["run", "atelier-mcp"],
-                        "env": {"ATELIER_ROOT": str(Path.home() / ".atelier")},
-                    }
-                }
-            },
-            "copilot": {
-                "mcpServers": {
-                    "atelier": {
-                        "command": "uv",
-                        "args": ["run", "atelier-mcp"],
-                        "env": {"ATELIER_ROOT": str(Path.home() / ".atelier")},
-                    }
-                }
-            },
-            "gemini": {
-                "mcpServers": {
-                    "atelier": {
-                        "command": "uv",
-                        "args": ["run", "atelier-mcp"],
-                        "env": {"ATELIER_ROOT": str(Path.home() / ".atelier")},
-                    }
-                }
-            },
-        }
-
-        if host_id not in configs:
-            return {"status": "error", "message": f"Unknown host: {host_id}"}
-
-        config = configs[host_id]
-        config_dir = Path.home()
-        existing: dict[str, Any]
-
-        try:
-            if host_id == "claude":
-                claude_dir = config_dir / ".claude"
-                claude_dir.mkdir(exist_ok=True)
-                config_path = claude_dir / "claude_desktop_config.json"
-                existing = (
-                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
-                )
-                existing.setdefault("mcpServers", {}).update(config["mcpServers"])
-                config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            elif host_id == "codex":
-                codex_dir = config_dir / ".codex"
-                codex_dir.mkdir(exist_ok=True)
-                config_path = codex_dir / "config.jsonc"
-                existing = (
-                    json.loads(config_path.read_text(encoding="utf-8").replace("// ", ""))
-                    if config_path.exists()
-                    else {"agents": {}, "mcp": {}}
-                )
-                existing.setdefault("agents", {}).update(config["agents"])
-                existing.setdefault("mcp", {}).update(config["mcp"])
-                config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            elif host_id == "opencode":
-                opencode_dir = config_dir / ".opencode"
-                opencode_dir.mkdir(exist_ok=True)
-                config_path = opencode_dir / "config.jsonc"
-                existing = (
-                    json.loads(config_path.read_text(encoding="utf-8").replace("// ", ""))
-                    if config_path.exists()
-                    else {"mcpServers": {}}
-                )
-                existing.setdefault("mcpServers", {}).update(config["mcpServers"])
-                config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            elif host_id == "copilot":
-                copilot_dir = config_dir / ".vscode"
-                copilot_dir.mkdir(exist_ok=True)
-                config_path = copilot_dir / "settings.json"
-                existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-                existing.setdefault("mcp", {}).setdefault("servers", {}).update(config["mcpServers"])
-                config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            elif host_id == "gemini":
-                gemini_dir = config_dir / ".gemini"
-                gemini_dir.mkdir(exist_ok=True)
-                config_path = gemini_dir / "settings.json"
-                existing = (
-                    json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {"mcpServers": {}}
-                )
-                existing.setdefault("mcpServers", {}).update(config["mcpServers"])
-                config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            return {"status": "success", "installed": host_id, "config_path": str(config_path)}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-
-    # ------------------------------------------------------------------ #
-    # Host Integrations (Phase D.7)                                       #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/api/integrations/hosts", tags=["integrations"], dependencies=[Depends(verify_api_key)])
-    def list_host_integrations() -> dict[str, Any]:
-        """List all available host integrations."""
-        import yaml
-
-        # Find hosts directory relative to this module
-        hosts_dir = Path(__file__).parent.parent / "integrations" / "hosts"
-        if not hosts_dir.exists():
-            return {"hosts": [], "total": 0}
-
-        hosts = []
-        for host_file in sorted(hosts_dir.glob("*.yaml")):
-            try:
-                with open(host_file) as f:
-                    config = yaml.safe_load(f)
-                if config:
-                    hosts.append(
-                        {
-                            "host_id": config.get("host_id"),
-                            "name": config.get("name"),
-                            "version": config.get("version", "1.0.0"),
-                            "description": config.get("description", ""),
-                            "platforms": config.get("platforms", []),
-                            "detection": config.get("detection", {}),
-                            "recommended_domains": config.get("recommended_domains", []),
-                            "mcp_servers": config.get("mcp", {}).get("servers", []),
-                        }
-                    )
-            except Exception:
-                pass
-
-        return {"hosts": hosts, "total": len(hosts)}
-
-    @app.get(
-        "/api/integrations/hosts/{host_id}",
-        tags=["integrations"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    def get_host_integration(host_id: str) -> dict[str, Any]:
-        """Get host integration configuration."""
-        import yaml
-
-        # Find hosts directory relative to this module
-        hosts_dir = Path(__file__).parent.parent / "integrations" / "hosts"
-        host_file = hosts_dir / f"{host_id}.yaml"
-
-        if not host_file.exists():
-            raise HTTPException(status_code=404, detail=f"Host integration not found: {host_id}")
-
-        try:
-            with open(host_file) as f:
-                config = yaml.safe_load(f)
-
-            if not config:
-                raise HTTPException(status_code=404, detail=f"Host integration not found: {host_id}")
-
-            return {
-                "host_id": config.get("host_id"),
-                "name": config.get("name"),
-                "version": config.get("version", "1.0.0"),
-                "description": config.get("description", ""),
-                "platforms": config.get("platforms", []),
-                "detection": config.get("detection", {}),
-                "recommended_domains": config.get("recommended_domains", []),
-                "mcp_servers": config.get("mcp", {}).get("servers", []),
-                "installation": config.get("installation", {}),
-                "prompt_templates": config.get("prompt_templates", []),
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    # ------------------------------------------------------------------ #
-    # Memory routes (/v1/memory/*)                                       #
+    # Memory (agent long-term memory)                                     #
     # ------------------------------------------------------------------ #
 
     _mem_store: Any = None
@@ -1950,18 +1786,16 @@ def create_app(*, store: Any = None) -> FastAPI:
         if _mem_store is None:
             from atelier.infra.storage.factory import make_memory_store
 
-            root = Path(cfg.atelier_root)
-            _mem_store = make_memory_store(root)
+            _mem_store = make_memory_store(Path(cfg.atelier_root))
         return _mem_store
 
-    @app.get("/v1/memory/blocks")
+    @app.get("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_list_or_get(
         agent_id: str,
         label: str | None = None,
         include_tombstoned: bool = False,
         limit: int = 200,
     ) -> Any:
-        """List all memory blocks for an agent, or get a single block by label."""
         mem = _get_mem_store()
         if label is not None:
             block = mem.get_block(agent_id, label, include_tombstoned=include_tombstoned)
@@ -1970,9 +1804,8 @@ def create_app(*, store: Any = None) -> FastAPI:
             return block
         return mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
 
-    @app.post("/v1/memory/blocks")
+    @app.post("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_upsert_block(payload: dict[str, Any]) -> Any:
-        """Create or update a memory block."""
         from atelier.core.foundation.memory_models import MemoryBlock
         from atelier.infra.storage.memory_store import MemoryConcurrencyError
 
@@ -2015,9 +1848,8 @@ def create_app(*, store: Any = None) -> FastAPI:
         except MemoryConcurrencyError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.post("/v1/memory/archive")
+    @app.post("/v1/memory/archive", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_archive_passage(payload: dict[str, Any]) -> Any:
-        """Archive a text passage into long-term memory."""
         import hashlib
 
         from atelier.core.foundation.memory_models import ArchivalPassage
@@ -2043,9 +1875,8 @@ def create_app(*, store: Any = None) -> FastAPI:
         saved = mem.insert_passage(passage)
         return {"id": saved.id, "dedup_hit": saved.dedup_hit}
 
-    @app.post("/v1/memory/recall")
+    @app.post("/v1/memory/recall", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_recall_passages(payload: dict[str, Any]) -> Any:
-        """Search archived passages for a query."""
         mem = _get_mem_store()
         agent_id = payload.get("agent_id")
         query = payload.get("query")
@@ -2067,14 +1898,879 @@ def create_app(*, store: Any = None) -> FastAPI:
         )
         return {"passages": [p.model_dump(mode="json") for p in passages]}
 
+    # ------------------------------------------------------------------ #
+    # Telemetry                                                           #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/telemetry/config", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def get_telemetry_config() -> dict[str, Any]:
+        from atelier.core.service.telemetry.config import load_telemetry_config
+
+        cfg_telemetry = load_telemetry_config()
+        return {
+            "remote_enabled": cfg_telemetry.remote_enabled,
+            "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
+            "dev_mode": cfg.dev_mode,
+        }
+
+    @app.post("/telemetry/config", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def update_telemetry_config(payload: dict[str, Any]) -> dict[str, Any]:
+        from atelier.core.service.telemetry.config import save_telemetry_config
+
+        cfg_telemetry = save_telemetry_config(
+            remote_enabled=payload.get("remote_enabled"),
+            lexical_frustration_enabled=payload.get("lexical_frustration_enabled"),
+        )
+        return {
+            "remote_enabled": cfg_telemetry.remote_enabled,
+            "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
+            "dev_mode": cfg.dev_mode,
+        }
+
+    @app.post("/telemetry/ack", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def acknowledge_telemetry() -> dict[str, Any]:
+        from atelier.core.service.telemetry.banner import mark_acknowledged
+        from atelier.core.service.telemetry.config import load_telemetry_config
+
+        mark_acknowledged()
+        cfg_telemetry = load_telemetry_config()
+        return {
+            "remote_enabled": cfg_telemetry.remote_enabled,
+            "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
+            "dev_mode": cfg.dev_mode,
+        }
+
+    @app.get("/telemetry/local", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def list_local_telemetry(
+        limit: int = Query(200, ge=1, le=5000),
+        since: float | None = Query(None),
+        event: str | None = Query(None),
+        host: str | None = Query(None),
+    ) -> dict[str, Any]:
+        from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+
+        store = LocalTelemetryStore()
+        events = store.list_events(limit=limit, since=since, event=event, host=host)
+        return {"events": events}
+
+    @app.post("/telemetry/local", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def post_local_telemetry(payload: dict[str, Any]) -> dict[str, bool]:
+        from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+
+        store = LocalTelemetryStore()
+        store.write_event(event=payload["event"], props=payload["props"], exported=False)
+        return {"ok": True}
+
+    @app.get("/telemetry/summary", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def get_telemetry_summary(
+        since: float | None = Query(None),
+        event: str | None = Query(None),
+        host: str | None = Query(None),
+    ) -> dict[str, Any]:
+        from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+
+        store = LocalTelemetryStore()
+        return store.summary(since=since, event=event, host=host)
+
+    @app.get("/telemetry/schema", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
+    def get_telemetry_schema() -> dict[str, Any]:
+        from atelier.core.service.telemetry.schema import schema_dump
+
+        return schema_dump()
+
+    # ------------------------------------------------------------------ #
+    # Analytics & Compatibility Endpoints                                 #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/analytics", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_analytics(
+        agent: str | None = Query(None),
+        category: str | None = Query(None),
+        limit: int = Query(1000, ge=1, le=10000),
+        grouped: bool = Query(True),
+        days: int | None = Query(None),
+    ) -> list[dict[str, Any]]:
+        """GET /analytics -> granular tool usage dynamically from traces.
+
+        Calculated on the fly from the JSON payloads in the traces table
+        to ensure 100% lossless session-level accuracy.
+        """
+        db_path = store.db_path
+        rows = _query_analytics_rows(db_path, grouped=grouped, days=days, limit=limit)
+        return _filter_analytics_rows(rows, agent=agent, category=category)
+
+    @app.get("/analytics/summary", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_summary(
+        agent: str | None = Query(None),
+        model: str | None = Query(None),
+        category: str | None = Query(None),
+        search: str | None = Query(None),
+        limit: int = Query(5000, ge=1, le=10000),
+        grouped: bool = Query(True),
+        days: int | None = Query(None),
+    ) -> dict[str, Any]:
+        rows = _query_analytics_rows(store.db_path, grouped=grouped, days=days, limit=limit)
+        filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
+        return _build_analytics_summary(filtered, days=days)
+
+    @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_dashboard(
+        days: int = Query(30, ge=1, le=365),
+        host: str | None = Query(None),
+    ) -> dict[str, Any]:
+        """Session-level aggregated analytics for the dashboard.
+
+        Returns daily activity, per-domain, per-host, per-model breakdowns,
+        top sessions, and tool-type distributions in one call.
+        """
+        db_path = store.db_path
+        host_filter = "AND COALESCE(host, agent) = ?" if host else ""
+        sql = f"""
+            SELECT
+                id,
+            COALESCE(host, agent) AS host,
+                domain,
+                json_extract(payload, '$.model') AS model,
+                CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
+                CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
+                CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
+                CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
+                CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
+                CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) AS user_prompt_tokens,
+                payload,
+                created_at,
+                date(created_at) AS day
+            FROM traces
+            WHERE created_at >= datetime('now', '-' || ? || ' days')
+            {host_filter}
+            ORDER BY created_at DESC
+        """
+        params: list[Any] = [days]
+        if host:
+            params.append(host)
+
+        sessions = []
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+            for row in rows:
+                d = dict(row)
+                payload_obj: dict[str, Any] = {}
+                tools_called: list[dict[str, Any]] = []
+                try:
+                    parsed_payload = json.loads(d.get("payload") or "{}")
+                    if isinstance(parsed_payload, dict):
+                        payload_obj = parsed_payload
+                        raw_tools = payload_obj.get("tools_called") or []
+                        if isinstance(raw_tools, list):
+                            tools_called = [tool for tool in raw_tools if isinstance(tool, dict)]
+                except (json.JSONDecodeError, TypeError) as exc:
+                    logger.warning("Failed to parse trace payload: %s", exc)
+
+                payload_for_usage = payload_obj or {
+                    "model": d.get("model") or "",
+                    "input_tokens": d.get("input_tokens") or 0,
+                    "output_tokens": d.get("output_tokens") or 0,
+                    "thinking_tokens": d.get("thinking_tokens") or 0,
+                    "cached_input_tokens": d.get("cached_tokens") or 0,
+                    "cache_creation_input_tokens": d.get("cache_write_tokens") or 0,
+                }
+                model_usages = _trace_model_usages(payload_for_usage)
+                primary_model = _trace_primary_model(payload_for_usage, model_usages)
+
+                in_t = d.get("input_tokens") or 0
+                out_t = d.get("output_tokens") or 0
+                think_t = d.get("thinking_tokens") or 0
+                cache_r = d.get("cached_tokens") or 0
+                cache_w = d.get("cache_write_tokens") or 0
+
+                cost = _trace_cost_from_payload(payload_for_usage)
+
+                sessions.append(
+                    {
+                        "id": d["id"],
+                        "host": d["host"] or "unknown",
+                        "domain": d["domain"] or "unknown",
+                        "model": primary_model,
+                        "model_usages": model_usages,
+                        "day": d.get("day") or "",
+                        "created_at": d.get("created_at") or "",
+                        "input_tokens": in_t,
+                        "output_tokens": out_t,
+                        "thinking_tokens": think_t,
+                        "cached_tokens": cache_r,
+                        "cache_write_tokens": cache_w,
+                        "user_prompt_tokens": d.get("user_prompt_tokens") or 0,
+                        "cost": cost,
+                        "tools_called": tools_called,
+                    }
+                )
+
+        def _tool_call_count(session: dict[str, Any]) -> int:
+            total = 0
+            for tool in session.get("tools_called") or []:
+                if not isinstance(tool, dict):
+                    continue
+                total += int(tool.get("count") or 1)
+            return total
+
+        def _tool_output_tokens(session: dict[str, Any]) -> int:
+            total = 0
+            for tool in session.get("tools_called") or []:
+                if not isinstance(tool, dict):
+                    continue
+                total += int(tool.get("output_tokens") or 0)
+            return total
+
+        def _has_usage_signal(session: dict[str, Any]) -> bool:
+            model = str(session.get("model") or "").strip()
+            return any(
+                (
+                    bool(model),
+                    (session.get("output_tokens") or 0) > 0,
+                    (session.get("thinking_tokens") or 0) > 0,
+                    float(session.get("cost") or 0.0) > 0,
+                    _tool_call_count(session) > 0,
+                    _tool_output_tokens(session) > 0,
+                )
+            )
+
+        # Imported host logs can contain prompt-only stubs with no model or assistant/tool activity.
+        # Excluding them keeps dashboard breakdowns aligned with real usage sessions.
+        dashboard_sessions = [session for session in sessions if _has_usage_signal(session)]
+
+        daily: dict[str, dict[str, Any]] = {}
+        hourly: dict[str, dict[str, Any]] = {}
+        for s in dashboard_sessions:
+            day = s["day"]
+            if day not in daily:
+                daily[day] = {"date": day, "sessions": 0, "cost": 0.0, "input_tokens": 0, "output_tokens": 0}
+            daily[day]["sessions"] += 1
+            daily[day]["cost"] += s["cost"]
+            daily[day]["input_tokens"] += s["input_tokens"]
+            daily[day]["output_tokens"] += s["output_tokens"]
+
+            created_at = str(s.get("created_at") or "")
+            if len(created_at) >= 13:
+                hour = created_at[:13].replace("T", " ") + ":00"
+                if hour not in hourly:
+                    hourly[hour] = {
+                        "date": hour,
+                        "sessions": 0,
+                        "cost": 0.0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+                hourly[hour]["sessions"] += 1
+                hourly[hour]["cost"] += s["cost"]
+                hourly[hour]["input_tokens"] += s["input_tokens"]
+                hourly[hour]["output_tokens"] += s["output_tokens"]
+        daily_list = sorted(daily.values(), key=lambda x: x["date"])
+        hourly_list = sorted(hourly.values(), key=lambda x: x["date"])
+
+        by_domain: dict[str, dict[str, Any]] = {}
+        for s in dashboard_sessions:
+            dom = s["domain"]
+            if dom not in by_domain:
+                by_domain[dom] = {"domain": dom, "sessions": 0, "cost": 0.0}
+            by_domain[dom]["sessions"] += 1
+            by_domain[dom]["cost"] += s["cost"]
+        by_domain_list = sorted(by_domain.values(), key=lambda x: x["cost"], reverse=True)[:30]
+        for r in by_domain_list:
+            r["avg_cost"] = r["cost"] / r["sessions"] if r["sessions"] else 0.0
+
+        by_host: dict[str, dict[str, Any]] = {}
+        for s in dashboard_sessions:
+            h = s["host"]
+            if h not in by_host:
+                by_host[h] = {"host": h, "sessions": 0, "cost": 0.0, "input_tokens": 0, "cached_tokens": 0}
+            by_host[h]["sessions"] += 1
+            by_host[h]["cost"] += s["cost"]
+            by_host[h]["input_tokens"] += s["input_tokens"]
+            by_host[h]["cached_tokens"] += s["cached_tokens"]
+        by_host_list = sorted(by_host.values(), key=lambda x: x["cost"], reverse=True)
+        for r in by_host_list:
+            total_in = r["input_tokens"] + r["cached_tokens"]
+            r["cache_pct"] = (r["cached_tokens"] / total_in * 100) if total_in else 0.0
+
+        by_model: dict[str, dict[str, Any]] = {}
+        for s in dashboard_sessions:
+            seen_models: set[str] = set()
+            for usage in s.get("model_usages") or []:
+                mdl = str(usage.get("model") or "unknown") or "unknown"
+                if mdl not in by_model:
+                    by_model[mdl] = {
+                        "model": mdl,
+                        "sessions": 0,
+                        "cost": 0.0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                    }
+                if mdl not in seen_models:
+                    by_model[mdl]["sessions"] += 1
+                    seen_models.add(mdl)
+                by_model[mdl]["cost"] += _model_usage_cost(usage)
+                by_model[mdl]["input_tokens"] += int(usage.get("input_tokens") or 0)
+                by_model[mdl]["output_tokens"] += int(usage.get("output_tokens") or 0)
+                by_model[mdl]["cached_tokens"] += int(usage.get("cached_input_tokens") or 0)
+        by_model_list = sorted(by_model.values(), key=lambda x: x["cost"], reverse=True)
+        for r in by_model_list:
+            total_in = r["input_tokens"] + r["cached_tokens"]
+            r["cache_pct"] = (r["cached_tokens"] / total_in * 100) if total_in else 0.0
+
+        host_model_overview: dict[tuple[str, str], dict[str, Any]] = {}
+        for s in dashboard_sessions:
+            host_name = s["host"] or "unknown"
+            primary_model = s["model"] or "unknown"
+            seen_pairs: set[tuple[str, str]] = set()
+            for usage in s.get("model_usages") or []:
+                model_name = str(usage.get("model") or primary_model) or "unknown"
+                key = (host_name, model_name)
+                if key not in host_model_overview:
+                    host_model_overview[key] = {
+                        "host": host_name,
+                        "model": model_name,
+                        "sessions": 0,
+                        "user_typed_tokens": 0,
+                        "base_context_tokens": 0,
+                        "cached_prompt_tokens": 0,
+                        "cache_write_tokens": 0,
+                        "billable_output_tokens": 0,
+                        "tool_output_tokens": 0,
+                        "thinking_tokens": 0,
+                        "tool_calls": 0,
+                        "cost": 0.0,
+                    }
+                row = host_model_overview[key]
+                if key not in seen_pairs:
+                    row["sessions"] += 1
+                    seen_pairs.add(key)
+                row["base_context_tokens"] += int(usage.get("input_tokens") or 0)
+                row["cached_prompt_tokens"] += int(usage.get("cached_input_tokens") or 0)
+                row["cache_write_tokens"] += int(usage.get("cache_creation_input_tokens") or 0)
+                row["billable_output_tokens"] += int(usage.get("output_tokens") or 0)
+                row["thinking_tokens"] += int(usage.get("thinking_tokens") or 0)
+                row["cost"] += _model_usage_cost(usage)
+                if model_name == primary_model:
+                    row["user_typed_tokens"] += s["user_prompt_tokens"]
+                    row["tool_output_tokens"] += _tool_output_tokens(s)
+                    row["tool_calls"] += _tool_call_count(s)
+        host_model_overview_list = sorted(
+            host_model_overview.values(),
+            key=lambda row: (row["cost"], row["sessions"]),
+            reverse=True,
+        )
+
+        top_sessions_clean = [
+            {
+                "id": s["id"],
+                "host": s["host"],
+                "domain": s["domain"],
+                "model": s["model"],
+                "date": s["created_at"][:10] if s["created_at"] else "",
+                "cost": s["cost"],
+                "input_tokens": s["input_tokens"],
+                "output_tokens": s["output_tokens"],
+                "cached_tokens": s["cached_tokens"],
+            }
+            for s in sorted(dashboard_sessions, key=lambda x: x["cost"], reverse=True)[:20]
+        ]
+
+        _CORE = {
+            "Read",
+            "Edit",
+            "Write",
+            "Grep",
+            "Glob",
+            "ListDir",
+            "NotebookRead",
+            "NotebookEdit",
+            "TodoRead",
+            "TodoWrite",
+            "WebSearch",
+            "WebFetch",
+            "MultiEdit",
+            "view",
+            "read_file",
+            "replace",
+            "apply_patch",
+        }
+        _SHELL = {"Bash", "bash", "run_shell_command", "exec_command", "shell", "run_code"}
+
+        core_tools: dict[str, dict[str, Any]] = {}
+        shell_tools: dict[str, dict[str, Any]] = {}
+        mcp_tools: dict[str, dict[str, Any]] = {}
+
+        for s in dashboard_sessions:
+            for tool in s["tools_called"]:
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name") or ""
+                calls = tool.get("count") or 1
+                tin = tool.get("input_tokens") or 0
+                tout = tool.get("output_tokens") or 0
+
+                if name in _CORE:
+                    bucket = core_tools
+                elif name in _SHELL:
+                    bucket = shell_tools
+                elif name.startswith("mcp__") or name.startswith("mcp:"):
+                    bucket = mcp_tools
+                else:
+                    continue
+
+                if name not in bucket:
+                    bucket[name] = {"name": name, "calls": 0, "input_tokens": 0, "output_tokens": 0}
+                bucket[name]["calls"] += calls
+                bucket[name]["input_tokens"] += tin
+                bucket[name]["output_tokens"] += tout
+
+        return {
+            "summary": {
+                "total_cost": round(sum(float(session["cost"]) for session in dashboard_sessions), 6),
+                "projected_monthly_cost": round(
+                    sum(float(session["cost"]) for session in dashboard_sessions) * (30 / max(days, 1)),
+                    6,
+                ),
+                "total_sessions": len(dashboard_sessions),
+            },
+            "daily": daily_list,
+            "hourly": hourly_list,
+            "by_domain": by_domain_list,
+            "by_host": by_host_list,
+            "by_model": by_model_list,
+            "host_model_overview": host_model_overview_list,
+            "top_sessions": top_sessions_clean,
+            "external": _build_external_analytics_summary(get_store(), days=days),
+            "tools": {
+                "core": sorted(core_tools.values(), key=lambda x: x["calls"], reverse=True)[:15],
+                "shell": sorted(shell_tools.values(), key=lambda x: x["calls"], reverse=True)[:10],
+                "mcp": sorted(mcp_tools.values(), key=lambda x: x["calls"], reverse=True)[:20],
+            },
+        }
+
+    @app.get("/analytics/external", tags=["analytics"], dependencies=[Depends(verify_api_key)])
+    def analytics_external(
+        days: int = Query(30, ge=1, le=365),
+        tool: str | None = Query(None),
+        limit: int = Query(30, ge=1, le=200),
+    ) -> dict[str, Any]:
+        return _build_external_analytics_detail(get_store(), days=days, tool=tool, limit=limit)
+
+    @app.get("/plans", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_plans(limit: int = 50) -> list[dict[str, Any]]:
+        """Compatibility: GET /plans -> derives plan records from traces."""
+        traces = get_store().list_traces(limit=limit)
+        result = []
+        for t in traces:
+            if t.session_id:
+                result.append(
+                    {
+                        "trace_id": t.id,
+                        "domain": t.domain,
+                        "task": t.task,
+                        "status": t.status,
+                        "plan_checks": [{"name": "plan_valid", "passed": t.status == "success"}],
+                    }
+                )
+        return result
+
+    @app.get("/pricing", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def get_pricing_table() -> dict[str, Any]:
+        """GET /pricing -> returns the current model pricing table."""
+        from atelier.core.capabilities.pricing import _load_pricing_table
+
+        return _load_pricing_table()
+
+    # ------------------------------------------------------------------ #
+    # Raw artifacts                                                       #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
+    def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
+        """Return metadata for a stored raw artifact."""
+        store_inst = get_store()
+        artifact = store_inst.get_raw_artifact(artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail=f"Raw artifact not found: {artifact_id}")
+        return artifact.model_dump(mode="json")
+
+    @app.get(
+        "/raw-artifacts/{artifact_id}/content",
+        tags=["artifacts"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_raw_artifact_content(artifact_id: str) -> Any:
+        """Return the raw JSONL content of a stored artifact as plain text."""
+        from fastapi.responses import PlainTextResponse
+
+        store_inst = get_store()
+        artifact = store_inst.get_raw_artifact(artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail=f"Raw artifact not found: {artifact_id}")
+        try:
+            content = store_inst.read_raw_artifact_content(artifact)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Content file not found on disk") from exc
+        return PlainTextResponse(content, media_type="text/plain")
+
+    @app.get("/ledgers/{session_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_ledger(session_id: str) -> dict[str, Any]:
+        """Compatibility: GET /ledgers/{session_id} -> returns run ledger data.
+
+        First checks for a live RunLedger JSON file (written by the reasoning
+        runtime).  When that is absent, falls back to an imported Trace that
+        carries the same session_id so that sessions imported from Claude / Codex /
+        OpenCode / Copilot are still surfaced here.
+        """
+        from atelier.infra.runtime.run_ledger import RunLedger
+
+        ledger_path = Path(cfg.atelier_root) / "runs" / f"{session_id}.json"
+        snap = None
+        if ledger_path.exists():
+            try:
+                ledger = RunLedger.load(ledger_path)
+                snap = ledger.snapshot()
+            except Exception as e:
+                return {"session_id": session_id, "error": str(e)}
+
+        # Always check for a trace to fetch the full conversation history.
+        # Imported sessions from Claude/Codex/OpenCode/Copilot use the Trace as source of truth.
+        store_inst = get_store()
+
+        # 1. Try direct ID match (high performance)
+        trace = store_inst.get_trace(session_id)
+
+        # 2. Try host-prefixed IDs (standard for imported sessions)
+        if trace is None:
+            from atelier.gateway.hosts.session_parsers.registry import (
+                SUPPORTED_SESSION_IMPORT_HOSTS,
+            )
+
+            for host in SUPPORTED_SESSION_IMPORT_HOSTS:
+                trace = store_inst.get_trace(f"{host}-{session_id}")
+                if trace:
+                    break
+
+        # 3. Slower fallback: search for the session_id inside payloads
+        if trace is None:
+            with sqlite3.connect(store_inst.db_path) as conn:
+                # Use json_extract for efficient searching
+                row = conn.execute(
+                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?", (session_id,)
+                ).fetchone()
+                if row:
+                    trace = Trace.model_validate_json(coerce_trace_json(row[0]))
+
+        conversations: list[dict[str, Any]] = []
+        source_paths: list[str] = []
+        if trace:
+            if trace.raw_artifact_ids:
+                # Reconstruct from raw artifacts (imported sessions)
+                for art_id in trace.raw_artifact_ids:
+                    artifact = store_inst.get_raw_artifact(art_id)
+                    if artifact:
+                        if artifact.source_path:
+                            source_paths.append(artifact.source_path)
+                        try:
+                            raw_content = store_inst.read_raw_artifact_content(artifact)
+                            from atelier.gateway.hosts.session_parsers._session_parser import (
+                                parse_session_turns,
+                            )
+
+                            conversations = parse_session_turns(raw_content, artifact.source)
+                        except Exception as exc:
+                            logger.error(
+                                "Failed to reconstruct conversations from artifact %s (source=%s): %s",
+                                art_id,
+                                getattr(artifact, "source", "?"),
+                                exc,
+                                exc_info=True,
+                            )
+                        if conversations:
+                            break
+
+            # Calculate turn costs on the fly using backend pricing
+            from atelier.core.capabilities.pricing import get_model_pricing
+
+            pricing = get_model_pricing(trace.model or "_default")
+            for turn in conversations:
+                t_toks = turn.get("tokens") or {}
+                turn["cost"] = pricing.cost_usd(
+                    input_tokens=t_toks.get("in", 0),
+                    output_tokens=t_toks.get("out", 0),
+                    cache_read_tokens=t_toks.get("cache_read", 0),
+                    cache_write_tokens=t_toks.get("cache_write", 0),
+                )
+
+        if snap:
+            if conversations:
+                snap["conversations"] = conversations
+            if source_paths:
+                snap["source_paths"] = source_paths
+            return snap
+
+        if trace:
+            return {
+                "session_id": trace.session_id or session_id,
+                "trace_id": trace.id,
+                "status": trace.status,
+                "task": trace.task,
+                "agent": trace.agent,
+                "domain": trace.domain,
+                "created_at": trace.created_at.isoformat() if trace.created_at else None,
+                "files_touched": trace.files_touched,
+                "commands_run": trace.commands_run,
+                "errors_seen": trace.errors_seen,
+                "tools_called": [tc.model_dump() for tc in trace.tools_called],
+                "conversations": conversations,
+                "source_paths": source_paths,
+                "raw_artifact_ids": trace.raw_artifact_ids,
+                "input_tokens": trace.input_tokens,
+                "output_tokens": trace.output_tokens,
+                "thinking_tokens": trace.thinking_tokens,
+                "cached_input_tokens": trace.cached_input_tokens,
+                "cache_creation_input_tokens": trace.cache_creation_input_tokens,
+                "user_prompt_tokens": trace.user_prompt_tokens,
+                "model": trace.model,
+                "note": "Imported from session logs." if trace.raw_artifact_ids else "Live run trace.",
+                "trace": trace.model_dump(mode="json"),
+            }
+
+        return {"session_id": session_id, "status": "not_found"}
+
+    # ------------------------------------------------------------------ #
+    # MCP & Hosts                                                         #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/mcp/status", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def mcp_status() -> list[dict[str, Any]]:
+        try:
+            from atelier.gateway.adapters.mcp_server import (
+                TOOLS,
+                _tool_description,
+                _tool_mode,
+                _tool_visible_to_llm,
+            )
+
+            return [
+                {
+                    "tool_name": name,
+                    "available": True,
+                    "description": _tool_description(spec),
+                    "is_dev": bool(spec.get("is_dev")),
+                    "mode": _tool_mode(spec),
+                }
+                for name, spec in TOOLS.items()
+                if _tool_visible_to_llm(name, spec)
+            ]
+        except Exception as exc:
+            logger.warning("Failed to load MCP tool status: %s", exc, exc_info=True)
+            return []
+
+    @app.get("/hosts", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def list_hosts() -> list[dict[str, Any]]:
+        store = get_store()
+        seen_hosts = set(store.get_traces_metrics()["hosts"])
+
+        hosts = [
+            ("claude", "Claude Code"),
+            ("codex", "Codex"),
+            ("opencode", "OpenCode"),
+            ("copilot", "VS Code Copilot"),
+            ("gemini", "Gemini CLI"),
+        ]
+        return [
+            {
+                "host_id": hid,
+                "label": label,
+                "status": "active" if hid in seen_hosts else "not_detected",
+                "active_domains": [],
+                "mcp_tools": [],
+                "last_seen": None,
+                "atelier_version": None,
+                "description": None,
+                "install_command": None,
+            }
+            for hid, label in hosts
+        ]
+
+    # ------------------------------------------------------------------ #
+    # Skills                                                              #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/skills", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def list_skills() -> list[dict[str, Any]]:
+        from atelier.core.environment import skill_visible
+
+        root = Path(__file__).parent.parent.parent.parent.parent
+        skills: list[dict[str, Any]] = []
+        skills_dir = root / "integrations" / "skills"
+        if skills_dir.exists():
+            for skill_dir in sorted(skills_dir.iterdir()):
+                if skill_dir.is_dir():
+                    if not skill_visible(skill_dir.name):
+                        continue
+                    md = skill_dir / "SKILL.md"
+                    if md.exists():
+                        content = md.read_text(encoding="utf-8")
+                        desc = ""
+                        if content.startswith("---"):
+                            end = content.find("---", 3)
+                            if end > 0:
+                                for line in content[3:end].split("\n"):
+                                    if line.startswith("description:"):
+                                        desc = line.split(":", 1)[1].strip()
+                        skills.append({"name": skill_dir.name, "description": desc, "content": content})
+        return skills
+
+    @app.get("/skills/{name}", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def get_skill(name: str) -> dict[str, Any]:
+        from atelier.core.environment import skill_visible
+
+        if not skill_visible(name):
+            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
+        root = Path(__file__).parent.parent.parent.parent.parent
+        md = root / "integrations" / "skills" / name / "SKILL.md"
+        if not md.exists():
+            raise HTTPException(status_code=404, detail=f"Skill not found: {name}")
+        content = md.read_text(encoding="utf-8")
+        return {"name": name, "description": "", "content": content}
+
+    # ------------------------------------------------------------------ #
+    # Rubrics                                                             #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/v1/rubrics", tags=["rubrics"], dependencies=[Depends(verify_api_key)])
+    def list_rubrics(domain: str | None = Query(None)) -> list[dict[str, Any]]:
+        return [to_jsonable(r) for r in get_store().list_rubrics(domain=domain)]
+
+    @app.get("/v1/rubrics/{rubric_id}", tags=["rubrics"], dependencies=[Depends(verify_api_key)])
+    def get_rubric(rubric_id: str) -> dict[str, Any]:
+        rubric = get_store().get_rubric(rubric_id)
+        if rubric is None:
+            raise HTTPException(status_code=404, detail=f"Rubric not found: {rubric_id}")
+        return to_jsonable(rubric)
+
+    # ------------------------------------------------------------------ #
+    # Blocks (compat)                                                     #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/blocks", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_blocks() -> list[dict[str, Any]]:
+        return [to_jsonable(b) for b in get_store().list_blocks()]
+
+    @app.get("/blocks/{block_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_block(block_id: str) -> dict[str, Any]:
+        block = get_store().get_block(block_id)
+        if block is None:
+            raise HTTPException(status_code=404, detail=f"Block not found: {block_id}")
+        return to_jsonable(block)
+
+    # ------------------------------------------------------------------ #
+    # Savings & Calls (compat)                                            #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/savings", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_savings() -> dict[str, Any]:
+        from atelier.infra.runtime.cost_tracker import CostTracker
+
+        return CostTracker(Path(cfg.atelier_root)).total_savings()
+
+    @app.get("/v1/savings/summary", tags=["metrics"], dependencies=[Depends(verify_api_key)])
+    def savings_summary_v1(window_days: int = Query(14)) -> dict[str, Any]:
+        return _savings_summary_payload(Path(cfg.atelier_root), window_days=window_days)
+
+    @app.get("/v1/optimizations/summary", tags=["metrics"], dependencies=[Depends(verify_api_key)])
+    def optimizations_summary(window_days: int = Query(14)) -> dict[str, Any]:
+        return _optimizations_summary_payload(Path(cfg.atelier_root), get_store(), window_days=window_days)
+
+    @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_calls(limit: int = Query(200)) -> list[dict[str, Any]]:
+        from atelier.infra.runtime.cost_tracker import load_cost_history
+
+        history = load_cost_history(Path(cfg.atelier_root))
+        ops = history.get("operations", {})
+        all_calls: list[dict[str, Any]] = []
+        for op_key, entry in ops.items():
+            for call in entry.get("calls", []):
+                all_calls.append(
+                    {
+                        "session_id": call.get("session_id", ""),
+                        "domain": entry.get("domain"),
+                        "task": entry.get("task_sample"),
+                        "operation": call.get("operation"),
+                        "model": call.get("model"),
+                        "input_tokens": call.get("input_tokens"),
+                        "output_tokens": call.get("output_tokens"),
+                        "cache_read_tokens": call.get("cache_read_tokens"),
+                        "cost_usd": call.get("cost_usd"),
+                        "lessons_used": call.get("lessons_used"),
+                        "op_key": op_key,
+                        "at": call.get("at"),
+                    }
+                )
+        all_calls.sort(key=lambda c: c.get("at") or "", reverse=True)
+        return all_calls[:limit]
+
+    # ------------------------------------------------------------------ #
+    # Clusters (compat)                                                   #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/clusters", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_clusters() -> list[dict[str, Any]]:
+        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+        try:
+            return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
+        except Exception as exc:
+            logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------ #
+    # Watchdogs                                                           #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/watchdogs/config", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def get_watchdog_config() -> dict[str, Any]:
+        from atelier.core.foundation.watchdog_profiles import frontend_watchdog_profile_config
+
+        return frontend_watchdog_profile_config(Path(cfg.atelier_root))
+
+    @app.post("/watchdogs/config", tags=["ops"], dependencies=[Depends(verify_api_key)])
+    def update_watchdog_config(payload: dict[str, Any]) -> dict[str, Any]:
+        from atelier.core.foundation.watchdog_profiles import (
+            frontend_watchdog_profile_config,
+            save_watchdog_profile_config,
+        )
+
+        try:
+            save_watchdog_profile_config(
+                Path(cfg.atelier_root),
+                active_profile=payload.get("active_profile"),
+                profiles=payload.get("profiles"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return frontend_watchdog_profile_config(Path(cfg.atelier_root))
+
+    # ------------------------------------------------------------------ #
+    # Memory passages                                                     #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/v1/memory/passages", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
+    def list_memory_passages(
+        agent_id: str = Query(...),
+        limit: int = Query(25, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        from atelier.infra.storage.factory import make_memory_store
+
+        mem = make_memory_store(Path(cfg.atelier_root))
+        passages = mem.list_passages(agent_id, limit=limit)
+        return [p.model_dump(mode="json") for p in passages]
+
     return app
-
-
-# --------------------------------------------------------------------------- #
-# Module-level app instance — used by uvicorn / atelier-api entrypoint       #
-# --------------------------------------------------------------------------- #
-
-app = create_app()
 
 
 def main(
@@ -2093,12 +2789,9 @@ def main(
     _host = host or cfg.host
     _port = port or cfg.port
     uvicorn.run(
-        "atelier.core.service.api:app",
+        "atelier.core.service.api:create_app",
+        factory=True,
         host=_host,
         port=_port,
         reload=reload,
     )
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()

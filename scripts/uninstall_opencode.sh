@@ -57,7 +57,12 @@ data = json.loads(stripped) if stripped.strip() else {}
 data.get(\"mcp\", {}).pop(\"atelier\", None)
 if data.get(\"default_agent\") == \"atelier\":
     data.pop(\"default_agent\", None)
-path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+if \"mcp\" in data and not data[\"mcp\"]:
+    del data[\"mcp\"]
+if not data:
+    path.unlink()
+else:
+    path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
         info "Removed atelier from $path"
     fi
@@ -70,5 +75,6 @@ if [ -f "$AGENT_FILE" ]; then
     run "rm -f '$AGENT_FILE'"
     info "Removed $AGENT_FILE"
 fi
+
 
 info "Done."

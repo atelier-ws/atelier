@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 import tempfile
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
+
+logger = logging.getLogger(__name__)
 
 _PROTECTED_PARTS = {".git", ".atelier", "node_modules", ".venv"}
 _SMART_QUOTES = str.maketrans(
@@ -85,13 +88,19 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     if not base_indent_text and len(old_lines) > 1:
         base_indent_text = _leading_whitespace(old_lines[1])
     if base_indent_text:
-        new_lines = [
-            new_lines[0],
-            *[
-                (base_indent_text + line if line.strip() and not line.startswith((" ", "\t")) else line)
-                for line in new_lines[1:]
-            ],
-        ]
+        result: list[str] = [new_lines[0]]
+        consecutive_blanks = 0
+        for line in new_lines[1:]:
+            if not line.strip():
+                consecutive_blanks += 1
+                result.append(line)
+            elif not line.startswith((" ", "\t")) and consecutive_blanks < 2:
+                result.append(base_indent_text + line)
+                consecutive_blanks = 0
+            else:
+                result.append(line)
+                consecutive_blanks = 0
+        new_lines = result
     old_indent = len(old_lines[0]) - len(old_lines[0].lstrip())
     matched_indent = len(matched_lines[0]) - len(matched_lines[0].lstrip())
     delta = matched_indent - old_indent
@@ -133,7 +142,11 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         absolute = start_offset + index
         line_start = content[:absolute].count("\n") + 1
         line_end = line_start + matched.count("\n")
-        return content[:absolute] + replacement + content[absolute + len(matched) :], line_start, line_end
+        return (
+            content[:absolute] + replacement + content[absolute + len(matched) :],
+            line_start,
+            line_end,
+        )
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
@@ -175,7 +188,11 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
     action = edit.get("cell_action")
     if action in {"insert_after", "insert_before"}:
         index = _cell_index(cells, spec.cell)
-        new_cell = {"cell_type": edit.get("cell_type", "code"), "metadata": {}, "source": edit.get("new_string", "")}
+        new_cell = {
+            "cell_type": edit.get("cell_type", "code"),
+            "metadata": {},
+            "source": edit.get("new_string", ""),
+        }
         if new_cell["cell_type"] == "code":
             new_cell.update({"outputs": [], "execution_count": None})
         cells.insert(index + (1 if action == "insert_after" else 0), new_cell)
@@ -199,7 +216,10 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
                 cells[index] = replacement
                 return
         except Exception:
-            pass
+            logger.warning(
+                "Suppressed exception at rich_edit.py:215",
+                exc_info=True,
+            )
         _set_cell_source(cells[index], str(edit.get("new_string", "")))
         return
     matches = [cell for cell in cells if str(edit.get("old_string", "")) in _cell_source(cell)]
@@ -207,7 +227,8 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
         raise ValueError("old_string must match exactly one notebook cell")
     cell = matches[0]
     _set_cell_source(
-        cell, _cell_source(cell).replace(str(edit.get("old_string", "")), str(edit.get("new_string", "")), 1)
+        cell,
+        _cell_source(cell).replace(str(edit.get("old_string", "")), str(edit.get("new_string", "")), 1),
     )
 
 
@@ -280,7 +301,12 @@ def apply_rich_edits(
         for path, content in file_state.items():
             with contextlib.suppress(Exception):
                 _atomic_write(path, content)
-        return {"applied": applied, "failed": failed, "rolled_back": False, "writes": len(file_state)}
+        return {
+            "applied": applied,
+            "failed": failed,
+            "rolled_back": False,
+            "writes": len(file_state),
+        }
 
 
 __all__ = ["apply_rich_edits"]

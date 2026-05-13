@@ -62,7 +62,7 @@ Run the normal store initialization (happens automatically on first use, or
 force it):
 
 ```bash
-uv run atelier --root .atelier version
+atelier --root .atelier version
 ```
 
 This applies any schema migrations (adds `embedding_provenance` columns, creates
@@ -73,13 +73,13 @@ This applies any schema migrations (adds `embedding_provenance` columns, creates
 Run a dry scan to see how many legacy rows exist:
 
 ```bash
-uv run atelier --root .atelier reembed --dry-run --json
+atelier --root .atelier reembed --dry-run --json
 ```
 
 When the scan reports `legacy_stub` rows, re-embed them:
 
 ```bash
-uv run atelier --root .atelier reembed --json
+atelier --root .atelier reembed --json
 ```
 
 This is a one-time operation. New rows written after upgrade always carry a real
@@ -100,7 +100,7 @@ backend = "sqlite"
 
 ```bash
 # Start the bundled self-hosted Letta sidecar:
-uv run atelier letta up
+atelier letta up
 
 # Configure Atelier to use it:
 export ATELIER_MEMORY_BACKEND=letta
@@ -121,7 +121,7 @@ fallbacks were the V2 bug.
 ### 5. Run periodic consolidation
 
 ```bash
-uv run atelier --root .atelier consolidate --since 7d --json
+atelier --root .atelier consolidate --since 7d --json
 ```
 
 ### 6. Verify measured savings

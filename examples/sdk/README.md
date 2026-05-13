@@ -5,7 +5,7 @@
 ```bash
 cd atelier
 uv sync --all-extras
-uv run atelier init
+atelier init
 ```
 
 ## Config
@@ -26,7 +26,7 @@ clusters = adapter.failure_clusters()
 ## Benchmark
 
 ```bash
-uv run atelier benchmark compare --input .atelier/benchmarks/runtime/latest.json --input other.json
+atelier benchmark compare --input .atelier/benchmarks/runtime/latest.json --input other.json
 ```
 
 ## Troubleshooting

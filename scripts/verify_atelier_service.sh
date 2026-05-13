@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Start service in background
-uv run atelier service start &
+atelier service start &
 SVC_PID=$!
 
 # Wait for service to be ready (up to 15s)

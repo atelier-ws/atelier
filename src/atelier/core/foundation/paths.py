@@ -17,11 +17,30 @@ def default_store_root() -> Path:
     return (Path.home() / DEFAULT_STORE_DIRNAME).resolve()
 
 
+_HOST_WORKSPACE_ENV_VARS = (
+    "ATELIER_WORKSPACE_ROOT",
+    # Claude Code / Claude Desktop
+    "CLAUDE_WORKSPACE_ROOT",
+    # Cursor
+    "CURSOR_WORKSPACE_ROOT",
+    # VS Code / generic
+    "VSCODE_CWD",
+)
+
+
 def resolve_workspace_root(root: Path | str | None = None) -> Path:
-    """Resolve the active workspace root used for project-local knowledge."""
-    configured = os.environ.get("ATELIER_WORKSPACE_ROOT", "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
+    """Resolve the active workspace root used for project-local knowledge.
+
+    Precedence:
+    1. ``ATELIER_WORKSPACE_ROOT`` — explicit, authoritative
+    2. Common host workspace env vars (``CLAUDE_WORKSPACE_ROOT``, etc.)
+    3. Derive from the *root* path itself (e.g. parent of ``.atelier``)
+    4. Current working directory — last resort
+    """
+    for env_var in _HOST_WORKSPACE_ENV_VARS:
+        configured = os.environ.get(env_var, "").strip()
+        if configured:
+            return Path(configured).expanduser().resolve()
 
     derived = _derive_workspace_root(root)
     if derived is not None:
@@ -47,6 +66,20 @@ def resolve_knowledge_root(root: Path | str | None = None, knowledge_root: Path 
     return (resolve_workspace_root(root) / DEFAULT_KNOWLEDGE_DIRNAME).resolve()
 
 
+def resolve_session_state_path(workspace_root: Path | str | None = None) -> Path:
+    """Resolve the path for session-specific state (failures, current run ID).
+
+    Stored within the global store root under a workspace-specific subfolder
+    to prevent collisions between multiple open projects.
+    """
+    from hashlib import sha256
+
+    root = default_store_root()
+    ws = resolve_workspace_root(Path(workspace_root) if workspace_root else None)
+    h = sha256(str(ws).encode("utf-8")).hexdigest()[:12]
+    return root / "workspaces" / h / "session_state.json"
+
+
 def _derive_workspace_root(root: Path | str | None) -> Path | None:
     if root is None:
         return None
@@ -54,6 +87,10 @@ def _derive_workspace_root(root: Path | str | None) -> Path | None:
     candidate = Path(root).expanduser().resolve()
     default_home_store = (Path.home() / DEFAULT_STORE_DIRNAME).resolve()
     if candidate == default_home_store:
+        return None
+
+    # Do not treat the workspace hash subfolder as a project root
+    if "workspaces" in candidate.parts:
         return None
 
     if candidate.name in {DEFAULT_STORE_DIRNAME, DEFAULT_KNOWLEDGE_DIRNAME}:
@@ -68,5 +105,6 @@ __all__ = [
     "DEFAULT_STORE_DIRNAME",
     "default_store_root",
     "resolve_knowledge_root",
+    "resolve_session_state_path",
     "resolve_workspace_root",
 ]

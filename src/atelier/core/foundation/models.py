@@ -8,11 +8,12 @@ so traces and ReasonBlocks remain forward-compatible.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
@@ -110,6 +111,8 @@ class ToolCall(BaseModel):
     count: int = 1
     args: dict[str, Any] | None = None
     result_summary: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class CommandRecord(BaseModel):
@@ -145,6 +148,17 @@ class ValidationResult(BaseModel):
     detail: str = ""
 
 
+class ModelUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    cached_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
 class Trace(BaseModel):
     """An observable record of an agent run.
 
@@ -156,7 +170,7 @@ class Trace(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    run_id: str | None = None
+    session_id: str | None = None
     agent: str
     domain: str
     task: str
@@ -175,7 +189,26 @@ class Trace(BaseModel):
     trace_confidence: TraceConfidence | None = None
     capture_sources: list[str] = Field(default_factory=list)
     missing_surfaces: list[str] = Field(default_factory=list)
+    input_tokens: int = 0
+    user_prompt_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    cached_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    model: str = ""
+    model_usages: list[ModelUsage] = Field(default_factory=list)
+    workspace_path: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
+    snippets: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _consolidate_session_id(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            session_id = data.pop("session_id", None)
+            if session_id and not data.get("session_id"):
+                data["session_id"] = session_id
+        return data
 
     @classmethod
     def make_id(cls, task: str, agent: str, created_at: datetime | None = None) -> str:
@@ -211,6 +244,7 @@ class RawArtifact(BaseModel):
     redacted: bool = True
     created_at: datetime = Field(default_factory=_utcnow)
     source_file_mtime: datetime | None = None  # filesystem mtime when imported
+    source_path: str | None = None  # original filesystem path of the imported file
 
 
 # --------------------------------------------------------------------------- #
@@ -229,10 +263,13 @@ class Rubric(BaseModel):
 
     id: str
     domain: str
+    triggers: list[str] = Field(default_factory=list)
+    forbidden_phrases: list[str] = Field(default_factory=list)
     required_checks: list[str] = Field(default_factory=list)
     block_if_missing: list[str] = Field(default_factory=list)
     warning_checks: list[str] = Field(default_factory=list)
     escalation_conditions: list[str] = Field(default_factory=list)
+    related_blocks: list[str] = Field(default_factory=list)
 
 
 class ConsolidationCandidate(BaseModel):
@@ -302,33 +339,35 @@ def to_jsonable(model: BaseModel) -> dict[str, Any]:
     return model.model_dump(mode="json")
 
 
+# Known fields removed from the Trace model but possibly present in old stored payloads
+_LEGACY_TRACE_FIELDS: frozenset[str] = frozenset({"run_id"})
+
+
+def coerce_trace_json(payload: str) -> str:
+    """Strip known legacy fields from a stored trace JSON payload before model validation.
+
+    Allows old payloads (e.g. with *run_id*) to be read without crashing even
+    after the field was removed from the ``Trace`` model.
+    """
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return payload
+    changed = False
+    for field in _LEGACY_TRACE_FIELDS:
+        if field in data:
+            del data[field]
+            changed = True
+    if not changed:
+        return payload
+    return json.dumps(data, ensure_ascii=False)
+
+
 # --------------------------------------------------------------------------- #
 # V2: status widening                                                         #
 # --------------------------------------------------------------------------- #
 
 RubricStatus = Literal["pass", "warn", "blocked", "escalate"]
-
-
-# --------------------------------------------------------------------------- #
-# V2: Environment (Beseam-specific operating governor)                        #
-# --------------------------------------------------------------------------- #
-
-
-class Environment(BaseModel):
-    """A Beseam reasoning environment (operating law for a domain)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    domain: str
-    description: str = ""
-    triggers: list[str] = Field(default_factory=list)
-    forbidden: list[str] = Field(default_factory=list)
-    required: list[str] = Field(default_factory=list)
-    escalate: list[str] = Field(default_factory=list)
-    high_risk_tools: list[str] = Field(default_factory=list)
-    rubric_id: str | None = None
-    related_blocks: list[str] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -348,7 +387,7 @@ class LedgerEvent(BaseModel):
         "command_result",
         "file_edit",
         "file_revert",
-        "monitor_alert",
+        "watchdog_alert",
         "rubric_run",
         "validation",
         "test_result",

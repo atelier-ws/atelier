@@ -8,7 +8,7 @@ Atelier's MCP server is the host-neutral way to plug procedural reasoning, rubri
 
 ```bash
 cd atelier
-uv run atelier-mcp
+atelier-mcp
 ```
 
 ### Remote service-backed mode

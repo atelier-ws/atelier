@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from pydantic import BaseModel
 
 from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, summarize
 from atelier.infra.storage.factory import _memory_backend
+
+logger = logging.getLogger(__name__)
 
 
 class SleeptimeChunk(BaseModel):
@@ -41,12 +44,19 @@ def summarize_ledger(
             )
         ]
     except OllamaUnavailable:
-        pass
+        logger.warning(
+            "Suppressed exception at sleeptime.py:43",
+            exc_info=True,
+        )
 
     try:
         from pathlib import Path
 
-        backend = _memory_backend(Path(__import__("os").environ.get("ATELIER_ROOT", ".atelier")), prefer=None)
+        from atelier.core.foundation.paths import default_store_root
+
+        backend = _memory_backend(
+            Path(__import__("os").environ.get("ATELIER_ROOT", str(default_store_root()))), prefer=None
+        )
         if backend == "letta":
             from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
 

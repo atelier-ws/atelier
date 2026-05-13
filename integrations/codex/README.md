@@ -12,7 +12,7 @@ atelier/
 │   ├── plugin/                        # Codex plugin template
 │   │   ├── .codex-plugin/plugin.json
 │   │   ├── .mcp.json
-│   │   └── skills/
+│   │   └── skills/                    # generated from integrations/skills
 │   └── tasks/                         # workspace preflight task templates
 └── integrations/skills/               # shared source-of-truth skills
 ```
@@ -23,7 +23,7 @@ atelier/
    ```bash
    cd atelier
    uv sync
-   uv run atelier init
+   atelier init
    ```
 2. Install the Codex integration:
    ```bash
@@ -34,13 +34,15 @@ atelier/
    bash scripts/install_codex.sh --workspace /path/to/workspace
    ```
 3. The installer copies the Codex plugin template into a local plugin source,
-   generates a repo-pinned MCP wrapper inside that source, and writes a
-   personal or workspace marketplace entry that points at `./.codex/plugins/atelier`.
+   generates the shared skill bundle inside that source, writes a repo-pinned
+   MCP wrapper, and updates the personal or workspace marketplace entry that
+   points at `./.codex/plugins/atelier`.
 
-For direct repo testing without the installer, add the repo marketplace from the
-Atelier root:
+For direct repo testing without the installer, build the generated skill bundle
+first, then add the repo marketplace from the Atelier root:
 
 ```bash
+make build-host-skills
 codex plugin marketplace add .
 ```
 
@@ -49,7 +51,7 @@ when `atelier-mcp` is already available on your `PATH`.
 
 ## Usage
 
-- `atelier-task` remains the default coding-task loop and drives the Atelier
+- `reasoning` remains the default coding-task loop and drives the Atelier
   reasoning workflow.
 - The `atelier-codex` preflight wrapper now runs `reasoning`, then `lint`, then
   optional `verify` before handing off to Codex.

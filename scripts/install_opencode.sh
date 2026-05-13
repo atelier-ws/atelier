@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 
 DRY_RUN=false
@@ -79,7 +80,7 @@ if $WORKSPACE_SET; then
       "command": ["${ATELIER_WRAPPER}"],
       "environment": {
         "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${WORKSPACE}/.atelier"
+        "ATELIER_ROOT": "${HOME}/.atelier"
       }
     }
   }
@@ -109,6 +110,7 @@ if $PRINT_ONLY; then
     echo "Scope: ${INSTALL_SCOPE}"
     echo "Config target: ${OC_FILE}"
     echo "Agent target: ${AGENT_DEST_DIR}/atelier.md"
+    echo "Wrapper target: ${WRAPPER_DEST_DIR}/atelier-opencode"
     echo ""
     echo "Merge/create config:"
     echo "$NEW_ENTRY"
@@ -162,6 +164,40 @@ fi
 
 # ---- install opencode atelier agent ----------------------------------------
 AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
+
+# ---- resolve install profile ------------------------------------------------
+eval "$(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import install_profile_warning, resolve_install_profile
+import shlex
+import sys
+
+try:
+    profile = resolve_install_profile()
+except ValueError as exc:
+    print(f"echo '[atelier:opencode] ERROR: {exc}' >&2")
+    print("exit 1")
+    raise SystemExit(0)
+
+warning = install_profile_warning(profile)
+print(f"INSTALL_PROFILE={shlex.quote(profile)}")
+print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
+PY
+)"
+if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
+    warn "$ATELIER_INSTALL_PROFILE_WARNING"
+fi
+STAGING_DIR="${HOME}/.atelier/opencode-${INSTALL_PROFILE}"
+run "mkdir -p '$STAGING_DIR'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full agent instructions with reasoning loop"
+    atelier_write_managed_copy "${AGENT_SRC/.md/.dev.md}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
+else
+    info "Install profile: stable; staging stable agent instructions"
+    atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
+fi
+AGENT_SRC="$STAGING_DIR/atelier.md"
+
 if [ -f "$AGENT_SRC" ]; then
     run "mkdir -p '$AGENT_DEST_DIR'"
     run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
@@ -169,6 +205,7 @@ if [ -f "$AGENT_SRC" ]; then
 else
     warn "agent source missing: $AGENT_SRC"
 fi
+
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."
