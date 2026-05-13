@@ -24,6 +24,7 @@ from atelier.core.foundation.models import (
     ToolCall,
     Trace,
     ValidationResult,
+    coerce_trace_json,
 )
 from atelier.core.foundation.store import ReasoningStore
 
@@ -249,7 +250,7 @@ def _list_traces_between(store: ReasoningStore, start: datetime, end: datetime) 
             """,
             (start.isoformat(), end.isoformat()),
         ).fetchall()
-    return [Trace.model_validate_json(row["payload"]) for row in rows]
+    return [Trace.model_validate_json(coerce_trace_json(row["payload"])) for row in rows]
 
 
 def _rubric_rates(traces: Iterable[Trace]) -> tuple[RateMetric, list[DomainRubricRate]]:

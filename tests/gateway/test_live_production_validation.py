@@ -327,6 +327,7 @@ def test_real_installer_runs_in_target_directory(tmp_path: Path) -> None:
         "ATELIER_REF": branch,
         "ATELIER_INSTALL_DIR": str(install_dir),
         "ATELIER_BIN_DIR": str(bin_dir),
+        "ATELIER_TOOL_DIR": str(tmp_path / "uv-tools"),
         "ATELIER_NO_HOSTS": "1",
     }
     result = subprocess.run(

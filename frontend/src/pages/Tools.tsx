@@ -30,27 +30,6 @@ const NS_MAP: Record<string, string> = {
   compact: "infra",
 };
 
-const DEV_TOOL_NAMES = new Set<string>([
-  "reasoning",
-  "lint",
-  "route",
-  "rescue",
-  "verify",
-  "memory",
-  "read",
-  "edit",
-  "sql",
-  "search",
-  "code_index",
-  "code_search",
-  "code_symbol",
-  "code_outline",
-  "code_context",
-  "code_impact",
-  "compact",
-  "shell",
-]);
-
 const NS_META: Record<string, { icon: string; label: string; color: string }> =
   {
     brain: {
@@ -98,9 +77,7 @@ function descriptionIndicatesDev(description?: string): boolean {
 }
 
 function isDevTool(tool: MCPStatus): boolean {
-  return (
-    DEV_TOOL_NAMES.has(tool.tool_name) || descriptionIndicatesDev(tool.description)
-  );
+  return tool.is_dev === true || descriptionIndicatesDev(tool.description);
 }
 
 export default function Tools() {
@@ -155,6 +132,13 @@ export default function Tools() {
                   block extraction, and plan validation.
                   Standards-compliant—works with any MCP-compatible agent.
                 </p>
+                {!config?.dev_mode && (
+                  <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
+                    Tools marked DEV are visible for MCP compatibility. In this
+                    runtime mode they only capture calls and return no-op/pass
+                    results, so they do not affect agent decisions.
+                  </p>
+                )}
                 <div className="text-xs text-emerald-300/90 space-y-1">
                   <p>✓ Full Atelier API via standard MCP protocol</p>
                   <p>✓ Works with any MCP-compatible agent</p>
@@ -209,11 +193,6 @@ export default function Tools() {
                         "text-neutral-400 border-neutral-800 bg-neutral-900/30",
                     };
                     const tools = groups[ns];
-                    const visibleTools = tools.filter(
-                      (tool) => !isDevTool(tool) || config?.dev_mode
-                    );
-                    const hiddenCount = tools.length - visibleTools.length;
-                    const groupDisabled = visibleTools.length === 0 && hiddenCount > 0;
                     return (
                       <div key={ns}>
                         <div className="flex items-center gap-2 mb-2">
@@ -224,14 +203,9 @@ export default function Tools() {
                           <span className="text-[10px] text-neutral-700 font-mono">
                             ({tools.length})
                           </span>
-                          {groupDisabled && (
-                            <span className="text-[9px] uppercase tracking-wider font-mono text-neutral-600 border border-neutral-800 px-1.5 py-0.5">
-                              disabled
-                            </span>
-                          )}
                         </div>
                         <div className="space-y-px">
-                          {visibleTools.map((tool) => {
+                          {tools.map((tool) => {
                             const isExpanded = expandedTool === tool.tool_name;
                             const desc = tool.description;
                             const isDev = isDevTool(tool);
@@ -261,6 +235,11 @@ export default function Tools() {
                                       DEV
                                     </span>
                                   )}
+                                  {isDev && tool.mode === "passive" && (
+                                    <span className="text-[8px] font-bold text-neutral-500 border border-neutral-700 px-1 py-0.5 mr-2">
+                                      PASSIVE
+                                    </span>
+                                  )}
                                   <span className="text-[10px] text-neutral-600">
                                     {isExpanded ? "▲" : "▼"}
                                   </span>
@@ -280,9 +259,11 @@ export default function Tools() {
                                       <span
                                         className={`text-[10px] font-mono px-2 py-0.5 ${tool.available ? "bg-emerald-900/30 text-emerald-300" : "bg-neutral-800 text-neutral-500"}`}
                                       >
-                                        {tool.available
-                                          ? "available"
-                                          : "unavailable"}
+                                        {tool.mode === "passive"
+                                          ? "passive capture"
+                                          : tool.available
+                                            ? "available"
+                                            : "unavailable"}
                                       </span>
                                       <code className="text-[10px] font-mono text-neutral-600">
                                         {tool.tool_name}
@@ -293,14 +274,6 @@ export default function Tools() {
                               </div>
                             );
                           })}
-                          {groupDisabled && (
-                            <div className="border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-3">
-                              <p className="text-[11px] font-mono text-neutral-500">
-                                {hiddenCount} dev tools hidden. Enable dev mode with{" "}
-                                <code>ATELIER_DEV_MODE=1</code> to inspect them.
-                              </p>
-                            </div>
-                          )}
                         </div>
                       </div>
                     );

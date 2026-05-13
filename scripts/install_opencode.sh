@@ -166,21 +166,26 @@ fi
 AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
 
 # ---- resolve install profile ------------------------------------------------
-DEV_MODE="${ATELIER_DEV_MODE:-0}"
-INSTALL_PROFILE="${ATELIER_PROFILE:-}"
-if [[ -z "$INSTALL_PROFILE" ]]; then
-    if [[ "$DEV_MODE" == "1" ]]; then
-        INSTALL_PROFILE="dev"
-    else
-        INSTALL_PROFILE="stable"
-    fi
-fi
-if [[ "$INSTALL_PROFILE" != "stable" && "$INSTALL_PROFILE" != "dev" ]]; then
-    echo "[atelier:opencode] ERROR: ATELIER_PROFILE must be 'stable' or 'dev'" >&2
-    exit 1
-fi
-if [[ "$INSTALL_PROFILE" == "dev" && "$DEV_MODE" != "1" ]]; then
-    warn "ATELIER_PROFILE=dev selected without ATELIER_DEV_MODE=1; installer will stage dev artifacts, but runtime-gated dev tools remain disabled until ATELIER_DEV_MODE=1 is set."
+eval "$(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import install_profile_warning, resolve_install_profile
+import shlex
+import sys
+
+try:
+    profile = resolve_install_profile()
+except ValueError as exc:
+    print(f"echo '[atelier:opencode] ERROR: {exc}' >&2")
+    print("exit 1")
+    raise SystemExit(0)
+
+warning = install_profile_warning(profile)
+print(f"INSTALL_PROFILE={shlex.quote(profile)}")
+print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
+PY
+)"
+if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
+    warn "$ATELIER_INSTALL_PROFILE_WARNING"
 fi
 STAGING_DIR="${HOME}/.atelier/opencode-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"

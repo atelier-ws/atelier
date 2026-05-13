@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from atelier.core.environment import NON_DEV_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 
@@ -24,17 +25,14 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "compact",
-    "run",
     "atelier_code_index",
     "atelier_code_search",
     "atelier_code_symbol",
     "atelier_code_outline",
-    "atelier_repo_map",
     "atelier_code_context",
     "atelier_code_impact",
+    "shell",
 }
-
-SLIM_TOOLS = {"trace"}
 
 
 def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -90,9 +88,7 @@ def test_initialize_returns_server_info() -> None:
 
 
 def test_notifications_initialized_returns_none() -> None:
-    resp = _handle(
-        {"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}}
-    )
+    resp = _handle({"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}})
     assert resp is None
 
 
@@ -105,12 +101,24 @@ def test_tools_list_returns_exact_consolidated_surface(monkeypatch: pytest.Monke
     assert set(TOOLS) == EXPECTED_TOOLS
 
 
-def test_tools_list_slim_surface_without_dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_list_only_passive_decision_tools_without_dev_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     resp = _handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert resp is not None
-    names = {tool["name"] for tool in resp["result"]["tools"]}
-    assert names == SLIM_TOOLS
+    tools = resp["result"]["tools"]
+    names = {tool["name"] for tool in tools}
+    assert names == NON_DEV_LLM_TOOLS
+    assert "read" not in names
+    assert "search" not in names
+    assert "edit" not in names
+    assert "memory" not in names
+    assert "compact" not in names
+    assert "shell" not in names
+    reasoning = next(tool for tool in tools if tool["name"] == "reasoning")
+    assert "passive" in reasoning["description"]
+    assert "no-op/pass" in reasoning["description"]
 
 
 def test_tools_list_each_entry_has_schema() -> None:
@@ -207,9 +215,7 @@ def test_run_rubric_gate_pass(store_root: Path) -> None:
 
 def test_compact_output_op_passthrough(store_root: Path) -> None:
     _ = store_root
-    payload = _result(
-        _call("compact", {"op": "output", "content": "short output", "content_type": "bash"})
-    )
+    payload = _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
     assert payload["compacted"] == "short output"
     assert payload["method"] == "passthrough"
 
@@ -234,9 +240,7 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert search_payload["matches"]
 
 
-def test_smart_edit_surface_applies_patch(
-    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = store_root
     monkeypatch.chdir(tmp_path)
     target = Path("edit.txt")
@@ -278,9 +282,7 @@ def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
 def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text(
-        "from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8"
-    )
+    (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
 
     indexed = _result(_call("atelier_code_index", {"repo_root": str(tmp_path)}))
     assert indexed["symbols_indexed"] >= 2
@@ -296,9 +298,7 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert "def alpha" in symbol["source"]
 
-    outline = _result(
-        _call("atelier_code_outline", {"repo_root": str(tmp_path), "file_path": "a.py"})
-    )
+    outline = _result(_call("atelier_code_outline", {"repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "a.py" in outline["files"]
 
     context = _result(
@@ -314,7 +314,5 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert context["token_count"] <= context["budget_tokens"]
 
-    impact = _result(
-        _call("atelier_code_impact", {"repo_root": str(tmp_path), "file_path": "a.py"})
-    )
+    impact = _result(_call("atelier_code_impact", {"repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "b.py" in impact["direct_importers"]

@@ -1,10 +1,20 @@
 services:
   service:
+    container_name: atelier-service
     build:
       context: .
       dockerfile: Dockerfile.api
     command:
-      ["atelier", "service", "start", "--host", "0.0.0.0", "--port", "8787", "--reload"]
+      [
+        "atelier",
+        "service",
+        "start",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8787",
+        "--reload",
+      ]
     ports:
       - "8787:8787"
     environment:
@@ -33,6 +43,7 @@ services:
   #   restart: unless-stopped
 
   frontend:
+    container_name: atelier-frontend-dev
     image: oven/bun:1
     working_dir: /app
     command: ["sh", "-c", "bun install && bun run dev"]
@@ -40,7 +51,7 @@ services:
       - "3125:3125"
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=http://service:8787
+      - VITE_API_URL=http://atelier-service:8787
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -49,6 +60,20 @@ services:
       service:
         condition: service_started
 
+  # frontend:
+  #   container_name: atelier-frontend
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   environment:
+  #     - CHOKIDAR_USEPOLLING=true
+  #     - VITE_API_URL=http://atelier-service:8787
+  #   ports:
+  #     - "3125:3125"
+  #   restart: unless-stopped
+  #   depends_on:
+  #     service:
+  #       condition: service_started
   # docs:
   #   build:
   #     context: .

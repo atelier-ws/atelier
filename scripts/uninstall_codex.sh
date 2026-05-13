@@ -47,6 +47,7 @@ fi
 PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
 PLUGIN_CACHE_DIR="${HOME}/.codex/plugins/cache/atelier"
 AGENT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/integrations/codex/AGENTS.atelier.md"
+STAGING_DIRS=("${HOME}/.atelier/codex-plugin-stable" "${HOME}/.atelier/codex-plugin-dev")
 
 info()  { echo "[atelier:uninstall:codex] $*"; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
@@ -77,12 +78,19 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
     info "Removed $PLUGIN_CACHE_DIR"
 fi
 
+for staging_dir in "${STAGING_DIRS[@]}"; do
+    if [ -d "$staging_dir" ]; then
+        run "rm -rf '$staging_dir'"
+        info "Removed $staging_dir"
+    fi
+done
+
 if [ -f "$AGENTS_FILE" ]; then
     if $DRY_RUN; then
         if grep -q "$ATELIER_CODE_BLOCK_START" "$AGENTS_FILE" 2>/dev/null; then
             echo "  [dry-run] remove managed Atelier Codex instructions from $AGENTS_FILE"
         elif grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
-            echo "  [dry-run] inspect legacy Atelier Codex instructions in $AGENTS_FILE"
+            echo "  [dry-run] remove legacy Atelier Codex instructions file $AGENTS_FILE"
         fi
     else
         REMOVE_RESULT="$(atelier_remove_managed_block "$AGENTS_FILE" "false")"
@@ -99,7 +107,10 @@ if text.strip() == source:
     agents_path.unlink()
     print("removed-legacy-exact")
 elif "atelier:code" in text:
-    print("legacy-unmanaged")
+    backup_path = agents_path.with_suffix(agents_path.suffix + ".atelier-removed-backup")
+    backup_path.write_text(text, encoding="utf-8")
+    agents_path.unlink()
+    print("removed-legacy-unmanaged")
 else:
     print("unchanged")
 PYEOF
@@ -109,12 +120,8 @@ PYEOF
             updated)
                 info "Removed managed Atelier Codex instructions from $AGENTS_FILE"
                 ;;
-            removed|removed-legacy-exact)
+            removed|removed-legacy-exact|removed-legacy-unmanaged)
                 info "Removed $AGENTS_FILE"
-                ;;
-            legacy-unmanaged)
-                info "Left legacy unmanaged Atelier Codex instructions in $AGENTS_FILE"
-                info "Manual cleanup may be needed for pre-marker installs"
                 ;;
         esac
     fi

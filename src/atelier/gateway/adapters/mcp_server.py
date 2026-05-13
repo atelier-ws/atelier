@@ -27,6 +27,13 @@ from pydantic import Field, create_model
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.environment import (
+    is_dev_mode,
+    mcp_tool_description,
+    mcp_tool_mode,
+    mcp_tool_visible_to_llm,
+    passive_tool_message,
+)
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
 from atelier.core.foundation.plan_checker import check_plan
@@ -47,14 +54,8 @@ SERVER_VERSION = atelier_version
 
 
 def _check_dev_mode(tool_name: str) -> str | None:
-    from atelier.core.service.config import cfg
-
-    if not cfg.dev_mode:
-        return (
-            f"The '{tool_name}' tool is currently in 'Development Mode' and is disabled for this "
-            "environment. Passive tracking (sessions, traces, analytics) remains active. "
-            "To enable active reasoning features, set ATELIER_DEV_MODE=1."
-        )
+    if not is_dev_mode():
+        return passive_tool_message(tool_name)
     return None
 
 
@@ -63,6 +64,21 @@ def _check_dev_mode(tool_name: str) -> str | None:
 # --------------------------------------------------------------------------- #
 
 TOOLS: dict[str, dict[str, Any]] = {}
+
+
+def _tool_description(spec: dict[str, Any]) -> str:
+    return mcp_tool_description(
+        str(spec.get("description", "") or ""),
+        is_dev=bool(spec.get("is_dev")),
+    )
+
+
+def _tool_visible_to_llm(tool_name: str, spec: dict[str, Any]) -> bool:
+    return mcp_tool_visible_to_llm(tool_name, is_dev=bool(spec.get("is_dev")))
+
+
+def _tool_mode(spec: dict[str, Any]) -> str:
+    return mcp_tool_mode(is_dev=bool(spec.get("is_dev")))
 
 
 def mcp_tool(
@@ -80,9 +96,7 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = (
-                param.annotation if param.annotation is not inspect.Parameter.empty else Any
-            )
+            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -278,9 +292,7 @@ def _observe_plan_result(result: Any, domain: str | None, plan: list[str]) -> No
         emit_product(
             "plan_check_blocked",
             domain=domain or "",
-            blocking_rule_id=hash_identifier(
-                str(matched_blocks[0] if matched_blocks else "blocked")
-            ),
+            blocking_rule_id=hash_identifier(str(matched_blocks[0] if matched_blocks else "blocked")),
             severity="high",
             session_id=session_id,
         )
@@ -911,9 +923,7 @@ def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
     repo_root: str = ".",
-    task_type: Literal[
-        "debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"
-    ] = "feature",
+    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
     risk_level: Literal["low", "medium", "high"] = "medium",
     changed_files: list[str] | None = None,
     domain: str | None = None,
@@ -1429,9 +1439,7 @@ def _memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = (
-        expected_version if expected_version is not None else (existing.version if existing else 1)
-    )
+    version = expected_version if expected_version is not None else (existing.version if existing else 1)
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1467,9 +1475,7 @@ def _memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(
-            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
-        )
+        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1579,9 +1585,7 @@ def tool_memory(
             actor=actor,
         )
     if op == "block_get":
-        return _memory_get_block(
-            agent_id=require("agent_id", agent_id), label=require("label", label)
-        )
+        return _memory_get_block(agent_id=require("agent_id", agent_id), label=require("label", label))
     if op == "archive":
         return _memory_archive(
             agent_id=require("agent_id", agent_id),
@@ -2002,6 +2006,7 @@ def _run_shell_tool(
         "lines_omitted": result.lines_omitted,
     }
 
+
 @mcp_tool(name="atelier_code_context", is_dev=True)
 def tool_atelier_code_context(
     task: str,
@@ -2029,9 +2034,7 @@ def tool_atelier_code_impact(repo_root: str = ".", file_path: str = "") -> dict[
     """Return importers, blast radius, tests, and approximate dead-code candidates."""
     if not file_path:
         raise ValueError("file_path is required")
-    return cast(
-        dict[str, Any], _code_context_engine(repo_root).impact(file_path).model_dump(mode="json")
-    )
+    return cast(dict[str, Any], _code_context_engine(repo_root).impact(file_path).model_dump(mode="json"))
 
 
 @mcp_tool(name="search", is_dev=True)
@@ -2321,12 +2324,7 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if (
-                tool_name
-                and tool_name != lever
-                and tool_name not in lever_savings
-                and lever == base_lever
-            ):
+            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
                 lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
@@ -2346,9 +2344,7 @@ def _record_context_budget_for_tool(
                 "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
                 "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
                 "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                "cache_write_tokens_saved": int(
-                    live_savings.get("cache_write_tokens_saved", 0) or 0
-                ),
+                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
                 "live_tokens_saved": live_tokens_saved,
                 "tool_tokens_saved": tool_tokens_saved,
                 "tokens_saved": tokens_saved,
@@ -2362,9 +2358,7 @@ def _record_context_budget_for_tool(
         # Record the tool execution metrics
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
-            actual_output_tokens = max(
-                0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4
-            )
+            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -2414,16 +2408,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     if method == "notifications/initialized":
         return None
     if method == "tools/list":
-        from atelier.core.service.config import cfg
-
         tools = [
             {
                 "name": n,
-                "description": s.get("description", ""),
+                "description": _tool_description(s),
                 "inputSchema": s.get("inputSchema", {}),
             }
             for n, s in TOOLS.items()
-            if not s.get("is_dev") or cfg.dev_mode
+            if _tool_visible_to_llm(n, s)
         ]
         return _ok(rid, {"tools": tools})
 
@@ -2448,11 +2440,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
             led = _get_ledger()
             result_text = json.dumps(result, ensure_ascii=False, default=str)
-            compact_text = (
-                result_text
-                if len(result_text) <= 1200
-                else result_text[:600] + "..." + result_text[-600:]
-            )
+            compact_text = result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
             led.record(
                 "tool_result",
                 f"{name} result",
@@ -2466,9 +2454,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             rtc.persist()
 
             # Record context budget metrics
-            _record_context_budget_for_tool(
-                name, args if isinstance(args, dict) else {}, led, result
-            )
+            _record_context_budget_for_tool(name, args if isinstance(args, dict) else {}, led, result)
 
             with contextlib.suppress(Exception):
                 from atelier.core.service.telemetry import emit_product
@@ -2478,18 +2464,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     "mcp_tool_called",
                     tool_name=name,
                     session_id=_get_product_session_id(),
-                    duration_ms_bucket=bucket_duration_ms(
-                        (time.perf_counter() - started_at) * 1000
-                    ),
+                    duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
                     ok=True,
                 )
 
             return _ok(
                 rid,
                 {
-                    "content": [
-                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
-                    ],
+                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
                     "structuredContent": result,
                 },
             )
@@ -2506,9 +2488,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     "mcp_tool_called",
                     tool_name=name,
                     session_id=_get_product_session_id(),
-                    duration_ms_bucket=bucket_duration_ms(
-                        (time.perf_counter() - started_at) * 1000
-                    ),
+                    duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
                     ok=False,
                 )
             return _err(rid, _tool_error_code(exc), str(exc))

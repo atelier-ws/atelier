@@ -8,7 +8,7 @@ This guide assumes you want to use the installed product, not work from a source
 curl -fsSL https://raw.githubusercontent.com/leanchain/atelier/main/scripts/install.sh | bash
 ```
 
-That installs the `atelier` and `atelier-mcp` commands, initializes `~/.atelier`, and starts the detached `servicectl` loop.
+That installs the `atelier` and `atelier-mcp` commands as user-level console scripts, initializes `~/.atelier`, and starts the detached `servicectl` loop.
 
 ## Step 2 — Verify the Installed Runtime
 

@@ -53,7 +53,7 @@ describe("RunInspectorDrawer", () => {
       id: "trace-1",
       session_id: "run-123",
       agent: "atelier:code",
-      task: "Inspect this run",
+      task: "Inspect this session",
       status: "success",
       files_touched: [],
       tools_called: [],
@@ -105,7 +105,7 @@ describe("RunInspectorDrawer", () => {
                 },
                 {
                   kind: "agent_message",
-                  summary: "Healthy run",
+                  summary: "Healthy session",
                   content: "all checks passed",
                 },
               ],
@@ -147,7 +147,7 @@ describe("RunInspectorDrawer", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        /Search this run: timeline, files, commands, tools, passages/i
+        /Search this session: timeline, files, commands, tools, passages/i
       ),
       "timeout"
     );

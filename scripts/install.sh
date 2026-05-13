@@ -8,7 +8,8 @@
 #   ATELIER_REPO_URL   Git URL (default: https://github.com/pankaj4u4m/atelier.git)
 #   ATELIER_REF        Git ref to install (default: main)
 #   ATELIER_INSTALL_DIR Install location (default: ~/.local/share/atelier)
-#   ATELIER_BIN_DIR    Global bin dir for command wrappers (default: ~/.local/bin)
+#   ATELIER_BIN_DIR    Global bin dir for console scripts (default: ~/.local/bin)
+#   ATELIER_TOOL_DIR   uv tool environment dir (default: ~/.local/share/uv/tools)
 #   ATELIER_NO_HOSTS   If set to 1, skip agent-host integration install scripts
 #   ATELIER_NO_SERVICECTL If set to 1, skip starting the background service controller
 #   ATELIER_SERVICECTL_INTERVAL_SECONDS Poll interval for servicectl (default: 60)
@@ -38,6 +39,7 @@ ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}
 ATELIER_REF="${ATELIER_REF:-main}"
 ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local/share/atelier}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
+ATELIER_TOOL_DIR="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
 ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
 ATELIER_NO_SERVICECTL="${ATELIER_NO_SERVICECTL:-0}"
 ATELIER_SERVICECTL_INTERVAL_SECONDS="${ATELIER_SERVICECTL_INTERVAL_SECONDS:-60}"
@@ -193,24 +195,19 @@ prepare_repo() {
     fi
 }
 
-write_wrapper() {
-    local cmd="$1"
-    local target="$ATELIER_BIN_DIR/$cmd"
+install_console_scripts() {
+    local extras="mcp,memory,embeddings,smart,cloud,repo-map,api,postgres,vector,parsers,telemetry"
+    local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] write wrapper $target"
+        echo "[dry-run] UV_TOOL_BIN_DIR=$ATELIER_BIN_DIR UV_TOOL_DIR=$ATELIER_TOOL_DIR uv tool install --force --editable '$package_spec'"
         return
     fi
 
-    cat >"$target" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-# Default to global store in home directory if not set
-export ATELIER_ROOT="\${ATELIER_ROOT:-\${HOME}/.atelier}"
-export ATELIER_INSTALL_DIR="$ATELIER_INSTALL_DIR"
-exec uv --directory "$ATELIER_INSTALL_DIR" run "$cmd" "\$@"
-EOF
-    chmod +x "$target"
+    mkdir -p "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+    UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
+        UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
+        uv tool install --force --editable "$package_spec"
 }
 
 main() {
@@ -230,12 +227,8 @@ main() {
         prepare_repo
     fi
 
-    info "Installing Atelier Python environment..."
-    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] uv --directory $ATELIER_INSTALL_DIR sync --all-extras"
-    else
-        uv --directory "$ATELIER_INSTALL_DIR" sync --all-extras
-    fi
+    info "Installing Atelier console commands..."
+    install_console_scripts
 
     if command -v npm >/dev/null 2>&1; then
         info "Installing codeburn (token/cost reporting)..."
@@ -245,12 +238,6 @@ main() {
     else
         warn "npm not found — skipping codeburn and tokscale (install Node.js 20+ to enable)"
     fi
-
-    run mkdir -p "$ATELIER_BIN_DIR"
-    write_wrapper atelier
-    write_wrapper atelier-mcp
-    write_wrapper atelier-api
-    write_wrapper atelier-codex
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         echo "[dry-run] ln -sf $ATELIER_INSTALL_DIR/bin/atelier-status $ATELIER_BIN_DIR/atelier-status"

@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/ins
 
 The installer does four things by default:
 
-- installs `atelier` and `atelier-mcp` into `~/.local/bin`
+- installs `atelier` and `atelier-mcp` as user-level console commands in `~/.local/bin`
 - initializes the runtime store under `~/.atelier`
 - starts the detached `servicectl` background loop
 - installs supported host integrations when the host CLI is found on `PATH`
