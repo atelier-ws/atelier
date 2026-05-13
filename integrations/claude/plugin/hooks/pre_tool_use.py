@@ -19,6 +19,8 @@ import sys
 import time
 from pathlib import Path
 
+from atelier.core.environment import is_dev_mode
+
 RISKY_PATTERNS = [
     re.compile(p)
     for p in (
@@ -62,24 +64,13 @@ def _recent_plan_check_ok() -> bool:
     return (time.time() - last) < PLAN_CHECK_TTL_SECONDS
 
 
-def _bool_env(name: str, default: bool) -> bool:
-    val = os.environ.get(name, "").lower()
-    if not val:
-        return default
-    return val in ("1", "true", "yes")
-
-
-def _is_dev_mode() -> bool:
-    return _bool_env("ATELIER_DEV_MODE", False)
-
-
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except Exception:
         return 0  # fail-open: never break the agent on hook parse error
 
-    if not _is_dev_mode():
+    if not is_dev_mode():
         print(json.dumps({"decision": "allow"}))
         return 0
 

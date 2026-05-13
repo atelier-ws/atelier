@@ -231,8 +231,10 @@ export default function RunInspectorDrawer({
   }, [open, trace]);
 
   const title = useMemo(() => {
-    if (!trace) return "Run Inspector";
-    return trace.task ? `Run Inspector: ${trace.task}` : "Run Inspector";
+    if (!trace) return "Session Inspector";
+    return trace.task
+      ? `Session Inspector: ${trace.task}`
+      : "Session Inspector";
   }, [trace]);
 
   const sessionTerms = useMemo(
@@ -277,7 +279,7 @@ export default function RunInspectorDrawer({
     if (trace) {
       pushMatch(
         "run-meta",
-        "Run",
+        "Session",
         trace.session_id || trace.id,
         [trace.task, trace.agent, trace.host, trace.session_id, trace.id]
           .filter(Boolean)
@@ -390,7 +392,7 @@ export default function RunInspectorDrawer({
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-neutral-950 border-l border-neutral-800 z-50 p-5 overflow-y-auto transition-transform"
         role="dialog"
         aria-modal="true"
-        aria-label="Run inspector drawer"
+        aria-label="Session inspector drawer"
       >
         <div className="flex items-start justify-between gap-3 pb-4 border-b border-neutral-800">
           <div>
@@ -408,7 +410,7 @@ export default function RunInspectorDrawer({
           </div>
           <button
             type="button"
-            aria-label="Close run inspector"
+            aria-label="Close session inspector"
             onClick={onClose}
             className="text-xs px-2 py-1 border border-neutral-700 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
           >
@@ -440,7 +442,7 @@ export default function RunInspectorDrawer({
               type="search"
               value={sessionQuery}
               onChange={(e) => setSessionQuery(e.target.value)}
-              placeholder="Search this run: timeline, files, commands, tools, passages..."
+              placeholder="Search this session: timeline, files, commands, tools, passages..."
               className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition placeholder:text-neutral-600 focus:border-amber-500/50"
             />
             {sessionQuery && (
@@ -456,7 +458,9 @@ export default function RunInspectorDrawer({
         </div>
 
         {loading && (
-          <p className="text-xs text-neutral-500 pt-4">Loading run data...</p>
+          <p className="text-xs text-neutral-500 pt-4">
+            Loading session data...
+          </p>
         )}
         {error && <p className="text-xs text-red-400 pt-4">{error}</p>}
 
@@ -580,7 +584,7 @@ export default function RunInspectorDrawer({
                 <p className="text-xs text-neutral-600">
                   {sessionSearchActive
                     ? "No pinned blocks match the current session search."
-                    : "No pinned blocks recorded for this run."}
+                    : "No pinned blocks recorded for this session."}
                 </p>
               ) : (
                 <ul className="space-y-1">

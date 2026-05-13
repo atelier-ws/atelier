@@ -11,9 +11,7 @@ import json
 import os
 import sys
 
-
-def _is_dev_mode() -> bool:
-    return os.environ.get("ATELIER_DEV_MODE", "").lower() in ("1", "true", "yes")
+from atelier.core.environment import is_dev_mode
 
 
 def main() -> int:
@@ -25,7 +23,7 @@ def main() -> int:
         if tool_name == "Bash":
             # Only redirect toward Atelier tools when dev mode is on.
             # In passive mode the tools don't exist — never suggest them.
-            if not _is_dev_mode():
+            if not is_dev_mode():
                 return 0
             from atelier.core.capabilities.plugin_runtime import classify_bash
 

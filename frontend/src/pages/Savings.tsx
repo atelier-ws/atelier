@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTimeRange } from "../lib/TimeRangeContext";
 import LeverBar from "../components/LeverBar";
 import SavingsTimeChart from "../components/SavingsTimeChart";
 import type {
@@ -84,13 +85,15 @@ export default function Savings() {
     {}
   );
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
+  const { days } = useTimeRange();
 
   useEffect(() => {
     api
-      .savingsSummary(14)
+      .savingsSummary(days)
       .then(setData)
       .catch((e) => setErr(String(e)));
-  }, []);
+  }, [days]);
+
 
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!data) return <div className="text-neutral-500">Loading…</div>;
@@ -437,9 +440,10 @@ export default function Savings() {
                   Session proof
                 </h2>
                 <p className="text-xs text-neutral-500">
-                  Each run below links saved tokens and cost back to concrete
-                  tool turns. Expand a run to inspect the stored ledger,
-                  imported trace conversation, and command/tool evidence.
+                  Each session below links saved tokens and cost back to
+                  concrete tool turns. Expand a session to inspect the stored
+                  ledger, imported trace conversation, and command/tool
+                  evidence.
                 </p>
               </div>
               {sessionProof.map((session) => (
@@ -549,7 +553,7 @@ function ManualVerificationPanel({
           value={fmt.format(verification.tracked_row_count)}
         />
         <Metric
-          label="Tracked Runs"
+          label="Tracked Sessions"
           value={fmt.format(verification.tracked_run_count)}
         />
         <Metric
@@ -583,7 +587,7 @@ function ManualVerificationPanel({
             {fmt.format(compactOutputSavedTokens)} saved tokens remain visible
             in session proof, but are excluded from the top-line headline
             because they represent tool-output compaction rather than audited
-            run-level savings.
+            session-level savings.
           </div>
         </div>
       )}
@@ -591,7 +595,7 @@ function ManualVerificationPanel({
       <div className="grid xl:grid-cols-2 gap-3">
         <div className="border border-neutral-800 bg-neutral-950/50 p-4 space-y-2">
           <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-            Dominant Run
+            Dominant Session
           </div>
           {dominantRun ? (
             <>
@@ -615,7 +619,7 @@ function ManualVerificationPanel({
             </>
           ) : (
             <div className="text-sm text-neutral-500">
-              No tracked run data yet.
+              No tracked session data yet.
             </div>
           )}
         </div>
@@ -689,8 +693,8 @@ function SessionProofCard({
     conversations.length > 0;
   const missingEvidenceMessage =
     session.trace_id || session.has_ledger
-      ? "This run has saved token rows, but the stored ledger/trace did not preserve tool-call, command, or conversation detail for this slice."
-      : "This run only has persisted context-budget rows. No live ledger or imported trace survived, so detailed proof beyond the token rows cannot be reconstructed.";
+      ? "This session has saved token rows, but the stored ledger/trace did not preserve tool-call, command, or conversation detail for this slice."
+      : "This session only has persisted context-budget rows. No live ledger or imported trace survived, so detailed proof beyond the token rows cannot be reconstructed.";
 
   return (
     <article className="border border-neutral-800 bg-neutral-950/70 p-5 space-y-4">
@@ -840,7 +844,7 @@ function SessionProofCard({
                   </div>
                   <div className="text-neutral-200">
                     No detailed tool-call, command, or conversation proof was
-                    stored for this run.
+                    stored for this session.
                   </div>
                   <p className="text-neutral-400 leading-relaxed">
                     {missingEvidenceMessage}
@@ -860,7 +864,7 @@ function SessionProofCard({
                     <div className="space-y-2">
                       {toolsCalled.length === 0 ? (
                         <div className="text-neutral-500">
-                          No tool-call detail captured for this run.
+                          No tool-call detail captured for this session.
                         </div>
                       ) : (
                         toolsCalled
@@ -894,7 +898,7 @@ function SessionProofCard({
                     <div className="space-y-2">
                       {commandsRun.length === 0 ? (
                         <div className="text-neutral-500">
-                          No command detail captured for this run.
+                          No command detail captured for this session.
                         </div>
                       ) : (
                         commandsRun
@@ -926,7 +930,7 @@ function SessionProofCard({
                     <div className="space-y-2">
                       {conversations.length === 0 ? (
                         <div className="text-neutral-500">
-                          No conversation transcript was attached to this run.
+                          No conversation transcript was attached to this session.
                         </div>
                       ) : (
                         conversations

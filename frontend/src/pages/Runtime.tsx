@@ -15,7 +15,7 @@ const SECTIONS: Array<{
 }> = [
   {
     id: "operate",
-    label: "Runs + Watchdogs",
+    label: "Sessions + Watchdogs",
     icon: "▶⚑",
     description:
       "Observable execution plus guardrails and preset risk profiles.",
@@ -52,7 +52,7 @@ export default function Runtime() {
           label="Current view"
           value={
             SECTIONS.find((item) => item.id === active)?.label ??
-            "Runs + Watchdogs"
+            "Sessions + Watchdogs"
           }
           detail="All runtime slices stay inside one area."
           tone="neutral"
