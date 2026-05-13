@@ -53,7 +53,6 @@ class ReasoningContextResult(BaseModel):
     recalled_passages: builtins.list[ReasoningContextRecalledPassage] = Field(default_factory=list)
     tokens_breakdown: ReasoningContextTokenBreakdown | None = None
     run_ledger: dict[str, Any] | None = None
-    environment: dict[str, Any] | None = None
 
 
 class TraceRecordResult(BaseModel):
@@ -339,8 +338,13 @@ class AtelierClient(ABC):
         self.lessons = LessonClient(self)
 
     @classmethod
-    def local(cls, *, root: str = ".atelier") -> LocalClient:
+    def local(cls, *, root: str | None = None) -> LocalClient:
         from atelier.gateway.sdk.local import LocalClient
+
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = str(default_store_root())
 
         return LocalClient(root=root)
 
@@ -360,10 +364,15 @@ class AtelierClient(ABC):
     def mcp(
         cls,
         *,
-        root: str = ".atelier",
+        root: str | None = None,
         transport: MCPToolTransport | None = None,
     ) -> MCPClient:
         from atelier.gateway.sdk.mcp import MCPClient
+
+        if root is None:
+            from atelier.core.foundation.paths import default_store_root
+
+            root = str(default_store_root())
 
         return MCPClient(root=root, transport=transport)
 

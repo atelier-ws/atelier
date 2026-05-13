@@ -1,4 +1,4 @@
-# Installing Atelier into VS Code Copilot
+# Installing Atelier into Copilot
 
 **Support level**: MCP config + Copilot instructions + chat mode + tasks
 
@@ -53,7 +53,7 @@ make verify
 
 ## First Task
 
-Open VS Code Copilot Chat and ask:
+Open Copilot Chat and ask:
 
 ```
 @atelier check this plan
@@ -70,7 +70,15 @@ Use atelier to check the plan for: [your task here]
 - Copilot Chat can invoke Atelier MCP tools
 - `copilot-instructions.md` provides Atelier context to every Copilot session
 - `atelier` chat mode is available from the chat mode selector
-- Task presets can run reasoning preflight from the VS Code task runner
+- `Atelier: Copilot Preflight` runs `atelier context` and `atelier check-plan` from the VS Code task runner before you continue in Copilot Chat
+
+## Why Tasks Still Use Shell
+
+Copilot's MCP support applies to chat/tool calls inside the Copilot session. VS Code
+`tasks.json` entries are shell tasks, so the preflight task has to spawn the
+`atelier` CLI rather than invoke MCP directly. The MCP server remains the primary
+integration surface for in-chat `reasoning`, `lint`, `trace`, `memory`, and other
+Atelier tools.
 
 ## Reload Required
 

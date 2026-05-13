@@ -1,4 +1,5 @@
 const BASE = "/api";
+const TELEMETRY_ACK_STORAGE_KEY = "atelier.telemetry.acknowledged";
 
 export interface TelemetryConfig {
   remote_enabled: boolean;
@@ -8,6 +9,7 @@ export interface TelemetryConfig {
   anon_id: string;
   acknowledged: boolean;
   service_version: string;
+  dev_mode: boolean;
 }
 
 export interface TelemetryEvent {
@@ -21,6 +23,10 @@ export interface TelemetryEvent {
 
 export interface TelemetrySummary {
   events_total: number;
+  unique_event_types: number;
+  active_sessions: number;
+  first_event_ts: number | null;
+  last_event_ts: number | null;
   event_counts: Record<string, number>;
   commands_by_day: Array<{ day: string; count: number }>;
   top_commands: Array<{ name: string; count: number }>;
@@ -46,6 +52,13 @@ export interface TelemetrySchema {
   buckets: Record<string, string[]>;
 }
 
+export interface TelemetryQuery {
+  limit?: number;
+  since?: number;
+  event?: string;
+  host?: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, init);
   if (!response.ok) {
@@ -55,7 +68,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function getTelemetryConfig(): Promise<TelemetryConfig> {
-  return request<TelemetryConfig>("/telemetry/config");
+  return request<TelemetryConfig>("/telemetry/config").then((config) => ({
+    ...config,
+    acknowledged: config.acknowledged || hasLocalTelemetryAcknowledgement(),
+  }));
 }
 
 export function updateTelemetryConfig(payload: {
@@ -70,19 +86,55 @@ export function updateTelemetryConfig(payload: {
 }
 
 export function acknowledgeTelemetry(): Promise<TelemetryConfig> {
-  return request<TelemetryConfig>("/telemetry/ack", { method: "POST" });
-}
-
-export function getTelemetryEvents(
-  limit = 100,
-): Promise<{ events: TelemetryEvent[] }> {
-  return request<{ events: TelemetryEvent[] }>(
-    `/telemetry/local?limit=${limit}`,
+  markLocalTelemetryAcknowledged();
+  return request<TelemetryConfig>("/telemetry/ack", { method: "POST" }).then(
+    (config) => ({
+      ...config,
+      acknowledged: true,
+    })
   );
 }
 
-export function getTelemetrySummary(): Promise<TelemetrySummary> {
-  return request<TelemetrySummary>("/telemetry/summary");
+export function hasLocalTelemetryAcknowledgement(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(TELEMETRY_ACK_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markLocalTelemetryAcknowledged(): void {
+  try {
+    globalThis.localStorage?.setItem(TELEMETRY_ACK_STORAGE_KEY, "1");
+  } catch {
+    // Storage can be disabled in private contexts; the server ack remains.
+  }
+}
+
+function buildTelemetryQuery(params: TelemetryQuery = {}): string {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.since !== undefined) query.set("since", String(params.since));
+  if (params.event) query.set("event", params.event);
+  if (params.host) query.set("host", params.host);
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export function getTelemetryEvents(
+  query: TelemetryQuery = {}
+): Promise<{ events: TelemetryEvent[] }> {
+  return request<{ events: TelemetryEvent[] }>(
+    `/telemetry/local${buildTelemetryQuery(query)}`
+  );
+}
+
+export function getTelemetrySummary(
+  query: Omit<TelemetryQuery, "limit"> = {}
+): Promise<TelemetrySummary> {
+  return request<TelemetrySummary>(
+    `/telemetry/summary${buildTelemetryQuery(query)}`
+  );
 }
 
 export function getTelemetrySchema(): Promise<TelemetrySchema> {
@@ -91,7 +143,7 @@ export function getTelemetrySchema(): Promise<TelemetrySchema> {
 
 export function postLocalTelemetryEvent(
   event: string,
-  props: Record<string, unknown>,
+  props: Record<string, unknown>
 ): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/telemetry/local", {
     method: "POST",

@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 PLUGIN_TEMPLATE="${ATELIER_REPO}/integrations/codex/plugin"
 
 DRY_RUN=false
@@ -52,7 +53,6 @@ if $WORKSPACE_SET; then
     PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"
     MARKETPLACE_JSON="${WORKSPACE}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-    WRAPPER_DEST_DIR="${WORKSPACE}/bin"
     TASKS_DEST_DIR="${WORKSPACE}/.codex/tasks"
 else
     INSTALL_SCOPE="global"
@@ -60,17 +60,59 @@ else
     PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
     MARKETPLACE_JSON="${HOME}/.agents/plugins/marketplace.json"
     AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
-    WRAPPER_DEST_DIR="${HOME}/.local/bin"
     TASKS_DEST_DIR=""
 fi
 
 PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
 PLUGIN_WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.sh"
 MARKETPLACE_PLUGIN_PATH="./.codex/plugins/atelier"
+SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
 
 info()  { echo "[atelier:codex] $*"; }
 warn()  { echo "[atelier:codex] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+
+# ---- resolve install profile ------------------------------------------------
+eval "$(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import install_profile_warning, resolve_install_profile
+import shlex
+import sys
+
+try:
+    profile = resolve_install_profile()
+except ValueError as exc:
+    print(f"echo '[atelier:codex] ERROR: {exc}' >&2")
+    print("exit 1")
+    raise SystemExit(0)
+
+warning = install_profile_warning(profile)
+print(f"INSTALL_PROFILE={shlex.quote(profile)}")
+print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
+PY
+)"
+if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
+    warn "$ATELIER_INSTALL_PROFILE_WARNING"
+fi
+STAGING_DIR="${HOME}/.atelier/codex-plugin-${INSTALL_PROFILE}"
+run "mkdir -p '$STAGING_DIR/.codex-plugin'"
+run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
+run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
+run "mkdir -p '$STAGING_DIR/agents'"
+AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full agent instructions"
+    run "cp '${AGENT_SRC/.md/.dev.md}' '$STAGING_DIR/agents/atelier.md'"
+else
+    info "Install profile: stable; staging stable agent instructions"
+    run "cp '${AGENT_SRC}' '$STAGING_DIR/agents/atelier.md'"
+fi
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills' --include-dev"
+else
+    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills'"
+fi
+PLUGIN_TEMPLATE="$STAGING_DIR"
 backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
@@ -126,9 +168,28 @@ fi
 >&2 echo "[atelier-mcp] repo=\$ATELIER_REPO workspace=\${ATELIER_WORKSPACE_ROOT} root=\${ATELIER_ROOT:-\${ATELIER_STORE_ROOT:-unset}}"
 
 cd "\$ATELIER_REPO"
-exec uv run python -m atelier.gateway.adapters.mcp_server "\$@"
+exec atelier-mcp "\$@"
 EOF
     chmod +x "$dest"
+}
+
+merge_agents_file() {
+    local source_file="$1"
+    local dest_file="$2"
+
+    if [ ! -f "$dest_file" ]; then
+        if $DRY_RUN; then
+            atelier_write_managed_copy "$source_file" "$dest_file" "true"
+        else
+            atelier_write_managed_copy "$source_file" "$dest_file" "false"
+        fi
+        info "created $dest_file"
+        return
+    fi
+
+    backup_file "$dest_file"
+    atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"
+    info "merged Atelier Codex instructions into $dest_file"
 }
 
 install_plugin_bundle() {
@@ -163,7 +224,7 @@ server["args"] = server.get("args", [])
 if $workspace_mode:
     server["env"] = {
         "ATELIER_WORKSPACE_ROOT": "$WORKSPACE",
-        "ATELIER_ROOT": "$WORKSPACE/.atelier",
+        "ATELIER_ROOT": "${HOME}/.atelier",
     }
 else:
     server.pop("env", None)
@@ -273,10 +334,6 @@ JSON
         echo "5. Install Codex instructions:"
     echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${AGENTS_FILE}'"
     echo ""
-        echo "6. Install wrapper:"
-    echo "   mkdir -p '${WRAPPER_DEST_DIR}'"
-    echo "   cp '${ATELIER_REPO}/bin/atelier-codex' '${WRAPPER_DEST_DIR}/atelier-codex'"
-    echo "   chmod +x '${WRAPPER_DEST_DIR}/atelier-codex'"
     if $WORKSPACE_SET; then
         echo ""
                 echo "7. Install task templates:"
@@ -294,31 +351,9 @@ patch_plugin_mcp "$PLUGIN_WRAPPER"
 merge_marketplace
 
 # ---- AGENTS.md --------------------------------------------------------------
-if [ ! -f "$AGENTS_FILE" ]; then
-    run "mkdir -p '$(dirname "$AGENTS_FILE")'"
-    run "cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
-    info "created $AGENTS_FILE"
-else
-    info "$AGENTS_FILE already exists — not overwriting"
-    info "manually copy if needed: cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '$AGENTS_FILE'"
-fi
+merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
 
-# ---- wrapper + task templates ---------------------------------------------
-WRAPPER_SRC="${ATELIER_REPO}/bin/atelier-codex"
-WRAPPER_DEST="${WRAPPER_DEST_DIR}/atelier-codex"
-if [ -f "$WRAPPER_SRC" ]; then
-    if [ -e "$WRAPPER_DEST" ] && [ "$(realpath "$WRAPPER_SRC")" = "$(realpath "$WRAPPER_DEST")" ]; then
-        info "wrapper already in place: $WRAPPER_DEST"
-    else
-        run "mkdir -p '$WRAPPER_DEST_DIR'"
-        run "cp '$WRAPPER_SRC' '$WRAPPER_DEST'"
-        run "chmod +x '$WRAPPER_DEST'"
-        info "installed wrapper: $WRAPPER_DEST"
-    fi
-else
-    warn "wrapper source missing: $WRAPPER_SRC"
-fi
-
+# ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
 if $WORKSPACE_SET && [ -d "$TASKS_SRC_DIR" ]; then
     run "mkdir -p '$TASKS_DEST_DIR'"
@@ -343,6 +378,24 @@ if [ -f "${PLUGIN_DIR}/.codex-plugin/plugin.json" ]; then
     vpass "Codex plugin manifest installed: ${PLUGIN_DIR}/.codex-plugin/plugin.json"
 else
     vfail "Codex plugin manifest missing: ${PLUGIN_DIR}/.codex-plugin/plugin.json"
+fi
+
+if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/status/SKILL.md" ]; then
+    if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+        if [ -f "${PLUGIN_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "Codex skill bundle installed with dev skills: ${PLUGIN_DIR}/skills"
+        else
+            vfail "Codex dev skill bundle missing reasoning skill: ${PLUGIN_DIR}/skills"
+        fi
+    else
+        if [ ! -f "${PLUGIN_DIR}/skills/reasoning/SKILL.md" ]; then
+            vpass "Codex stable skill bundle installed without dev-only skills: ${PLUGIN_DIR}/skills"
+        else
+            vfail "Codex stable skill bundle unexpectedly contains dev-only skills: ${PLUGIN_DIR}/skills"
+        fi
+    fi
+else
+    vfail "Codex skill bundle missing required shared skills: ${PLUGIN_DIR}/skills"
 fi
 
 if [ -f "$PLUGIN_MCP_JSON" ]; then
@@ -390,12 +443,6 @@ if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; t
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"
 else
     vfail "AGENTS.md missing or has no atelier:code persona: $AGENTS_FILE"
-fi
-
-if [ -x "$WRAPPER_DEST" ]; then
-    vpass "Codex preflight wrapper installed: $WRAPPER_DEST"
-else
-    vfail "Codex preflight wrapper missing or not executable: $WRAPPER_DEST"
 fi
 
 if $WORKSPACE_SET; then
