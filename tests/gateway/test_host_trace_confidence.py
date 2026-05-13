@@ -23,7 +23,7 @@ COPILOT_README = Path(__file__).parent.parent.parent / "integrations" / "copilot
 SUPPORTED_HOSTS = [
     "Claude Code",
     "Codex CLI",
-    "VS Code Copilot",
+    "Copilot",
     "opencode",
     "Gemini CLI",
 ]
@@ -224,7 +224,6 @@ def test_mcp_server_downgrades_full_live_without_hooks(tmp_path: Path) -> None:
         mock.patch("atelier.gateway.adapters.mcp_server._get_ledger") as mock_led,
         mock.patch("atelier.gateway.adapters.mcp_server._get_realtime_context") as mock_rtc,
     ):
-
         # Set up minimal mocks
         fake_store = mock.MagicMock()
         fake_rt = mock.MagicMock()
@@ -232,7 +231,7 @@ def test_mcp_server_downgrades_full_live_without_hooks(tmp_path: Path) -> None:
         mock_rt.return_value = fake_rt
 
         fake_ledger = mock.MagicMock()
-        fake_ledger.run_id = "run-test-001"
+        fake_ledger.session_id = "run-test-001"
         mock_led.return_value = fake_ledger
 
         mock_rtc.return_value = mock.MagicMock()
@@ -279,7 +278,7 @@ def test_mcp_server_record_trace_accepts_string_tool_names(tmp_path: Path) -> No
         mock_rt.return_value = fake_rt
 
         fake_ledger = mock.MagicMock()
-        fake_ledger.run_id = "run-test-002"
+        fake_ledger.session_id = "run-test-002"
         mock_led.return_value = fake_ledger
 
         mock_rtc.return_value = mock.MagicMock()

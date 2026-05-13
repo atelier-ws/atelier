@@ -59,7 +59,7 @@ The following Atelier levers were the primary drivers of token reduction:
 The trace for this run is recorded in the Atelier store and can be viewed via the dashboard:
 
 ```bash
-uv run atelier trace show <trace_id>
+atelier trace show <trace_id>
 ```
 
 Or via the Savings tab in the dashboard at `http://localhost:3125/savings`.

@@ -23,7 +23,7 @@ Then bootstrap the engine:
 
 ```bash
 cd atelier && uv sync
-uv run atelier init
+atelier init
 ```
 
 ## Manual MCP Setup
@@ -61,7 +61,7 @@ The plugin provides 4 agents selectable via `claude --agent`:
 
 | Command                               | Description                                                  |
 | ------------------------------------- | ------------------------------------------------------------ |
-| `/atelier:status [run_id]`            | Show current run plan, facts, blockers, alerts               |
+| `/atelier:status [session_id]`        | Show current run plan, facts, blockers, alerts               |
 | `/atelier:context <domain>`           | Resolve environment rules and required validations           |
 | `/atelier:savings`                    | Calls avoided, tokens saved, rubric failures caught          |
 | `/atelier:benchmark [--apply]`        | Run eval suite (dry-run by default)                          |
@@ -75,10 +75,10 @@ Skills auto-trigger based on context:
 
 | Skill                  | Trigger                                                   |
 | ---------------------- | --------------------------------------------------------- |
-| `atelier-task`         | Start of every coding task — runs the full reasoning loop |
-| `atelier-check-plan`   | Explicit plan validation                                  |
-| `atelier-rescue`       | Invoked on repeated failures                              |
-| `atelier-record-trace` | End-of-task observable summary                            |
+| `reasoning`            | Start of every coding task — runs the full reasoning loop |
+| `lint`                 | Explicit plan validation                                  |
+| `rescue`               | Invoked on repeated failures                              |
+| `trace`                | End-of-task observable summary                            |
 
 ## Hooks (Optional)
 
@@ -115,7 +115,7 @@ When Claude Code compacts the conversation, Atelier preserves critical runtime s
    - **Top ReasonBlocks** to preserve (max 3)
    - **Pinned memory blocks** for the agent
    - **Recently edited files** (last 5)
-3. The hook persists this manifest to `.atelier/runs/<run_id>/compact_manifest.json`.
+3. The hook persists this manifest to `.atelier/runs/<session_id>/compact_manifest.json`.
 4. The manifest survives the host's compaction.
 
 **Post-Compact Lifecycle:**
@@ -130,7 +130,7 @@ When Claude Code compacts the conversation, Atelier preserves critical runtime s
 ```json
 &#123;
   "created_at": "2026-05-03T17:44:00+00:00",
-  "run_id": "abc123def456",
+  "session_id": "abc123def456",
   "should_compact": true,
   "utilisation_pct": 68.5,
   "preserve_blocks": ["block_auth_001", "block_db_config_002"],
@@ -158,7 +158,7 @@ To enable the compact lifecycle:
 
 ## Reasoning Loop (Full)
 
-The `atelier:code` agent and `atelier-task` skill enforce this loop on every task:
+The `atelier:code` agent and `reasoning` skill enforce this loop on every task:
 
 1. `reasoning` — inject relevant procedures
 2. `lint` — validate plan before editing (exit 2 = abort)

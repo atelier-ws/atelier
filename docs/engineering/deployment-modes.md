@@ -5,7 +5,7 @@ Atelier supports multiple deployment shapes without changing the host contract.
 ## Local
 
 - SQLite store under `.atelier/`
-- `uv run atelier ...`
+- `atelier ...`
 - best for local experimentation and single-user host integrations
 
 ## Service

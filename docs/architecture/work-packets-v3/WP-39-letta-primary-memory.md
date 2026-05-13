@@ -47,7 +47,7 @@ configured for it — that's the user's choice and bill, not Atelier's.)
   - `record_recall` → Letta passage metadata update + Atelier-side `MemoryRecall` row (kept
     locally for trace continuity)
 - **EDIT:** `src/atelier/infra/memory_bridges/letta_adapter.py` — implement metadata
-  carry-overs from data-model § 4 (`atelier_run_id`, `atelier_last_recall_at`,
+  carry-overs from data-model § 4 (`atelier_session_id`, `atelier_last_recall_at`,
   `atelier_dedup_hash`).
 - **EDIT:** `src/atelier/infra/storage/factory.py` — when `backend=letta`, instantiate
   `LettaMemoryStore` from `letta_adapter`; do not also instantiate `SqliteMemoryStore`.
@@ -147,12 +147,12 @@ LOCAL=1 uv run pytest tests/infra/test_letta_primary_round_trip.py \
                      tests/gateway/test_atelier_letta_cli.py -v
 
 # Manual smoke (requires Docker):
-LOCAL=1 uv run atelier letta up
-LOCAL=1 uv run atelier letta status
+LOCAL=1 atelier letta up
+LOCAL=1 atelier letta status
 # Expect: healthy, version printed.
 ATELIER_MEMORY_BACKEND=letta ATELIER_LETTA_URL=http://localhost:8283 \
-  LOCAL=1 uv run python -m atelier.cli memory list
-LOCAL=1 uv run atelier letta down
+  LOCAL=1 atelier memory list
+LOCAL=1 atelier letta down
 
 make verify
 ```

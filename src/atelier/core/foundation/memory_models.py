@@ -94,13 +94,14 @@ class MemoryRecall(BaseModel):
 class RunMemoryFrame(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
+    session_id: str
     pinned_blocks: list[str]
     recalled_passages: list[str]
     summarized_events: list[str]
     tokens_pre_summary: int
     tokens_post_summary: int
     compaction_strategy: Literal["none", "tfidf", "ollama_summarizer", "letta_summarizer"]
+    workspace_path: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
 

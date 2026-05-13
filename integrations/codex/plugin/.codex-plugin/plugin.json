@@ -11,14 +11,13 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Atelier",
-    "shortDescription": "Reasoning-first coding workflow for Codex.",
-    "longDescription": "Bundle Atelier skills and MCP tooling so Codex can reason, validate plans, and record traces in one package.",
+    "shortDescription": "Atelier trace capture for Codex.",
+    "longDescription": "Bundle the stable Atelier MCP transport for Codex. Non-development installs expose passive tracing only; reasoning and plan-validation tools are dev-profile features.",
     "developerName": "Atelier Team",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Use Atelier to reason about the current coding task before you edit anything.",
-      "Use Atelier to validate the current plan before running risky commands or declaring success."
+      "Use Atelier only for passive trace recording unless development-mode tools are explicitly installed."
     ],
     "brandColor": "#0f766e"
   }

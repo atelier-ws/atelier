@@ -27,7 +27,7 @@ def test_cli_proof_run_json_output(cli_env: Path) -> None:
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             "cli-test-run",
             "--context-reduction-pct",
             "55.0",
@@ -36,7 +36,7 @@ def test_cli_proof_run_json_output(cli_env: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data["run_id"] == "cli-test-run"
+    assert data["session_id"] == "cli-test-run"
     assert data["status"] in ("pass", "fail")
     assert "host_enforcement_matrix" in data
 
@@ -49,14 +49,14 @@ def test_cli_proof_run_text_output(cli_env: Path) -> None:
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             "cli-text-run",
             "--context-reduction-pct",
             "55.0",
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "run_id=cli-text-run" in result.output
+    assert "session_id=cli-text-run" in result.output
     assert "status=" in result.output
 
 
@@ -68,7 +68,7 @@ def test_cli_proof_run_writes_report_json(cli_env: Path) -> None:
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             "save-run",
             "--context-reduction-pct",
             "55.0",
@@ -90,7 +90,7 @@ def test_cli_proof_show_aliases_return_last_run(cli_env: Path, command: str) -> 
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             f"{command}-run",
             "--context-reduction-pct",
             "55.0",
@@ -101,7 +101,7 @@ def test_cli_proof_show_aliases_return_last_run(cli_env: Path, command: str) -> 
     result = runner.invoke(cli, ["--root", str(cli_env), "proof", command, "--json"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data["run_id"] == f"{command}-run"
+    assert data["session_id"] == f"{command}-run"
 
 
 def test_cli_proof_report_error_when_no_report(cli_env: Path) -> None:
@@ -118,7 +118,7 @@ def test_cli_proof_run_fails_low_context_reduction(cli_env: Path) -> None:
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             "low-ctx",
             "--context-reduction-pct",
             "30.0",
@@ -139,7 +139,7 @@ def test_cli_proof_run_passes_with_sufficient_context_reduction(cli_env: Path) -
             str(cli_env),
             "proof",
             "run",
-            "--run-id",
+            "--session-id",
             "high-ctx",
             "--context-reduction-pct",
             "60.0",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -51,10 +52,20 @@ def test_mcp_stdio_wrapper_exists() -> None:
 def test_mcp_stdio_wrapper_content() -> None:
     wrapper = SCRIPTS / "atelier_mcp_stdio.sh"
     content = wrapper.read_text()
-    assert "mcp_server" in content, "Wrapper must invoke mcp_server"
+    assert "atelier-mcp" in content, "Wrapper must invoke atelier-mcp directly"
     assert "ATELIER_ROOT" in content, "Wrapper must set ATELIER_ROOT"
     # Must not print to stdout in the wrapper itself (only exec)
     assert "exec " in content, "Wrapper should use exec to replace the process"
+
+
+@pytest.mark.parametrize(
+    "wrapper_name",
+    ["atelier-preflight", "atelier-gemini", "atelier-opencode"],
+)
+def test_host_preflight_wrappers_exist(wrapper_name: str) -> None:
+    wrapper = ATELIER_ROOT / "bin" / wrapper_name
+    assert wrapper.exists(), f"Missing: bin/{wrapper_name}"
+    assert is_executable(wrapper), f"Not executable: bin/{wrapper_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +77,50 @@ def test_install_agent_clis_script_exists() -> None:
     script = SCRIPTS / "install_agent_clis.sh"
     assert script.exists()
     assert is_executable(script)
+
+
+def test_build_host_skills_script_exists() -> None:
+    script = SCRIPTS / "build_host_skills.sh"
+    assert script.exists(), "Missing: scripts/build_host_skills.sh"
+    assert is_executable(script), "Not executable: scripts/build_host_skills.sh"
+
+
+def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) -> None:
+    dest = tmp_path / "skills"
+    subprocess.run(
+        ["bash", str(SCRIPTS / "build_host_skills.sh"), "--host", "codex", "--dest", str(dest)],
+        cwd=ATELIER_ROOT,
+        check=True,
+    )
+    generated = {path.name for path in dest.iterdir() if path.is_dir()}
+    assert generated == {
+        "analyze-failures",
+        "benchmark",
+        "context",
+        "evals",
+        "savings",
+        "settings",
+        "status",
+    }
+
+
+def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
+    dest = tmp_path / "skills"
+    subprocess.run(
+        [
+            "bash",
+            str(SCRIPTS / "build_host_skills.sh"),
+            "--host",
+            "gemini",
+            "--dest",
+            str(dest),
+            "--include-dev",
+        ],
+        cwd=ATELIER_ROOT,
+        check=True,
+    )
+    generated = {path.name for path in dest.iterdir() if path.is_dir()}
+    assert {"reasoning", "lint", "rescue", "trace"}.issubset(generated)
 
 
 def test_verify_agent_clis_script_exists() -> None:
@@ -322,12 +377,16 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     copilot = (SCRIPTS / "install_copilot.sh").read_text()
     assert "Code/User" in copilot
     assert ".copilot/instructions/atelier.instructions.md" in copilot
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in copilot
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in copilot
     assert "${HOME}/.vscode" not in copilot
     assert "${HOME}/.github" not in copilot
 
     opencode = (SCRIPTS / "install_opencode.sh").read_text()
     assert ".config}/opencode" in opencode
     assert 'OC_FILE="${WORKSPACE}/opencode.json"' in opencode
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in opencode
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in opencode
     assert "${HOME}/opencode.jsonc" not in opencode
     assert "${HOME}/.opencode" not in opencode
 
@@ -339,8 +398,75 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     gemini = (SCRIPTS / "install_gemini.sh").read_text()
     assert "gemini extensions validate" in gemini
     assert "gemini extensions link" in gemini
+    assert 'WRAPPER_DEST_DIR="${WORKSPACE}/bin"' in gemini
+    assert 'WRAPPER_DEST_DIR="${HOME}/.local/bin"' in gemini
     assert "settings.json" not in gemini
     assert "atelier-mcp" in gemini
+
+
+def test_install_codex_merges_existing_agents_file() -> None:
+    content = (SCRIPTS / "install_codex.sh").read_text()
+    assert "merge_agents_file()" in content
+    assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
+    assert 'backup_file "$dest_file"' in content
+    assert "merged Atelier Codex instructions into $dest_file" in content
+    assert 'atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"' in content
+
+
+def test_uninstall_codex_removes_managed_agents_block() -> None:
+    content = (SCRIPTS / "uninstall_codex.sh").read_text()
+    assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
+    assert "Removed managed Atelier Codex instructions from $AGENTS_FILE" in content
+    assert "Left legacy unmanaged Atelier Codex instructions in $AGENTS_FILE" in content
+    assert "Manual cleanup may be needed for pre-marker installs" in content
+
+
+def test_managed_context_helper_shared_across_host_installs() -> None:
+    helper = (SCRIPTS / "lib" / "managed_context.sh").read_text()
+    assert 'ATELIER_CODE_BLOCK_START="<!-- ATELIER:CODE START -->"' in helper
+    assert 'ATELIER_CODE_BLOCK_END="<!-- ATELIER:CODE END -->"' in helper
+    assert "atelier_write_managed_copy()" in helper
+    assert "atelier_upsert_managed_block()" in helper
+    for script_name in [
+        "install_codex.sh",
+        "install_claude.sh",
+        "install_gemini.sh",
+        "install_copilot.sh",
+        "install_opencode.sh",
+    ]:
+        content = (SCRIPTS / script_name).read_text()
+        assert (
+            'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
+        ), f"{script_name} must use the shared managed context helper"
+
+
+def test_install_sh_bootstraps_atelier_before_host_installers() -> None:
+    content = (SCRIPTS / "install.sh").read_text()
+    install_pos = content.index('info "Installing Atelier console commands..."')
+    init_pos = content.index('"$ATELIER_BIN_DIR/atelier" init >/dev/null')
+    hosts_pos = content.index('info "Installing Atelier host integrations (skip if host CLI is missing)..."')
+
+    assert install_pos < hosts_pos
+    assert init_pos < hosts_pos
+
+
+def test_install_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
+    content = (SCRIPTS / "install.sh").read_text()
+    assert "uv tool install" in content
+    assert "UV_TOOL_BIN_DIR" in content
+    assert 'exec uv --directory "$ATELIER_INSTALL_DIR" run' not in content
+
+
+def test_copilot_tasks_include_preflight_wrapper() -> None:
+    tasks = json.loads((INTEGRATIONS / "copilot" / "tasks.json").read_text(encoding="utf-8"))
+    labels = {task.get("label") for task in tasks.get("tasks", [])}
+    assert "Atelier: Copilot Preflight" in labels
+
+    preflight_task = next(task for task in tasks.get("tasks", []) if task.get("label") == "Atelier: Copilot Preflight")
+    assert preflight_task.get("command") == "bash"
+    args = preflight_task.get("args", [])
+    assert any("atelier context" in arg for arg in args)
+    assert any("atelier check-plan" in arg for arg in args)
 
 
 # ---------------------------------------------------------------------------

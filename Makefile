@@ -1,10 +1,10 @@
 .DEFAULT_GOAL := help
 
 PY_PATHS := src tests
-ATELIER_STORE ?= $(CURDIR)/.atelier
+ATELIER_STORE ?= $(HOME)/.atelier
 FORCE_ARG := $(if $(f),--force,)
 
-.PHONY: help install uninstall status start restart \
+.PHONY: help install uninstall status start restart build-host-skills \
 	test test-fast test-cov security-test lint format-check format typecheck verify pre-commit \
 	benchmark bench-savings bench-savings-honest proof-cost-quality demo import-sessions clean
 
@@ -25,18 +25,9 @@ install: ## Install Atelier (use ARGS="--local" to install from current dir)
 	@INSTALL_ARGS="$(ARGS)"; \
 	if [ -z "$$INSTALL_ARGS" ]; then INSTALL_ARGS="$(args)"; fi; \
 	bash scripts/install.sh $$INSTALL_ARGS
-	@echo "[atelier] Installation complete."
 
-uninstall: ## Remove generated agent CLI integrations and wrappers
-	@rm -f "$(HOME)/.local/bin/atelier-status"
-	@rm -f "$(HOME)/.local/bin/atelier"
-	@rm -f "$(HOME)/.local/bin/atelier-mcp"
-	@rm -f "$(HOME)/.local/bin/atelier-api"
-	@for host in claude codex opencode copilot gemini; do \
-		script="scripts/uninstall_$${host}.sh"; \
-		[ -f "$$script" ] && bash "$$script" || true; \
-	done
-	@echo "[atelier] Uninstall complete."
+uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
+	@bash scripts/uninstall.sh $${ARGS:-}
 
 status: ## Show Atelier installation status
 	@bash scripts/status.sh
@@ -52,6 +43,9 @@ restart: ## Restart the service and frontend with Docker Compose
 # --------------------------------------------------------------------------- #
 # Development                                                                 #
 # --------------------------------------------------------------------------- #
+
+build-host-skills: ## Generate Codex/Gemini skill bundles from integrations/skills (set ATELIER_DEV_MODE=1 to include dev-only skills)
+	@bash scripts/build_host_skills.sh --host all $$( [ "$${ATELIER_DEV_MODE:-0}" = "1" ] && echo --include-dev )
 
 test: ## Run all tests
 	uv run pytest -q
@@ -93,7 +87,7 @@ pre-commit: format lint typecheck test ## Format, lint, typecheck, and test
 # --------------------------------------------------------------------------- #
 
 benchmark: ## Run the full benchmark suite
-	LOCAL=1 uv run atelier --root .atelier benchmark-full --json
+	LOCAL=1 atelier benchmark-full --json
 
 bench-savings: ## Run the context-savings benchmark
 	LOCAL=1 uv run python -m benchmarks.swe.savings_bench --json
@@ -104,13 +98,13 @@ bench-savings-honest: ## Run the V3 honest replay context-savings benchmark
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v
-	LOCAL=1 uv run atelier --root .atelier proof run --run-id wp32-proof --json
-	@test -s .atelier/proof/proof-report.json
+	LOCAL=1 atelier proof run --session-id wp32-proof --json
+	@test -s $(ATELIER_STORE)/proof/proof-report.json
 
 demo: ## Run a small blocked-plan demo in a temporary store
 	@DEMO_ROOT=$$(mktemp -d); \
-	uv run atelier --root "$$DEMO_ROOT" init --seed; \
-	uv run atelier --root "$$DEMO_ROOT" check-plan \
+	atelier --root "$$DEMO_ROOT" init --seed; \
+	atelier --root "$$DEMO_ROOT" check-plan \
 		--task "Update Shopify product description" \
 		--domain "beseam.shopify.publish" \
 		--step "Parse product handle from the PDP URL" \
@@ -127,7 +121,7 @@ demo: ## Run a small blocked-plan demo in a temporary store
 
 import-sessions: ## Import sessions from all supported hosts: make import-sessions [f=1]
 	@for host in copilot claude codex opencode; do \
-		LOCAL=1 uv run atelier --root "$(ATELIER_STORE)" "$$host" import $(FORCE_ARG); \
+		LOCAL=1 atelier --root "$(ATELIER_STORE)" "$$host" import $(FORCE_ARG); \
 	done
 
 clean: ## Remove build artifacts, caches, and coverage data

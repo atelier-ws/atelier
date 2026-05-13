@@ -1,15 +1,22 @@
 import { useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   api,
   type Trace,
   type CommandRecord,
   type FileEditRecord,
   type ToolCall,
+  type TraceListResponse,
 } from "../api";
 import RunInspectorDrawer from "../components/RunInspectorDrawer";
 
 export default function Traces() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialQuery = searchParams.get("q") ?? "";
   const [items, setItems] = useState<Trace[] | null>(null);
+  const [metrics, setMetrics] = useState<TraceListResponse["metrics"] | null>(
+    null
+  );
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<
@@ -17,35 +24,116 @@ export default function Traces() {
   >("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
   const [hostFilter, setHostFilter] = useState<string>("all");
+  const [query, setQuery] = useState<string>(initialQuery);
+  const [searchInput, setSearchInput] = useState<string>(initialQuery);
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
-  const [inspectorTrace, setInspectorTrace] = useState<Trace | null>(null);
 
   useEffect(() => {
+    const urlQuery = searchParams.get("q") ?? "";
+    setSearchInput((prev) => (prev === urlQuery ? prev : urlQuery));
+    setQuery((prev) => (prev === urlQuery ? prev : urlQuery));
+  }, [searchParams]);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const nextQuery = searchInput.trim();
+      setQuery((prev) => (prev === nextQuery ? prev : nextQuery));
+
+      const currentQuery = searchParams.get("q") ?? "";
+      if (currentQuery === nextQuery) return;
+
+      const next = new URLSearchParams(searchParams);
+      if (nextQuery) {
+        next.set("q", nextQuery);
+      } else {
+        next.delete("q");
+      }
+      setSearchParams(next, { replace: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchInput, searchParams, setSearchParams]);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [inspectorTrace, setInspectorTrace] = useState<Trace | null>(null);
+  const deepLinkedTraceId = searchParams.get("trace");
+
+  const setTraceQuery = (traceId: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (traceId) {
+      next.set("trace", traceId);
+    } else {
+      next.delete("trace");
+    }
+    setSearchParams(next);
+  };
+
+  // Fetch traces when filters change
+  useEffect(() => {
     setLoading(true);
+    setPage(0);
+    setErr(null);
     api
-      .traces(50, 0)
-      .then((traces) => {
-        setItems(traces);
-        setHasMore(traces.length >= 50);
+      .traces(50, 0, domainFilter, hostFilter, query)
+      .then((res) => {
+        setItems(res.items);
+        setMetrics(res.metrics);
+        setHasMore(res.items.length >= 50);
         setLoading(false);
       })
       .catch((e) => {
         setErr(String(e));
         setLoading(false);
       });
-  }, []);
+  }, [domainFilter, hostFilter, query]);
+
+  useEffect(() => {
+    if (!deepLinkedTraceId) {
+      setInspectorTrace(null);
+      return;
+    }
+
+    const localTrace = items?.find((trace) => trace.id === deepLinkedTraceId);
+    if (localTrace) {
+      setExpandedId(localTrace.id);
+      setInspectorTrace(localTrace);
+      return;
+    }
+
+    let cancelled = false;
+    api
+      .trace(deepLinkedTraceId)
+      .then((trace) => {
+        if (cancelled) return;
+        setExpandedId(trace.id);
+        setInspectorTrace(trace);
+        setItems((prev) => {
+          if (!prev) return [trace];
+          if (prev.some((item) => item.id === trace.id)) return prev;
+          return [trace, ...prev];
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setErr(String(error));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkedTraceId, items]);
 
   const loadMore = () => {
     if (loading || !hasMore) return;
     setLoading(true);
+    const nextOffset = (page + 1) * 50;
     api
-      .traces(50, (page + 1) * 50)
-      .then((traces) => {
-        setItems((prev) => (prev ? [...prev, ...traces] : traces));
-        setHasMore(traces.length >= 50);
+      .traces(50, nextOffset, domainFilter, hostFilter, query)
+      .then((res) => {
+        setItems((prev) => (prev ? [...prev, ...res.items] : res.items));
+        setMetrics(res.metrics);
+        setHasMore(res.items.length >= 50);
         setPage((p) => p + 1);
         setLoading(false);
       })
@@ -55,24 +143,30 @@ export default function Traces() {
       });
   };
 
-  const domains = useMemo(
-    () => [...new Set(items?.map((t) => t.domain).filter(Boolean))],
-    [items],
-  );
-  const hosts = useMemo(
-    () => [...new Set(items?.map((t) => extractHost(t.agent)).filter(Boolean))],
-    [items],
-  );
+  // Status filtering remains client-side for immediate response,
+  // but aggregate counts come from metrics.stats (global)
   const filtered = useMemo(() => {
     if (!items) return [];
     return items.filter((t) => {
       if (filter !== "all" && t.status !== filter) return false;
-      if (domainFilter !== "all" && t.domain !== domainFilter) return false;
-      if (hostFilter !== "all" && extractHost(t.agent) !== hostFilter)
-        return false;
       return true;
     });
-  }, [items, filter, domainFilter, hostFilter]);
+  }, [items, filter]);
+
+  // Derived from global metrics
+  const hosts = useMemo(() => {
+    if (!metrics) return [];
+    // We use all unique hosts from the database metrics
+    return [...new Set(metrics.hosts.map(extractHost))];
+  }, [metrics]);
+
+  const domains = useMemo(() => {
+    if (!metrics) return [];
+    return metrics.domains;
+  }, [metrics]);
+
+  const searchActive = query.length > 0;
+  const searchPending = searchInput.trim() !== query;
 
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!items && !loading)
@@ -80,68 +174,46 @@ export default function Traces() {
 
   const toggleExpanded = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
-    if (expandedId !== id) {
-      // Load trace details when expanding
-      api
-        .trace(id)
-        .then(() => {
-          // Details loaded successfully
-        })
-        .catch(() => {
-          // Error loading trace
-          console.error(`Failed to load trace: ${id.slice(0, 12)}…`);
-        });
-    }
   };
 
   const openInspector = (trace: Trace) => {
+    setTraceQuery(trace.id);
+    setExpandedId(trace.id);
     setInspectorTrace(trace);
   };
 
   return (
     <div className="space-y-6">
-      {/* Feature Info */}
-      <div>
-        <button
-          onClick={() => setInfoOpen(!infoOpen)}
-          className="text-[10px] text-neutral-600 hover:text-neutral-400 font-mono flex items-center gap-1 py-1"
-        >
-          <span>{infoOpen ? "▼" : "▶"}</span> about
-        </button>
-        {infoOpen && (
-          <section className="border border-neutral-800 bg-neutral-900/50 p-5">
-            <div className="flex items-start gap-4">
-              <div className="text-3xl flex-shrink-0">📇</div>
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h2 className="font-mono font-bold text-neutral-200 text-lg">
-                    Execution Traces
-                  </h2>
-                  <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
-                    stable
-                  </span>
-                </div>
-                <p className="font-mono text-[11px] text-neutral-500 mb-3">
-                  Observable Run Artifacts
-                </p>
-                <p className="text-xs text-neutral-300 leading-relaxed mb-3">
-                  Records exactly what an agent did: files touched, commands
-                  run, tools called, errors seen. Traces never store
-                  chain-of-thought — only observables. Each trace links to a
-                  RunLedger for full event timeline.
-                </p>
-                <div className="text-xs text-emerald-300/90 space-y-1">
-                  <p>✓ Full audit trail — every agent action recorded</p>
-                  <p>
-                    ✓ Feeds failure analysis and block extraction automatically
-                  </p>
-                  <p>✓ Enables per-domain cost attribution</p>
-                </div>
-              </div>
+      <section className="border border-neutral-800 bg-neutral-950/70 p-5">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <label className="block">
+            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest text-neutral-500">
+              <span>Search All Sessions</span>
+              {searchPending && (
+                <span className="text-amber-300/70">Updating…</span>
+              )}
             </div>
-          </section>
-        )}
-      </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder='Search tasks, reasoning, tools, commands, files, validations, and summaries. Use "" to search the whole word.'
+                className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition placeholder:text-neutral-600 focus:border-amber-500/50"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="border border-neutral-700 px-3 py-2 text-[10px] uppercase tracking-widest text-neutral-300 transition hover:border-amber-500/50 hover:text-amber-300"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </label>
+        </div>
+      </section>
 
       {/* Filters */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
@@ -153,7 +225,7 @@ export default function Traces() {
               onClick={() => setFilter(f as any)}
               className={`text-[10px] px-2.5 py-1 uppercase font-bold tracking-tight font-mono transition border ${
                 filter === f
-                  ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                  ? "border-neutral-500 bg-neutral-800 text-neutral-100"
                   : "border-neutral-700 text-neutral-500 hover:text-neutral-300"
               }`}
             >
@@ -167,7 +239,7 @@ export default function Traces() {
             className="text-[10px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-400 font-mono"
           >
             <option value="all">All domains</option>
-            {domains.map((d) => (
+            {domains.map((d: string) => (
               <option key={d} value={d}>
                 {d}
               </option>
@@ -182,7 +254,7 @@ export default function Traces() {
               onClick={() => setHostFilter(h)}
               className={`text-[10px] px-2.5 py-1 uppercase font-bold tracking-tight font-mono transition border ${
                 hostFilter === h
-                  ? "border-violet-400/50 bg-violet-400/10 text-violet-300"
+                  ? "border-neutral-500 bg-neutral-800 text-neutral-100"
                   : "border-neutral-700 text-neutral-500 hover:text-neutral-300"
               }`}
             >
@@ -191,6 +263,32 @@ export default function Traces() {
           ))}
         </div>
       </div>
+
+      {searchActive && (
+        <section className="border border-amber-900/40 bg-amber-950/10 p-4 text-sm text-neutral-300">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-amber-300/80">
+                Cross-Session Search
+              </div>
+              <div className="mt-1 text-neutral-100">
+                Showing matches for{" "}
+                <span className="font-mono text-amber-200">{query}</span>
+              </div>
+            </div>
+            <div className="text-[11px] font-mono text-neutral-400">
+              {filtered.length}
+              {hasMore ? "+" : ""} loaded match
+              {filtered.length === 1 && !hasMore ? "" : "es"}
+            </div>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+            Each session card shows surrounding matched text so you can jump
+            straight to the right session without leaving{" "}
+            <span className="font-mono text-neutral-400">/sessions</span>.
+          </p>
+        </section>
+      )}
 
       {/* Traces List */}
       <div className="space-y-2">
@@ -210,13 +308,15 @@ export default function Traces() {
         )}
         {!loading && filtered.length === 0 && (
           <div className="text-neutral-500 text-sm italic py-4 font-mono">
-            No traces match the current filters.
+            {searchActive
+              ? "No sessions match the current cross-session search."
+              : "No traces match the current filters."}
           </div>
         )}
         {!loading && hasMore && (
           <button
             onClick={loadMore}
-            className="w-full py-2.5 border border-dashed border-neutral-700 text-xs text-neutral-400 hover:text-amber-400 hover:border-amber-400/50 transition font-mono"
+            className="w-full py-2.5 border border-dashed border-neutral-700 text-xs text-neutral-400 hover:text-neutral-300 hover:border-neutral-500/50 transition font-mono"
           >
             Load More Traces
           </button>
@@ -226,7 +326,10 @@ export default function Traces() {
       <RunInspectorDrawer
         open={Boolean(inspectorTrace)}
         trace={inspectorTrace}
-        onClose={() => setInspectorTrace(null)}
+        onClose={() => {
+          setInspectorTrace(null);
+          setTraceQuery(null);
+        }}
       />
     </div>
   );
@@ -265,7 +368,7 @@ function TraceCard({
             <div className="flex items-center gap-3 mb-1 flex-wrap">
               {/* Expandable indicator */}
               <span
-                className={`text-amber-400 font-mono text-xs transition-transform ${
+                className={`text-neutral-500 font-mono text-xs transition-transform ${
                   isExpanded ? "rotate-90" : ""
                 }`}
               >
@@ -283,15 +386,20 @@ function TraceCard({
                     {trace.domain}
                   </span>
                 )}
-                <HostBadge agent={trace.agent} />
+                <HostAgentBadges trace={trace} />
               </div>
             </div>
             <p className="font-mono text-sm text-neutral-200 mb-1">
               {trace.task}
             </p>
+            {trace.snippets && trace.snippets.length > 0 && (
+              <TraceSearchHits snippets={trace.snippets} />
+            )}
             <div className="flex items-center gap-3 text-[10px] text-neutral-500 font-mono">
-              <span>{trace.agent}</span>
-              <span>ID: {trace.id.slice(0, 12)}…</span>
+              <span>Session: {trace.session_id}</span>
+              <span>Agent: {trace.agent}</span>
+              <span>ID: {trace.id}</span>
+              <span>{new Date(trace.created_at).toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -304,6 +412,44 @@ function TraceCard({
         </div>
       )}
     </div>
+  );
+}
+
+function TraceSearchHits({ snippets }: { snippets: string[] }) {
+  return (
+    <div className="mb-2 mt-2 space-y-1.5">
+      {snippets.slice(0, 4).map((snippet, index) => (
+        <div
+          key={`${snippet}-${index}`}
+          className="border border-amber-900/30 bg-amber-950/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-neutral-300"
+        >
+          <SnippetText text={snippet} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SnippetText({ text }: { text: string }) {
+  const compact = text.replace(/\s+/g, " ").trim();
+  const parts = compact.split(/(\[\[.*?\]\])/g);
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.startsWith("[[") && part.endsWith("]]")) {
+          return (
+            <mark
+              key={`${part}-${index}`}
+              className="bg-amber-300/20 px-0.5 text-amber-100"
+            >
+              {part.slice(2, -2)}
+            </mark>
+          );
+        }
+        return <span key={`${part}-${index}`}>{part}</span>;
+      })}
+    </>
   );
 }
 
@@ -334,30 +480,14 @@ function TraceDetail({
   return (
     <div className="space-y-6 text-sm">
       <header>
-        <div className="flex items-center gap-2 mb-1">
-          <StatusBadge status={trace.status} />
-          {trace.domain && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-neutral-800 uppercase font-bold tracking-tight">
-              {trace.domain}
-            </span>
-          )}
-        </div>
-        <h2 className="text-lg font-bold text-neutral-300 leading-tight">
-          {trace.task}
-        </h2>
-        <div className="font-mono text-[10px] text-neutral-500 flex gap-3 mt-1 flex-wrap">
-          <span>ID: {trace.id}</span>
-          {trace.run_id && <span>RUN: {trace.run_id}</span>}
-          <span>{new Date(trace.created_at).toLocaleString()}</span>
-        </div>
         <div className="mt-3">
           <button
             type="button"
-            aria-label="Open run inspector"
+            aria-label="Open session inspector"
             onClick={onOpenInspector}
             className="text-[11px] px-2.5 py-1 border border-neutral-700 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50 transition"
           >
-            Open run inspector
+            Open session inspector
           </button>
         </div>
       </header>
@@ -378,26 +508,16 @@ function TraceDetail({
             ))}
           </div>
         </div>
-        <FilesTouchedSection files={trace.files_touched} runId={trace.run_id} />
+        <FilesTouchedSection
+          files={trace.files_touched}
+          runId={trace.session_id}
+        />
       </div>
 
       {trace.commands_run.length > 0 && (
         <CommandsSection commands={trace.commands_run} />
       )}
       <Section title="Errors Seen" items={trace.errors_seen} variant="danger" />
-
-      {trace.conversations && trace.conversations.length > 0 && (
-        <ConversationsSection conversations={trace.conversations} />
-      )}
-
-      {trace.trace && <NestedTraceSection trace={trace.trace} />}
-
-      {trace.run_id && (
-        <LedgerFetcher
-          runId={trace.run_id}
-          conversations={trace.conversations}
-        />
-      )}
 
       {trace.validation_results.length > 0 && (
         <div>
@@ -455,7 +575,7 @@ function CommandsSection({
             </div>
           ) : (
             <CommandRecordDetail key={i} record={c} />
-          ),
+          )
         )}
       </div>
       {commands.length > 5 && (
@@ -508,603 +628,6 @@ function ReasoningSection({ reasoning }: { reasoning: string[] }) {
     </div>
   );
 }
-
-function ConversationsSection({ conversations }: { conversations: any[] }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-3">
-        Conversation Timeline
-      </div>
-      <div className="space-y-2">
-        {conversations.map((c, i) => (
-          <ConversationItem key={i} entry={c} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ConversationItem({ entry }: { entry: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const colorClass = getKindColor(entry.kind);
-  const isImportant = isImportantEntry(entry.kind, entry.summary);
-  const time = entry.at ? new Date(entry.at).toLocaleTimeString() : "";
-
-  return (
-    <div
-      className={` overflow-hidden bg-neutral-950/40 ${
-        isImportant
-          ? "border-2 border-amber-600/50"
-          : "border border-neutral-800"
-      }`}
-    >
-      <div
-        className={`flex items-center justify-between px-3 py-1.5 ${
-          colorClass.includes("border-")
-            ? ""
-            : "bg-neutral-900/50 border-neutral-800"
-        }`}
-      >
-        <span
-          className={`text-[9px] font-bold uppercase tracking-tighter px-1.5 border ${colorClass}`}
-        >
-          {entry.kind.replace("_", " ")}
-        </span>
-        <span className="text-[9px] font-mono text-neutral-600">{time}</span>
-      </div>
-      <div className="px-3 py-2">
-        <div className="text-xs font-medium text-neutral-300 leading-snug">
-          {entry.summary}
-        </div>
-        {entry.content && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-[10px] text-neutral-500 hover:text-neutral-300 underline mt-1"
-          >
-            {expanded ? "Hide content" : "View content"}
-          </button>
-        )}
-        {expanded && entry.content && (
-          <pre className="mt-2 text-[10px] bg-black/60 p-2.5 border border-neutral-800 overflow-auto max-h-48 text-neutral-400 font-mono leading-relaxed whitespace-pre-wrap">
-            {typeof entry.content === "string"
-              ? entry.content.slice(0, 2000)
-              : JSON.stringify(entry.content, null, 2).slice(0, 2000)}
-          </pre>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NestedTraceSection({ trace }: { trace: any }) {
-  return (
-    <div className="border border-neutral-800 p-4 bg-neutral-900/20">
-      <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-3">
-        Nested Run Trace
-      </div>
-      <div className="grid grid-cols-2 gap-3 text-xs mb-3">
-        <div>
-          <span className="text-neutral-500">Agent:</span>{" "}
-          <span className="text-neutral-300">{trace.agent}</span>
-        </div>
-        <div>
-          <span className="text-neutral-500">Domain:</span>{" "}
-          <span className="text-neutral-300">{trace.domain}</span>
-        </div>
-        <div>
-          <span className="text-neutral-500">Status:</span>{" "}
-          <StatusBadge status={trace.status} />
-        </div>
-        <div>
-          <span className="text-neutral-500">Traces:</span>{" "}
-          <span className="text-neutral-300">
-            {trace.trace_ids?.length || 0}
-          </span>
-        </div>
-      </div>
-      {trace.files_touched && trace.files_touched.length > 0 && (
-        <div className="mb-3">
-          <div className="text-[10px] uppercase text-neutral-500 mb-1">
-            Files Touched
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {trace.files_touched.map((f: string, i: number) => (
-              <span
-                key={i}
-                className="text-[10px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 font-mono truncate max-w-[200px]"
-              >
-                {f.split("/").pop()}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-      {trace.tools_called && trace.tools_called.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase text-neutral-500 mb-1">
-            Tools Called
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {trace.tools_called.map((t: any, i: number) => (
-              <span
-                key={i}
-                className="text-[10px] px-2 py-0.5 bg-blue-900/30 text-blue-300 border border-blue-800"
-              >
-                {t.name} ×{t.count}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Section({
-  title,
-  items,
-  mono,
-  variant,
-}: {
-  title: string;
-  items: string[];
-  mono?: boolean;
-  variant?: "default" | "warning" | "danger";
-}) {
-  if (items.length === 0) return null;
-  const titleColor =
-    variant === "warning"
-      ? "text-amber-500"
-      : variant === "danger"
-        ? "text-red-500"
-        : "text-neutral-500";
-  return (
-    <div className="space-y-1.5">
-      <div
-        className={`text-[10px] uppercase font-bold tracking-widest ${titleColor}`}
-      >
-        {title}
-      </div>
-      <ul className={`space-y-1 ${mono ? "font-mono" : ""}`}>
-        {items.map((x, i) => (
-          <li
-            key={i}
-            className="text-[11px] text-neutral-300 leading-relaxed bg-neutral-900/40 px-2 py-1 border border-neutral-800/50"
-          >
-            {x}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function LedgerFetcher({
-  runId,
-  conversations,
-}: {
-  runId: string;
-  conversations?: any[];
-}) {
-  const [ledger, setLedger] = useState<any | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Reset ledger when runId changes (new trace selected)
-  useEffect(() => {
-    setLedger(null);
-    setError(null);
-  }, [runId]);
-
-  useEffect(() => {
-    if (expanded && !ledger) {
-      setLoading(true);
-      api
-        .ledger(runId)
-        .then((data) => {
-          setLedger(data);
-          setLoading(false);
-        })
-        .catch((e) => {
-          setError(String(e));
-          setLoading(false);
-        });
-    }
-  }, [expanded, ledger, runId]);
-
-  if (!expanded) {
-    return (
-      <div className="pt-4 border-t border-neutral-800">
-        <button
-          onClick={() => setExpanded(true)}
-          className="w-full py-3  border border-dashed border-neutral-800 text-xs text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 transition font-medium"
-        >
-          View Full Run Ledger (Events, Hypotheses, Details)
-        </button>
-      </div>
-    );
-  }
-
-  if (loading)
-    return (
-      <div className="text-xs text-neutral-500 italic py-4 animate-pulse">
-        Retrieving ledger records…
-      </div>
-    );
-  if (error)
-    return (
-      <div className="text-xs text-red-400 py-4">
-        Failed to load ledger: {error}
-      </div>
-    );
-
-  const ledgerConversations = ledger?.conversations || conversations;
-
-  if (!ledger)
-    return (
-      <div className="text-xs text-neutral-500 py-4">
-        No ledger data available.
-      </div>
-    );
-
-  return (
-    <div className="pt-6 border-t border-neutral-800 space-y-4">
-      <div className="flex justify-between items-center">
-        <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500">
-          Run Ledger
-        </div>
-        <button
-          onClick={() => setExpanded(false)}
-          className="text-[10px] font-bold uppercase text-neutral-500 hover:text-amber-400 transition"
-        >
-          Collapse
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {ledger.hypotheses_tried && ledger.hypotheses_tried.length > 0 && (
-          <div className="bg-neutral-900/40 border border-neutral-800 p-2">
-            <div className="text-[9px] font-bold uppercase text-neutral-500 mb-1.5">
-              Hypotheses Tried
-            </div>
-            <ul className="space-y-1">
-              {ledger.hypotheses_tried.map((h: string, i: number) => (
-                <li
-                  key={i}
-                  className="text-[11px] text-neutral-300 leading-tight"
-                >
-                  • {h}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {ledger.verified_facts && ledger.verified_facts.length > 0 && (
-          <div className="bg-neutral-900/40 border border-neutral-800 p-2">
-            <div className="text-[9px] font-bold uppercase text-neutral-500 mb-1.5">
-              Verified Facts
-            </div>
-            <ul className="space-y-1">
-              {ledger.verified_facts.map((f: string, i: number) => (
-                <li
-                  key={i}
-                  className="text-[11px] text-neutral-300 leading-tight"
-                >
-                  • {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {ledger.events && ledger.events.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-[10px] uppercase text-neutral-500">Events</div>
-          {ledger.events.map((ev: any, i: number) => (
-            <div
-              key={i}
-              className="border border-neutral-800  overflow-hidden bg-neutral-950/40"
-            >
-              <div className="flex justify-between items-center px-3 py-1.5 bg-neutral-900/50 border-b border-neutral-800">
-                <span
-                  className={`text-[9px] font-bold uppercase tracking-tighter px-1.5 ${getKindColor(
-                    ev.kind,
-                  )}`}
-                >
-                  {ev.kind}
-                </span>
-                <span className="text-[9px] font-mono text-neutral-600">
-                  {ev.at ? new Date(ev.at).toLocaleTimeString() : ""}
-                </span>
-              </div>
-              <div className="px-3 py-2">
-                <div className="text-xs font-medium text-neutral-300 leading-snug">
-                  {ev.summary}
-                </div>
-                {ev.payload && Object.keys(ev.payload).length > 0 && (
-                  <LedgerPayload payload={ev.payload} />
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {ledgerConversations && ledgerConversations.length > 0 && (
-        <div className="pt-4 border-t border-neutral-800">
-          <ConversationsSection conversations={ledgerConversations} />
-        </div>
-      )}
-
-      {!ledger.hypotheses_tried?.length &&
-        !ledger.verified_facts?.length &&
-        !ledger.events?.length &&
-        !ledgerConversations?.length && (
-          <div className="text-xs text-neutral-500 italic">
-            No ledger events found.
-          </div>
-        )}
-    </div>
-  );
-}
-
-function LedgerPayload({ payload }: { payload: any }) {
-  const [open, setOpen] = useState(true);
-  const isDiffPayload = payload.diff && typeof payload.diff === "string";
-  const isCommandResult =
-    payload.command !== undefined &&
-    (payload.stdout !== undefined || payload.stderr !== undefined);
-  const isSessionStats =
-    payload.event === "Stop" && payload.total_tokens !== undefined;
-  const isSessionStart = payload.event === "SessionStart";
-  const isUserPrompt =
-    payload.event === "UserPromptSubmit" && payload.prompt !== undefined;
-  const isCompact =
-    payload.event === "PreCompact" || payload.event === "PostCompact";
-
-  return (
-    <div className="mt-2">
-      <button
-        onClick={() => setOpen(!open)}
-        className="text-[10px] text-neutral-500 hover:text-neutral-300 underline"
-      >
-        {open ? "Hide Details" : "View Details"}
-      </button>
-      {open && (
-        <>
-          {isDiffPayload ? (
-            <DiffViewer
-              diff={payload.diff}
-              filePath={payload.path}
-              event={payload.event}
-            />
-          ) : isCommandResult ? (
-            <CommandResultPayload payload={payload} />
-          ) : isSessionStats ? (
-            <SessionStatsPayload payload={payload} />
-          ) : isSessionStart ? (
-            <SessionStartPayload payload={payload} />
-          ) : isUserPrompt ? (
-            <UserPromptPayload payload={payload} />
-          ) : isCompact ? (
-            <CompactPayload payload={payload} />
-          ) : (
-            <pre className="mt-2 text-[10px] bg-black/60 p-2.5 border border-neutral-800 overflow-auto max-h-48 text-neutral-400 font-mono leading-relaxed">
-              {JSON.stringify(payload, null, 2)}
-            </pre>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function CommandResultPayload({ payload }: { payload: any }) {
-  const rc = payload.return_code;
-  const ok = rc === 0;
-  const rcColor =
-    rc === null || rc === undefined
-      ? "text-neutral-500"
-      : ok
-        ? "text-emerald-400"
-        : "text-red-400";
-  return (
-    <div className="mt-2 space-y-1.5">
-      {/* Command */}
-      <pre className="text-[10px] bg-black/60 px-2.5 py-1.5 border border-neutral-800 text-amber-300 font-mono whitespace-pre-wrap break-all">
-        $ {payload.command}
-      </pre>
-      {/* Return code */}
-      <div className={`text-[9px] font-mono font-bold ${rcColor}`}>
-        exit {rc ?? "?"}
-        {payload.truncated ? " · output truncated to 4 KB" : ""}
-      </div>
-      {/* Stdout */}
-      {payload.stdout && (
-        <pre className="text-[9px] bg-black/40 px-2.5 py-1.5 border border-neutral-800/60 text-neutral-300 font-mono overflow-auto max-h-40 whitespace-pre-wrap break-all leading-relaxed">
-          {payload.stdout}
-        </pre>
-      )}
-      {/* Stderr */}
-      {payload.stderr && (
-        <pre className="text-[9px] bg-red-950/20 px-2.5 py-1.5 border border-red-900/40 text-red-300 font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all leading-relaxed">
-          {payload.stderr}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function SessionStatsPayload({ payload }: { payload: any }) {
-  const topTools: [string, number][] = Object.entries(payload.top_tools ?? {});
-  return (
-    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
-      <span className="text-neutral-500">input tokens</span>
-      <span className="text-neutral-300">
-        {(payload.input_tokens ?? 0).toLocaleString()}
-      </span>
-      <span className="text-neutral-500">output tokens</span>
-      <span className="text-neutral-300">
-        {(payload.output_tokens ?? 0).toLocaleString()}
-      </span>
-      <span className="text-neutral-500">total tokens</span>
-      <span className="text-neutral-200 font-bold">
-        {(payload.total_tokens ?? 0).toLocaleString()}
-      </span>
-      <span className="text-neutral-500">est. cost</span>
-      <span className="text-amber-300">
-        ~${(payload.est_cost_usd ?? 0).toFixed(4)}
-      </span>
-      <span className="text-neutral-500">tool calls</span>
-      <span className="text-neutral-300">{payload.tool_calls ?? 0}</span>
-      {topTools.length > 0 && (
-        <>
-          <span className="text-neutral-500">top tools</span>
-          <span className="text-neutral-400">
-            {topTools.map(([n, c]) => `${n}×${c}`).join(" · ")}
-          </span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function SessionStartPayload({ payload }: { payload: any }) {
-  return (
-    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
-      <span className="text-neutral-500">session_id</span>
-      <span className="text-neutral-300 truncate">
-        {payload.session_id || "—"}
-      </span>
-      <span className="text-neutral-500">source</span>
-      <span className="text-cyan-300">{payload.source || "—"}</span>
-      <span className="text-neutral-500">model</span>
-      <span className="text-violet-300">{payload.model || "—"}</span>
-      {payload.cwd && (
-        <>
-          <span className="text-neutral-500">cwd</span>
-          <span className="text-neutral-400 truncate">{payload.cwd}</span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function UserPromptPayload({ payload }: { payload: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const prompt: string = payload.prompt ?? "";
-  const short = prompt.slice(0, 300);
-  const needsExpand = prompt.length > 300;
-  return (
-    <div className="mt-2">
-      <pre className="text-[10px] bg-neutral-900/60 px-3 py-2 border-l-2 border-pink-700/60 text-neutral-200 font-mono whitespace-pre-wrap break-words leading-relaxed max-h-48 overflow-auto">
-        {expanded ? prompt : short}
-        {needsExpand && !expanded && "…"}
-      </pre>
-      {needsExpand && (
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          className="text-[10px] text-neutral-500 hover:text-neutral-300 underline mt-1"
-        >
-          {expanded ? "collapse" : `show all (${prompt.length} chars)`}
-        </button>
-      )}
-      {payload.truncated && (
-        <div className="text-[9px] text-amber-500 mt-1">
-          prompt truncated to 8 KB
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CompactPayload({ payload }: { payload: any }) {
-  const isPost = payload.event === "PostCompact";
-  return (
-    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-mono">
-      <span className="text-neutral-500">phase</span>
-      <span className={isPost ? "text-emerald-400" : "text-amber-400"}>
-        {isPost ? "completed" : "starting"}
-      </span>
-      <span className="text-neutral-500">trigger</span>
-      <span className="text-neutral-300">{payload.trigger || "—"}</span>
-    </div>
-  );
-}
-
-function DiffViewer({
-  diff,
-  filePath,
-  event,
-}: {
-  diff: string;
-  filePath?: string;
-  event?: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const lines = diff.split("\n");
-  const addedLines = lines.filter(
-    (l) => l.startsWith("+") && !l.startsWith("+++"),
-  ).length;
-  const removedLines = lines.filter(
-    (l) => l.startsWith("-") && !l.startsWith("---"),
-  ).length;
-
-  return (
-    <div className="mt-2 border border-neutral-700 bg-black/30 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-neutral-900/50 border-b border-neutral-800">
-        <div className="flex items-center gap-3 text-[10px]">
-          {filePath && (
-            <span className="text-neutral-400 font-mono">{filePath}</span>
-          )}
-          {event && <span className="text-neutral-500">{event}</span>}
-          {addedLines > 0 && (
-            <span className="text-emerald-400">+{addedLines}</span>
-          )}
-          {removedLines > 0 && (
-            <span className="text-red-400">-{removedLines}</span>
-          )}
-        </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-[10px] text-neutral-500 hover:text-neutral-300 uppercase font-bold"
-        >
-          {expanded ? "Collapse" : "Expand"}
-        </button>
-      </div>
-
-      {/* Diff Content */}
-      {expanded && (
-        <pre className="text-[9px] bg-black/80 p-3 overflow-auto max-h-96 text-neutral-300 font-mono leading-relaxed whitespace-pre-wrap break-words">
-          {lines.map((line, i) => {
-            let color = "text-neutral-400";
-            if (line.startsWith("+++") || line.startsWith("---")) {
-              color = "text-neutral-500";
-            } else if (line.startsWith("+")) {
-              color = "text-emerald-400 bg-emerald-950/20";
-            } else if (line.startsWith("-")) {
-              color = "text-red-400 bg-red-950/20";
-            } else if (line.startsWith("@@")) {
-              color = "text-cyan-400";
-            }
-            return (
-              <div key={i} className={color}>
-                {line}
-              </div>
-            );
-          })}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Files Touched — clickable with inline side-by-side diff
-// ---------------------------------------------------------------------------
 
 function FilesTouchedSection({
   files,
@@ -1164,7 +687,7 @@ function FileRow({
             ev.payload?.diff &&
             (ev.payload?.path === path ||
               ev.payload?.path?.endsWith("/" + path) ||
-              path.endsWith("/" + (ev.payload?.path ?? "").split("/").pop())),
+              path.endsWith("/" + (ev.payload?.path ?? "").split("/").pop()))
         )
         .map((ev) => ev.payload.diff as string);
       setDiffs(collected.length > 0 ? collected : []);
@@ -1282,10 +805,10 @@ function SideBySideDiffViewer({ diff, path }: { diff: string; path: string }) {
   const { left, right } = useMemo(() => parseDiffSides(diff), [diff]);
 
   const addedCount = right.filter(
-    (l) => l.type === "add" && l.content !== "",
+    (l) => l.type === "add" && l.content !== ""
   ).length;
   const removedCount = left.filter(
-    (l) => l.type === "remove" && l.content !== "",
+    (l) => l.type === "remove" && l.content !== ""
   ).length;
 
   const lineClass = (type: DiffLine["type"], side: "left" | "right") => {
@@ -1460,23 +983,68 @@ function CommandRecordDetail({ record }: { record: CommandRecord }) {
   );
 }
 
+function Section({
+  title,
+  items,
+  variant,
+}: {
+  title: string;
+  items: string[];
+  variant?: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-2">
+        {title}
+      </div>
+      <div className="space-y-1">
+        {items.map((item, i) => (
+          <div
+            key={i}
+            className={`p-2 border text-[11px] font-mono ${
+              variant === "danger"
+                ? "bg-red-950/20 border-red-900/50 text-red-300"
+                : "bg-neutral-900/50 border-neutral-800 text-neutral-300"
+            }`}
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Host helpers
 // ---------------------------------------------------------------------------
 
-function extractHost(agent: string): string {
-  if (!agent) return "unknown";
+function extractHost(trace: Trace | string): string {
+  const agent = typeof trace === "string" ? trace : trace.agent;
+  const host = typeof trace === "string" ? null : trace.host;
+  const id = typeof trace === "string" ? "" : trace.id;
+
+  if (host) return host;
+
+  // Derivations for legacy/imported sessions
   const a = agent.toLowerCase();
-  if (a.includes("gemini")) return "gemini";
-  if (a.includes("copilot")) return "copilot";
-  if (a.includes("codex")) return "codex";
-  if (a.includes("opencode")) return "opencode";
-  // atelier:code and any claude-code sessions
-  if (a.startsWith("atelier:") || a.includes("claude")) return "claude";
-  return agent; // return raw if nothing matched
+  const i = id.toLowerCase();
+
+  if (i.startsWith("gemini-") || a === "gemini") return "gemini";
+  if (i.startsWith("claude-") || a === "claude") return "claude";
+  if (i.startsWith("codex-") || a === "codex") return "codex";
+  if (i.startsWith("copilot-") || a === "copilot") return "copilot";
+  if (i.startsWith("opencode-") || a === "opencode") return "opencode";
+
+  // For native atelier runs where host wasn't recorded
+  if (a.startsWith("atelier:")) return "atelier";
+
+  return "unknown";
 }
 
 const HOST_COLORS: Record<string, string> = {
+  atelier: "bg-amber-900/40 text-amber-300 border-amber-700/50",
   claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
   gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
   copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",
@@ -1484,53 +1052,49 @@ const HOST_COLORS: Record<string, string> = {
   opencode: "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
 };
 
-function HostBadge({ agent }: { agent: string }) {
-  const host = extractHost(agent);
+const AGENT_COLORS: Record<string, string> = {
+  "atelier:code": "bg-amber-900/40 text-amber-300 border-amber-700/50",
+  "atelier:explore": "bg-cyan-900/40 text-cyan-300 border-cyan-700/50",
+  "atelier:general": "bg-neutral-700/60 text-neutral-300 border-neutral-600/50",
+  claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
+  gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
+  copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",
+  codex: "bg-teal-900/40 text-teal-300 border-teal-700/50",
+  opencode: "bg-indigo-900/40 text-indigo-300 border-indigo-700/50",
+};
+
+function HostAgentBadges({ trace }: { trace: Trace }) {
+  const host = extractHost(trace);
+  const agent = trace.agent;
+
+  return (
+    <>
+      {/* Host badge — only shown for non-atelier hosts (atelier is the default runtime everywhere) */}
+      {host !== "atelier" && (
+        <span
+          className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${
+            HOST_COLORS[host] ??
+            "bg-neutral-800/60 text-neutral-400 border-neutral-700/50"
+          }`}
+        >
+          {host}
+        </span>
+      )}
+      <AgentBadge agent={agent} />
+    </>
+  );
+}
+
+function AgentBadge({ agent }: { agent: string }) {
+  const displayName = agent;
   const cls =
-    HOST_COLORS[host] ??
+    AGENT_COLORS[agent] ??
     "bg-neutral-800/60 text-neutral-400 border-neutral-700/50";
   return (
     <span
       className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono border ${cls}`}
     >
-      {host}
+      {displayName}
     </span>
   );
-}
-
-function getKindColor(kind: string) {
-  const map: Record<string, string> = {
-    // User message - most prominent, bright pink/magenta
-    user_message: "text-pink-400 bg-pink-950/60 border-pink-700",
-    // Agent messages - soft teal
-    agent_message: "text-teal-400 bg-teal-950/40 border-teal-800",
-    reasoning: "text-purple-400 bg-purple-950/40 border-purple-800",
-    // Tool calls - green for success
-    tool_call: "text-green-400 bg-green-950/40 border-green-800",
-    // Shell commands - slate/gray
-    shell_command: "text-slate-400 bg-slate-900/40 border-slate-700",
-    command_result: "text-slate-400 bg-slate-900/40 border-slate-700",
-    // File edits - important, orange
-    file_edit: "text-orange-400 bg-orange-950/40 border-orange-800",
-    // System alerts - yellow
-    monitor_alert: "text-yellow-400 bg-yellow-950/40 border-yellow-800",
-  };
-  return map[kind] || "text-neutral-400 bg-neutral-800/50 border-neutral-700";
-}
-
-// Highlight important entries with border
-function isImportantEntry(kind: string, summary: string): boolean {
-  const importantKinds = ["user_message", "file_edit", "monitor_alert"];
-  const importantKeywords = [
-    "error",
-    "failed",
-    "success",
-    "fixed",
-    "completed",
-    "important",
-  ];
-
-  if (importantKinds.includes(kind)) return true;
-  const lower = summary.toLowerCase();
-  return importantKeywords.some((k) => lower.includes(k));
 }

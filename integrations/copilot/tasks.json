@@ -2,14 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Atelier: Copilot Preflight",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "atelier context --task \"$1\" --json && atelier check-plan --task \"$1\" --step \"$2\" --step \"$3\" --json",
+        "bash",
+        "${input:atelierTask}",
+        "${input:atelierStep1}",
+        "${input:atelierStep2}"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Atelier: Reasoning Context",
       "type": "shell",
-      "command": "uv",
+      "command": "atelier",
       "args": [
-        "run",
-        "atelier",
-        "--root",
-        ".atelier",
         "context",
         "--task",
         "${input:atelierTask}",
@@ -20,12 +30,8 @@
     {
       "label": "Atelier: Check Plan",
       "type": "shell",
-      "command": "uv",
+      "command": "atelier",
       "args": [
-        "run",
-        "atelier",
-        "--root",
-        ".atelier",
         "check-plan",
         "--task",
         "${input:atelierTask}",

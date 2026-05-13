@@ -17,8 +17,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/managed_context.sh"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
+SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
+
 ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 PLUGIN_REF="atelier@atelier"
 
@@ -65,6 +68,50 @@ info()  { echo "[atelier:claude] $*"; }
 warn()  { echo "[atelier:claude] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
+# ---- resolve install profile ------------------------------------------------
+eval "$(
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+from atelier.core.environment import install_profile_warning, resolve_install_profile
+import shlex
+import sys
+
+try:
+    profile = resolve_install_profile()
+except ValueError as exc:
+    print(f"echo '[atelier:claude] ERROR: {exc}' >&2")
+    print("exit 1")
+    raise SystemExit(0)
+
+warning = install_profile_warning(profile)
+print(f"INSTALL_PROFILE={shlex.quote(profile)}")
+print(f"ATELIER_INSTALL_PROFILE_WARNING={shlex.quote(warning or '')}")
+PY
+)"
+if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
+    warn "$ATELIER_INSTALL_PROFILE_WARNING"
+fi
+STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
+run "mkdir -p '$STAGING_DIR/.claude-plugin'"
+run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
+run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"
+run "mkdir -p '$STAGING_DIR/agents'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    info "Install profile: dev; staging full plugin with reasoning loop"
+    for agent in code explore review repair; do
+        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
+    done
+else
+    info "Install profile: stable; staging stable plugin without dev reasoning loop"
+    for agent in code explore review repair; do
+        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
+    done
+fi
+run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
+run "cp -r '${SOURCE_PLUGIN_DIR}/servers' '$STAGING_DIR/'"
+run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
+PLUGIN_DIR="$STAGING_DIR"
+INSTALL_SOURCE_DIR="$STAGING_DIR"
+
 if $WORKSPACE_SET; then
     NEW_MCP_ENTRY=$(cat <<JSON
 {
@@ -75,7 +122,7 @@ if $WORKSPACE_SET; then
       "args": [],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${WORKSPACE}/.atelier"
+        "ATELIER_ROOT": "${HOME}/.atelier"
       }
     }
   }
@@ -139,19 +186,20 @@ CLAUDE_VERSION="$(claude --version 2>/dev/null || echo 'unknown')"
 info "Found Claude Code: $CLAUDE_VERSION"
 
 # ---- structural validation --------------------------------------------------
-info "Running structural validation on plugin package at ${PLUGIN_DIR}"
+# Always validate the original source plugin dir, not the generated staging copy.
+info "Running structural validation on plugin package at ${SOURCE_PLUGIN_DIR}"
 
 STRUCT_FAIL=0
 struct_pass() { info "PASS: $*"; }
 struct_fail() { echo "[atelier:claude] FAIL: $*" >&2; STRUCT_FAIL=1; }
 
-if [ -d "${PLUGIN_DIR}" ]; then
+if [ -d "${SOURCE_PLUGIN_DIR}" ]; then
     struct_pass "plugin directory exists: integrations/claude/plugin/"
-else
-    struct_fail "plugin directory missing: ${PLUGIN_DIR}"
-fi
+    else
+    struct_fail "plugin directory missing: ${SOURCE_PLUGIN_DIR}"
+    fi
 
-PLUGIN_JSON="${PLUGIN_DIR}/.claude-plugin/plugin.json"
+    PLUGIN_JSON="${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json"
 if [ -f "${PLUGIN_JSON}" ]; then
     NAME=$(python3 -c "import json; d=json.load(open('${PLUGIN_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
     if [ "$NAME" = "atelier" ]; then
@@ -179,7 +227,7 @@ if [ -f "${PLUGIN_JSON}" ]; then
 fi
 
 for agent in code explore review repair; do
-    AGENT_FILE="${PLUGIN_DIR}/agents/${agent}.md"
+    AGENT_FILE="${SOURCE_PLUGIN_DIR}/agents/${agent}.md"
     if [ -f "${AGENT_FILE}" ]; then
         struct_pass "agent exists: agents/${agent}.md"
     else
@@ -187,14 +235,14 @@ for agent in code explore review repair; do
     fi
 done
 
-HOOKS_JSON="${PLUGIN_DIR}/hooks/hooks.json"
+HOOKS_JSON="${SOURCE_PLUGIN_DIR}/hooks/hooks.json"
 if [ -f "${HOOKS_JSON}" ]; then
     struct_pass "hooks/hooks.json exists"
 else
     struct_fail "hooks/hooks.json missing: ${HOOKS_JSON}"
 fi
 
-PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
+PLUGIN_MCP_JSON="${SOURCE_PLUGIN_DIR}/.mcp.json"
 if [ -f "${PLUGIN_MCP_JSON}" ]; then
     if grep -q 'CLAUDE_PLUGIN_ROOT' "${PLUGIN_MCP_JSON}"; then
         struct_pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT}"
@@ -205,7 +253,7 @@ else
     struct_fail ".mcp.json missing: ${PLUGIN_MCP_JSON}"
 fi
 
-WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
+WRAPPER="${SOURCE_PLUGIN_DIR}/servers/atelier-mcp-wrapper.js"
 if [ -f "${WRAPPER}" ]; then
     struct_pass "MCP wrapper exists: servers/atelier-mcp-wrapper.js"
 else
@@ -369,7 +417,29 @@ if $DRY_RUN; then
     exit 0
 fi
 
+# ---- statusLine setting in ~/.claude/settings.json -------------------------
+STATUSLINE_SCRIPT="${ATELIER_REPO}/integrations/claude/plugin/scripts/statusline.sh"
+if $DRY_RUN; then
+    echo "  [dry-run] set statusLine in ${CLAUDE_SETTINGS} → ${STATUSLINE_SCRIPT}"
+elif [ -f "${STATUSLINE_SCRIPT}" ]; then
+    python3 - <<PYEOF2
+import json
+from pathlib import Path
+path = Path("${CLAUDE_SETTINGS}")
+if not path.exists():
+    path.write_text("{}\n")
+data = json.loads(path.read_text(encoding="utf-8") or "{}")
+data["statusLine"] = {"type": "command", "command": "${STATUSLINE_SCRIPT}", "padding": 1}
+data["agent"] = "atelier:code"
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+print("[atelier:claude] statusLine set → ${STATUSLINE_SCRIPT}")
+print("[atelier:claude] default agent set → atelier-code")
+PYEOF2
+else
+    warn "statusline.sh not found at ${STATUSLINE_SCRIPT} — skipping statusLine"
+fi
+
 info "Done. Start Claude Code in your workspace. Skills and agents are available."
 info "  /atelier:status  - show run ledger"
-info "  /atelier:context - show environment context"
+info "  /atelier:context - show reasoning context"
 info "  Agents: atelier:code, atelier:explore, atelier:review, atelier:repair"

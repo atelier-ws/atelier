@@ -122,13 +122,41 @@ def _parse_workspace_dt(val: Any) -> datetime:
 
 def find_copilot_sessions(root: Path | None = None) -> Iterator[Path]:
     """Yield session directories that contain an events.jsonl file."""
-    if root is None:
-        root = Path("~/.copilot/session-state").expanduser()
-    if not root.is_dir():
+    roots: list[Path]
+    if root is not None:
+        roots = [root]
+    else:
+        roots = [Path("~/.copilot/session-state").expanduser()]
+        for vscode_base in [
+            Path("~/.config/Code/User/workspaceStorage").expanduser(),
+            Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
+        ]:
+            if vscode_base.is_dir():
+                roots.extend(sorted(vscode_base.glob("*/GitHub.copilot-chat")))
+    for r in roots:
+        if not r.is_dir():
+            continue
+        for p in sorted(r.iterdir()):
+            if p.is_dir() and (p / "events.jsonl").exists():
+                yield p
+
+
+def find_copilot_transcript_files(root: Path | None = None) -> Iterator[Path]:
+    """Yield individual transcript .jsonl files from VSCode Copilot-chat workspaceStorage."""
+    if root is not None:
+        if root.is_dir():
+            yield from sorted(root.glob("*.jsonl"))
         return
-    for p in sorted(root.iterdir()):
-        if p.is_dir() and (p / "events.jsonl").exists():
-            yield p
+    for vscode_base in [
+        Path("~/.config/Code/User/workspaceStorage").expanduser(),
+        Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
+    ]:
+        if not vscode_base.is_dir():
+            continue
+        for ws in sorted(vscode_base.iterdir()):
+            transcript_dir = ws / "GitHub.copilot-chat" / "transcripts"
+            if transcript_dir.is_dir():
+                yield from sorted(transcript_dir.glob("*.jsonl"))
 
 
 # ---------------------------------------------------------------------------
@@ -158,82 +186,44 @@ class CopilotImporter:
     # Public
     # ------------------------------------------------------------------
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> int:
-        """Import all sessions under *root*.  Returns the number imported."""
-        count = 0
+    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+        """Import all sessions under *root*. Returns the IDs of successfully imported sessions."""
+        imported_ids = []
         skipped = 0
-        for session_dir in find_copilot_sessions(root):
+        all_sessions = list(find_copilot_sessions(root))
+        all_transcripts = list(find_copilot_transcript_files())
+        total = len(all_sessions) + len(all_transcripts)
+        print(
+            f"[atelier] copilot: discovering sessions (found {len(all_sessions)} directory, {len(all_transcripts)} transcript)"
+        )
+        for i, session_dir in enumerate(all_sessions):
             try:
-                if self.import_session(session_dir, force=force):
-                    count += 1
+                if i % 10 == 0 and i > 0:
+                    print(f"[atelier] copilot: importing {i}/{total}...")
+                sid = self.import_session(session_dir, force=force)
+                if sid:
+                    imported_ids.append(sid)
                 else:
                     skipped += 1
             except Exception as exc:
                 _traceback.print_exc()
                 print(f"[atelier] skipping session {session_dir.name}: {exc}")
+        for transcript_path in all_transcripts:
+            try:
+                sid = self.import_transcript_file(transcript_path, force=force)
+                if sid:
+                    imported_ids.append(sid)
+                else:
+                    skipped += 1
+            except Exception as exc:
+                _traceback.print_exc()
+                print(f"[atelier] skipping transcript {transcript_path.name}: {exc}")
         if skipped > 0:
             print(f"[atelier] {skipped} sessions already imported (skipped by dedup)")
-        return count
+        return imported_ids
 
-    def import_session(self, session_dir: Path, *, force: bool = False) -> bool:
-        """Import a single session directory.  Returns True on success."""
-        session_id = session_dir.name
-
-        # ── Timestamp-based dedup check ──────────────────────────────
-        artifact_id = f"copilot-{session_id}-events-jsonl"
-        existing = self.store.get_raw_artifact(artifact_id)
-        try:
-            file_mtime = datetime.fromtimestamp((session_dir / "events.jsonl").stat().st_mtime, tz=UTC)
-        except OSError:
-            file_mtime = _utcnow()
-        if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
-            return False  # unchanged, skip
-
-        # --- workspace metadata ---
-        workspace_path = session_dir / "workspace.yaml"
-        if not workspace_path.exists():
-            return False
-        try:
-            workspace_data: dict[str, Any] = yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):
-            return False
-
-        # --- events ---
-        events_path = session_dir / "events.jsonl"
-        if not events_path.exists():
-            return False
-
-        # ── Step 1: write redacted raw artifacts ─────────────────────────────
-        artifact_ids: list[str] = []
-
-        events_raw = events_path.read_text(encoding="utf-8")
-        redacted_events = redact(events_raw)
-        workspace_raw = workspace_path.read_text(encoding="utf-8")
-        redacted_workspace = redact(workspace_raw)
-
-        for filename, raw_content, redacted_content in (
-            ("events.jsonl", events_raw, redacted_events),
-            ("workspace.yaml", workspace_raw, redacted_workspace),
-        ):
-            kind = filename
-            artifact = RawArtifact(
-                id=f"copilot-{session_id}-{kind.replace('.', '-')}",
-                source="copilot",
-                source_session_id=session_id,
-                kind=kind,
-                relative_path=filename,
-                content_path=f"raw/copilot/{session_id}/{filename}",
-                sha256_original=_sha256(raw_content),
-                sha256_redacted=_sha256(redacted_content),
-                byte_count_original=len(raw_content.encode("utf-8")),
-                byte_count_redacted=len(redacted_content.encode("utf-8")),
-                created_at=_utcnow(),
-                source_file_mtime=file_mtime,
-            )
-            self.store.record_raw_artifact(artifact, redacted_content)
-            artifact_ids.append(artifact.id)
-
-        # ── Step 2: build curated Trace from redacted events ─────────────────
+    def _parse_events_to_trace_state(self, redacted_events: str, initial_task: str = "") -> dict[str, Any]:
+        """Parse event JSONL text and return accumulated state for building a Trace."""
         tools_called: dict[str, int] = {}
         tool_args: dict[str, dict[str, Any] | None] = {}
         tool_results: dict[str, str] = {}
@@ -244,9 +234,16 @@ class CopilotImporter:
         command_tools: dict[str, str] = {}
         validation_results: list[ValidationResult] = []
         reasoning_snippets: list[str] = []
-        task = str(workspace_data.get("summary") or "untitled copilot session")
+        task = initial_task or "untitled copilot session"
+        last_model_metrics: dict[str, dict[str, int]] = {}
+        tool_in_tokens: dict[str, int] = {}
+        tool_out_tokens: dict[str, int] = {}
+        tool_call_in_buffer: dict[str, dict[str, Any]] = {}
+        fallback_model = ""
+        user_prompt_tokens = 0
+        assistant_output_tokens = 0
+        start_time: datetime | None = None
 
-        # Reuse already-redacted events text (no second disk read).
         for line in redacted_events.splitlines():
             line = line.strip()
             if not line:
@@ -256,18 +253,76 @@ class CopilotImporter:
             except json.JSONDecodeError:
                 continue
 
-            # Extract task from user.message
-            if ev.get("type") == "user.message" and task.startswith("Read and follow"):
-                content = ev.get("data", {}).get("content") or ""
-                if content and len(content) > 20:
-                    task = str(content)[:200]
+            etype = ev.get("type")
 
-            # Extract reasoning from assistant.message (chain-of-thought)
-            if ev.get("type") == "assistant.message":
+            if etype == "session.start":
+                fallback_model = (ev.get("data") or {}).get("selectedModel") or fallback_model
+                if start_time is None:
+                    ts = (ev.get("data") or {}).get("startTime") or ev.get("timestamp")
+                    if ts:
+                        start_time = _parse_workspace_dt(ts)
+
+            if etype == "session.model_change":
+                fallback_model = (ev.get("data") or {}).get("newModel") or fallback_model
+
+            if etype == "user.message":
                 data = ev.get("data") or {}
-                reasoning = data.get("reasoningOpaque") or ""
+                content = data.get("content")
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    text = " ".join(str(c.get("text", "")) for c in content if isinstance(c, dict))
+                if text:
+                    user_prompt_tokens += max(1, len(text) // 4)
+                    if task == "untitled copilot session" or (task.startswith("Read and follow") and len(text) > 20):
+                        task = text[:200]
+
+            if etype == "assistant.message":
+                data = ev.get("data") or {}
+                reasoning = data.get("reasoningText") or data.get("reasoningOpaque") or ""
                 if reasoning and len(str(reasoning)) > 10:
                     reasoning_snippets.append(str(reasoning)[:500])
+                out_t = int(data.get("outputTokens", 0) or 0)
+                assistant_output_tokens += out_t
+                calls = data.get("toolRequests") or []
+                if calls and out_t:
+                    dist_out = out_t // len(calls)
+                    for tool in calls:
+                        t_id = tool.get("toolCallId")
+                        t_name = tool.get("name")
+                        if t_id:
+                            tool_call_in_buffer[t_id] = {"in_t": dist_out, "name": t_name}
+                        elif t_name:
+                            tool_in_tokens[t_name] = tool_in_tokens.get(t_name, 0) + dist_out
+
+            elif etype == "tool.execution_complete":
+                data = ev.get("data") or {}
+                if not fallback_model and "model" in data:
+                    fallback_model = data["model"]
+                t_id = data.get("toolCallId")
+                if t_id and t_id in tool_call_in_buffer:
+                    buf = tool_call_in_buffer.pop(t_id)
+                    metrics = (data.get("toolTelemetry") or {}).get("metrics") or {}
+                    tool_out_t = int(metrics.get("resultForLlmLength", 0) or 0) // 4
+                    tn = buf["name"] or "unknown"
+                    tool_in_tokens[tn] = tool_in_tokens.get(tn, 0) + buf["in_t"]
+                    tool_out_tokens[tn] = tool_out_tokens.get(tn, 0) + tool_out_t
+
+            elif etype == "session.shutdown":
+                mm = (ev.get("data") or {}).get("modelMetrics") or {}
+                if isinstance(mm, dict):
+                    for mname, mdata in mm.items():
+                        usage = (mdata or {}).get("usage") or {}
+                        bucket = last_model_metrics.setdefault(
+                            mname,
+                            {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+                        )
+                        bucket["in"] += int(usage.get("inputTokens", 0) or 0)
+                        bucket["out"] += int(usage.get("outputTokens", 0) or 0)
+                        bucket["cache_read"] += int(usage.get("cacheReadTokens", 0) or 0)
+                        bucket["cache_write"] += int(usage.get("cacheWriteTokens", 0) or 0)
+                        bucket["reasoning"] += int(usage.get("reasoningTokens", 0) or 0)
 
             self._process_event(
                 ev,
@@ -283,51 +338,235 @@ class CopilotImporter:
                 task,
             )
 
+        for buf in tool_call_in_buffer.values():
+            tn = buf["name"]
+            if tn:
+                tool_in_tokens[tn] = tool_in_tokens.get(tn, 0) + buf["in_t"]
+
+        tot_in = tot_out = tot_cache_read = tot_cache_write = tot_reasoning = 0
+        for bucket in last_model_metrics.values():
+            tot_in += bucket["in"]
+            tot_out += bucket["out"]
+            tot_cache_read += bucket["cache_read"]
+            tot_cache_write += bucket["cache_write"]
+            tot_reasoning += bucket["reasoning"]
+
+        if assistant_output_tokens > 0:
+            if tot_out == 0:
+                tot_out = assistant_output_tokens
+            if tot_in == 0:
+                tot_in = user_prompt_tokens
+
+        primary_model = ""
+        if last_model_metrics:
+            primary_model = max(last_model_metrics.items(), key=lambda kv: kv[1]["out"])[0]
+        if not primary_model:
+            primary_model = fallback_model
+
+        return {
+            "task": task,
+            "start_time": start_time or _utcnow(),
+            "tools_called": tools_called,
+            "tool_args": tool_args,
+            "tool_results": tool_results,
+            "files_touched": files_touched,
+            "errors_seen": errors_seen,
+            "commands_run": commands_run,
+            "validation_results": validation_results,
+            "reasoning_snippets": reasoning_snippets,
+            "tool_in_tokens": tool_in_tokens,
+            "tool_out_tokens": tool_out_tokens,
+            "input_tokens": tot_in,
+            "output_tokens": tot_out,
+            "cached_input_tokens": tot_cache_read,
+            "cache_creation_input_tokens": tot_cache_write,
+            "thinking_tokens": tot_reasoning,
+            "model": primary_model,
+            "user_prompt_tokens": user_prompt_tokens,
+        }
+
+    def import_session(self, session_dir: Path, *, force: bool = False) -> str | None:
+        """Import a single session directory. Returns trace ID on success."""
+        session_id = session_dir.name
+
+        # ── Timestamp-based dedup check ──────────────────────────────
+        artifact_id = f"copilot-{session_id}-events-jsonl"
+        existing = self.store.get_raw_artifact(artifact_id)
+        try:
+            file_mtime = datetime.fromtimestamp((session_dir / "events.jsonl").stat().st_mtime, tz=UTC)
+        except OSError:
+            file_mtime = _utcnow()
+        if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
+            return None  # unchanged, skip
+
+        # --- workspace metadata ---
+        workspace_path = session_dir / "workspace.yaml"
+        if not workspace_path.exists():
+            return None
+        try:
+            workspace_data: dict[str, Any] = yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return None
+
+        # --- events ---
+        events_path = session_dir / "events.jsonl"
+        if not events_path.exists():
+            return None
+
+        filename_session_id = session_id
+        actual_session_id = str(workspace_data.get("mc_session_id") or filename_session_id)
+
+        # ── Step 1: write redacted raw artifacts ─────────────────────────────
+        artifact_ids: list[str] = []
+
+        events_raw = events_path.read_text(encoding="utf-8")
+        redacted_events = redact(events_raw)
+        workspace_raw = workspace_path.read_text(encoding="utf-8")
+        redacted_workspace = redact(workspace_raw)
+
+        for filename, raw_content, redacted_content in (
+            ("events.jsonl", events_raw, redacted_events),
+            ("workspace.yaml", workspace_raw, redacted_workspace),
+        ):
+            kind = filename
+            raw_bytes = raw_content.encode("utf-8")
+            redacted_bytes = redacted_content.encode("utf-8")
+            artifact = RawArtifact(
+                id=f"copilot-{filename_session_id}-{kind.replace('.', '-')}",
+                source="copilot",
+                source_session_id=actual_session_id,
+                kind=kind,
+                relative_path=filename,
+                content_path=f"raw/copilot/{filename_session_id}/{filename}",
+                sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
+                sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
+                byte_count_original=len(raw_bytes),
+                byte_count_redacted=len(redacted_bytes),
+                created_at=_utcnow(),
+                source_file_mtime=file_mtime,
+                source_path=str(session_dir / filename),
+            )
+            self.store.record_raw_artifact(artifact, redacted_content)
+            artifact_ids.append(artifact.id)
+
+        # ── Step 2: build curated Trace from redacted events ─────────────────
+        state = self._parse_events_to_trace_state(
+            redacted_events,
+            initial_task=str(workspace_data.get("summary") or ""),
+        )
+
         trace = Trace(
-            id=f"copilot-{session_id}",
-            run_id=session_id,
-            agent="copilot",
+            id=f"copilot-{filename_session_id}",
+            session_id=actual_session_id,
+            agent="atelier:code",
+            host="copilot",
             domain="coding",
-            task=task,
+            task=state["task"],
             status="success",
-            files_touched=[record if record is not None else path for path, record in sorted(files_touched.items())],
+            files_touched=[r if r is not None else p for p, r in sorted(state["files_touched"].items())],
             tools_called=[
                 ToolCall(
                     name=n,
                     args_hash="",
                     count=c,
-                    args=tool_args.get(n),
-                    result_summary=tool_results.get(n, ""),
+                    args=state["tool_args"].get(n),
+                    result_summary=state["tool_results"].get(n, ""),
+                    input_tokens=state["tool_in_tokens"].get(n, 0),
+                    output_tokens=state["tool_out_tokens"].get(n, 0),
                 )
-                for n, c in tools_called.items()
+                for n, c in state["tools_called"].items()
             ],
-            commands_run=commands_run,
-            errors_seen=sorted(errors_seen),
-            validation_results=validation_results,
-            reasoning=reasoning_snippets,
+            commands_run=state["commands_run"],
+            errors_seen=sorted(state["errors_seen"]),
+            validation_results=state["validation_results"],
+            reasoning=state["reasoning_snippets"],
             raw_artifact_ids=artifact_ids,
+            input_tokens=state["input_tokens"],
+            user_prompt_tokens=state["user_prompt_tokens"],
+            output_tokens=state["output_tokens"],
+            thinking_tokens=state["thinking_tokens"],
+            cached_input_tokens=state["cached_input_tokens"],
+            cache_creation_input_tokens=state["cache_creation_input_tokens"],
+            model=state["model"],
             created_at=_parse_workspace_dt(workspace_data.get("created_at")),
         )
-        self.store.record_trace(trace)
+        self.store.record_trace(trace, write_json=False)
+        return trace.id
 
-        # ── Step 3: reconstruct fully populated RunLedger ────────────────────
-        # Skip if ledger reconstruction fails - don't crash the main import
+    def import_transcript_file(self, transcript_path: Path, *, force: bool = False) -> str | None:
+        """Import a single VSCode Copilot transcript .jsonl file."""
+        session_id = transcript_path.stem
+
+        artifact_id = f"copilot-transcript-{session_id}"
+        existing = self.store.get_raw_artifact(artifact_id)
         try:
-            from atelier.core.service.config import cfg
-            from atelier.gateway.integrations.ledger_reconstructor import LedgerReconstructor
+            file_mtime = datetime.fromtimestamp(transcript_path.stat().st_mtime, tz=UTC)
+        except OSError:
+            file_mtime = _utcnow()
+        if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
+            return None
 
-            recon = LedgerReconstructor(root=Path(cfg.atelier_root))
-            led = recon.reconstruct(
-                source="copilot",
-                session_id=session_id,
-                raw_content=events_raw,
-                task=task,
-            )
-            led.persist()
-        except Exception as e:
-            print(f"[atelier] failed to reconstruct ledger for {session_id}: {e}")
+        events_raw = transcript_path.read_text(encoding="utf-8")
+        redacted_events = redact(events_raw)
+        raw_bytes = events_raw.encode("utf-8")
+        redacted_bytes = redacted_events.encode("utf-8")
 
-        return True
+        artifact = RawArtifact(
+            id=artifact_id,
+            source="copilot",
+            source_session_id=session_id,
+            kind="events.jsonl",
+            relative_path=transcript_path.name,
+            content_path=f"raw/copilot/transcripts/{session_id}.jsonl",
+            sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
+            sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
+            byte_count_original=len(raw_bytes),
+            byte_count_redacted=len(redacted_bytes),
+            created_at=_utcnow(),
+            source_file_mtime=file_mtime,
+            source_path=str(transcript_path),
+        )
+        self.store.record_raw_artifact(artifact, redacted_events)
+
+        state = self._parse_events_to_trace_state(redacted_events)
+
+        trace = Trace(
+            id=f"copilot-transcript-{session_id}",
+            session_id=session_id,
+            agent="atelier:code",
+            host="copilot",
+            domain="coding",
+            task=state["task"],
+            status="success",
+            files_touched=[r if r is not None else p for p, r in sorted(state["files_touched"].items())],
+            tools_called=[
+                ToolCall(
+                    name=n,
+                    args_hash="",
+                    count=c,
+                    args=state["tool_args"].get(n),
+                    result_summary=state["tool_results"].get(n, ""),
+                    input_tokens=state["tool_in_tokens"].get(n, 0),
+                    output_tokens=state["tool_out_tokens"].get(n, 0),
+                )
+                for n, c in state["tools_called"].items()
+            ],
+            commands_run=state["commands_run"],
+            errors_seen=sorted(state["errors_seen"]),
+            validation_results=state["validation_results"],
+            reasoning=state["reasoning_snippets"],
+            raw_artifact_ids=[artifact_id],
+            input_tokens=state["input_tokens"],
+            user_prompt_tokens=state["user_prompt_tokens"],
+            output_tokens=state["output_tokens"],
+            thinking_tokens=state["thinking_tokens"],
+            cached_input_tokens=state["cached_input_tokens"],
+            cache_creation_input_tokens=state["cache_creation_input_tokens"],
+            model=state["model"],
+            created_at=state["start_time"],
+        )
+        self.store.record_trace(trace, write_json=False)
+        return trace.id
 
     # ------------------------------------------------------------------
     # Event parsing

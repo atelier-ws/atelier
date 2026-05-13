@@ -14,30 +14,30 @@ Evals are different from unit tests: they test agent-facing behavior (plan check
 
 ```bash
 # 1. Identify a failure cluster
-uv run atelier failure list
+atelier failure list
 
 # 2. Create an eval case from it
-uv run atelier eval-from-cluster CLUSTER_ID --save
+atelier eval-from-cluster CLUSTER_ID --save
 ```
 
 ### Manually
 
 ```bash
-uv run atelier eval list         # see existing format
+atelier eval list         # see existing format
 # then add via service API or direct store manipulation
 ```
 
 ## Running Evals
 
 ```bash
-uv run atelier eval run [--domain TEXT] [--eval-id ID]
+atelier eval run [--domain TEXT] [--eval-id ID]
 ```
 
 Or via the benchmark command (runs all active evals):
 
 ```bash
-uv run atelier benchmark
-uv run atelier benchmark --json
+atelier benchmark
+atelier benchmark --json
 ```
 
 ## Eval Lifecycle
@@ -55,13 +55,13 @@ candidate → active → deprecated
 Promote an eval case:
 
 ```bash
-uv run atelier eval promote EVAL_ID
+atelier eval promote EVAL_ID
 ```
 
 Deprecate when a pattern is no longer relevant:
 
 ```bash
-uv run atelier eval deprecate EVAL_ID
+atelier eval deprecate EVAL_ID
 ```
 
 ## Eval Format
@@ -84,7 +84,7 @@ Eval cases are stored in `.atelier/evals/` as JSON files:
 ## Benchmark Output
 
 ```bash
-uv run atelier benchmark
+atelier benchmark
 ```
 
 Example output:

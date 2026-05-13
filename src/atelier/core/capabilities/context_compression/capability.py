@@ -163,18 +163,19 @@ class ContextCompressionCapability:
             from pathlib import Path
 
             from atelier.core.foundation.memory_models import ArchivalPassage
+            from atelier.core.foundation.paths import default_store_root, resolve_workspace_root
             from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
-            root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+            root = Path(os.environ.get("ATELIER_ROOT", str(default_store_root())))
             store = SqliteMemoryStore(root)
-            run_id = getattr(ledger, "run_id", "unknown")
+            session_id = getattr(ledger, "session_id", "unknown")
             for chunk in chunks:
                 dedup_hash = hashlib.sha1(chunk.paraphrase.encode()).hexdigest()
                 passage = ArchivalPassage(
                     agent_id=agent_id,
                     text=chunk.paraphrase,
                     source="block_evict",
-                    source_ref=f"run:{run_id}",
+                    source_ref=f"run:{session_id}",
                     dedup_hash=dedup_hash,
                 )
                 saved = store.insert_passage(passage)
@@ -188,13 +189,15 @@ class ContextCompressionCapability:
             from pathlib import Path
 
             from atelier.core.foundation.memory_models import RunMemoryFrame
+            from atelier.core.foundation.paths import default_store_root, resolve_workspace_root
             from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
-            root = Path(os.environ.get("ATELIER_ROOT", ".atelier"))
+            root = Path(os.environ.get("ATELIER_ROOT", str(default_store_root())))
             store = SqliteMemoryStore(root)
-            run_id = getattr(ledger, "run_id", "unknown")
+            session_id = getattr(ledger, "session_id", "unknown")
             frame = RunMemoryFrame(
-                run_id=run_id,
+                session_id=session_id,
+                workspace_path=str(resolve_workspace_root(root)),
                 pinned_blocks=[],
                 recalled_passages=[],
                 summarized_events=[c.paraphrase for c in chunks],
