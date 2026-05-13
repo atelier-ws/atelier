@@ -85,7 +85,7 @@ All V2 tools are available via the Atelier MCP server. These are **Atelier augme
 | `memory`                | Atelier augmentation | Compact sleeptime memory (reduces context window)         |
 | `search`                | Atelier augmentation | Token-saving combined search + read                       |
 | `edit`                  | Atelier augmentation | Deterministic multi-file batch edits (optional)           |
-| `atelier bench runtime` | Atelier augmentation | Capability efficiency metrics                             |
+| `atelier benchmark runtime` | Atelier augmentation | Capability efficiency metrics                             |
 | `compact`               | Atelier augmentation | Advise before context compaction; provides reinject hints |
 | `atelier lesson inbox`  | Atelier augmentation | List lesson candidates awaiting decision                  |
 | `atelier lesson decide` | Atelier augmentation | Approve or reject a lesson candidate                      |
