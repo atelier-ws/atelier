@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,40 @@ def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     assert res.exit_code == 2
     payload = json.loads(res.output)
     assert payload["status"] == "blocked"
+
+
+def test_code_context_cli_round_trip(tmp_path: Path) -> None:
+    root = tmp_path / "atelier"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def alpha() -> int:\n    return 1\n\ndef beta() -> int:\n    return alpha()\n",
+        encoding="utf-8",
+    )
+    _invoke(root, "init", "--no-seed")
+
+    indexed = _invoke(root, "code", "index", "--repo-root", str(repo), "--json")
+    assert indexed.exit_code == 0, indexed.output
+    assert json.loads(indexed.output)["symbols_indexed"] >= 2
+
+    searched = _invoke(root, "code", "search-symbols", "alpha", "--repo-root", str(repo), "--json")
+    assert searched.exit_code == 0, searched.output
+    assert json.loads(searched.output)["items"][0]["symbol_name"] == "alpha"
+
+    retrieved = _invoke(
+        root,
+        "code",
+        "get-symbol",
+        "--repo-root",
+        str(repo),
+        "--qualified-name",
+        "alpha",
+        "--file-path",
+        "service.py",
+        "--json",
+    )
+    assert retrieved.exit_code == 0, retrieved.output
+    assert "def alpha" in json.loads(retrieved.output)["source"]
 
 
 def test_record_trace_and_extract_block(tmp_path: Path) -> None:
@@ -250,7 +285,7 @@ def test_stack_start_uses_compose_helper(tmp_path: Path, monkeypatch: pytest.Mon
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
     assert res.exit_code == 0, res.output
-    assert calls == [["up", "--build", "-d", "service", "frontend", "otel-collector", "docs"]]
+    assert calls == [["up", "--build", "-d"]]
     assert "http://localhost:3125" in res.output
 
 
@@ -293,7 +328,16 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
 
     monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
 
-    res = _invoke(root, "servicectl", "tick", "--maintenance-interval-seconds", "0", "--json")
+    res = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "-1",
+        "--json",
+    )
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -336,6 +380,258 @@ def test_servicectl_start_writes_pidfile(tmp_path: Path, monkeypatch: pytest.Mon
     assert isinstance(args, list)
     assert "atelier.gateway.adapters.cli" in " ".join(str(item) for item in args)
     assert (root / "servicectl" / "servicectl.pid").read_text(encoding="utf-8").strip() == "4321"
+
+
+def test_servicectl_tick_imports_only_new_or_updated_sessions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    codex_file = tmp_path / "codex" / "rollout-2026-05-09T12-00-00-11111111-2222-3333-4444-555555555555.jsonl"
+    codex_file.parent.mkdir(parents=True, exist_ok=True)
+    codex_file.write_text(
+        "\n".join(
+            [
+                '{"id":"meta","timestamp":"2026-05-09T12:00:00Z","instructions":"Test import"}',
+                '{"type":"message","role":"user","content":[{"type":"input_text","text":"Do the task"}]}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.session_parsers.codex.find_codex_sessions",
+        lambda root=None: [codex_file],
+    )
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.session_parsers.copilot.find_copilot_sessions",
+        lambda root=None: iter(()),
+    )
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.session_parsers.claude.find_claude_sessions",
+        lambda root=None: iter(()),
+    )
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.session_parsers.opencode.find_opencode_sessions",
+        lambda db_path=None: iter(()),
+    )
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.session_parsers.gemini.find_gemini_sessions",
+        lambda root=None: iter(()),
+    )
+
+    def unavailable(messages: object, json_schema: object | None = None) -> None:
+        _ = (messages, json_schema)
+        raise OllamaUnavailable("offline")
+
+    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
+
+    first = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "0",
+        "--json",
+    )
+    assert first.exit_code == 0, first.output
+    payload1 = json.loads(first.output)
+    assert payload1["imported_sessions"]["codex"] == 1
+
+    second = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "0",
+        "--json",
+    )
+    assert second.exit_code == 0, second.output
+    payload2 = json.loads(second.output)
+    assert payload2["imported_sessions"]["codex"] == 0
+
+    codex_file.write_text(
+        codex_file.read_text(encoding="utf-8") + '{"type":"message","role":"assistant"}\n',
+        encoding="utf-8",
+    )
+    bumped_mtime = codex_file.stat().st_mtime + 10
+    os.utime(codex_file, (bumped_mtime, bumped_mtime))
+
+    third = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "0",
+        "--json",
+    )
+    assert third.exit_code == 0, third.output
+    payload3 = json.loads(third.output)
+    assert payload3["imported_sessions"]["codex"] == 1
+
+
+def test_servicectl_tick_collects_external_analytics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    monkeypatch.setattr(
+        "atelier.gateway.integrations.external_analytics.run_external_reports",
+        lambda tool="all", period="today", cwd=None: {
+            "generated_at": "2026-05-11T12:00:00+00:00",
+            "tool": tool,
+            "period": period,
+            "reports": [
+                {
+                    "tool": "tokscale",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": "tokscale --json --no-spinner --today",
+                    "payload": {"summary": {"cost": 3.25, "input_tokens": 1200}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+                {
+                    "tool": "codeburn",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": "codeburn report --format json -p today",
+                    "payload": {"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+            ],
+        },
+    )
+
+    def unavailable(messages: object, json_schema: object | None = None) -> None:
+        _ = (messages, json_schema)
+        raise OllamaUnavailable("offline")
+
+    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
+
+    res = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "-1",
+        "--external-analytics-interval-seconds",
+        "0",
+        "--external-analytics-period",
+        "today",
+        "--json",
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["external_analytics_ran"] is True
+    assert {item["tool"] for item in payload["external_analytics_runs"]} == {"tokscale", "codeburn"}
+
+    store = ReasoningStore(root)
+    runs = store.list_external_analytics_runs(limit=10)
+    assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
+    assert all(item["source"] == "servicectl" for item in runs)
+
+
+def test_servicectl_tick_collects_multiple_external_analytics_periods(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    def fake_run_external_reports(
+        tool: str = "all",
+        period: str = "today",
+        cwd: Path | None = None,
+    ) -> dict[str, object]:
+        _ = cwd
+        return {
+            "generated_at": "2026-05-11T12:00:00+00:00",
+            "tool": tool,
+            "period": period,
+            "reports": [
+                {
+                    "tool": "tokscale",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": f"tokscale --json --no-spinner --{period}",
+                    "payload": {"summary": {"cost": 3.25, "input_tokens": 1200}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+                {
+                    "tool": "codeburn",
+                    "period": period,
+                    "ok": True,
+                    "returncode": 0,
+                    "command_display": f"codeburn report --format json -p {period}",
+                    "payload": {"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
+                    "stdout": "{}",
+                    "stderr": "",
+                },
+            ],
+        }
+
+    monkeypatch.setattr(
+        "atelier.gateway.integrations.external_analytics.run_external_reports",
+        fake_run_external_reports,
+    )
+
+    def unavailable(messages: object, json_schema: object | None = None) -> None:
+        _ = (messages, json_schema)
+        raise OllamaUnavailable("offline")
+
+    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
+
+    res = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "0",
+        "--session-import-interval-seconds",
+        "-1",
+        "--external-analytics-interval-seconds",
+        "0",
+        "--external-analytics-period",
+        "week",
+        "--external-analytics-period",
+        "month",
+        "--json",
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["external_analytics_ran"] is True
+    assert payload["external_analytics_periods"] == ["week", "month"]
+    assert len(payload["external_analytics_runs"]) == 4
+    assert {item["period"] for item in payload["external_analytics_runs"]} == {
+        "week",
+        "month",
+    }
+
+    store = ReasoningStore(root)
+    runs = store.list_external_analytics_runs(limit=10)
+    assert {item["period"] for item in runs} == {"week", "month"}
+    assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
 
 
 # `atelier task` command removed — cut in CLI consolidation.

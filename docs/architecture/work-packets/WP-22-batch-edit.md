@@ -77,7 +77,7 @@ not compete with host-native edit tools for ordinary coding.
 
 3. Atomicity: if `atomic=true` (default) and any edit fails, all already-applied edits are reverted
    from a per-call working copy. Use `git stash`-style mechanic: snapshot files into
-   `.atelier/run/<run_id>/batch_edit_backup/` before starting; restore on failure.
+   `.atelier/run/<session_id>/batch_edit_backup/` before starting; restore on failure.
 
 4. Expose this as an explicit `edit` MCP tool and CLI command only. Do not route
    native host Edit/MultiEdit calls through it.
@@ -99,7 +99,7 @@ LOCAL=1 uv run pytest tests/core/test_batch_edit_atomicity.py \
 
 # CLI smoke
 echo '&#123;"edits":[&#123;"path":"/tmp/x.txt","op":"replace","old_string":"a","new_string":"b"&#125;]&#125;' | \
-  LOCAL=1 uv run atelier batch-edit --from-stdin --json
+  LOCAL=1 atelier batch-edit --from-stdin --json
 
 make verify
 ```

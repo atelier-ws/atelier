@@ -36,7 +36,7 @@ EOF
 echo "--- checking opencode can list tools (via atelier-mcp stdio) ---"
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"verify","version":"1"},"capabilities":{}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-    | uv run atelier-mcp 2>/dev/null \
+    | atelier-mcp 2>/dev/null \
     | python3 - <<'EOF'
 import sys, json
 lines = sys.stdin.read().strip().split("\n")

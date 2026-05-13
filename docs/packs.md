@@ -1,7 +1,7 @@
 # Configuration Bundles
 
 Atelier supports optional local configuration bundles — collections of domain-specific
-ReasonBlocks, rubrics, environments, and failure clusters that you can install into your
+ReasonBlocks, rubrics, and failure clusters that you can install into your
 local store.
 
 ## What a bundle contains
@@ -10,16 +10,15 @@ local store.
 my-bundle/
 ├── blocks/          # .md files (ReasonBlock markdown format)
 ├── rubrics/         # .yaml files
-├── environments/    # .yaml files
 └── failures/        # .yaml files
 ```
 
 ## Installing a local bundle
 
 ```bash
-uv run atelier pack install ./path/to/my-bundle
-uv run atelier pack list
-uv run atelier pack show my-bundle
+atelier pack install ./path/to/my-bundle
+atelier pack list
+atelier pack show my-bundle
 ```
 
 ## Creating a bundle

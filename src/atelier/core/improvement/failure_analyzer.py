@@ -34,7 +34,7 @@ def _fingerprint(snapshot: dict[str, Any]) -> str | None:
             sig = str(payload.get("error_signature", "")).strip()
             if sig:
                 last_error = sig
-        elif kind == "monitor_alert" and payload.get("severity") == "high":
+        elif kind == "watchdog_alert" and payload.get("severity") == "high":
             last_high_alert = str(event.get("summary", "")).strip() or None
     if last_error:
         return last_error
@@ -130,7 +130,7 @@ def analyze_failures(snapshots: list[dict[str, Any]]) -> list[FailureCluster]:
 
     clusters: list[FailureCluster] = []
     for index, ((env_id, fp), snaps) in enumerate(sorted(buckets.items())):
-        trace_ids = [s.get("run_id", "") for s in snaps if s.get("run_id")]
+        trace_ids = [s.get("session_id", "") for s in snaps if s.get("session_id")]
         sample_errors = [fp]
         suggested_block_title = f"Failure cluster: {fp[:80]}"
         suggested_rubric_check = f"observed_failure:{fp[:60]}"

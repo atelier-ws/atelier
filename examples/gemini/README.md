@@ -10,19 +10,19 @@ make install
 
 ## Config
 
-Configure Gemini CLI to launch `uv run atelier-mcp` and pass `ATELIER_ROOT=.atelier`.
+Configure Gemini CLI to launch `atelier-mcp` and pass `ATELIER_ROOT=.atelier`.
 
 ## Commands
 
 ```bash
-uv run atelier context --task "Repair failed crawl" --domain Agent.crawl
-uv run atelier record-trace --input trace.json
+atelier context --task "Repair failed crawl" --domain Agent.crawl
+atelier record-trace --input trace.json
 ```
 
 ## Benchmark
 
 ```bash
-uv run atelier benchmark export --input .atelier/benchmarks/runtime/latest.json --output benchmark.md --format markdown
+atelier benchmark export --input .atelier/benchmarks/runtime/latest.json --output benchmark.md --format markdown
 ```
 
 ## Troubleshooting

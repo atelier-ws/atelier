@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from atelier.infra.runtime.run_ledger import RunLedger
+
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / "integrations" / "codex" / "hooks"
 
@@ -46,11 +48,91 @@ def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
     assert stats["savings"]["calls_saved"] > 0
 
 
+def test_codex_savings_reporter_emits_no_edit_progress_nudge_once(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    _run_hook(
+        "savings_reporter.py",
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "c1",
+            "tool_name": "mcp__plugin_atelier_atelier__Search",
+            "tool_input": {},
+            "now_ms": 1_000,
+        },
+    )
+
+    first = _run_hook(
+        "savings_reporter.py",
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "c1",
+            "tool_name": "mcp__plugin_atelier_atelier__Search",
+            "tool_input": {},
+            "now_ms": 601_001,
+        },
+    )
+    second = _run_hook(
+        "savings_reporter.py",
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "c1",
+            "tool_name": "mcp__plugin_atelier_atelier__Search",
+            "tool_input": {},
+            "now_ms": 601_002,
+        },
+    )
+
+    first_output = json.loads(first.stdout)
+    second_output = json.loads(second.stdout)
+
+    assert "10 minutes" in first_output["additionalContext"]
+    assert "additionalContext" not in second_output
+
+
+def test_codex_savings_reporter_emits_loop_rescue_nudge(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    root.mkdir()
+    session_id = "loop-run"
+    ledger = RunLedger(session_id=session_id, agent="codex", root=root, task="debug repeated read loop")
+    for index in range(3):
+        ledger.record_tool_call("Search", {"query": "why is this looping"})
+        ledger.record_tool_call("Read", {"path": f"src/module_{index}.py"})
+    ledger.persist(root)
+    (root / "session_state.json").write_text(
+        json.dumps({"active_session_id": session_id, "atelier_root": str(root)}),
+        encoding="utf-8",
+    )
+
+    result = _run_hook(
+        "savings_reporter.py",
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "c1",
+            "tool_name": "mcp__plugin_atelier_atelier__Search",
+            "tool_input": {},
+            "now_ms": 2_000,
+        },
+    )
+
+    output = json.loads(result.stdout)
+    assert "loop detector" in output["additionalContext"].lower()
+    assert "change approach" in output["message"].lower()
+
+
 def test_codex_savings_reporter_ignores_non_atelier_tools(tmp_path: Path) -> None:
     result = _run_hook(
         "savings_reporter.py",
         tmp_path / ".atelier",
-        {"hook_event_name": "PostToolUse", "session_id": "c1", "tool_name": "Read", "tool_input": {}},
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "c1",
+            "tool_name": "Read",
+            "tool_input": {},
+        },
     )
 
     assert result.stdout == ""
@@ -69,6 +151,15 @@ def test_codex_update_notification_outputs_sessionstart_message(tmp_path: Path) 
     output = json.loads(result.stdout)
     assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
     assert "Atelier v1.1.0" in output["message"]
+    assert "Atelier budget optimizer" in output["additionalContext"]
+
+
+def test_codex_update_notification_outputs_optimizer_without_update(tmp_path: Path) -> None:
+    result = _run_hook("update_notification.py", tmp_path / ".atelier", {"hook_event_name": "SessionStart"})
+
+    output = json.loads(result.stdout)
+    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "smallest viable plan" in output["additionalContext"]
 
 
 def test_codex_hooks_manifest_wires_reporter_and_update() -> None:

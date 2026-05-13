@@ -9,7 +9,7 @@
 #   --claude       Only install Claude Code
 #   --codex        Only install Codex
 #   --opencode     Only install opencode
-#   --copilot      Only install VS Code Copilot
+#   --copilot      Only install Copilot
 #   --gemini       Only install Gemini CLI
 #   --dry-run      Pass through to all install scripts
 #   --print-only   Pass through to all install scripts
@@ -17,6 +17,16 @@
 #   --workspace DIR  Install project-local artifacts into DIR instead of global user config
 
 set -euo pipefail
+
+if [[ -t 1 ]]; then
+    C_RESET="$(printf '\033[0m')"
+    C_RED="$(printf '\033[31m')"
+    C_YELLOW="$(printf '\033[33m')"
+else
+    C_RESET=""
+    C_RED=""
+    C_YELLOW=""
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -56,8 +66,69 @@ if ! $EXPLICIT; then
 fi
 
 PASS=()
+WARN=()
 FAIL=()
 SKIP=()
+WARNINGS=()
+ERRORS=()
+
+collect_issues_from_output() {
+    local output="$1"
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            *"] WARN:"*)
+                WARNINGS+=("${line#*WARN: }")
+                ;;
+            *"] ERROR:"*)
+                ERRORS+=("${line#*ERROR: }")
+                ;;
+        esac
+    done <<<"$output"
+}
+
+print_colored_output() {
+    local output="$1"
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            *"] WARN:"*)
+                printf "%s\n" "${line/WARN:/${C_YELLOW}WARN:${C_RESET}}"
+                ;;
+            *"] ERROR:"*)
+                printf "%s\n" "${line/ERROR:/${C_RED}ERROR:${C_RESET}}"
+                ;;
+            *)
+                printf "%s\n" "$line"
+                ;;
+        esac
+    done <<<"$output"
+}
+
+print_issue_group() {
+    local title="$1"
+    local color="$2"
+    shift 2
+    local entries=("$@")
+    local -A counted=()
+    local -A printed=()
+    local entry
+    local count=0
+
+    for entry in "${entries[@]+"${entries[@]}"}"; do
+        [[ -n "$entry" && -z "${counted[$entry]+x}" ]] || continue
+        counted["$entry"]=1
+        count=$((count + 1))
+    done
+
+    [[ $count -gt 0 ]] || return 0
+    printf "%b%s (%d)%b\n" "$color" "$title" "$count" "$C_RESET"
+    for entry in "${entries[@]+"${entries[@]}"}"; do
+        [[ -n "$entry" && -z "${printed[$entry]+x}" ]] || continue
+        printed["$entry"]=1
+        printf "  %b-%b %s\n" "$color" "$C_RESET" "$entry"
+    done
+}
 
 run_installer() {
     local host="$1"
@@ -76,14 +147,17 @@ run_installer() {
     output=$(bash "$script" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" 2>&1)
     local ret=$?
     set -e
-    echo "$output"
+    print_colored_output "$output"
+    collect_issues_from_output "$output"
 
     if echo "$output" | grep -q "=== SKIPPED"; then
         SKIP+=("$host")
-    elif [ $ret -eq 0 ]; then
-        PASS+=("$host")
-    else
+    elif [ $ret -ne 0 ]; then
         FAIL+=("$host")
+    elif echo "$output" | grep -q "] WARN:"; then
+        WARN+=("$host")
+    else
+        PASS+=("$host")
     fi
 }
 
@@ -98,11 +172,30 @@ echo "════════════════════════�
 echo " Atelier Install Summary"
 echo "══════════════════════════════════════════════"
 for h in "${PASS[@]+"${PASS[@]}"}"; do echo "  OK       $h"; done
+for h in "${WARN[@]+"${WARN[@]}"}"; do printf "  %bWARN%b     %s\n" "$C_YELLOW" "$C_RESET" "$h"; done
 for h in "${SKIP[@]+"${SKIP[@]}"}"; do echo "  SKIPPED  $h (CLI not found)"; done
-for h in "${FAIL[@]+"${FAIL[@]}"}"; do echo "  FAILED   $h"; done
+for h in "${FAIL[@]+"${FAIL[@]}"}"; do printf "  %bFAILED%b   %s\n" "$C_RED" "$C_RESET" "$h"; done
 echo ""
-echo "Next: make verify"
+print_issue_group "Host install errors" "$C_RED" "${ERRORS[@]+"${ERRORS[@]}"}"
+print_issue_group "Host install warnings" "$C_YELLOW" "${WARNINGS[@]+"${WARNINGS[@]}"}"
 
-# We exit 0 even if some hosts failed so the main installer can finish its work.
-# The user can see failures in the summary above.
+if [ ${#FAIL[@]} -gt 0 ]; then
+    echo "Some installs failed. Scroll up for the error output from each failed host."
+    echo "Next: fix the errors above, then re-run: make install"
+elif [ ${#WARN[@]} -gt 0 ]; then
+    echo "Host installs completed with warnings. Review the warnings above before continuing."
+    echo "Next: make verify"
+else
+    echo "Next: make verify"
+fi
+
+# Persist host detection results for the Docker service (write-only, no terminal output)
+STATUS_SCRIPT="${SCRIPT_DIR}/status.sh"
+if [ -f "$STATUS_SCRIPT" ]; then
+    bash "$STATUS_SCRIPT" --write 2>/dev/null || true
+fi
+
+if [ ${#FAIL[@]} -gt 0 ]; then
+    exit 1
+fi
 exit 0

@@ -10,6 +10,7 @@ import contextlib
 import difflib
 import inspect
 import json
+import logging
 import os
 import re
 import sys
@@ -23,8 +24,16 @@ from typing import Any, Literal, cast
 
 from pydantic import Field, create_model
 
+from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.environment import (
+    is_dev_mode,
+    mcp_tool_description,
+    mcp_tool_mode,
+    mcp_tool_visible_to_llm,
+    passive_tool_message,
+)
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
 from atelier.core.foundation.plan_checker import check_plan
@@ -37,9 +46,17 @@ from atelier.infra.runtime.run_ledger import RunLedger
 from atelier.infra.storage.factory import make_memory_store
 from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySidecarUnavailable
 
+logger = logging.getLogger(__name__)
+
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "atelier-reasoning"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = atelier_version
+
+
+def _check_dev_mode(tool_name: str) -> str | None:
+    if not is_dev_mode():
+        return passive_tool_message(tool_name)
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -49,8 +66,23 @@ SERVER_VERSION = "0.1.0"
 TOOLS: dict[str, dict[str, Any]] = {}
 
 
+def _tool_description(spec: dict[str, Any]) -> str:
+    return mcp_tool_description(
+        str(spec.get("description", "") or ""),
+        is_dev=bool(spec.get("is_dev")),
+    )
+
+
+def _tool_visible_to_llm(tool_name: str, spec: dict[str, Any]) -> bool:
+    return mcp_tool_visible_to_llm(tool_name, is_dev=bool(spec.get("is_dev")))
+
+
+def _tool_mode(spec: dict[str, Any]) -> str:
+    return mcp_tool_mode(is_dev=bool(spec.get("is_dev")))
+
+
 def mcp_tool(
-    name: str | None = None, description: str | None = None
+    name: str | None = None, description: str | None = None, is_dev: bool = False
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema."""
 
@@ -96,6 +128,7 @@ def mcp_tool(
             "handler": handler_wrapper,
             "description": tool_description,
             "inputSchema": schema,
+            "is_dev": is_dev,
         }
         return handler_wrapper
 
@@ -146,11 +179,11 @@ def _get_ledger() -> RunLedger:
     if _current_ledger is None:
         root = _atelier_root()
         _current_ledger = RunLedger(root=root, agent=_detect_agent())
-        # Publish run_id AND atelier_root to session_state so PostToolUse hooks
+        # Publish session_id AND atelier_root to session_state so PostToolUse hooks
         # can find the right run file regardless of ATELIER_ROOT in their env.
         _write_session_state(
             {
-                "active_run_id": _current_ledger.run_id,
+                "active_session_id": _current_ledger.session_id,
                 "atelier_root": str(root),
             }
         )
@@ -167,7 +200,7 @@ def _get_realtime_context() -> RealtimeContextManager:
 def _get_product_session_id() -> str:
     global _product_session_id
     if _product_session_id is None:
-        from atelier.core.service.telemetry.identity import new_session_id
+        from atelier.core.foundation.identity import new_session_id
 
         _product_session_id = new_session_id()
     return _product_session_id
@@ -179,14 +212,14 @@ def _emit_mcp_session_start() -> None:
         return
     from importlib.metadata import PackageNotFoundError, version
 
-    from atelier.core.service.telemetry import emit_product, init_product_telemetry
-    from atelier.core.service.telemetry.identity import get_anon_id, platform_payload
+    from atelier.core.foundation.identity import get_anon_id, platform_payload
+    from atelier.core.service.telemetry import emit_product
 
     try:
         service_version = version("atelier")
     except PackageNotFoundError:
         service_version = SERVER_VERSION
-    init_product_telemetry(service_version=service_version)
+    # OTel is initialized lazily on first emit_product_log call.
     _product_session_started_at = time.perf_counter()
     emit_product(
         "session_start",
@@ -326,14 +359,15 @@ class _NoOpContextBudgetRecorder:
         """No-op record method."""
         pass
 
-    def aggregate_run(self, run_id: str) -> Any:
+    def aggregate_run(self, session_id: str) -> Any:
         """No-op aggregate method."""
         return {}
 
 
 def _session_state_path() -> Path:
-    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    return Path(workspace) / ".atelier" / "session_state.json"
+    from atelier.core.foundation.paths import resolve_session_state_path
+
+    return resolve_session_state_path()
 
 
 def _read_session_state() -> dict[str, Any]:
@@ -363,7 +397,10 @@ def _write_session_state(updates: dict[str, Any]) -> None:
 
         p.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception:
-        pass
+        logger.warning(
+            "Suppressed exception at mcp_server.py:381",
+            exc_info=True,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -372,7 +409,244 @@ def _write_session_state(updates: dict[str, Any]) -> None:
 
 
 def _atelier_root() -> Path:
-    return Path(os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
+    from atelier.core.foundation.paths import default_store_root
+
+    return Path(os.environ.get("ATELIER_ROOT", str(default_store_root())))
+
+
+# --------------------------------------------------------------------------- #
+# Zero-config background service                                              #
+# --------------------------------------------------------------------------- #
+
+
+def _autostart_servicectl(root: Path) -> None:
+    """Start the background servicectl daemon for *root* if not already running.
+
+    Called once per MCP server session from ``_runtime()``.  Fails silently so
+    it can never break the MCP request/response loop.
+    """
+    import subprocess
+
+    try:
+        pid_path = root / "servicectl" / "servicectl.pid"
+        if pid_path.exists():
+            try:
+                pid = int(pid_path.read_text("utf-8").strip())
+                os.kill(pid, 0)  # raises if process is gone
+                return  # daemon is already running
+            except (ValueError, ProcessLookupError, OSError):
+                pid_path.unlink(missing_ok=True)
+
+        log_path = root / "servicectl" / "servicectl.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            sys.executable,
+            "-m",
+            "atelier.gateway.adapters.cli",
+            "--root",
+            str(root),
+            "servicectl",
+            "run",
+            "--interval-seconds",
+            "60",
+            "--maintenance-interval-seconds",
+            "21600",
+        ]
+        env = os.environ.copy()
+        env["ATELIER_ROOT"] = str(root)
+        with log_path.open("a", encoding="utf-8") as log_fh:
+            proc = subprocess.Popen(
+                command,
+                stdout=log_fh,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+                close_fds=True,
+            )
+        pid_path.write_text(f"{proc.pid}\n", encoding="utf-8")
+    except Exception:
+        logger.warning(
+            "Suppressed exception at mcp_server.py:446",
+            exc_info=True,
+        )
+
+
+def _detect_default_branch(repo: Path) -> str | None:
+    """Detect the remote default branch (main/master) for *repo*."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "remote", "show", "origin"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("HEAD branch:"):
+                branch = stripped.split(":")[-1].strip()
+                if branch:
+                    return branch
+    except Exception:
+        logger.warning(
+            "Suppressed exception at mcp_server.py:468",
+            exc_info=True,
+        )
+    # Fallback: try main then master
+    for candidate in ("main", "master"):
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", f"origin/{candidate}"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return candidate
+        except Exception:
+            continue
+    return None
+
+
+_log = logging.getLogger("atelier.mcp")
+
+
+def _check_auto_update() -> None:
+    """Check git remote for a newer version and auto-update if found.
+
+    Compares the version in the remote repo's ``pyproject.toml`` against the
+    currently installed version.  If they differ, pulls the repo and runs
+    the install script.  Logs errors and emits telemetry on failure but
+    never blocks the MCP server.
+
+    Disabled by setting ``ATELIER_NO_AUTO_UPDATE=1`` in the environment.
+    """
+    import re
+    import subprocess
+
+    if os.environ.get("ATELIER_NO_AUTO_UPDATE") == "1":
+        _log.info("auto-update disabled via ATELIER_NO_AUTO_UPDATE=1")
+        return
+
+    _log.info("checking for auto-update...")
+
+    try:
+        # Determine the repo directory
+        install_dir = os.environ.get("ATELIER_INSTALL_DIR", "")
+        if install_dir:
+            repo = Path(install_dir)
+            _log.debug("repo from ATELIER_INSTALL_DIR: %s", repo)
+        else:
+            repo = Path(__file__).resolve().parents[4]
+            _log.debug("repo from file path: %s", repo)
+
+        if not (repo / ".git").exists():
+            _log.debug("not a git checkout — skipping auto-update")
+            return  # Not a git checkout, nothing to auto-update
+
+        # Fetch latest remote info
+        _log.info("fetching latest remote refs from origin...")
+        result = subprocess.run(
+            ["git", "fetch", "--tags", "--prune", "origin"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            _log.warning("git fetch exited %d: %s", result.returncode, result.stderr.strip())
+            return
+
+        default_branch = _detect_default_branch(repo)
+        if default_branch is None:
+            _log.warning("could not detect default remote branch")
+            return
+
+        # Read remote version from pyproject.toml
+        result = subprocess.run(
+            ["git", "show", f"origin/{default_branch}:pyproject.toml"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            _log.warning(
+                "could not read remote pyproject.toml (exit %d): %s",
+                result.returncode,
+                result.stderr.strip(),
+            )
+            return
+
+        match = re.search(r'^version\s*=\s*"([^"]+)"', result.stdout, re.MULTILINE)
+        if not match:
+            _log.warning("could not parse version from remote pyproject.toml")
+            return
+
+        remote_version = match.group(1)
+        _log.info("current=%s  remote=%s", atelier_version, remote_version)
+
+        if remote_version == atelier_version:
+            _log.info("already up-to-date")
+            return
+
+        # Newer (or different) version detected — pull and reinstall
+        _log.info("version changed — pulling %s/%s ...", default_branch, default_branch)
+        subprocess.run(
+            ["git", "pull", "--ff-only", "origin", default_branch],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+
+        install_script = repo / "scripts" / "install.sh"
+        if install_script.exists():
+            _log.info("running install script...")
+            subprocess.run(
+                ["bash", str(install_script), "--local"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=True,
+            )
+            _log.info("auto-update complete")
+        else:
+            _log.warning("install script not found at %s", install_script)
+    except Exception:
+        _log.exception("auto-update failed")
+        with contextlib.suppress(Exception):
+            from atelier.core.service.telemetry import emit_product
+
+            emit_product(
+                "mcp_auto_update_failed",
+                current_version=atelier_version,
+                session_id=_get_product_session_id(),
+            )
+
+
+def _run_worker_tick_safe(root: Path) -> None:
+    """Process up to 20 pending jobs for *root*.  Run in a daemon thread."""
+    try:
+        from atelier.core.service.worker import Worker
+        from atelier.infra.storage.factory import create_store
+
+        store = create_store(root)
+        store.init()
+        worker = Worker(store=store)
+        for _ in range(20):
+            if worker.run_once() is None:
+                break
+    except Exception:
+        logger.warning(
+            "Suppressed exception at mcp_server.py:618",
+            exc_info=True,
+        )
 
 
 _runtime_cache: ReasoningRuntime | None = None
@@ -423,28 +697,37 @@ def _write_smart_state(state: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception:
-        pass
+        logger.warning(
+            "Suppressed exception at mcp_server.py:669",
+            exc_info=True,
+        )
+
+
+def _coerce_saved_tokens(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return int(max(0.0, value))
+    if isinstance(value, dict):
+        return sum(
+            int(max(0.0, float(item_value)))
+            for item_value in value.values()
+            if isinstance(item_value, (int, float)) and not isinstance(item_value, bool)
+        )
+    return 0
+
+
+def _extract_compact_output_tokens_saved(result: dict[str, Any]) -> int:
+    return _coerce_saved_tokens(result.get("tokens_saved_vs_naive"))
 
 
 def _extract_tokens_saved(result: dict[str, Any]) -> int:
-    total = 0
-    for key in ("tokens_saved", "tokens_saved_vs_naive"):
-        value = result.get(key)
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, int):
-            total += max(0, value)
-            continue
-        if isinstance(value, float):
-            total += int(max(0.0, value))
-            continue
-        if isinstance(value, dict):
-            total += sum(
-                int(max(0.0, float(item_value)))
-                for item_value in value.values()
-                if isinstance(item_value, (int, float)) and not isinstance(item_value, bool)
-            )
-    return total
+    direct = _coerce_saved_tokens(result.get("tokens_saved"))
+    if direct > 0:
+        return direct
+    return _extract_compact_output_tokens_saved(result)
 
 
 def _record_smart_state_savings(tokens_saved: int, calls_avoided: int) -> None:
@@ -493,7 +776,7 @@ def _workspace_path(file_path: str) -> Path:
     return Path(workspace) / p
 
 
-@mcp_tool(name="reasoning")
+@mcp_tool(name="reasoning", is_dev=True)
 def tool_get_reasoning_context(
     task: str,
     domain: str | None = None,
@@ -505,11 +788,13 @@ def tool_get_reasoning_context(
     dedup: bool = True,
     include_telemetry: bool = False,
     include_run_ledger: bool = False,
-    include_environment: bool = False,
     agent_id: str | None = None,
     recall: bool = True,
 ) -> dict[str, Any]:
-    """Retrieve relevant ReasonBlocks for a task and render them as injection context."""
+    """[DEV] Retrieve relevant ReasonBlocks for a task and render them as injection context."""
+    if stub := _check_dev_mode("reasoning"):
+        return {"context": stub}
+
     if errors is None:
         errors = []
     if tools is None:
@@ -536,7 +821,6 @@ def tool_get_reasoning_context(
             "dedup": dedup,
             "include_telemetry": include_telemetry,
             "include_run_ledger": include_run_ledger,
-            "include_environment": include_environment,
             "agent_id": agent_id,
             "recall": recall,
         },
@@ -571,20 +855,10 @@ def tool_get_reasoning_context(
     result = payload if isinstance(payload, dict) else {"context": payload}
     if include_run_ledger:
         result["run_ledger"] = led.snapshot()
-    if include_environment:
-        result["environment"] = {
-            "agent": led.agent,
-            "atelier_root": str(_atelier_root()),
-            "workspace_root": os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
-            "cwd": os.getcwd(),
-            "run_id": led.run_id,
-            "domain": led.domain,
-            "environment_id": led.environment.id if led.environment else None,
-        }
     return result
 
 
-@mcp_tool(name="lint")
+@mcp_tool(name="lint", is_dev=True)
 def tool_check_plan(
     task: str,
     plan: list[str],
@@ -593,7 +867,10 @@ def tool_check_plan(
     tools: list[str] | None = None,
     errors: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Validate a proposed agent plan against ReasonBlocks. Returns status pass|warn|blocked."""
+    """[DEV] Validate a proposed agent plan against ReasonBlocks. Returns status pass|warn|blocked."""
+    if stub := _check_dev_mode("lint"):
+        return {"status": "pass", "warnings": [], "message": stub}
+
     if errors is None:
         errors = []
     if tools is None:
@@ -641,7 +918,7 @@ def tool_check_plan(
     return to_jsonable(result)
 
 
-@mcp_tool(name="route")
+@mcp_tool(name="route", is_dev=True)
 def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
@@ -673,7 +950,17 @@ def tool_route(
     human_accepted: bool | None = None,
     benchmark_accepted: bool | None = None,
 ) -> dict[str, Any]:
-    """Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
+    """[DEV] Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
+    if stub := _check_dev_mode("route"):
+        return {
+            "id": "dev-mode-stub",
+            "task_type": task_type,
+            "step_type": step_type,
+            "risk_level": risk_level,
+            "action": "proceed",
+            "rationale": stub,
+        }
+
     rt = _runtime()
     led = _get_ledger()
 
@@ -710,7 +997,7 @@ def tool_route(
             domain=domain,
             step_type=step_type,
             step_index=step_index,
-            run_id=led.run_id,
+            session_id=led.session_id,
             evidence_summary=evidence_summary,
             ledger=led,
         )
@@ -735,7 +1022,7 @@ def tool_route(
     )
     envelope = rt.core_runtime.quality_router.verify(
         route_decision_id=route_decision_id,
-        run_id=led.run_id,
+        session_id=led.session_id,
         changed_files=changed_files,
         validation_results=validation_results,
         rubric_status=rubric_status,
@@ -749,7 +1036,7 @@ def tool_route(
     return to_jsonable(envelope)
 
 
-@mcp_tool(name="rescue")
+@mcp_tool(name="rescue", is_dev=True)
 def tool_rescue_failure(
     task: str,
     error: str,
@@ -757,7 +1044,16 @@ def tool_rescue_failure(
     files: list[str] | None = None,
     recent_actions: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Suggest a rescue procedure for a repeated failure."""
+    """[DEV] Suggest a rescue procedure for a repeated failure."""
+    if stub := _check_dev_mode("rescue"):
+        return {
+            "cluster_id": "dev-mode-stub",
+            "domain": domain or "unknown",
+            "rescue_type": "none",
+            "procedure": [],
+            "rationale": stub,
+        }
+
     if recent_actions is None:
         recent_actions = []
     if files is None:
@@ -839,7 +1135,7 @@ def tool_record_trace(
     response: str | None = None,
     bash_outputs: list[Any] | None = None,
     tool_outputs: list[Any] | None = None,
-    run_id: str | None = None,
+    session_id: str | None = None,
     trace_confidence: str | None = None,
     capture_sources: list[str] | None = None,
     missing_surfaces: list[str] | None = None,
@@ -942,20 +1238,22 @@ def tool_record_trace(
             normalized.append({"name": text, "passed": passed, "detail": ""})
         return normalized
 
-    # Derive host label from agent string
+    # Derive host label from agent string and environment
     def _derive_host(a: str) -> str:
         al = a.lower()
-        if "gemini" in al:
+        if "gemini" in al or os.environ.get("GEMINI_CLI"):
             return "gemini"
-        if "copilot" in al:
+        if "copilot" in al or os.environ.get("COPILOT_CLI"):
             return "copilot"
-        if "codex" in al:
+        if "codex" in al or os.environ.get("CODEX_CLI"):
             return "codex"
-        if "opencode" in al:
+        if "opencode" in al or os.environ.get("OPENCODE_CLI"):
             return "opencode"
-        if al.startswith("atelier:") or "claude" in al:
+        if "claude" in al or os.environ.get("CLAUDE_CODE"):
             return "claude"
-        return al
+
+        # Default to the agent name if no known host environment is detected
+        return "atelier" if al.startswith("atelier:") else al
 
     # Validate: full_live requires capture_sources to include hooks/live
     _VALID_CONFIDENCE = {"full_live", "mcp_live", "wrapper_live", "imported", "manual"}
@@ -980,7 +1278,7 @@ def tool_record_trace(
         "errors_seen": redact_list([str(v) for v in errors_seen]),
         "diff_summary": redact(diff_summary),
         "output_summary": redact(output_summary),
-        "run_id": run_id or led.run_id,
+        "session_id": session_id or led.session_id,
         "host": _derive_host(agent),
         "trace_confidence": trace_confidence,
         "capture_sources": capture_sources,
@@ -1060,17 +1358,36 @@ def tool_record_trace(
     from atelier.gateway.integrations.langfuse import emit_trace as _lf_emit
 
     _lf_emit(payload)
+
+    # Kick off an immediate background consolidation tick so knowledge blocks
+    # are extracted from this trace without waiting for the daemon's next cycle.
+    import threading
+
+    threading.Thread(
+        target=_run_worker_tick_safe,
+        args=(_atelier_root(),),
+        daemon=True,
+    ).start()
+
     return {
         "id": trace.id,
-        "run_id": led.run_id,
+        "session_id": led.session_id,
         "event_recorded": bool(event_type),
         "realtime_context": rtc.snapshot(),
     }
 
 
-@mcp_tool(name="verify")
+@mcp_tool(name="verify", is_dev=True)
 def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
-    """Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
+    """[DEV] Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
+    if stub := _check_dev_mode("verify"):
+        return {
+            "rubric_id": rubric_id,
+            "status": "pass",
+            "results": {},
+            "summary": stub,
+        }
+
     rt = _runtime()
     led = _get_ledger()
     led.record_tool_call("run_rubric_gate", {"rubric_id": rubric_id, "checks": checks})
@@ -1087,7 +1404,7 @@ def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
     return to_jsonable(result)
 
 
-def _compress_context(run_id: str | None = None) -> Any:
+def _compress_context(session_id: str | None = None) -> Any:
     """Compress the current ledger state into a compact prompt block for context continuation."""
     from atelier.infra.runtime.context_compressor import ContextCompressor
 
@@ -1095,7 +1412,6 @@ def _compress_context(run_id: str | None = None) -> Any:
     rtc = _get_realtime_context()
     state = ContextCompressor().compress(led)
     return {
-        "environment_id": state.environment_id,
         "preserved": {
             "latest_error": state.error_fingerprints[-1] if state.error_fingerprints else None,
             "active_rubrics": led.active_rubrics,
@@ -1224,7 +1540,7 @@ def _memory_recall(
     }
 
 
-@mcp_tool(name="memory")
+@mcp_tool(name="memory", is_dev=True)
 def tool_memory(
     op: Literal["block_upsert", "block_get", "archive", "recall", "transcript_recall", "summarize"],
     agent_id: str | None = None,
@@ -1244,9 +1560,11 @@ def tool_memory(
     query: str | None = None,
     top_k: int = 5,
     since: str | None = None,
-    run_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Memory op-dispatch: block_upsert, block_get, archive, recall, transcript_recall, or summarize."""
+    """[DEV] Memory op-dispatch: block_upsert, block_get, archive, recall, transcript_recall, or summarize."""
+    if stub := _check_dev_mode("memory"):
+        return {"context": stub, "passages": [], "text": stub}
 
     def require(name: str, current: str | None) -> str:
         if not current:
@@ -1288,10 +1606,10 @@ def tool_memory(
         from atelier.core.capabilities.local_recall import recall_transcripts
 
         return recall_transcripts(query=require("query", query), top_k=top_k)
-    return _memory_summary(require("run_id", run_id))
+    return _memory_summary(require("session_id", session_id))
 
 
-@mcp_tool(name="read")
+@mcp_tool(name="read", is_dev=True)
 def tool_smart_read(
     path: str | None = None,
     file_path: str | None = None,
@@ -1375,7 +1693,7 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
-@mcp_tool(name="edit")
+@mcp_tool(name="edit", is_dev=True)
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
@@ -1416,7 +1734,7 @@ def tool_smart_edit(
     return result
 
 
-@mcp_tool(name="sql")
+@mcp_tool(name="sql", is_dev=True)
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
@@ -1451,7 +1769,7 @@ def tool_sql(
     )
 
 
-def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
+def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
     """Advise when to compact and what context to preserve.
 
     Returns a manifest with:
@@ -1459,8 +1777,8 @@ def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
     """
     try:
         led = _get_ledger()
-        if run_id:
-            led.run_id = run_id
+        if session_id:
+            led.session_id = session_id
 
         # Estimate tokens used: token_count from ledger + events
         tokens_used = led.token_count
@@ -1486,7 +1804,10 @@ def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
             pinned = store.list_pinned_blocks(agent_id=agent_id)
             pin_memory = [b.id for b in pinned][:5]
         except Exception:
-            pass  # Fail-open
+            logger.warning(
+                "Suppressed exception at mcp_server.py:1773",
+                exc_info=True,
+            )
 
         # Collect open_files: last 5 files touched
         open_files = led.files_touched[-5:] if led.files_touched else []
@@ -1501,12 +1822,12 @@ def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
         # Persist manifest to disk
         try:
             root = _atelier_root()
-            run_dir = root / "runs" / led.run_id
+            run_dir = root / "runs" / led.session_id
             run_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = run_dir / "compact_manifest.json"
             manifest = {
                 "created_at": datetime.now(UTC).isoformat(),
-                "run_id": led.run_id,
+                "session_id": led.session_id,
                 "should_compact": should_compact,
                 "utilisation_pct": utilisation_pct,
                 "preserve_blocks": preserve_blocks,
@@ -1516,7 +1837,10 @@ def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
             }
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         except Exception:
-            pass  # Fail-open: don't block the tool if persistence fails
+            logger.warning(
+                "Suppressed exception at mcp_server.py:1803",
+                exc_info=True,
+            )
 
         return {
             "should_compact": should_compact,
@@ -1538,11 +1862,11 @@ def _compact_advise(run_id: str | None = None) -> dict[str, Any]:
         }
 
 
-def _memory_summary(run_id: str) -> dict[str, Any]:
+def _memory_summary(session_id: str) -> dict[str, Any]:
     """Run the sleeptime summarizer for a given run and return a summary.
 
     Input:
-        run_id: The run identifier to summarize.
+        session_id: The run identifier to summarize.
 
     Output:
         tokens_pre, tokens_post, summary_md, evicted_event_ids,
@@ -1554,13 +1878,13 @@ def _memory_summary(run_id: str) -> dict[str, Any]:
         )
 
         led = _get_ledger()
-        if run_id:
-            led.run_id = run_id
+        if session_id:
+            led.session_id = session_id
 
         cap = ContextCompressionCapability()
         result = cap.compress_with_sleeptime(led)
 
-        summary_lines = [f"## Sleeptime Summary — run `{led.run_id}`", ""]
+        summary_lines = [f"## Sleeptime Summary — run `{led.session_id}`", ""]
         summary_lines.append(f"- Tokens before: {result.chars_before // 4}")
         summary_lines.append(f"- Tokens after:  {result.chars_after // 4}")
         summary_lines.append(f"- Reduction:     {result.reduction_pct}%")
@@ -1582,7 +1906,138 @@ def _memory_summary(run_id: str) -> dict[str, Any]:
         return {"error": str(exc)}
 
 
-@mcp_tool(name="search")
+def _code_context_engine(repo_root: str = ".") -> Any:
+    from atelier.core.capabilities.code_context import CodeContextEngine
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    root = Path(repo_root)
+    resolved = root if root.is_absolute() else Path(workspace) / root
+    return CodeContextEngine(resolved)
+
+
+@mcp_tool(name="atelier_code_index", is_dev=True)
+def tool_atelier_code_index(
+    repo_root: str = ".",
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Index a repository/folder into Atelier's SQLite FTS5 symbol store."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root)
+        .index_repo(include_globs=include_globs, exclude_globs=exclude_globs)
+        .model_dump(mode="json"),
+    )
+
+
+@mcp_tool(name="atelier_code_search", is_dev=True)
+def tool_atelier_code_search(
+    query: str,
+    repo_root: str = ".",
+    limit: int = 20,
+    kind: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """BM25/FTS symbol search over the Atelier code index."""
+    results = _code_context_engine(repo_root).search_symbols(
+        query,
+        limit=limit,
+        kind=kind,
+        language=language,
+    )
+    return {"items": [item.model_dump(mode="json") for item in results]}
+
+
+@mcp_tool(name="atelier_code_symbol", is_dev=True)
+def tool_atelier_code_symbol(
+    repo_root: str = ".",
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    file_path: str | None = None,
+) -> dict[str, Any]:
+    """Retrieve exact symbol source by byte offsets."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root).get_symbol(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+        ),
+    )
+
+
+@mcp_tool(name="atelier_code_outline", is_dev=True)
+def tool_atelier_code_outline(
+    repo_root: str = ".",
+    file_path: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Return compact file/repo outline from the code index."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root).file_outline(file_path=file_path, limit=limit),
+    )
+
+
+def _run_shell_tool(
+    command: str,
+    timeout: int = 30,
+    cwd: str | None = None,
+    max_lines: int = 200,
+) -> dict[str, Any]:
+    """Execute a shell command and return compact structured output."""
+    from atelier.core.capabilities.tool_supervision.bash_exec import run_command
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    result = run_command(
+        command,
+        cwd=cwd or workspace,
+        timeout=timeout,
+        max_lines=max_lines,
+    )
+    return {
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "exit_code": result.exit_code,
+        "duration_ms": result.duration_ms,
+        "truncated": result.truncated,
+        "lines_omitted": result.lines_omitted,
+    }
+
+
+@mcp_tool(name="atelier_code_context", is_dev=True)
+def tool_atelier_code_context(
+    task: str,
+    repo_root: str = ".",
+    seed_files: list[str] | None = None,
+    budget_tokens: int = 4000,
+    max_symbols: int = 8,
+) -> dict[str, Any]:
+    """Build a task-specific token-budgeted context bundle."""
+    return cast(
+        dict[str, Any],
+        _code_context_engine(repo_root)
+        .context_pack(
+            task=task,
+            seed_files=seed_files,
+            budget_tokens=budget_tokens,
+            max_symbols=max_symbols,
+        )
+        .model_dump(mode="json"),
+    )
+
+
+@mcp_tool(name="atelier_code_impact", is_dev=True)
+def tool_atelier_code_impact(repo_root: str = ".", file_path: str = "") -> dict[str, Any]:
+    """Return importers, blast radius, tests, and approximate dead-code candidates."""
+    if not file_path:
+        raise ValueError("file_path is required")
+    return cast(dict[str, Any], _code_context_engine(repo_root).impact(file_path).model_dump(mode="json"))
+
+
+@mcp_tool(name="search", is_dev=True)
 def tool_smart_search(
     query: str | None = None,
     path: str = ".",
@@ -1611,7 +2066,7 @@ def tool_smart_search(
     """Smart search/read with ranking plus a native glob/regex media-aware mode.
 
     Pass ``query`` for query-driven search; pass ``seed_files`` with ``mode="map"``
-    for repo-map mode (replaces the former atelier_repo_map tool).
+    for repo-map mode.
     """
     if (
         content_regex is not None
@@ -1678,16 +2133,19 @@ def _compact_tool_output(
     return result.model_dump(mode="json")
 
 
-@mcp_tool(name="compact")
+@mcp_tool(name="compact", is_dev=True)
 def tool_compact(
     op: Literal["output", "session", "advise"],
     content: str = "",
     content_type: str = "unknown",
     budget_tokens: int = 500,
     recovery_hint: str | None = None,
-    run_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Compact op-dispatch: output, session, or advise."""
+    """[DEV] Compact op-dispatch: output, session, or advise."""
+    if stub := _check_dev_mode("compact"):
+        return {"prompt_block": stub, "output": stub, "advice": stub}
+
     if op == "output":
         return _compact_tool_output(
             content=content,
@@ -1696,8 +2154,8 @@ def tool_compact(
             recovery_hint=recovery_hint,
         )
     if op == "session":
-        return cast(dict[str, Any], _compress_context(run_id=run_id))
-    return _compact_advise(run_id=run_id)
+        return cast(dict[str, Any], _compress_context(session_id=session_id))
+    return _compact_advise(session_id=session_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -1714,6 +2172,18 @@ _REMOTE_TOOLS = frozenset(
         "verify",
     }
 )
+
+
+@mcp_tool(name="shell", is_dev=True)
+def tool_shell(
+    command: str,
+    timeout: int = 30,
+    cwd: str | None = None,
+    max_lines: int = 200,
+) -> dict[str, Any]:
+    """Execute a shell command. Output is ANSI-stripped and line-truncated for token efficiency."""
+    return _run_shell_tool(command, timeout=timeout, cwd=cwd, max_lines=max_lines)
+
 
 _remote_client: Any = None
 
@@ -1777,6 +2247,38 @@ def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
     )
 
 
+def _classify_read_savings(
+    tool_name: str,
+    args: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    tokens_saved: int,
+    default_lever: str,
+) -> tuple[str, dict[str, Any]]:
+    lowered = tool_name.strip().lower().replace("-", "_").replace(" ", "_")
+    if lowered not in {"read", "smart_read"}:
+        return default_lever, {}
+
+    mode = str(result.get("mode") or "").strip().lower()
+    if mode == "outline" and tokens_saved > 0:
+        classified = "structure_map"
+    elif mode == "range" and tokens_saved > 0:
+        classified = "delta_read"
+    else:
+        classified = default_lever
+
+    path = result.get("path") or args.get("file_path") or args.get("path")
+    metadata: dict[str, Any] = {"read_mode": mode or "full"}
+    if isinstance(path, str) and path:
+        metadata["path"] = path
+    range_spec = result.get("range") or args.get("range")
+    if isinstance(range_spec, str) and range_spec:
+        metadata["range"] = range_spec
+    if "cache_hit" in result:
+        metadata["cache_hit"] = bool(result.get("cache_hit"))
+    return classified, metadata
+
+
 def _record_context_budget_for_tool(
     tool_name: str, args: dict[str, Any], led: RunLedger, result: dict[str, Any]
 ) -> None:
@@ -1800,58 +2302,92 @@ def _record_context_budget_for_tool(
             + int(live_savings.get("cache_read_tokens_saved", 0) or 0)
             + int(live_savings.get("cache_write_tokens_saved", 0) or 0)
         )
+        compact_tool_tokens_saved = _extract_compact_output_tokens_saved(result)
         tool_tokens_saved = _extract_tokens_saved(result)
-        tokens_saved = live_tokens_saved + tool_tokens_saved
+        # Prefer a tool-reported saved-vs-naive token delta when present.
+        # The live estimator already captures avoided round trips and time; adding
+        # both together inflates event-level token savings for the same tool run.
+        tokens_saved = tool_tokens_saved if tool_tokens_saved > 0 else live_tokens_saved
         calls_avoided = int(live_savings.get("calls_saved", 0) or 0)
-        lever = _lever_for_tool(tool_name)
+        base_lever = _lever_for_tool(tool_name)
+        lever, savings_metadata = _classify_read_savings(
+            tool_name,
+            args if isinstance(args, dict) else {},
+            result,
+            tokens_saved=tokens_saved,
+            default_lever=base_lever,
+        )
 
         # Extract lever_savings from result if present, otherwise use empty dict
-        lever_savings = result.get("tokens_saved", {})
-        if not isinstance(lever_savings, dict):
-            lever_savings = {tool_name: tokens_saved} if tokens_saved > 0 else {}
-        if tokens_saved > 0:
-            lever_savings[lever] = int(lever_savings.get(lever, 0) or 0) + tokens_saved
+        raw_lever_savings = result.get("tokens_saved")
+        lever_savings = raw_lever_savings.copy() if isinstance(raw_lever_savings, dict) else {}
+        if compact_tool_tokens_saved > 0 and not lever_savings:
+            lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
+        elif tokens_saved > 0:
+            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
+                lever_savings[tool_name] = tokens_saved
+            lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
+        if tool_name:
+            lever_savings.setdefault(f"tool:{tool_name}", 0)
 
         _record_smart_state_savings(tokens_saved=tokens_saved, calls_avoided=calls_avoided)
         if calls_avoided > 0 or tokens_saved > 0:
-            _append_live_savings_event(
-                {
-                    "at": datetime.now(UTC).isoformat(),
-                    "run_id": led.run_id,
-                    "agent": led.agent or _detect_agent(),
-                    "tool_name": tool_name,
-                    "lever": lever,
-                    "equivalent_baseline_calls": equivalent,
-                    "calls_saved": calls_avoided,
-                    "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
-                    "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
-                    "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
-                    "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                    "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
-                    "tool_tokens_saved": tool_tokens_saved,
-                    "tokens_saved": tokens_saved,
-                    "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
-                    "model": model,
-                }
-            )
+            event = {
+                "at": datetime.now(UTC).isoformat(),
+                "session_id": led.session_id,
+                "agent": led.agent or _detect_agent(),
+                "tool_name": tool_name,
+                "lever": lever,
+                "equivalent_baseline_calls": equivalent,
+                "calls_saved": calls_avoided,
+                "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
+                "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
+                "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
+                "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
+                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                "live_tokens_saved": live_tokens_saved,
+                "tool_tokens_saved": tool_tokens_saved,
+                "tokens_saved": tokens_saved,
+                "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
+                "model": model,
+            }
+            if savings_metadata:
+                event.update(savings_metadata)
+            _append_live_savings_event(event)
 
         # Record the tool execution metrics
-        actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
-        recorder.record(
-            run_id=led.run_id,
-            turn_index=max(0, len(led.events) - 1),
-            model=model,
-            input_tokens=0,
-            cache_read_tokens=0,
-            cache_write_tokens=0,
-            output_tokens=actual_output_tokens,
-            naive_input_tokens=actual_output_tokens + tokens_saved,
-            lever_savings=lever_savings,
-            tool_calls=1,
-        )
+        actual_output_tokens = int(result.get("total_tokens", 0) or 0)
+        if actual_output_tokens <= 0:
+            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+
+        if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
+            recorder.record_compact_tool_output(
+                session_id=led.session_id,
+                turn_index=max(0, len(led.events) - 1),
+                model=model,
+                method=lever,
+                tokens_in=actual_output_tokens + compact_tool_tokens_saved,
+                tokens_out=actual_output_tokens,
+            )
+        else:
+            recorder.record(
+                session_id=led.session_id,
+                turn_index=max(0, len(led.events) - 1),
+                model=model,
+                input_tokens=0,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+                output_tokens=actual_output_tokens,
+                naive_input_tokens=actual_output_tokens + tokens_saved,
+                lever_savings=lever_savings,
+                tool_calls=1,
+            )
     except Exception:
         # Silently fail if context budget recording is not available
-        pass
+        logger.warning(
+            "Suppressed exception at mcp_server.py:2231",
+            exc_info=True,
+        )
 
 
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
@@ -1875,10 +2411,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         tools = [
             {
                 "name": n,
-                "description": s.get("description", ""),
+                "description": _tool_description(s),
                 "inputSchema": s.get("inputSchema", {}),
             }
             for n, s in TOOLS.items()
+            if _tool_visible_to_llm(n, s)
         ]
         return _ok(rid, {"tools": tools})
 
@@ -1993,9 +2530,14 @@ def serve() -> None:
                 sys.stdout.flush()
     finally:
         _emit_mcp_session_end()
+        from atelier.core.service.telemetry import shutdown_otel
+
+        shutdown_otel()
 
 
 def main() -> None:
+    import threading
+
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:
         print(f"atelier-mcp {SERVER_VERSION}")
@@ -2004,6 +2546,10 @@ def main() -> None:
         i = argv.index("--root")
         if i + 1 < len(argv):
             os.environ["ATELIER_ROOT"] = argv[i + 1]
+    # Kick off background daemons immediately at server start, before any
+    # tool call arrives.  Runs in daemon threads so they never block serve().
+    threading.Thread(target=_autostart_servicectl, args=(_atelier_root(),), daemon=True).start()
+    threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
 
 

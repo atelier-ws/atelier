@@ -19,6 +19,8 @@ import sys
 import time
 from pathlib import Path
 
+from atelier.core.environment import is_dev_mode
+
 RISKY_PATTERNS = [
     re.compile(p)
     for p in (
@@ -40,8 +42,12 @@ def _is_risky(path: str) -> bool:
 
 
 def _state_path() -> Path:
+    import hashlib
+
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    return Path(workspace) / ".atelier" / "session_state.json"
+    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
+    return root / "workspaces" / h / "session_state.json"
 
 
 def _recent_plan_check_ok() -> bool:
@@ -63,6 +69,10 @@ def main() -> int:
         payload = json.loads(sys.stdin.read() or "{}")
     except Exception:
         return 0  # fail-open: never break the agent on hook parse error
+
+    if not is_dev_mode():
+        print(json.dumps({"decision": "allow"}))
+        return 0
 
     tool_input = payload.get("tool_input", {}) or {}
     target = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""

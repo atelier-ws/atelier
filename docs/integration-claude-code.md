@@ -77,7 +77,7 @@ Save as `.claude/hooks.json` (or whatever your Claude Code version expects):
     "command": "bash",
     "args": [
       "-c",
-      "echo '$&#123;SESSION_SUMMARY_JSON&#125;' | uv run atelier record-trace"
+      "echo '$&#123;SESSION_SUMMARY_JSON&#125;' | atelier record-trace"
     ],
     "cwd": "/abs/path/to/repo/atelier"
   &#125;

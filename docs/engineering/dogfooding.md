@@ -11,7 +11,7 @@ Atelier is dogfooded against itself and against the packaged generic baseline. T
 **Test:**
 
 ```bash
-uv run atelier check-plan \
+atelier check-plan \
   --task "Apply a live state change" \
   --domain state.change \
   --step "Resolve target from URL slug alone" \
@@ -36,7 +36,7 @@ uv run atelier check-plan \
 **Test:**
 
 ```bash
-uv run atelier check-plan \
+atelier check-plan \
   --task "Apply a live state change" \
   --domain state.change \
   --step "Resolve and record the canonical identifier" \
@@ -60,7 +60,7 @@ echo '&#123;
   "observed_state_matches_intent": true,
   "rollback_plan_available": true,
   "user_visible_surface_checked": true
-&#125;' | uv run atelier run-rubric rubric_state_change_safety --json
+&#125;' | atelier run-rubric rubric_state_change_safety --json
 ```
 
 **Expected:** `&#123;"status": "pass"&#125;`
@@ -73,7 +73,7 @@ echo '&#123;
 echo '&#123;
   "canonical_identifier_used": true,
   "pre_change_state_captured": false
-&#125;' | uv run atelier run-rubric rubric_state_change_safety --json
+&#125;' | atelier run-rubric rubric_state_change_safety --json
 ```
 
 **Expected:** `&#123;"status": "blocked", "failed_checks": ["pre_change_state_captured", ...]&#125;`
@@ -90,7 +90,7 @@ echo '&#123;
   "errors_seen": [],
   "diff_summary": "Applied change using canonical identifier",
   "output_summary": "Read-after-write verification passed"
-&#125;' | uv run atelier record-trace --json
+&#125;' | atelier record-trace --json
 ```
 
 **Expected:** `&#123;"id": "trace_<hash>"&#125;` with exit 0.
@@ -98,8 +98,8 @@ echo '&#123;
 ### Scenario 6: Extract Block from Trace
 
 ```bash
-TRACE_ID=$(uv run atelier trace list --json | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])")
-uv run atelier extract-block "$TRACE_ID" --json
+TRACE_ID=$(atelier trace list --json | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])")
+atelier extract-block "$TRACE_ID" --json
 ```
 
 **Expected:** A candidate block with `confidence > 0` and `reasons` list.
@@ -109,7 +109,7 @@ uv run atelier extract-block "$TRACE_ID" --json
 **Task:** failing pytest loop, same signature repeated.
 
 ```bash
-uv run atelier rescue \
+atelier rescue \
   --task "Fix repeated pytest failure" \
   --error "AssertionError: expected 200 got 500" \
   --domain "debugging" \
@@ -140,8 +140,8 @@ LOCAL=1 uv run python -m pytest tests/test_swe_benchmark_harness.py -q
 ### Scenario 10: Pack Install + Benchmark
 
 ```bash
-uv run atelier --root .atelier pack install src/atelier/packs/official/atelier-pack-coding-general --json
-uv run atelier --root .atelier benchmark-packs --json
+atelier --root .atelier pack install src/atelier/packs/official/atelier-pack-coding-general --json
+atelier --root .atelier benchmark-packs --json
 ```
 
 **Expected:** install succeeds and benchmark reports baseline vs host+core vs host+core+pack metrics.

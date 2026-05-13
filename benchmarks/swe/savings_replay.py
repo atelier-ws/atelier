@@ -63,7 +63,7 @@ class ReplayPromptResult:
 
 @dataclass
 class ReplayResult:
-    run_id: str
+    session_id: str
     n_prompts: int
     median_input_tokens_baseline: int
     median_input_tokens_optimized: int
@@ -73,7 +73,7 @@ class ReplayResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "run_id": self.run_id,
+            "session_id": self.session_id,
             "n_prompts": self.n_prompts,
             "median_input_tokens_baseline": self.median_input_tokens_baseline,
             "median_input_tokens_optimized": self.median_input_tokens_optimized,
@@ -154,7 +154,7 @@ class PairedCommandPromptResult:
 
 @dataclass
 class PairedCommandBenchmarkResult:
-    run_id: str
+    session_id: str
     model: str
     n_prompts: int
     total_tokens_baseline: int
@@ -187,7 +187,7 @@ class PairedCommandBenchmarkResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "run_id": self.run_id,
+            "session_id": self.session_id,
             "model": self.model,
             "n_prompts": self.n_prompts,
             "total_tokens_baseline": self.total_tokens_baseline,
@@ -343,7 +343,7 @@ def run_paired_command_benchmark(
     ``cost_usd``, and ``success`` for provider-native accounting. If omitted,
     this harness estimates prompt/output tokens locally from captured text.
     """
-    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", ".atelier"))
+    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
     store = SQLiteStore(resolved_root)
     store.init()
     selected_tasks = tasks or _default_command_tasks(max_prompts=max_prompts)
@@ -380,9 +380,9 @@ def run_paired_command_benchmark(
         )
 
     n_prompts = len(prompts)
-    run_id = f"bench-{make_uuid7()}"
+    session_id = f"bench-{make_uuid7()}"
     result = PairedCommandBenchmarkResult(
-        run_id=run_id,
+        session_id=session_id,
         model=model,
         n_prompts=n_prompts,
         total_tokens_baseline=sum(prompt.baseline.total_tokens for prompt in prompts),
@@ -406,7 +406,7 @@ def run_replay(
     corpus_dir: Path = _CORPUS_DIR,
     csv_path: Path | None = None,
 ) -> ReplayResult:
-    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", ".atelier"))
+    resolved_root = Path(root or os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier")))
     store = SQLiteStore(resolved_root)
     store.init()
     rows = _load_corpus(corpus_dir)
@@ -433,10 +433,10 @@ def run_replay(
     total_baseline = sum(prompt.baseline_input_tokens for prompt in prompts)
     total_optimized = sum(prompt.optimized_input_tokens for prompt in prompts)
     reduction_pct = (total_baseline - total_optimized) / total_baseline * 100.0
-    run_id = f"bench-{make_uuid7()}"
+    session_id = f"bench-{make_uuid7()}"
     completed_at = datetime.now(UTC)
     replay_result = ReplayResult(
-        run_id=run_id,
+        session_id=session_id,
         n_prompts=len(prompts),
         median_input_tokens_baseline=int(statistics.median(p.baseline_input_tokens for p in prompts)),
         median_input_tokens_optimized=int(statistics.median(p.optimized_input_tokens for p in prompts)),
@@ -461,7 +461,7 @@ def _persist_result(db_path: Path, result: ReplayResult, completed_at: datetime,
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                result.run_id,
+                result.session_id,
                 completed_at.isoformat(),
                 completed_at.isoformat(),
                 "savings_replay_v3",
@@ -478,13 +478,13 @@ def _persist_result(db_path: Path, result: ReplayResult, completed_at: datetime,
             conn.execute(
                 """
                 INSERT INTO benchmark_prompt_result (
-                    id, run_id, prompt_id, task_type, baseline_input_tokens,
+                    id, session_id, prompt_id, task_type, baseline_input_tokens,
                     optimized_input_tokens, reduction_pct, lever_attribution_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     f"bpr-{make_uuid7()}",
-                    result.run_id,
+                    result.session_id,
                     prompt.id,
                     prompt.task_type,
                     prompt.baseline_input_tokens,
@@ -513,7 +513,7 @@ def _persist_paired_command_result(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                result.run_id,
+                result.session_id,
                 completed_at.isoformat(),
                 completed_at.isoformat(),
                 "paired_command_savings_v1",
@@ -530,13 +530,13 @@ def _persist_paired_command_result(
             conn.execute(
                 """
                 INSERT INTO benchmark_prompt_result (
-                    id, run_id, prompt_id, task_type, baseline_input_tokens,
+                    id, session_id, prompt_id, task_type, baseline_input_tokens,
                     optimized_input_tokens, reduction_pct, lever_attribution_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     f"bpr-{make_uuid7()}",
-                    result.run_id,
+                    result.session_id,
                     prompt.id,
                     prompt.task_type,
                     prompt.baseline.total_tokens,

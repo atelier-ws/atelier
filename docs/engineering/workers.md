@@ -7,7 +7,7 @@ Workers handle background processing tasks for Atelier — primarily failure ana
 ```bash
 cd atelier && make worker
 # or
-uv run atelier worker start
+atelier worker start
 ```
 
 ## What Workers Do

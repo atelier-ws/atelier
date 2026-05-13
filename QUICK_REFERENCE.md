@@ -10,10 +10,10 @@ _For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
 
 **What should I do right now?**
 
-- **Starting a coding task?** → Use `/atelier:atelier-task` or pick `atelier:code` agent
-- **Before editing code?** → Use `/atelier:atelier-lint` (must pass before you edit)
-- **Same error failed 2+ times?** → Use `/atelier:atelier-rescue`
-- **Done with the task?** → Use `/atelier:atelier-trace`
+- **Starting a coding task?** → Use `/atelier:reasoning` or pick `atelier:code` agent
+- **Before editing code?** → Use `/atelier:lint` (must pass before you edit)
+- **Same error failed 2+ times?** → Use `/atelier:rescue`
+- **Done with the task?** → Use `/atelier:trace`
 - **Just reading code?** → Use `atelier:explore` agent (read-only)
 - **Reviewing someone's PR?** → Use `atelier:review` agent (no editing)
 
@@ -26,14 +26,14 @@ _For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
 ```
 Core Loop
 ─────────────────────────────────────────────────
-/atelier:atelier-task        Run full standing loop: context → plan → lint → implement → rescue → verify → trace
-/atelier:atelier-lint        Validate plan against dead-ends (blocks until ✅ ok)
-/atelier:atelier-rescue      Get recovery when same error fails 2x
-/atelier:atelier-trace       Record outcome (files, commands, errors, results)
+/atelier:reasoning           Run full standing loop: context → plan → lint → implement → rescue → verify → trace
+/atelier:lint                Validate plan against dead-ends (blocks until ✅ ok)
+/atelier:rescue              Get recovery when same error fails 2x
+/atelier:trace               Record outcome (files, commands, errors, results)
 
 Intelligence
 ─────────────────────────────────────────────────
-/atelier:status [run_id]     Show current run's plan, facts, blockers, alerts
+/atelier:status [session_id]     Show current run's plan, facts, blockers, alerts
 /atelier:context <domain>    Show domain rules, forbidden phrases, procedures
 /atelier:analyze-failures    Cluster repeated failures; propose new blocks/rubrics
 /atelier:evals [list|run|promote] Manage test cases
@@ -49,14 +49,14 @@ Operations
 
 ### Core Skills (use in order)
 
-- `/atelier:atelier-task` — Start here. Runs full loop: get context → plan → check → implement → rescue → verify → record
-- `/atelier:atelier-lint` — Validate your plan BEFORE editing code (blocks until ✅ pass)
-- `/atelier:atelier-rescue` — Stuck on same error? Get recovery procedure
-- `/atelier:atelier-trace` — Done? Record what happened for learning
+- `/atelier:reasoning` — Start here. Runs full loop: get context → plan → check → implement → rescue → verify → record
+- `/atelier:lint` — Validate your plan BEFORE editing code (blocks until ✅ pass)
+- `/atelier:rescue` — Stuck on same error? Get recovery procedure
+- `/atelier:trace` — Done? Record what happened for learning
 
 ### Intelligence Skills (as needed)
 
-- `/atelier:status [run_id]` — See your current run: plan, facts, blockers, alerts
+- `/atelier:status [session_id]` — See your current run: plan, facts, blockers, alerts
 - `/atelier:context <domain>` — Get domain rules, forbidden patterns, key procedures
 - `/atelier:analyze-failures` — Find repeated failures, propose mitigations
 - `/atelier:evals` — Manage test cases (list, run, promote)
@@ -176,9 +176,9 @@ atelier tool-mode set shadow
 ## 📊 Run Ledger (Session State)
 
 ```
-.atelier/runs/<run_id>.json contains:
+.atelier/runs/<session_id>.json contains:
 ─────────────────────────────────────────────────
-run_id                  Unique run identifier
+session_id                  Unique run identifier
 agent                   "atelier:code" | "atelier:repair" | ...
 task                    One-sentence task description
 domain                  beseam.shopify.publish | ... | null
@@ -191,7 +191,7 @@ hypotheses_tried        Tested theories (with results)
 hypotheses_rejected     Theories that failed (with reasons)
 active_reasonblocks     [block_id, ...] from matched ReasonBlocks
 tool_calls              [{name, timestamp, result}, ...]
-monitor_alerts          [{type, severity, message}, ...]
+watchdog_alerts          [{type, severity, message}, ...]
 ```
 
 ## 🧪 Testing & Validation
@@ -265,16 +265,16 @@ DO NOT:
 
 ```
 Q: I'm starting a coding task
-A: Use /atelier:atelier-task OR atelier:code agent
+A: Use /atelier:reasoning OR atelier:code agent
 
 Q: My plan might be invalid
-A: Use /atelier:atelier-lint (blocks until ✅ ok)
+A: Use /atelier:lint (blocks until ✅ ok)
 
 Q: Same error just failed twice
-A: Use /atelier:atelier-rescue
+A: Use /atelier:rescue
 
 Q: I'm done with the task
-A: Use /atelier:atelier-trace
+A: Use /atelier:trace
 
 Q: I need to review someone's patch
 A: Use atelier:review agent
