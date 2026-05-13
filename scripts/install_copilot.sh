@@ -97,15 +97,15 @@ if $WORKSPACE_SET; then
     NEW_ENTRY=$(cat <<JSON
 {
   "servers": {
-    "atelier": {
-      "type": "stdio",
-      "command": "${ATELIER_WRAPPER}",
-      "args": [],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_ROOT": "${HOME}/.atelier"
+      "atelier": {
+        "type": "stdio",
+        "command": "${ATELIER_WRAPPER}",
+        "args": [],
+        "env": {
+          "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
+          "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
+        }
       }
-    }
   }
 }
 JSON
@@ -190,7 +190,7 @@ STAGING_DIR="${HOME}/.atelier/copilot-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR'"
 COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full instructions with reasoning loop"
+    info "Install profile: dev; staging full instructions with task loop"
     atelier_write_managed_copy "${COPILOT_SRC/.md/.dev.md}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 else
     info "Install profile: stable; staging stable instructions"

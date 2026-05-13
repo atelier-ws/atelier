@@ -1099,10 +1099,10 @@ def _check_dev_mode(command_name: str, status: int = 1) -> None:
         sys.exit(status)
 
 
-# ----- reasoning ------------------------------------------------------------ #
+# ----- task ----------------------------------------------------------------- #
 
 
-@_dev_command("reasoning")
+@_dev_command("task")
 @click.option("--task", required=True, help="Task description.")
 @click.option("--domain", default=None)
 @click.option("--file", "files", multiple=True, help="File path likely to be edited.")
@@ -1114,7 +1114,7 @@ def _check_dev_mode(command_name: str, status: int = 1) -> None:
 @click.option("--telemetry", "include_telemetry", is_flag=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def reasoning(
+def task_context_cmd(
     ctx: click.Context,
     task: str,
     domain: str | None,
@@ -1127,8 +1127,8 @@ def reasoning(
     include_telemetry: bool,
     as_json: bool,
 ) -> None:
-    """Render the reasoning-context block to inject into an agent prompt."""
-    _check_dev_mode("reasoning")
+    """Render the task-context block to inject into an agent prompt."""
+    _check_dev_mode("task")
     from atelier.core.foundation.retriever import TaskContext, retrieve
     from atelier.core.service.telemetry.frustration import match_frustration
 
