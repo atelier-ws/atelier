@@ -454,6 +454,8 @@ def test_install_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
     content = (SCRIPTS / "install.sh").read_text()
     assert "uv tool install" in content
     assert "UV_TOOL_BIN_DIR" in content
+    assert "mcp,memory,embeddings" not in content
+    assert "mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,telemetry" in content
     assert 'exec uv --directory "$ATELIER_INSTALL_DIR" run' not in content
 
 
