@@ -579,7 +579,7 @@ function CodeBurnPanel({ toolWindow }: { toolWindow: ToolWindow }) {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-4">
           <CodeBurnDailyChart rows={asRecordArray(payload.daily)} />
 
