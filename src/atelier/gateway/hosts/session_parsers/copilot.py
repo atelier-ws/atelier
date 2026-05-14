@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import traceback as _traceback
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +103,11 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _is_placeholder_model(value: Any) -> bool:
+    model = _text_from_value(value)
+    return not model or model == "auto"
+
+
 def _parse_workspace_dt(val: Any) -> datetime:
     """Parse a workspace.yaml timestamp into a timezone-aware datetime."""
     if isinstance(val, datetime):
@@ -117,6 +123,79 @@ def _parse_workspace_dt(val: Any) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt
+
+
+_TRANSCRIPT_PATH_RE = re.compile(r"(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s\"'`<>()\[\]{}]+)")
+_MAX_TRANSCRIPT_PARENT_DELTA = timedelta(hours=8)
+
+
+def _iter_nested_strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            yield text
+        return
+    if isinstance(value, dict):
+        for nested in value.values():
+            yield from _iter_nested_strings(nested)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            yield from _iter_nested_strings(nested)
+
+
+def _normalize_match_path(value: str) -> str:
+    normalized = value.replace("\\", "/").rstrip("/")
+    if not normalized:
+        return "/"
+    if normalized.startswith("/"):
+        return "/" + "/".join(part for part in normalized.split("/") if part)
+    if len(normalized) >= 2 and normalized[1] == ":":
+        drive = normalized[0].upper()
+        tail = "/" + "/".join(part for part in normalized[2:].split("/") if part)
+        return f"{drive}:{tail}"
+    return normalized
+
+
+def _extract_absolute_paths_from_text(text: str) -> set[str]:
+    paths: set[str] = set()
+    for match in _TRANSCRIPT_PATH_RE.finditer(text):
+        candidate = match.group("path").rstrip('.,:;)]}"')
+        if not candidate:
+            continue
+        paths.add(_normalize_match_path(candidate))
+    return paths
+
+
+def _extract_transcript_linkage(redacted_events: str) -> tuple[set[str], datetime | None]:
+    transcript_paths: set[str] = set()
+    start_time: datetime | None = None
+
+    for line in redacted_events.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if start_time is None and event.get("type") == "session.start":
+            payload = event.get("data") or {}
+            ts = payload.get("startTime") or event.get("timestamp")
+            if ts:
+                start_time = _parse_workspace_dt(ts)
+
+        for text in _iter_nested_strings(event):
+            transcript_paths.update(_extract_absolute_paths_from_text(text))
+
+    return transcript_paths, start_time
+
+
+def _path_within_workspace(path: str, workspace_path: str) -> bool:
+    normalized_path = _normalize_match_path(path).casefold()
+    normalized_workspace = _normalize_match_path(workspace_path).casefold()
+    return normalized_path == normalized_workspace or normalized_path.startswith(f"{normalized_workspace}/")
 
 
 # ---------------------------------------------------------------------------
@@ -195,10 +274,11 @@ class CopilotImporter:
         imported_ids = []
         skipped = 0
         all_sessions = list(find_copilot_sessions(root))
-        all_transcripts = list(find_copilot_transcript_files())
+        all_transcripts = list(find_copilot_transcript_files(root))
         total = len(all_sessions) + len(all_transcripts)
         print(
-            f"[atelier] copilot: discovering sessions (found {len(all_sessions)} directory, {len(all_transcripts)} transcript)"
+            "[atelier] copilot: discovering sessions "
+            f"(found {len(all_sessions)} directory, {len(all_transcripts)} transcript)"
         )
         for i, session_dir in enumerate(all_sessions):
             try:
@@ -222,8 +302,38 @@ class CopilotImporter:
             except Exception as exc:
                 _traceback.print_exc()
                 print(f"[atelier] skipping transcript {transcript_path.name}: {exc}")
+        for sid in self._reconcile_stored_transcripts():
+            if sid not in imported_ids:
+                imported_ids.append(sid)
         if skipped > 0:
             print(f"[atelier] {skipped} sessions already imported (skipped by dedup)")
+        return imported_ids
+
+    def _reconcile_stored_transcripts(self) -> list[str]:
+        imported_ids: list[str] = []
+        artifacts = self.store.list_raw_artifacts(source="copilot", limit=10_000)
+        for artifact in artifacts:
+            if not artifact.content_path.startswith("raw/copilot/transcripts/"):
+                continue
+
+            session_id = artifact.source_session_id
+            if not session_id:
+                continue
+
+            try:
+                redacted_events = self.store.read_raw_artifact_content(artifact)
+            except OSError:
+                self.store.delete_trace(artifact.id)
+                continue
+
+            sid = self._materialize_transcript_trace(
+                session_id=session_id,
+                redacted_events=redacted_events,
+                artifact_id=artifact.id,
+            )
+            if sid:
+                imported_ids.append(sid)
+
         return imported_ids
 
     def _parse_events_to_trace_state(self, redacted_events: str, initial_task: str = "") -> dict[str, Any]:
@@ -239,7 +349,17 @@ class CopilotImporter:
         validation_results: list[ValidationResult] = []
         reasoning_snippets: list[str] = []
         task = initial_task or "untitled copilot session"
-        usage_entries = []
+        # Copilot exposes usage at three different layers, captured separately
+        # so we can pick the right one at the end and avoid double-counting:
+        #   - shutdown_entries:  session.shutdown.modelMetrics (cumulative,
+        #     authoritative when present — includes assistant turns + compaction)
+        #   - compaction_entries: session.compaction_complete.compactionTokensUsed
+        #     (per-compaction LLM call, has input/output/cache_read/cache_write)
+        #   - assistant_turn_entries: assistant.message.outputTokens (per-turn,
+        #     no input/cache info in the event payload)
+        shutdown_entries: list[Any] = []
+        compaction_entries: list[Any] = []
+        assistant_turn_entries: list[Any] = []
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
         tool_call_in_buffer: dict[str, dict[str, Any]] = {}
@@ -284,11 +404,31 @@ class CopilotImporter:
 
             if etype == "assistant.message":
                 data = ev.get("data") or {}
+                message_model = data.get("model")
+                if _is_placeholder_model(fallback_model) and not _is_placeholder_model(message_model):
+                    fallback_model = _text_from_value(message_model)
+                turn_model = (
+                    _text_from_value(message_model) if not _is_placeholder_model(message_model) else fallback_model
+                )
                 reasoning = data.get("reasoningText") or data.get("reasoningOpaque") or ""
                 if reasoning and len(str(reasoning)) > 10:
                     reasoning_snippets.append(str(reasoning)[:500])
                 out_t = int(data.get("outputTokens", 0) or 0)
                 assistant_output_tokens += out_t
+                # Emit a per-turn LLM usage entry so the trace records *which* model
+                # produced each turn's output. Copilot's assistant.message payload
+                # has no input/cache fields, only outputTokens — that's a Copilot
+                # limitation, not an Atelier one.
+                if out_t > 0:
+                    turn_entry = make_llm_usage_entry(
+                        model=turn_model,
+                        output_tokens=out_t,
+                        source_type="copilot.assistant.message",
+                        source_id=str(data.get("messageId") or ev.get("id") or ""),
+                        created_at=_parse_workspace_dt(ev.get("timestamp")) if ev.get("timestamp") else None,
+                    )
+                    if turn_entry is not None:
+                        assistant_turn_entries.append(turn_entry)
                 calls = data.get("toolRequests") or []
                 if calls and out_t:
                     dist_out = out_t // len(calls)
@@ -302,8 +442,8 @@ class CopilotImporter:
 
             elif etype == "tool.execution_complete":
                 data = ev.get("data") or {}
-                if not fallback_model and "model" in data:
-                    fallback_model = data["model"]
+                if _is_placeholder_model(fallback_model) and not _is_placeholder_model(data.get("model")):
+                    fallback_model = _text_from_value(data.get("model"))
                 t_id = data.get("toolCallId")
                 if t_id and t_id in tool_call_in_buffer:
                     buf = tool_call_in_buffer.pop(t_id)
@@ -312,6 +452,30 @@ class CopilotImporter:
                     tn = buf["name"] or "unknown"
                     tool_in_tokens[tn] = tool_in_tokens.get(tn, 0) + buf["in_t"]
                     tool_out_tokens[tn] = tool_out_tokens.get(tn, 0) + tool_out_t
+
+            elif etype == "session.compaction_complete":
+                # Each compaction is its own LLM call with full input/output/cache
+                # metrics. It is NOT a duplicate of the assistant.message turns —
+                # compaction is a separate request that summarises history.
+                data = ev.get("data") or {}
+                compaction = data.get("compactionTokensUsed") or {}
+                if isinstance(compaction, dict):
+                    cmodel = compaction.get("model") or fallback_model
+                    if _is_placeholder_model(fallback_model) and not _is_placeholder_model(cmodel):
+                        fallback_model = _text_from_value(cmodel)
+                    compaction_entry = make_llm_usage_entry(
+                        model=_text_from_value(cmodel) if not _is_placeholder_model(cmodel) else fallback_model,
+                        input_tokens=int(compaction.get("inputTokens", 0) or 0),
+                        output_tokens=int(compaction.get("outputTokens", 0) or 0),
+                        cached_input_tokens=int(compaction.get("cacheReadTokens", 0) or 0),
+                        cache_creation_input_tokens=int(compaction.get("cacheWriteTokens", 0) or 0),
+                        thinking_tokens=int(compaction.get("reasoningTokens", 0) or 0),
+                        source_type="copilot.session.compaction_complete",
+                        source_id=str(ev.get("id") or ev.get("timestamp") or ""),
+                        created_at=_parse_workspace_dt(ev.get("timestamp")) if ev.get("timestamp") else None,
+                    )
+                    if compaction_entry is not None:
+                        compaction_entries.append(compaction_entry)
 
             elif etype == "session.shutdown":
                 mm = (ev.get("data") or {}).get("modelMetrics") or {}
@@ -330,7 +494,7 @@ class CopilotImporter:
                             created_at=_parse_workspace_dt(ev.get("timestamp")) if ev.get("timestamp") else None,
                         )
                         if usage_entry is not None:
-                            usage_entries.append(usage_entry)
+                            shutdown_entries.append(usage_entry)
 
             self._process_event(
                 ev,
@@ -351,7 +515,19 @@ class CopilotImporter:
             if tn:
                 tool_in_tokens[tn] = tool_in_tokens.get(tn, 0) + buf["in_t"]
 
-        if assistant_output_tokens > 0 and not usage_entries:
+        # Resolve which usage source to bill from. Order of preference:
+        #   1. session.shutdown.modelMetrics — Copilot's authoritative cumulative
+        #      totals (includes both assistant turns AND compactions). Use ALONE.
+        #   2. compaction + per-turn assistant entries — independent layers, safe
+        #      to sum together.
+        #   3. char/4 fallback over user_prompt + assistant_output as a last resort
+        #      so an analytic doesn't show $0 for a real session.
+        if shutdown_entries:
+            usage_entries = list(shutdown_entries)
+        else:
+            usage_entries = [*compaction_entries, *assistant_turn_entries]
+
+        if not usage_entries and assistant_output_tokens > 0:
             fallback_entry = make_llm_usage_entry(
                 model=fallback_model,
                 input_tokens=user_prompt_tokens,
@@ -417,6 +593,7 @@ class CopilotImporter:
 
         filename_session_id = session_id
         actual_session_id = str(workspace_data.get("mc_session_id") or filename_session_id)
+        workspace_cwd = _text_from_value(workspace_data.get("cwd")) or None
 
         # ── Step 1: write redacted raw artifacts ─────────────────────────────
         artifact_ids: list[str] = []
@@ -492,10 +669,59 @@ class CopilotImporter:
             model=state["model"],
             usage_entries=state["usage_entries"],
             model_usages=state["model_usages"],
+            workspace_path=workspace_cwd,
             created_at=_parse_workspace_dt(workspace_data.get("created_at")),
         )
         self.store.record_trace(trace, write_json=False)
         return trace.id
+
+    def _find_parent_trace_for_transcript(
+        self,
+        transcript_paths: set[str],
+        transcript_started_at: datetime | None,
+    ) -> tuple[Trace, str] | None:
+        if transcript_started_at is None or not transcript_paths:
+            return None
+
+        traces_by_session_id = {
+            trace.session_id: trace
+            for trace in self.store.list_traces(host="copilot", limit=5000)
+            if trace.session_id and not trace.id.startswith("copilot-transcript-")
+        }
+
+        max_delta_seconds = _MAX_TRANSCRIPT_PARENT_DELTA.total_seconds()
+        best_match: tuple[tuple[int, float], Trace, str] | None = None
+
+        for artifact in self.store.list_raw_artifacts(source="copilot", limit=5000):
+            if artifact.kind != "workspace.yaml":
+                continue
+
+            parent_trace = traces_by_session_id.get(artifact.source_session_id)
+            if parent_trace is None:
+                continue
+
+            try:
+                workspace_data = yaml.safe_load(self.store.read_raw_artifact_content(artifact)) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+
+            workspace_cwd = _text_from_value(workspace_data.get("cwd"))
+            if not workspace_cwd:
+                continue
+            if not any(_path_within_workspace(path, workspace_cwd) for path in transcript_paths):
+                continue
+
+            delta_seconds = abs((parent_trace.created_at - transcript_started_at).total_seconds())
+            if delta_seconds > max_delta_seconds:
+                continue
+
+            score = (len(_normalize_match_path(workspace_cwd)), -delta_seconds)
+            if best_match is None or score > best_match[0]:
+                best_match = (score, parent_trace, workspace_cwd)
+
+        if best_match is None:
+            return None
+        return best_match[1], best_match[2]
 
     def import_transcript_file(self, transcript_path: Path, *, force: bool = False) -> str | None:
         """Import a single VSCode Copilot transcript .jsonl file."""
@@ -507,36 +733,59 @@ class CopilotImporter:
             file_mtime = datetime.fromtimestamp(transcript_path.stat().st_mtime, tz=UTC)
         except OSError:
             file_mtime = _utcnow()
+        redacted_events: str | None = None
         if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
+            try:
+                redacted_events = self.store.read_raw_artifact_content(existing)
+            except OSError:
+                redacted_events = None
+
+        if redacted_events is None:
+            if not transcript_path.exists():
+                return None
+
+            events_raw = transcript_path.read_text(encoding="utf-8")
+            redacted_events = redact(events_raw)
+            raw_bytes = events_raw.encode("utf-8")
+            redacted_bytes = redacted_events.encode("utf-8")
+
+            artifact = RawArtifact(
+                id=artifact_id,
+                source="copilot",
+                source_session_id=session_id,
+                kind="events.jsonl",
+                relative_path=transcript_path.name,
+                content_path=f"raw/copilot/transcripts/{session_id}.jsonl",
+                sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
+                sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
+                byte_count_original=len(raw_bytes),
+                byte_count_redacted=len(redacted_bytes),
+                created_at=_utcnow(),
+                source_file_mtime=file_mtime,
+                source_path=str(transcript_path),
+            )
+            self.store.record_raw_artifact(artifact, redacted_events)
+
+        return self._materialize_transcript_trace(
+            session_id=session_id,
+            redacted_events=redacted_events,
+            artifact_id=artifact_id,
+        )
+
+    def _materialize_transcript_trace(self, *, session_id: str, redacted_events: str, artifact_id: str) -> str | None:
+        transcript_paths, transcript_started_at = _extract_transcript_linkage(redacted_events)
+        parent_match = self._find_parent_trace_for_transcript(transcript_paths, transcript_started_at)
+        if parent_match is None:
+            self.store.delete_trace(artifact_id)
             return None
 
-        events_raw = transcript_path.read_text(encoding="utf-8")
-        redacted_events = redact(events_raw)
-        raw_bytes = events_raw.encode("utf-8")
-        redacted_bytes = redacted_events.encode("utf-8")
-
-        artifact = RawArtifact(
-            id=artifact_id,
-            source="copilot",
-            source_session_id=session_id,
-            kind="events.jsonl",
-            relative_path=transcript_path.name,
-            content_path=f"raw/copilot/transcripts/{session_id}.jsonl",
-            sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
-            sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
-            byte_count_original=len(raw_bytes),
-            byte_count_redacted=len(redacted_bytes),
-            created_at=_utcnow(),
-            source_file_mtime=file_mtime,
-            source_path=str(transcript_path),
-        )
-        self.store.record_raw_artifact(artifact, redacted_events)
+        parent_trace, workspace_path = parent_match
 
         state = self._parse_events_to_trace_state(redacted_events)
 
         trace = Trace(
-            id=f"copilot-transcript-{session_id}",
-            session_id=session_id,
+            id=artifact_id,
+            session_id=parent_trace.session_id,
             agent="atelier:code",
             host="copilot",
             domain="coding",
@@ -560,15 +809,16 @@ class CopilotImporter:
             validation_results=state["validation_results"],
             reasoning=state["reasoning_snippets"],
             raw_artifact_ids=[artifact_id],
-            input_tokens=state["input_tokens"],
-            user_prompt_tokens=state["user_prompt_tokens"],
-            output_tokens=state["output_tokens"],
-            thinking_tokens=state["thinking_tokens"],
-            cached_input_tokens=state["cached_input_tokens"],
-            cache_creation_input_tokens=state["cache_creation_input_tokens"],
-            model=state["model"],
-            usage_entries=state["usage_entries"],
-            model_usages=state["model_usages"],
+            input_tokens=0,
+            user_prompt_tokens=0,
+            output_tokens=0,
+            thinking_tokens=0,
+            cached_input_tokens=0,
+            cache_creation_input_tokens=0,
+            model="",
+            usage_entries=[],
+            model_usages=[],
+            workspace_path=workspace_path,
             created_at=state["start_time"],
         )
         self.store.record_trace(trace, write_json=False)

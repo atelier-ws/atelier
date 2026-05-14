@@ -38,7 +38,7 @@ benchmarks/swe/
 |---|---|---|---|---|
 | `vanilla` | – | – | – | – |
 | `atelier_tools_available` | ✓ | – | – | – |
-| `atelier_forced_workflow` | ✓ | get_reasoning_context · check_plan · rescue_failure · run_rubric_gate · record_trace | – | – |
+| `atelier_forced_workflow` | ✓ | get_context · rescue_failure · run_rubric_gate · record_trace | – | – |
 | `atelier_full_runtime` | ✓ | ✓ | ✓ | – |
 | `atelier_warm_reasonblocks` | ✓ | ✓ | ✓ | preloaded from calibration |
 
@@ -129,7 +129,7 @@ patch — useful for harness self-tests, **not** a publishable number).
 and a `_UnsupportedAgent` stub for everything else. Wire a new host by:
 
 1. Implementing the `Agent` protocol (`solve(task, mode_spec, cfg) → AgentResult`).
-2. Returning workflow events (`{"event": "check_plan", "status": "ok"}`,
+2. Returning workflow events (`{"event": "record_trace", "status": "ok"}`,
    `{"event": "reasonblock_hit", "block_id": "..."}` etc.) so report
    counters populate.
 3. Registering it in `build_agent()`.

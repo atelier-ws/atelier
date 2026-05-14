@@ -36,6 +36,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _host_family(host: str | None) -> str:
+    host_name = str(host or "").strip() or "unknown"
+    if host_name == "cursor-agent":
+        return "cursor"
+    return host_name
+
+
 # --------------------------------------------------------------------------- #
 # Savings helpers                                                             #
 # --------------------------------------------------------------------------- #
@@ -62,33 +69,90 @@ def _normalize_lever(operation: str) -> str:
     return op
 
 
+_EXTERNAL_PERIOD_DAY_SPAN: dict[str, int] = {
+    "today": 1,
+    "week": 7,
+    "month": 30,
+    "30days": 30,
+    "all": 3650,
+}
+
+
+def _normalize_external_period(period: Any) -> str:
+    return str(period or "").strip().lower()
+
+
+def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) -> str | None:
+    target_days = max(1, days)
+    periods = {
+        _normalize_external_period(run.get("period")) for run in runs if _normalize_external_period(run.get("period"))
+    }
+    if not periods:
+        return None
+
+    return min(
+        periods,
+        key=lambda period: (
+            abs((_EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf")) - target_days),
+            0 if (_EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf")) >= target_days else 1,
+            _EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf"),
+        ),
+    )
+
+
+def _select_external_run_for_days(runs: list[dict[str, Any]], *, days: int) -> dict[str, Any] | None:
+    if not runs:
+        return None
+
+    preferred_period = _pick_preferred_external_period(runs, days=days)
+    if preferred_period:
+        for run in runs:
+            if _normalize_external_period(run.get("period")) == preferred_period:
+                return run
+    return runs[0]
+
+
 def _build_external_analytics_summary(store: Any, *, days: int) -> dict[str, Any]:
     runs = store.list_external_analytics_runs(days=days, limit=200)
-    latest: list[dict[str, Any]] = []
-    seen: set[str] = set()
     successful_runs = sum(1 for run in runs if run.get("ok"))
+    runs_by_tool: dict[str, list[dict[str, Any]]] = {}
     for run in runs:
         tool = str(run.get("tool") or "unknown")
-        if tool in seen:
+        runs_by_tool.setdefault(tool, []).append(run)
+
+    latest: list[dict[str, Any]] = []
+    latest_codeburn_payload: dict[str, Any] | None = None
+    for tool, tool_runs in runs_by_tool.items():
+        selected_run = _select_external_run_for_days(tool_runs, days=days)
+        if selected_run is None:
             continue
+        if tool == "codeburn" and isinstance(selected_run.get("payload"), dict):
+            latest_codeburn_payload = selected_run.get("payload")
         latest.append(
             {
-                "id": run.get("id"),
+                "id": selected_run.get("id"),
                 "tool": tool,
-                "period": run.get("period"),
-                "source": run.get("source"),
-                "ok": run.get("ok"),
-                "returncode": run.get("returncode"),
-                "summary": run.get("summary") or {},
-                "collected_at": run.get("collected_at"),
+                "period": selected_run.get("period"),
+                "source": selected_run.get("source"),
+                "ok": selected_run.get("ok"),
+                "returncode": selected_run.get("returncode"),
+                "summary": selected_run.get("summary") or {},
+                "collected_at": selected_run.get("collected_at"),
             }
         )
-        seen.add(tool)
+
+    by_provider: list[dict[str, Any]] = []
+    if isinstance(latest_codeburn_payload, dict):
+        provider_rows = latest_codeburn_payload.get("providerEntries")
+        if isinstance(provider_rows, list):
+            by_provider = [row for row in provider_rows if isinstance(row, dict)]
+
     return {
         "runs_total": len(runs),
         "successful_runs": successful_runs,
         "failed_runs": len(runs) - successful_runs,
         "latest": latest,
+        "by_provider": by_provider,
     }
 
 
@@ -620,17 +684,22 @@ def _query_analytics_rows(
     days: int | None,
     limit: int,
 ) -> list[dict[str, Any]]:
+    start_day = None
+    if days is not None:
+        window_days = max(1, int(days))
+        start_day = (datetime.now().astimezone().date() - timedelta(days=window_days - 1)).isoformat()
+
     params: list[Any] = []
 
     sql = f"""
         SELECT id, agent, host, payload, created_at
         FROM traces
-        WHERE 1=1 {"AND created_at >= datetime('now', '-' || ? || ' days')" if days else ""}
+        WHERE 1=1 {"AND date(datetime(created_at, 'localtime')) >= ?" if start_day else ""}
         ORDER BY created_at DESC
     """
 
-    if days:
-        params.append(days)
+    if start_day:
+        params.append(start_day)
 
     events: list[dict[str, Any]] = []
     with sqlite3.connect(db_path) as conn:
@@ -2319,6 +2388,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
         top sessions, and tool-type distributions in one call.
         """
         db_path = store.db_path
+        start_day = (datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)).isoformat()
         host_filter = "AND COALESCE(host, agent) = ?" if host else ""
         sql = f"""
             SELECT
@@ -2334,13 +2404,14 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) AS user_prompt_tokens,
                 payload,
                 created_at,
-                date(created_at) AS day
+                date(datetime(created_at, 'localtime')) AS day,
+                strftime('%Y-%m-%d %H:00', datetime(created_at, 'localtime')) AS hour_bucket
             FROM traces
-            WHERE created_at >= datetime('now', '-' || ? || ' days')
+            WHERE date(datetime(created_at, 'localtime')) >= ?
             {host_filter}
             ORDER BY created_at DESC
         """
-        params: list[Any] = [days]
+        params: list[Any] = [start_day]
         if host:
             params.append(host)
 
@@ -2385,11 +2456,13 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 sessions.append(
                     {
                         "id": d["id"],
+                        "session_key": str(payload_obj.get("session_id") or d["id"]),
                         "host": d["host"] or "unknown",
                         "domain": d["domain"] or "unknown",
                         "model": session_model,
                         "model_usages": model_usages,
                         "day": d.get("day") or "",
+                        "hour_bucket": d.get("hour_bucket") or "",
                         "created_at": d.get("created_at") or "",
                         "input_tokens": in_t,
                         "output_tokens": out_t,
@@ -2431,9 +2504,32 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 )
             )
 
-        # Imported host logs can contain prompt-only stubs with no model or assistant/tool activity.
-        # Excluding them keeps dashboard breakdowns aligned with real usage sessions.
-        dashboard_sessions = [session for session in sessions if _has_usage_signal(session)]
+        def _dashboard_session_rank(session: dict[str, Any]) -> tuple[Any, ...]:
+            return (
+                1 if _has_usage_signal(session) else 0,
+                float(session.get("cost") or 0.0),
+                int(session.get("output_tokens") or 0),
+                int(session.get("thinking_tokens") or 0),
+                int(session.get("input_tokens") or 0) + int(session.get("cached_tokens") or 0),
+                _tool_call_count(session),
+                _tool_output_tokens(session),
+                str(session.get("created_at") or ""),
+            )
+
+        session_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for session in sessions:
+            key = (str(session.get("host") or "unknown"), str(session.get("session_key") or session["id"]))
+            session_groups.setdefault(key, []).append(session)
+
+        dashboard_sessions: list[dict[str, Any]] = []
+        for (_, session_key), session_rows in session_groups.items():
+            chosen = max(session_rows, key=_dashboard_session_rank)
+            if not _has_usage_signal(chosen):
+                continue
+            collapsed = dict(chosen)
+            collapsed["session_key"] = session_key
+            dashboard_sessions.append(collapsed)
+        dashboard_sessions.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
 
         daily: dict[str, dict[str, Any]] = {}
         hourly: dict[str, dict[str, Any]] = {}
@@ -2452,9 +2548,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
             daily[day]["input_tokens"] += s["input_tokens"]
             daily[day]["output_tokens"] += s["output_tokens"]
 
-            created_at = str(s.get("created_at") or "")
-            if len(created_at) >= 13:
-                hour = created_at[:13].replace("T", " ") + ":00"
+            hour = str(s.get("hour_bucket") or "")
+            if hour:
                 if hour not in hourly:
                     hourly[hour] = {
                         "date": hour,
@@ -2483,7 +2578,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         by_host: dict[str, dict[str, Any]] = {}
         for s in dashboard_sessions:
-            h = s["host"]
+            h = _host_family(s["host"])
             if h not in by_host:
                 by_host[h] = {
                     "host": h,
@@ -2529,7 +2624,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         host_model_overview: dict[tuple[str, str], dict[str, Any]] = {}
         for s in dashboard_sessions:
-            host_name = s["host"] or "unknown"
+            host_name = _host_family(s["host"])
             session_model = str(s.get("model") or "")
             usage_rows = list(s.get("model_usages") or [])
             overview_models = {str(usage.get("model") or "") or "unknown" for usage in usage_rows}
@@ -2577,7 +2672,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         top_sessions_clean = [
             {
-                "id": s["id"],
+                "id": s.get("session_key") or s["id"],
                 "host": s["host"],
                 "domain": s["domain"],
                 "model": s["model"],
