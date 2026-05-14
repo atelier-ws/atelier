@@ -4,6 +4,7 @@ import {
   type GranularToolUsage,
   type AnalyticsDashboard,
   type AnalyticsSummary,
+  type DashboardExternalLatest,
   type DashboardTool,
   type DashboardHostModelOverview,
 } from "../api";
@@ -181,6 +182,97 @@ function CompactLeaderboard({
         </div>
       ) : (
         <div className="text-neutral-600 italic text-xs">{emptyMessage}</div>
+      )}
+    </section>
+  );
+}
+
+function ExternalSnapshotCard({
+  snapshot,
+  internalCost,
+}: {
+  snapshot: DashboardExternalLatest | null;
+  internalCost: number;
+}) {
+  const externalCost =
+    snapshot?.summary.highlights.find((item) => item.key === "cost_usd")
+      ?.value ?? null;
+  const externalCalls =
+    snapshot?.summary.highlights.find((item) => item.key === "calls")?.value ??
+    null;
+  const externalSessions =
+    snapshot?.summary.highlights.find((item) => item.key === "sessions")
+      ?.value ?? null;
+  const delta = externalCost != null ? externalCost - internalCost : null;
+
+  return (
+    <section className="border border-neutral-800 bg-neutral-950/40 p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+          External Reference
+        </div>
+        <div className="text-[9px] font-mono text-neutral-600">
+          {snapshot?.tool ?? "No snapshot"}
+        </div>
+      </div>
+
+      {snapshot ? (
+        <div className="space-y-3 text-xs text-neutral-300">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="border border-neutral-900 bg-black/20 p-3">
+              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+                Atelier
+              </div>
+              <div className="mt-1 font-mono text-emerald-300">
+                ${fmt(internalCost)}
+              </div>
+            </div>
+            <div className="border border-neutral-900 bg-black/20 p-3">
+              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+                CodeBurn
+              </div>
+              <div className="mt-1 font-mono text-cyan-300">
+                {externalCost == null ? "—" : `$${fmt(externalCost)}`}
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+                Delta
+              </div>
+              <div className="mt-1 font-mono text-amber-300">
+                {delta == null ? "—" : `$${fmt(delta)}`}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+                Calls
+              </div>
+              <div className="mt-1 font-mono text-neutral-200">
+                {externalCalls == null ? "—" : externalCalls.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+                Sessions
+              </div>
+              <div className="mt-1 font-mono text-neutral-200">
+                {externalSessions == null
+                  ? "—"
+                  : externalSessions.toLocaleString()}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-neutral-800 pt-3 text-[10px] text-neutral-500">
+            Snapshot period: {snapshot.period} · collected{" "}
+            {new Date(snapshot.collected_at).toLocaleString()}
+          </div>
+        </div>
+      ) : (
+        <div className="text-neutral-600 italic text-xs">
+          No external snapshot available.
+        </div>
       )}
     </section>
   );
@@ -1254,6 +1346,23 @@ export default function Analytics() {
     }));
   }, [costDriversData]);
 
+  const codeburnSnapshot = useMemo(() => {
+    return (
+      dashboard?.external.latest.find((item) => item.tool === "codeburn") ??
+      null
+    );
+  }, [dashboard]);
+
+  const externalProviderRows = useMemo<CompactLeaderboardRow[]>(() => {
+    return (dashboard?.external.by_provider ?? []).slice(0, 5).map((row) => ({
+      label: row.providerDisplayName || row.provider,
+      sublabel: `${row.calls.toLocaleString()} calls · ${row.models.toLocaleString()} models`,
+      value: `$${fmt(row.costUSD)}`,
+      detail: `${(row.inputTokens / 1_000_000).toFixed(2)}M in · ${(row.outputTokens / 1_000_000).toFixed(2)}M out`,
+      barValue: row.costUSD,
+    }));
+  }, [dashboard]);
+
   if (err) return <div className="text-red-400 p-6">Error: {err}</div>;
   if (loading && data.length === 0)
     return (
@@ -1426,6 +1535,23 @@ export default function Analytics() {
               rows={topToolRows}
               color="bg-amber-500/60"
               emptyMessage="No tool usage found."
+            />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <CompactLeaderboard
+              title="CodeBurn Providers"
+              rows={externalProviderRows}
+              color="bg-fuchsia-500/60"
+              emptyMessage={
+                dashLoading
+                  ? "Loading external snapshot..."
+                  : "No provider breakdown available."
+              }
+            />
+            <ExternalSnapshotCard
+              snapshot={codeburnSnapshot}
+              internalCost={stats.total_cost}
             />
           </div>
 

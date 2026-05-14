@@ -22,13 +22,13 @@ Host-facing integration surfaces for CLI, MCP, service, and embedded runtime ada
 ## Capability-driven tools and commands
 
 - CLI: `capability list/status`, `memory summarize`, `read smart`, `edit smart`, `sql inspect`, `benchmark runtime`, `benchmark hosts`
-- MCP: `task`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `code`, `shell`
+- MCP: `context`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `code`, `shell`
 
 ## MCP Tool Surface
 
 | Tool | Namespace | Purpose |
 |---|---|---|
-| `task` | brain | Retrieves curated task context, memory, and ledger state |
+| `context` | brain | Retrieves curated task context, memory, and ledger state |
 | `route` | brain | Decides and verifies execution routes |
 | `rescue` | brain | Suggests recovery for a failed step |
 | `verify` | brain | Evaluates rubric checks and returns pass/blocked status |

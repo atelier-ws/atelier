@@ -40,9 +40,7 @@ def run_one(
 
     patch_path: Path | None = None
     if result.patch:
-        patch_path = write_patch_file(
-            result.patch, task.instance_id, mode.value, out_dir / "patches"
-        )
+        patch_path = write_patch_file(result.patch, task.instance_id, mode.value, out_dir / "patches")
 
     workflow = summarize_workflow(result.workflow_events)
     metrics = RunMetrics(
@@ -65,7 +63,6 @@ def run_one(
         compression_events=workflow["compression_events"],
         reasonblocks_retrieved=workflow["reasonblocks_retrieved"],
         reasonblock_hits=workflow["reasonblock_hits"],
-        check_plan_statuses=list(workflow["check_plan_statuses"]),
         rubric_status=workflow["rubric_status"],
         rescue_count=workflow["rescue_count"],
         trace_id=workflow["trace_id"],
