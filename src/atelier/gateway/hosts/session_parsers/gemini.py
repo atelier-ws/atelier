@@ -51,6 +51,81 @@ def find_gemini_sessions(root: Path | None = None) -> Iterator[Path]:
     yield from sorted(root.glob("**/chats/session-*.jsonl"))
 
 
+def _gemini_event_key(event: dict[str, Any]) -> tuple[str, str] | None:
+    event_id = str(event.get("id") or "").strip()
+    timestamp = str(event.get("timestamp") or "").strip()
+    if not event_id or not timestamp:
+        return None
+    return (event_id, timestamp)
+
+
+def _token_total(tokens: dict[str, Any]) -> int:
+    total = 0
+    for key in ("input", "output", "cached", "thoughts", "tool", "total"):
+        try:
+            total += int(tokens.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _merge_gemini_event(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing)
+    for key, value in incoming.items():
+        if key == "tokens" and isinstance(value, dict):
+            current = merged.get(key)
+            if not isinstance(current, dict) or _token_total(value) >= _token_total(current):
+                merged[key] = value
+            continue
+
+        if key in {"toolCalls", "thoughts", "content"} and isinstance(value, list):
+            current = merged.get(key)
+            if not isinstance(current, list) or len(value) >= len(current):
+                merged[key] = value
+            continue
+
+        if value in (None, "", [], {}):
+            continue
+
+        current = merged.get(key)
+        if current in (None, "", [], {}):
+            merged[key] = value
+
+    return merged
+
+
+def _canonicalize_gemini_events(raw_content: str) -> list[dict[str, Any]]:
+    seen_event_lines: set[str] = set()
+    canonical_events: list[dict[str, Any]] = []
+    event_indexes: dict[tuple[str, str], int] = {}
+
+    for raw_line in raw_content.splitlines():
+        line = raw_line.strip()
+        if not line or line in seen_event_lines:
+            continue
+        seen_event_lines.add(line)
+
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+
+        key = _gemini_event_key(event)
+        if key is None:
+            canonical_events.append(event)
+            continue
+
+        existing_index = event_indexes.get(key)
+        if existing_index is None:
+            event_indexes[key] = len(canonical_events)
+            canonical_events.append(event)
+            continue
+
+        canonical_events[existing_index] = _merge_gemini_event(canonical_events[existing_index], event)
+
+    return canonical_events
+
+
 class GeminiImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
@@ -157,22 +232,9 @@ class GeminiImporter:
         total_cached = 0
         user_prompt_tokens = 0
         model_seen = ""
-        seen_event_lines: set[str] = set()
         usage_entries = []
 
-        for line in raw_content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # Gemini can reuse the same event id across separate billable records.
-            # Only drop exact duplicate lines, not repeated ids with new payload.
-            if line in seen_event_lines:
-                continue
-            seen_event_lines.add(line)
-            try:
-                ev = json.loads(line)
-            except Exception:
-                continue
+        for ev in _canonicalize_gemini_events(raw_content):
 
             if "startTime" in ev and "sessionId" in ev:
                 with contextlib.suppress(BaseException):

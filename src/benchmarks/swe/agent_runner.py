@@ -156,7 +156,6 @@ def summarize_workflow(events: list[dict[str, Any]]) -> dict[str, Any]:
         "compression_events": 0,
         "reasonblocks_retrieved": 0,
         "reasonblock_hits": 0,
-        "check_plan_statuses": [],
         "rubric_status": None,
         "rescue_count": 0,
         "trace_id": None,

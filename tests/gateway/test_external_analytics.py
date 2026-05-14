@@ -170,3 +170,105 @@ def test_run_external_report_tokscale_combines_native_views(
     assert payload["dailyEntries"] == [{"date": "2026-05-12", "totals": {"cost": 4.2}}]
     assert payload["dailySummary"] == {"totalCost": 4.2, "activeDays": 1}
     assert set(payload["captures"]) == {"overview", "models", "monthly", "hourly", "graph"}
+
+
+def test_run_external_report_codeburn_combines_provider_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ext,
+        "_find_executable",
+        lambda spec: "/usr/bin/codeburn" if spec.id == "codeburn" else None,
+    )
+
+    def fake_run_json_command(
+        command: list[str],
+        *,
+        cwd: Path | None = None,
+        timeout_s: int = 120,
+        parser: object | None = None,
+    ) -> dict[str, object]:
+        assert cwd == Path("/tmp/work")
+        assert timeout_s == 120
+        assert parser is None
+        if command[1:2] == ["models"]:
+            payload = [
+                {
+                    "provider": "codex",
+                    "providerDisplayName": "Codex",
+                    "model": "gpt-5.5",
+                    "calls": 10,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "cacheReadTokens": 30,
+                    "cacheWriteTokens": 0,
+                    "totalTokens": 150,
+                    "costUSD": 4.2,
+                },
+                {
+                    "provider": "gemini",
+                    "providerDisplayName": "Gemini",
+                    "model": "gemini-3-flash-preview",
+                    "calls": 5,
+                    "inputTokens": 50,
+                    "outputTokens": 10,
+                    "cacheReadTokens": 5,
+                    "cacheWriteTokens": 0,
+                    "totalTokens": 65,
+                    "costUSD": 1.3,
+                },
+            ]
+        else:
+            payload = {
+                "overview": {"cost": 5.5, "calls": 15, "sessions": 2},
+                "daily": [{"date": "2026-05-14", "cost": 5.5}],
+                "models": [{"name": "GPT-5.5", "cost": 4.2}],
+            }
+        return {
+            "ok": True,
+            "returncode": 0,
+            "stdout": "{}",
+            "stderr": "",
+            "payload": payload,
+            "parse_error": None,
+        }
+
+    monkeypatch.setattr(ext, "_run_json_command", fake_run_json_command)
+
+    report = ext.run_external_report("codeburn", period="week", cwd=Path("/tmp/work"))
+
+    assert report["tool"] == "codeburn"
+    assert report["ok"] is True
+    assert "codeburn report --format json -p week" in str(report["command_display"])
+    assert "codeburn models --format json -p week" in str(report["command_display"])
+    payload = report["payload"]
+    assert isinstance(payload, dict)
+    assert payload["reportKind"] == "codeburn_bundle"
+    assert payload["modelEntries"][0]["provider"] == "codex"
+    assert payload["providerEntries"] == [
+        {
+            "provider": "codex",
+            "providerDisplayName": "Codex",
+            "models": 1,
+            "calls": 10,
+            "inputTokens": 100,
+            "outputTokens": 20,
+            "cacheReadTokens": 30,
+            "cacheWriteTokens": 0,
+            "totalTokens": 150,
+            "costUSD": 4.2,
+        },
+        {
+            "provider": "gemini",
+            "providerDisplayName": "Gemini",
+            "models": 1,
+            "calls": 5,
+            "inputTokens": 50,
+            "outputTokens": 10,
+            "cacheReadTokens": 5,
+            "cacheWriteTokens": 0,
+            "totalTokens": 65,
+            "costUSD": 1.3,
+        },
+    ]
+    assert set(payload["captures"]) == {"report", "models"}

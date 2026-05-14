@@ -14,7 +14,7 @@ from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 
 EXPECTED_TOOLS = {
-    "task",
+    "context",
     "route",
     "rescue",
     "trace",
@@ -122,9 +122,9 @@ def test_tools_list_only_passive_decision_tools_without_dev_mode(
     assert names == NON_DEV_LLM_TOOLS
     assert "edit" not in names
     assert "shell" not in names
-    task = next(tool for tool in tools if tool["name"] == "task")
-    assert "passive" in task["description"]
-    assert "no-op/pass" in task["description"]
+    context = next(tool for tool in tools if tool["name"] == "context")
+    assert "passive" in context["description"]
+    assert "no-op/pass" in context["description"]
 
 
 def test_tools_list_each_entry_has_schema() -> None:
@@ -149,7 +149,7 @@ def test_unknown_tool_returns_error() -> None:
 
 def test_get_task_context_can_include_folded_state(store_root: Path) -> None:
     resp = _call(
-        "task",
+        "context",
         {"task": "Fix publish regression", "include_run_ledger": True},
     )
     payload = _result(resp)

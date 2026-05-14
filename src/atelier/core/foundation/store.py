@@ -837,6 +837,15 @@ class ContextStore:
             (trace.id, task, reasoning, tools, commands, errors, output, files, validations, meta),
         )
 
+    def delete_trace(self, trace_id: str) -> None:
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM traces WHERE id = ?", (trace_id,))
+            cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace_id,))
+
+        trace_json_path = self.traces_dir / f"{trace_id}.json"
+        with contextlib.suppress(OSError):
+            trace_json_path.unlink()
+
     def get_trace(self, trace_id: str) -> Trace | None:
         with self._connect() as conn:
             row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()

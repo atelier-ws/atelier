@@ -417,6 +417,130 @@ def _tokscale_payload_dict(result: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _codeburn_capture_metadata(command: list[str], result: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "command_display": shlex.join(command),
+        "returncode": result.get("returncode"),
+    }
+    payload = result.get("payload")
+    if isinstance(payload, list):
+        metadata["count"] = len(payload)
+    elif isinstance(payload, dict):
+        metadata["keys"] = sorted(str(key) for key in payload)[:20]
+    parse_error = str(result.get("parse_error") or "").strip()
+    if parse_error:
+        metadata["parse_error"] = parse_error
+    stderr = str(result.get("stderr") or "").strip()
+    if stderr:
+        metadata["stderr"] = _truncate_text(stderr, limit=600)
+    return metadata
+
+
+def _codeburn_period_flags(period: str) -> list[str]:
+    if period not in CODEBURN.supports_periods:
+        raise ValueError(f"CodeBurn supports only: {', '.join(CODEBURN.supports_periods)}")
+    return ["-p", period]
+
+
+def _codeburn_models_command(binary: str, period: str) -> list[str]:
+    return [binary, "models", "--format", "json", *_codeburn_period_flags(period)]
+
+
+def _codeburn_provider_entries(model_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    providers: dict[str, dict[str, Any]] = {}
+    for entry in model_entries:
+        if not isinstance(entry, dict):
+            continue
+        provider_id = str(entry.get("provider") or "unknown").strip() or "unknown"
+        provider_display = str(entry.get("providerDisplayName") or provider_id).strip() or provider_id
+        bucket = providers.setdefault(
+            provider_id,
+            {
+                "provider": provider_id,
+                "providerDisplayName": provider_display,
+                "models": 0,
+                "calls": 0,
+                "inputTokens": 0,
+                "outputTokens": 0,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "totalTokens": 0,
+                "costUSD": 0.0,
+                "_model_set": set(),
+            },
+        )
+        model_id = str(entry.get("model") or "").strip()
+        if model_id:
+            model_set = bucket["_model_set"]
+            if isinstance(model_set, set):
+                model_set.add(model_id)
+                bucket["models"] = len(model_set)
+        bucket["calls"] += int(entry.get("calls") or 0)
+        bucket["inputTokens"] += int(entry.get("inputTokens") or 0)
+        bucket["outputTokens"] += int(entry.get("outputTokens") or 0)
+        bucket["cacheReadTokens"] += int(entry.get("cacheReadTokens") or 0)
+        bucket["cacheWriteTokens"] += int(entry.get("cacheWriteTokens") or 0)
+        bucket["totalTokens"] += int(entry.get("totalTokens") or 0)
+        bucket["costUSD"] += float(entry.get("costUSD") or 0.0)
+
+    rows: list[dict[str, Any]] = []
+    for bucket in providers.values():
+        bucket.pop("_model_set", None)
+        bucket["costUSD"] = round(float(bucket["costUSD"]), 8)
+        rows.append(bucket)
+    rows.sort(key=lambda row: float(row.get("costUSD") or 0.0), reverse=True)
+    return rows
+
+
+def _run_codeburn_report_bundle(binary: str, period: str, *, cwd: Path | None = None) -> dict[str, Any]:
+    commands = {
+        "report": _codeburn_command(binary, period),
+        "models": _codeburn_models_command(binary, period),
+    }
+    results = {view: _run_json_command(command, cwd=cwd) for view, command in commands.items()}
+
+    report_payload = results["report"].get("payload")
+    base_payload = dict(report_payload) if isinstance(report_payload, dict) else {}
+    model_entries_raw = results["models"].get("payload")
+    model_entries = (
+        [entry for entry in model_entries_raw if isinstance(entry, dict)] if isinstance(model_entries_raw, list) else []
+    )
+
+    payload: dict[str, Any] = dict(base_payload)
+    payload["reportKind"] = "codeburn_bundle"
+    payload["modelEntries"] = model_entries
+    payload["providerEntries"] = _codeburn_provider_entries(model_entries)
+    payload["captures"] = {view: _codeburn_capture_metadata(commands[view], results[view]) for view in commands}
+
+    combined_stdout = "\n\n".join(
+        f"[{view}]\n{stdout}" for view, result in results.items() if (stdout := str(result.get("stdout") or "").strip())
+    )
+    combined_stderr = "\n\n".join(
+        f"[{view}]\n{stderr}" for view, result in results.items() if (stderr := str(result.get("stderr") or "").strip())
+    )
+    parse_errors = [
+        f"{view}: {parse_error}"
+        for view, result in results.items()
+        if (parse_error := str(result.get("parse_error") or "").strip())
+    ]
+    first_failure = next(
+        (result for result in results.values() if not bool(result.get("ok"))),
+        None,
+    )
+
+    return {
+        "ok": all(bool(result.get("ok")) for result in results.values()),
+        "returncode": first_failure.get("returncode") if first_failure else 0,
+        "stdout": combined_stdout,
+        "stderr": combined_stderr,
+        "payload": payload,
+        "parse_error": "; ".join(parse_errors) or None,
+        "command": commands["report"],
+        "command_display": " && ".join(shlex.join(command) for command in commands.values()),
+    }
+
+
 def _run_tokscale_report_bundle(binary: str, period: str, *, cwd: Path | None = None) -> dict[str, Any]:
     commands = {
         view: _tokscale_command(binary, period, view=view)
@@ -473,12 +597,10 @@ def _run_tokscale_report_bundle(binary: str, period: str, *, cwd: Path | None = 
 
 
 def _codeburn_command(binary: str, period: str, subcommand: str = "report") -> list[str]:
-    if period not in CODEBURN.supports_periods:
-        raise ValueError(f"CodeBurn supports only: {', '.join(CODEBURN.supports_periods)}")
     cmd = [binary, subcommand]
     if subcommand == "report":
         cmd.extend(["--format", "json"])
-    cmd.extend(["-p", period])
+    cmd.extend(_codeburn_period_flags(period))
     return cmd
 
 
@@ -549,7 +671,12 @@ def run_external_report(tool: str, *, period: str = "week", cwd: Path | None = N
                 "error": "not_installed",
                 "message": CODEBURN.install_hint,
             }
-        command = _codeburn_command(binary, period)
+        result = _run_codeburn_report_bundle(binary, period, cwd=cwd)
+        return {
+            "tool": normalized,
+            "period": period,
+            **result,
+        }
     elif normalized == f"{CODEBURN.id}:optimize":
         binary = _find_executable(CODEBURN)
         if not binary:
