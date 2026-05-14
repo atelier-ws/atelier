@@ -40,7 +40,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import traceback as _traceback
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -120,9 +119,9 @@ def _extract_flat_usage(usage: Any) -> tuple[int, int, int, int, int]:
         or usage.get("completion_tokens")
         or usage.get("completionTokens")
     )
-    thinking_tokens = _int_or_zero(
-        usage.get("reasoning_output_tokens") or usage.get("reasoningTokens") or usage.get("reasoning_tokens")
-    )
+    # Codex/OpenAI reports reasoning as a subset of output tokens, so mapping it
+    # to thinking_tokens would make Atelier price the same tokens twice.
+    thinking_tokens = 0
     cached_tokens = _int_or_zero(
         usage.get("cached_input_tokens")
         or usage.get("cachedInputTokens")
@@ -304,7 +303,9 @@ class CodexImporter:
                 else:
                     skipped += 1
             except Exception as exc:
-                _traceback.print_exc()
+                import traceback as _tb
+
+                _tb.print_exc()
                 print(f"[atelier] skipping codex session {jsonl_path.name}: {exc}")
         if skipped > 0:
             print(f"[atelier] {skipped} sessions already imported (skipped by dedup)")
@@ -312,19 +313,21 @@ class CodexImporter:
 
     def import_session(self, jsonl_path: Path, *, force: bool = False) -> str | None:
         """Import a single Codex JSONL file. Returns trace ID on success."""
-        stem = jsonl_path.stem  # e.g. rollout-2026-04-30T12-58-46-019ddee8-...
-        parts = stem.split("-")
-        session_id = "-".join(parts[-5:]) if len(parts) >= 5 else stem
+        if not force and self._is_unchanged(jsonl_path):
+            return None
 
-        # ── Timestamp-based dedup check — BEFORE reading the file ──────────
-        # Stat is cheap (metadata only); reading can be 10-50 MB per session.
+        return self._import_session_content(jsonl_path)
+
+    def _is_unchanged(self, jsonl_path: Path) -> bool:
+        artifact_id = f"codex-{self._session_id(jsonl_path)}"
+        file_mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=UTC)
+        existing = self.store.get_raw_artifact(artifact_id)
+        return bool(existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime)
+
+    def _import_session_content(self, jsonl_path: Path) -> str:
+        session_id = self._session_id(jsonl_path)
         artifact_id = f"codex-{session_id}"
         file_mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=UTC)
-        if not force:
-            existing = self.store.get_raw_artifact(artifact_id)
-            if existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
-                return None  # unchanged, skip
-
         codex_root = Path("~/.codex/sessions").expanduser()
         try:
             rel = jsonl_path.relative_to(codex_root)
@@ -351,7 +354,6 @@ class CodexImporter:
             source_file_mtime=file_mtime,
             source_path=str(jsonl_path),
         )
-        self.store.record_raw_artifact(artifact, redacted)
 
         # ── Step 2: detect format and build curated Trace ─────────────────────
         # Parse from RAW content (not redacted) so task extraction isn't
@@ -363,11 +365,17 @@ class CodexImporter:
         else:
             trace = self._parse_event_msg(session_id, raw_content, artifact.id)
 
+        self.store.record_raw_artifact(artifact, redacted)
         # write_json=False: the raw JSONL is already stored as a RawArtifact;
         # there is no need to mirror the compact Trace JSON to disk too.
         self.store.record_trace(trace, write_json=False)
-
         return trace.id
+
+    @staticmethod
+    def _session_id(jsonl_path: Path) -> str:
+        stem = jsonl_path.stem  # e.g. rollout-2026-04-30T12-58-46-019ddee8-...
+        parts = stem.split("-")
+        return "-".join(parts[-5:]) if len(parts) >= 5 else stem
 
     # ------------------------------------------------------------------
     # Format detection
@@ -444,7 +452,7 @@ class CodexImporter:
                     if isinstance(tot, dict):
                         final_total_in = int(tot.get("input_tokens", 0) or 0)
                         final_total_out = int(tot.get("output_tokens", 0) or 0)
-                        final_total_think = int(tot.get("reasoning_output_tokens", 0) or 0)
+                        final_total_think = 0
                         final_total_cached = int(tot.get("cached_input_tokens", 0) or 0)
                     usage_entry = make_llm_usage_entry(
                         model=model_seen,

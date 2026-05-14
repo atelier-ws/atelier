@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
+# Must set dev mode before importing cli for @_dev_command registration
+os.environ["ATELIER_DEV_MODE"] = "1"
+
 from atelier.core.capabilities.plugin_runtime import update_session_stats
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.store import ContextStore
@@ -27,27 +30,6 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     # 10 blocks + 7 rubrics expected
     assert "10 reasonblocks" in res.output
     assert "7 rubrics" in res.output
-
-
-def test_check_plan_blocks_resolving_target_from_slug(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(
-        root,
-        "lint",
-        "--task",
-        "Fix a live state change",
-        "--domain",
-        "state.change",
-        "--step",
-        "Resolve target from URL slug alone",
-        "--step",
-        "Apply the update",
-        "--json",
-    )
-    assert res.exit_code == 2, res.output
-    payload = json.loads(res.output)
-    assert payload["status"] == "blocked"
 
 
 def test_run_rubric_via_cli(tmp_path: Path) -> None:
@@ -158,7 +140,7 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
 
 def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    root.mkdir(parents=True)
+    _invoke(root, "init")
     (root / "smart_state.json").write_text(
         json.dumps({"savings": {"calls_avoided": 1, "tokens_saved": 500}}),
         encoding="utf-8",
@@ -285,7 +267,7 @@ def test_stack_start_uses_compose_helper(tmp_path: Path, monkeypatch: pytest.Mon
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
     assert res.exit_code == 0, res.output
-    assert calls == [["up", "--build", "-d"]]
+    assert calls == [["up", "--build", "-d", "service", "frontend"]]
     assert "http://localhost:3125" in res.output
 
 

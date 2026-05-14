@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.pricing import is_placeholder_model
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
@@ -281,7 +282,10 @@ def summarize_usage_entries(
         total_cache_write += int(entry.cache_creation_input_tokens or 0)
 
         model_id = str(entry.model or "").strip()
-        if model_id:
+        # Placeholder ids like "<synthetic>" should not influence the trace's
+        # single resolved model — they're noise that would otherwise either
+        # become the displayed model or force us to bucket as multi-model.
+        if model_id and not is_placeholder_model(model_id):
             unique_models.add(model_id)
         if not model_id and not any(
             (
@@ -313,7 +317,8 @@ def summarize_usage_entries(
     model_usages = [ModelUsage(model=model, **usage) for model, usage in aggregated.items()]
     single_model = next(iter(unique_models)) if len(unique_models) == 1 else ""
     if not single_model and not unique_models:
-        single_model = str(fallback_model or "").strip()
+        candidate = str(fallback_model or "").strip()
+        single_model = "" if is_placeholder_model(candidate) else candidate
 
     return {
         "usage_entries": usage_entries,

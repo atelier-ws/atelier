@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.pricing import is_placeholder_model
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
@@ -325,10 +326,14 @@ class ClaudeImporter:
                 elif ev_type == "assistant":
                     usage = msg.get("usage", {}) or {}
                     m = msg.get("model") or ev.get("model")
-                    if m:
+                    # Claude Code emits "<synthetic>" for cached/injected replies that
+                    # don't trigger a billable Anthropic request. Don't let that
+                    # placeholder overwrite the last real model id we saw.
+                    if m and not is_placeholder_model(m):
                         model_seen = str(m)
+                    resolved_model = str(m) if (m and not is_placeholder_model(m)) else model_seen
                     usage_entry = make_llm_usage_entry(
-                        model=str(m or model_seen),
+                        model=resolved_model,
                         input_tokens=int(usage.get("input_tokens", 0) or 0),
                         output_tokens=int(usage.get("output_tokens", 0) or 0),
                         cached_input_tokens=int(usage.get("cache_read_input_tokens", 0) or 0),
