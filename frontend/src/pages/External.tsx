@@ -488,6 +488,12 @@ function CodeBurnPanel({ toolWindow }: { toolWindow: ToolWindow }) {
   const projects = asRecordArray(payload.projects).sort(
     (left, right) => toNumber(right.cost) - toNumber(left.cost)
   );
+  const hosts = asRecordArray(payload.hostEntries).sort(
+    (left, right) => toNumber(right.costUSD) - toNumber(left.costUSD)
+  );
+  const providers = asRecordArray(payload.providerEntries).sort(
+    (left, right) => toNumber(right.costUSD) - toNumber(left.costUSD)
+  );
   const topSessions = asRecordArray(payload.topSessions).sort(
     (left, right) => toNumber(right.cost) - toNumber(left.cost)
   );
