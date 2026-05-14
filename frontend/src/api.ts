@@ -914,11 +914,25 @@ export interface DashboardExternalLatest {
   collected_at: string;
 }
 
+export interface DashboardExternalProvider {
+  provider: string;
+  providerDisplayName: string;
+  models: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  costUSD: number;
+}
+
 export interface DashboardExternalSummary {
   runs_total: number;
   successful_runs: number;
   failed_runs: number;
   latest: DashboardExternalLatest[];
+  by_provider: DashboardExternalProvider[];
 }
 
 export interface ExternalAnalyticsRun {

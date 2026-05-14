@@ -1,45 +1,45 @@
-# Atelier - Open-Source Context Runtime
+# Atelier — Open-Source Context Runtime
 
-Reusable engineering judgment for AI-assisted coding.
+**Reusable engineering judgment for AI-assisted coding.**
 
-Atelier gives coding agents and human teams a shared local runtime for context,
-trace history, failure rescue, rubric checks, and host integrations. The default
-install is local-first: CLI commands, an MCP server for agent hosts, a SQLite
-runtime store, and a detached background worker. The browser UI and HTTP service
-are optional.
+Make your best engineers’ judgment available to junior engineers and AI agents.
 
-## Quick Start
+Atelier helps teams ship the same context runtime everywhere: on the command line, inside agent hosts through MCP, and with a detached background agents.
 
-Use this path if you just landed in the repo and want Atelier running.
+The runtime separates **Passive Tracking** (enabled by default) from **Active Context** (requires Development Mode).
 
-### 1. Prerequisites
+## Passive Tracking (Production Ready)
 
-- Linux or macOS shell
-- `curl`
-- `git`
-- Python 3.11+ for source checkout work
-- Docker, optional, only for the visualization stack
-- `uv`, optional for installed-product users and recommended for source checkout
-  development; the installer can install it when needed
+- **Sessions & Ledger** — track every agent run and execution state
+- **Expense Tracking** — aggregate token usage and estimated costs across all hosts
+- **Traces** — record observable execution history (files, commands, errors)
+- **Tools & Agents** — central registry of available capabilities and personas
 
-### 2. Install
+## Active Context (Development Mode)
+
+_Enable with `ATELIER_DEV_MODE=1`_
+
+- **Context** — retrieve and inject known procedures (ReasonBlocks) into agent context
+- **Watchdogs** (formerly Monitors) — detect execution pathologies (loops, thrashing) and suggest rescues
+- **Rubric verification** — gate agent outputs against domain-specific safety checks
+- **Context Optimization** — smart tool selection and token-reduction
+- **Failure rescue** — surface targeted rescue procedures for recurring failures
+
+## Install in One Command
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
 ```
 
-The installer:
+The installer does four things by default:
 
-- installs `atelier` and `atelier-mcp` as user-level commands in `~/.local/bin`
-- clones or updates Atelier under `~/.local/share/atelier`
+- installs `atelier` and `atelier-mcp` as user-level console commands in `~/.local/bin`
 - initializes the runtime store under `~/.atelier`
 - starts the detached `servicectl` background loop
-- tries to start the optional UI/API stack if Docker is available
-- installs supported agent-host integrations when the host CLI is on `PATH`
+- attempts to start the optional visualization stack when Docker is available and `ATELIER_NO_STACK=1` is not set
+- installs supported host integrations when the host CLI is found on `PATH`
 
-Installer details and variants: [docs/installation.md](docs/installation.md)
-
-### 3. Verify
+Check the installed runtime:
 
 ```bash
 atelier --version
@@ -48,109 +48,83 @@ atelier servicectl status
 atelier stack status
 ```
 
-Expected result:
+→ User install guide: [docs/installation.md](docs/installation.md)
 
-- `atelier` and `atelier-mcp` resolve on `PATH`
-- `servicectl` reports the background controller status
-- `atelier stack status` reports whether the optional Docker UI/API stack is
-  running
+## What Runs After Install
 
-### 4. Try the First Useful Commands
+The installed product always gives you **CLI + MCP + background processing**.
+
+If Docker is available and `ATELIER_NO_STACK=1` is not set, the installer also
+tries to start the optional visualization stack on ports `3125` and `8787`.
+
+- `atelier ...` works with no HTTP server.
+- `atelier-mcp` works with no HTTP server.
+- `atelier servicectl ...` manages offline/background work.
+- `atelier stack ...` remains optional at runtime even if the installer started it for convenience.
+
+Pure CLI mode still emits Atelier telemetry events unless you disable it with `atelier telemetry off` or `ATELIER_TELEMETRY=0`.
+
+## Daily Use
+
+Atelier follows a simple **3-step process** for reliable coding:
+
+1. **Context**: Retrieve procedures and facts before starting.
+2. **Implement**: Execute the task (with optional rescue/route).
+3. **Trace**: Record the outcome once done.
+
+Passive tracking works automatically. Active context features require `ATELIER_DEV_MODE=1`.
 
 ```bash
-atelier -h
-atelier help servicectl
-atelier trace list --limit 5
-atelier worker list
-```
-
-Active context commands are gated behind Development Mode:
-
-```bash
-ATELIER_DEV_MODE=1 atelier context \
+# Fetch context for an agent task (Requires Dev Mode)
+atelier context \
   --task "Fix generated output that drifts back after refresh" \
   --domain source.truth \
   --file src/content/generate.py
+
+# Verify required checks after a task completes (Requires Dev Mode)
+echo '{"canonical_identifier_used": true, "pre_change_state_captured": true, "read_after_write_completed": true}' \
+  | atelier verify rubric_state_change_safety
 ```
 
-Record an observable result:
+Common runtime commands:
 
 ```bash
-echo '{
-  "agent": "quickstart",
-  "domain": "state.change",
-  "task": "Apply a live config update",
-  "status": "partial",
-  "output_summary": "Rescue requested before retrying"
-}' | atelier trace record
+atelier servicectl status
+atelier worker list
+atelier trace list
+atelier search "read after write verification"
 ```
 
-Five-minute walkthrough: [docs/quickstart.md](docs/quickstart.md)
+→ Installed quickstart: [docs/quickstart.md](docs/quickstart.md)
 
-## What Atelier Is
+## Optional UI Stack
 
-Atelier is a context runtime for AI-assisted engineering. It is not an agent
-framework and it is not a general-purpose vector database.
-
-It provides:
-
-- a CLI for local runtime operations
-- an MCP server for Claude Code, Codex CLI, Copilot, opencode, and Gemini CLI
-- a local SQLite store by default, with optional PostgreSQL and pgvector
-- trace and ledger storage for observable execution history
-- reusable procedures, called ReasonBlocks
-- rubric checks for risky work
-- rescue suggestions after repeated failures
-- optional background processing and optional visualization UI
-
-## What You Need To Know
-
-Atelier has two operating surfaces:
-
-| Surface | Default behavior | What it is for |
-| --- | --- | --- |
-| Passive Tracking | On by default | Sessions, traces, expense estimates, tool and agent registry |
-| Active Context | Requires `ATELIER_DEV_MODE=1` | Context retrieval, rescue, routing, rubric verification, context optimization |
-
-No HTTP server is required for normal CLI or MCP usage. The optional UI/API
-stack is useful when you want visualization or a browser view of the runtime.
-
-Telemetry events are emitted by default in local CLI mode. Disable them with:
+The UI is optional. If the installer already started it for you, you can leave it
+running, inspect it, or stop it. If Docker was unavailable during install, start
+it manually when you want visualization or a browser-based view of the runtime.
 
 ```bash
-atelier telemetry off
-# or
-ATELIER_TELEMETRY=0 atelier ...
+atelier stack start
+atelier stack status
+atelier stack stop
 ```
 
-## Daily Workflow
+Then open:
 
-Atelier is meant to fit into a simple coding loop:
+- frontend: [http://localhost:3125](http://localhost:3125)
+- service API: [http://localhost:8787](http://localhost:8787)
 
-1. Get context before starting when the task is risky or unfamiliar.
-2. Implement with your normal tools.
-3. Record the observable result so future agents can reuse the lesson.
+Useful stack commands:
 
 ```bash
-# Requires ATELIER_DEV_MODE=1
-ATELIER_DEV_MODE=1 atelier context \
-  --task "Change the generated catalog sync output" \
-  --domain source.truth \
-  --file src/catalog/sync.py
-
-# Normal passive tracking command
-atelier trace list --limit 10
-
-# Requires ATELIER_DEV_MODE=1
-echo '{"canonical_identifier_used": true, "read_after_write_completed": true}' \
-  | ATELIER_DEV_MODE=1 atelier verify rubric_state_change_safety
+atelier stack status
+atelier stack logs
+atelier stack stop
 ```
 
-CLI reference: [docs/cli.md](docs/cli.md)
+## Background Processing
 
-## Runtime Commands
-
-Background controller:
+`servicectl` is the installed offline processing controller. It runs detached and periodically enqueues and processes maintenance work. It works on the default SQLite install and on Postgres-backed deployments.
 
 ```bash
 atelier servicectl status
@@ -159,49 +133,49 @@ atelier servicectl stop
 atelier servicectl start
 ```
 
-Manual worker jobs:
+You can also queue and process work manually:
 
 ```bash
-atelier worker list
 atelier worker enqueue consolidate_reasonblocks
 atelier worker run-once
+atelier worker list
 ```
 
-Optional UI/API stack:
+## Connect an Agent Host
 
-```bash
-atelier stack start
-atelier stack status
-atelier stack logs
-atelier stack stop
-```
+The installer already attempts host integration when the relevant CLI is present. If you want to review or customize host setup, use the per-host docs:
 
-When the stack is running:
+- Claude Code: MCP + skills + agents — [docs/hosts/claude-code-install.md](docs/hosts/claude-code-install.md)
+- Codex CLI: MCP + AGENTS.md — [docs/hosts/codex-install.md](docs/hosts/codex-install.md)
+- Copilot: MCP + instructions — [docs/hosts/copilot-install.md](docs/hosts/copilot-install.md)
+- opencode: MCP — [docs/hosts/opencode-install.md](docs/hosts/opencode-install.md)
+- Gemini CLI: MCP — [docs/hosts/gemini-cli-install.md](docs/hosts/gemini-cli-install.md)
 
-- frontend: [http://localhost:3125](http://localhost:3125)
-- service API: [http://localhost:8787](http://localhost:8787)
+→ Full host overview: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
 
-Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
+## What Atelier Provides
 
-## Connect An Agent Host
+- **Context reuse**: retrieve and inject known procedures before or during complex tasks
+- **Semantic memory**: FTS + optional vector search over procedures and traces
+- **Loop detection**: detect thrashing, second-guessing, and repeated failures
+- **Tool supervision**: cached reads, memoized searches, injection-guarded grep
+- **Context compression**: summarise long-running ledgers into reusable state
+- **Rubric verification**: enforce required checks before and after risky work
+- **Failure rescue**: surface targeted recovery procedures from recurring failures
 
-The installer attempts supported host integrations automatically when the host
-CLI is installed. Use these docs when you want to inspect, customize, or repair a
-host setup:
+## Docs by Audience
 
-| Host | Setup doc |
-| --- | --- |
-| Claude Code | [docs/hosts/claude-code-install.md](docs/hosts/claude-code-install.md) |
-| Codex CLI | [docs/hosts/codex-install.md](docs/hosts/codex-install.md) |
-| Copilot | [docs/hosts/copilot-install.md](docs/hosts/copilot-install.md) |
-| opencode | [docs/hosts/opencode-install.md](docs/hosts/opencode-install.md) |
-| Gemini CLI | [docs/hosts/gemini-cli-install.md](docs/hosts/gemini-cli-install.md) |
+- End users: [docs/installation.md](docs/installation.md), [docs/quickstart.md](docs/quickstart.md), [docs/troubleshooting.md](docs/troubleshooting.md)
+- Integrators: [docs/hosts/](docs/hosts/), [docs/sdk/mcp.md](docs/sdk/mcp.md), [docs/sdk/python.md](docs/sdk/python.md)
+- Contributors: [docs/engineering/contributing.md](docs/engineering/contributing.md)
 
-Host overview: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
+Deeper maintainer history, internal design notes, benchmark history, and legacy integration material now live under `docs-archive/` rather than the primary docs tree.
 
-## Source Checkout Development
+→ Full documentation index: [docs/README.md](docs/README.md)
 
-Use this path only if you are changing Atelier itself.
+## For Developers and Contributors
+
+If you are working from a source checkout instead of the installed product:
 
 ```bash
 cd atelier
@@ -210,16 +184,13 @@ atelier init
 make verify
 ```
 
-Useful contributor commands:
+Developer-focused references:
 
-```bash
-make test-fast
-make lint
-make typecheck
-make format
-```
+- CLI reference: [docs/cli.md](docs/cli.md)
+- MCP reference: [docs/sdk/mcp.md](docs/sdk/mcp.md)
+- Contributing guide: [docs/engineering/contributing.md](docs/engineering/contributing.md)
 
-Contributor guide: [docs/engineering/contributing.md](docs/engineering/contributing.md)
+Archived maintainer references are preserved under `docs-archive/engineering/` and `docs-archive/architecture/`.
 
 ## Python SDK
 
@@ -239,43 +210,61 @@ rescue = client.rescue_failure(
 )
 ```
 
-- SDK reference: [docs/sdk/python.md](docs/sdk/python.md)
-- MCP reference: [docs/sdk/mcp.md](docs/sdk/mcp.md)
+→ SDK reference: [docs/sdk/python.md](docs/sdk/python.md)
 
-## Storage
+## Architecture and Storage
 
-Default local storage:
+Atelier is a context runtime, not an agent framework and not a general-purpose vector database.
 
-| Path | Contents |
-| --- | --- |
-| `~/.atelier/atelier.db` | SQLite store for blocks, traces, rubrics, jobs, and ledgers |
-| `~/.atelier/blocks/` | Markdown mirrors of ReasonBlocks |
-| `~/.atelier/traces/` | JSON mirrors of recorded traces |
-| `~/.atelier/rubrics/` | YAML mirrors of rubrics |
+```text
+Agent Host (Claude Code / Codex / Copilot / opencode / Gemini CLI)
+        |
+        |  MCP stdio  (or CLI / Python SDK)
+        v
+Atelier Runtime
+|- ReasonBlock store   (SQLite + FTS5, optional pgvector)
+|- Rubric gates        (domain-specific verification rules)
+|- Run ledger          (per-session execution state)
+|- Failure clusters    (recurring error signatures -> rescue procedures)
+|- Context compressor  (ledger summarisation)
+`- Tool cache          (read / search / edit)
+        |
+        |- Local SQLite (default)
+        `- PostgreSQL   (optional, ATELIER_DATABASE_URL)
+```
 
-PostgreSQL and pgvector are optional for shared or vector-backed deployments.
-Storage and environment reference: [docs/installation.md](docs/installation.md)
+Default storage layout:
 
-## Safety Defaults
+| Path                      | Contents                                           |
+| ------------------------- | -------------------------------------------------- |
+| `.atelier/atelier.db`     | SQLite store for blocks, traces, rubrics, and jobs |
+| `.atelier/blocks/*.md`    | Markdown mirror of ReasonBlocks                    |
+| `.atelier/traces/*.json`  | JSON mirror of recorded traces                     |
+| `.atelier/rubrics/*.yaml` | YAML mirror of rubrics                             |
 
-- No chain-of-thought storage; traces store observable fields such as commands,
-  errors, summaries, and file references.
-- Redaction runs before trace persistence.
-- API keys and host tokens are not written to the runtime store.
-- Host hooks remain opt-in.
+→ Full storage and environment reference: [docs/installation.md](docs/installation.md)
 
-Security notes: [docs-archive/engineering/security.md](docs-archive/engineering/security.md)
+## Safety
 
-## Repository Map
+- No chain-of-thought storage — only observable fields like commands, errors, and summaries
+- Redaction is applied before trace persistence
+- API keys and host tokens are not written to the store
+- Hooks remain opt-in for host integrations
 
-| Path | Purpose |
-| --- | --- |
-| `src/atelier/` | Runtime, CLI, MCP server, service, store, and capabilities |
-| `tests/` | pytest suite |
-| `docs/` | live user, integration, SDK, and contributor docs |
-| `docs-archive/` | historical design, benchmark, maintainer, and migration material |
-| `integrations/` | host adapter configs and install/verify scripts |
-| `frontend/` | optional React + Vite visualization stack |
+→ Archived security details: `docs-archive/engineering/security.md`
 
-- Full docs index: [docs/README.md](docs/README.md)
+## Benchmarks and Repository Layout
+
+Benchmarks, engineering internals, and repo structure live below the user journey on purpose.
+
+- Benchmarks archive: `docs-archive/benchmarks/`
+- Engineering internals archive: `docs-archive/engineering/`
 - Contributor quick reference: [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+
+| Path            | Purpose                                                    |
+| --------------- | ---------------------------------------------------------- |
+| `src/atelier/`  | Runtime, CLI, MCP server, service, store, and capabilities |
+| `tests/`        | pytest suite                                               |
+| `docs/`         | user, integration, and engineering documentation           |
+| `integrations/` | host adapter configs and install/verify scripts            |
+| `frontend/`     | optional React + Vite visualization stack                  |

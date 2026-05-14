@@ -14,7 +14,7 @@ DEV_MODE_ENV_VAR = "ATELIER_DEV_MODE"
 TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 INSTALL_PROFILES = frozenset({"stable", "dev"})
 
-NON_DEV_LLM_TOOLS = frozenset({"task", "memory", "read", "search", "compact", "route", "rescue", "verify", "trace"})
+NON_DEV_LLM_TOOLS = frozenset({"context", "memory", "read", "search", "compact", "route", "rescue", "verify", "trace"})
 DEV_ONLY_SKILLS = frozenset(
     {
         "analyze-failures",
