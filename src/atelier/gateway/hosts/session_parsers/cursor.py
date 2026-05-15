@@ -27,7 +27,27 @@ _PLACEHOLDER_MODELS = {"", "auto", "default", "composer-2"}
 def _db_path(root: Path | None = None) -> Path:
     if root is not None:
         return root
-    return Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+
+    import os
+    import sys
+
+    # Linux
+    linux_path = Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+    # macOS
+    macos_path = Path.home() / "Library" / "Application Support" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+    # Windows
+    appdata = os.environ.get("APPDATA")
+    windows_path = Path(appdata) / "Cursor" / "User" / "globalStorage" / "state.vscdb" if appdata else None
+
+    if sys.platform == "darwin" and macos_path.exists():
+        return macos_path
+    if sys.platform == "win32" and windows_path and windows_path.exists():
+        return windows_path
+    if linux_path.exists():
+        return linux_path
+
+    # Fallback to linux/default if nothing found
+    return linux_path
 
 
 def _workspace_storage_dir(db_path: Path) -> Path:

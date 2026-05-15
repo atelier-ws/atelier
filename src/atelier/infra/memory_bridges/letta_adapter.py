@@ -383,23 +383,32 @@ class LettaMemoryStore:
         data = self._adapter.upsert_block(block)
         return LettaAdapter.letta_to_block(data or LettaAdapter.block_to_letta(block), agent_id=block.agent_id)
 
-    def get_block(self, agent_id: str, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
-        data = self._adapter.get_block(agent_id, label)
+    def get_block(self, agent_id: str | None, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
+        target_agent = agent_id or "default"
+        data = self._adapter.get_block(target_agent, label)
         if data is not None:
-            block = LettaAdapter.letta_to_block(data, agent_id=agent_id)
+            block = LettaAdapter.letta_to_block(data, agent_id=target_agent)
             if block.deprecated_at is not None and not include_tombstoned:
                 return None
             return block
         return None
 
-    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
-        blocks = [LettaAdapter.letta_to_block(item, agent_id=agent_id) for item in self._adapter.list_blocks(agent_id)]
+    def list_blocks(
+        self, agent_id: str | None, *, include_tombstoned: bool = False, limit: int = 500
+    ) -> list[MemoryBlock]:
+        target_agent = agent_id or "default"
+        blocks = [
+            LettaAdapter.letta_to_block(item, agent_id=target_agent) for item in self._adapter.list_blocks(target_agent)
+        ]
         if not include_tombstoned:
             blocks = [block for block in blocks if block.deprecated_at is None]
         return blocks[:limit]
 
-    def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
-        blocks = [LettaAdapter.letta_to_block(item, agent_id=agent_id) for item in self._adapter.list_blocks(agent_id)]
+    def list_pinned_blocks(self, agent_id: str | None) -> list[MemoryBlock]:
+        target_agent = agent_id or "default"
+        blocks = [
+            LettaAdapter.letta_to_block(item, agent_id=target_agent) for item in self._adapter.list_blocks(target_agent)
+        ]
         pinned = [block for block in blocks if block.pinned]
         return [block for block in pinned if block.deprecated_at is None]
 
@@ -434,7 +443,7 @@ class LettaMemoryStore:
 
     def search_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         query: str,
         *,
         top_k: int = 5,
@@ -442,7 +451,7 @@ class LettaMemoryStore:
         since: datetime | None = None,
     ) -> list[ArchivalPassage]:
         results = self._adapter.search_archival(
-            agent_id=agent_id,
+            agent_id=agent_id or "default",
             query=query,
             top_k=top_k,
             tags=tags,
@@ -453,21 +462,21 @@ class LettaMemoryStore:
             text = str(item.get("text", item.get("value", "")))
             if not text:
                 continue
-            passage = LettaAdapter.letta_to_passage(item, agent_id=agent_id)
+            passage = LettaAdapter.letta_to_passage(item, agent_id=agent_id or "default")
             if passage is not None:
                 passages.append(passage)
         return passages[:top_k]
 
     def list_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         *,
         tags: list[str] | None = None,
         since: datetime | None = None,
         limit: int = 200,
     ) -> list[ArchivalPassage]:
-        rows = self._adapter.list_archival(agent_id=agent_id, tags=tags, since=since, limit=limit)
-        passages = [LettaAdapter.letta_to_passage(row, agent_id=agent_id) for row in rows]
+        rows = self._adapter.list_archival(agent_id=agent_id or "default", tags=tags, since=since, limit=limit)
+        passages = [LettaAdapter.letta_to_passage(row, agent_id=agent_id or "default") for row in rows]
         return [passage for passage in passages if passage is not None]
 
     def record_recall(self, recall: MemoryRecall) -> MemoryRecall:
@@ -478,7 +487,7 @@ class LettaMemoryStore:
             )
         return self._recall_store.record_recall(recall)
 
-    def list_recalls(self, agent_id: str, *, limit: int = 50) -> list[MemoryRecall]:
+    def list_recalls(self, agent_id: str | None, *, limit: int = 50) -> list[MemoryRecall]:
         return self._recall_store.list_recalls(agent_id, limit=limit)
 
     def write_run_frame(self, frame: RunMemoryFrame) -> None:

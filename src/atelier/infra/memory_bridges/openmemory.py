@@ -68,13 +68,15 @@ class OpenMemoryMemoryStore:
     def upsert_block(self, block: MemoryBlock, *, actor: str, reason: str = "") -> MemoryBlock:
         return self._store.upsert_block(block, actor=actor, reason=reason)
 
-    def get_block(self, agent_id: str, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
+    def get_block(self, agent_id: str | None, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
         return self._store.get_block(agent_id, label, include_tombstoned=include_tombstoned)
 
-    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
+    def list_blocks(
+        self, agent_id: str | None, *, include_tombstoned: bool = False, limit: int = 500
+    ) -> list[MemoryBlock]:
         return self._store.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
 
-    def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
+    def list_pinned_blocks(self, agent_id: str | None) -> list[MemoryBlock]:
         return self._store.list_pinned_blocks(agent_id)
 
     def list_block_history(self, block_id: str, *, limit: int = 50) -> list[MemoryBlockHistory]:
@@ -100,7 +102,7 @@ class OpenMemoryMemoryStore:
 
     def search_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         query: str,
         *,
         top_k: int = 5,
@@ -108,12 +110,12 @@ class OpenMemoryMemoryStore:
         since: datetime | None = None,
     ) -> list[ArchivalPassage]:
         with contextlib.suppress(Exception):
-            self._adapter.fetch_context(task=query, project_id=agent_id)
+            self._adapter.fetch_context(task=query, project_id=agent_id or "default")
         return self._store.search_passages(agent_id, query, top_k=top_k, tags=tags, since=since)
 
     def list_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         *,
         tags: list[str] | None = None,
         since: datetime | None = None,
@@ -124,7 +126,7 @@ class OpenMemoryMemoryStore:
     def record_recall(self, recall: MemoryRecall) -> MemoryRecall:
         return self._store.record_recall(recall)
 
-    def list_recalls(self, agent_id: str, *, limit: int = 50) -> list[MemoryRecall]:
+    def list_recalls(self, agent_id: str | None, *, limit: int = 50) -> list[MemoryRecall]:
         return self._store.list_recalls(agent_id, limit=limit)
 
     def write_run_frame(self, frame: RunMemoryFrame) -> None:
