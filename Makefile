@@ -75,7 +75,6 @@ typecheck: ## Run mypy strict type-checking
 	uv run mypy --strict $(PY_PATHS)
 
 verify: lint format-check typecheck test ## Verify code, runtime smoke tests, and agent integrations
-	bash scripts/verify_atelier_mcp_stdio.sh
 	bash scripts/verify_atelier_service.sh
 	bash scripts/verify_atelier_postgres.sh
 	bash scripts/verify_agent_clis.sh

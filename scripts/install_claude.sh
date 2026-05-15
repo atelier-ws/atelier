@@ -22,7 +22,6 @@ PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
 
-ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 PLUGIN_REF="atelier@atelier"
 
 DRY_RUN=false
@@ -101,11 +100,10 @@ if $WORKSPACE_SET; then
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "${ATELIER_WRAPPER}",
-      "args": [],
+      "command": "atelier-mcp",
+      "args": ["--host", "claude"],
       "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
+        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
       }
     }
   }
@@ -118,8 +116,8 @@ else
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "${ATELIER_WRAPPER}",
-      "args": []
+      "command": "atelier-mcp",
+      "args": ["--host", "claude"]
     }
   }
 }
@@ -147,7 +145,7 @@ if $PRINT_ONLY; then
         echo "  set env.CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
     else
         echo "Step 3 - Register MCP in Claude user scope:"
-        echo "  claude mcp add --scope user atelier -- '${ATELIER_WRAPPER}'"
+        echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
     fi
     echo ""
     echo "After install, in Claude Code: /atelier:status"
@@ -318,11 +316,11 @@ PYEOF
     fi
 else
     if $DRY_RUN; then
-        echo "  [dry-run] claude mcp add --scope user atelier -- '${ATELIER_WRAPPER}'"
+        echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"
     else
         info "Registering atelier MCP server in Claude user scope"
         claude mcp remove --scope user atelier 2>/dev/null || true
-        claude mcp add --scope user atelier -- "${ATELIER_WRAPPER}"
+        claude mcp add --scope user atelier -- atelier-mcp --host claude
     fi
 fi
 

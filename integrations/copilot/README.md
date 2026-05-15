@@ -6,7 +6,7 @@ Support level: **MCP + custom instructions** — MCP server registration and Cop
 
 | Component           | Location after install                                                                           | Description                             |
 | ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------- |
-| MCP server          | VS Code user `mcp.json` or workspace `.vscode/mcp.json`                                          | Wired to `scripts/atelier_mcp_stdio.sh` |
+| MCP server          | VS Code user `mcp.json` or workspace `.vscode/mcp.json`                                          | Wired to `atelier-mcp` |
 | Custom instructions | `~/.copilot/instructions/atelier.instructions.md` or workspace `.github/copilot-instructions.md` | Atelier usage instructions              |
 
 The installer writes user/global VS Code config by default. Pass

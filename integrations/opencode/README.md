@@ -6,7 +6,7 @@ Support level: **MCP config** — MCP server registration in `opencode.json`.
 
 | Component  | Location after install                    | Description                             |
 | ---------- | ----------------------------------------- | --------------------------------------- |
-| MCP server | Merged into global or workspace `opencode.json` | Wired to `scripts/atelier_mcp_stdio.sh` |
+| MCP server | Merged into global or workspace `opencode.json` | Wired to `atelier-mcp` |
 
 By default the installer writes `~/.config/opencode/opencode.json`. With
 `--workspace DIR`, it writes `<workspace>/opencode.json` and installs the agent

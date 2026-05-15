@@ -5,7 +5,7 @@
   "mcpServers": {
     "atelier": {
         "command": "atelier-mcp",
-        "args": [],
+        "args": ["--host", "gemini"],
         "cwd": "${workspacePath}",
         "env": {
           "ATELIER_WORKSPACE_ROOT": "${workspacePath}",

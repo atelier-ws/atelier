@@ -3,7 +3,7 @@
 Codex host integration artifacts.
 
 - `install.sh` and `verify.sh` are thin wrappers around `scripts/install_codex.sh` and `scripts/verify_codex.sh`.
-- `mcp.json` and `mcp.atelier.example.json` define the Codex MCP server entry.
+- `plugin/.mcp.json` defines the Codex MCP server entry.
 - `AGENTS.atelier.md` is the source copied to `~/.codex/AGENTS.md` globally or `<workspace>/AGENTS.md` with `--workspace DIR`.
 - `tasks/` contains reusable Codex task prompts for preflight and recovery workflows.
 - `references/` stores host-specific notes and examples.
