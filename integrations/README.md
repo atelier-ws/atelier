@@ -49,7 +49,7 @@ bash scripts/install_gemini.sh
 All installers write the same MCP command pointing to the stable wrapper script:
 
 ```bash
-<atelier_root>/scripts/atelier_mcp_stdio.sh
+atelier-mcp
 ```
 
 The wrapper locates the atelier repo, sets `ATELIER_ROOT`, and runs:

@@ -96,7 +96,7 @@ Host install entrypoints are under `scripts/install_<host>.sh`.
 All hosts ultimately invoke the same Atelier MCP server, but packaged hosts now carry their own host-specific wrapper surfaces:
 
 ```text
-atelier/scripts/atelier_mcp_stdio.sh
+atelier-mcp
 ```
 
 That repo wrapper remains the canonical MCP entrypoint for direct MCP-only installs. Codex and Gemini package that same runtime behavior behind a plugin-local or extension-local wrapper so the host can load a packaged surface instead of a raw settings merge.

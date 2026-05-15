@@ -24,7 +24,7 @@ class TestCompactAdviseLogic:
         utilisation_pct = round(100.0 * tokens_used / 200_000, 1)
 
         assert utilisation_pct < 10.0
-        should_compact = utilisation_pct >= 60.0
+        should_compact = utilisation_pct >= 80.0
         assert not should_compact
 
     def test_advise_at_moderate_utilisation(self) -> None:
@@ -37,10 +37,10 @@ class TestCompactAdviseLogic:
         utilisation_pct = round(100.0 * tokens_used / 200_000, 1)
 
         assert 40.0 <= utilisation_pct < 60.0
-        should_compact = utilisation_pct >= 60.0
+        should_compact = utilisation_pct >= 80.0
         assert not should_compact
 
-    def test_advise_at_high_utilisation(self) -> None:
+    def test_advise_at_high_utilisation_does_not_auto_compact(self) -> None:
         """Test advise when utilisation is high (~75%)."""
         ledger = RunLedger()
         ledger.token_count = 140_000  # ~70% of 200K
@@ -50,8 +50,10 @@ class TestCompactAdviseLogic:
         utilisation_pct = round(100.0 * tokens_used / 200_000, 1)
 
         assert utilisation_pct >= 60.0
-        should_compact = utilisation_pct >= 60.0
-        assert should_compact
+        should_advise = utilisation_pct >= 60.0
+        should_compact = utilisation_pct >= 80.0
+        assert should_advise
+        assert not should_compact
 
     def test_preserve_blocks_selection(self) -> None:
         """Test that preserve_blocks are correctly selected."""

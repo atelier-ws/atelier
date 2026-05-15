@@ -413,6 +413,7 @@ class LedgerEvent(BaseModel):
         "validation",
         "test_result",
         "note",
+        "model_recommendation",
         "reasoning",
         "agent_message",
     ]

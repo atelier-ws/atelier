@@ -1,0 +1,72 @@
+import json
+import os
+import subprocess
+from pathlib import Path
+
+def test_mcp_stdio_smoke() -> None:
+    """
+    MCP stdio protocol smoke test.
+    Sends JSON-RPC messages over stdin/stdout to atelier-mcp and asserts correct responses.
+    """
+    # Build the JSON-RPC batch
+    messages = [
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"verify-script","version":"1"},"capabilities":{}}},
+        {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}},
+        {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"context","arguments":{"task":"Update Shopify product metafields","domain":"beseam.shopify.publish","tools":["shopify.update_metafield"]}}},
+        {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"rescue","arguments":{"task":"fix test","error":"AssertionError: expected 200 got 500","attempt":1,"context":"pytest run"}}},
+    ]
+    
+    input_str = "\n".join(json.dumps(m) for m in messages) + "\n"
+    
+    # Run atelier-mcp via uv run to ensure dependencies
+    # Set ATELIER_DEV_MODE=1 to ensure all tools (like context, edit) are visible
+    env = os.environ.copy()
+    env["ATELIER_DEV_MODE"] = "1"
+    
+    result = subprocess.run(
+        ["uv", "run", "atelier-mcp"],
+        input=input_str,
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env
+    )
+    
+    responses = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+            if "id" in msg:
+                responses[msg["id"]] = msg
+        except Exception:
+            pass
+
+    # 1. tools/list
+    assert 2 in responses, "No tools/list response"
+    tools_result = responses[2].get("result", {})
+    tool_names = {t["name"] for t in tools_result.get("tools", [])}
+    required = {
+        "context",
+        "route",
+        "rescue",
+        "trace",
+        "verify",
+        "memory",
+        "read",
+        "edit",
+        "search",
+        "compact",
+    }
+    missing = required - tool_names
+    assert not missing, f"Missing tools: {missing}"
+
+    # 2. reasoning (context tool) -> no error
+    assert 4 in responses, "No reasoning (context) response"
+    assert "error" not in responses[4], f"Unexpected error in context tool: {responses[4].get('error')}"
+
+    # 3. rescue -> no error
+    assert 5 in responses, "No rescue response"
+    assert "error" not in responses[5], f"Unexpected error in rescue tool: {responses[5].get('error')}"

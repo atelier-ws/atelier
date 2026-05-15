@@ -1,7 +1,7 @@
 # Atelier — Codex Agent
 
 When this file is present in the workspace or copied to `~/.codex/AGENTS.md`,
-Codex CLI loads it as default context. Atelier becomes your operating posture.
+Codex CLI loads it as default context. Atelier becomes your operating posture. All tools are available via MCP.
 
 ---
 
