@@ -137,15 +137,15 @@ If `reports/YYYY-W<N-1>/benchmark.json` exists, populate Δ columns. If not, sho
 
 ## Acceptance criteria
 
-- [ ] `atelier benchmark publish --since 7d` runs all benchmarks and writes the report directory
-- [ ] Both `benchmark.json` and `benchmark.md` exist in the report dir after run
-- [ ] Markdown opens cleanly in GitHub preview (verified by manual check)
-- [ ] Δ column populates when prior week's report exists
-- [ ] `--dry-run` flag prints what would be written without writing
-- [ ] `--output <path>` writes to custom directory
-- [ ] Reproduction command at the bottom of markdown matches the actual command invoked (verifiable by re-running)
-- [ ] Unit tests verify: template fills correctly with synthetic data, missing prior week shows "n/a"
-- [ ] The first real published post is committed to `reports/` as the example
+- [x] `atelier benchmark publish --since 7d` runs all benchmarks and writes the report directory
+- [x] Both `benchmark.json` and `benchmark.md` exist in the report dir after run
+- [x] Markdown opens cleanly in GitHub preview (verified by manual check)
+- [x] Δ column populates when prior week's report exists
+- [x] `--dry-run` flag prints what would be written without writing
+- [x] `--output <path>` writes to custom directory
+- [x] Reproduction command at the bottom of markdown matches the actual command invoked (verifiable by re-running)
+- [x] Unit tests verify: template fills correctly with synthetic data, missing prior week shows "n/a"
+- [x] The first real published post is committed to `reports/` as the example
 
 ## Open questions for the executor
 
@@ -166,4 +166,4 @@ If `reports/YYYY-W<N-1>/benchmark.json` exists, populate Δ columns. If not, sho
 
 - [ ] Pending
 - [ ] In progress
-- [ ] Shipped
+- [x] Shipped

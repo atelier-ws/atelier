@@ -18,11 +18,11 @@ These ship together as the launch. See [ROADMAP.md](../product/ROADMAP.md) for c
 
 | Spec | Status |
 |------|--------|
-| [01-outcome-capture.md](./week2/01-outcome-capture.md) — Feedback loop foundation | Pending |
-| [02-cost-report.md](./week2/02-cost-report.md) — Per-session cost report | Pending |
-| [03-memory-adapter.md](./week2/03-memory-adapter.md) — Read native memories | Pending |
-| [04-insights-command.md](./week2/04-insights-command.md) — `atelier insights` | Pending |
-| [05-benchmark-publication.md](./week2/05-benchmark-publication.md) — Publish pipeline | Pending |
+| [01-outcome-capture.md](./week2/01-outcome-capture.md) — Feedback loop foundation | Shipped |
+| [02-cost-report.md](./week2/02-cost-report.md) — Per-session cost report | Shipped |
+| [03-memory-adapter.md](./week2/03-memory-adapter.md) — Read native memories | Shipped |
+| [04-insights-command.md](./week2/04-insights-command.md) — `atelier insights` | Shipped |
+| [05-benchmark-publication.md](./week2/05-benchmark-publication.md) — Publish pipeline | Shipped |
 
 ## Phase 2 — 30-day wedge
 
@@ -42,6 +42,14 @@ These ship together as the launch. See [ROADMAP.md](../product/ROADMAP.md) for c
 | [12-team-tier.md](./day90/12-team-tier.md) | Outline only |
 | [13-public-leaderboard.md](./day90/13-public-leaderboard.md) | Outline only |
 | [14-integration-api.md](./day90/14-integration-api.md) | Outline only |
+
+## Cross-phase
+
+These specs span phases and are tracked on their own branches.
+
+| Spec | Status | Branch |
+|------|--------|--------|
+| [optimization-autopilot.md](./optimization-autopilot.md) — Optimization Advisor (cost vs quality tuning) | Pending review | `feat/optimization-autopilot` |
 
 ## How to execute a spec
 
