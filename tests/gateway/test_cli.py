@@ -35,17 +35,24 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
 def test_run_rubric_via_cli(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
-    checks = json.dumps(
-        {
-            "canonical_identifier_used": True,
-            "pre_change_state_captured": True,
-            "read_after_write_completed": True,
-            "observed_state_matches_intent": True,
-            "rollback_plan_available": True,
-            "user_visible_surface_checked": True,
-        }
+    checks = {
+        "canonical_identifier_used": True,
+        "pre_change_state_captured": True,
+        "read_after_write_completed": True,
+        "observed_state_matches_intent": True,
+        "rollback_plan_available": True,
+        "user_visible_surface_checked": True,
+    }
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "verify",
+        "--dev",
+        "--args",
+        json.dumps({"rubric_id": "rubric_state_change_safety", "checks": checks}),
+        "--json",
     )
-    res = _invoke(root, "verify", "rubric_state_change_safety", "--json", input=checks)
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["status"] == "pass"
@@ -54,8 +61,17 @@ def test_run_rubric_via_cli(tmp_path: Path) -> None:
 def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
-    res = _invoke(root, "verify", "rubric_state_change_safety", "--json", input="{}")
-    assert res.exit_code == 2
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "verify",
+        "--dev",
+        "--args",
+        json.dumps({"rubric_id": "rubric_state_change_safety", "checks": {}}),
+        "--json",
+    )
+    assert res.exit_code == 0
     payload = json.loads(res.output)
     assert payload["status"] == "blocked"
 
@@ -123,13 +139,18 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
     _invoke(root, "init")
     res = _invoke(
         root,
+        "tools",
+        "call",
         "rescue",
-        "--task",
-        "Update external state",
-        "--error",
-        "wrong target updated",
-        "--domain",
-        "state.change",
+        "--dev",
+        "--args",
+        json.dumps(
+            {
+                "task": "Update external state",
+                "error": "wrong target updated",
+                "domain": "state.change",
+            }
+        ),
         "--json",
     )
     assert res.exit_code == 0

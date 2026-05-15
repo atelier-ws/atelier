@@ -25,7 +25,7 @@ Developer-mode commands require `ATELIER_DEV_MODE=1`:
 - `atelier edit`
 - `atelier route`
 
-Older docs may refer to `atelier lint`, `atelier check-plan`, `atelier task`, or
+Older docs may refer to `atelier lint`, `atelier check-plan`, `atelier context`, or
 `atelier pack`. Those are not the current public CLI surface.
 
 ## Common Commands

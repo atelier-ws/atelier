@@ -15,3 +15,21 @@ fails twice, call `rescue` or change approach; do not retry a third time.
 
 All tools are available via MCP (server name: `atelier`). See
 `atelier/copilot/README.md` for details.
+
+`read` and `search` are Atelier augmentations for bounded, repeated context
+reads/searches. If an Atelier MCP tool returns `noop`, is hidden, or is
+unavailable, use Copilot or VS Code native file reads, workspace search, shell
+`rg`, or `grep`. Always return findings instead of waiting for tool
+availability to improve.
+
+## Savings visibility
+
+Run `atelier-status` in the terminal or `atelier savings --json` to see
+current savings. Two dimensions are tracked:
+
+- **Context savings**: tokens compacted + tool-output reduction (`saved=$X`).
+- **Model routing savings**: cost delta from tier downgrade vs opus (`routing=$X`).
+
+Use `compact(op="advise")` to check context utilisation. Use `route(op="decide")`
+before multi-step plans. Both record savings automatically.
+
