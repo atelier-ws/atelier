@@ -109,4 +109,83 @@ describe("Traces page", () => {
     expect(screen.getByText(/run-timeout/i)).toBeInTheDocument();
     expect(screen.getByText(/Commands:/i)).toBeInTheDocument();
   });
+
+  it("hides stale or unrelated highlighted snippets for the current search", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.includes("/api/traces")) {
+          const params = new URL(url, "http://localhost").searchParams;
+          const query = params.get("query");
+          return Promise.resolve(
+            jsonResponse({
+              items: [
+                {
+                  id: query ? "trace-sidecar" : "trace-base",
+                  session_id: query ? "run-sidecar" : "run-base",
+                  agent: "codex",
+                  host: "codex",
+                  domain: "coding",
+                  task: query ? "Investigate sidecar session" : "Base session",
+                  status: "success",
+                  files_touched: [],
+                  tools_called: [],
+                  commands_run: [],
+                  errors_seen: [],
+                  repeated_failures: [],
+                  validation_results: [],
+                  created_at: "2026-05-12T00:00:00Z",
+                  snippets: query
+                    ? [
+                        "Tools: [[shopify]] sync service skills",
+                        "Commands: inspect [[sidecar]] process logs",
+                      ]
+                    : [],
+                },
+              ],
+              metrics: {
+                stats: {
+                  total: 1,
+                  success: 1,
+                  failed: 0,
+                  partial: 0,
+                },
+                hosts: ["codex"],
+                domains: ["coding"],
+              },
+            })
+          );
+        }
+
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/sessions"]}>
+        <Routes>
+          <Route path="/sessions" element={<Traces />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Base session")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText(
+        /Search tasks, reasoning, tools, commands, files, validations, and summaries/i
+      ),
+      "sidecar"
+    );
+
+    expect(
+      await screen.findByText("Investigate sidecar session")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/inspect/i)).toBeInTheDocument();
+    expect(screen.queryByText(/shopify/i)).not.toBeInTheDocument();
+  });
 });
