@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 EXPECTED_TOOLS = {
-    "task",
+    "context",
     "route",
     "rescue",
     "trace",

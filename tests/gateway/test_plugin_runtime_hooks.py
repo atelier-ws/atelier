@@ -11,6 +11,8 @@ from atelier.core.capabilities.plugin_runtime import (
     aggregate_session_stats,
     apply_session_start_files,
     build_savings_report,
+    load_live_savings_summary,
+    rewrite_agent,
     session_start_bootstrap,
     status_line_choose_message,
     update_session_stats,
@@ -123,9 +125,15 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
             "now_ms": 1000,
         },
     )
-    update_session_stats(root, {"hook_event_name": "PreCompact", "session_id": "s1", "now_ms": 2000})
-    update_session_stats(root, {"hook_event_name": "PostCompact", "session_id": "s1", "now_ms": 2750})
-    update_session_stats(root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000})
+    update_session_stats(
+        root, {"hook_event_name": "PreCompact", "session_id": "s1", "now_ms": 2000}
+    )
+    update_session_stats(
+        root, {"hook_event_name": "PostCompact", "session_id": "s1", "now_ms": 2750}
+    )
+    update_session_stats(
+        root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000}
+    )
 
     stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
     assert stats["usage"]["input_tokens"] == 16
@@ -137,6 +145,14 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert stats["subagents_completed"] == 1
     assert stats["pending_subagents"] == 0
     assert (root / "session_events" / "s1.jsonl").exists()
+
+
+def test_rewrite_agent_normalizes_atelier_namespaced_explore() -> None:
+    assert rewrite_agent("atelier:explore") == {"updated_input": {"subagent_type": "explore"}}
+    assert rewrite_agent("atelier:explore", is_free_plan=True) == {
+        "updated_input": {"subagent_type": "Explore"}
+    }
+    assert rewrite_agent("other:explore") == {"no_output": True}
 
 
 def test_savings_report_merges_smart_state_and_session_stats(tmp_path: Path) -> None:
@@ -177,7 +193,9 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
         payload={"session_id": "s1"},
     )
 
-    assert result["host_settings"]["statusLine"]["command"].endswith("/plugin/scripts/statusline.sh")
+    assert result["host_settings"]["statusLine"]["command"].endswith(
+        "/plugin/scripts/statusline.sh"
+    )
     assert result["host_settings"]["atelier"]["spinnerVerbs"]
     assert result["host_settings"]["atelier"]["attribution"]["source"] == "Atelier"
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
@@ -242,7 +260,9 @@ def test_apply_session_start_files_mutates_host_settings_and_plugin_mcp(tmp_path
     )
     write_plugin_setting(root, "alwaysLoadTools", True)
 
-    apply_session_start_files(root, plugin_root, config_dir=config_dir, payload={"session_id": "s2"})
+    apply_session_start_files(
+        root, plugin_root, config_dir=config_dir, payload={"session_id": "s2"}
+    )
 
     settings = json.loads((config_dir / "settings.json").read_text(encoding="utf-8"))
     mcp_json = json.loads((plugin_root / ".mcp.json").read_text(encoding="utf-8"))
@@ -258,7 +278,9 @@ def test_savings_report_includes_lifetime_baseline_and_free_plan(tmp_path: Path)
         json.dumps({"vanillaSessions": 6, "totalVanillaCostInUsd": 12.0}),
         encoding="utf-8",
     )
-    (root / "free_plan.json").write_text(json.dumps({"remaining": 1.0, "limit": 10.0}), encoding="utf-8")
+    (root / "free_plan.json").write_text(
+        json.dumps({"remaining": 1.0, "limit": 10.0}), encoding="utf-8"
+    )
 
     report = build_savings_report(root)
 
@@ -267,17 +289,129 @@ def test_savings_report_includes_lifetime_baseline_and_free_plan(tmp_path: Path)
     assert report["free_plan"]["usage_pct"] == 90.0
 
 
+def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    root.mkdir()
+    (root / "live_savings_events.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "s1",
+                        "lever": "session_compaction",
+                        "tokens_saved": 42_000,
+                        "calls_saved": 0,
+                        "cost_saved_usd": 0.64,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "s1",
+                        "lever": "model_routing",
+                        "tokens_saved": 0,
+                        "calls_saved": 0,
+                        "cost_saved_usd": 0.23,
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    summary = load_live_savings_summary(root, session_id="s1")
+    report = build_savings_report(root, session_id="s1")
+
+    assert summary == {
+        "calls_saved": 0,
+        "tokens_saved": 42_000,
+        "saved_usd": 0.87,
+        "routing_saved_usd": 0.23,
+    }
+    assert report["cost"]["saved_usd"] == 0.87
+    assert report["cost"]["live_saved_usd"] == 0.87
+    assert report["cost"]["routing_saved_usd"] == 0.23
+    assert report["estimated_saved_usd"] == 0.87
+
+
+def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    (root / "session_stats").mkdir(parents=True)
+    (root / "session_stats" / "s1.json").write_text(
+        json.dumps({"session_id": "s1", "savings": {"calls_saved": 1, "tokens_saved": 10_000}}),
+        encoding="utf-8",
+    )
+    (root / "live_savings_events.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "s1",
+                        "lever": "session_compaction",
+                        "tokens_saved": 42_000,
+                        "cost_saved_usd": 0.64,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "s1",
+                        "lever": "model_routing",
+                        "tokens_saved": 0,
+                        "cost_saved_usd": 0.23,
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [str(ROOT / "integrations" / "claude" / "plugin" / "scripts" / "statusline.sh")],
+        input=json.dumps(
+            {
+                "session_id": "s1",
+                "model": {"display_name": "Sonnet"},
+                "context_window": {
+                    "used_percentage": 42,
+                    "current_usage": {
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+                "cost": {"total_cost_usd": 1.23, "total_duration_ms": 61_000},
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "ATELIER_ROOT": str(root), "ATELIER_NO_COLOR": "1"},
+    )
+
+    assert "routing: $0.230" in result.stdout
+    assert "42k / 1c" in result.stdout
+    assert "↓ $0.870" in result.stdout
+
+
 def test_status_line_priority_and_weighted_rotation() -> None:
-    assert status_line_choose_message(update_flag={"fromVersion": "1", "toVersion": "2"})["message_family"] == "update"
     assert (
-        status_line_choose_message(auth_present=False, update_flag={"fromVersion": "1", "toVersion": "2"})[
+        status_line_choose_message(update_flag={"fromVersion": "1", "toVersion": "2"})[
             "message_family"
         ]
+        == "update"
+    )
+    assert (
+        status_line_choose_message(
+            auth_present=False, update_flag={"fromVersion": "1", "toVersion": "2"}
+        )["message_family"]
         == "login"
     )
     assert status_line_choose_message(auth_present=False)["message_family"] == "login"
     assert status_line_choose_message(subscription_warning=True)["message_family"] == "subscription"
-    assert status_line_choose_message(free_plan_remaining=1, free_plan_limit=10)["message_family"] == "free_plan"
+    assert (
+        status_line_choose_message(free_plan_remaining=1, free_plan_limit=10)["message_family"]
+        == "free_plan"
+    )
 
     rotated = status_line_choose_message(
         session_id="s1",

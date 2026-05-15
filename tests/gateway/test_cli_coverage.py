@@ -86,16 +86,53 @@ def test_list_blocks_filter_by_domain(tmp_path: Path) -> None:
 def test_search_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify", "--json")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify checkout retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+        "--json",
+    )
     assert res.exit_code == 0
     results = json.loads(res.output)
-    assert isinstance(results, list)
+    assert isinstance(results, dict)
 
 
 def test_search_table_format(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify checkout retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+    )
     assert res.exit_code == 0
 
 
@@ -323,17 +360,51 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
 def test_search_blocks_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify publish", "--json")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify publish retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+        "--json",
+    )
     assert res.exit_code == 0
     payload = json.loads(res.output)
-    # search returns a list of {id, title, domain} or block objects
-    assert isinstance(payload, list)
+    assert isinstance(payload, dict)
 
 
 def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "zzz_no_match_xyz")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "zzz_no_match_xyz",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+    )
     assert res.exit_code == 0
 
 

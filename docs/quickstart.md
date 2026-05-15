@@ -41,10 +41,11 @@ ATELIER_DEV_MODE=1 atelier help context
 ## Step 4 — Fetch Context for a Task (Dev Mode)
 
 ```bash
-ATELIER_DEV_MODE=1 atelier context \
-  --task "Fix generated output that drifts back after refresh" \
-  --domain source.truth \
-  --file src/content/generate.py
+atelier tools call context --dev --args '{
+  "task": "Fix generated output that drifts back after refresh",
+  "domain": "source.truth",
+  "files": ["src/content/generate.py"]
+}' --json
 ```
 
 This returns a rendered context block built from the current ReasonBlock store.
@@ -52,10 +53,11 @@ This returns a rendered context block built from the current ReasonBlock store.
 ## Step 5 — Ask for Rescue After a Repeated Failure (Dev Mode)
 
 ```bash
-ATELIER_DEV_MODE=1 atelier rescue \
-  --task "Apply a live config update" \
-  --domain state.change \
-  --error "known dead end triggered during apply"
+atelier tools call rescue --dev --args '{
+  "task": "Apply a live config update",
+  "domain": "state.change",
+  "error": "known dead end triggered during apply"
+}' --json
 ```
 
 Use this when you have enough evidence that the current path is failing and you
@@ -64,12 +66,15 @@ want the nearest stored recovery procedure.
 ## Step 6 — Run a Rubric Gate After the Work (Dev Mode)
 
 ```bash
-echo '{
-  "canonical_identifier_used": true,
-  "pre_change_state_captured": true,
-  "read_after_write_completed": true,
-  "observed_state_matches_intent": false
-}' | ATELIER_DEV_MODE=1 atelier verify rubric_state_change_safety
+atelier tools call verify --dev --args '{
+  "rubric_id": "rubric_state_change_safety",
+  "checks": {
+    "canonical_identifier_used": true,
+    "pre_change_state_captured": true,
+    "read_after_write_completed": true,
+    "observed_state_matches_intent": false
+  }
+}' --json
 ```
 
 Expected: `status: blocked` because a required verification check failed.

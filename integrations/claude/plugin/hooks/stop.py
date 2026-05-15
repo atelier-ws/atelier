@@ -223,7 +223,42 @@ def _is_task_session(stats: dict | None) -> bool:  # type: ignore[type-arg]
     return bool(CODE_EDITING_TOOLS & tools_used)
 
 
-def _format_stats(stats: dict) -> str:  # type: ignore[type-arg]
+def _load_session_savings(session_id: str) -> dict:  # type: ignore[type-arg]
+    """Return compaction and routing cost savings for this session from JSONL."""
+    if not session_id:
+        return {"compact": 0.0, "routing": 0.0, "total": 0.0}
+    compact_usd = 0.0
+    routing_usd = 0.0
+    try:
+        events_path = _atelier_root() / "live_savings_events.jsonl"
+        if events_path.exists():
+            with events_path.open(encoding="utf-8") as f:
+                for raw in f:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                    except Exception:
+                        continue
+                    if ev.get("session_id") != session_id:
+                        continue
+                    cost = float(ev.get("cost_saved_usd", 0.0) or 0.0)
+                    lever = str(ev.get("lever") or ev.get("tool_name") or "")
+                    if "routing" in lever:
+                        routing_usd += cost
+                    elif "compact" in lever:
+                        compact_usd += cost
+    except Exception:
+        pass
+    return {
+        "compact": compact_usd,
+        "routing": routing_usd,
+        "total": compact_usd + routing_usd,
+    }
+
+
+def _format_stats(stats: dict, savings: dict | None = None) -> str:  # type: ignore[type-arg]
     total = stats["total_tokens"]
     inp = stats["input_tokens"]
     out = stats["output_tokens"]
@@ -240,6 +275,15 @@ def _format_stats(stats: dict) -> str:  # type: ignore[type-arg]
         f"est. cost: ~${cost:.4f}",
         f"top tools: {tools_str}",
     ]
+
+    if savings and savings.get("total", 0.0) > 0:
+        parts = []
+        if savings["compact"] > 0:
+            parts.append(f"compact=${savings['compact']:.4f}")
+        if savings["routing"] > 0:
+            parts.append(f"routing=${savings['routing']:.4f}")
+        lines.append(f"savings: {' · '.join(parts)}")  # noqa: RUF001
+
     return "\n".join(lines)
 
 
@@ -263,6 +307,13 @@ def main() -> int:
         with contextlib.suppress(Exception):
             _write_token_event(stats)
 
+    # ── Load per-session savings breakdown ────────────────────────────────────
+    savings: dict | None = None  # type: ignore[type-arg]
+    with contextlib.suppress(Exception):
+        savings = _load_session_savings(session_id)
+        if savings and savings.get("total", 0.0) <= 0:
+            savings = None
+
     # ── Smart detection: discussion vs task session ──────────────────────────
     # If no code-editing tools were used, this was a discussion or exploration
     # session. Do not require a trace — exit silently.
@@ -275,7 +326,7 @@ def main() -> int:
         # Note: hookSpecificOutput is NOT valid for Stop hooks (only PreToolUse,
         # PostToolUse, UserPromptSubmit, PostToolBatch support it).
         if stats and stats["total_tokens"] > 0:
-            summary = _format_stats(stats)
+            summary = _format_stats(stats, savings)
             print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}"}))
         return 0
 
@@ -290,7 +341,7 @@ def main() -> int:
     )
 
     if stats and stats["total_tokens"] > 0:
-        msg += f"\n\nSession stats:\n{_format_stats(stats)}"
+        msg += f"\n\nSession stats:\n{_format_stats(stats, savings)}"
 
     print(json.dumps({"systemMessage": msg}))
     return 0

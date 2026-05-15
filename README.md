@@ -78,14 +78,21 @@ Passive tracking works automatically. Active context features require `ATELIER_D
 
 ```bash
 # Fetch context for an agent task (Requires Dev Mode)
-atelier context \
-  --task "Fix generated output that drifts back after refresh" \
-  --domain source.truth \
-  --file src/content/generate.py
+atelier tools call context --dev --args '{
+  "task": "Fix generated output that drifts back after refresh",
+  "domain": "source.truth",
+  "files": ["src/content/generate.py"]
+}' --json
 
 # Verify required checks after a task completes (Requires Dev Mode)
-echo '{"canonical_identifier_used": true, "pre_change_state_captured": true, "read_after_write_completed": true}' \
-  | atelier verify rubric_state_change_safety
+atelier tools call verify --dev --args '{
+  "rubric_id": "rubric_state_change_safety",
+  "checks": {
+    "canonical_identifier_used": true,
+    "pre_change_state_captured": true,
+    "read_after_write_completed": true
+  }
+}' --json
 ```
 
 Common runtime commands:
@@ -94,7 +101,7 @@ Common runtime commands:
 atelier background status
 atelier worker list
 atelier trace list
-atelier search "read after write verification"
+atelier tools call search --dev --args '{"query":"read after write verification"}' --json
 ```
 
 → Installed quickstart: [docs/quickstart.md](docs/quickstart.md)
