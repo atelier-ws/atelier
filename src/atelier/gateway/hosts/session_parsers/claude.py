@@ -76,14 +76,35 @@ def _parse_ts(ts: str) -> datetime:
 
 def find_claude_sessions(root: Path | None = None) -> Iterator[tuple[str, Path]]:
     """Yield (workspace_slug, jsonl_path) for all Claude sessions."""
-    if root is None:
-        root = Path("~/.claude/projects").expanduser()
-    if not root.is_dir():
-        return
-    for project_dir in sorted(root.iterdir()):
-        if project_dir.is_dir():
-            for p in project_dir.glob("*.jsonl"):
-                yield project_dir.name, p
+    if root is not None:
+        if not root.is_dir():
+            return
+        roots = [root]
+    else:
+        import os
+
+        roots = [Path("~/.claude/projects").expanduser()]
+        # macOS
+        macos_root = Path("~/Library/Application Support/claude/projects").expanduser()
+        if macos_root.is_dir():
+            roots.append(macos_root)
+        # Windows
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            windows_root = Path(appdata) / "claude" / "projects"
+            if windows_root.is_dir():
+                roots.append(windows_root)
+
+    for r in roots:
+        if not r.is_dir():
+            continue
+        try:
+            for project_dir in sorted(r.iterdir()):
+                if project_dir.is_dir():
+                    for p in project_dir.glob("*.jsonl"):
+                        yield project_dir.name, p
+        except OSError:
+            continue
 
 
 def _extract_user_text(content: Any) -> str:
@@ -150,19 +171,10 @@ class ClaudeImporter:
 
     def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
         """Import all Claude sessions. Returns IDs of successfully imported traces."""
-        if root is None:
-            root = Path("~/.claude/projects").expanduser()
-        if not root.is_dir():
-            return []
-
-        all_sessions = [
-            (project_dir.name, jsonl_path)
-            for project_dir in sorted(root.iterdir())
-            if project_dir.is_dir()
-            for jsonl_path in sorted(project_dir.glob("*.jsonl"))
-        ]
+        all_sessions = list(find_claude_sessions(root))
         total = len(all_sessions)
-        print(f"[atelier] claude: discovering sessions (found {total})")
+        if total > 0:
+            print(f"[atelier] claude: discovering sessions (found {total})")
 
         imported_ids = []
         for i, (workspace_slug, jsonl_path) in enumerate(all_sessions):
