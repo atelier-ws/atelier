@@ -1381,14 +1381,14 @@ def _memory_upsert_block(
     }
 
 
-def _memory_get_block(agent_id: str, label: str) -> dict[str, Any] | None:
-    """Fetch one editable memory block by agent and label."""
+def _memory_get_block(agent_id: str | None, label: str) -> dict[str, Any] | None:
+    """Retrieve a MemoryBlock by label."""
     block = _memory_store().get_block(agent_id, label)
     return block.model_dump(mode="json") if block is not None else None
 
 
 def _memory_archive(
-    agent_id: str,
+    agent_id: str | None,
     text: str,
     source: str,
     source_ref: str = "",
@@ -1406,7 +1406,7 @@ def _memory_archive(
 
 
 def _memory_recall(
-    agent_id: str,
+    agent_id: str | None,
     query: str,
     top_k: int = 5,
     tags: list[str] | None = None,
@@ -1469,7 +1469,7 @@ def tool_memory(
 
     if op == "block_upsert":
         return _memory_upsert_block(
-            agent_id=require("agent_id", agent_id),
+            agent_id=agent_id or "shared",
             label=require("label", label),
             value=require("value", value),
             limit_chars=limit_chars,
@@ -1481,10 +1481,10 @@ def tool_memory(
             actor=actor,
         )
     if op == "block_get":
-        return _memory_get_block(agent_id=require("agent_id", agent_id), label=require("label", label))
+        return _memory_get_block(agent_id=agent_id, label=require("label", label))
     if op == "archive":
         return _memory_archive(
-            agent_id=require("agent_id", agent_id),
+            agent_id=agent_id,
             text=require("text", text),
             source=require("source", source),
             source_ref=source_ref,
@@ -1492,7 +1492,7 @@ def tool_memory(
         )
     if op == "recall":
         return _memory_recall(
-            agent_id=require("agent_id", agent_id),
+            agent_id=agent_id,
             query=require("query", query),
             top_k=top_k,
             tags=tags,
