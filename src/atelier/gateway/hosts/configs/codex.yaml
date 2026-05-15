@@ -20,8 +20,8 @@ recommended_packs:
 mcp:
   servers:
     - name: atelier
-      command: atelier
-      args: ["mcp", "--host", "codex"]
+      command: atelier-mcp
+      args: ["--host", "codex"]
       env:
         ATELIER_ROOT: "~/.atelier"
 

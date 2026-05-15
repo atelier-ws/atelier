@@ -7,7 +7,7 @@ Support level: **Full plugin** — agents, commands, skills, hooks, and MCP serv
 | Component  | Location after install            | Description                               |
 | ---------- | --------------------------------- | ----------------------------------------- |
 | Plugin     | Claude plugin cache               | Copied from `integrations/claude/plugin/` |
-| MCP server | Claude user scope by default      | Wired to `scripts/atelier_mcp_stdio.sh`   |
+| MCP server | Claude user scope by default      | Wired to `atelier-mcp`   |
 | Agents     | Bundled with plugin               | `atelier:code`, `atelier:explore`, …      |
 | Commands   | Bundled with plugin               | `/atelier-status`, `/atelier-context`, …  |
 | Skills     | Bundled with plugin               | Auto-trigger on plan/failure/trace        |

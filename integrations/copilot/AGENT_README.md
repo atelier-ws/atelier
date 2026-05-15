@@ -3,7 +3,7 @@
 Copilot host integration artifacts for VS Code.
 
 - `install.sh` and `verify.sh` delegate to `scripts/install_copilot.sh` and `scripts/verify_copilot.sh`.
-- `mcp.atelier.example.json` provides MCP server wiring examples.
+- `mcp.atelier.template.json` provides MCP server wiring examples.
 - `COPILOT_INSTRUCTIONS.atelier.md` contains append-only instruction fragment.
 - `chatmodes/atelier.chatmode.md` is installed to workspace `.github/chatmodes/` when `--workspace DIR` is used.
 - `tasks.json` provides Atelier task presets merged into VS Code user tasks globally or workspace `.vscode/tasks.json` with `--workspace DIR`.

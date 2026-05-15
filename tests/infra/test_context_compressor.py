@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from atelier.infra.runtime.context_compressor import ContextCompressor
+from pathlib import Path
+
+from atelier.infra.runtime.context_compressor import ContextCompressor, HandoverPacket
 from atelier.infra.runtime.run_ledger import RunLedger
 
 
@@ -42,3 +44,33 @@ def test_compressor_prompt_block_renders() -> None:
     state = ContextCompressor().compress(led)
     text = state.to_prompt_block()
     assert "Atelier compact state" in text
+
+
+def test_compressor_preserves_recent_turns_reasonblocks_and_claude_hash(tmp_path: Path) -> None:
+    (tmp_path / "CLAUDE.md").write_text("project instructions", encoding="utf-8")
+    led = RunLedger(task="t")
+    led.active_reasonblocks = ["rb-a", "rb-b"]
+    for idx in range(12):
+        led.record("agent_message", f"turn {idx}", {"idx": idx})
+
+    state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=tmp_path)
+
+    assert len(state.recent_turns) == 10
+    assert "turn 2" in state.recent_turns[0]
+    assert state.pinned_reasonblocks == ["rb-a", "rb-b"]
+    assert state.claude_md_hash is not None
+
+
+def test_handover_packet_renders_markdown(tmp_path: Path) -> None:
+    led = RunLedger(session_id="s1", task="Ship feature")
+    led.record_file_event("src/app.py", "edit", diff="--- a\n+++ b\n")
+    led.record_command("pytest", ok=False, error_signature="boom")
+    led.set_next_validation("Run pytest after fixing boom")
+    state = ContextCompressor().compress(led, workspace_root=tmp_path)
+
+    markdown = HandoverPacket.from_ledger(led, state, workspace_root=tmp_path).to_markdown()
+
+    assert "## Session Handover - s1" in markdown
+    assert "### Goal: Ship feature" in markdown
+    assert "edit: src/app.py" in markdown
+    assert "boom" in markdown

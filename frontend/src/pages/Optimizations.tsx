@@ -617,6 +617,71 @@ function RoutingSimulationPanel({
           {simulation.heuristic}
         </div>
 
+        <div className="border border-neutral-800 bg-black/20">
+          <div className="border-b border-neutral-800 px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+            Live recommendations
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-neutral-800 bg-neutral-900/50 text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                  <th className="px-4 py-3">When</th>
+                  <th className="px-4 py-3">Host / tool</th>
+                  <th className="px-4 py-3">Tier → model</th>
+                  <th className="px-4 py-3 text-right">Score</th>
+                  <th className="px-4 py-3">Why</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-900">
+                {simulation.live_recommendations.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-neutral-600 italic"
+                    >
+                      No live routing recommendations were recorded in this
+                      window.
+                    </td>
+                  </tr>
+                ) : (
+                  simulation.live_recommendations.map((row) => (
+                    <tr
+                      key={`${row.session_id}-${row.tool_name}-${row.at}`}
+                      className="hover:bg-neutral-900/40 align-top"
+                    >
+                      <td className="px-4 py-3 font-mono text-neutral-500">
+                        {row.at ? new Date(row.at).toLocaleString() : "unknown"}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-400">
+                        <div>{row.agent || "unknown"}</div>
+                        <div className="mt-1 font-mono text-neutral-500">
+                          {row.tool_name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-neutral-300">
+                        {row.tier}
+                        <span className="mx-2 text-neutral-600">→</span>
+                        <span className="font-mono">{row.model}</span>
+                        {row.cache_affinity_model && (
+                          <div className="mt-1 text-[11px] text-violet-300">
+                            cache affinity
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-neutral-400">
+                        {row.score}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-500 leading-relaxed">
+                        {row.reasons.join(" • ")}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
