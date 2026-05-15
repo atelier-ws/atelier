@@ -38,6 +38,8 @@ def _memory_args(op: str, **kwargs: Any) -> dict[str, Any]:
 def mcp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
     monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
+    monkeypatch.setattr(mcp_server, "_REMOTE_TOOLS", frozenset())
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     return root
@@ -77,6 +79,7 @@ def test_memory_upsert_and_get_round_trip(mcp_root: Path) -> None:
 
 def test_memory_get_returns_null_on_miss(mcp_root: Path) -> None:
     _ = mcp_root
+    # Updated: it returns None or null if missing, not an error payload
     assert _payload(_call("memory", _memory_args("block_get", agent_id="atelier:code", label="missing"))) is None
 
 

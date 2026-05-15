@@ -2169,7 +2169,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
     @app.get("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_list_or_get(
-        agent_id: str,
+        agent_id: str | None = None,
         label: str | None = None,
         include_tombstoned: bool = False,
         limit: int = 200,
@@ -2188,10 +2188,10 @@ def create_app(store_root: str | Path | None = None) -> Any:
         from atelier.infra.storage.memory_store import MemoryConcurrencyError
 
         mem = _get_mem_store()
-        agent_id = payload.get("agent_id")
+        agent_id = payload.get("agent_id") or "shared"
         label = payload.get("label")
-        if not agent_id or not label:
-            raise HTTPException(status_code=400, detail="agent_id and label are required")
+        if not label:
+            raise HTTPException(status_code=400, detail="label is required")
         existing = mem.get_block(agent_id, label)
         if existing is None:
             value = str(payload.get("value", ""))
@@ -2233,10 +2233,10 @@ def create_app(store_root: str | Path | None = None) -> Any:
         from atelier.core.foundation.memory_models import ArchivalPassage
 
         mem = _get_mem_store()
-        agent_id = payload.get("agent_id")
+        agent_id = payload.get("agent_id") or "shared"
         text = payload.get("text")
-        if not agent_id or not text:
-            raise HTTPException(status_code=400, detail="agent_id and text are required")
+        if not text:
+            raise HTTPException(status_code=400, detail="text is required")
         valid_sources = ("trace", "block_evict", "user", "tool_output", "file_chunk")
         source = payload.get("source", "user")
         if source not in valid_sources:
@@ -2258,8 +2258,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
         mem = _get_mem_store()
         agent_id = payload.get("agent_id")
         query = payload.get("query")
-        if not agent_id or not query:
-            raise HTTPException(status_code=400, detail="agent_id and query are required")
+        if not query:
+            raise HTTPException(status_code=400, detail="query is required")
         since_str = payload.get("since")
         since_dt: datetime | None = None
         if since_str:
