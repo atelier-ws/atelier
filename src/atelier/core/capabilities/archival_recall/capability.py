@@ -24,7 +24,7 @@ class ArchivalRecallCapability:
     def archive(
         self,
         *,
-        agent_id: str,
+        agent_id: str | None = None,
         text: str,
         source: ArchivalSource,
         source_ref: str = "",
@@ -40,7 +40,7 @@ class ArchivalRecallCapability:
         for idx, chunk in enumerate(chunks):
             embedding = embeddings[idx] if idx < len(embeddings) and embeddings[idx] else None
             passage = ArchivalPassage(
-                agent_id=agent_id,
+                agent_id=agent_id or "shared",
                 text=chunk,
                 embedding=embedding,
                 embedding_model=self._embedder.name if embedding is not None else "",
@@ -60,7 +60,7 @@ class ArchivalRecallCapability:
     def recall(
         self,
         *,
-        agent_id: str,
+        agent_id: str | None,
         query: str,
         top_k: int = 5,
         tags: list[str] | None = None,
@@ -98,7 +98,7 @@ class ArchivalRecallCapability:
                 recall_query = widened_query
         selected = [item.passage for item in ranked]
         recall = MemoryRecall(
-            agent_id=agent_id,
+            agent_id=agent_id or "shared",
             query=recall_query,
             top_passages=[passage.id for passage in selected],
             selected_passage_id=selected[0].id if selected else None,

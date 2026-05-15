@@ -37,6 +37,7 @@ from atelier.core.foundation.models import (
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    _SIZE_LIMIT_BYTES,
     make_llm_usage_entry,
     summarize_usage_entries,
 )
@@ -205,23 +206,53 @@ def _path_within_workspace(path: str, workspace_path: str) -> bool:
 
 def find_copilot_sessions(root: Path | None = None) -> Iterator[Path]:
     """Yield session directories that contain an events.jsonl file."""
-    roots: list[Path]
+    roots: list[Path] = []
     if root is not None:
         roots = [root]
     else:
-        roots = [Path("~/.copilot/session-state").expanduser()]
-        for vscode_base in [
+        # 1. Standalone Copilot storage
+        roots.append(Path("~/.copilot/session-state").expanduser())
+
+        # 2. VSCode workspace storage (Linux, macOS, Windows)
+        import os
+
+        paths_to_check: list[Path] = [
+            # Linux
             Path("~/.config/Code/User/workspaceStorage").expanduser(),
+            Path("~/.config/Code - Insiders/User/workspaceStorage").expanduser(),
+            # macOS
             Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
-        ]:
+            Path("~/Library/Application Support/Code - Insiders/User/workspaceStorage").expanduser(),
+        ]
+
+        # Windows (using %APPDATA%)
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            roots.append(Path(appdata) / "github-copilot" / "session-state")
+            paths_to_check.append(Path(appdata) / "Code" / "User" / "workspaceStorage")
+            paths_to_check.append(Path(appdata) / "Code - Insiders" / "User" / "workspaceStorage")
+
+        for vscode_base in paths_to_check:
             if vscode_base.is_dir():
-                roots.extend(sorted(vscode_base.glob("*/GitHub.copilot-chat")))
+                # Each subdirectory in workspaceStorage is a workspace hash
+                try:
+                    for ws_dir in vscode_base.iterdir():
+                        if ws_dir.is_dir():
+                            chat_dir = ws_dir / "GitHub.copilot-chat"
+                            if chat_dir.is_dir():
+                                roots.append(chat_dir)
+                except OSError:
+                    continue
+
     for r in roots:
         if not r.is_dir():
             continue
-        for p in sorted(r.iterdir()):
-            if p.is_dir() and (p / "events.jsonl").exists():
-                yield p
+        try:
+            for p in sorted(r.iterdir()):
+                if p.is_dir() and (p / "events.jsonl").exists():
+                    yield p
+        except OSError:
+            continue
 
 
 def find_copilot_transcript_files(root: Path | None = None) -> Iterator[Path]:
@@ -230,49 +261,78 @@ def find_copilot_transcript_files(root: Path | None = None) -> Iterator[Path]:
         if root.is_dir():
             yield from sorted(root.glob("*.jsonl"))
         return
-    for vscode_base in [
+
+    import os
+
+    paths_to_check: list[Path] = [
+        # Linux
         Path("~/.config/Code/User/workspaceStorage").expanduser(),
+        Path("~/.config/Code - Insiders/User/workspaceStorage").expanduser(),
+        # macOS
         Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
-    ]:
+        Path("~/Library/Application Support/Code - Insiders/User/workspaceStorage").expanduser(),
+    ]
+
+    # Windows
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        paths_to_check.append(Path(appdata) / "Code" / "User" / "workspaceStorage")
+        paths_to_check.append(Path(appdata) / "Code - Insiders" / "User" / "workspaceStorage")
+
+    for vscode_base in paths_to_check:
         if not vscode_base.is_dir():
             continue
-        for ws in sorted(vscode_base.iterdir()):
-            transcript_dir = ws / "GitHub.copilot-chat" / "transcripts"
-            if transcript_dir.is_dir():
-                yield from sorted(transcript_dir.glob("*.jsonl"))
+        try:
+            for ws in sorted(vscode_base.iterdir()):
+                transcript_dir = ws / "GitHub.copilot-chat" / "transcripts"
+                if transcript_dir.is_dir():
+                    yield from sorted(transcript_dir.glob("*.jsonl"))
+        except OSError:
+            continue
 
 
 def find_copilot_debug_log_dirs(root: Path | None = None) -> Iterator[Path]:
-    """Yield per-session debug-log directories from VSCode Copilot Chat.
-
-    Each directory ``debug-logs/<sid>/`` contains ``main.jsonl`` plus
-    ``runSubagent-*.jsonl`` and ``title-*.jsonl`` files. They hold the only
-    per-LLM-request token telemetry (events of ``type:"llm_request"`` with
-    ``attrs.model / inputTokens / outputTokens``) that VSCode Copilot Chat
-    exposes — the sibling ``transcripts/<sid>.jsonl`` carries no token data.
-
-    Without this source atelier under-reports VSCode Copilot Chat activity by
-    several hundred LLM calls per active day.
-    """
+    """Yield per-session debug-log directories from VSCode Copilot Chat."""
     if root is not None:
         if root.is_dir():
-            for sid_dir in sorted(root.iterdir()):
-                if sid_dir.is_dir() and (sid_dir / "main.jsonl").exists():
-                    yield sid_dir
+            try:
+                for sid_dir in sorted(root.iterdir()):
+                    if sid_dir.is_dir() and (sid_dir / "main.jsonl").exists():
+                        yield sid_dir
+            except OSError:
+                pass
         return
-    for vscode_base in [
+
+    import os
+
+    paths_to_check: list[Path] = [
+        # Linux
         Path("~/.config/Code/User/workspaceStorage").expanduser(),
+        Path("~/.config/Code - Insiders/User/workspaceStorage").expanduser(),
+        # macOS
         Path("~/Library/Application Support/Code/User/workspaceStorage").expanduser(),
-    ]:
+        Path("~/Library/Application Support/Code - Insiders/User/workspaceStorage").expanduser(),
+    ]
+
+    # Windows
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        paths_to_check.append(Path(appdata) / "Code" / "User" / "workspaceStorage")
+        paths_to_check.append(Path(appdata) / "Code - Insiders" / "User" / "workspaceStorage")
+
+    for vscode_base in paths_to_check:
         if not vscode_base.is_dir():
             continue
-        for ws in sorted(vscode_base.iterdir()):
-            debug_root = ws / "GitHub.copilot-chat" / "debug-logs"
-            if not debug_root.is_dir():
-                continue
-            for sid_dir in sorted(debug_root.iterdir()):
-                if sid_dir.is_dir() and (sid_dir / "main.jsonl").exists():
-                    yield sid_dir
+        try:
+            for ws in sorted(vscode_base.iterdir()):
+                debug_root = ws / "GitHub.copilot-chat" / "debug-logs"
+                if not debug_root.is_dir():
+                    continue
+                for sid_dir in sorted(debug_root.iterdir()):
+                    if sid_dir.is_dir() and (sid_dir / "main.jsonl").exists():
+                        yield sid_dir
+        except OSError:
+            continue
 
 
 # ---------------------------------------------------------------------------
@@ -311,14 +371,18 @@ class CopilotImporter:
         all_debug_logs = list(find_copilot_debug_log_dirs(root))
         total = len(all_sessions) + len(all_transcripts) + len(all_debug_logs)
         print(
-            "[atelier] copilot: discovering sessions "
-            f"(found {len(all_sessions)} directory, {len(all_transcripts)} transcript, "
-            f"{len(all_debug_logs)} debug-log)"
+            f"[atelier] copilot: found {len(all_sessions)} session directories, "
+            f"{len(all_transcripts)} transcript files, {len(all_debug_logs)} debug-log directories"
         )
-        for i, session_dir in enumerate(all_sessions):
+
+        processed = 0
+
+        # Phase 1: Session Directories (the primary source)
+        for session_dir in all_sessions:
+            processed += 1
+            if processed % 10 == 0:
+                print(f"[atelier] copilot: importing {processed}/{total} (sessions)...")
             try:
-                if i % 10 == 0 and i > 0:
-                    print(f"[atelier] copilot: importing {i}/{total}...")
                 sid = self.import_session(session_dir, force=force)
                 if sid:
                     imported_ids.append(sid)
@@ -327,9 +391,18 @@ class CopilotImporter:
             except Exception as exc:
                 _traceback.print_exc()
                 print(f"[atelier] skipping session {session_dir.name}: {exc}")
+
+        # Pre-index parent traces and workspaces to avoid O(N^2) lookups during transcript linking
+        # This is a major optimization for large history imports.
+        parent_index = self._build_parent_index()
+
+        # Phase 2: Transcript Files (VSCode-specific chat history)
         for transcript_path in all_transcripts:
+            processed += 1
+            if processed % 10 == 0:
+                print(f"[atelier] copilot: importing {processed}/{total} (transcripts)...")
             try:
-                sid = self.import_transcript_file(transcript_path, force=force)
+                sid = self.import_transcript_file(transcript_path, force=force, parent_index=parent_index)
                 if sid:
                     imported_ids.append(sid)
                 else:
@@ -337,7 +410,12 @@ class CopilotImporter:
             except Exception as exc:
                 _traceback.print_exc()
                 print(f"[atelier] skipping transcript {transcript_path.name}: {exc}")
+
+        # Phase 3: Debug Log Directories (telemetry/token counts)
         for debug_log_dir in all_debug_logs:
+            processed += 1
+            if processed % 10 == 0:
+                print(f"[atelier] copilot: importing {processed}/{total} (debug-logs)...")
             try:
                 sid = self.import_debug_log_dir(debug_log_dir, force=force)
                 if sid:
@@ -347,16 +425,57 @@ class CopilotImporter:
             except Exception as exc:
                 _traceback.print_exc()
                 print(f"[atelier] skipping debug-log {debug_log_dir.name}: {exc}")
-        for sid in self._reconcile_stored_transcripts():
+
+        # Phase 4: Reconciliation (link existing orphans)
+        reconciled = self._reconcile_stored_transcripts(parent_index=parent_index)
+        for sid in reconciled:
             if sid not in imported_ids:
                 imported_ids.append(sid)
+
         if skipped > 0:
-            print(f"[atelier] {skipped} sessions already imported (skipped by dedup)")
+            print(f"[atelier] {skipped} copilot artifacts already imported (skipped by dedup)")
         return imported_ids
 
-    def _reconcile_stored_transcripts(self) -> list[str]:
+    def _build_parent_index(self) -> list[dict[str, Any]]:
+        """Pre-index parent traces and their workspace roots for efficient transcript linking."""
+        index = []
+        # We need Trace objects for their created_at and session_id
+        traces = {
+            t.session_id: t
+            for t in self.store.list_traces(host="copilot", limit=10_000)
+            if t.session_id and not t.id.startswith("copilot-transcript-")
+        }
+
+        # We need workspace.yaml artifacts for their CWD
+        artifacts = self.store.list_raw_artifacts(source="copilot", limit=10_000)
+        for art in artifacts:
+            if art.kind != "workspace.yaml":
+                continue
+            parent_trace = traces.get(art.source_session_id)
+            if not parent_trace:
+                continue
+
+            try:
+                content = self.store.read_raw_artifact_content(art)
+                workspace_data = yaml.safe_load(content) or {}
+                cwd = _text_from_value(workspace_data.get("cwd"))
+                if cwd:
+                    index.append(
+                        {
+                            "trace": parent_trace,
+                            "cwd": cwd,
+                            "normalized_cwd": _normalize_match_path(cwd).casefold(),
+                        }
+                    )
+            except Exception:
+                continue
+        return index
+
+    def _reconcile_stored_transcripts(self, parent_index: list[dict[str, Any]] | None = None) -> list[str]:
         imported_ids: list[str] = []
         artifacts = self.store.list_raw_artifacts(source="copilot", limit=10_000)
+        p_index = parent_index if parent_index is not None else self._build_parent_index()
+
         for artifact in artifacts:
             if not artifact.content_path.startswith("raw/copilot/transcripts/"):
                 continue
@@ -375,6 +494,7 @@ class CopilotImporter:
                 session_id=session_id,
                 redacted_events=redacted_events,
                 artifact_id=artifact.id,
+                parent_index=p_index,
             )
             if sid:
                 imported_ids.append(sid)
@@ -612,6 +732,20 @@ class CopilotImporter:
         """Import a single session directory. Returns trace ID on success."""
         session_id = session_dir.name
 
+        # --- events ---
+        events_path = session_dir / "events.jsonl"
+        if not events_path.exists():
+            return None
+
+        # Size check for massive sessions
+        try:
+            size = events_path.stat().st_size
+            if size > _SIZE_LIMIT_BYTES:
+                print(f"[atelier] copilot: skipping massive session {session_id} ({size / 1e6:.1f}MB)")
+                return None
+        except OSError:
+            pass
+
         # ── Timestamp-based dedup check ──────────────────────────────
         artifact_id = f"copilot-{session_id}-events-jsonl"
         existing = self.store.get_raw_artifact(artifact_id)
@@ -724,35 +858,21 @@ class CopilotImporter:
         self,
         transcript_paths: set[str],
         transcript_started_at: datetime | None,
+        parent_index: list[dict[str, Any]] | None = None,
     ) -> tuple[Trace, str] | None:
         if transcript_started_at is None or not transcript_paths:
             return None
 
-        traces_by_session_id = {
-            trace.session_id: trace
-            for trace in self.store.list_traces(host="copilot", limit=5000)
-            if trace.session_id and not trace.id.startswith("copilot-transcript-")
-        }
+        p_index = parent_index if parent_index is not None else self._build_parent_index()
 
         max_delta_seconds = _MAX_TRANSCRIPT_PARENT_DELTA.total_seconds()
         best_match: tuple[tuple[int, float], Trace, str] | None = None
 
-        for artifact in self.store.list_raw_artifacts(source="copilot", limit=5000):
-            if artifact.kind != "workspace.yaml":
-                continue
+        for entry in p_index:
+            parent_trace = entry["trace"]
+            workspace_cwd = entry["cwd"]
+            normalized_cwd = entry["normalized_cwd"]
 
-            parent_trace = traces_by_session_id.get(artifact.source_session_id)
-            if parent_trace is None:
-                continue
-
-            try:
-                workspace_data = yaml.safe_load(self.store.read_raw_artifact_content(artifact)) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-
-            workspace_cwd = _text_from_value(workspace_data.get("cwd"))
-            if not workspace_cwd:
-                continue
             if not any(_path_within_workspace(path, workspace_cwd) for path in transcript_paths):
                 continue
 
@@ -760,7 +880,7 @@ class CopilotImporter:
             if delta_seconds > max_delta_seconds:
                 continue
 
-            score = (len(_normalize_match_path(workspace_cwd)), -delta_seconds)
+            score = (len(normalized_cwd), -delta_seconds)
             if best_match is None or score > best_match[0]:
                 best_match = (score, parent_trace, workspace_cwd)
 
@@ -768,9 +888,20 @@ class CopilotImporter:
             return None
         return best_match[1], best_match[2]
 
-    def import_transcript_file(self, transcript_path: Path, *, force: bool = False) -> str | None:
+    def import_transcript_file(
+        self, transcript_path: Path, *, force: bool = False, parent_index: list[dict[str, Any]] | None = None
+    ) -> str | None:
         """Import a single VSCode Copilot transcript .jsonl file."""
         session_id = transcript_path.stem
+
+        # Size check
+        try:
+            size = transcript_path.stat().st_size
+            if size > _SIZE_LIMIT_BYTES:
+                print(f"[atelier] copilot: skipping massive transcript {session_id} ({size / 1e6:.1f}MB)")
+                return None
+        except OSError:
+            pass
 
         artifact_id = f"copilot-transcript-{session_id}"
         existing = self.store.get_raw_artifact(artifact_id)
@@ -815,6 +946,7 @@ class CopilotImporter:
             session_id=session_id,
             redacted_events=redacted_events,
             artifact_id=artifact_id,
+            parent_index=parent_index,
         )
 
     # ------------------------------------------------------------------
@@ -1003,9 +1135,18 @@ class CopilotImporter:
 
         return last_trace_id
 
-    def _materialize_transcript_trace(self, *, session_id: str, redacted_events: str, artifact_id: str) -> str | None:
+    def _materialize_transcript_trace(
+        self,
+        *,
+        session_id: str,
+        redacted_events: str,
+        artifact_id: str,
+        parent_index: list[dict[str, Any]] | None = None,
+    ) -> str | None:
         transcript_paths, transcript_started_at = _extract_transcript_linkage(redacted_events)
-        parent_match = self._find_parent_trace_for_transcript(transcript_paths, transcript_started_at)
+        parent_match = self._find_parent_trace_for_transcript(
+            transcript_paths, transcript_started_at, parent_index=parent_index
+        )
         if parent_match is None:
             self.store.delete_trace(artifact_id)
             return None

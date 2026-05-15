@@ -8,12 +8,16 @@ Atelier helps teams ship the same context runtime everywhere: on the command lin
 
 The runtime separates **Passive Tracking** (enabled by default) from **Active Context** (requires Development Mode).
 
+![Atelier Overview dashboard](docs/assets/screenshots/overview.png)
+
 ## Passive Tracking (Production Ready)
 
 - **Sessions & Ledger** — track every agent run and execution state
 - **Expense Tracking** — aggregate token usage and estimated costs across all hosts
 - **Traces** — record observable execution history (files, commands, errors)
 - **Tools & Agents** — central registry of available capabilities and personas
+
+![Cost & efficiency analytics across hosts, models, and tools](docs/assets/screenshots/analytics.png)
 
 ## Active Context (Development Mode)
 
