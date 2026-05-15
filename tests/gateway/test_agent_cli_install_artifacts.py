@@ -104,7 +104,7 @@ def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    assert {"task", "rescue", "trace"}.issubset(generated)
+    assert {"context", "rescue", "trace"}.issubset(generated)
     assert "reasoning" not in generated
     assert "lint" not in generated
 
@@ -443,7 +443,7 @@ def test_copilot_tasks_include_preflight_wrapper() -> None:
     preflight_task = next(task for task in tasks.get("tasks", []) if task.get("label") == "Atelier: Copilot Preflight")
     assert preflight_task.get("command") == "bash"
     args = preflight_task.get("args", [])
-    assert any("atelier context" in arg for arg in args)
+    assert any("atelier tools call context" in arg for arg in args)
 
 
 # ---------------------------------------------------------------------------

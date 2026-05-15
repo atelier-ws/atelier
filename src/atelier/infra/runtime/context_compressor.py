@@ -23,6 +23,53 @@ from typing import Any
 
 from atelier.infra.runtime.run_ledger import RunLedger
 
+# ---------------------------------------------------------------------------
+# Token-budget constants for recent-turns selection
+# ---------------------------------------------------------------------------
+
+# Task-type multipliers from route(op="decide") signals.
+# debug/refactor sessions need more preserved context; explain/docs need less.
+_TASK_TYPE_BUDGET_MULTIPLIER: dict[str, float] = {
+    "debug":    1.6,
+    "refactor": 1.4,
+    "ops":      1.2,
+    "test":     1.2,
+    "feature":  1.0,
+    "review":   0.75,
+    "explain":  0.6,
+    "docs":     0.5,
+}
+
+_RISK_LEVEL_BUDGET_MULTIPLIER: dict[str, float] = {
+    "high":   1.3,
+    "medium": 1.0,
+    "low":    0.8,
+}
+
+
+# ---------------------------------------------------------------------------
+# Session-state helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_compression_hints() -> dict[str, Any]:
+    """Read model-provided compression hints from session state (fail-open)."""
+    try:
+        import os
+
+        workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+        h = hashlib.sha256(str(Path(workspace).resolve()).encode()).hexdigest()[:12]
+        root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
+        root = Path(root_env) if root_env else Path.home() / ".atelier"
+        state_path = root / "workspaces" / h / "session_state.json"
+        if not state_path.exists():
+            return {}
+        state = json.loads(state_path.read_text("utf-8"))
+        hints = state.get("compression_hints")
+        return hints if isinstance(hints, dict) else {}
+    except Exception:
+        return {}
+
 
 @dataclass
 class CompactState:
@@ -198,32 +245,207 @@ def _event_dict(event: Any) -> dict[str, Any]:
     return {"summary": str(event)}
 
 
-_RECENT_TURNS_TOKEN_BUDGET = 20_000  # ~5% of a 200k window
+_RECENT_TURNS_TOKEN_BUDGET = 20_000  # legacy constant kept for back-compat
+_RECENT_TURNS_TOKEN_BUDGET_MIN = 10_000  # floor for read-only sessions
+_RECENT_TURNS_TOKEN_BUDGET_MAX = 40_000  # ceiling for heavy edit/debug sessions
 _CHARS_PER_TOKEN = 4  # rough estimate used for budget enforcement
+
+# How far back we look when scoring session complexity (in events)
+_COMPLEXITY_WINDOW = 40
+
+# Per-event value scores used by the dynamic budget and priority selection.
+# Higher score = more important to preserve verbatim.
+_EVENT_SCORES: dict[str, float] = {
+    "file_edit": 3.0,       # code change — essential
+    "file_revert": 2.5,     # revert — also important
+    "test_result": 2.0,     # test outcome
+    "command_result": 1.0,  # adjusted further by ok/fail below
+    "reasoning": 1.5,       # model reasoning — valuable
+    "agent_message": 1.5,   # model output — valuable
+    "tool_result": 0.8,
+    "tool_call": 0.5,
+    "note": 1.2,
+    "validation": 1.8,
+    "watchdog_alert": 2.0,
+    "model_recommendation": 0.2,
+}
+
+
+def _score_event(event: dict[str, object]) -> float:
+    """Return a 0–4 value score for a single ledger event dict.
+
+    Higher = more important to preserve during compaction.
+    """
+    kind = str(event.get("kind", ""))
+    base = _EVENT_SCORES.get(kind, 0.5)
+
+    payload = event.get("payload") or {}
+    if isinstance(payload, dict):
+        if kind == "command_result" and not payload.get("ok", True):
+            base = 2.8  # failed command = high-value debugging context
+        if kind == "test_result" and not payload.get("passed", True):
+            base = 2.5  # failing test = important
+        # Long summaries carry more reasoning content
+        output_chars = int(payload.get("output_chars", 0))
+        if output_chars > 3_000:
+            base += 0.5
+        elif output_chars > 800:
+            base += 0.2
+
+    # Penalise very verbose low-signal events (e.g. huge read outputs)
+    summary_len = len(str(event.get("summary", "")))
+    if summary_len > 1_000 and base < 1.5:
+        base *= 0.5  # halve score for bulky cheap events
+
+    return base
+
+
+def _dynamic_turn_budget(
+    events: list[dict[str, object]],
+    hints: dict[str, Any] | None = None,
+) -> int:
+    """Compute a session-adaptive token budget for preserving recent turns.
+
+    The budget scales with session complexity so that:
+    - Heavy edit / debugging sessions get more preserved context (up to 40 K).
+    - Read-only or quiet sessions use a tighter budget (~8–12 K).
+
+    Factors
+    -------
+    edit_density:
+        Fraction of the recent window that are ``file_edit``/``file_revert``
+        events.  High edit density → more history needed (model must know
+        what it already changed).
+    error_density:
+        Fraction of ``command_result`` and ``test_result`` events that
+        failed.  High error density → debugging requires more context.
+    avg_event_verbosity:
+        Mean chars per event summary in the window.  Very verbose events
+        contain richer content; the budget should scale up to preserve them.
+
+    LLM signals (from session state via ``hints``):
+        task_type: scales by _TASK_TYPE_BUDGET_MULTIPLIER (debug=1.6 → docs=0.5).
+        risk_level: scales by _RISK_LEVEL_BUDGET_MULTIPLIER (high=1.3, low=0.8).
+        model_complexity: 0.0–1.0 → maps to 0.7×–1.5× multiplier.
+
+    Formula
+    -------
+    budget = base(10K)
+           + edit_bonus   (0–18K  scaled by edit_density)
+           + error_bonus  (0–8K   scaled by error_density)
+           + verbose_bonus(0–4K   scaled by avg event verbosity)
+    Then scaled by LLM signals.
+    Clamped to [_RECENT_TURNS_TOKEN_BUDGET_MIN, _RECENT_TURNS_TOKEN_BUDGET_MAX].
+    """
+    if not events:
+        return _RECENT_TURNS_TOKEN_BUDGET
+
+    window = events[-_COMPLEXITY_WINDOW:]
+
+    # Edit density
+    edit_count = sum(
+        1 for e in window
+        if str(e.get("kind", "")) in {"file_edit", "file_revert"}
+    )
+    edit_density = edit_count / len(window)
+
+    # Error density
+    outcome_events = [
+        e for e in window
+        if str(e.get("kind", "")) in {"command_result", "test_result"}
+    ]
+    if outcome_events:
+        def _is_failure(ev: dict[str, object]) -> bool:
+            raw = ev.get("payload")
+            p: dict[str, object] = raw if isinstance(raw, dict) else {}  # type: ignore[assignment]
+            ok = p.get("ok")
+            passed = p.get("passed")
+            if ok is not None:
+                return not ok
+            if passed is not None:
+                return not passed
+            return False
+
+        fail_count = sum(1 for e in outcome_events if _is_failure(e))
+        error_density = fail_count / len(outcome_events)
+    else:
+        error_density = 0.0
+
+    # Verbosity: average chars per event
+    avg_chars = sum(len(str(e.get("summary", ""))) for e in window) / len(window)
+
+    base = 10_000
+    edit_bonus = int(edit_density * 18_000)
+    error_bonus = int(error_density * 8_000)
+    verbose_bonus = int(min(avg_chars / 400, 1.0) * 4_000)
+
+    budget = base + edit_bonus + error_bonus + verbose_bonus
+
+    # ── LLM-signal multipliers ────────────────────────────────────────────
+    applied_hints = hints if hints is not None else _load_compression_hints()
+
+    task_type = str(applied_hints.get("task_type", "feature")).lower()
+    task_mult = _TASK_TYPE_BUDGET_MULTIPLIER.get(task_type, 1.0)
+
+    risk_level = str(applied_hints.get("risk_level", "medium")).lower()
+    risk_mult = _RISK_LEVEL_BUDGET_MULTIPLIER.get(risk_level, 1.0)
+
+    # model_complexity: 0.0–1.0 → maps to 0.7x – 1.5x budget multiplier
+    raw_complexity = applied_hints.get("model_complexity")
+    if raw_complexity is not None:
+        complexity_mult = 0.7 + float(raw_complexity) * 0.8
+    else:
+        complexity_mult = 1.0
+
+    budget = int(budget * task_mult * risk_mult * complexity_mult)
+    return max(_RECENT_TURNS_TOKEN_BUDGET_MIN, min(budget, _RECENT_TURNS_TOKEN_BUDGET_MAX))
 
 
 def _recent_raw_turns(ledger: RunLedger, limit: int) -> list[str]:
-    """Return up to *limit* recent turn-like events as readable ``[kind] summary`` strings.
+    """Return recent turn-like events as readable ``[kind] summary`` strings.
 
-    The count cap (*limit*) is also subject to a character budget so that a
-    handful of very large turns (e.g. 15k-token tool outputs) do not eat the
-    entire preserved context.  We walk backwards through the candidate events
-    and stop as soon as either cap is hit.
+    The selection is **complexity-adaptive**:
+
+    1. *Dynamic budget* — token budget scales with session complexity
+       (edit density, error rate, verbosity) and LLM-provided signals
+       (task_type, risk_level, model_complexity from session state) so
+       debugging/editing sessions preserve more history than quiet read-only
+       sessions.
+
+    2. *Priority filtering* — when the budget is nearly exhausted, cheap
+       bulky events (low-value Read/Bash outputs) are skipped so that
+       high-value events (edits, failures, reasoning) are never displaced.
+
+    3. *Extended lookback* — the candidate window grows with the budget
+       so complex sessions can draw on a deeper history.
+
+    4. *Must-keep boosting* — events whose summary matches a keyword stored
+       by the model via ``compact(op="score")`` always pass through regardless
+       of budget pressure (score boosted to 4.0).
     """
     if limit <= 0:
         return []
     raw_events = [_event_dict(event) for event in ledger.events]
+
+    # Load hints once — used for budget and must_keep boosting
+    hints = _load_compression_hints()
+    must_keep_lower = [kw.lower() for kw in (hints.get("must_keep") or [])]
+
     turn_like = [
         event
         for event in raw_events
         if str(event.get("kind", ""))
         in {"agent_message", "reasoning", "command_result", "test_result", "tool_result"}
     ]
-    candidates = (turn_like or raw_events)[-limit:]
+    # Extend lookback proportionally: complex sessions need a deeper window
+    dyn_budget = _dynamic_turn_budget(raw_events, hints=hints)
+    extended_limit = max(limit, int(limit * dyn_budget / _RECENT_TURNS_TOKEN_BUDGET))
+    candidates = (turn_like or raw_events)[-extended_limit:]
 
-    char_budget = _RECENT_TURNS_TOKEN_BUDGET * _CHARS_PER_TOKEN
+    char_budget = dyn_budget * _CHARS_PER_TOKEN
     lines: list[str] = []
     chars_used = 0
+
     for event in reversed(candidates):
         kind = str(event.get("kind", "event"))
         summary = str(event.get("summary", "")).strip()
@@ -235,10 +457,29 @@ def _recent_raw_turns(ledger: RunLedger, limit: int) -> list[str]:
             passed = payload.get("passed", "?") if isinstance(payload, dict) else "?"
             summary = f"{'✓' if passed else '✗'} {summary}".strip()
         line = f"[{kind}] {summary}" if summary else f"[{kind}]"
-        chars_used += len(line)
-        if chars_used > char_budget:
-            break
+        line_chars = len(line)
+
+        # Must-keep boosting: if model tagged this event's topic as essential,
+        # guarantee inclusion regardless of budget pressure.
+        score = _score_event(event)
+        if must_keep_lower:
+            summary_lower = summary.lower()
+            if any(kw in summary_lower for kw in must_keep_lower):
+                score = 4.0  # always passes the gate below
+
+        # Priority gate: when >70% of budget is used, skip low-value bulky events
+        # (verbose read/command outputs that aren't failures).
+        # High-value events (score ≥ 2.0) always pass through.
+        if score < 4.0 and chars_used > char_budget * 0.7 and score < 1.5 and line_chars > 300:
+            continue
+
+        # Must-keep events always included; others respect the budget cap.
+        if score < 4.0:
+            chars_used += line_chars
+            if chars_used > char_budget:
+                break
         lines.append(line)
+
     lines.reverse()
     return lines
 
