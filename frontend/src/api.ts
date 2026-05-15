@@ -586,6 +586,19 @@ export interface OptimizationModelRoutingSimulation {
   total_tokens_rerouted: number;
   heuristic: string;
   candidates: OptimizationRoutingCandidate[];
+  live_recommendations: OptimizationLiveModelRecommendation[];
+}
+
+export interface OptimizationLiveModelRecommendation {
+  at: string;
+  session_id: string;
+  agent: string;
+  tool_name: string;
+  tier: string;
+  model: string;
+  score: number;
+  cache_affinity_model: string | null;
+  reasons: string[];
 }
 
 export interface OptimizationsSummary {

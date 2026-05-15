@@ -902,13 +902,33 @@ def test_pricing_all_known_models_non_empty() -> None:
     assert "_default" not in models
 
 
-def test_pricing_prefix_fallback() -> None:
+def test_pricing_no_prefix_fallback_for_unknown_variant() -> None:
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    # "claude-opus-4-something-new" should prefix-match "claude-opus-4"
+    # Fabricated model variant not in LiteLLM must NOT silently match a real
+    # model via prefix — it should return known=False with zero cost.
     p = get_model_pricing("claude-opus-4-extended")
-    # Either exact match exists or prefix matched opus-4 pricing (output=75)
-    assert p.output > 0
+    assert p.known is False
+    assert p.output == 0.0
+
+
+def test_pricing_dot_version_normalisation() -> None:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    # Dot form ("claude-sonnet-4.6") and dash form must resolve identically.
+    dot = get_model_pricing("claude-sonnet-4.6")
+    dash = get_model_pricing("claude-sonnet-4-6")
+    assert dot.known is True
+    assert dot.input == dash.input
+    assert dot.output == dash.output
+
+    # Opus dot form must resolve to the actual opus-4-7 price, not the
+    # flagship opus-4 price that the old prefix match accidentally returned.
+    opus_dot = get_model_pricing("claude-opus-4.7")
+    opus_dash = get_model_pricing("claude-opus-4-7")
+    assert opus_dot.known is True
+    assert opus_dot.input == opus_dash.input
+    assert opus_dot.output == opus_dash.output
 
 
 def test_tool_supervision_model_aware_usd() -> None:

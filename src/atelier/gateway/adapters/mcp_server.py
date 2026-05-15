@@ -49,6 +49,14 @@ logger = logging.getLogger(__name__)
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "atelier-task"
 SERVER_VERSION = atelier_version
+CONTEXT_WINDOW_TOKENS = 200_000
+COMPACT_ADVISORY_THRESHOLD = 60.0
+AUTO_COMPACT_THRESHOLD = 80.0
+HANDOVER_THRESHOLD = 95.0
+AUTO_COMPACT_MIN_TURNS = 15
+# Bypass the min-turns gate when utilisation already exceeds this level —
+# a few very large turns can fill the window just as fast as many small ones.
+AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
 
 
 def _check_dev_mode(tool_name: str) -> str | None:
@@ -164,14 +172,20 @@ def _detect_agent() -> str:
     explicit = os.environ.get("ATELIER_AGENT", "").strip()
     if explicit:
         return explicit
-    if os.environ.get("CLAUDE_SESSION_ID"):
+    if os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("CLAUDE_CODE"):
         return "claude"
-    if os.environ.get("GEMINI_SESSION_ID") or os.environ.get("GEMINI_CLI_VERSION"):
+    if (
+        os.environ.get("GEMINI_SESSION_ID")
+        or os.environ.get("GEMINI_CLI_VERSION")
+        or os.environ.get("GEMINI_CLI")
+    ):
         return "gemini"
-    if os.environ.get("CODEX_SESSION_ID"):
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
         return "codex"
-    if os.environ.get("OPENCODE_SESSION_ID"):
+    if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
         return "opencode"
+    if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
+        return "copilot"
     # Default: the plugin lives in the Claude Code plugin system
     return "claude"
 
@@ -721,6 +735,16 @@ def _workspace_path(file_path: str) -> Path:
     return Path(workspace) / p
 
 
+def _workspace_root() -> Path:
+    workspace = (
+        os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("VSCODE_CWD")
+        or os.getcwd()
+    )
+    return Path(workspace)
+
+
 @mcp_tool(name="context", is_dev=True)
 def tool_get_context(
     task: str,
@@ -803,7 +827,7 @@ def tool_get_context(
     return result
 
 
-@mcp_tool(name="route", is_dev=True)
+@mcp_tool(name="route")
 def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
@@ -835,7 +859,7 @@ def tool_route(
     human_accepted: bool | None = None,
     benchmark_accepted: bool | None = None,
 ) -> dict[str, Any]:
-    """[DEV] Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
+    """Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
     rt = _runtime()
     led = _get_ledger()
 
@@ -863,16 +887,6 @@ def tool_route(
                 "step_index": step_index,
             },
         )
-        if stub := _check_dev_mode("route"):
-            return {
-                "id": "dev-mode-stub",
-                "task_type": task_type,
-                "step_type": step_type,
-                "risk_level": risk_level,
-                "action": "proceed",
-                "rationale": stub,
-            }
-
         decision = rt.route_decide(
             user_goal=user_goal,
             repo_root=repo_root,
@@ -905,16 +919,6 @@ def tool_route(
             "benchmark_accepted": benchmark_accepted,
         },
     )
-    if stub := _check_dev_mode("route"):
-        return {
-            "id": "dev-mode-stub",
-            "task_type": task_type,
-            "step_type": step_type,
-            "risk_level": risk_level,
-            "action": "proceed",
-            "rationale": stub,
-        }
-
     envelope = rt.core_runtime.quality_router.verify(
         route_decision_id=route_decision_id,
         session_id=led.session_id,
@@ -1306,12 +1310,16 @@ def _compress_context(session_id: str | None = None) -> Any:
 
     led = _get_ledger()
     rtc = _get_realtime_context()
-    state = ContextCompressor().compress(led)
+    state = ContextCompressor().compress(
+        led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+    )
     return {
         "preserved": {
             "latest_error": state.error_fingerprints[-1] if state.error_fingerprints else None,
             "active_rubrics": led.active_rubrics,
             "active_reasonblocks": led.active_reasonblocks,
+            "recent_turns": state.recent_turns,
+            "claude_md_hash": state.claude_md_hash,
         },
         "prompt_block": state.to_prompt_block(),
         "realtime": rtc.snapshot(),
@@ -1665,29 +1673,135 @@ def tool_sql(
     )
 
 
+_TASK_BOUNDARY_SUCCESS_RE = re.compile(
+    r"\b(done|complete|completed|success|successful|passed|tests?\s+pass(?:ed)?|validated|verified|committed|lgtm)\b",
+    re.IGNORECASE,
+)
+_TASK_BOUNDARY_FAILURE_RE = re.compile(
+    r"\b(fail(?:ed|ure)?|error|exception|traceback|blocked|todo|not\s+done|not\s+complete)\b",
+    re.IGNORECASE,
+)
+
+
+def _ledger_turn_count(led: RunLedger) -> int:
+    turn_events = [
+        event
+        for event in led.events
+        if event.kind
+        in {"agent_message", "reasoning", "test_result", "command_result", "tool_result"}
+    ]
+    if turn_events:
+        return len(turn_events)
+    return len(led.events)
+
+
+def _event_text(event: Any) -> str:
+    summary = str(getattr(event, "summary", ""))
+    payload = getattr(event, "payload", {})
+    return f"{summary}\n{json.dumps(payload, ensure_ascii=False, default=str)}"
+
+
+def _task_boundary_detected(led: RunLedger) -> bool:
+    """Return true only when recent ledger events show a clean stopping point."""
+    for event in led.events[-3:]:
+        text = _event_text(event)
+        if _TASK_BOUNDARY_SUCCESS_RE.search(text) and not _TASK_BOUNDARY_FAILURE_RE.search(text):
+            if event.kind == "test_result":
+                return bool(event.payload.get("passed"))
+            if event.kind == "command_result":
+                return bool(event.payload.get("ok"))
+            return True
+    return False
+
+
+def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
+    tokens_used = led.token_count + max(0, len(led.events) * 10)
+    utilisation_pct = round(100.0 * tokens_used / CONTEXT_WINDOW_TOKENS, 1)
+    turn_count = _ledger_turn_count(led)
+    boundary = _task_boundary_detected(led)
+    should_handover = utilisation_pct >= HANDOVER_THRESHOLD
+    # Bypass the min-turns gate when utilisation is already very high — a small
+    # number of dense turns (huge tool outputs, large file reads) can fill the
+    # window just as fast as many small ones.
+    turns_gate_passed = (
+        turn_count > AUTO_COMPACT_MIN_TURNS
+        or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
+    )
+    should_auto_compact = (
+        not should_handover
+        and utilisation_pct >= AUTO_COMPACT_THRESHOLD
+        and turns_gate_passed
+        and boundary
+    )
+    should_advise = utilisation_pct >= COMPACT_ADVISORY_THRESHOLD
+
+    if should_handover:
+        reason = "context utilization reached handover threshold"
+    elif should_auto_compact:
+        reason = "context utilization reached auto-compact threshold at a task boundary"
+    elif utilisation_pct >= AUTO_COMPACT_THRESHOLD and not turns_gate_passed:
+        reason = f"auto-compact gated: fewer than {AUTO_COMPACT_MIN_TURNS} turns and below {AUTO_COMPACT_HIGH_UTIL_OVERRIDE}% override"
+    elif utilisation_pct >= AUTO_COMPACT_THRESHOLD and not boundary:
+        reason = "auto-compact waiting for a clean task boundary"
+    elif should_advise:
+        reason = "advisory threshold reached; no automatic action"
+    else:
+        reason = "below advisory threshold"
+
+    return {
+        "tokens_used": tokens_used,
+        "context_window": CONTEXT_WINDOW_TOKENS,
+        "utilisation_pct": utilisation_pct,
+        "turn_count": turn_count,
+        "task_boundary_detected": boundary,
+        "should_advise": should_advise,
+        "should_auto_compact": should_auto_compact,
+        "should_compact": should_auto_compact,
+        "should_handover": should_handover,
+        "reason": reason,
+        "thresholds": {
+            "advisory_pct": COMPACT_ADVISORY_THRESHOLD,
+            "auto_compact_pct": AUTO_COMPACT_THRESHOLD,
+            "handover_pct": HANDOVER_THRESHOLD,
+            "auto_compact_min_turns": AUTO_COMPACT_MIN_TURNS,
+        },
+    }
+
+
+def _write_handover_packet(led: RunLedger, state: Any) -> Path:
+    from atelier.infra.runtime.context_compressor import HandoverPacket
+
+    root = _atelier_root()
+    run_dir = root / "runs" / led.session_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    handover_path = run_dir / "HANDOVER.md"
+    packet = HandoverPacket.from_ledger(led, state, workspace_root=_workspace_root())
+    handover_path.write_text(packet.to_markdown(), encoding="utf-8")
+    return handover_path
+
+
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
     """Advise when to compact and what context to preserve.
 
     Returns a manifest with:
-    - should_compact: bool (true if utilisation >= 60%)
+    - should_advise: bool (true if utilisation >= 60%)
+    - should_compact: bool (true if utilisation >= 80%, after min-turn and boundary gates)
+    - should_handover: bool (true if utilisation >= 95%)
     """
     try:
+        from atelier.infra.runtime.context_compressor import ContextCompressor
+
         led = _get_ledger()
         if session_id:
             led.session_id = session_id
 
-        # Estimate tokens used: token_count from ledger + events
-        tokens_used = led.token_count
-        # Rough estimation: each event ~50 tokens average
-        event_tokens = max(0, len(led.events) * 10)
-        tokens_used += event_tokens
-
-        # Claude 3.5 Sonnet context window is 200K
-        context_window = 200_000
-        utilisation_pct = round(100.0 * tokens_used / context_window, 1)
-
-        # Determine if compaction is advised
-        should_compact = utilisation_pct >= 60.0
+        lifecycle = _context_lifecycle_decision(led)
+        utilisation_pct = float(lifecycle["utilisation_pct"])
+        should_compact = bool(lifecycle["should_compact"])
+        should_handover = bool(lifecycle["should_handover"])
+        state = ContextCompressor().compress(
+            led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+        )
 
         # Collect preserve_blocks: top active ReasonBlocks from ledger
         preserve_blocks = list(set(led.active_reasonblocks))[:3]
@@ -1707,13 +1821,23 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
 
         # Collect open_files: last 5 files touched
         open_files = led.files_touched[-5:] if led.files_touched else []
+        handover_file: str | None = None
+        if should_handover:
+            handover_file = str(_write_handover_packet(led, state))
 
         # Build suggested prompt
-        suggested_prompt = (
-            f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
-            f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
-            f"Recently edited files: {', '.join(open_files) or '(none)'}"
-        )
+        if should_handover:
+            suggested_prompt = (
+                f"Session is at {utilisation_pct}% context utilisation. Read {handover_file} and continue "
+                "from a fresh agent context using the host-native agent/subagent mechanism."
+            )
+        else:
+            suggested_prompt = (
+                f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
+                f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+                f"Recently edited files: {', '.join(open_files) or '(none)'}. "
+                "Preserve the last 10 raw turns, active errors, and current CLAUDE.md hash."
+            )
 
         # Persist manifest to disk
         try:
@@ -1725,10 +1849,21 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 "created_at": datetime.now(UTC).isoformat(),
                 "session_id": led.session_id,
                 "should_compact": should_compact,
+                "should_advise": bool(lifecycle["should_advise"]),
+                "should_auto_compact": bool(lifecycle["should_auto_compact"]),
+                "should_handover": should_handover,
                 "utilisation_pct": utilisation_pct,
+                "turn_count": int(lifecycle["turn_count"]),
+                "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
+                "reason": str(lifecycle["reason"]),
+                "thresholds": lifecycle["thresholds"],
                 "preserve_blocks": preserve_blocks,
                 "pin_memory": pin_memory,
                 "open_files": open_files,
+                "recent_turns": state.recent_turns,
+                "claude_md_hash": state.claude_md_hash,
+                "active_errors": state.error_fingerprints,
+                "handover_file": handover_file,
                 "suggested_prompt": suggested_prompt,
             }
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -1740,20 +1875,47 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
 
         return {
             "should_compact": should_compact,
+            "should_advise": bool(lifecycle["should_advise"]),
+            "should_auto_compact": bool(lifecycle["should_auto_compact"]),
+            "should_handover": should_handover,
             "utilisation_pct": utilisation_pct,
+            "turn_count": int(lifecycle["turn_count"]),
+            "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
+            "reason": str(lifecycle["reason"]),
+            "thresholds": lifecycle["thresholds"],
             "preserve_blocks": preserve_blocks,
             "pin_memory": pin_memory,
             "open_files": open_files,
+            "recent_turns": state.recent_turns,
+            "claude_md_hash": state.claude_md_hash,
+            "active_errors": state.error_fingerprints,
+            "handover_file": handover_file,
             "suggested_prompt": suggested_prompt,
         }
     except Exception:
         # Fail-open: return conservative defaults
         return {
             "should_compact": False,
+            "should_advise": False,
+            "should_auto_compact": False,
+            "should_handover": False,
             "utilisation_pct": 0.0,
+            "turn_count": 0,
+            "task_boundary_detected": False,
+            "reason": "Unable to compute compaction advice; proceed conservatively.",
+            "thresholds": {
+                "advisory_pct": COMPACT_ADVISORY_THRESHOLD,
+                "auto_compact_pct": AUTO_COMPACT_THRESHOLD,
+                "handover_pct": HANDOVER_THRESHOLD,
+                "auto_compact_min_turns": AUTO_COMPACT_MIN_TURNS,
+            },
             "preserve_blocks": [],
             "pin_memory": [],
             "open_files": [],
+            "recent_turns": [],
+            "claude_md_hash": None,
+            "active_errors": [],
+            "handover_file": None,
             "suggested_prompt": "Unable to compute compaction advice; proceed with default compaction.",
         }
 
@@ -1999,7 +2161,7 @@ def _compact_tool_output(
     return result.model_dump(mode="json")
 
 
-@mcp_tool(name="compact", is_dev=True)
+@mcp_tool(name="compact")
 def tool_compact(
     op: Literal["output", "session", "advise"],
     content: str = "",
@@ -2008,10 +2170,7 @@ def tool_compact(
     recovery_hint: str | None = None,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """[DEV] Compact op-dispatch: output, session, or advise."""
-    if stub := _check_dev_mode("compact"):
-        return {"prompt_block": stub, "output": stub, "advice": stub}
-
+    """Compact op-dispatch: output, session, or advise."""
     if op == "output":
         return _compact_tool_output(
             content=content,
@@ -2256,6 +2415,69 @@ def _record_context_budget_for_tool(
         )
 
 
+_TASK_TEXT_KEYS = ("task", "user_goal", "query", "prompt", "content", "description", "error")
+
+
+def _task_text_from_args(args: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in _TASK_TEXT_KEYS:
+        value = args.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return "\n".join(parts)
+
+
+def _latest_cache_affinity_model(led: RunLedger) -> str | None:
+    for event in reversed(led.events):
+        payload = event.payload
+        raw_cache_write_tokens = (
+            payload.get("cache_write_tokens")
+            or payload.get("cache_creation_input_tokens")
+            or payload.get("cache_creation_tokens")
+            or 0
+        )
+        try:
+            cache_write_tokens = int(raw_cache_write_tokens)
+        except (TypeError, ValueError):
+            cache_write_tokens = 0
+        model = str(payload.get("model") or "").strip()
+        if cache_write_tokens > 0 and model:
+            return model
+    return None
+
+
+def _emit_model_recommendation(
+    tool_name: str, args: dict[str, Any], led: RunLedger
+) -> dict[str, Any]:
+    from atelier.core.capabilities.model_routing import ModelRouter
+
+    router = ModelRouter()
+    session_state = {
+        "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
+        "cache_affinity_model": _latest_cache_affinity_model(led),
+    }
+    if "max_output_tokens" in args:
+        session_state["max_output_tokens"] = args["max_output_tokens"]
+    if "budget_tokens" in args:
+        session_state["max_output_tokens"] = args["budget_tokens"]
+    recommendation = router.score(tool_name, _task_text_from_args(args), session_state)
+    payload = {
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "model_recommendation",
+        "session_id": led.session_id,
+        "agent": led.agent or _detect_agent(),
+        "tool_name": tool_name,
+        **recommendation.to_dict(),
+    }
+    led.record(
+        "model_recommendation",
+        f"recommend {recommendation.tier} model {recommendation.model} for {tool_name}",
+        payload,
+    )
+    _append_live_savings_event(payload)
+    return payload
+
+
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     rid = request.get("id")
     method = request.get("method")
@@ -2295,6 +2517,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         started_at = time.perf_counter()
         remote_routed = name in _REMOTE_TOOLS
         try:
+            led = _get_ledger()
+            _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
             if not _service_backed_state():
                 _match_mcp_lexical(args if isinstance(args, dict) else {})
             if not _service_backed_state():
@@ -2307,7 +2531,6 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 result = handler(args)
 
             if not _service_backed_state():
-                led = _get_ledger()
                 result_text = json.dumps(result, ensure_ascii=False, default=str)
                 compact_text = (
                     result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
@@ -2411,6 +2634,11 @@ def serve() -> None:
 def main() -> None:
     import threading
 
+    # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
+    os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
+    os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
+    os.environ.setdefault("ATELIER_KNOWLEDGE_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".knowledge"))
+
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:
         print(f"atelier-mcp {SERVER_VERSION}")
@@ -2419,6 +2647,10 @@ def main() -> None:
         i = argv.index("--root")
         if i + 1 < len(argv):
             os.environ["ATELIER_ROOT"] = argv[i + 1]
+    if "--host" in argv:
+        i = argv.index("--host")
+        if i + 1 < len(argv):
+            os.environ["ATELIER_AGENT"] = argv[i + 1]
     # Kick off background daemons immediately at server start, before any
     # tool call arrives.  Runs in daemon threads so they never block serve().
     if not _service_backed_state():
