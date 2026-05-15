@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   api,
@@ -27,6 +27,7 @@ export default function Traces() {
   const [query, setQuery] = useState<string>(initialQuery);
   const [searchInput, setSearchInput] = useState<string>(initialQuery);
   const [page, setPage] = useState(0);
+  const tracesRequestSeq = useRef(0);
 
   useEffect(() => {
     const urlQuery = searchParams.get("q") ?? "";
@@ -70,21 +71,28 @@ export default function Traces() {
 
   // Fetch traces when filters change
   useEffect(() => {
+    const requestSeq = ++tracesRequestSeq.current;
+    let cancelled = false;
     setLoading(true);
     setPage(0);
     setErr(null);
     api
       .traces(50, 0, domainFilter, hostFilter, query)
       .then((res) => {
+        if (cancelled || requestSeq !== tracesRequestSeq.current) return;
         setItems(res.items);
         setMetrics(res.metrics);
         setHasMore(res.items.length >= 50);
         setLoading(false);
       })
       .catch((e) => {
+        if (cancelled || requestSeq !== tracesRequestSeq.current) return;
         setErr(String(e));
         setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [domainFilter, hostFilter, query]);
 
   useEffect(() => {
@@ -126,11 +134,13 @@ export default function Traces() {
 
   const loadMore = () => {
     if (loading || !hasMore) return;
+    const requestSeq = tracesRequestSeq.current;
     setLoading(true);
     const nextOffset = (page + 1) * 50;
     api
       .traces(50, nextOffset, domainFilter, hostFilter, query)
       .then((res) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
         setItems((prev) => (prev ? [...prev, ...res.items] : res.items));
         setMetrics(res.metrics);
         setHasMore(res.items.length >= 50);
@@ -138,6 +148,7 @@ export default function Traces() {
         setLoading(false);
       })
       .catch((e) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
         setErr(String(e));
         setLoading(false);
       });
@@ -296,6 +307,7 @@ export default function Traces() {
           <TraceCard
             key={t.id}
             trace={t}
+            searchQuery={query}
             isExpanded={expandedId === t.id}
             onToggle={() => toggleExpanded(t.id)}
             onOpenInspector={() => openInspector(t)}
@@ -337,11 +349,13 @@ export default function Traces() {
 
 function TraceCard({
   trace,
+  searchQuery,
   isExpanded,
   onToggle,
   onOpenInspector,
 }: {
   trace: Trace;
+  searchQuery: string;
   isExpanded: boolean;
   onToggle: () => void;
   onOpenInspector: () => void;
@@ -393,7 +407,7 @@ function TraceCard({
               {trace.task}
             </p>
             {trace.snippets && trace.snippets.length > 0 && (
-              <TraceSearchHits snippets={trace.snippets} />
+              <TraceSearchHits snippets={trace.snippets} query={searchQuery} />
             )}
             <div className="flex items-center gap-3 text-[10px] text-neutral-500 font-mono">
               <span>Session: {trace.session_id}</span>
@@ -415,10 +429,21 @@ function TraceCard({
   );
 }
 
-function TraceSearchHits({ snippets }: { snippets: string[] }) {
+function TraceSearchHits({
+  snippets,
+  query,
+}: {
+  snippets: string[];
+  query: string;
+}) {
+  const matchingSnippets = snippets.filter((snippet) =>
+    snippetMatchesSearchQuery(snippet, query)
+  );
+  if (matchingSnippets.length === 0) return null;
+
   return (
     <div className="mb-2 mt-2 space-y-1.5">
-      {snippets.slice(0, 4).map((snippet, index) => (
+      {matchingSnippets.slice(0, 4).map((snippet, index) => (
         <div
           key={`${snippet}-${index}`}
           className="border border-amber-900/30 bg-amber-950/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-neutral-300"
@@ -427,6 +452,28 @@ function TraceSearchHits({ snippets }: { snippets: string[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function searchTerms(query: string): string[] {
+  const terms = Array.from(query.matchAll(/"([^"]+)"|(\S+)/g))
+    .map((match) => (match[1] || match[2] || "").trim().toLowerCase())
+    .flatMap((term) => term.split(/[^0-9a-z_]+/i))
+    .filter(Boolean);
+  return [...new Set(terms)];
+}
+
+function snippetMatchesSearchQuery(snippet: string, query: string): boolean {
+  const terms = searchTerms(query);
+  if (terms.length === 0) return true;
+
+  const markedTerms = Array.from(snippet.matchAll(/\[\[(.*?)\]\]/g))
+    .map((match) => match[1].trim().toLowerCase())
+    .flatMap((term) => term.split(/[^0-9a-z_]+/i))
+    .filter(Boolean);
+
+  return markedTerms.some((marked) =>
+    terms.some((term) => marked.startsWith(term) || term.startsWith(marked))
   );
 }
 

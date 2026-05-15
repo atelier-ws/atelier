@@ -94,12 +94,16 @@ def count_reasonblock_tokens(block: ReasonBlock) -> int:
     return count_tokens(render_block_for_agent(block))
 
 
-def passage_in_agent_scope(passage: ArchivalPassage, requested_agent_id: str) -> bool:
+def passage_in_agent_scope(passage: ArchivalPassage, requested_agent_id: str | None) -> bool:
     """Return whether a passage may be injected for the requested agent."""
+    if requested_agent_id is None:
+        return True
     return passage.agent_id == requested_agent_id or "agent:any" in passage.tags
 
 
-def filter_scoped_passages(passages: Sequence[ArchivalPassage], *, requested_agent_id: str) -> list[ArchivalPassage]:
+def filter_scoped_passages(
+    passages: Sequence[ArchivalPassage], *, requested_agent_id: str | None
+) -> list[ArchivalPassage]:
     """Keep only same-agent passages and explicit global lessons."""
     return [passage for passage in passages if passage_in_agent_scope(passage, requested_agent_id)]
 
