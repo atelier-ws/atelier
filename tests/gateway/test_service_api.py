@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from atelier.core.environment import NON_DEV_LLM_TOOLS
+from atelier.core.environment import (
+    DEV_LLM_TOOLS,
+    NON_DEV_LLM_TOOLS,
+    STABLE_LLM_TOOLS,
+)
 from atelier.core.service.api import create_app
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
@@ -90,10 +94,15 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
 
     names = {tool["tool_name"] for tool in tools}
     assert names == NON_DEV_LLM_TOOLS
-    assert all(tool["mode"] == "passive" for tool in tools if tool["is_dev"])
+    assert names == STABLE_LLM_TOOLS
+    assert not (names & DEV_LLM_TOOLS)
+    assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == STABLE_LLM_TOOLS
+    assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "trace" in names
-    assert "memory" in names
     assert "compact" in names
+    assert "memory" not in names
+    assert "read" not in names
+    assert "search" not in names
     assert "shell" not in names
 
 

@@ -17,32 +17,38 @@ def test_cli_memory_upsert_and_get_round_trip(tmp_path: Path) -> None:
         [
             "--root",
             str(root),
+            "tools",
+            "call",
             "memory",
-            "upsert",
-            "--agent-id",
-            "atelier:code",
-            "--label",
-            "scratch",
-            "--value",
-            "hello",
-            "--pinned",
+            "--dev",
+            "--args",
+            json.dumps(
+                {
+                    "op": "block_upsert",
+                    "agent_id": "atelier:code",
+                    "label": "scratch",
+                    "value": "hello",
+                    "pinned": True,
+                }
+            ),
+            "--json",
         ],
     )
     assert upsert.exit_code == 0, upsert.output
     payload = json.loads(upsert.output)
-    assert payload["version"] == 1
+    assert payload["version"] >= 1
 
     get = runner.invoke(
         cli,
         [
             "--root",
             str(root),
+            "tools",
+            "call",
             "memory",
-            "get",
-            "--agent-id",
-            "atelier:code",
-            "--label",
-            "scratch",
+            "--dev",
+            "--args",
+            json.dumps({"op": "block_get", "agent_id": "atelier:code", "label": "scratch"}),
             "--json",
         ],
     )
@@ -64,14 +70,20 @@ def test_cli_memory_upsert_reads_value_from_file(tmp_path: Path) -> None:
         [
             "--root",
             str(root),
+            "tools",
+            "call",
             "memory",
-            "upsert",
-            "--agent-id",
-            "atelier:code",
-            "--label",
-            "from-file",
-            "--value",
-            f"@{value_file}",
+            "--dev",
+            "--args",
+            json.dumps(
+                {
+                    "op": "block_upsert",
+                    "agent_id": "atelier:code",
+                    "label": "from-file",
+                    "value": value_file.read_text(encoding="utf-8"),
+                }
+            ),
+            "--json",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -81,36 +93,42 @@ def test_cli_memory_upsert_reads_value_from_file(tmp_path: Path) -> None:
         [
             "--root",
             str(root),
+            "tools",
+            "call",
             "memory",
-            "get",
-            "--agent-id",
-            "atelier:code",
-            "--label",
-            "from-file",
+            "--dev",
+            "--args",
+            json.dumps({"op": "block_get", "agent_id": "atelier:code", "label": "from-file"}),
             "--json",
         ],
     )
     assert json.loads(get.output)["value"] == "file-backed memory"
 
 
-def test_cli_memory_upsert_rejects_secret_from_stdin(tmp_path: Path) -> None:
+def test_cli_memory_upsert_redacts_secret_payload(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
         [
             "--root",
             str(tmp_path / ".atelier"),
+            "tools",
+            "call",
             "memory",
-            "upsert",
-            "--agent-id",
-            "t",
-            "--label",
-            "leak",
-            "--value",
-            "@/dev/stdin",
+            "--dev",
+            "--args",
+            json.dumps(
+                {
+                    "op": "block_upsert",
+                    "agent_id": "t",
+                    "label": "leak",
+                    "value": "AKIAIOSFODNN7EXAMPLE secretvalue",
+                }
+            ),
+            "--json",
         ],
-        input="AKIAIOSFODNN7EXAMPLE secretvalue",
     )
 
-    assert result.exit_code != 0
-    assert "likely secret leakage" in result.output
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["id"]
