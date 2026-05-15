@@ -184,38 +184,58 @@ class SqliteMemoryStore:
             raise RuntimeError("memory block upsert did not persist")
         return stored
 
-    def get_block(self, agent_id: str, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
+    def get_block(self, agent_id: str | None, label: str, *, include_tombstoned: bool = False) -> MemoryBlock | None:
+        params: list[Any] = [label]
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "agent_id = ?"
+            params.append(agent_id)
+
         tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
         with self._store._connect() as conn:
             row = conn.execute(
-                f"SELECT * FROM memory_block WHERE agent_id = ? AND label = ?{tombstone_sql}",
-                (agent_id, label),
+                f"SELECT * FROM memory_block WHERE label = ? AND {agent_sql}{tombstone_sql}",
+                params,
             ).fetchone()
         return self._block_from_row(row) if row is not None else None
 
-    def list_blocks(self, agent_id: str, *, include_tombstoned: bool = False, limit: int = 500) -> list[MemoryBlock]:
+    def list_blocks(
+        self, agent_id: str | None, *, include_tombstoned: bool = False, limit: int = 500
+    ) -> list[MemoryBlock]:
+        params: list[Any] = []
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "agent_id = ?"
+            params.append(agent_id)
+
         tombstone_sql = "" if include_tombstoned else " AND deprecated_at IS NULL"
         with self._store._connect() as conn:
             rows = conn.execute(
                 f"""
                 SELECT * FROM memory_block
-                WHERE agent_id = ?{tombstone_sql}
+                WHERE {agent_sql}{tombstone_sql}
                 ORDER BY updated_at DESC
                 LIMIT ?
                 """,
-                (agent_id, limit),
+                (*params, limit),
             ).fetchall()
         return [self._block_from_row(row) for row in rows]
 
-    def list_pinned_blocks(self, agent_id: str) -> list[MemoryBlock]:
+    def list_pinned_blocks(self, agent_id: str | None) -> list[MemoryBlock]:
+        params: list[Any] = []
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "agent_id = ?"
+            params.append(agent_id)
+
         with self._store._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM memory_block
-                WHERE agent_id = ? AND pinned = 1 AND deprecated_at IS NULL
+                WHERE {agent_sql} AND pinned = 1 AND deprecated_at IS NULL
                 ORDER BY updated_at DESC
                 """,
-                (agent_id,),
+                params,
             ).fetchall()
         return [self._block_from_row(row) for row in rows]
 
@@ -302,7 +322,7 @@ class SqliteMemoryStore:
 
     def search_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         query: str,
         *,
         top_k: int = 5,
@@ -318,13 +338,18 @@ class SqliteMemoryStore:
 
     def list_passages(
         self,
-        agent_id: str,
+        agent_id: str | None,
         *,
         tags: list[str] | None = None,
         since: datetime | None = None,
         limit: int = 200,
     ) -> list[ArchivalPassage]:
-        params: list[Any] = [agent_id]
+        params: list[Any] = []
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "(agent_id = ? OR tags LIKE '%\"agent:any\"%')"
+            params.append(agent_id)
+
         since_sql = ""
         if since is not None:
             since_sql = " AND created_at >= ?"
@@ -333,7 +358,7 @@ class SqliteMemoryStore:
             rows = conn.execute(
                 f"""
                 SELECT * FROM archival_passage
-                WHERE agent_id = ?{since_sql}
+                WHERE {agent_sql}{since_sql}
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
@@ -364,16 +389,22 @@ class SqliteMemoryStore:
             )
         return recall
 
-    def list_recalls(self, agent_id: str, *, limit: int = 50) -> list[MemoryRecall]:
+    def list_recalls(self, agent_id: str | None, *, limit: int = 50) -> list[MemoryRecall]:
+        params: list[Any] = []
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "agent_id = ?"
+            params.append(agent_id)
+
         with self._store._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM memory_recall
-                WHERE agent_id = ?
+                WHERE {agent_sql}
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
-                (agent_id, limit),
+                (*params, limit),
             ).fetchall()
         return [
             MemoryRecall(
@@ -439,13 +470,18 @@ class SqliteMemoryStore:
 
     def _search_passage_rows(
         self,
-        agent_id: str,
+        agent_id: str | None,
         query: str,
         *,
         top_k: int,
         since: datetime | None,
     ) -> list[sqlite3.Row]:
-        params: list[Any] = [agent_id]
+        params: list[Any] = []
+        agent_sql = "1=1"
+        if agent_id is not None:
+            agent_sql = "(p.agent_id = ? OR p.tags LIKE '%\"agent:any\"%')"
+            params.append(agent_id)
+
         since_sql = ""
         if since is not None:
             since_sql = " AND p.created_at >= ?"
@@ -458,7 +494,7 @@ class SqliteMemoryStore:
                     f"""
                     SELECT p.* FROM archival_passage_fts f
                     JOIN archival_passage p ON p.rowid = f.rowid
-                    WHERE p.agent_id = ?{since_sql} AND archival_passage_fts MATCH ?
+                    WHERE {agent_sql}{since_sql} AND archival_passage_fts MATCH ?
                     ORDER BY bm25(archival_passage_fts), p.created_at DESC
                     LIMIT ?
                     """,
@@ -467,7 +503,7 @@ class SqliteMemoryStore:
             return conn.execute(
                 f"""
                 SELECT p.* FROM archival_passage p
-                WHERE p.agent_id = ?{since_sql}
+                WHERE {agent_sql}{since_sql}
                 ORDER BY p.created_at DESC
                 LIMIT ?
                 """,
