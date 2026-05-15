@@ -64,7 +64,6 @@ else
 fi
 
 PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
-PLUGIN_WRAPPER="${PLUGIN_DIR}/servers/atelier-mcp-wrapper.sh"
 MARKETPLACE_PLUGIN_PATH="./.codex/plugins/atelier"
 SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
 
@@ -118,40 +117,6 @@ backup_path() {
     fi
 }
 
-write_generated_wrapper() {
-    local dest="$1"
-    if $DRY_RUN; then
-        echo "  [dry-run] write generated MCP wrapper to $dest"
-        return
-    fi
-
-    mkdir -p "$(dirname "$dest")"
-    cat > "$dest" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-
-ATELIER_REPO="${ATELIER_REPO}"
-
-if [ -z "\${ATELIER_WORKSPACE_ROOT:-}" ]; then
-    export ATELIER_WORKSPACE_ROOT="\${PWD}"
-fi
-
-if [ -z "\${ATELIER_SERVICE_URL:-}" ]; then
-    export ATELIER_SERVICE_URL="http://127.0.0.1:8787"
-fi
-
-if [ -z "\${ATELIER_KNOWLEDGE_ROOT:-}" ]; then
-    export ATELIER_KNOWLEDGE_ROOT="\${ATELIER_WORKSPACE_ROOT}/.knowledge"
-fi
-
->&2 echo "[atelier-mcp] repo=\$ATELIER_REPO workspace=\${ATELIER_WORKSPACE_ROOT} service=\${ATELIER_SERVICE_URL}"
-
-cd "\$ATELIER_REPO"
-exec atelier-mcp "\$@"
-EOF
-    chmod +x "$dest"
-}
-
 merge_agents_file() {
     local source_file="$1"
     local dest_file="$2"
@@ -181,13 +146,12 @@ install_plugin_bundle() {
 }
 
 patch_plugin_mcp() {
-    local wrapper_path="$1"
     local workspace_mode="0"
     if $WORKSPACE_SET; then
         workspace_mode="1"
     fi
     if $DRY_RUN; then
-        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use $wrapper_path"
+        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier-mcp"
         return
     fi
 
@@ -198,17 +162,14 @@ from pathlib import Path
 path = Path("$PLUGIN_MCP_JSON")
 data = json.loads(path.read_text(encoding="utf-8"))
 server = data.setdefault("atelier", {})
-server["command"] = "$wrapper_path"
-server["args"] = server.get("args", [])
+server["command"] = "atelier-mcp"
+server["args"] = ["--host", "codex"]
 if $workspace_mode:
     server["env"] = {
-        "ATELIER_WORKSPACE_ROOT": "$WORKSPACE",
-        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787",
+        "ATELIER_WORKSPACE_ROOT": "$WORKSPACE"
     }
 else:
-    server["env"] = {
-        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787",
-    }
+    server.pop("env", None)
 server.pop("cwd", None)
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
@@ -282,13 +243,9 @@ if $PRINT_ONLY; then
         echo "   mkdir -p '${PLUGIN_DIR}'"
         echo "   cp -R '${PLUGIN_TEMPLATE}/.' '${PLUGIN_DIR}/'"
         echo ""
-        echo "2. Generate a repo-pinned MCP wrapper inside the plugin source:"
-        echo "   mkdir -p '$(dirname "$PLUGIN_WRAPPER")'"
-        echo "   # write ${PLUGIN_WRAPPER} with ATELIER_REPO=${ATELIER_REPO} baked in"
+        echo "2. Patch ${PLUGIN_MCP_JSON} to use 'atelier-mcp' with '--host codex'."
         echo ""
-        echo "3. Patch ${PLUGIN_MCP_JSON} so the Atelier MCP server command points at ${PLUGIN_WRAPPER}."
-        echo ""
-        echo "4. Merge the Atelier marketplace entry into ${MARKETPLACE_JSON}:"
+        echo "3. Merge the Atelier marketplace entry into ${MARKETPLACE_JSON}:"
         cat <<JSON
 {
     "name": "atelier",
@@ -327,8 +284,7 @@ fi
 # ---- install plugin bundle + marketplace ------------------------------------
 info "Installing Codex plugin source → $PLUGIN_DIR"
 install_plugin_bundle
-write_generated_wrapper "$PLUGIN_WRAPPER"
-patch_plugin_mcp "$PLUGIN_WRAPPER"
+patch_plugin_mcp
 merge_marketplace
 
 # ---- AGENTS.md --------------------------------------------------------------
@@ -383,13 +339,19 @@ data = json.loads(Path("$PLUGIN_MCP_JSON").read_text(encoding="utf-8"))
 print(data.get("atelier", {}).get("command", ""))
 PYEOF
 )
-    if [ "$MCP_COMMAND" = "$PLUGIN_WRAPPER" ]; then
-        vpass "plugin MCP config points at generated wrapper"
+    if [ "$MCP_COMMAND" = "atelier-mcp" ]; then
+        vpass "plugin MCP config points at atelier-mcp"
     else
-        vfail "plugin MCP config does not point at generated wrapper"
+        vfail "plugin MCP config does not point at atelier-mcp (got: $MCP_COMMAND)"
     fi
 else
     vfail "plugin MCP config missing: $PLUGIN_MCP_JSON"
+fi
+
+if command -v atelier-mcp &>/dev/null; then
+    vpass "atelier-mcp is available on PATH"
+else
+    vfail "atelier-mcp NOT found on PATH"
 fi
 
 if [ -f "$MARKETPLACE_JSON" ]; then
@@ -408,12 +370,6 @@ PYEOF
     fi
 else
     vfail "marketplace file missing: $MARKETPLACE_JSON"
-fi
-
-if [ -x "$PLUGIN_WRAPPER" ]; then
-    vpass "generated plugin MCP wrapper installed: $PLUGIN_WRAPPER"
-else
-    vfail "generated plugin MCP wrapper missing or not executable: $PLUGIN_WRAPPER"
 fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
