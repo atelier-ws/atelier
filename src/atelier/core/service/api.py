@@ -1219,7 +1219,54 @@ def _routine_trace_reason(trace: Trace) -> str | None:
     return "Success with bounded tokens, limited tools, and no visible recovery work."
 
 
-def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) -> dict[str, Any]:
+def _coerce_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 0
+    return 0
+
+
+def _recent_live_model_recommendations(live_events: list[dict[str, Any]], *, window_days: int) -> list[dict[str, Any]]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    rows: list[dict[str, Any]] = []
+    for event in live_events:
+        if event.get("kind") != "model_recommendation":
+            continue
+        at_raw = str(event.get("at") or "")
+        try:
+            at = datetime.fromisoformat(at_raw.replace("Z", "+00:00"))
+        except ValueError:
+            at = None
+        if at is not None and at < cutoff:
+            continue
+        rows.append(
+            {
+                "at": at_raw,
+                "session_id": event.get("session_id") or "",
+                "agent": event.get("agent") or "",
+                "tool_name": event.get("tool_name") or "",
+                "tier": event.get("tier") or "",
+                "model": event.get("model") or "",
+                "score": _coerce_int(event.get("score") or 0),
+                "cache_affinity_model": event.get("cache_affinity_model"),
+                "reasons": [str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)],
+            }
+        )
+    rows.sort(key=lambda row: str(row["at"]), reverse=True)
+    return rows[:10]
+
+
+def _build_model_routing_simulation(
+    traces: list[Trace], *, window_days: int, live_events: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     total_current_cost = 0.0
     total_simulated_cost = 0.0
@@ -1273,6 +1320,7 @@ def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) ->
         "total_tokens_rerouted": rerouted_tokens,
         "heuristic": "Conservative routine-trace filter: success only, no errors, <=120K total tokens, <=4 tool calls, <=2 files touched.",
         "candidates": sorted(candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True)[:8],
+        "live_recommendations": _recent_live_model_recommendations(live_events or [], window_days=window_days),
     }
 
 
@@ -1736,7 +1784,9 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     auto_optimizations = _build_auto_optimizations(savings, live_events, window_days=window_days)
     impact_validation = _build_impact_validation(store, recent_traces, window_days=window_days)
     reread_telemetry = _build_reread_telemetry(root, window_days=window_days)
-    model_routing_simulation = _build_model_routing_simulation(recent_traces, window_days=window_days)
+    model_routing_simulation = _build_model_routing_simulation(
+        recent_traces, window_days=window_days, live_events=live_events
+    )
 
     # Fetch latest codeburn:optimize report
     external_optimizations = store.list_external_analytics_runs(tool="codeburn:optimize", days=window_days, limit=1)

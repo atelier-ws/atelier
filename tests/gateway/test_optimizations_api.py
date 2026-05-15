@@ -176,14 +176,25 @@ def test_optimizations_summary_returns_runtime_catalog_and_recommendations(
     data = resp.json()
     assert data["automatic_hosts"] == 5
     assert data["advisory_only_hosts"] == 0
-    assert any(item["host"] == "claude" and item["automatic_mid_session"] for item in data["runtime_coverage"])
-    assert any(item["host"] == "codex" and item["automatic_mid_session"] for item in data["runtime_coverage"])
-    assert any(item["host"] == "copilot" and item["automatic_at_start"] for item in data["runtime_coverage"])
     assert any(
-        item["id"] == "search_read" and item["observed_tokens_saved"] == 60 for item in data["implemented_levers"]
+        item["host"] == "claude" and item["automatic_mid_session"]
+        for item in data["runtime_coverage"]
     )
     assert any(
-        item["id"] == "batch_edit" and item["observed_tokens_saved"] == 50 for item in data["implemented_levers"]
+        item["host"] == "codex" and item["automatic_mid_session"]
+        for item in data["runtime_coverage"]
+    )
+    assert any(
+        item["host"] == "copilot" and item["automatic_at_start"]
+        for item in data["runtime_coverage"]
+    )
+    assert any(
+        item["id"] == "search_read" and item["observed_tokens_saved"] == 60
+        for item in data["implemented_levers"]
+    )
+    assert any(
+        item["id"] == "batch_edit" and item["observed_tokens_saved"] == 50
+        for item in data["implemented_levers"]
     )
 
     recommendation_ids = {item["id"] for item in data["recommendations"]["recommendations"]}
@@ -212,6 +223,7 @@ def test_optimizations_summary_returns_runtime_catalog_and_recommendations(
     assert data["model_routing_simulation"]["candidate_count"] == 1
     assert data["model_routing_simulation"]["estimated_cost_saved_usd"] > 0
     assert data["model_routing_simulation"]["candidates"][0]["trace_id"] == "peer-low"
+    assert isinstance(data["model_routing_simulation"]["live_recommendations"], list)
 
     assert data["context_audit"]["always_on_tokens"] > 0
     assert data["context_audit"]["component_count"] >= 3
