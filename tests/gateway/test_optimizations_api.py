@@ -140,6 +140,35 @@ def _write_live_savings_events(path: Path) -> None:
             "calls_saved": 0,
             "time_saved_ms": 0,
         },
+        {
+            "at": now.isoformat(),
+            "session_id": "compact-run",
+            "agent": "codex",
+            "tool_name": "compact",
+            "kind": "session_compaction",
+            "lever": "session_compaction",
+            "trigger": "compact_session",
+            "reason": "session compaction executed",
+            "tokens_saved": 3_200,
+            "tokens_freed": 3_200,
+            "cost_saved_usd": 0.024,
+            "utilisation_pct": 84.5,
+        },
+        {
+            "at": now.isoformat(),
+            "session_id": "peer-low",
+            "agent": "codex",
+            "tool_name": "read",
+            "kind": "model_recommendation",
+            "lever": "model_routing",
+            "tier": "cheap",
+            "model": "claude-haiku-4-5",
+            "score": 2,
+            "tokens_saved": 0,
+            "cost_saved_usd": 0.0042,
+            "vs_model": "claude-opus-4-7",
+            "reasons": ["tool=read: read/search work"],
+        },
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
@@ -203,7 +232,14 @@ def test_optimizations_summary_returns_runtime_catalog_and_recommendations(
     assert "low-worth-expensive-sessions" in recommendation_ids
 
     auto_ids = {item["id"] for item in data["auto_optimizations"]}
-    assert {"search_read", "batch_edit", "structure_map", "delta_read"} <= auto_ids
+    assert {
+        "search_read",
+        "batch_edit",
+        "structure_map",
+        "delta_read",
+        "session_compaction",
+        "model_routing",
+    } <= auto_ids
 
     assert data["impact_validation"]["strategy"] == "chronological_halves"
     assert data["impact_validation"]["verdict"] == "improved"
@@ -224,6 +260,14 @@ def test_optimizations_summary_returns_runtime_catalog_and_recommendations(
     assert data["model_routing_simulation"]["estimated_cost_saved_usd"] > 0
     assert data["model_routing_simulation"]["candidates"][0]["trace_id"] == "peer-low"
     assert isinstance(data["model_routing_simulation"]["live_recommendations"], list)
+    assert data["model_routing_simulation"]["actual_savings"]["calls_downtiered"] == 1
+    assert data["model_routing_simulation"]["actual_savings"]["cost_saved_usd"] == 0.0042
+    assert (
+        data["model_routing_simulation"]["actual_savings"]["by_model"][0]["model"]
+        == "claude-haiku-4-5"
+    )
+    assert data["compact_session_history"][0]["session_id"] == "compact-run"
+    assert data["compact_session_history"][0]["tokens_freed"] == 3_200
 
     assert data["context_audit"]["always_on_tokens"] > 0
     assert data["context_audit"]["component_count"] >= 3
@@ -233,3 +277,11 @@ def test_optimizations_summary_returns_runtime_catalog_and_recommendations(
     assert 0 <= data["quality_score"]["score"] <= 100
     assert any(item["id"] == "context_fill" for item in data["quality_score"]["signals"])
     assert data["quality_score"]["recommendations"]
+    assert any(
+        item["id"] == "session_compaction" and item["observed_tokens_saved"] == 3_200
+        for item in data["implemented_levers"]
+    )
+    assert any(
+        item["id"] == "model_routing" and item["observed_cost_saved_usd"] == 0.0042
+        for item in data["implemented_levers"]
+    )

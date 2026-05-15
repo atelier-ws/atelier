@@ -155,14 +155,37 @@ run_files = sorted(
 )
 
 # ── Extract Live Savings and DB Cost ──────────────────────────────────────
-savings_map = {}
+# savings_map: total cost_saved_usd per session (all levers combined)
+# routing_map: model_routing savings per session
+# compaction_map: session_compaction savings per session
+savings_map    = {}
+routing_map    = {}
+compaction_map = {}
+routing_total    = 0.0
+compaction_total = 0.0
+
+def _lever_bucket(lever: str) -> str:
+    l = (lever or "").lower()
+    if "routing" in l:   return "routing"
+    if "compact" in l:   return "compaction"
+    return "other"
+
 try:
     with open(os.path.join(ROOT, "live_savings_events.jsonl")) as f:
         for line in f:
             d = json.loads(line)
             rid = d.get("session_id")
+            cost = float(d.get("cost_saved_usd", 0.0) or 0.0)
+            lever = str(d.get("lever") or d.get("tool_name") or "")
+            bucket = _lever_bucket(lever)
             if rid:
-                savings_map[rid] = savings_map.get(rid, 0.0) + float(d.get("cost_saved_usd", 0.0))
+                savings_map[rid] = savings_map.get(rid, 0.0) + cost
+                if bucket == "routing":
+                    routing_map[rid] = routing_map.get(rid, 0.0) + cost
+                    routing_total += cost
+                elif bucket == "compaction":
+                    compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
+                    compaction_total += cost
 except Exception:
     pass
 
@@ -258,8 +281,18 @@ if LINE_MODE:
     if cost_v == 0 and "input_tokens" in snap:
          # Heuristic for imported traces
          cost_v = (snap.get("input_tokens",0)*3 + snap.get("output_tokens",0)*15) / 1000000.0
-    
-    saved_v  = savings_map.get(session_id, 0.0)
+
+    saved_v      = savings_map.get(session_id, 0.0)
+    routing_v    = routing_map.get(session_id, 0.0)
+    compaction_v = compaction_map.get(session_id, 0.0)
+
+    saved_seg = ""
+    if saved_v > 0:
+        line_breakdown = []
+        if compaction_v > 0: line_breakdown.append(f"compact={usd(compaction_v)}")
+        if routing_v    > 0: line_breakdown.append(f"routing={usd(routing_v)}")
+        breakdown_suffix = f" ({', '.join(line_breakdown)})" if line_breakdown else ""
+        saved_seg = f" {SEP} {GREEN}saved={usd(saved_v)}{breakdown_suffix}{RESET}"
 
     line = (
         f"{BADGE} {BRAND}run {session_id[:8]}{RESET} {SEP} {DIM}{agent}{RESET} {SEP} "
@@ -267,7 +300,7 @@ if LINE_MODE:
         f"{SEP} ev={events} err={errors} blk={blockers}"
         f" {SEP} files={files_n} tools={tools_n}"
         + (f" {SEP} cost={usd(cost_v)}" if cost_v > 0 else "")
-        + (f" {SEP} {GREEN}saved={usd(saved_v)}{RESET}" if saved_v > 0 else "")
+        + saved_seg
         + (f" {SEP} {dur_str}" if dur_str else "")
         + f" {SEP} {DIM}{age_str}{RESET}"
     )
@@ -364,9 +397,13 @@ box_line(
     f"{DIM}tools={k(total_tools)}  files={total_files}  errs={total_errors}{RESET}"
 )
 if total_cost > 0 or saved_usd > 0:
+    breakdown_parts = []
+    if compaction_total > 0: breakdown_parts.append(f"compact {usd(compaction_total)}")
+    if routing_total    > 0: breakdown_parts.append(f"routing {usd(routing_total)}")
+    breakdown_str = f"  {DIM}({' · '.join(breakdown_parts)}){RESET}" if breakdown_parts else ""
     box_line(
         f"{DIM}cost{RESET} {usd(total_cost)}  "
-        + (f"{GREEN}saved{RESET} {usd(saved_usd)}" if saved_usd > 0 else "")
+        + (f"{GREEN}saved{RESET} {usd(saved_usd)}{breakdown_str}" if saved_usd > 0 else "")
         + (f"  {DIM}tokens{RESET} {k(total_tokens)}" if total_tokens else "")
     )
 
@@ -391,17 +428,26 @@ for d in all_run_entries[:N_RUNS]:
     if cost_v == 0 and "input_tokens" in d:
          cost_v = (d.get("input_tokens",0)*3 + d.get("output_tokens",0)*15) / 1000000.0
 
-    saved_v = savings_map.get(session_id, 0.0)
+    saved_v      = savings_map.get(session_id, 0.0)
+    routing_v    = routing_map.get(session_id, 0.0)
+    compaction_v = compaction_map.get(session_id, 0.0)
 
     # Professional 2-line layout
     # [icon] Task ................. ID
     dots = "." * max(1, (W - len(re.sub(r'\033\[[^m]*m', '', task)) - 16))
     box_line(f" {status_icon(status)}  {BOLD}{task}{RESET} {DIM}{dots} {session_id[:8]}{RESET}")
-    
+
     metrics = []
-    if cost_v > 0:  metrics.append(f"cost={usd(cost_v)}")
-    if saved_v > 0: metrics.append(f"{GREEN}saved={usd(saved_v)}{RESET}")
-    if dur_str:     metrics.append(dur_str)
+    if cost_v > 0:
+        metrics.append(f"cost={usd(cost_v)}")
+    if saved_v > 0:
+        run_breakdown = []
+        if compaction_v > 0: run_breakdown.append(f"c={usd(compaction_v)}")
+        if routing_v    > 0: run_breakdown.append(f"r={usd(routing_v)}")
+        run_breakdown_str = f" {DIM}({' '.join(run_breakdown)}){RESET}" if run_breakdown else ""
+        metrics.append(f"{GREEN}saved={usd(saved_v)}{run_breakdown_str}")
+    if dur_str:
+        metrics.append(dur_str)
     metrics_str = f" {SEP} ".join(metrics)
     
     meta_line = f"    {DIM}{age_str}{RESET} {SEP} {agent} {SEP} {domain}"

@@ -1036,8 +1036,14 @@ class _DummyGroup:
         return lambda f: _DummyGroup()  # type: ignore
 
 
+MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "rescue", "verify", "read", "edit", "search"})
+MCP_TOOL_ONLY_GROUPS = frozenset({"memory", "route"})
+
+
 def _dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to register a command ONLY if ATELIER_DEV_MODE is enabled."""
+    if name in MCP_TOOL_ONLY_COMMANDS:
+        return lambda f: f
     if is_dev_mode():
         return cli.command(name, **kwargs)
     return lambda f: f
@@ -1045,6 +1051,8 @@ def _dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[.
 
 def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Any]:
     """Decorator to register a group ONLY if ATELIER_DEV_MODE is enabled."""
+    if name in MCP_TOOL_ONLY_GROUPS:
+        return lambda f: _DummyGroup()
     if is_dev_mode():
         return cli.group(name, **kwargs)
     return lambda f: _DummyGroup()
@@ -2598,6 +2606,135 @@ def tool_mode_set(ctx: click.Context, mode: str) -> None:
     s["mode"] = mode
     _save_smart_state(ctx.obj["root"], s)
     click.echo(f"tool_mode={mode}")
+
+
+def _mcp_cli_args(raw: str) -> dict[str, Any]:
+    text = raw
+    if raw.startswith("@"):
+        text = Path(raw[1:]).read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text or "{}")
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"invalid JSON args: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise click.ClickException("--args must decode to a JSON object")
+    return payload
+
+
+def _prepare_mcp_cli(
+    ctx: click.Context, *, dev: bool, workspace: Path | None = None
+) -> Callable[[], None]:
+    old_root = os.environ.get("ATELIER_ROOT")
+    old_dev = os.environ.get("ATELIER_DEV_MODE")
+    old_workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
+    os.environ["ATELIER_ROOT"] = str(ctx.obj["root"])
+    if dev:
+        os.environ["ATELIER_DEV_MODE"] = "1"
+    if workspace is not None:
+        os.environ["CLAUDE_WORKSPACE_ROOT"] = str(workspace)
+
+    def restore() -> None:
+        if old_root is None:
+            os.environ.pop("ATELIER_ROOT", None)
+        else:
+            os.environ["ATELIER_ROOT"] = old_root
+        if old_dev is None:
+            os.environ.pop("ATELIER_DEV_MODE", None)
+        else:
+            os.environ["ATELIER_DEV_MODE"] = old_dev
+        if old_workspace is None:
+            os.environ.pop("CLAUDE_WORKSPACE_ROOT", None)
+        else:
+            os.environ["CLAUDE_WORKSPACE_ROOT"] = old_workspace
+
+    return restore
+
+
+@cli.group("tools")
+def tools_group() -> None:
+    """Inspect and call Atelier MCP tools."""
+
+
+@tools_group.command("list")
+@click.option("--dev", is_flag=True, help="List the full development MCP surface.")
+@click.option("--json", "as_json", is_flag=True, help="Emit tool metadata as JSON.")
+@click.pass_context
+def tools_list_cmd(ctx: click.Context, dev: bool, as_json: bool) -> None:
+    """List tools visible through MCP tools/list."""
+    restore = _prepare_mcp_cli(ctx, dev=dev)
+    try:
+        from atelier.gateway.adapters.mcp_server import (
+            TOOLS,
+            _tool_description,
+            _tool_visible_to_llm,
+        )
+
+        tools = [
+            {
+                "name": name,
+                "description": _tool_description(spec),
+                "inputSchema": spec.get("inputSchema", {}),
+            }
+            for name, spec in TOOLS.items()
+            if _tool_visible_to_llm(name, spec)
+        ]
+        if as_json:
+            _emit({"tools": tools}, as_json=True)
+            return
+        for tool in tools:
+            click.echo(tool["name"])
+    finally:
+        restore()
+
+
+@tools_group.command("call")
+@click.argument("name")
+@click.option("--args", "args_json", default="{}", show_default=True, help="JSON object or @path.")
+@click.option("--dev", is_flag=True, help="Enable development tools for this call.")
+@click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Workspace root for path-scoped MCP tools.",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the decoded MCP payload as JSON.")
+@click.pass_context
+def tools_call_cmd(
+    ctx: click.Context, name: str, args_json: str, dev: bool, workspace: Path | None, as_json: bool
+) -> None:
+    """Call one MCP tool by name."""
+    restore = _prepare_mcp_cli(ctx, dev=dev, workspace=workspace)
+    try:
+        args = _mcp_cli_args(args_json)
+        from atelier.gateway.adapters.mcp_server import _handle
+
+        response = _handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": args},
+            }
+        )
+        if response is None:
+            raise click.ClickException("tool call returned no response")
+        if "error" in response:
+            raise click.ClickException(str(response["error"].get("message") or response["error"]))
+        content = response.get("result", {}).get("content", [])
+        text = str(content[0].get("text", "")) if content else ""
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = text
+        if as_json:
+            _emit(payload, as_json=True)
+            return
+        if isinstance(payload, (dict, list)):
+            click.echo(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+            return
+        click.echo(payload)
+    finally:
+        restore()
 
 
 @_dev_group("route")
@@ -4242,6 +4379,362 @@ def benchmark_savings(
         f"${payload['cost_saved_usd']:.4f} saved"
     )
     click.echo(f"saved report: {ctx.obj['root'] / 'benchmarks' / 'savings' / 'latest.json'}")
+
+
+@benchmark_group.command("savings-compact")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory of claude-*.jsonl session exports. Defaults to exports/ in the repo root.",
+)
+@click.option(
+    "--max-sessions",
+    default=None,
+    type=int,
+    show_default=True,
+    help="Maximum number of qualifying sessions to process.",
+)
+@click.option(
+    "--min-context",
+    "min_context_tokens",
+    default=80_000,
+    show_default=True,
+    type=int,
+    help="Skip sessions whose peak context is below this token threshold.",
+)
+@click.option("--output", "output_path", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_savings_compact(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+    min_context_tokens: int,
+    output_path: Path | None,
+    as_json: bool,
+) -> None:
+    """Measure additional context freed by Atelier compact vs native /compact.
+
+    Reads real Claude Code session exports, detects native compaction events
+    (context drops ≥ 40 %), and compares native output (measured) vs Atelier
+    estimate. Reports the *delta* only — never pretends native doesn't compact.
+
+    Output is written to <root>/benchmarks/savings/compact_latest.json.
+    """
+    from benchmarks.swe.compact_bench import run_compact_bench
+
+    if corpus_dir is None:
+        # Try to find exports/ relative to the project root
+        corpus_dir = ctx.obj["root"].parent / "exports"
+        if not corpus_dir.is_dir():
+            raise click.ClickException(
+                "Could not locate exports/ directory. Pass --corpus PATH explicitly."
+            )
+
+    report = run_compact_bench(
+        corpus_dir,
+        max_sessions=max_sessions,
+        min_context_tokens=min_context_tokens,
+    )
+
+    out_path = output_path or ctx.obj["root"] / "benchmarks" / "savings" / "compact_latest.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+
+    if as_json:
+        _emit(report, as_json=True)
+        return
+
+    n = report["sessions_benchmarked"]
+    delta = report["avg_delta_tokens"]
+    cost = report["total_cost_saved_usd"]
+    pct = report.get("atelier_vs_native_delta_pct", 0.0)
+    click.echo(
+        f"savings-compact: {n} sessions | "
+        f"avg delta {delta:+,} tokens ({pct:+.1f}% vs native) | "
+        f"${cost:.4f} additional savings"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("savings-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory of claude-*.jsonl session exports. Defaults to exports/ in the repo root.",
+)
+@click.option(
+    "--max-sessions",
+    default=None,
+    type=int,
+    show_default=True,
+    help="Maximum number of sessions to process.",
+)
+@click.option("--output", "output_path", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_savings_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+    output_path: Path | None,
+    as_json: bool,
+) -> None:
+    """Measure cost savings from Atelier model routing vs actual session model.
+
+    Reads real Claude Code session exports, runs ModelRouter per turn, and
+    computes cost delta between actual model and recommended cheaper tier.
+    Only positive deltas count — sessions already on an optimal model show $0.
+
+    Output is written to <root>/benchmarks/savings/routing_latest.json.
+    """
+    from benchmarks.swe.routing_bench import run_routing_bench
+
+    if corpus_dir is None:
+        corpus_dir = ctx.obj["root"].parent / "exports"
+        if not corpus_dir.is_dir():
+            raise click.ClickException(
+                "Could not locate exports/ directory. Pass --corpus PATH explicitly."
+            )
+
+    report = run_routing_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_path = output_path or ctx.obj["root"] / "benchmarks" / "savings" / "routing_latest.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+
+    if as_json:
+        _emit(report, as_json=True)
+        return
+
+    n = report["sessions_benchmarked"]
+    turns = report["total_turns_analyzed"]
+    down = report["total_downtiered_turns"]
+    pct = report["downtiered_pct"]
+    cost = report["total_cost_saved_usd"]
+    by_tier = report.get("by_tier", {})
+    click.echo(
+        f"savings-routing: {n} sessions | "
+        f"{turns:,} turns | "
+        f"{down:,} downtiered ({pct:.1f}%) | "
+        f"${cost:.4f} saved"
+    )
+    click.echo(f"  by tier: cheap={by_tier.get('cheap', 0):,}  medium={by_tier.get('medium', 0):,}  expensive={by_tier.get('expensive', 0):,}")
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("quality-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=None, type=int, help="Cap sessions processed.")
+@click.pass_context
+def benchmark_quality_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+) -> None:
+    """Routing QUALITY benchmark: how safe are downtiered recommendations?
+
+    Classifies each downtiered turn as safe / moderate / risky using:
+      - tool risk (Edit=1.0, Bash=0.4, Read=0.0)
+      - output complexity (tokens as reasoning proxy)
+      - immediate error (did the tool call fail right after?)
+    """
+    from benchmarks.swe.routing_quality_bench import run_routing_quality_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    report = run_routing_quality_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "routing_quality_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    total_down = report["total_downtiered_turns"]
+    safe_pct = report["safe_pct"]
+    mod_pct = report["moderate_pct"]
+    risky_pct = report["risky_pct"]
+    env_pct = report["env_error_pct_on_downtiered"]
+    model_pct = report["model_error_pct_on_downtiered"]
+    retry_pct = report["retry_pct_on_downtiered"]
+    quality = report["avg_quality_score"]
+    click.echo(
+        f"quality-routing: {n} sessions | {total_down:,} downtiered turns | "
+        f"quality score {quality:.3f}"
+    )
+    click.echo(
+        f"  risk split: safe={safe_pct:.1f}%  moderate={mod_pct:.1f}%  risky={risky_pct:.1f}%"
+    )
+    click.echo(
+        f"  errors: env={env_pct:.1f}% (excluded)  model={model_pct:.1f}%  retries={retry_pct:.1f}%"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("quality-compact")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=None, type=int, help="Cap sessions processed.")
+@click.pass_context
+def benchmark_quality_compact(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+) -> None:
+    """Compact QUALITY benchmark: does context survive compaction intact?
+
+    For each real compaction event measures:
+      - error rate drift (pre vs post compact)
+      - extra re-reads post compact (proxy for lost context)
+      - session continuation rate
+      - composite retention score (0–1)
+    """
+    from benchmarks.swe.compact_quality_bench import run_compact_quality_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    report = run_compact_quality_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "compact_quality_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    n_events = report["total_compaction_events"]
+    retention = report["avg_retention_score"]
+    drift = report["avg_error_drift"]
+    rr = report["avg_extra_read_rate"]
+    cont = report["sessions_continued_pct"]
+    click.echo(
+        f"quality-compact: {n} sessions | {n_events} compaction events | "
+        f"retention score {retention:.3f}"
+    )
+    click.echo(
+        f"  error drift: {drift:+.3f}  extra re-reads: {rr:.3f}  continuation: {cont:.1f}%"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("replay-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=10, show_default=True, type=int,
+              help="Max sessions to replay (cost control).")
+@click.option("--max-turns", default=5, show_default=True, type=int,
+              help="Max haiku calls per session (cost control). 0 = unlimited.")
+@click.option("--context-lines", default=30, show_default=True, type=int,
+              help="Recent context lines sent to haiku per call.")
+@click.option("--haiku-model", default="claude-haiku-4-5", show_default=True,
+              help="Haiku model alias for --model flag.")
+@click.option("--delay", default=0.5, show_default=True, type=float,
+              help="Seconds between CLI calls (rate limiting).")
+@click.option("--verbose", is_flag=True, default=False,
+              help="Print each turn result as it completes.")
+@click.pass_context
+def benchmark_replay_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int,
+    max_turns: int,
+    context_lines: int,
+    haiku_model: str,
+    delay: float,
+    verbose: bool,
+) -> None:
+    """Routing REPLAY benchmark: actually call haiku on downtiered turns.
+
+    True counterfactual — uses the claude CLI (no API key required).
+    Reconstructs session context as text, asks haiku what tool it would call
+    next, and compares its choice to what sonnet actually did.
+
+    Estimated cost: ~$0.01–0.03 per turn replayed (haiku via Claude Code auth).
+
+    Quality labels per turn:
+      match        — same tool, similar input (similarity ≥ 0.7)
+      partial      — same tool, somewhat different input (0.3–0.7)
+      diverge      — same tool, very different input (< 0.3)
+      tool_mismatch — haiku chose a different tool entirely
+      parse_error  — haiku responded but JSON could not be parsed
+    """
+    from benchmarks.swe.routing_replay_bench import run_routing_replay_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    max_t = max_turns if max_turns > 0 else None
+    click.echo(
+        f"Replaying with {haiku_model} (via claude CLI) | "
+        f"up to {max_sessions} sessions × {max_t or 'all'} turns each | "
+        f"context={context_lines} lines"
+    )
+
+    report = run_routing_replay_bench(
+        corpus_dir,
+        max_sessions=max_sessions,
+        max_turns_per_session=max_t,
+        context_lines=context_lines,
+        haiku_model=haiku_model,
+        rate_limit_delay=delay,
+        verbose=verbose,
+    )
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "routing_replay_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    total = report["total_turns_replayed"]
+    match = report["tool_match_rate"]
+    sim = report["avg_input_similarity"]
+    ratio = report["avg_output_token_ratio"]
+    cost = report["total_haiku_cost_usd"]
+    labels = report["quality_label_counts"]
+    parse_errs = sum(1 for r in report.get("sessions", []) for t in r.get("turns", []) if t.get("parse_error"))
+
+    click.echo(
+        f"replay-routing: {n} sessions | {total} turns replayed | "
+        f"tool match {match:.1%} | cost ${cost:.4f}"
+    )
+    click.echo(f"  avg input similarity (matched turns): {sim:.3f}")
+    click.echo(f"  avg output token ratio: {ratio:.3f} (haiku/sonnet)")
+    click.echo(f"  quality: {json.dumps(labels)}")
+    if parse_errs:
+        click.echo(f"  parse errors: {parse_errs}", err=True)
+    click.echo(f"saved report: {out_path}")
 
 
 @benchmark_group.command("compare")

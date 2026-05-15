@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from click.testing import CliRunner
 
-from atelier.core.environment import NON_DEV_LLM_TOOLS
+from atelier.core.environment import (
+    DEV_LLM_TOOLS,
+    NON_DEV_LLM_TOOLS,
+    STABLE_LLM_TOOLS,
+)
 from atelier.gateway.adapters import mcp_server
+from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 
 EXPECTED_TOOLS = {
@@ -74,7 +81,7 @@ def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = _mock_client(
         {
-            "get_task_context": {"context": "Here are the relevant procedures.", "run_ledger": []},
+            "get_context": {"context": "Here are the relevant procedures.", "run_ledger": []},
             "rescue_failure": {
                 "rescue": "Try a narrower reproduction.",
                 "analysis": "repeat failure",
@@ -96,7 +103,7 @@ def test_initialize_returns_server_info() -> None:
         }
     )
     assert resp is not None
-    assert resp["result"]["serverInfo"]["name"] == "atelier-task"
+    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
     assert resp["result"]["protocolVersion"] == "2024-11-05"
 
 
@@ -107,7 +114,7 @@ def test_notifications_initialized_returns_none() -> None:
     assert resp is None
 
 
-def test_tools_list_returns_exact_consolidated_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_list_returns_exact_consolidated_surface_in_dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     resp = _handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert resp is not None
@@ -116,7 +123,7 @@ def test_tools_list_returns_exact_consolidated_surface(monkeypatch: pytest.Monke
     assert set(TOOLS) == EXPECTED_TOOLS
 
 
-def test_tools_list_only_passive_decision_tools_without_dev_mode(
+def test_tools_list_only_product_tools_without_dev_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
@@ -125,11 +132,49 @@ def test_tools_list_only_passive_decision_tools_without_dev_mode(
     tools = resp["result"]["tools"]
     names = {tool["name"] for tool in tools}
     assert names == NON_DEV_LLM_TOOLS
-    assert "edit" not in names
-    assert "shell" not in names
-    context = next(tool for tool in tools if tool["name"] == "context")
-    assert "passive" in context["description"]
-    assert "no-op/pass" in context["description"]
+    assert names == STABLE_LLM_TOOLS
+    assert not (names & DEV_LLM_TOOLS)
+    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
+
+
+def test_cli_tools_list_respects_stable_and_dev_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    runner = CliRunner()
+
+    stable = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list"])
+    assert stable.exit_code == 0, stable.output
+    assert set(stable.output.splitlines()) == STABLE_LLM_TOOLS
+
+    dev = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list", "--dev"])
+    assert dev.exit_code == 0, dev.output
+    assert set(dev.output.splitlines()) == EXPECTED_TOOLS
+    assert "ATELIER_DEV_MODE" not in os.environ
+
+
+def test_cli_tools_call_invokes_stable_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(tmp_path / ".atelier"),
+            "tools",
+            "call",
+            "compact",
+            "--args",
+            '{"op":"output","content":"hello world","budget_tokens":10}',
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["method"] == "passthrough"
+    assert payload["compacted"] == "hello world"
 
 
 def test_tools_list_each_entry_has_schema() -> None:
@@ -152,7 +197,7 @@ def test_unknown_tool_returns_error() -> None:
     assert "unknown tool" in resp["error"]["message"]
 
 
-def test_get_task_context_can_include_folded_state(store_root: Path) -> None:
+def test_get_context_can_include_folded_state(store_root: Path) -> None:
     resp = _call(
         "context",
         {"task": "Fix publish regression", "include_run_ledger": True},
@@ -298,6 +343,57 @@ def test_model_recommendation_emitted_before_tool_dispatch(store_root: Path) -> 
     assert recommendations
     assert recommendations[-1].payload["tool_name"] == "compact"
     assert recommendations[-1].payload["tier"] in {"cheap", "medium", "expensive"}
+    assert recommendations[-1].payload["lever"] == "model_routing"
+    assert recommendations[-1].payload["tokens_saved"] == 0
+    assert recommendations[-1].payload["cost_saved_usd"] >= 0
+
+
+def test_compact_session_op_emits_session_compaction_savings(
+    monkeypatch: pytest.MonkeyPatch, store_root: Path
+) -> None:
+    _ = store_root
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        mcp_server, "_append_live_savings_event", lambda event: events.append(event)
+    )
+    led = mcp_server._get_ledger()
+    led.token_count = 48_000
+    for idx in range(4):
+        led.record("agent_message", f"working turn {idx}", {"idx": idx})
+
+    payload = mcp_server._compress_context()
+
+    session_events = [event for event in events if event.get("kind") == "session_compaction"]
+    assert session_events
+    assert session_events[-1]["lever"] == "session_compaction"
+    assert session_events[-1]["tokens_saved"] > 0
+    assert session_events[-1]["cost_saved_usd"] > 0
+    assert payload["tokens_freed"] == session_events[-1]["tokens_saved"]
+    assert payload["cost_saved_usd"] == session_events[-1]["cost_saved_usd"]
+
+
+def test_compact_advise_emits_session_compaction_savings_when_auto_compacting(
+    monkeypatch: pytest.MonkeyPatch, store_root: Path
+) -> None:
+    _ = store_root
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        mcp_server, "_append_live_savings_event", lambda event: events.append(event)
+    )
+    led = mcp_server._get_ledger()
+    led.token_count = 160_000
+    for idx in range(16):
+        led.record("agent_message", f"working turn {idx}", {"idx": idx})
+    led.record_test("pytest", passed=True, detail="tests passed")
+
+    payload = mcp_server._compact_advise()
+
+    session_events = [event for event in events if event.get("kind") == "session_compaction"]
+    assert payload["should_compact"] is True
+    assert session_events
+    assert session_events[-1]["trigger"] == "compact_advise"
+    assert session_events[-1]["tokens_saved"] == payload["tokens_freed"]
+    assert session_events[-1]["cost_saved_usd"] == payload["cost_saved_usd"]
 
 
 def test_detect_agent_supports_all_five_cli_hosts(monkeypatch: pytest.MonkeyPatch) -> None:

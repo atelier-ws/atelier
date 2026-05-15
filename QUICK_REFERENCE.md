@@ -98,7 +98,7 @@ atelier:repair     Repair specialist (on repeated failures)
 ```
 CORE WORKFLOW
 ─────────────────────────────────────────────────
-task             Fetch ReasonBlocks, memory, ledger, and environment context
+context           Fetch ReasonBlocks, memory, ledger, and environment context
 route              Dispatch route decide/verify operations
 rescue             Get recovery procedure
 trace       Save observable outcome for learning

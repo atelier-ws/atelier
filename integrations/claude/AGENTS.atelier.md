@@ -17,6 +17,10 @@ Execute the task. Use Atelier augmentations for efficiency:
 - **Route**: Call `route` for complex strategy decisions.
 - **Verify**: Use `verify` (rubric gate) for high-risk domains like Shopify or PDP.
 
+If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use
+Claude-native file reads, Grep/Glob, shell `rg`, or `grep`. Always return findings
+instead of waiting for tool availability to improve.
+
 ## 3. Trace (After Task)
 
 Call `trace` once done to record observable outcome (files, commands, errors, results).

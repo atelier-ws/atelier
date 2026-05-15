@@ -167,7 +167,16 @@ def test_read_returns_summary_and_related(tmp_path: Path) -> None:
     _invoke(root, "init")
     f = tmp_path / "x.py"
     f.write_text("\n".join(f"line {i}" for i in range(200)), encoding="utf-8")
-    res = _invoke(root, "read", str(f), "--max-lines", "50")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "read",
+        "--dev",
+        "--args",
+        json.dumps({"path": str(f), "max_lines": 50}),
+        "--json",
+    )
     assert res.exit_code == 0
     payload = json.loads(res.output)
     assert payload["lines_total"] == 200

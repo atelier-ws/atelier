@@ -38,3 +38,11 @@ def test_direct_host_surfaces_include_budget_optimizer_guardrails() -> None:
         assert "smallest viable plan" in text
         assert "under 10 bullets" in text
         assert "do not retry a third time" in text
+
+
+def test_direct_host_surfaces_keep_native_read_search_fallbacks() -> None:
+    for path in HOST_SURFACES:
+        text = path.read_text(encoding="utf-8")
+        assert "`noop`" in text
+        assert "Always return findings" in text
+        assert "native" in text.lower()
