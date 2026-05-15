@@ -4984,6 +4984,70 @@ def benchmark_full(
         raise click.ClickException("full benchmark failed in host verification")
 
 
+@benchmark_group.command("publish")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="Coverage window label included in the report (informational only).",
+)
+@click.option(
+    "--output",
+    "output_dir",
+    default="reports",
+    show_default=True,
+    type=click.Path(path_type=Path),
+    help="Parent directory for published reports (reports/YYYY-Www/).",
+)
+@click.option(
+    "--corpus",
+    "corpus_arg",
+    default="",
+    help="Optional corpus label for the Methodology section.",
+)
+@click.option("--dry-run", "dry_run", is_flag=True, help="Print what would be written; do not write.")
+@click.pass_context
+def benchmark_publish(
+    ctx: click.Context,
+    since: str,
+    output_dir: Path,
+    corpus_arg: str,
+    dry_run: bool,
+) -> None:
+    """Render latest benchmark results into a publishable weekly report.
+
+    Reads cached JSON files from {root}/benchmarks/savings/ and writes
+    reports/YYYY-Www/benchmark.{md,json}. Computes Δ vs the prior week's
+    report if available.
+    """
+    from atelier.infra.benchmarks.publisher import publish
+
+    root: Path = ctx.obj["root"]
+
+    # Resolve output_dir relative to cwd (not ~/.atelier)
+    if not output_dir.is_absolute():
+        output_dir = Path.cwd() / output_dir
+
+    mode_label = " [dry-run]" if dry_run else ""
+    click.echo(f"Building benchmark report{mode_label}…")
+
+    report_dir = publish(
+        root=root,
+        output_dir=output_dir,
+        since=since,
+        corpus_arg=corpus_arg,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        click.echo("Dry-run complete — no files written.")
+    else:
+        click.echo(f"Report written → {report_dir}")
+        click.echo(f"  {report_dir / 'benchmark.md'}")
+        click.echo(f"  {report_dir / 'benchmark.json'}")
+        click.echo(f"  {output_dir / 'index.json'} (updated)")
+
+
 def _register_swe_benchmark_group() -> None:
     from benchmarks.swe.run_swe_bench import swe as swe_benchmark_group
 
@@ -6025,6 +6089,496 @@ def main() -> None:
         from atelier.core.service.telemetry import shutdown_otel
 
         shutdown_otel()
+
+
+# --------------------------------------------------------------------------- #
+# outcomes                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("outcomes")
+def outcomes_group() -> None:
+    """Inspect captured route and compact decision outcomes."""
+
+
+@outcomes_group.command("show")
+@click.argument("session_id")
+@click.pass_context
+def outcomes_show(ctx: click.Context, session_id: str) -> None:
+    """Print JSON outcome data for SESSION_ID."""
+    from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
+
+    root: Path = ctx.obj["root"]
+    path = root / "runs" / f"{session_id}_outcomes.json"
+    data = load_outcomes_from_state(path)
+    click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+
+
+@outcomes_group.command("summary")
+@click.option("--since", default="7d", show_default=True, help="Look-back window, e.g. 7d, 24h.")
+@click.pass_context
+def outcomes_summary(ctx: click.Context, since: str) -> None:
+    """Aggregate outcome_scores by (kind, tool) and print averages."""
+    from atelier.infra.runtime.outcome_capture import (
+        load_outcomes_from_state,
+        summarise_outcomes,
+    )
+
+    cutoff = datetime.now(UTC) - _parse_duration(since)
+    root: Path = ctx.obj["root"]
+    runs_dir = root / "runs"
+    if not runs_dir.exists():
+        click.echo(json.dumps([], indent=2))
+        return
+
+    combined: dict[str, list[dict[str, Any]]] = {
+        "route_outcomes": [],
+        "compact_outcomes": [],
+    }
+    for outcomes_file in runs_dir.glob("*_outcomes.json"):
+        try:
+            mtime = datetime.fromtimestamp(outcomes_file.stat().st_mtime, tz=UTC)
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+        data = load_outcomes_from_state(outcomes_file)
+        combined["route_outcomes"].extend(data.get("route_outcomes") or [])
+        combined["compact_outcomes"].extend(data.get("compact_outcomes") or [])
+
+    summary = summarise_outcomes(combined)
+    click.echo(json.dumps(summary, indent=2, ensure_ascii=False, default=str))
+
+
+
+
+# --------------------------------------------------------------------------- #
+# session                                                                      #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("session")
+def session_group() -> None:
+    """Per-session cost and savings reports."""
+
+
+@session_group.command("report")
+@click.argument("session_id", required=False, default=None)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.option("--no-color", is_flag=True, default=False, help="Disable ANSI colours.")
+@click.pass_context
+def session_report_cmd(
+    ctx: click.Context,
+    session_id: str | None,
+    as_json: bool,
+    no_color: bool,
+) -> None:
+    """Show cost and savings breakdown for SESSION_ID (default: most recent)."""
+    from atelier.infra.runtime.session_report import (
+        list_run_files,
+        load_report,
+        render_json,
+        render_text,
+    )
+
+    root: Path = ctx.obj["root"]
+
+    if session_id is None:
+        files = list_run_files(root)
+        if not files:
+            click.echo("No sessions found — run any AI command first.", err=True)
+            raise SystemExit(1)
+        # Derive session_id from newest run file name
+        session_id = files[0].stem
+
+    report = load_report(session_id, root)
+    if report is None:
+        click.echo(f"Session '{session_id}' not found in {root / 'runs'}.", err=True)
+        raise SystemExit(1)
+
+    if as_json:
+        click.echo(render_json(report))
+    else:
+        click.echo(render_text(report, no_color=no_color))
+
+
+@session_group.command("list")
+@click.option("--since", default=None, help="Look-back window, e.g. 7d, 24h.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def session_list_cmd(ctx: click.Context, since: str | None, as_json: bool) -> None:
+    """List recent sessions with costs and durations (newest first, max 20)."""
+    import dataclasses
+
+    from atelier.infra.runtime.session_report import (
+        build_report,
+        list_run_files,
+    )
+
+    root: Path = ctx.obj["root"]
+    cutoff = datetime.now(UTC) - _parse_duration(since) if since else None
+    files = list_run_files(root, since=cutoff)[:20]
+
+    if not files:
+        msg = "No sessions found"
+        if since:
+            msg += f" in the last {since}"
+        click.echo(msg + ".", err=True)
+        return
+
+    rows = []
+    for f in files:
+        try:
+            snapshot = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        try:
+            report = build_report(snapshot, root)
+        except Exception:
+            continue
+        rows.append(report)
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                [dataclasses.asdict(r) for r in rows],
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    # Terminal table
+    hdr = f"  {'Session':<10} {'Started':<22} {'Duration':<14} {'Turns':>6} {'Cost':>9} {'Saved':>9}"
+    click.echo(hdr)
+    click.echo("  " + "─" * (len(hdr) - 2))
+    for r in rows:
+        sid = r.session_id[:10]
+        started = r.started_at.strftime("%Y-%m-%d %H:%M")
+        from atelier.infra.runtime.session_report import (
+            _fmt_cost,
+            _fmt_duration,
+        )
+
+        dur = _fmt_duration(r.duration_seconds, r.is_running)
+        click.echo(
+            f"  {sid:<10} {started:<22} {dur:<14} {r.total_turns:>6}"
+            f" {_fmt_cost(r.total_cost_usd):>9} {_fmt_cost(r.total_atelier_savings_usd):>9}"
+        )
+
+
+
+# --------------------------------------------------------------------------- #
+# memory                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("memory")
+def memory_group() -> None:
+    """Inspect native AI memory files from Claude, Codex, and Gemini."""
+
+
+def _make_memory_registry(cwd: Path | None = None) -> "MemoryRegistry":  # type: ignore[name-defined]  # noqa: F821
+    from atelier.core.capabilities.cross_vendor_memory import MemoryRegistry
+    from atelier.core.capabilities.cross_vendor_memory.claude_adapter import ClaudeAdapter
+    from atelier.core.capabilities.cross_vendor_memory.codex_adapter import CodexAdapter
+    from atelier.core.capabilities.cross_vendor_memory.gemini_adapter import GeminiAdapter
+
+    return MemoryRegistry(
+        adapters=[  # type: ignore[list-item]
+            ClaudeAdapter(),
+            CodexAdapter(),
+            GeminiAdapter(cwd=cwd or Path.cwd()),
+        ]
+    )
+
+
+@memory_group.command("list")
+@click.option("--vendor", default=None, help="Filter to a single vendor: claude, codex, gemini.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def memory_list_cmd(ctx: click.Context, vendor: str | None, as_json: bool) -> None:
+    """List all detected memory facts, grouped by vendor."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+
+    if vendor:
+        facts = registry.by_vendor(vendor)
+    else:
+        facts = registry.all_facts()
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                [dataclasses.asdict(f) for f in facts],
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    if not facts:
+        click.echo("No memory facts found.", err=True)
+        return
+
+    # Group by vendor
+    by_vendor: dict[str, list] = {}
+    for f in facts:
+        by_vendor.setdefault(f.vendor, []).append(f)
+
+    total = len(facts)
+    n_vendors = len(by_vendor)
+    click.echo(f"Memory facts ({total} total, {n_vendors} vendor{'s' if n_vendors != 1 else ''})")
+    click.echo("")
+
+    vendor_labels = {"claude": "Anthropic — Claude Code", "codex": "OpenAI — Codex", "gemini": "Google — Gemini CLI"}
+    for v, vfacts in sorted(by_vendor.items()):
+        label = vendor_labels.get(v, v.capitalize())
+        click.echo(f"{label} ({len(vfacts)} fact{'s' if len(vfacts) != 1 else ''})")
+
+        # Group by source_path within vendor
+        by_path: dict[Path, list] = {}
+        for f in vfacts:
+            by_path.setdefault(f.source_path, []).append(f)
+
+        for path, pfacts in sorted(by_path.items(), key=lambda x: str(x[0])):
+            click.echo(f"  {path}  ({pfacts[0].source_kind})")
+            preview = pfacts[:3]
+            for fact in preview:
+                short = fact.content[:72].replace("\n", " ")
+                click.echo(f"    [{fact.fact_id}] {short}")
+            if len(pfacts) > 3:
+                click.echo(f"    ... {len(pfacts) - 3} more")
+        click.echo("")
+
+
+@memory_group.command("show")
+@click.argument("fact_id")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_show_cmd(fact_id: str, as_json: bool) -> None:
+    """Show full content and provenance for FACT_ID."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+    fact = registry.show(fact_id)
+
+    if fact is None:
+        click.echo(f"Fact '{fact_id}' not found.", err=True)
+        raise SystemExit(1)
+
+    if as_json:
+        click.echo(json.dumps(dataclasses.asdict(fact), default=str, indent=2))
+        return
+
+    click.echo(f"ID:        {fact.fact_id}")
+    click.echo(f"Vendor:    {fact.vendor}")
+    click.echo(f"Source:    {fact.source_path}:{fact.line_number or '?'}")
+    click.echo(f"Kind:      {fact.source_kind}")
+    click.echo(f"Read at:   {fact.captured_at.isoformat()}")
+    if fact.raw_meta:
+        click.echo(f"Meta:      {json.dumps(fact.raw_meta, default=str)}")
+    click.echo("")
+    click.echo(fact.content)
+
+
+@memory_group.command("find")
+@click.argument("query")
+@click.option("--limit", default=20, show_default=True, help="Max results.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_find_cmd(query: str, limit: int, as_json: bool) -> None:
+    """Find facts matching QUERY using substring + fuzzy search."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+    facts = registry.find(query, limit=limit)
+
+    if as_json:
+        click.echo(json.dumps([dataclasses.asdict(f) for f in facts], default=str, indent=2))
+        return
+
+    if not facts:
+        click.echo(f"No facts found matching '{query}'.")
+        return
+
+    click.echo(f"Found {len(facts)} match{'es' if len(facts) != 1 else ''}:")
+    for f in facts:
+        short = f.content[:72].replace("\n", " ")
+        click.echo(f"  [{f.fact_id}] {short}")
+
+
+@memory_group.command("paths")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_paths_cmd(as_json: bool) -> None:
+    """Show all file paths the memory adapters read from."""
+    registry = _make_memory_registry()
+    paths_by_vendor = registry.source_paths_by_vendor()
+
+    if as_json:
+        click.echo(json.dumps(paths_by_vendor, indent=2))
+        return
+
+    if not paths_by_vendor:
+        click.echo("No memory source files found on this machine.")
+        return
+
+    for vendor, paths in sorted(paths_by_vendor.items()):
+        click.echo(f"{vendor}:")
+        for p in paths:
+            click.echo(f"  {p}")
+
+
+# --------------------------------------------------------------------------- #
+# insights                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _parse_since_arg(value: str) -> "datetime":
+    """Parse ``--since`` argument.
+
+    Accepts:
+    * ``7d``, ``30d``, ``24h``, ``30m``  — duration relative to now
+    * ``YYYY-MM-DD``                       — absolute date (start of day UTC)
+    """
+    from datetime import UTC, datetime, timedelta
+    import re
+
+    stripped = value.strip()
+    # Relative duration (e.g. "7d", "24h", "30m")
+    match = re.fullmatch(r"(\d+)([dhm])", stripped)
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2)
+        delta = (
+            timedelta(days=amount) if unit == "d"
+            else timedelta(hours=amount) if unit == "h"
+            else timedelta(minutes=amount)
+        )
+        return datetime.now(UTC) - delta
+
+    # Absolute date (YYYY-MM-DD)
+    try:
+        return datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        pass
+
+    raise click.ClickException(
+        f"Cannot parse --since value {value!r}. "
+        "Use a duration like '7d', '24h', or a date like '2026-05-01'."
+    )
+
+
+@cli.command("insights")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="Time window: '7d', '30d', '24h', or a date like '2026-05-01'.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.option("--no-color", is_flag=True, default=False, help="Disable ANSI colours.")
+@click.option(
+    "--vendor",
+    default=None,
+    help="Filter output to a specific vendor (e.g. 'anthropic').",
+)
+@click.option(
+    "--group-by",
+    "group_by",
+    default="tool",
+    type=click.Choice(["tool", "vendor", "model", "session"]),
+    show_default=True,
+    help="Primary grouping for cost breakdown.",
+)
+@click.pass_context
+def insights_cmd(
+    ctx: click.Context,
+    since: str,
+    as_json: bool,
+    no_color: bool,
+    vendor: str | None,
+    group_by: str,
+) -> None:
+    """Weekly AI-spend insights and savings opportunities."""
+    from datetime import UTC, datetime
+
+    from atelier.infra.runtime.insights import (
+        InsightsWindow,
+        build_insights,
+        render_json,
+        render_text,
+    )
+
+    root: Path = ctx.obj["root"]
+    since_dt = _parse_since_arg(since)
+    until_dt = datetime.now(UTC)
+
+    window: InsightsWindow = build_insights(root, since=since_dt, until=until_dt)
+
+    if window.session_count == 0:
+        if as_json:
+            click.echo(render_json(window))
+        else:
+            since_str = since_dt.strftime("%Y-%m-%d")
+            click.echo(f"No sessions found since {since_str}.")
+        return
+
+    # Apply vendor filter to cost_by_vendor display (full window still computed).
+    if vendor and not as_json:
+        vendor_key = vendor.capitalize()
+        filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
+        click.echo(
+            f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}"
+            f" of ${window.total_cost_usd:.2f} total"
+        )
+
+    # Apply group-by override for display (swap cost_by_* fields shown).
+    display_window = window
+    if group_by == "vendor" and not as_json:
+        # Reorder: show vendor bars prominently (already first in default render).
+        pass
+    elif group_by == "model" and not as_json:
+        # Swap cost_by_tool → cost_by_model for the tool section.
+        from dataclasses import replace
+
+        display_window = InsightsWindow(
+            since=window.since,
+            until=window.until,
+            session_count=window.session_count,
+            total_duration_seconds=window.total_duration_seconds,
+            total_cost_usd=window.total_cost_usd,
+            total_atelier_savings_usd=window.total_atelier_savings_usd,
+            cost_by_vendor=window.cost_by_vendor,
+            cost_by_tool=window.cost_by_model,
+            cost_by_model=window.cost_by_model,
+            top_sessions=window.top_sessions,
+            outcomes_summary=window.outcomes_summary,
+            opportunities=window.opportunities,
+        )
+    elif group_by == "session" and not as_json:
+        # Replace cost_by_tool with per-session breakdown.
+        session_costs = {
+            s.session_id[:8]: s.cost_usd for s in window.top_sessions
+        }
+        display_window = InsightsWindow(
+            since=window.since,
+            until=window.until,
+            session_count=window.session_count,
+            total_duration_seconds=window.total_duration_seconds,
+            total_cost_usd=window.total_cost_usd,
+            total_atelier_savings_usd=window.total_atelier_savings_usd,
+            cost_by_vendor=window.cost_by_vendor,
+            cost_by_tool=session_costs,
+            cost_by_model=window.cost_by_model,
+            top_sessions=window.top_sessions,
+            outcomes_summary=window.outcomes_summary,
+            opportunities=window.opportunities,
+        )
+
+    if as_json:
+        click.echo(render_json(window))
+    else:
+        click.echo(render_text(display_window, no_color=no_color))
 
 
 if __name__ == "__main__":
