@@ -71,6 +71,21 @@ DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS = (
     "month",
 )
 
+CONTROLLER_UNIT = "atelier-controller.service"
+STACK_UNIT = "atelier-stack.service"
+SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
+LAUNCHD_USER_DIR = Path.home() / "Library" / "LaunchAgents"
+CONTROLLER_LABEL = "com.atelier.controller"
+STACK_LABEL = "com.atelier.stack"
+
+
+def _is_macos() -> bool:
+    return sys.platform == "darwin"
+
+
+def _is_linux() -> bool:
+    return sys.platform.startswith("linux")
+
 
 # --------------------------------------------------------------------------- #
 # Product telemetry helpers                                                   #
@@ -608,6 +623,70 @@ def _servicectl_collect_external_analytics(
     return persisted
 
 
+def _servicectl_check_and_apply_updates(root: Path) -> bool:
+    """Check for git updates and apply them if available.
+
+    Returns True if an update was applied and the process should restart.
+    """
+    try:
+        # 1. Identify project root (where .git is)
+        # We look for the install record or traverse up from this file.
+        record_path = Path.home() / ".atelier" / "install_dir"
+        if record_path.exists():
+            project_root = Path(record_path.read_text(encoding="utf-8").strip())
+        else:
+            # Fallback: traverse up from src/atelier/gateway/adapters/cli.py
+            project_root = Path(__file__).parents[4]
+
+        if not (project_root / ".git").exists():
+            return False
+
+        # 2. git fetch
+        subprocess.run(["git", "fetch", "--quiet"], cwd=project_root, check=True)
+
+        # 3. Check if behind
+        res = subprocess.run(
+            ["git", "rev-list", "HEAD..@{u}", "--count"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        behind_count = int(res.stdout.strip())
+
+        if behind_count == 0:
+            return False
+
+        logger.info(f"Auto-update: detected {behind_count} new commits. Pulling...")
+
+        # 4. Pull
+        subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=project_root, check=True)
+
+        # 5. Check if dependencies changed
+        if (project_root / "uv.lock").exists() or (project_root / "pyproject.toml").exists():
+            import shutil
+
+            if shutil.which("uv"):
+                logger.info("Auto-update: syncing dependencies with uv...")
+                subprocess.run(["uv", "sync"], cwd=project_root, check=True)
+
+        # 6. Check if we should restart systemd/launchd managed services
+        # If we are running under systemd, we can trigger a restart of the whole stack
+        if os.environ.get("INVOCATION_ID"):
+            logger.info("Auto-update: update applied (systemd). Triggering stack restart...")
+            subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
+        elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
+            logger.info("Auto-update: update applied (launchd). Triggering stack restart...")
+            subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
+
+        logger.info("Auto-update: update applied successfully. Exiting for restart.")
+        return True
+
+    except Exception as exc:
+        logger.error(f"Auto-update failed: {exc}")
+        return False
+
+
 def _servicectl_tick(
     root: Path,
     *,
@@ -615,6 +694,8 @@ def _servicectl_tick(
     session_import_interval_seconds: int,
     external_analytics_interval_seconds: int,
     external_analytics_periods: tuple[str, ...] | list[str],
+    auto_update: bool = False,
+    auto_update_interval_seconds: int = 3600,
 ) -> dict[str, Any]:
     from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
     from atelier.core.service.worker import Worker
@@ -635,6 +716,24 @@ def _servicectl_tick(
     now = datetime.now(UTC)
     state = _read_servicectl_state(root)
     periodic = state.setdefault("periodic_jobs", {})
+
+    # 0. Check for auto-updates
+    if auto_update:
+        AUTO_UPDATE_KEY = "auto_update_check"
+        last_update_raw = periodic.get(AUTO_UPDATE_KEY)
+        last_update_at: datetime | None = None
+        if isinstance(last_update_raw, str):
+            try:
+                last_update_at = datetime.fromisoformat(last_update_raw)
+            except ValueError:
+                last_update_at = None
+
+        if last_update_at is None or (now - last_update_at).total_seconds() >= auto_update_interval_seconds:
+            if _servicectl_check_and_apply_updates(root):
+                # Process will exit if update was applied (Restart=always will pick it up)
+                sys.exit(0)
+            periodic[AUTO_UPDATE_KEY] = now.isoformat()
+
     last_enqueue_raw = periodic.get(JOB_CONSOLIDATE_BLOCKS)
     last_enqueue_at: datetime | None = None
     if isinstance(last_enqueue_raw, str):
@@ -2958,11 +3057,11 @@ def memory_upsert(
 
 
 @memory_group.command("get")
-@click.option("--agent-id", required=True)
+@click.option("--agent-id", default=None)
 @click.option("--label", required=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def memory_get(ctx: click.Context, agent_id: str, label: str, as_json: bool) -> None:
+def memory_get(ctx: click.Context, agent_id: str | None, label: str, as_json: bool) -> None:
     """Fetch one editable memory block."""
     from atelier.infra.storage.factory import make_memory_store
 
@@ -2974,15 +3073,15 @@ def memory_get(ctx: click.Context, agent_id: str, label: str, as_json: bool) -> 
     if as_json:
         _emit(payload, as_json=True)
         return
-    click.echo(f"{payload['agent_id']}\t{payload['label']}\tv{payload['version']}")
+    click.echo(f"{payload.get('agent_id', 'shared')}\t{payload['label']}\tv{payload['version']}")
     click.echo(payload["value"])
 
 
 @memory_group.command("list")
-@click.option("--agent-id", required=True)
+@click.option("--agent-id", default=None)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def memory_list(ctx: click.Context, agent_id: str, as_json: bool) -> None:
+def memory_list(ctx: click.Context, agent_id: str | None, as_json: bool) -> None:
     """List all memory blocks for an agent."""
     from atelier.infra.storage.factory import make_memory_store
 
@@ -2999,7 +3098,7 @@ def memory_list(ctx: click.Context, agent_id: str, as_json: bool) -> None:
 
 
 @memory_group.command("archive")
-@click.option("--agent-id", required=True)
+@click.option("--agent-id", default=None)
 @click.option("--text", required=True, help="Inline text or @path. Use @/dev/stdin for stdin.")
 @click.option("--source", required=True)
 @click.option("--source-ref", default="")
@@ -3007,7 +3106,7 @@ def memory_list(ctx: click.Context, agent_id: str, as_json: bool) -> None:
 @click.pass_context
 def memory_archive(
     ctx: click.Context,
-    agent_id: str,
+    agent_id: str | None,
     text: str,
     source: str,
     source_ref: str,
@@ -3031,7 +3130,7 @@ def memory_archive(
 
 
 @memory_group.command("recall")
-@click.option("--agent-id", required=True)
+@click.option("--agent-id", default=None)
 @click.option("--query", required=True)
 @click.option("--top-k", default=5, show_default=True, type=int)
 @click.option("--tags", "tag_values", multiple=True)
@@ -3196,6 +3295,12 @@ def stack_group() -> None:
 @click.option("--with-docs", is_flag=True, help="Also start the docs site on port 3200.")
 def stack_start(with_docs: bool) -> None:
     """Start the optional visualization stack via Docker Compose."""
+    if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+        click.echo(
+            f"Notice: {STACK_UNIT} is installed. "
+            "Prefer using 'atelier systemd restart' or 'systemctl --user restart atelier-stack'."
+        )
+
     services = _configured_stack_services(["service", "frontend", "otel-collector"])
     if with_docs:
         services = _configured_stack_services([*services, "docs"])
@@ -3209,12 +3314,20 @@ def stack_start(with_docs: bool) -> None:
 @stack_group.command("stop")
 def stack_stop() -> None:
     """Stop the optional visualization stack."""
+    if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+        click.echo(
+            f"Notice: {STACK_UNIT} is installed. "
+            "Prefer using 'atelier systemd uninstall' or 'systemctl --user stop atelier-stack'."
+        )
     _run_stack_compose(["down"])
 
 
 @stack_group.command("status")
 def stack_status() -> None:
     """Show visualization stack container status."""
+    if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+        subprocess.run(["systemctl", "--user", "status", STACK_UNIT, "--no-pager"], check=False)
+        click.echo("-" * 40)
     _run_stack_compose(["ps"])
 
 
@@ -3223,6 +3336,9 @@ def stack_status() -> None:
 @click.option("--with-docs", is_flag=True, help="Include docs container logs.")
 def stack_logs(follow: bool, with_docs: bool) -> None:
     """Show visualization stack logs."""
+    if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+        click.echo(f"Notice: {STACK_UNIT} is installed. Prefer using 'atelier systemd logs stack'.")
+
     args = ["logs"]
     if follow:
         args.append("-f")
@@ -4590,6 +4706,12 @@ def servicectl_start(
 ) -> None:
     """Start the detached background controller."""
     root = ctx.obj["root"]
+    if (SYSTEMD_USER_DIR / CONTROLLER_UNIT).exists():
+        click.echo(
+            f"Notice: {CONTROLLER_UNIT} is installed. "
+            "Prefer using 'atelier systemd restart' or 'systemctl --user restart atelier-controller'."
+        )
+
     _kill_orphan_servicectl_processes(root)
     status = _servicectl_status_payload(root)
     if status["running"]:
@@ -4762,6 +4884,8 @@ def servicectl_logs(ctx: click.Context, follow: bool, lines: int) -> None:
     multiple=True,
     show_default=True,
 )
+@click.option("--auto-update", is_flag=True, help="Check for git updates periodically.")
+@click.option("--auto-update-interval-seconds", default=3600, show_default=True, type=int)
 @click.pass_context
 def servicectl_run(
     ctx: click.Context,
@@ -4770,6 +4894,8 @@ def servicectl_run(
     session_import_interval_seconds: int,
     external_analytics_interval_seconds: int,
     external_analytics_periods: tuple[str, ...],
+    auto_update: bool,
+    auto_update_interval_seconds: int,
 ) -> None:
     """Internal long-running background loop."""
     root = ctx.obj["root"]
@@ -4781,6 +4907,8 @@ def servicectl_run(
                 session_import_interval_seconds=session_import_interval_seconds,
                 external_analytics_interval_seconds=external_analytics_interval_seconds,
                 external_analytics_periods=external_analytics_periods,
+                auto_update=auto_update,
+                auto_update_interval_seconds=auto_update_interval_seconds,
             )
             time.sleep(max(1, interval_seconds))
     except KeyboardInterrupt:
@@ -4788,6 +4916,296 @@ def servicectl_run(
         state["last_exit_reason"] = "interrupted"
         _write_servicectl_state(root, state)
         raise SystemExit(0) from None
+
+
+# ----- background services (systemd / launchd) ------------------------------ #
+
+
+@cli.group("background")
+def background_group() -> None:
+    """Manage Atelier background services (systemd on Linux, launchd on macOS)."""
+
+
+@background_group.command("install")
+@click.option("--with-stack", is_flag=True, help="Also install the visualization stack service.")
+@click.pass_context
+def background_install(ctx: click.Context, with_stack: bool) -> None:
+    """Install Atelier services as background units."""
+    import shutil
+
+    root = ctx.obj["root"]
+    project_root = _project_root()
+    atelier_bin = shutil.which("atelier") or str(Path(sys.argv[0]).resolve())
+
+    if _is_linux():
+        if not shutil.which("systemctl"):
+            raise click.ClickException("systemctl not found.")
+
+        SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
+
+        controller_content = f"""[Unit]
+Description=Atelier Background Controller
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={atelier_bin} --root {root} servicectl run --auto-update
+Restart=always
+Environment=ATELIER_ROOT={root}
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory={project_root}
+
+[Install]
+WantedBy=default.target
+"""
+        (SYSTEMD_USER_DIR / CONTROLLER_UNIT).write_text(controller_content, encoding="utf-8")
+        click.echo(f"Installed {CONTROLLER_UNIT}")
+
+        if with_stack:
+            stack_content = f"""[Unit]
+Description=Atelier Visualization Stack
+After={CONTROLLER_UNIT}
+
+[Service]
+Type=simple
+WorkingDirectory={project_root}
+ExecStart=docker compose up
+ExecStop=docker compose down
+Restart=always
+Environment=ATELIER_ROOT={root}
+Environment=ATELIER_STACK_ROOT={root}
+
+[Install]
+WantedBy=default.target
+"""
+            (SYSTEMD_USER_DIR / STACK_UNIT).write_text(stack_content, encoding="utf-8")
+            click.echo(f"Installed {STACK_UNIT}")
+
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+        subprocess.run(["systemctl", "--user", "enable", "--now", CONTROLLER_UNIT], check=True)
+        if with_stack:
+            subprocess.run(["systemctl", "--user", "enable", "--now", STACK_UNIT], check=True)
+
+    elif _is_macos():
+        LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
+
+        controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{CONTROLLER_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{atelier_bin}</string>
+        <string>--root</string>
+        <string>{root}</string>
+        <string>servicectl</string>
+        <string>run</string>
+        <string>--auto-update</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>{project_root}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ATELIER_ROOT</key>
+        <string>{root}</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>
+"""
+        (LAUNCHD_USER_DIR / f"{CONTROLLER_LABEL}.plist").write_text(controller_plist, encoding="utf-8")
+        click.echo(f"Installed {CONTROLLER_LABEL}.plist")
+
+        if with_stack:
+            stack_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{STACK_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>docker</string>
+        <string>compose</string>
+        <string>up</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>{project_root}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ATELIER_ROOT</key>
+        <string>{root}</string>
+        <key>ATELIER_STACK_ROOT</key>
+        <string>{root}</string>
+    </dict>
+</dict>
+</plist>
+"""
+            (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").write_text(stack_plist, encoding="utf-8")
+            click.echo(f"Installed {STACK_LABEL}.plist")
+
+        subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{CONTROLLER_LABEL}.plist")], check=False)
+        if with_stack:
+            subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist")], check=False)
+
+    else:
+        raise click.ClickException(f"Unsupported platform for background services: {sys.platform}")
+
+    click.echo("Services enabled and started.")
+
+
+@background_group.command("uninstall")
+@click.pass_context
+def background_uninstall(ctx: click.Context) -> None:
+    """Stop and remove Atelier background units."""
+    if _is_linux():
+        for unit in [CONTROLLER_UNIT, STACK_UNIT]:
+            path = SYSTEMD_USER_DIR / unit
+            if path.exists():
+                subprocess.run(["systemctl", "--user", "disable", "--now", unit], check=False)
+                path.unlink()
+                click.echo(f"Removed {unit}")
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+
+    elif _is_macos():
+        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+            plist = LAUNCHD_USER_DIR / f"{label}.plist"
+            if plist.exists():
+                subprocess.run(["launchctl", "unload", str(plist)], check=False)
+                plist.unlink()
+                click.echo(f"Removed {label}")
+    else:
+        raise click.ClickException(f"Unsupported platform: {sys.platform}")
+
+    click.echo("Uninstallation complete.")
+
+
+@background_group.command("status")
+@click.pass_context
+def background_status(ctx: click.Context) -> None:
+    """Show status of Atelier background units."""
+    if _is_linux():
+        units = [CONTROLLER_UNIT]
+        if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+            units.append(STACK_UNIT)
+        for unit in units:
+            click.echo(f"--- {unit} ---")
+            subprocess.run(["systemctl", "--user", "status", unit, "--no-pager"], check=False)
+            click.echo("")
+    elif _is_macos():
+        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+            if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
+                click.echo(f"--- {label} ---")
+                subprocess.run(["launchctl", "list", label], check=False)
+                click.echo("")
+    else:
+        click.echo(f"Background services not supported on {sys.platform}")
+
+
+@background_group.command("restart")
+@click.pass_context
+def background_restart(ctx: click.Context) -> None:
+    """Restart Atelier background units."""
+    if _is_linux():
+        units = [CONTROLLER_UNIT]
+        if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
+            units.append(STACK_UNIT)
+        for unit in units:
+            subprocess.run(["systemctl", "--user", "restart", unit], check=True)
+            click.echo(f"Restarted {unit}")
+    elif _is_macos():
+        uid = os.getuid()
+        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+            if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
+                subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{label}"], check=False)
+                click.echo(f"Restarted {label}")
+    else:
+        click.echo(f"Background services not supported on {sys.platform}")
+
+
+@background_group.command("logs")
+@click.argument("service", type=click.Choice(["controller", "stack"]), default="controller")
+@click.option("-f", "--follow", is_flag=True, help="Follow the logs.")
+@click.option("-n", "--lines", default=50, type=int, help="Number of lines to show.")
+@click.pass_context
+def background_logs(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
+    """Show logs for Atelier background units."""
+    if _is_linux():
+        unit = CONTROLLER_UNIT if service == "controller" else STACK_UNIT
+        cmd = ["journalctl", "--user", "-u", unit, "-n", str(lines)]
+        if follow:
+            cmd.append("-f")
+        subprocess.run(cmd, check=False)
+    elif _is_macos():
+        click.echo("macOS logs are available via Console.app or 'log show'.")
+        click.echo(f"Checking recently recorded stdout for {service}...")
+        # launchd doesn't have a built-in log viewer like journalctl.
+        # We'd usually rely on StandardOutPath/StandardErrorPath in the plist.
+        # For now, we point them to the same log files as servicectl.
+        log_path = _servicectl_log_path(ctx.obj["root"])
+        if log_path.exists():
+            cmd = ["tail", "-n", str(lines)]
+            if follow:
+                cmd.append("-f")
+            cmd.append(str(log_path))
+            subprocess.run(cmd, check=False)
+    else:
+        click.echo(f"Logs not supported on {sys.platform}")
+
+
+# --------------------------------------------------------------------------- #
+# Alias 'systemd' to 'background' for backward compatibility                  #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("systemd", hidden=True)
+def systemd_alias_group() -> None:
+    """Alias for 'background' group."""
+
+
+@systemd_alias_group.command("install")
+@click.option("--with-stack", is_flag=True)
+@click.pass_context
+def systemd_install_alias(ctx: click.Context, with_stack: bool) -> None:
+    ctx.invoke(background_install, with_stack=with_stack)
+
+
+@systemd_alias_group.command("uninstall")
+@click.pass_context
+def systemd_uninstall_alias(ctx: click.Context) -> None:
+    ctx.invoke(background_uninstall)
+
+
+@systemd_alias_group.command("status")
+@click.pass_context
+def systemd_status_alias(ctx: click.Context) -> None:
+    ctx.invoke(background_status)
+
+
+@systemd_alias_group.command("restart")
+@click.pass_context
+def systemd_restart_alias(ctx: click.Context) -> None:
+    ctx.invoke(background_restart)
+
+
+@systemd_alias_group.command("logs")
+@click.argument("service", default="controller")
+@click.option("-f", "--follow", is_flag=True)
+@click.option("-n", "--lines", default=50)
+@click.pass_context
+def systemd_logs_alias(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
+    ctx.invoke(background_logs, service=service, follow=follow, lines=lines)
 
 
 # --------------------------------------------------------------------------- #

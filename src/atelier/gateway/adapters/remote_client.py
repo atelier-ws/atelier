@@ -109,12 +109,10 @@ class RemoteClient:
         if op == "block_upsert":
             return self._post("/v1/memory/blocks", args)
         if op == "block_get":
-            query = urllib.parse.urlencode(
-                {
-                    "agent_id": str(args.get("agent_id") or ""),
-                    "label": str(args.get("label") or ""),
-                }
-            )
+            query_params = {"label": str(args.get("label") or "")}
+            if args.get("agent_id"):
+                query_params["agent_id"] = str(args.get("agent_id"))
+            query = urllib.parse.urlencode(query_params)
             return self._get(f"/v1/memory/blocks?{query}")
         if op == "archive":
             return self._post("/v1/memory/archive", args)

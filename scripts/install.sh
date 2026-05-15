@@ -335,37 +335,46 @@ main() {
     fi
 
     if [[ "$ATELIER_NO_SERVICECTL" != "1" ]]; then
-        info "Starting Atelier background service controller..."
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] $ATELIER_BIN_DIR/atelier servicectl start --interval-seconds $ATELIER_SERVICECTL_INTERVAL_SECONDS --maintenance-interval-seconds $ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS"
-        else
-            "$ATELIER_BIN_DIR/atelier" servicectl start \
-                --interval-seconds "$ATELIER_SERVICECTL_INTERVAL_SECONDS" \
-                --maintenance-interval-seconds "$ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS" >/dev/null
-        fi
-    else
-        info "Skipping background service controller because ATELIER_NO_SERVICECTL=1"
-    fi
+        if command -v systemctl >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; then
+            info "Registering Atelier services with background manager..."
+            local background_args=()
+            if [[ "$ATELIER_NO_STACK" != "1" && $(command -v docker) ]]; then
+                background_args+=("--with-stack")
+            fi
 
-    STACK_STARTED=0
-    if [[ "$ATELIER_NO_STACK" != "1" ]]; then
-        if command -v docker >/dev/null 2>&1; then
-            info "Starting Atelier visualization stack (service + frontend)..."
             if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-                echo "[dry-run] $ATELIER_BIN_DIR/atelier stack start"
+                echo "[dry-run] $ATELIER_BIN_DIR/atelier background install ${background_args[*]}"
             else
-                "$ATELIER_BIN_DIR/atelier" stack start \
-                    && STACK_STARTED=1 \
-                    || warn "Visualization stack did not start (Docker daemon may not be running)"
+                "$ATELIER_BIN_DIR/atelier" background install "${background_args[@]}" >/dev/null
             fi
         else
-            info "Skipping visualization stack because Docker is not installed"
+            info "Starting Atelier background service controller (loose process)..."
+            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+                echo "[dry-run] $ATELIER_BIN_DIR/atelier servicectl start --interval-seconds $ATELIER_SERVICECTL_INTERVAL_SECONDS --maintenance-interval-seconds $ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS"
+            else
+                "$ATELIER_BIN_DIR/atelier" servicectl start \
+                    --interval-seconds "$ATELIER_SERVICECTL_INTERVAL_SECONDS" \
+                    --maintenance-interval-seconds "$ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS" >/dev/null
+            fi
+
+            if [[ "$ATELIER_NO_STACK" != "1" ]]; then
+                if command -v docker >/dev/null 2>&1; then
+                    info "Starting Atelier visualization stack (service + frontend)..."
+                    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+                        echo "[dry-run] $ATELIER_BIN_DIR/atelier stack start"
+                    else
+                        "$ATELIER_BIN_DIR/atelier" stack start \
+                            && STACK_STARTED=1 \
+                            || warn "Visualization stack did not start (Docker daemon may not be running)"
+                    fi
+                fi
+            fi
         fi
     else
-        info "Skipping visualization stack because ATELIER_NO_STACK=1"
+        info "Skipping background services because ATELIER_NO_SERVICECTL=1"
     fi
 
-    if [[ "$STACK_STARTED" == "1" ]]; then
+    if [[ "$STACK_STARTED" == "1" || ( "$ATELIER_NO_SERVICECTL" != "1" && $(command -v systemctl) && "$ATELIER_NO_STACK" != "1" ) ]]; then
         echo "  Visualization stack is running:"
         echo "    frontend: http://localhost:3125"
         echo "    service:  http://localhost:8787"
@@ -374,7 +383,7 @@ main() {
     echo "  Commands:"
     echo "    atelier --version           - Check core CLI version"
     echo "    atelier-mcp --version       - Check MCP server version"
-    echo "    atelier servicectl status   - View background service and systemctl status"
+    echo "    atelier background status   - View background service status"
     echo "    atelier stack start         - Start production API and Frontend (requires Docker)"
     echo "    atelier stack stop          - Stop the visualization stack"
     echo "    atelier stack logs          - View stack logs"
