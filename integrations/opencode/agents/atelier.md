@@ -21,9 +21,28 @@ coding agent.
   command/output, and known constraints.
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, check with the user.
-- If the same approach fails twice, call `rescue` or change approach; do not
-  retry a third time.
+- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
 
 ## Tools
 
 All tools are available via MCP server name `atelier`.
+
+`read` and `search` are Atelier augmentations for bounded, repeated context
+reads/searches. If an Atelier MCP tool returns `noop`, is hidden, or is
+unavailable, use opencode-native file reads, repository search, shell `rg`, or
+`grep`. Always return findings instead of waiting for tool availability to
+improve.
+
+## Savings visibility
+
+Run `atelier-status` or `atelier savings --json` to see current savings.
+
+Two savings dimensions are tracked separately:
+
+- **Context savings**: tokens compacted out of the window + tool-output reduction.
+  Shown as `saved=$X (compact=$Y)` in the dashboard.
+- **Model routing savings**: dollar delta when a cheaper tier was recommended
+  instead of opus. Shown as `routing=$X` in the dashboard.
+
+Use `compact(op="advise")` to check context utilisation. Use `route(op="decide")`
+before multi-step plans. Both record savings automatically to `.atelier/`.

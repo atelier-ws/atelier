@@ -318,13 +318,13 @@ else
 fi
 
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/status/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/task/SKILL.md" ]; then
+    if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/status/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/context/SKILL.md" ]; then
         vpass "Codex skill bundle installed with dev skills: ${PLUGIN_DIR}/skills"
     else
-        vfail "Codex dev skill bundle missing task or status skill: ${PLUGIN_DIR}/skills"
+        vfail "Codex dev skill bundle missing context or status skill: ${PLUGIN_DIR}/skills"
     fi
 else
-    if [ ! -f "${PLUGIN_DIR}/skills/task/SKILL.md" ] && [ ! -f "${PLUGIN_DIR}/skills/status/SKILL.md" ]; then
+    if [ ! -f "${PLUGIN_DIR}/skills/context/SKILL.md" ] && [ ! -f "${PLUGIN_DIR}/skills/status/SKILL.md" ]; then
         vpass "Codex stable skill bundle installed without dev-only skills: ${PLUGIN_DIR}/skills"
     else
         vfail "Codex stable skill bundle unexpectedly contains dev-only skills: ${PLUGIN_DIR}/skills"

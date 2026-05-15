@@ -30,6 +30,18 @@ _CHEAP_TOOLS = {
 _MEDIUM_TOOLS = {"edit", "smart_edit", "write", "apply_patch", "compact", "verify", "route"}
 _EXPENSIVE_TOOLS = {"agent", "task", "spawn", "delegate", "architect"}
 
+# Session-phase classification — used by _score_session_phase.
+# Exploration tools: reading, searching, inspecting the codebase.
+_EXPLORATION_TOOLS = frozenset({
+    "grep", "glob", "search", "smart_search", "context", "memory",
+    "webfetch", "websearch", "toolsearch", "ls", "list", "read", "smart_read",
+})
+# Execution tools: mutating the workspace or delegating sub-work.
+_EXECUTION_TOOLS = frozenset({
+    "edit", "smart_edit", "write", "multiedit", "notebookedit",
+    "bash", "shell", "agent", "task", "todowrite", "apply_patch",
+})
+
 _CHEAP_VERBS_RE = re.compile(
     r"\b(explain|show|list|summari[sz]e|read|find|search|inspect)\b", re.IGNORECASE
 )
@@ -107,6 +119,10 @@ class ModelRouter:
         score += error_score
         reasons.append(error_reason)
 
+        phase_score, phase_reason = self._score_session_phase(state)
+        score += phase_score
+        reasons.append(phase_reason)
+
         tier = self._tier_for_score(score)
         model = self._models[tier]
 
@@ -165,6 +181,43 @@ class ModelRouter:
         if max_tokens and max_tokens < 3_000:
             return 1, "output_target: max_output_tokens < 3000"
         return 1, "output_target: medium default"
+
+    def _score_session_phase(self, state: Mapping[str, Any]) -> tuple[int, str]:
+        """Score based on where we are in the session lifecycle.
+
+        Exploration (score 0): early turns or read-dominant recent history.
+          Haiku can discover the repo just fine.
+        Transition (score 1): mix of reads and edits, not clearly either phase.
+        Execution (score 2): edit-dominant recent history or deep into the session.
+          Sonnet/Opus needed — model must track accumulated context about specific
+          files and paths it already read, not re-discover them.
+        """
+        turn_number = _safe_int(state.get("turn_number"))
+        recent: list[str] = []
+        raw = state.get("recent_tool_calls")
+        if isinstance(raw, list):
+            recent = [str(t).strip().lower().replace("-", "_") for t in raw[-10:]]
+
+        if not recent and turn_number == 0:
+            return 0, "session_phase: no history, treat as exploration"
+
+        explore_count = sum(1 for t in recent if t in _EXPLORATION_TOOLS or t.startswith(("read", "search", "grep")))
+        exec_count = sum(1 for t in recent if t in _EXECUTION_TOOLS or "edit" in t or "write" in t)
+        total = len(recent) or 1
+        explore_ratio = explore_count / total
+        exec_ratio = exec_count / total
+
+        # Deep into session with execution-heavy recent history → execution phase
+        if turn_number > 20 and exec_ratio >= 0.30:
+            return 2, f"session_phase: execution (turn={turn_number}, exec_ratio={exec_ratio:.0%})"
+        if exec_ratio >= 0.40:
+            return 2, f"session_phase: execution (exec_ratio={exec_ratio:.0%})"
+
+        # Clearly exploration-dominant → exploration phase
+        if explore_ratio >= 0.60 and turn_number <= 15:
+            return 0, f"session_phase: exploration (explore_ratio={explore_ratio:.0%}, turn={turn_number})"
+
+        return 1, f"session_phase: transition (turn={turn_number}, exec={exec_ratio:.0%}, explore={explore_ratio:.0%})"
 
     def _score_prior_errors(self, state: Mapping[str, Any]) -> tuple[int, str]:
         errors = _safe_int(state.get("prior_errors"))

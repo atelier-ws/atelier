@@ -35,7 +35,9 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 - Use `edit` for all file writes, and batch related edits into one call.
 - Use `memory` or `task` for previous-session or procedural context.
 - Use `Bash` for commands that genuinely need a shell: tests, builds, git inspection, package tools, and environment checks.
-- If Atelier MCP tools are unavailable, switch to `atelier:native` and say why in the trace.
+- If Atelier MCP tools return `noop`, are hidden, or are unavailable, switch to
+  `atelier:native` or native file/search tools and say why in the trace. Always
+  return findings instead of waiting for tool availability to improve.
 
 ## Budget optimizer
 

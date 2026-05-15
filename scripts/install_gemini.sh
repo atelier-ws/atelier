@@ -182,13 +182,13 @@ else
 fi
 
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ] && [ -f "${EXTENSION_DIR}/skills/task/SKILL.md" ]; then
+    if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ] && [ -f "${EXTENSION_DIR}/skills/context/SKILL.md" ]; then
         vpass "extension skill bundle installed with dev skills: ${EXTENSION_DIR}/skills"
     else
-        vfail "extension dev skill bundle missing task or status skill: ${EXTENSION_DIR}/skills"
+        vfail "extension dev skill bundle missing context or status skill: ${EXTENSION_DIR}/skills"
     fi
 else
-    if [ ! -f "${EXTENSION_DIR}/skills/task/SKILL.md" ] && [ ! -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
+    if [ ! -f "${EXTENSION_DIR}/skills/context/SKILL.md" ] && [ ! -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
         vpass "extension stable skill bundle installed without dev-only skills: ${EXTENSION_DIR}/skills"
     else
         vfail "extension stable skill bundle unexpectedly contains dev-only skills: ${EXTENSION_DIR}/skills"

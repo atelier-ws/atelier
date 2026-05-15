@@ -2,6 +2,19 @@
 
 This docs index is intentionally split into a small live surface for day-to-day use and a separate `docs-archive/` tree for historical or maintainer-only material.
 
+## Product & Strategy
+
+Start here if you want to understand what Atelier is for, where it's going, and how to execute on it.
+
+| Doc                                                | What it covers                                          |
+| -------------------------------------------------- | ------------------------------------------------------- |
+| [product/EXECUTION-SUMMARY.md](product/EXECUTION-SUMMARY.md) | One-page summary for new team members            |
+| [product/STRATEGY.md](product/STRATEGY.md)         | Positioning, market gap, defensible moat                |
+| [product/ROADMAP.md](product/ROADMAP.md)           | Execution-ordered 2-week / 30-day / 90-day plan         |
+| [product/PRICING.md](product/PRICING.md)           | Tiers, business model, revenue targets                  |
+| [product/GTM.md](product/GTM.md)                   | Go-to-market and content strategy                       |
+| [specs/README.md](specs/README.md)                 | Per-feature execution specs (for coding agents)         |
+
 ## Primary Docs
 
 If you are using Atelier as a product, start here and stay in this set unless you are actively contributing to the runtime itself.
@@ -56,8 +69,8 @@ Installed product flow:
 ```bash
 atelier --version
 atelier background status
-ATELIER_DEV_MODE=1 atelier context --task "..." --domain "..."
-echo '{"canonical_identifier_used": true}' | ATELIER_DEV_MODE=1 atelier verify rubric_state_change_safety
+atelier tools call context --dev --args '{"task":"...","domain":"..."}' --json
+atelier tools call verify --dev --args '{"rubric_id":"rubric_state_change_safety","checks":{"canonical_identifier_used":true}}' --json
 ```
 
 Contributor/source flow:

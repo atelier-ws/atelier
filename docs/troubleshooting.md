@@ -102,16 +102,16 @@ cd atelier
 uv sync --all-extras
 ```
 
-## `atelier context`, `atelier rescue`, or `atelier verify` Returns `noop`
+## `atelier tools call context`, `rescue`, or `verify` Returns `noop`
 
-Those commands are developer-mode surfaces.
+Those tools are developer-mode surfaces.
 
 **Cause:** `ATELIER_DEV_MODE=1` is not enabled in the shell or host environment.
 
 **Fix:**
 
 ```bash
-ATELIER_DEV_MODE=1 atelier context --task "Describe the task" --domain coding
+atelier tools call context --dev --args '{"task":"Describe the task","domain":"coding"}' --json
 ```
 
 For host integrations, set `ATELIER_DEV_MODE=1` in the MCP server environment if

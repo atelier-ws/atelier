@@ -39,7 +39,7 @@ Atelier distinguishes between developer mode and passive compatibility mode.
 With `ATELIER_DEV_MODE=1`, the current stdio MCP registry exposes these tool
 names:
 
-- `task`
+- `context`
 - `route`
 - `rescue`
 - `trace`
@@ -64,8 +64,8 @@ names:
 
 In remote MCP mode, Atelier currently forwards the core service-backed flows for:
 
-- context retrieval via `/v1/context`
-- rescue via `/v1/rescue`
+- context retrieval via `/v1/reasoning/context`
+- rescue via `/v1/reasoning/rescue`
 - rubric evaluation via `/v1/rubrics/run`
 - trace recording via `/v1/traces`
 - memory block/archive/recall operations via `/v1/memory/*`

@@ -1,4 +1,4 @@
-"""MCP server (stdio JSON-RPC) for the Atelier task runtime.
+"""MCP server (stdio JSON-RPC) for the Atelier context runtime.
 
 Implements a minimal subset of the Model Context Protocol sufficient for
 Codex / Claude Code to discover and call the runtime tools.
@@ -27,11 +27,11 @@ from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
 from atelier.core.environment import (
+    dev_tool_disabled_message,
     is_dev_mode,
     mcp_tool_description,
     mcp_tool_mode,
     mcp_tool_visible_to_llm,
-    passive_tool_message,
 )
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
@@ -47,7 +47,7 @@ from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySid
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_NAME = "atelier-task"
+SERVER_NAME = "atelier-context"
 SERVER_VERSION = atelier_version
 CONTEXT_WINDOW_TOKENS = 200_000
 COMPACT_ADVISORY_THRESHOLD = 60.0
@@ -61,7 +61,7 @@ AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
 
 def _check_dev_mode(tool_name: str) -> str | None:
     if not is_dev_mode():
-        return passive_tool_message(tool_name)
+        return dev_tool_disabled_message(tool_name)
     return None
 
 
@@ -74,6 +74,7 @@ TOOLS: dict[str, dict[str, Any]] = {}
 
 def _tool_description(spec: dict[str, Any]) -> str:
     return mcp_tool_description(
+        str(spec.get("name", "") or ""),
         str(spec.get("description", "") or ""),
         is_dev=bool(spec.get("is_dev")),
     )
@@ -84,7 +85,7 @@ def _tool_visible_to_llm(tool_name: str, spec: dict[str, Any]) -> bool:
 
 
 def _tool_mode(spec: dict[str, Any]) -> str:
-    return mcp_tool_mode(is_dev=bool(spec.get("is_dev")))
+    return mcp_tool_mode(str(spec.get("name", "") or ""), is_dev=bool(spec.get("is_dev")))
 
 
 def mcp_tool(
@@ -102,7 +103,9 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            annotation = (
+                param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            )
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -131,6 +134,7 @@ def mcp_tool(
                 return func()
 
         TOOLS[tool_name] = {
+            "name": tool_name,
             "handler": handler_wrapper,
             "description": tool_description,
             "inputSchema": schema,
@@ -832,7 +836,9 @@ def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
     repo_root: str = ".",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
+    task_type: Literal[
+        "debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"
+    ] = "feature",
     risk_level: Literal["low", "medium", "high"] = "medium",
     changed_files: list[str] | None = None,
     domain: str | None = None,
@@ -900,6 +906,16 @@ def tool_route(
             evidence_summary=evidence_summary,
             ledger=led,
         )
+        # Persist compression hints so the compressor can use task_type and
+        # risk_level to dynamically scale its token budget at /compact time.
+        _write_session_state({
+            "compression_hints": {
+                "task_type": task_type,
+                "risk_level": risk_level,
+                "step_type": step_type,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        })
         return to_jsonable(decision)
 
     if route_decision_id is None:
@@ -1309,10 +1325,21 @@ def _compress_context(session_id: str | None = None) -> Any:
     from atelier.infra.runtime.context_compressor import ContextCompressor
 
     led = _get_ledger()
+    if session_id:
+        led.session_id = session_id
     rtc = _get_realtime_context()
     state = ContextCompressor().compress(
         led, preserve_last_n_turns=10, workspace_root=_workspace_root()
     )
+    compaction_savings = _session_compaction_savings_payload(
+        led,
+        state,
+        tokens_before=int(led.token_count or 0),
+        trigger="compact_session",
+        reason="session compaction executed",
+    )
+    if int(compaction_savings["tokens_saved"]) > 0:
+        _append_live_savings_event(compaction_savings)
     return {
         "preserved": {
             "latest_error": state.error_fingerprints[-1] if state.error_fingerprints else None,
@@ -1323,6 +1350,10 @@ def _compress_context(session_id: str | None = None) -> Any:
         },
         "prompt_block": state.to_prompt_block(),
         "realtime": rtc.snapshot(),
+        "tokens_before": int(compaction_savings["tokens_before"]),
+        "tokens_after_estimate": int(compaction_savings["tokens_after_estimate"]),
+        "tokens_freed": int(compaction_savings["tokens_freed"]),
+        "cost_saved_usd": float(compaction_savings["cost_saved_usd"]),
     }
 
 
@@ -1343,7 +1374,9 @@ def _memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = expected_version if expected_version is not None else (existing.version if existing else 1)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1379,7 +1412,9 @@ def _memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1724,8 +1759,7 @@ def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
     # number of dense turns (huge tool outputs, large file reads) can fill the
     # window just as fast as many small ones.
     turns_gate_passed = (
-        turn_count > AUTO_COMPACT_MIN_TURNS
-        or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
+        turn_count > AUTO_COMPACT_MIN_TURNS or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
     )
     should_auto_compact = (
         not should_handover
@@ -1802,6 +1836,14 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         state = ContextCompressor().compress(
             led, preserve_last_n_turns=10, workspace_root=_workspace_root()
         )
+        compaction_savings = _session_compaction_savings_payload(
+            led,
+            state,
+            tokens_before=int(lifecycle["tokens_used"]),
+            trigger="compact_advise",
+            reason=str(lifecycle["reason"]),
+            utilisation_pct=utilisation_pct,
+        )
 
         # Collect preserve_blocks: top active ReasonBlocks from ledger
         preserve_blocks = list(set(led.active_reasonblocks))[:3]
@@ -1873,6 +1915,9 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 exc_info=True,
             )
 
+        if should_compact and int(compaction_savings["tokens_saved"]) > 0:
+            _append_live_savings_event(compaction_savings)
+
         return {
             "should_compact": should_compact,
             "should_advise": bool(lifecycle["should_advise"]),
@@ -1891,6 +1936,10 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             "active_errors": state.error_fingerprints,
             "handover_file": handover_file,
             "suggested_prompt": suggested_prompt,
+            "tokens_before": int(compaction_savings["tokens_before"]),
+            "tokens_after_estimate": int(compaction_savings["tokens_after_estimate"]),
+            "tokens_freed": int(compaction_savings["tokens_freed"]),
+            "cost_saved_usd": float(compaction_savings["cost_saved_usd"]),
         }
     except Exception:
         # Fail-open: return conservative defaults
@@ -1998,7 +2047,9 @@ def tool_code(
     if op == "index":
         return cast(
             dict[str, Any],
-            engine.index_repo(include_globs=include_globs, exclude_globs=exclude_globs).model_dump(mode="json"),
+            engine.index_repo(include_globs=include_globs, exclude_globs=exclude_globs).model_dump(
+                mode="json"
+            ),
         )
 
     if op == "search":
@@ -2161,16 +2212,64 @@ def _compact_tool_output(
     return result.model_dump(mode="json")
 
 
+def _compact_score(
+    complexity: float,
+    must_keep: list[str],
+) -> dict[str, Any]:
+    """Store the model's self-assessed complexity and must-keep keywords.
+
+    These are persisted to session state and read by the ContextCompressor
+    when it next fires to dynamically scale the recent-turns token budget.
+
+    Parameters
+    ----------
+    complexity:
+        Float 0.0–1.0. 0 = trivial/read-only, 1.0 = deep debugging or
+        large refactor with many interdependencies.
+    must_keep:
+        Keywords or short phrases the model needs preserved verbatim.
+        Any recent turn whose summary contains one of these will be
+        prioritised and never evicted regardless of budget pressure.
+    """
+    complexity = max(0.0, min(1.0, float(complexity)))
+    hints: dict[str, Any] = _read_session_state().get("compression_hints") or {}
+    hints["model_complexity"] = complexity
+    hints["must_keep"] = must_keep[:20] if must_keep else []  # cap list length
+    hints["score_updated_at"] = datetime.now(UTC).isoformat()
+    _write_session_state({"compression_hints": hints})
+    return {
+        "stored": True,
+        "complexity": complexity,
+        "must_keep_count": len(must_keep),
+        "message": (
+            f"Complexity {complexity:.2f} and {len(must_keep)} must-keep "
+            "hints stored. The compressor will use these when /compact fires."
+        ),
+    }
+
+
 @mcp_tool(name="compact")
 def tool_compact(
-    op: Literal["output", "session", "advise"],
+    op: Literal["output", "session", "advise", "score"],
     content: str = "",
     content_type: str = "unknown",
     budget_tokens: int = 500,
     recovery_hint: str | None = None,
     session_id: str | None = None,
+    complexity: float = 0.5,
+    must_keep: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Compact op-dispatch: output, session, or advise."""
+    """Compact op-dispatch: output, session, advise, or score.
+
+    ops:
+      output  — compress a single tool output string
+      session — compress the full run ledger into a compact state block
+      advise  — check context utilisation and advise whether to compact
+      score   — store model-assessed complexity + must-keep keywords so the
+                 compressor uses them when /compact fires next
+    """
+    if op == "score":
+        return _compact_score(complexity=complexity, must_keep=must_keep or [])
     if op == "output":
         return _compact_tool_output(
             content=content,
@@ -2190,7 +2289,7 @@ def tool_compact(
 # Tools that are routed through the remote HTTP service in MCP remote mode.
 _REMOTE_TOOLS = frozenset(
     {
-        "task",
+        "context",
         "memory",
         "rescue",
         "trace",
@@ -2226,8 +2325,8 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     client = _get_remote_client()
     import typing
 
-    if name == "task":
-        return typing.cast(dict[str, Any], client.get_task_context(args))
+    if name == "context":
+        return typing.cast(dict[str, Any], client.get_context(args))
     if name == "memory":
         return typing.cast(dict[str, Any], client.memory(args))
     if name == "rescue":
@@ -2256,7 +2355,7 @@ def _lever_for_tool(tool_name: str) -> str:
         return "compact_lifecycle"
     if lowered == "memory" or lowered.endswith("_memory"):
         return "scoped_recall"
-    if lowered == "task" or lowered.endswith("_task"):
+    if lowered == "context" or lowered.endswith("_context"):
         return "reasonblock_inject"
     return lowered or "unknown"
 
@@ -2349,7 +2448,12 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
+            if (
+                tool_name
+                and tool_name != lever
+                and tool_name not in lever_savings
+                and lever == base_lever
+            ):
                 lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
@@ -2369,7 +2473,9 @@ def _record_context_budget_for_tool(
                 "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
                 "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
                 "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                "cache_write_tokens_saved": int(
+                    live_savings.get("cache_write_tokens_saved", 0) or 0
+                ),
                 "live_tokens_saved": live_tokens_saved,
                 "tool_tokens_saved": tool_tokens_saved,
                 "tokens_saved": tokens_saved,
@@ -2383,7 +2489,9 @@ def _record_context_budget_for_tool(
         # Record the tool execution metrics
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
-            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+            actual_output_tokens = max(
+                0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4
+            )
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -2446,27 +2554,100 @@ def _latest_cache_affinity_model(led: RunLedger) -> str | None:
     return None
 
 
+def _estimate_compacted_state_tokens(state: Any) -> int:
+    prompt_block = state.to_prompt_block()
+    preserved_chars = len(prompt_block) + sum(len(turn) for turn in state.recent_turns)
+    return max(0, preserved_chars // 4)
+
+
+def _session_compaction_savings_payload(
+    led: RunLedger,
+    state: Any,
+    *,
+    tokens_before: int,
+    trigger: str,
+    reason: str,
+    utilisation_pct: float | None = None,
+) -> dict[str, Any]:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    tokens_after_estimate = _estimate_compacted_state_tokens(state)
+    tokens_freed = max(0, int(tokens_before) - tokens_after_estimate)
+    model = (
+        _latest_cache_affinity_model(led)
+        or str(getattr(led, "model", "") or "").strip()
+        or "claude-opus-4-7"
+    )
+    cost_saved_usd = round(get_model_pricing(model).cost_usd(input_tokens=tokens_freed), 6)
+    utilisation = (
+        round(float(utilisation_pct), 1)
+        if utilisation_pct is not None
+        else round(100.0 * max(0, int(tokens_before)) / CONTEXT_WINDOW_TOKENS, 1)
+    )
+    return {
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "session_compaction",
+        "lever": "session_compaction",
+        "session_id": led.session_id,
+        "agent": led.agent or _detect_agent(),
+        "model": model,
+        "trigger": trigger,
+        "reason": reason,
+        "tokens_saved": tokens_freed,
+        "tokens_freed": tokens_freed,
+        "cost_saved_usd": cost_saved_usd,
+        "tokens_before": max(0, int(tokens_before)),
+        "tokens_after_estimate": tokens_after_estimate,
+        "utilisation_pct": utilisation,
+    }
+
+
 def _emit_model_recommendation(
     tool_name: str, args: dict[str, Any], led: RunLedger
 ) -> dict[str, Any]:
     from atelier.core.capabilities.model_routing import ModelRouter
+    from atelier.core.capabilities.pricing import get_model_pricing
 
     router = ModelRouter()
-    session_state = {
+    # Gather session-phase signals from the ledger.
+    # recent_tool_calls: last 10 tool names from tool_call events (preserves order).
+    tool_call_events = [e for e in led.events if e.kind == "tool_call"]
+    recent_tool_calls = [e.payload.get("tool", "") for e in tool_call_events[-10:]]
+    turn_number = len(tool_call_events)
+    session_state: dict[str, Any] = {
         "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
         "cache_affinity_model": _latest_cache_affinity_model(led),
+        "turn_number": turn_number,
+        "recent_tool_calls": recent_tool_calls,
     }
     if "max_output_tokens" in args:
         session_state["max_output_tokens"] = args["max_output_tokens"]
     if "budget_tokens" in args:
         session_state["max_output_tokens"] = args["budget_tokens"]
     recommendation = router.score(tool_name, _task_text_from_args(args), session_state)
+    vs_model = "claude-opus-4-7"
+    turn_count = max(1, _ledger_turn_count(led))
+    estimated_input_tokens = max(1_000, int(led.token_count or 0) // turn_count)
+    cost_saved_usd = 0.0
+    if recommendation.model != vs_model:
+        expensive_pricing = get_model_pricing(vs_model)
+        recommended_pricing = get_model_pricing(recommendation.model)
+        cost_saved_usd = max(
+            0.0,
+            expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+            - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+        )
     payload = {
         "at": datetime.now(UTC).isoformat(),
         "kind": "model_recommendation",
+        "lever": "model_routing",
         "session_id": led.session_id,
         "agent": led.agent or _detect_agent(),
         "tool_name": tool_name,
+        "tokens_saved": 0,
+        "cost_saved_usd": round(cost_saved_usd, 6),
+        "vs_model": vs_model,
+        "estimated_input_tokens": estimated_input_tokens,
         **recommendation.to_dict(),
     }
     led.record(
@@ -2517,23 +2698,25 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         started_at = time.perf_counter()
         remote_routed = name in _REMOTE_TOOLS
         try:
-            led = _get_ledger()
-            _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
-            if not _service_backed_state():
-                _match_mcp_lexical(args if isinstance(args, dict) else {})
-            if not _service_backed_state():
-                rtc = _get_realtime_context()
-                rtc.record_tool_input(name, args)
             if remote_routed:
                 result = _dispatch_remote(name, args)
             else:
+                led = _get_ledger()
+                _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
+                if not _service_backed_state():
+                    _match_mcp_lexical(args if isinstance(args, dict) else {})
+                if not _service_backed_state():
+                    rtc = _get_realtime_context()
+                    rtc.record_tool_input(name, args)
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
                 result = handler(args)
 
-            if not _service_backed_state():
+            if not remote_routed and not _service_backed_state():
                 result_text = json.dumps(result, ensure_ascii=False, default=str)
                 compact_text = (
-                    result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
+                    result_text
+                    if len(result_text) <= 1200
+                    else result_text[:600] + "..." + result_text[-600:]
                 )
                 led.record(
                     "tool_result",
@@ -2548,9 +2731,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 rtc.persist()
 
                 # Record context budget metrics
-                _record_context_budget_for_tool(name, args if isinstance(args, dict) else {}, led, result)
+                _record_context_budget_for_tool(
+                    name, args if isinstance(args, dict) else {}, led, result
+                )
 
-            if not _service_backed_state():
+            if not remote_routed and not _service_backed_state():
                 with contextlib.suppress(Exception):
                     from atelier.core.service.telemetry import emit_product
                     from atelier.core.service.telemetry.schema import bucket_duration_ms
@@ -2559,14 +2744,18 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         "mcp_tool_called",
                         tool_name=name,
                         session_id=_get_product_session_id(),
-                        duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                        duration_ms_bucket=bucket_duration_ms(
+                            (time.perf_counter() - started_at) * 1000
+                        ),
                         ok=True,
                     )
 
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
+                    ],
                     "structuredContent": result,
                 },
             )
@@ -2584,7 +2773,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         "mcp_tool_called",
                         tool_name=name,
                         session_id=_get_product_session_id(),
-                        duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                        duration_ms_bucket=bucket_duration_ms(
+                            (time.perf_counter() - started_at) * 1000
+                        ),
                         ok=False,
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
@@ -2637,7 +2828,9 @@ def main() -> None:
     # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
     os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
-    os.environ.setdefault("ATELIER_KNOWLEDGE_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".knowledge"))
+    os.environ.setdefault(
+        "ATELIER_KNOWLEDGE_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".knowledge")
+    )
 
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:

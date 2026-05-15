@@ -17,7 +17,7 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# ---- /v1/context -----------------------------------------------------------
+# ---- /v1/reasoning/context -------------------------------------------------
 
 
 class ContextRequest(_Strict):
