@@ -113,9 +113,45 @@ describe("Sessions page", () => {
     // Task text from the trace item
     expect(await screen.findByText("Fix login bug")).toBeInTheDocument();
     expect(screen.getByText("claude-3-5-sonnet")).toBeInTheDocument();
-    expect(screen.getByText("Estimated from tokens")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status: completed")).toBeInTheDocument();
+    expect(screen.queryByText("Estimated from tokens")).not.toBeInTheDocument();
     // $0.42 appears in summary MetricCards
     expect(screen.getAllByText("$0.420").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("requests traces for the active time window", async () => {
+    const fetchSpy = mockFetch({
+      "/api/traces": jsonResponse(sampleTraces),
+      "/api/v1/sessions": jsonResponse(sampleSessions),
+    });
+    renderSessions();
+    await screen.findByText("Fix login bug");
+    expect(
+      fetchSpy.mock.calls.some(
+        ([input]) =>
+          String(input).includes("/api/traces?") &&
+          String(input).includes("days=7")
+      )
+    ).toBe(true);
+  });
+
+  it("falls back to trace token counts when summary tokens are zero", async () => {
+    mockFetch({
+      "/api/traces": jsonResponse(sampleTraces),
+      "/api/v1/sessions": jsonResponse([
+        {
+          ...sampleSessions[0],
+          input_tokens: 0,
+          output_tokens: 0,
+          cached_input_tokens: 0,
+        },
+      ]),
+    });
+    renderSessions();
+    expect(await screen.findByText("Fix login bug")).toBeInTheDocument();
+    expect(screen.getAllByText("500").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("200").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("100").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows empty state when no sessions", async () => {
