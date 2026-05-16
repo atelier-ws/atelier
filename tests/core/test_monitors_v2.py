@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from atelier.core.foundation.monitors import (
+from atelier.core.foundation.watchdogs import (
     BudgetExhaustion,
     SecondGuessing,
     SessionState,
-    build_monitors,
-    default_monitors,
+    build_watchdogs,
+    default_watchdogs,
 )
 
 
@@ -52,21 +52,21 @@ def test_budget_exhaustion_fires_on_estimated_tokens() -> None:
     assert alert is not None
 
 
-def test_default_monitors_list_includes_v2() -> None:
-    names = {type(m).__name__ for m in default_monitors()}
+def test_default_watchdogs_list_includes_v2() -> None:
+    names = {type(m).__name__ for m in default_watchdogs()}
     assert "SecondGuessing" in names
     assert "BudgetExhaustion" in names
 
 
-def test_build_monitors_disables_zero_weight_monitors() -> None:
-    names = {monitor.name for monitor in build_monitors({"repeated_tool_call": 0.0})}
+def test_build_watchdogs_disables_zero_weight_watchdogs() -> None:
+    names = {w.name for w in build_watchdogs({"repeated_tool_call": 0.0})}
     assert "repeated_tool_call" not in names
     assert "repeated_command_failure" in names
 
 
-def test_build_monitors_adjusts_thresholds_from_weights() -> None:
-    monitors = {
-        monitor.name: monitor for monitor in build_monitors({"repeated_tool_call": 0.22, "context_bloat": 0.05})
+def test_build_watchdogs_adjusts_thresholds_from_weights() -> None:
+    watchdogs = {
+        w.name: w for w in build_watchdogs({"repeated_tool_call": 0.22, "context_bloat": 0.05})
     }
-    assert monitors["repeated_tool_call"].repeat_threshold == 2
-    assert monitors["context_bloat"].threshold_chars == 75_000
+    assert watchdogs["repeated_tool_call"].repeat_threshold == 2
+    assert watchdogs["context_bloat"].threshold_chars == 75_000

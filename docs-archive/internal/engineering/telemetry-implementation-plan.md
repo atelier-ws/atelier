@@ -76,7 +76,7 @@ src/atelier/gateway/adapters/
   cli.py                   # ADD: SIGINT/SIGTERM handlers, command lifecycle events
   mcp_server.py            # ADD: session start/end, tool_called wrapper events
   http_api.py              # ADD: request middleware emitting api_request events
-  wrappers.py              # ADD: lifecycle hooks for atelier-task / atelier-context / etc.
+  wrappers.py              # ADD: lifecycle hooks for atelier-context / etc.
 
 src/atelier/core/runtime/
   engine.py                # ADD: lift loop_detection / monitor signals to product events

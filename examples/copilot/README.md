@@ -15,7 +15,7 @@ Add an MCP server entry pointing to `atelier-mcp` with `ATELIER_ROOT=.atelier`.
 ## Commands
 
 ```bash
-atelier task "Audit Shopify publish flow" --domain Agent.shopify.publish
+atelier context --task "Audit Shopify publish flow" --domain Agent.shopify.publish
 atelier run-rubric rubric_shopify_publish < checks.json
 ```
 

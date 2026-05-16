@@ -25,9 +25,9 @@ skills/                Slash commands produced via /atelier:<name>
   analyze-failures/    /atelier:analyze-failures
   evals/SKILL.md       /atelier:evals
   settings/SKILL.md    /atelier:settings
-  atelier-task/        Internal skill — task loop orchestration
+  context/SKILL.md     /atelier:context — context retrieval and task-loop start
   atelier-rescue/      Internal skill — rescue trigger
-  atelier-trace/       Internal skill — record outcomes
+  record/              Internal skill — record outcomes
 hooks/hooks.json       PostToolUse/PreToolUse hooks (all enabled=false by default)
 scripts/statusline.sh  Multi-line Claude status chrome; separates `atelier:code` from `atelier`
 .mcp.json              MCP server wiring via ${CLAUDE_PLUGIN_ROOT}

@@ -33,11 +33,10 @@ The installer merges an `atelier` entry into the `mcp` key:
   "mcp": &#123;
     "atelier": &#123;
       "type": "local",
-      "command": ["<atelier_repo>/scripts/atelier_mcp_stdio.sh"],
-      "environment": &#123;
-        "ATELIER_WORKSPACE_ROOT": "<workspace>",
-        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
-      &#125;
+      "command": ["atelier-mcp", "--host", "opencode"],
+      "environment": {
+        "ATELIER_WORKSPACE_ROOT": "<workspace>"
+      }
     &#125;
   &#125;
 &#125;

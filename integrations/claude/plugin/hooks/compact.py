@@ -44,7 +44,11 @@ def _session_state_path() -> Path:
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
+    root = Path(
+        os.environ.get("ATELIER_ROOT")
+        or os.environ.get("ATELIER_STORE_ROOT")
+        or Path.home() / ".atelier"
+    )
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -91,10 +95,19 @@ def _ensure_compact_manifest(session_id: str) -> Path:
             "session_id": session_id,
             "trigger": "pre_compact_hook",
             "should_compact": False,
+            "should_advise": False,
+            "should_auto_compact": False,
+            "should_handover": False,
             "utilisation_pct": 0.0,
+            "turn_count": 0,
+            "task_boundary_detected": False,
             "preserve_blocks": [],
             "pin_memory": [],
             "open_files": [],
+            "recent_turns": [],
+            "claude_md_hash": None,
+            "active_errors": [],
+            "handover_file": None,
             "suggested_prompt": "Compact this conversation.",
         }
         with contextlib.suppress(Exception):
@@ -192,6 +205,8 @@ def _handle_post_compact(session_id: str, trigger: str) -> None:
             "preserve_blocks": manifest.get("preserve_blocks", []),
             "pin_memory": manifest.get("pin_memory", []),
             "utilisation_pct": manifest.get("utilisation_pct", 0.0),
+            "should_handover": manifest.get("should_handover", False),
+            "handover_file": manifest.get("handover_file"),
             "manifest_found": True,
         }
 

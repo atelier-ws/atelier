@@ -51,9 +51,9 @@ when `atelier-mcp` is already available on your `PATH`.
 
 ## Usage
 
-- `task` is the default coding-task loop and records task context through the
+- `context` is the default coding-task loop and records task context through the
   local Atelier service.
-- The `atelier-codex` preflight wrapper now runs `task`, then optional `verify`
+- The `atelier-codex` preflight wrapper now runs `context`, then optional `verify`
   before handing off to Codex.
 
 ## Hard rules

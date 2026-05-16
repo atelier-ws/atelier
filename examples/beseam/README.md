@@ -15,7 +15,7 @@ Point Beseam workflows at the local store or the service-backed runtime if multi
 ## Commands
 
 ```bash
-atelier task "Audit PDP crawl failure" --domain Agent.crawl
+atelier context --task "Audit PDP crawl failure" --domain Agent.crawl
 atelier rescue --task "Audit PDP crawl failure" --domain Agent.crawl --error "selector missing"
 ```
 

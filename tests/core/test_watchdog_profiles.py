@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from atelier.core.foundation.monitor_profiles import (
+from atelier.core.foundation.watchdog_profiles import (
     active_watchdog_weights,
     frontend_watchdog_profile_config,
     load_watchdog_profile_config,

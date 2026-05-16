@@ -10,13 +10,17 @@ from typing import Any, cast
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.environment import NON_DEV_LLM_TOOLS
+from atelier.core.environment import (
+    DEV_LLM_TOOLS,
+    NON_DEV_LLM_TOOLS,
+    STABLE_LLM_TOOLS,
+)
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 
 EXPECTED_TOOLS = {
-    "task",
+    "context",
     "route",
     "rescue",
     "trace",
@@ -63,7 +67,7 @@ class _FakeRemoteClient:
         self._archives: list[dict[str, Any]] = []
         self._trace_count = 0
 
-    def get_task_context(self, args: dict[str, Any]) -> dict[str, Any]:
+    def get_context(self, args: dict[str, Any]) -> dict[str, Any]:
         passages = [
             item
             for item in self._archives
@@ -167,7 +171,7 @@ def test_tools_list_matches_registered_surface(mcp_env: Path) -> None:
     assert set(TOOLS) == EXPECTED_TOOLS
 
 
-def test_tools_list_only_passive_decision_tools_without_dev_mode(
+def test_tools_list_only_product_tools_without_dev_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / ".atelier"
@@ -182,11 +186,9 @@ def test_tools_list_only_passive_decision_tools_without_dev_mode(
     tools = response["result"]["tools"]
     names = {tool["name"] for tool in tools}
     assert names == NON_DEV_LLM_TOOLS
-    assert "edit" not in names
-    assert "shell" not in names
-    task = next(tool for tool in tools if tool["name"] == "task")
-    assert "passive" in task["description"]
-    assert "no-op/pass" in task["description"]
+    assert names == STABLE_LLM_TOOLS
+    assert not (names & DEV_LLM_TOOLS)
+    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
 
 
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
@@ -264,7 +266,7 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
 
     assert result.returncode == 0, result.stderr
     responses = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    assert responses[0]["result"]["serverInfo"]["name"] == "atelier-task"
+    assert responses[0]["result"]["serverInfo"]["name"] == "atelier-context"
 
     edit_payload = json.loads(responses[1]["result"]["content"][0]["text"])
     assert edit_payload["failed"] == []
@@ -334,18 +336,18 @@ def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
     assert recalled["passages"][0]["id"] == archived["id"]
     assert "checkout retry guidance" in recalled["passages"][0]["text"].lower()
 
-    task = _payload(
+    context = _payload(
         _call(
-            "task",
+            "context",
             {
                 "task": "Use checkout retry guidance in MCP JSON-RPC task tests.",
                 "agent_id": "atelier:code",
             },
         )
     )
-    assert "<memory>" in task["context"]
-    assert task["recalled_passages"]
-    assert archived["id"] in {item["id"] for item in task["recalled_passages"]}
+    assert "<memory>" in context["context"]
+    assert context["recalled_passages"]
+    assert archived["id"] in {item["id"] for item in context["recalled_passages"]}
 
     transcript_recall = _call(
         "memory",
@@ -544,10 +546,10 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     assert query["results"][0]["rows"][0]["name"] == "Ada"
 
 
-def test_task_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
-    task = _payload(
+def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
+    context = _payload(
         _call(
-            "task",
+            "context",
             {
                 "task": "Add MCP JSON-RPC end-to-end tests",
                 "domain": "coding",
@@ -555,7 +557,7 @@ def test_task_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert isinstance(task.get("context"), str)
+    assert isinstance(context.get("context"), str)
 
     rescue = _payload(
         _call(

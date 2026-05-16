@@ -52,9 +52,9 @@ def test_context_reuse_returns_context(tmp_path: Path) -> None:
     assert isinstance(ctx, str)
 
 
-def test_context_reuse_inject_runtime_reasoning(tmp_path: Path) -> None:
+def test_context_reuse_inject_context(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    result = rt.inject_reasoning(
+    result = rt.inject_context(
         task="Deploy configuration update",
         domain="state.change",
         files=["products.py"],
@@ -86,7 +86,7 @@ def test_context_reuse_retrieve_includes_phase2_breakdown(tmp_path: Path) -> Non
 
 def test_context_reuse_inject_includes_rescue_chains(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    payload = rt.context_reuse.inject_runtime_reasoning(
+    payload = rt.context_reuse.inject_runtime_context(
         task="Recover from failed live change",
         domain="state.change",
         errors=["api quota exceeded"],
@@ -902,13 +902,33 @@ def test_pricing_all_known_models_non_empty() -> None:
     assert "_default" not in models
 
 
-def test_pricing_prefix_fallback() -> None:
+def test_pricing_no_prefix_fallback_for_unknown_variant() -> None:
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    # "claude-opus-4-something-new" should prefix-match "claude-opus-4"
+    # Fabricated model variant not in LiteLLM must NOT silently match a real
+    # model via prefix — it should return known=False with zero cost.
     p = get_model_pricing("claude-opus-4-extended")
-    # Either exact match exists or prefix matched opus-4 pricing (output=75)
-    assert p.output > 0
+    assert p.known is False
+    assert p.output == 0.0
+
+
+def test_pricing_dot_version_normalisation() -> None:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    # Dot form ("claude-sonnet-4.6") and dash form must resolve identically.
+    dot = get_model_pricing("claude-sonnet-4.6")
+    dash = get_model_pricing("claude-sonnet-4-6")
+    assert dot.known is True
+    assert dot.input == dash.input
+    assert dot.output == dash.output
+
+    # Opus dot form must resolve to the actual opus-4-7 price, not the
+    # flagship opus-4 price that the old prefix match accidentally returned.
+    opus_dot = get_model_pricing("claude-opus-4.7")
+    opus_dash = get_model_pricing("claude-opus-4-7")
+    assert opus_dot.known is True
+    assert opus_dot.input == opus_dash.input
+    assert opus_dot.output == opus_dash.output
 
 
 def test_tool_supervision_model_aware_usd() -> None:

@@ -84,10 +84,10 @@ Start Gemini CLI and run:
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 
 With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Gemini CLI includes
-`context`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`,
+`context`, `route`, `rescue`, `record`, `verify`, `memory`, `read`, `edit`,
 `sql`, `search`, `compact`, `shell`, and the `code` helpers.
 
-Without developer mode, `trace` remains the most reliable active surface and
+Without developer mode, `record` remains the most reliable active surface and
 some other tools may still appear as passive compatibility stubs.
 
 ## Uninstall

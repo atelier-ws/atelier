@@ -120,11 +120,10 @@ else
     fail "Claude user MCP missing atelier - run: make install-claude"
 fi
 
-WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
-if [ -x "$WRAPPER" ]; then
-    pass "atelier_mcp_stdio.sh exists and is executable"
+if command -v atelier-mcp &>/dev/null; then
+    pass "atelier-mcp is available on PATH"
 else
-    fail "atelier_mcp_stdio.sh missing or not executable: $WRAPPER"
+    fail "atelier-mcp NOT found on PATH"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

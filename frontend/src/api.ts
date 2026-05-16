@@ -121,6 +121,7 @@ export interface Trace {
   raw_artifact_ids?: string[];
   _live?: boolean; // true for RunLedger sessions not yet committed to SQLite
   snippets?: string[];
+  workspace_path?: string;
 
   // Metrics
   input_tokens?: number;
@@ -138,6 +139,47 @@ export interface ConversationEntry {
   tokens?: Record<string, number>;
   raw?: any;
   cost?: number;
+  path?: string;
+  diff?: string;
+  tool_name?: string;
+  arguments?: unknown;
+  todos?: Array<{
+    content: string;
+    status?: string;
+    priority?: string;
+    id?: string;
+  }>;
+  attachments?: SessionAttachment[];
+  subagent_id?: string;
+  subagent_name?: string;
+  subagent_status?: string;
+  subagent_description?: string;
+  artifact_id?: string;
+  artifact_source?: string;
+  artifact_kind?: string;
+  artifact_label?: string;
+  source_scope?: string;
+}
+
+export interface SessionAttachment {
+  type: string;
+  path?: string;
+  display_name?: string;
+  title?: string;
+  content?: string;
+  size_label?: string;
+  line_count?: number;
+  mime_type?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SessionArtifact {
+  id: string;
+  source: string;
+  kind: string;
+  relative_path: string;
+  source_path?: string | null;
+  scope: string;
 }
 
 export interface NestedTrace {
@@ -433,6 +475,73 @@ export interface OptimizationGap {
   notes: string;
 }
 
+export interface OptimizationAdvisorRoutingPolicy {
+  policy: string;
+  simple: string;
+  medium: string;
+  hard: string;
+  escalate_on: string[];
+}
+
+export interface OptimizationAdvisorCompactionPolicy {
+  prompt_cache_reorder: boolean;
+  dedup: boolean;
+  retrieval_filter: boolean;
+  lossy_summary: boolean;
+  trigger_at_context_fraction: number;
+  preserve: string[];
+}
+
+export interface OptimizationAdvisorPolicy {
+  name: string;
+  preset: string;
+  quality_floor: number;
+  confidence_required: string;
+  routing: OptimizationAdvisorRoutingPolicy;
+  compaction: OptimizationAdvisorCompactionPolicy;
+}
+
+export interface OptimizationAdvisorCandidate {
+  id: string;
+  policy: OptimizationAdvisorPolicy;
+  weekly_cost_usd: number;
+  estimated_quality: number;
+  latency_mult: number;
+  escalation_rate: number;
+  compaction_breakdown: Record<string, number>;
+  routing_breakdown: Record<string, number>;
+}
+
+export interface OptimizationAdvisorGolden {
+  total: number;
+  passed: number;
+  score: number;
+  failures: string[];
+}
+
+export interface OptimizationAdvisor {
+  current_policy: OptimizationAdvisorPolicy;
+  recommended_policy: OptimizationAdvisorPolicy;
+  candidates: OptimizationAdvisorCandidate[];
+  current_candidate_id: string;
+  recommended_candidate_id: string | null;
+  confidence: string;
+  confidence_reason: string;
+  sessions_analysed: number;
+  replayable_tasks: number;
+  weekly_savings_usd: number;
+  quality_delta: number;
+  baseline_weekly_cost_usd: number;
+  has_recommendation: boolean;
+  message: string;
+  bucket_counts: Record<string, number>;
+  golden: OptimizationAdvisorGolden;
+}
+
+export interface OptimizationAdvisorHistoryEntry extends OptimizationAdvisor {
+  recorded_at: string;
+}
+
 export interface OptimizationRecommendationSession {
   trace_id: string;
   host?: string;
@@ -586,6 +695,19 @@ export interface OptimizationModelRoutingSimulation {
   total_tokens_rerouted: number;
   heuristic: string;
   candidates: OptimizationRoutingCandidate[];
+  live_recommendations: OptimizationLiveModelRecommendation[];
+}
+
+export interface OptimizationLiveModelRecommendation {
+  at: string;
+  session_id: string;
+  agent: string;
+  tool_name: string;
+  tier: string;
+  model: string;
+  score: number;
+  cache_affinity_model: string | null;
+  reasons: string[];
 }
 
 export interface OptimizationsSummary {
@@ -599,6 +721,8 @@ export interface OptimizationsSummary {
   budget_rules: OptimizationRule[];
   implemented_levers: OptimizationLever[];
   implementation_gaps: OptimizationGap[];
+  advisor: OptimizationAdvisor;
+  advisor_history: OptimizationAdvisorHistoryEntry[];
   recommendations: {
     window_days: number;
     host: string | null;
@@ -763,15 +887,9 @@ export interface RunInspectorData {
   tokens_pre: number | null;
   tokens_post: number | null;
   source_paths?: string[];
-  conversations?: Array<{
-    kind: string;
-    at?: string;
-    summary: string;
-    content: string;
-    tokens?: Record<string, number>;
-    raw?: any;
-    cost?: number;
-  }>;
+  source_files?: Array<{ path: string; artifact_id?: string }>;
+  artifacts?: SessionArtifact[];
+  conversations?: ConversationEntry[];
 }
 
 export interface WatchdogLibraryEntry {
@@ -795,6 +913,118 @@ export interface WatchdogConfig {
   library: WatchdogLibraryEntry[];
   runtime_wired: boolean;
   config_path: string;
+}
+
+// -------------------------------------------------------------------------
+// Week-2 types (Spec 06)
+// -------------------------------------------------------------------------
+
+export interface SessionSummary {
+  session_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number;
+  active_duration_seconds: number;
+  vendor: string;
+  agent_settings?: Record<string, any>;
+  skills?: string[];
+  telemetry?: Record<string, any>;
+  raw_artifact_ids?: string[];
+  total_turns: number;
+  total_cost_usd: number;
+  total_atelier_savings_usd: number;
+  label: string | null;
+  models_used: Record<string, number>;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_input_tokens?: number;
+}
+
+export interface TopTool {
+  tool: string;
+  calls: number;
+  cost_usd: number;
+}
+
+export interface SessionReport extends SessionSummary {
+  tool_call_count: number;
+  input_token_cost_usd: number;
+  cache_write_cost_usd: number;
+  cache_read_cost_usd: number;
+  output_token_cost_usd: number;
+  input_tokens: number;
+  cache_write_tokens: number;
+  cache_read_tokens: number;
+  output_tokens: number;
+  routing_downtiered_turns: number;
+  routing_savings_usd: number;
+  compact_events: number;
+  compact_savings_estimate_usd: number;
+  top_tools_by_cost: TopTool[];
+}
+
+export interface MemoryFact {
+  fact_id: string;
+  vendor: "claude" | "codex" | "gemini";
+  source_path: string;
+  source_kind: string;
+  content: string;
+  line_number: number | null;
+  captured_at: string;
+  raw_meta: Record<string, unknown>;
+}
+
+export interface InsightsSessionSummary {
+  session_id: string;
+  cost_usd: number;
+  label: string;
+  duration_seconds: number;
+}
+
+export interface OutcomesSummary {
+  route_decisions: number;
+  route_avg_score: number;
+  compact_events: number;
+  compact_avg_score: number;
+  sessions_with_high_extra_reads: string[];
+}
+
+export interface Opportunity {
+  kind: string;
+  message: string;
+  estimated_savings_usd: number;
+  sessions_affected: number;
+}
+
+export interface InsightsWindow {
+  since: string;
+  until: string;
+  session_count: number;
+  total_duration_seconds: number;
+  total_cost_usd: number;
+  total_atelier_savings_usd: number;
+  cost_by_vendor: Record<string, number>;
+  cost_by_tool: Record<string, number>;
+  cost_by_model: Record<string, number>;
+  top_sessions: InsightsSessionSummary[];
+  outcomes_summary: OutcomesSummary;
+  opportunities: Opportunity[];
+}
+
+export interface ReportMeta {
+  week: string;
+  week_start: string;
+  generated_at: string;
+  routing_sessions: number | null;
+  total_routing_savings_usd: number | null;
+  routing_quality_score: number | null;
+  compact_retention_score: number | null;
+}
+
+export interface ReportContent {
+  week: string;
+  markdown: string;
+  json: Record<string, unknown>;
 }
 
 export interface GranularToolUsage {
@@ -1211,4 +1441,25 @@ export const api = {
     get<RawArtifact>(`/raw-artifacts/${artifactId}`),
   rawArtifactContent: (artifactId: string) =>
     getText(`/raw-artifacts/${artifactId}/content`),
+  fileContentUrl: (path: string) =>
+    `${BASE}/v1/files/content?path=${encodeURIComponent(path)}`,
+  // -----------------------------------------------------------------------
+  // Week-2 endpoints (Spec 06)
+  // -----------------------------------------------------------------------
+  sessions: (since = "7d", limit = 200) =>
+    get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
+  sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
+  memoryFacts: (vendor?: string) => {
+    const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
+    return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);
+  },
+  memoryFact: (factId: string) => get<MemoryFact>(`/v1/memory/facts/${factId}`),
+  insightsWindow: (since = "7d") =>
+    get<InsightsWindow>(`/v1/insights?since=${since}`),
+  outcomesSummary: (since = "7d") =>
+    get<OutcomesSummary>(`/v1/outcomes/summary?since=${since}`),
+  outcomesForSession: (sessionId: string) =>
+    get<Record<string, unknown>[]>(`/v1/outcomes/${sessionId}`),
+  reports: () => get<ReportMeta[]>("/v1/reports"),
+  report: (week: string) => get<ReportContent>(`/v1/reports/${week}`),
 };

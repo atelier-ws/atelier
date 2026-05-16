@@ -13,8 +13,8 @@ def test_redacts_credential_pair() -> None:
 
 def test_redacts_chain_of_thought_marker() -> None:
     out = redact("step 1 fine\nchain of thought: secret reasoning here")
-    assert "<redacted-hidden-reasoning>" in out
-    assert "secret reasoning" not in out
+    assert "<redacted-marker>" in out
+    assert "chain of thought" not in out
 
 
 def test_redacts_jwt() -> None:
