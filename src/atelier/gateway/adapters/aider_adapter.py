@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict
 
 from atelier.gateway.adapters.adapter_base import AdapterDecision, AdapterMode, AgentAdapter
 from atelier.gateway.sdk import AtelierClient
-from atelier.gateway.sdk.client import SavingsSummary, ContextResult
+from atelier.gateway.sdk.client import ContextResult, SavingsSummary
 
 
 class AiderConfig(BaseModel):
