@@ -28,7 +28,7 @@ import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +178,12 @@ def _extract_tiers(entry: dict[str, object], prefix: str) -> tuple[PricingTier, 
         if not match:
             continue
         threshold_tokens = int(match.group(1)) * 1000
+        if value is None:
+            continue
+        if not isinstance(value, (int, float, str)):
+            continue
         try:
-            rate = float(value or 0.0) * _TOKENS_PER_MILLION
+            rate = float(value) * _TOKENS_PER_MILLION
         except (TypeError, ValueError):
             continue
         if rate <= 0:
@@ -193,10 +197,13 @@ def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float 
         return None
 
     def _rate(name: str) -> float:
-        try:
-            return float(raw_entry.get(name) or 0.0) * _TOKENS_PER_MILLION
-        except (TypeError, ValueError):
-            return 0.0
+        val = raw_entry.get(name)
+        if isinstance(val, (int, float, str)):
+            try:
+                return float(val) * _TOKENS_PER_MILLION
+            except (TypeError, ValueError):
+                return 0.0
+        return 0.0
 
     return {
         "input": _rate("input_cost_per_token"),
@@ -316,7 +323,7 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
     #                       ($19/mo Pro), not per-token billed. Importers
     #                       prefix VSCode Copilot Chat calls with ``copilot/``
     #                       so they all match this zero-cost wildcard.
-    _ZERO_COST = {
+    _ZERO_COST: dict[str, float | tuple[PricingTier, ...]] = {
         "input": 0.0,
         "output": 0.0,
         "cache_read": 0.0,
@@ -390,7 +397,8 @@ def get_model_pricing(model_id: str) -> ModelPricing:
 
     def _lookup(mid: str) -> ModelPricing | None:
         if mid in table:
-            return ModelPricing(model_id=mid, known=True, **table[mid])
+            entry = cast(dict[str, Any], table[mid])
+            return ModelPricing(model_id=mid, known=True, **entry)
         return None
 
     # 1. Exact match
@@ -416,7 +424,8 @@ def get_model_pricing(model_id: str) -> ModelPricing:
             "Upgrade LiteLLM or call override_pricing() to fix.",
             model_id,
         )
-    return ModelPricing(model_id=model_id, known=False, **table["_default"])
+    entry = cast(dict[str, Any], table["_default"])
+    return ModelPricing(model_id=model_id, known=False, **entry)
 
 
 def usage_cost_usd(

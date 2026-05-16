@@ -43,6 +43,53 @@ function highlightSearchText(value: string, query: string): ReactNode {
   );
 }
 
+function firstModelLabel(models?: Record<string, number>): string | null {
+  if (!models) return null;
+  const [firstModel] = Object.keys(models);
+  return firstModel || null;
+}
+
+function resolveSessionModel(
+  summary?: SessionSummary | null,
+  trace?: Trace | null
+): string | null {
+  return summary?.started_model || firstModelLabel(summary?.models_used) || trace?.model || null;
+}
+
+function getCostStatusMeta(status?: SessionSummary["cost_status"]) {
+  if (!status) {
+    return {
+      label: "syncing",
+      detail: "Loading session metrics",
+      className:
+        "border-neutral-800 bg-neutral-900/50 text-neutral-400",
+    };
+  }
+  switch (status) {
+    case "estimated":
+      return {
+        label: "estimated",
+        detail: "Estimated from tokens",
+        className:
+          "border-amber-900/30 bg-amber-950/25 text-amber-200",
+      };
+    case "unavailable":
+      return {
+        label: "missing",
+        detail: "No cost data recorded",
+        className:
+          "border-neutral-800 bg-neutral-900/50 text-neutral-400",
+      };
+    default:
+      return {
+        label: "recorded",
+        detail: "Recorded from ledger",
+        className:
+          "border-violet-900/30 bg-violet-950/25 text-violet-200",
+      };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main Sessions page — sidebar list + master-detail routing
 // ---------------------------------------------------------------------------
@@ -128,7 +175,7 @@ export default function Sessions() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-180px)] overflow-hidden border border-neutral-800 bg-[#070707]">
+    <div className="flex h-[calc(100vh-180px)] overflow-hidden rounded-xl border border-neutral-800/80 bg-[#070707] shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
       {/* Sidebar — master list */}
       <aside
         className={cx(
@@ -165,7 +212,7 @@ export default function Sessions() {
         ) : (
           /* ── Expanded: full sidebar ── */
           <>
-            <div className="p-4 border-b border-neutral-800 space-y-3 bg-[#0d0d0d]">
+            <div className="p-4 border-b border-neutral-800 space-y-4 bg-[#0d0d0d]">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 whitespace-nowrap">
@@ -197,13 +244,31 @@ export default function Sessions() {
                   </svg>
                 </button>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-sm border border-neutral-800/70 bg-black/20 px-3 py-2">
+                  <div className="text-[8px] font-mono uppercase tracking-[0.25em] text-neutral-500">
+                    Visible
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-100">
+                    {traces?.length ?? "—"}
+                  </div>
+                </div>
+                <div className="rounded-sm border border-neutral-800/70 bg-black/20 px-3 py-2">
+                  <div className="text-[8px] font-mono uppercase tracking-[0.25em] text-neutral-500">
+                    Window
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-100">
+                    {range}
+                  </div>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <input
                   type="search"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search history..."
-                  className="w-full bg-[#141414] border border-neutral-800 px-3 py-2 text-xs text-neutral-200 outline-none focus:border-purple-600 transition-all rounded-sm shadow-inner"
+                  placeholder="Search sessions, tasks, models..."
+                  className="w-full bg-[#141414] border border-neutral-800 px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-purple-600 transition-all rounded-sm shadow-inner"
                 />
                 {searchInput && (
                   <button
@@ -228,6 +293,15 @@ export default function Sessions() {
                 const sid = t.session_id || t.id;
                 const isActive = id === sid;
                 const summary = summaries?.find((s) => s.session_id === sid);
+                const sessionModel = resolveSessionModel(summary, t);
+                const costMeta = getCostStatusMeta(
+                  summary?.cost_status ??
+                    (summary
+                      ? summary.total_cost_usd > 0
+                        ? "recorded"
+                        : "unavailable"
+                      : undefined)
+                );
 
                 return (
                   <button
@@ -240,29 +314,49 @@ export default function Sessions() {
                     className={cx(
                       "w-full text-left p-4 border-b border-neutral-800 transition-all hover:bg-neutral-800/40 group/card",
                       isActive
-                        ? "bg-purple-900/10 border-r-2 border-r-purple-500 shadow-[inset_0_0_20px_rgba(168,85,247,0.05)]"
+                        ? "bg-purple-900/10 border-r-2 border-r-purple-500 shadow-[inset_0_0_28px_rgba(168,85,247,0.08)]"
                         : ""
                     )}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cx(
+                              "text-[8px] px-1.5 py-0.5 border uppercase font-bold tracking-tight font-mono rounded-[1px]",
+                              HOST_COLORS[extractHost(t)] ||
+                                "bg-neutral-800 text-neutral-400 border-neutral-500"
+                            )}
+                          >
+                            {extractHost(t)}
+                          </span>
+                          <StatusBadge
+                            status={t.status}
+                            className="text-[7px] tracking-[0.2em]"
+                          />
+                          {sessionModel && (
+                            <span className="max-w-full truncate rounded-[1px] border border-sky-900/30 bg-sky-950/25 px-1.5 py-0.5 text-[9px] font-mono normal-case tracking-normal text-sky-200">
+                              {sessionModel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="max-w-[15rem] truncate text-[9px] font-mono uppercase tracking-[0.18em] text-neutral-500">
+                          {sid}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 text-right">
+                        <span className="text-[9px] text-neutral-400 font-mono">
+                          {fmtDate(t.created_at)}
+                        </span>
                         <span
                           className={cx(
-                            "text-[8px] px-1.5 py-0.5 border uppercase font-bold tracking-tight font-mono rounded-[1px]",
-                            HOST_COLORS[extractHost(t)] ||
-                              "bg-neutral-800 text-neutral-400 border-neutral-500"
+                            "rounded-[1px] border px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-[0.2em]",
+                            costMeta.className
                           )}
                         >
-                          {extractHost(t)}
+                          {costMeta.label}
                         </span>
-                        <StatusBadge
-                          status={t.status}
-                          className="text-[7px] tracking-[0.2em]"
-                        />
                       </div>
-                      <span className="text-[9px] text-neutral-400 font-mono">
-                        {fmtDate(t.created_at)}
-                      </span>
                     </div>
 
                     <p
@@ -276,8 +370,7 @@ export default function Sessions() {
                       {highlightSearchText(t.task || "Untitled Task", query)}
                     </p>
 
-                    {/* Embedded stats */}
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-neutral-800/40 pt-2.5">
+                    <div className="grid grid-cols-2 gap-1.5 rounded-sm border border-neutral-800/60 bg-black/20 p-2">
                       {(
                         [
                           [
@@ -325,14 +418,32 @@ export default function Sessions() {
                       ).map(([label, value, valCls]) => (
                         <div
                           key={label}
-                          className="flex justify-between text-[8px] font-mono tracking-widest uppercase"
+                          className="flex items-center justify-between gap-2 rounded-sm border border-neutral-800/50 bg-neutral-950/40 px-2 py-1.5"
                         >
-                          <span className="text-neutral-400">{label}</span>
-                          <span className={cx("font-black", valCls)}>
+                          <div className="truncate text-[8px] font-mono tracking-[0.18em] uppercase text-neutral-500 leading-none">
+                            {label}
+                          </div>
+                          <div
+                            className={cx(
+                              "shrink-0 text-[10px] font-black font-mono leading-none",
+                              valCls
+                            )}
+                          >
                             {value}
-                          </span>
+                          </div>
                         </div>
                       ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-neutral-500">
+                      <span>{costMeta.detail}</span>
+                      <span>
+                        {summary
+                          ? fmtDuration(
+                              summary.active_duration_seconds ||
+                                summary.duration_seconds
+                            )
+                          : "—"}
+                      </span>
                     </div>
                   </button>
                 );
