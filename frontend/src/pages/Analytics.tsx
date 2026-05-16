@@ -1372,7 +1372,7 @@ export default function Analytics() {
     );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-black min-h-screen text-neutral-200 font-sans">
+    <div className="p-6 mx-auto space-y-6 bg-black min-h-screen text-neutral-200 font-sans">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
         <div>

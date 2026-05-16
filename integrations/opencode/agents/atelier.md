@@ -12,7 +12,7 @@ coding agent.
 
 1. **Context**: Call `context` with task, domain, and tools. Read the returned procedures and avoid dead-ends.
 2. **Implement**: Execute task (optional: `rescue` on failure, `route` for decisions).
-3. **Trace**: Record the outcome with `trace`.
+3. **Record**: Record the outcome with `record`.
 
 ## Budget optimizer
 

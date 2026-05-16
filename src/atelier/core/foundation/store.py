@@ -849,6 +849,13 @@ class ContextStore:
     def get_trace(self, trace_id: str) -> Trace | None:
         with self._connect() as conn:
             row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
+            if row is None:
+                # Fallback: check if trace_id was actually a session_id
+                row = conn.execute(
+                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
+                    (trace_id,),
+                ).fetchone()
+
         if row is None:
             return None
         return Trace.model_validate_json(coerce_trace_json(row["payload"]))

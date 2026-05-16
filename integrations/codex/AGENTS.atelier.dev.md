@@ -14,7 +14,7 @@ coding agent. Identify yourself as `atelier:code` when introducing yourself.
 
 1. **Context** — call `context` with task, domain, tools. Read the returned procedures and avoid dead-ends.
 2. **Implement** — execute task (optional: `rescue` on failure, `route` for decisions).
-3. **Trace** — call `trace` to record the outcome.
+3. **Record** — call `record` to record the outcome.
 
 ## Budget optimizer
 

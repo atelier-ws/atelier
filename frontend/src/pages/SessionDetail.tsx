@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, type SessionReport } from "../api";
-import { MetricCard, SectionHeader } from "../components/WorkbenchUI";
+import {
+  Alert,
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  MetricCard,
+  SectionHeader,
+} from "../components/WorkbenchUI";
 
 function fmtUsd(v: number) {
   return `$${v.toFixed(2)}`;
@@ -45,36 +53,24 @@ export default function SessionDetail() {
   if (err) {
     return (
       <div className="space-y-4">
-        <button
-          type="button"
-          className="text-xs text-neutral-500 hover:text-neutral-300"
-          onClick={() => navigate("/sessions")}
-        >
+        <Button variant="link" onClick={() => navigate("/sessions")}>
           ← Back to Sessions
-        </button>
-        <div className="border border-red-800 bg-red-950/30 p-4 text-sm text-red-300">{err}</div>
+        </Button>
+        <Alert tone="danger" description={err} />
       </div>
     );
   }
 
   if (!report) {
-    return (
-      <div className="border border-neutral-800 p-8 text-center text-sm text-neutral-500">
-        Loading session report…
-      </div>
-    );
+    return <EmptyState title="Loading session report…" />;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <button
-          type="button"
-          className="text-xs text-neutral-500 hover:text-neutral-300"
-          onClick={() => navigate("/sessions")}
-        >
+        <Button variant="link" onClick={() => navigate("/sessions")}>
           ← Back to Sessions
-        </button>
+        </Button>
       </div>
 
       <SectionHeader
@@ -118,7 +114,7 @@ export default function SessionDetail() {
       </div>
 
       {/* Token counts */}
-      <section className="border border-neutral-800 p-4">
+      <Card className="p-4">
         <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
           Token Usage
         </h2>
@@ -135,10 +131,10 @@ export default function SessionDetail() {
             </div>
           ))}
         </div>
-      </section>
+      </Card>
 
       {/* Atelier savings detail */}
-      <section className="border border-neutral-800 p-4">
+      <Card className="p-4">
         <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
           Atelier Savings
         </h2>
@@ -155,31 +151,32 @@ export default function SessionDetail() {
             </div>
           ))}
         </div>
-      </section>
+      </Card>
 
       {/* Models used */}
       {Object.keys(report.models_used).length > 0 && (
-        <section className="border border-neutral-800 p-4">
+        <Card className="p-4">
           <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
             Models Used
           </h2>
           <div className="flex flex-wrap gap-2">
             {Object.entries(report.models_used).map(([model, count]) => (
-              <span
+              <Chip
                 key={model}
-                className="border border-neutral-700 bg-neutral-900/40 px-2 py-1 text-xs"
+                tone="neutral"
+                className="normal-case tracking-normal"
               >
                 <span className="text-purple-400">{model}</span>
                 <span className="ml-1 text-neutral-500">×{count}</span>
-              </span>
+              </Chip>
             ))}
           </div>
-        </section>
+        </Card>
       )}
 
       {/* Top tools by cost */}
       {report.top_tools_by_cost.length > 0 && (
-        <section className="border border-neutral-800 p-4">
+        <Card className="p-4">
           <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
             Top Tools by Cost
           </h2>
@@ -201,7 +198,7 @@ export default function SessionDetail() {
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       )}
     </div>
   );

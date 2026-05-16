@@ -78,7 +78,7 @@ verify({
 ### 6. Record trace
 
 ```json
-trace({
+record({
   "agent": "codex",
   "domain": "beseam.shopify.publish",
   "task": "Fix Shopify publish validation",

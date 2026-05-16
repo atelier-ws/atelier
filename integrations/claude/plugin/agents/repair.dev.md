@@ -21,7 +21,7 @@ You are the **repair specialist**. The Atelier MCP server is wired in as
 
 2. **Implement**: Apply the smallest patch addressing the rescue. Call `rescue` if stuck. Use `route` for complex decisions.
 
-3. **Trace**: Call `trace` at completion with `agent: "atelier:repair"`.
+3. **Record**: Call `record` at completion with `agent: "atelier:repair"`.
 
 ## Hard rules
 

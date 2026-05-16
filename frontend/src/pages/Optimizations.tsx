@@ -6,6 +6,10 @@ import {
   type OptimizationRecommendation,
   type OptimizationRecommendationSession,
   type OptimizationsSummary,
+  type OptimizationAdvisorPolicy,
+  type OptimizationAdvisorCompactionPolicy,
+  type OptimizationAdvisorHistoryEntry,
+  type OptimizationImpactValidation,
 } from "../api";
 import {
   Chip,
@@ -80,9 +84,7 @@ function confidenceTone(value: string): "emerald" | "amber" | "red" {
   return "red";
 }
 
-function severityTone(
-  value: string
-): "emerald" | "amber" | "red" | "neutral" {
+function severityTone(value: string): "emerald" | "amber" | "red" | "neutral" {
   if (value === "high") return "red";
   if (value === "medium") return "amber";
   if (value === "low") return "emerald";
@@ -127,7 +129,7 @@ function collectSessionEvidence(
   return Array.from(byTrace.values());
 }
 
-function candidateOrder(
+export function candidateOrder(
   candidate: OptimizationAdvisorCandidate,
   currentCandidateId: string,
   recommendedCandidateId: string | null
@@ -148,7 +150,7 @@ function Hint({ text }: { text: string }) {
   );
 }
 
-function CandidateSummaryCard({
+export function CandidateSummaryCard({
   label,
   candidate,
   currentCandidate,
@@ -161,8 +163,10 @@ function CandidateSummaryCard({
   badge?: "Current" | "Recommended";
   note: string;
 }) {
-  const costDelta = candidate.weekly_cost_usd - currentCandidate.weekly_cost_usd;
-  const qualityDelta = candidate.estimated_quality - currentCandidate.estimated_quality;
+  const costDelta =
+    candidate.weekly_cost_usd - currentCandidate.weekly_cost_usd;
+  const qualityDelta =
+    candidate.estimated_quality - currentCandidate.estimated_quality;
 
   return (
     <article className="border border-neutral-800 bg-neutral-950/60 p-5">
@@ -178,7 +182,9 @@ function CandidateSummaryCard({
             <Hint text={note} />
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Chip tone="neutral">{fmtPolicyLabel(candidate.policy.preset)}</Chip>
+            <Chip tone="neutral">
+              {fmtPolicyLabel(candidate.policy.preset)}
+            </Chip>
             <Chip tone={qualityTone(candidate.estimated_quality)}>
               quality floor {fmtPercent(candidate.policy.quality_floor)}
             </Chip>
@@ -210,13 +216,19 @@ function CandidateSummaryCard({
           label="Latency"
           value={`${candidate.latency_mult.toFixed(2)}x`}
           detail="relative"
-          tone={deltaTone(candidate.latency_mult - currentCandidate.latency_mult, true)}
+          tone={deltaTone(
+            candidate.latency_mult - currentCandidate.latency_mult,
+            true
+          )}
         />
         <MetricCard
           label="Escalation"
           value={fmtPercent(candidate.escalation_rate)}
           detail="escalates"
-          tone={deltaTone(candidate.escalation_rate - currentCandidate.escalation_rate, true)}
+          tone={deltaTone(
+            candidate.escalation_rate - currentCandidate.escalation_rate,
+            true
+          )}
         />
       </div>
 
@@ -246,13 +258,19 @@ function CandidateSummaryCard({
           </div>
           <div className="mt-3 grid gap-2 text-sm text-neutral-300">
             <div>
-              Trigger: {fmtPercent(candidate.policy.compaction.trigger_at_context_fraction)}
+              Trigger:{" "}
+              {fmtPercent(
+                candidate.policy.compaction.trigger_at_context_fraction
+              )}
             </div>
             <div>Dedup: {candidate.policy.compaction.dedup ? "on" : "off"}</div>
             <div>
-              Filter: {candidate.policy.compaction.retrieval_filter ? "on" : "off"}
+              Filter:{" "}
+              {candidate.policy.compaction.retrieval_filter ? "on" : "off"}
             </div>
-            <div>Lossy: {candidate.policy.compaction.lossy_summary ? "on" : "off"}</div>
+            <div>
+              Lossy: {candidate.policy.compaction.lossy_summary ? "on" : "off"}
+            </div>
           </div>
         </div>
       </div>
@@ -260,7 +278,7 @@ function CandidateSummaryCard({
   );
 }
 
-function CandidateOptions({
+export function CandidateOptions({
   candidates,
   currentCandidateId,
   recommendedCandidateId,
@@ -340,8 +358,10 @@ function CandidateDetail({
   const routingRows = Object.entries(candidate.routing_breakdown).sort(
     ([left], [right]) => left.localeCompare(right)
   );
-  const costDelta = candidate.weekly_cost_usd - currentCandidate.weekly_cost_usd;
-  const qualityDelta = candidate.estimated_quality - currentCandidate.estimated_quality;
+  const costDelta =
+    candidate.weekly_cost_usd - currentCandidate.weekly_cost_usd;
+  const qualityDelta =
+    candidate.estimated_quality - currentCandidate.estimated_quality;
 
   return (
     <section className="grid gap-4 xl:grid-cols-[0.88fr_1.12fr]">
@@ -375,12 +395,18 @@ function CandidateDetail({
             Policy details
           </div>
           <div className="mt-3 grid gap-2 text-sm text-neutral-300">
-            <div>Routing mode: {fmtPolicyLabel(candidate.policy.routing.policy)}</div>
+            <div>
+              Routing mode: {fmtPolicyLabel(candidate.policy.routing.policy)}
+            </div>
             <div>
               Context trigger:{" "}
-              {fmtPercent(candidate.policy.compaction.trigger_at_context_fraction)}
+              {fmtPercent(
+                candidate.policy.compaction.trigger_at_context_fraction
+              )}
             </div>
-            <div>Confidence required: {candidate.policy.confidence_required}</div>
+            <div>
+              Confidence required: {candidate.policy.confidence_required}
+            </div>
           </div>
         </div>
       </article>
@@ -449,7 +475,10 @@ function CandidateDetail({
               </div>
             ) : (
               routingRows.map(([tier, share]) => (
-                <div key={tier} className="border border-neutral-800 bg-black/20 p-4">
+                <div
+                  key={tier}
+                  className="border border-neutral-800 bg-black/20 p-4"
+                >
                   <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
                     {tier}
                   </div>
@@ -494,7 +523,9 @@ function SessionsBehindRecommendation({
               className="border border-neutral-800 bg-neutral-950/60 p-4"
               title={[
                 session.reason,
-                session.tools?.length ? `Tools: ${session.tools.join(", ")}` : "",
+                session.tools?.length
+                  ? `Tools: ${session.tools.join(", ")}`
+                  : "",
                 `Suggested action: ${session.recommendationAction}`,
               ]
                 .filter(Boolean)
@@ -544,7 +575,9 @@ function SessionsBehindRecommendation({
                     ? ` • ${session.input_output_ratio.toFixed(1)}:1 input/output`
                     : ""}
                 </div>
-                <div className="text-xs text-neutral-500">Hover for details</div>
+                <div className="text-xs text-neutral-500">
+                  Hover for details
+                </div>
               </div>
 
               <Link
@@ -572,7 +605,8 @@ function NextActions({
     ? "atelier optimize apply --recommended"
     : "atelier optimize apply --preset balanced";
   const shadowPolicy =
-    summary.advisor.has_recommendation && summary.advisor.recommended_candidate_id
+    summary.advisor.has_recommendation &&
+    summary.advisor.recommended_candidate_id
       ? "recommended"
       : selectedCandidate.policy.preset;
   const benchmarkCommand = `atelier optimize apply --preset ${selectedCandidate.policy.preset} && atelier benchmark run`;
@@ -619,7 +653,7 @@ function PolicySandbox({
     key: keyof OptimizationAdvisorCompactionPolicy,
     val: any
   ) => {
-    setPolicy((prev) => ({
+    setPolicy((prev: OptimizationAdvisorPolicy) => ({
       ...prev,
       compaction: { ...prev.compaction, [key]: val },
     }));
@@ -657,7 +691,12 @@ function PolicySandbox({
               max={1.0}
               step={0.01}
               formatValue={fmtPercent}
-              onChange={(v) => setPolicy((p) => ({ ...p, quality_floor: v }))}
+              onChange={(v) =>
+                setPolicy((p: OptimizationAdvisorPolicy) => ({
+                  ...p,
+                  quality_floor: v,
+                }))
+              }
             />
             <Slider
               label="Context trigger"
@@ -666,7 +705,9 @@ function PolicySandbox({
               max={1.0}
               step={0.05}
               formatValue={fmtPercent}
-              onChange={(v) => updateCompaction("trigger_at_context_fraction", v)}
+              onChange={(v) =>
+                updateCompaction("trigger_at_context_fraction", v)
+              }
             />
             <div className="space-y-3">
               <label className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
@@ -678,7 +719,7 @@ function PolicySandbox({
                     key={level}
                     type="button"
                     onClick={() =>
-                      setPolicy((p) => ({
+                      setPolicy((p: OptimizationAdvisorPolicy) => ({
                         ...p,
                         confidence_required: level as any,
                       }))
@@ -748,7 +789,9 @@ function OptimizationHistory({
       <SectionHeader
         eyebrow="Past recommendations"
         title="History"
-        action={<Hint text="Historical advisor snapshots and their recorded impact." />}
+        action={
+          <Hint text="Historical advisor snapshots and their recorded impact." />
+        }
       />
       <div className="overflow-x-auto border border-neutral-800 bg-neutral-950/60">
         <table className="w-full text-left text-sm">
@@ -776,7 +819,12 @@ function OptimizationHistory({
                   {item.sessions_analysed.toLocaleString()}
                 </td>
                 <td className="px-5 py-3">
-                  <span className={cx(qualityTone(item.quality_delta + 0.95), "font-mono")}>
+                  <span
+                    className={cx(
+                      qualityTone(item.quality_delta + 0.95),
+                      "font-mono"
+                    )}
+                  >
                     {fmtDeltaPercent(item.quality_delta)}
                   </span>
                 </td>
@@ -915,7 +963,11 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
           detail={`${summary.quality_score.grade} grade`}
           tone={qualityTone(summary.quality_score.score / 100)}
         />
-        <div title={summary.advisor.golden.failures.join("\n") || "No corpus issues"}>
+        <div
+          title={
+            summary.advisor.golden.failures.join("\n") || "No corpus issues"
+          }
+        >
           <MetricCard
             label="Golden failures"
             value={summary.advisor.golden.failures.length.toLocaleString()}
@@ -924,7 +976,9 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
                 ? `${summary.advisor.golden.passed.toLocaleString()} / ${summary.advisor.golden.total.toLocaleString()}`
                 : "hover"
             }
-            tone={summary.advisor.golden.failures.length === 0 ? "emerald" : "red"}
+            tone={
+              summary.advisor.golden.failures.length === 0 ? "emerald" : "red"
+            }
           />
         </div>
         <MetricCard
@@ -935,7 +989,9 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
         />
         <MetricCard
           label="Routine reroute"
-          value={fmtUsd(summary.model_routing_simulation.estimated_cost_saved_usd)}
+          value={fmtUsd(
+            summary.model_routing_simulation.estimated_cost_saved_usd
+          )}
           detail={`${summary.model_routing_simulation.candidate_count} candidate traces`}
           tone="violet"
         />
@@ -948,23 +1004,31 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
             title="Task mix"
             action={
               <Hint
-                text={[summary.advisor.confidence_reason, summary.advisor.message]
+                text={[
+                  summary.advisor.confidence_reason,
+                  summary.advisor.message,
+                ]
                   .filter(Boolean)
                   .join("\n")}
               />
             }
           />
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {Object.entries(summary.advisor.bucket_counts).map(([bucket, count]) => (
-              <div key={bucket} className="border border-neutral-800 bg-black/20 p-3">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-                  {bucket}
+            {Object.entries(summary.advisor.bucket_counts).map(
+              ([bucket, count]) => (
+                <div
+                  key={bucket}
+                  className="border border-neutral-800 bg-black/20 p-3"
+                >
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                    {bucket}
+                  </div>
+                  <div className="mt-2 text-xl font-semibold text-neutral-100">
+                    {count.toLocaleString()}
+                  </div>
                 </div>
-                <div className="mt-2 text-xl font-semibold text-neutral-100">
-                  {count.toLocaleString()}
-                </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </article>
 
@@ -989,7 +1053,7 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
         </article>
       </div>
 
-      {summary.external_optimizations?.payload && (
+      {summary.external_optimizations?.payload?.overview != null && (
         <article className="border border-neutral-800 bg-neutral-950/60 p-5">
           <SectionHeader eyebrow="External analyzer" title="Codeburn" />
           <div className="mt-4 grid gap-4 md:grid-cols-4">
@@ -1000,14 +1064,22 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
             />
             <MetricCard
               label="Health"
-              value={summary.external_optimizations.payload.overview.health_grade}
+              value={
+                summary.external_optimizations.payload.overview.health_grade
+              }
               detail={`${summary.external_optimizations.payload.overview.health_score}/100`}
               tone="cyan"
             />
             <MetricCard
               label="External savings"
-              value={fmtUsd(summary.external_optimizations.payload.overview.estimated_usd_saved)}
-              detail={fmtTokens(summary.external_optimizations.payload.overview.estimated_tokens_saved)}
+              value={fmtUsd(
+                summary.external_optimizations.payload.overview
+                  .estimated_usd_saved
+              )}
+              detail={fmtTokens(
+                summary.external_optimizations.payload.overview
+                  .estimated_tokens_saved
+              )}
               tone="emerald"
             />
             <MetricCard
@@ -1046,18 +1118,27 @@ export default function Optimizations() {
   useEffect(() => {
     if (!summary) return;
     const preferred =
-      summary.advisor.recommended_candidate_id ?? summary.advisor.current_candidate_id;
+      summary.advisor.recommended_candidate_id ??
+      summary.advisor.current_candidate_id;
     setSelectedCandidateId(preferred);
   }, [summary]);
 
   const orderedCandidates = useMemo(() => {
     if (!summary) return [];
-    const presetOrder = ["conservative", "balanced", "economy", "maximum_saving"];
+    const presetOrder = [
+      "conservative",
+      "balanced",
+      "economy",
+      "maximum_saving",
+    ];
     const baseCandidates = summary.advisor.candidates.filter(
       (c) => presetOrder.includes(c.policy.preset) && c.id !== "current"
     );
     return baseCandidates.sort((a, b) => {
-      return presetOrder.indexOf(a.policy.preset) - presetOrder.indexOf(b.policy.preset);
+      return (
+        presetOrder.indexOf(a.policy.preset) -
+        presetOrder.indexOf(b.policy.preset)
+      );
     });
   }, [summary]);
 
@@ -1101,31 +1182,14 @@ export default function Optimizations() {
   if (err) return <div className="p-6 text-red-400">Error: {err}</div>;
   if (!summary || loading || !currentCandidate || !selectedCandidate) {
     return (
-      <div className="p-6 italic text-neutral-500">Loading optimizations...</div>
+      <div className="p-6 italic text-neutral-500">
+        Loading optimizations...
+      </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <PageHero
-        eyebrow="Optimization Advisor"
-        title="Current vs recommended"
-        description="Explore optimization options and verify impact with benchmarks."
-        tone="amber"
-      >
-        <div className="border border-neutral-800 bg-neutral-950/60 p-4">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
-            Window
-          </div>
-          <div className="mt-2 text-sm text-neutral-300">
-            {days} day{days === 1 ? "" : "s"} active
-          </div>
-          <div className="mt-2 text-xs text-neutral-500">
-            Generated {new Date(summary.generated_at).toLocaleString()}
-          </div>
-        </div>
-      </PageHero>
-
       <section className="grid gap-4 md:grid-cols-4">
         <MetricCard
           label="Sessions analysed"
@@ -1147,14 +1211,14 @@ export default function Optimizations() {
         </div>
         <MetricCard
           label="Current weekly cost"
-          value={fmtUsd(currentCandidate.weekly_cost_usd)}
+          value={"-" + fmtUsd(currentCandidate.weekly_cost_usd)}
           detail={currentCandidate.policy.name}
-          tone="neutral"
+          tone="red"
         />
         <div title={summary.advisor.message}>
           <MetricCard
             label="Potential weekly savings"
-            value={fmtUsd(summary.advisor.weekly_savings_usd)}
+            value={fmtSignedUsd(summary.advisor.weekly_savings_usd)}
             detail={
               summary.advisor.has_recommendation
                 ? fmtDeltaPercent(
@@ -1179,8 +1243,10 @@ export default function Optimizations() {
 
         <div className="grid gap-4 xl:grid-cols-5">
           {orderedCandidates.map((candidate) => {
-            const selected = candidate.id === selectedCandidateId && !showSandbox;
-            const isCurrent = candidate.policy.preset === currentCandidate?.policy.preset;
+            const selected =
+              candidate.id === selectedCandidateId && !showSandbox;
+            const isCurrent =
+              candidate.policy.preset === currentCandidate?.policy.preset;
             const isRecommended =
               candidate.policy.preset === recommendedCandidate?.policy.preset;
             return (
@@ -1209,7 +1275,9 @@ export default function Optimizations() {
                   {fmtPolicyLabel(candidate.policy.preset)}
                 </div>
                 {(() => {
-                  const savings = summary.advisor.baseline_weekly_cost_usd - candidate.weekly_cost_usd;
+                  const savings =
+                    summary.advisor.baseline_weekly_cost_usd -
+                    candidate.weekly_cost_usd;
                   const isSaving = savings > 0.01;
                   return (
                     <>
@@ -1247,12 +1315,18 @@ export default function Optimizations() {
                 : "border-neutral-800 bg-neutral-950/60 hover:border-neutral-700"
             )}
           >
-            <div className="text-sm font-semibold text-neutral-100">Advanced</div>
+            <div className="text-sm font-semibold text-neutral-100">
+              Advanced
+            </div>
             <div className="mt-2 text-xs uppercase tracking-widest text-neutral-500">
               Custom Tuning
             </div>
-            <div className="mt-4 text-2xl font-semibold text-neutral-100">Sandbox</div>
-            <div className="mt-1 text-xs text-neutral-500">Interactive tuning</div>
+            <div className="mt-4 text-2xl font-semibold text-neutral-100">
+              Sandbox
+            </div>
+            <div className="mt-1 text-xs text-neutral-500">
+              Interactive tuning
+            </div>
             <div className="mt-4 space-y-2 text-sm text-neutral-300 italic">
               Adjust quality floors, compaction triggers, and routing.
             </div>
@@ -1260,7 +1334,9 @@ export default function Optimizations() {
         </div>
       </section>
 
-      {showSandbox && <PolicySandbox initialPolicy={selectedCandidate.policy} />}
+      {showSandbox && (
+        <PolicySandbox initialPolicy={selectedCandidate.policy} />
+      )}
 
       <CandidateDetail
         candidate={selectedCandidate}

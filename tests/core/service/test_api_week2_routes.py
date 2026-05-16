@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build fake on-disk data
 # ---------------------------------------------------------------------------

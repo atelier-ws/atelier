@@ -141,7 +141,7 @@ low_confidence = ["evidence-review"]
         encoding="utf-8",
     )
 
-    config = load_routing_policy_config(tmp_path)
+    config = load_routing_policy_config(tmp_path, path=config_path)
     budget = config.budget_policy(max_input_tokens=10_000, premium_call_budget=2)
     decision = draft_route_decision(
         request=_request(task_type="explain"),

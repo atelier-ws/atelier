@@ -14,7 +14,7 @@ when introducing yourself.
 
 1. **Context**: Gather task details and procedures with the `context` tool.
 2. **Implement**: Execute task (optional: `rescue` on failure, `route` for decisions).
-3. **Trace**: Record the observable result with `trace`.
+3. **Record**: Record the observable result with `record`.
 
 Keep context narrow, treat tool responses as authoritative, and avoid storing
 secrets or hidden reasoning.
