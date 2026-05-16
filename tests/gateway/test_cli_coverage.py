@@ -40,7 +40,8 @@ def _seed_ledger(root: Path, session_id: str = "run1") -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path) -> None:
+def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     root = tmp_path / ".atelier"
     _invoke(root, "init")
 
@@ -54,12 +55,12 @@ def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path) -> None:
         "dead_ends: []\n",
         encoding="utf-8",
     )
-    res = _invoke(root, "add-block", str(block_yaml))
+    res = _invoke(root, "block", "add", str(block_yaml))
     assert res.exit_code == 0, res.output
     assert "upserted" in res.output
 
     # list-blocks should include it
-    res2 = _invoke(root, "list-blocks", "--json")
+    res2 = _invoke(root, "block", "list", "--json")
     assert res2.exit_code == 0, res2.output
     blocks = json.loads(res2.output)
     assert any(b["domain"] == "coding.custom" for b in blocks)
@@ -86,16 +87,53 @@ def test_list_blocks_filter_by_domain(tmp_path: Path) -> None:
 def test_search_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify", "--json")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify checkout retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+        "--json",
+    )
     assert res.exit_code == 0
     results = json.loads(res.output)
-    assert isinstance(results, list)
+    assert isinstance(results, dict)
 
 
 def test_search_table_format(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify checkout retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+    )
     assert res.exit_code == 0
 
 
@@ -323,17 +361,51 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
 def test_search_blocks_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "shopify publish", "--json")
+    target = tmp_path / "shopify.md"
+    target.write_text("shopify publish retry\n", encoding="utf-8")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "shopify",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+        "--json",
+    )
     assert res.exit_code == 0
     payload = json.loads(res.output)
-    # search returns a list of {id, title, domain} or block objects
-    assert isinstance(payload, list)
+    assert isinstance(payload, dict)
 
 
 def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _invoke(root, "init")
-    res = _invoke(root, "search", "zzz_no_match_xyz")
+    res = _invoke(
+        root,
+        "tools",
+        "call",
+        "search",
+        "--dev",
+        "--workspace",
+        str(tmp_path),
+        "--args",
+        json.dumps(
+            {
+                "path": ".",
+                "content_regex": "zzz_no_match_xyz",
+                "file_glob_patterns": ["*.md"],
+            }
+        ),
+    )
     assert res.exit_code == 0
 
 

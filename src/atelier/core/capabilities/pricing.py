@@ -278,6 +278,7 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
 
     Returns a flat dict: ``{model_id: {"input": float, "output": float,
     "cache_read": float, ...}}``. Always includes ``"_default"``.
+    LiteLLM is the sole pricing source; no Atelier-specific defaults are added.
     """
     table: dict[str, dict[str, float | tuple[PricingTier, ...]]] = {
         "_default": {
@@ -351,36 +352,71 @@ def is_placeholder_model(model_id: str | None) -> bool:
     return str(model_id or "").strip() in _PLACEHOLDER_MODEL_IDS
 
 
+_DOT_VERSION_RE = re.compile(r"(\d+)\.(\d+)")
+
+
+def _normalize_model_id(model_id: str) -> str:
+    """Normalise dot-separated version numbers to dashes.
+
+    Anthropic's API returns model IDs using either convention depending on
+    when the model was released — e.g. ``claude-sonnet-4.6`` (dot) vs the
+    older ``claude-sonnet-4-5`` (dash).  LiteLLM catalogues only the dash
+    form, so we normalise before lookup.
+
+    Examples::
+
+        "claude-sonnet-4.6"  →  "claude-sonnet-4-6"
+        "claude-opus-4.7"    →  "claude-opus-4-7"
+        "gpt-4o"             →  "gpt-4o"   (unchanged — no dot-version)
+    """
+    return _DOT_VERSION_RE.sub(r"\1-\2", model_id)
+
+
 def get_model_pricing(model_id: str) -> ModelPricing:
     """Return :class:`ModelPricing` for *model_id*.
 
-    When the model id is not found in the pricing table (exact or prefix
-    match), the default (all-zeros) entry is returned with ``known=False``.
-    Matching is exact first, then prefix over the LiteLLM-backed catalog.
+    Lookup order (LiteLLM is the sole pricing source — no Atelier overrides):
+    1. Exact match against the LiteLLM-backed table.
+    2. Dot-to-dash version normalisation (``claude-sonnet-4.6`` → ``claude-sonnet-4-6``).
+    3. Alias stripping via :func:`_alias_candidates` on the normalised id
+       (removes date/preview suffixes so ``claude-opus-4-7-20260416`` → ``claude-opus-4-7``).
+    4. Zero-cost default with ``known=False`` — a one-time warning is logged so
+       the operator knows to upgrade LiteLLM.
 
     Placeholder ids (``<synthetic>``, ``_default``, empty) are returned as
-    zero-cost silently. Genuinely unknown model ids log a one-time warning so
-    the operator can extend ``_OVERRIDE_PRICING`` or upgrade LiteLLM.
+    zero-cost silently.
     """
     table = _load_pricing_table()
-    # Exact match
-    if model_id in table:
-        vals = table[model_id]
-        return ModelPricing(model_id=model_id, known=True, **vals)
-    # Prefix match (e.g. "claude-sonnet" → first entry starting with "claude-sonnet")
-    for key, vals in table.items():
-        if key != "_default" and (model_id.startswith(key) or key.startswith(model_id)):
-            return ModelPricing(model_id=key, known=True, **vals)
-    # Fallback to zero-cost default (pricing not configured → known=False)
+
+    def _lookup(mid: str) -> ModelPricing | None:
+        if mid in table:
+            return ModelPricing(model_id=mid, known=True, **table[mid])
+        return None
+
+    # 1. Exact match
+    if hit := _lookup(model_id):
+        return hit
+
+    # 2. Dot-version normalisation ("claude-sonnet-4.6" → "claude-sonnet-4-6")
+    normalised = _normalize_model_id(model_id)
+    if normalised != model_id:
+        if hit := _lookup(normalised):
+            return hit
+
+    # 3. Alias candidates on the normalised id (strips date / preview suffixes)
+    for alias in _alias_candidates(normalised):
+        if hit := _lookup(alias):
+            return hit
+
+    # 4. Unknown — log once, return zero-cost sentinel
     if model_id and model_id not in _PLACEHOLDER_MODEL_IDS and model_id not in _warned_unknown_models:
         _warned_unknown_models.add(model_id)
         logger.warning(
             "atelier.pricing: no entry for model %r — costs for this model will be reported as $0. "
-            "Extend the LiteLLM catalog or call override_pricing() to fix.",
+            "Upgrade LiteLLM or call override_pricing() to fix.",
             model_id,
         )
-    vals = table["_default"]
-    return ModelPricing(model_id=model_id, known=False, **vals)
+    return ModelPricing(model_id=model_id, known=False, **table["_default"])
 
 
 def usage_cost_usd(

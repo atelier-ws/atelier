@@ -16,7 +16,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "${SCRIPT_DIR}/lib/managed_context.sh"
-ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 
 DRY_RUN=false
 PRINT_ONLY=false
@@ -77,10 +76,9 @@ if $WORKSPACE_SET; then
   "mcp": {
       "atelier": {
         "type": "local",
-        "command": ["${ATELIER_WRAPPER}"],
+        "command": ["atelier-mcp", "--host", "opencode"],
         "environment": {
-          "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}",
-          "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
+          "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
         }
       }
   }
@@ -94,7 +92,7 @@ else
   "mcp": {
     "atelier": {
       "type": "local",
-      "command": ["${ATELIER_WRAPPER}"]
+      "command": ["atelier-mcp", "--host", "opencode"]
     }
   }
 }
@@ -254,10 +252,10 @@ else
     vfail "opencode atelier agent missing: $AGENT_FILE"
 fi
 
-if [ -x "${ATELIER_WRAPPER}" ]; then
-    vpass "atelier_mcp_stdio.sh exists and is executable"
+if command -v atelier-mcp &>/dev/null; then
+    vpass "atelier-mcp is available on PATH"
 else
-    vfail "atelier_mcp_stdio.sh missing or not executable: ${ATELIER_WRAPPER}"
+    vfail "atelier-mcp NOT found on PATH"
 fi
 
 if [ -x "${ATELIER_REPO}/bin/atelier-status" ]; then

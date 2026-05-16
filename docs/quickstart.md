@@ -8,23 +8,22 @@ This guide assumes you want to use the installed product, not work from a source
 curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
 ```
 
-That installs the `atelier` and `atelier-mcp` commands as user-level console scripts, initializes `~/.atelier`, starts the detached `servicectl` loop, and attempts to start the optional visualization stack when Docker is available.
+That installs the `atelier` and `atelier-mcp` commands as user-level console scripts, initializes `~/.atelier`, registers background services with your OS (systemd/launchd), and attempts to start the optional visualization stack when Docker is available.
 
 ## Step 2 — Verify the Installed Runtime
 
 ```bash
 atelier --version
 atelier-mcp --version
-atelier servicectl status
-atelier stack status
+atelier background status
 ```
 
 Expected outcome:
 
 - `atelier` resolves on `PATH`
 - `atelier-mcp` resolves on `PATH`
-- `servicectl` reports a running background controller
-- `atelier stack status` shows whether the optional UI/API stack is already running
+- `background` reports a running background controller
+- the visualization stack is reported as running (if Docker is available)
 
 ## Step 3 — Inspect the Installed Command Surface
 
@@ -32,7 +31,7 @@ The fastest way to orient yourself is to inspect the installed command tree.
 
 ```bash
 atelier -h
-atelier help servicectl
+atelier help background
 ATELIER_DEV_MODE=1 atelier help context
 ```
 
@@ -42,10 +41,11 @@ ATELIER_DEV_MODE=1 atelier help context
 ## Step 4 — Fetch Context for a Task (Dev Mode)
 
 ```bash
-ATELIER_DEV_MODE=1 atelier context \
-  --task "Fix generated output that drifts back after refresh" \
-  --domain source.truth \
-  --file src/content/generate.py
+atelier tools call context --dev --args '{
+  "task": "Fix generated output that drifts back after refresh",
+  "domain": "source.truth",
+  "files": ["src/content/generate.py"]
+}' --json
 ```
 
 This returns a rendered context block built from the current ReasonBlock store.
@@ -53,10 +53,11 @@ This returns a rendered context block built from the current ReasonBlock store.
 ## Step 5 — Ask for Rescue After a Repeated Failure (Dev Mode)
 
 ```bash
-ATELIER_DEV_MODE=1 atelier rescue \
-  --task "Apply a live config update" \
-  --domain state.change \
-  --error "known dead end triggered during apply"
+atelier tools call rescue --dev --args '{
+  "task": "Apply a live config update",
+  "domain": "state.change",
+  "error": "known dead end triggered during apply"
+}' --json
 ```
 
 Use this when you have enough evidence that the current path is failing and you
@@ -65,12 +66,15 @@ want the nearest stored recovery procedure.
 ## Step 6 — Run a Rubric Gate After the Work (Dev Mode)
 
 ```bash
-echo '&#123;
-  "canonical_identifier_used": true,
-  "pre_change_state_captured": true,
-  "read_after_write_completed": true,
-  "observed_state_matches_intent": false
-&#125;' | ATELIER_DEV_MODE=1 atelier verify rubric_state_change_safety
+atelier tools call verify --dev --args '{
+  "rubric_id": "rubric_state_change_safety",
+  "checks": {
+    "canonical_identifier_used": true,
+    "pre_change_state_captured": true,
+    "read_after_write_completed": true,
+    "observed_state_matches_intent": false
+  }
+}' --json
 ```
 
 Expected: `status: blocked` because a required verification check failed.
@@ -78,25 +82,30 @@ Expected: `status: blocked` because a required verification check failed.
 ## Step 7 — Record an Observable Trace
 
 ```bash
-echo '&#123;
+echo '{
   "agent": "quickstart",
   "domain": "state.change",
   "task": "Apply a live config update",
   "status": "partial",
   "errors_seen": ["known dead end triggered during apply"],
   "output_summary": "Rescue requested before retrying"
-&#125;' | atelier trace record
-atelier trace list --limit 5
+}' | atelier runs record
+atelier runs list --limit 5
 ```
 
 ## Step 8 — Check Background Processing and the Optional Stack
 
-The installed runtime includes a detached offline processor.
+The installed runtime includes a detached offline processor and an optional UI stack, both managed as background services.
 
 ```bash
-atelier servicectl status
+# Check service health and auto-update status
+atelier background status
+
+# View background logs
+atelier background logs controller
+
+# List jobs currently being processed
 atelier worker list
-atelier stack status
 ```
 
 If you want to trigger work manually:
@@ -109,7 +118,8 @@ atelier worker run-once
 If the installer did not start the UI stack for you, or if you stopped it:
 
 ```bash
-atelier stack start
+# Restart everything including the UI
+atelier background restart
 ```
 
 Then open:
@@ -121,10 +131,10 @@ Then open:
 
 The installer already tries to wire supported hosts automatically. If you want to inspect or customize that setup, continue with:
 
-- [docs/hosts/all-agent-clis.md](hosts/all-agent-clis.md)
-- [docs/hosts/claude-code-install.md](hosts/claude-code-install.md)
-- [docs/hosts/copilot-install.md](hosts/copilot-install.md)
-- [docs/hosts/codex-install.md](hosts/codex-install.md)
+- [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
+- [docs/hosts/claude-code-install.md](docs/hosts/claude-code-install.md)
+- [docs/hosts/copilot-install.md](docs/hosts/copilot-install.md)
+- [docs/hosts/codex-install.md](docs/hosts/codex-install.md)
 
 ## Source Checkout Instead?
 

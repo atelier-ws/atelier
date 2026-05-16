@@ -32,15 +32,14 @@ The MCP config registers Atelier as a stdio server:
 ```json
 &#123;
   "servers": &#123;
-    "atelier": &#123;
+    "atelier": {
       "type": "stdio",
-      "command": "<atelier_repo>/scripts/atelier_mcp_stdio.sh",
-      "args": [],
-      "env": &#123;
-        "ATELIER_WORKSPACE_ROOT": "<workspace>",
-        "ATELIER_SERVICE_URL": "http://127.0.0.1:8787"
-      &#125;
-    &#125;
+      "command": "atelier-mcp",
+      "args": ["--host", "copilot"],
+      "env": {
+        "ATELIER_WORKSPACE_ROOT": "<workspace>"
+      }
+    }
   &#125;
 &#125;
 ```

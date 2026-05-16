@@ -12,7 +12,7 @@ _For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
 
 - **Starting a coding task?** → Use `/atelier:context` or pick `atelier:code` agent
 - **Same error failed 2+ times?** → Use `/atelier:rescue`
-- **Done with the task?** → Use `/atelier:trace`
+- **Done with the task?** → Use `/atelier:record`
 - **Just reading code?** → Use `atelier:explore` agent (read-only)
 - **Reviewing someone's PR?** → Use `atelier:review` agent (no editing)
 
@@ -27,7 +27,7 @@ Core Loop
 ─────────────────────────────────────────────────
 /atelier:context             Gather task context and procedures
 /atelier:implement           Execute task (optional: /atelier:rescue on failure)
-/atelier:trace               Record outcome (files, commands, errors, results)
+/atelier:record              Record outcome (files, commands, errors, results)
 ```
 
 Intelligence
@@ -50,7 +50,7 @@ Operations
 
 - `/atelier:context` — **Step 1: Gather Context**. Retrieve procedures, facts, and rules before starting.
 - **Step 2: Implement** — Execute the task. Use `/atelier:rescue` if stuck on the same error twice.
-- `/atelier:trace` — **Step 3: Record Trace**. Save what happened for the reasoning store once done.
+- `/atelier:record` — **Step 3: Record**. Save what happened for the reasoning store once done.
 
 ### Intelligence Skills (as needed)
 
@@ -73,7 +73,7 @@ Operations
 
 ```
 atelier:code       Main coding agent
-├─ Loop: context → plan → implement → rescue → verify → trace
+├─ Loop: context → plan → implement → rescue → verify → record
 ├─ Tools: All (editing + MCP + shell)
 └─ Hard rules: No secrets, no plan contradictions
 
@@ -98,10 +98,10 @@ atelier:repair     Repair specialist (on repeated failures)
 ```
 CORE WORKFLOW
 ─────────────────────────────────────────────────
-task             Fetch ReasonBlocks, memory, ledger, and environment context
+context           Fetch ReasonBlocks, memory, ledger, and environment context
 route              Dispatch route decide/verify operations
 rescue             Get recovery procedure
-trace       Save observable outcome for learning
+record      Save observable outcome for learning
 verify             Verify high-risk domain before success
 
 CONTEXT + MEMORY                                           [Atelier augmentation]
@@ -163,7 +163,7 @@ ID  Title                              Domain
 ```
 atelier context --task "..." --domain beseam.shopify.publish --files src/...
 atelier rescue --task "..." --error "..." --files ... --recent-actions "tried X" "tried Y"
-atelier trace record --agent atelier:code --domain ... --status success --files-touched [...]
+atelier runs record --agent atelier:code --domain ... --status success --files-touched [...]
 atelier verify rubric_shopify_publish --checks '{"check_1": true, ...}'
 atelier block list --domain beseam.shopify.publish
 atelier eval list
@@ -253,7 +253,7 @@ DO NOT:
 ❌ Ignore high-severity Atelier warnings
 ❌ Invent plan steps that contradict ReasonBlocks
 ❌ Store secrets, API keys, tokens in traces
-❌ Call record_trace without observable facts
+❌ Call record without observable facts
 ❌ Edit code after review agent reports "block"
 ❌ Approve a rubric_gate "block" verdict
 ❌ Re-propose same hypothesis twice in repair
@@ -270,7 +270,7 @@ Q: Same error just failed twice
 A: Use /atelier:rescue
 
 Q: I'm done with the task
-A: Use /atelier:trace
+A: Use /atelier:record
 
 Q: I need to review someone's patch
 A: Use atelier:review agent

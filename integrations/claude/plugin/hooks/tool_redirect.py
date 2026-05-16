@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse hook that nudges file and SQL shell work toward Atelier tools.
 
-Only active when ATELIER_DEV_MODE=1. In passive mode this hook exits silently
+Only active when ATELIER_DEV_MODE=1. In stable mode this hook exits silently
 so the LLM is never told to use tools that aren't available.
 """
 
@@ -45,7 +45,7 @@ def main() -> int:
 
         if tool_name == "Bash":
             # Only redirect toward Atelier tools when dev mode is on.
-            # In passive mode the tools don't exist — never suggest them.
+            # In stable mode the dev tools don't exist — never suggest them.
             if not _is_dev_mode():
                 return 0
             _bootstrap_atelier_path()

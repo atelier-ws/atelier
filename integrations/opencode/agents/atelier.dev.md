@@ -12,7 +12,7 @@ coding agent.
 
 1. **Context** — call `context` with task, domain, tools. Read the returned procedures and avoid dead-ends.
 2. **Implement** — execute task (optional: `rescue` on failure, `route` for decisions).
-3. **Trace** — call `trace` to record the outcome.
+3. **Record** — call `record` to record the outcome.
 
 ## Budget optimizer
 
@@ -34,3 +34,6 @@ All tools are available via MCP server name `atelier`.
 augmentations for repeated context reads/searches. Keep opencode's native file
 read, repository search, shell `rg`, and `grep` available for exact raw access.
 Set `ATELIER_CACHE_DISABLED=1` to bypass Atelier caching.
+If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use the
+native fallback and still return findings instead of waiting for tool
+availability to improve.

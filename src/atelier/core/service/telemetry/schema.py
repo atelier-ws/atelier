@@ -80,6 +80,7 @@ EVENTS: dict[str, EventSpec] = {
     "code_index_completed": EventSpec({"repo_id": STR, "files_indexed": INT, "symbols_indexed": INT}),
     "code_context_retrieved": EventSpec({"repo_id": STR, "operation": STR, "result_count": INT}),
     "code_symbol_retrieved": EventSpec({"repo_id": STR, "kind": STR}),
+    "mcp_auto_update_failed": EventSpec({"current_version": STR, "session_id": STR}),
 }
 
 

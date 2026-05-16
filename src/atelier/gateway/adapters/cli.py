@@ -1036,8 +1036,14 @@ class _DummyGroup:
         return lambda f: _DummyGroup()  # type: ignore
 
 
+MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "rescue", "verify", "read", "edit", "search"})
+MCP_TOOL_ONLY_GROUPS = frozenset({"memory", "route"})
+
+
 def _dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to register a command ONLY if ATELIER_DEV_MODE is enabled."""
+    if name in MCP_TOOL_ONLY_COMMANDS:
+        return lambda f: f
     if is_dev_mode():
         return cli.command(name, **kwargs)
     return lambda f: f
@@ -1045,6 +1051,8 @@ def _dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[.
 
 def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Any]:
     """Decorator to register a group ONLY if ATELIER_DEV_MODE is enabled."""
+    if name in MCP_TOOL_ONLY_GROUPS:
+        return lambda f: _DummyGroup()
     if is_dev_mode():
         return cli.group(name, **kwargs)
     return lambda f: _DummyGroup()
@@ -1429,15 +1437,15 @@ def telemetry_lexical_status() -> None:
     click.echo(f"lexical frustration detection: {'on' if cfg.lexical_frustration_enabled else 'off'}")
 
 
-# ----- trace --------------------------------------------------------------- #
+# ----- runs ----------------------------------------------------------------- #
 
 
-@cli.group("trace")
-def trace_group() -> None:
-    """Trace record, list, and inspect commands."""
+@cli.group("runs")
+def runs_group() -> None:
+    """Run record, list, and inspect commands."""
 
 
-@trace_group.command("record")
+@runs_group.command("record")
 @click.option(
     "--input",
     "input_path",
@@ -1459,7 +1467,7 @@ def trace_record(ctx: click.Context, input_path: Path | str) -> None:
     click.echo(trace.id)
 
 
-@trace_group.command("list")
+@runs_group.command("list")
 @click.option("--domain", default=None, help="Filter by domain.")
 @click.option("--status", default=None, type=click.Choice(["success", "failed", "partial"]))
 @click.option("--agent", default=None, help="Filter by agent name.")
@@ -1487,7 +1495,7 @@ def trace_list(
         click.echo(f"{t.id}\t{t.agent}\t{t.status}\t{t.domain}\t{t.task[:60]}")
 
 
-@trace_group.command("show")
+@runs_group.command("show")
 @click.argument("trace_id")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
@@ -2598,6 +2606,135 @@ def tool_mode_set(ctx: click.Context, mode: str) -> None:
     s["mode"] = mode
     _save_smart_state(ctx.obj["root"], s)
     click.echo(f"tool_mode={mode}")
+
+
+def _mcp_cli_args(raw: str) -> dict[str, Any]:
+    text = raw
+    if raw.startswith("@"):
+        text = Path(raw[1:]).read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text or "{}")
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"invalid JSON args: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise click.ClickException("--args must decode to a JSON object")
+    return payload
+
+
+def _prepare_mcp_cli(
+    ctx: click.Context, *, dev: bool, workspace: Path | None = None
+) -> Callable[[], None]:
+    old_root = os.environ.get("ATELIER_ROOT")
+    old_dev = os.environ.get("ATELIER_DEV_MODE")
+    old_workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
+    os.environ["ATELIER_ROOT"] = str(ctx.obj["root"])
+    if dev:
+        os.environ["ATELIER_DEV_MODE"] = "1"
+    if workspace is not None:
+        os.environ["CLAUDE_WORKSPACE_ROOT"] = str(workspace)
+
+    def restore() -> None:
+        if old_root is None:
+            os.environ.pop("ATELIER_ROOT", None)
+        else:
+            os.environ["ATELIER_ROOT"] = old_root
+        if old_dev is None:
+            os.environ.pop("ATELIER_DEV_MODE", None)
+        else:
+            os.environ["ATELIER_DEV_MODE"] = old_dev
+        if old_workspace is None:
+            os.environ.pop("CLAUDE_WORKSPACE_ROOT", None)
+        else:
+            os.environ["CLAUDE_WORKSPACE_ROOT"] = old_workspace
+
+    return restore
+
+
+@cli.group("tools")
+def tools_group() -> None:
+    """Inspect and call Atelier MCP tools."""
+
+
+@tools_group.command("list")
+@click.option("--dev", is_flag=True, help="List the full development MCP surface.")
+@click.option("--json", "as_json", is_flag=True, help="Emit tool metadata as JSON.")
+@click.pass_context
+def tools_list_cmd(ctx: click.Context, dev: bool, as_json: bool) -> None:
+    """List tools visible through MCP tools/list."""
+    restore = _prepare_mcp_cli(ctx, dev=dev)
+    try:
+        from atelier.gateway.adapters.mcp_server import (
+            TOOLS,
+            _tool_description,
+            _tool_visible_to_llm,
+        )
+
+        tools = [
+            {
+                "name": name,
+                "description": _tool_description(spec),
+                "inputSchema": spec.get("inputSchema", {}),
+            }
+            for name, spec in TOOLS.items()
+            if _tool_visible_to_llm(name, spec)
+        ]
+        if as_json:
+            _emit({"tools": tools}, as_json=True)
+            return
+        for tool in tools:
+            click.echo(tool["name"])
+    finally:
+        restore()
+
+
+@tools_group.command("call")
+@click.argument("name")
+@click.option("--args", "args_json", default="{}", show_default=True, help="JSON object or @path.")
+@click.option("--dev", is_flag=True, help="Enable development tools for this call.")
+@click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Workspace root for path-scoped MCP tools.",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the decoded MCP payload as JSON.")
+@click.pass_context
+def tools_call_cmd(
+    ctx: click.Context, name: str, args_json: str, dev: bool, workspace: Path | None, as_json: bool
+) -> None:
+    """Call one MCP tool by name."""
+    restore = _prepare_mcp_cli(ctx, dev=dev, workspace=workspace)
+    try:
+        args = _mcp_cli_args(args_json)
+        from atelier.gateway.adapters.mcp_server import _handle
+
+        response = _handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": args},
+            }
+        )
+        if response is None:
+            raise click.ClickException("tool call returned no response")
+        if "error" in response:
+            raise click.ClickException(str(response["error"].get("message") or response["error"]))
+        content = response.get("result", {}).get("content", [])
+        text = str(content[0].get("text", "")) if content else ""
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = text
+        if as_json:
+            _emit(payload, as_json=True)
+            return
+        if isinstance(payload, (dict, list)):
+            click.echo(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+            return
+        click.echo(payload)
+    finally:
+        restore()
 
 
 @_dev_group("route")
@@ -3736,7 +3873,116 @@ def savings_cmd(ctx: click.Context, as_json: bool) -> None:
                 click.echo(f"{k}: {v}")
 
 
-@cli.command("optimize")
+def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:
+    from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
+
+    store = _load_store(ctx.obj["root"])
+    return build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
+
+
+def _run_external_optimize(ctx: click.Context, days: int) -> dict[str, Any] | None:
+    from atelier.gateway.integrations.external_analytics import (
+        persist_external_reports,
+        run_external_reports,
+    )
+
+    period = "week" if days <= 7 else "30days"
+    try:
+        external_batch = run_external_reports(
+            tool="codeburn:optimize", period=period, cwd=Path.cwd(), include_optimize=True
+        )
+        store = _load_store(ctx.obj["root"])
+        persist_external_reports(store, external_batch, source="cli_optimize")
+        return external_batch["reports"][0] if external_batch["reports"] else None
+    except Exception as exc:
+        logger.debug("External optimization report failed: %s", exc)
+        return None
+
+
+def _advisor_result(ctx: click.Context, host: str | None, days: int) -> Any:
+    from atelier.core.capabilities.optimization import load_current_policy, optimize_from_traces
+
+    store = _load_store(ctx.obj["root"])
+    current_policy = load_current_policy(ctx.obj["root"])
+    return optimize_from_traces(store.list_traces(limit=5000), current_policy=current_policy, days=days, host=host)
+
+
+def _recommended_candidate(result: Any) -> Any:
+    if not result.has_recommendation:
+        return None
+    target_cost = result.baseline_weekly_cost_usd - result.weekly_savings_usd
+    candidates = [candidate for candidate in result.candidates if candidate.id != "current"]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda candidate: abs(candidate.weekly_cost_usd - target_cost))
+
+
+def _render_optimization_summary(result: Any) -> None:
+    current = next(candidate for candidate in result.candidates if candidate.id == "current")
+    recommended = _recommended_candidate(result)
+    click.echo("Optimization Autopilot")
+    click.echo("─────────────────────────────────────────────────")
+    click.echo(
+        f"Analysed your last 7 days: {result.sessions_analysed} sessions, "
+        f"{result.replayable_tasks} replayable tasks"
+    )
+    click.echo("")
+    click.echo(f"Current setting: {result.current_policy.name}")
+    click.echo(f"  Cost / week:      ${current.weekly_cost_usd:.2f}")
+    click.echo(f"  Estimated quality: {current.estimated_quality:.1%}")
+    click.echo(f"  Latency mult:      {current.latency_mult:.2f}x")
+    click.echo(f"  Escalation rate:   {current.escalation_rate:.0%}")
+    click.echo("")
+    if recommended is None:
+        click.echo(result.message)
+    else:
+        savings_pct = (
+            result.weekly_savings_usd / result.baseline_weekly_cost_usd
+            if result.baseline_weekly_cost_usd > 0
+            else 0.0
+        )
+        click.echo("Recommended: Custom (auto-tuned from your sessions)")
+        click.echo(f"  Cost / week:      ${recommended.weekly_cost_usd:.2f}  (-{savings_pct:.0%})")
+        click.echo(f"  Estimated quality: {recommended.estimated_quality:.1%}  ({result.quality_delta:+.1%})")
+        click.echo(f"  Latency mult:      {recommended.latency_mult:.2f}x")
+        click.echo(f"  Escalation rate:   {recommended.escalation_rate:.0%}")
+    click.echo("")
+    click.echo(f"Confidence: {result.confidence.title()}")
+    click.echo(f"  {result.confidence_reason}")
+    click.echo(
+        f"Golden corpus: {result.golden.passed}/{result.golden.total} well-formed tasks "
+        f"({result.golden.score:.0%})"
+    )
+
+
+def _render_optimization_details(result: Any) -> None:
+    click.echo("Pareto frontier — cost vs estimated correctness on your tasks")
+    click.echo("─────────────────────────────────────────────────")
+    sorted_candidates = sorted(result.candidates, key=lambda item: item.weekly_cost_usd, reverse=True)
+    recommended = _recommended_candidate(result)
+    for candidate in sorted_candidates:
+        marker = "★" if recommended is not None and candidate.id == recommended.id else " "
+        label = candidate.policy.name
+        click.echo(
+            f"{marker} {label:<18} ${candidate.weekly_cost_usd:>7.2f}   "
+            f"{candidate.estimated_quality:>6.1%}   latency {candidate.latency_mult:.2f}x   "
+            f"escalation {candidate.escalation_rate:.0%}"
+        )
+
+    if recommended is None:
+        return
+    click.echo("")
+    click.echo("Compaction breakdown for [recommended]:")
+    for name, saved in recommended.compaction_breakdown.items():
+        click.echo(f"  {name}: ${saved:.2f}/wk saved")
+    click.echo("")
+    click.echo("Routing breakdown for [recommended]:")
+    for tier, share in recommended.routing_breakdown.items():
+        click.echo(f"  {tier}-tier for {share:.0%} of turns")
+    click.echo(f"  Escalation rate: {recommended.escalation_rate:.0%}")
+
+
+@cli.group("optimize", invoke_without_command=True)
 @click.option(
     "--host",
     type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)),
@@ -3746,39 +3992,29 @@ def savings_cmd(ctx: click.Context, as_json: bool) -> None:
 @click.option("--limit", default=6, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def optimize_cmd(ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool) -> None:
-    """Show session cost optimization recommendations from Atelier traces."""
-    from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
-    from atelier.gateway.integrations.external_analytics import (
-        persist_external_reports,
-        run_external_reports,
-    )
+def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool) -> None:
+    """Show and apply Optimization Advisor recommendations."""
+    if ctx.invoked_subcommand is not None:
+        return
 
-    store = _load_store(ctx.obj["root"])
-    report = build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
+    from atelier.core.capabilities.optimization import append_history
 
-    # Also run and persist external codeburn optimize if possible
-    period = "week" if days <= 7 else "30days"
-    try:
-        external_batch = run_external_reports(
-            tool="codeburn:optimize", period=period, cwd=Path.cwd(), include_optimize=True
-        )
-        persist_external_reports(store, external_batch, source="cli_optimize")
-        report["external"] = external_batch["reports"][0] if external_batch["reports"] else None
-    except Exception as exc:
-        logger.debug("External optimization report failed: %s", exc)
-        report["external"] = None
-
+    report = _legacy_optimize_report(ctx, host, days, limit)
+    result = _advisor_result(ctx, host, days)
+    append_history(ctx.obj["root"], result)
+    report["advisor"] = result.to_dict()
+    report["external"] = _run_external_optimize(ctx, days)
     if as_json:
         _emit(report, as_json=True)
         return
-    click.echo(f"Atelier Optimize  {report['window_days']} days")
-    click.echo(f"Hosts: {', '.join(report['hosts_supported'])}")
+    _render_optimization_summary(result)
+    click.echo("")
     click.echo(
-        f"Estimated savings: {report['estimated_tokens_saved']} tokens, " f"${report['estimated_usd_saved']:.4f}"
+        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, "
+        f"${report['estimated_usd_saved']:.4f}"
     )
     if not report["recommendations"]:
-        click.echo("No optimization recommendations found for this window.")
+        click.echo("No legacy trace recommendations found for this window.")
         return
     for index, recommendation in enumerate(report["recommendations"], start=1):
         click.echo("")
@@ -3788,6 +4024,231 @@ def optimize_cmd(ctx: click.Context, host: str | None, days: int, limit: int, as
             f"   Savings: {recommendation['estimated_tokens_saved']} tokens, ${recommendation['estimated_usd_saved']:.4f}"
         )
         click.echo(f"   Action: {recommendation['action']}")
+
+
+@optimize_group.command("details")
+@click.option("--host", type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)), default=None)
+@click.option("--days", default=7, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_details(ctx: click.Context, host: str | None, days: int, as_json: bool) -> None:
+    """Show Pareto frontier, compaction, and routing breakdowns."""
+    result = _advisor_result(ctx, host, days)
+    if as_json:
+        _emit(result.to_dict(), as_json=True)
+        return
+    _render_optimization_details(result)
+
+
+@optimize_group.command("apply")
+@click.option("--preset", type=click.Choice(["conservative", "balanced", "economy"]), default=None)
+@click.option("--recommended", is_flag=True)
+@click.option("--custom", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_apply(
+    ctx: click.Context,
+    preset: str | None,
+    recommended: bool,
+    custom: Path | None,
+    as_json: bool,
+) -> None:
+    """Apply a preset, the latest recommendation, or a custom policy YAML."""
+    from atelier.core.capabilities.optimization.policy import (
+        policy_from_config,
+        preset_policy,
+        save_policy,
+    )
+
+    selected = sum(1 for value in (preset, custom) if value is not None) + (1 if recommended else 0)
+    if selected != 1:
+        raise click.ClickException("choose exactly one of --preset, --recommended, or --custom")
+
+    if preset is not None:
+        policy = preset_policy(preset)
+    elif custom is not None:
+        import yaml as _yaml
+
+        try:
+            raw = _yaml.safe_load(custom.read_text(encoding="utf-8"))
+        except _yaml.YAMLError as exc:
+            raise click.ClickException(f"invalid custom policy YAML: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise click.ClickException("custom policy YAML must be a mapping")
+        policy = policy_from_config(raw)
+    else:
+        result = _advisor_result(ctx, None, 7)
+        if not result.has_recommendation:
+            raise click.ClickException(result.message)
+        policy = result.recommended_policy
+
+    path = save_policy(ctx.obj["root"], policy)
+    payload = {"applied": policy.to_dict(), "path": str(path)}
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        click.echo(f"Applied optimization policy: {policy.name} ({policy.preset})")
+        click.echo(f"Saved: {path}")
+
+
+@optimize_group.group("shadow", invoke_without_command=True)
+@click.option("--policy", "policy_name", default="recommended", show_default=True)
+@click.option("--days", default=7, show_default=True, type=int)
+@click.option("--max-daily-spend-usd", type=float, default=None)
+@click.option("--i-understand-this-costs-money", is_flag=True)
+@click.option("--yes", is_flag=True, help="Accept the pre-run shadow cost estimate.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_shadow(
+    ctx: click.Context,
+    policy_name: str,
+    days: int,
+    max_daily_spend_usd: float | None,
+    i_understand_this_costs_money: bool,
+    yes: bool,
+    as_json: bool,
+) -> None:
+    """Shadow-run a policy in parallel without changing live behavior."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from atelier.core.capabilities.optimization.policy import (
+        record_shadow_consent,
+        shadow_consent_at,
+    )
+    from atelier.core.capabilities.optimization.shadow import build_shadow_state, save_shadow_state
+
+    if shadow_consent_at(ctx.obj["root"]) is None:
+        if not i_understand_this_costs_money:
+            raise click.ClickException(
+                "First shadow run requires --i-understand-this-costs-money because it may spend real money."
+            )
+        record_shadow_consent(ctx.obj["root"])
+
+    result = _advisor_result(ctx, None, max(1, days))
+    try:
+        state = build_shadow_state(
+            policy=policy_name,
+            days=days,
+            baseline_weekly_cost_usd=result.baseline_weekly_cost_usd,
+            max_daily_spend_usd=max_daily_spend_usd,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if as_json and not yes:
+        _emit(
+            {
+                "status": "confirmation_required",
+                "message": "Shadow run not started. Re-run with --yes to accept the pre-run cost estimate.",
+                "estimate": state.to_dict(),
+            },
+            as_json=True,
+        )
+        return
+    if not as_json and not yes:
+        click.echo(
+            f"Shadow will spend approximately ${state.estimated_weekly_spend_usd:.2f} this week "
+            f"against your ${state.baseline_weekly_cost_usd:.2f} baseline."
+        )
+        if not click.confirm("Continue?", default=False):
+            click.echo("Shadow run cancelled.")
+            return
+
+    save_shadow_state(ctx.obj["root"], state)
+    if as_json:
+        _emit(state.to_dict(), as_json=True)
+    else:
+        click.echo(f"Shadow run started for policy {policy_name}.")
+
+
+@optimize_shadow.command("status")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_shadow_status(ctx: click.Context, as_json: bool) -> None:
+    """Show live shadow spend versus cap."""
+    from atelier.core.capabilities.optimization.shadow import load_shadow_state
+
+    state = load_shadow_state(ctx.obj["root"]) or {"status": "not_running"}
+    if as_json:
+        _emit(state, as_json=True)
+        return
+    click.echo(f"Shadow status: {state.get('status', 'not_running')}")
+    if state.get("status") != "not_running":
+        click.echo(
+            f"Shadow spend (this run only): ${float(state.get('spend_usd', 0.0)):.2f} / "
+            f"${float(state.get('max_daily_spend_usd', 0.0)):.2f} daily cap"
+        )
+
+
+@optimize_shadow.command("stop")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_shadow_stop(ctx: click.Context, as_json: bool) -> None:
+    """Halt the active shadow run immediately."""
+    from atelier.core.capabilities.optimization.shadow import stop_shadow
+
+    state = stop_shadow(ctx.obj["root"])
+    if as_json:
+        _emit(state, as_json=True)
+    else:
+        click.echo(f"Shadow status: {state.get('status')}")
+
+
+@optimize_shadow.command("forget-consent")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_shadow_forget_consent(ctx: click.Context, as_json: bool) -> None:
+    """Revoke persistent shadow-run cost consent."""
+    from atelier.core.capabilities.optimization.policy import forget_shadow_consent
+
+    revoked = forget_shadow_consent(ctx.obj["root"])
+    payload = {"revoked": revoked}
+    if as_json:
+        _emit(payload, as_json=True)
+    else:
+        click.echo("Shadow consent revoked." if revoked else "No shadow consent was recorded.")
+
+
+@optimize_group.command("compare")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_compare(ctx: click.Context, as_json: bool) -> None:
+    """Compare current policy with the active or latest shadow run."""
+    from atelier.core.capabilities.optimization.shadow import load_shadow_state
+
+    result = _advisor_result(ctx, None, 7)
+    state = load_shadow_state(ctx.obj["root"]) or {"status": "not_running", "spend_usd": 0.0}
+    payload = {"advisor": result.to_dict(), "shadow": state}
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"Current weekly cost: ${result.baseline_weekly_cost_usd:.2f}")
+    if result.has_recommendation:
+        click.echo(f"Recommended weekly savings: ${result.weekly_savings_usd:.2f}")
+    click.echo(f"Shadow spend (this run only): ${float(state.get('spend_usd', 0.0)):.2f}")
+
+
+@optimize_group.command("history")
+@click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_history(ctx: click.Context, limit: int, as_json: bool) -> None:
+    """Show past optimization recommendations and outcomes."""
+    from atelier.core.capabilities.optimization import load_history
+
+    history = load_history(ctx.obj["root"], limit=limit)
+    if as_json:
+        _emit(history, as_json=True)
+        return
+    if not history:
+        click.echo("No optimization history recorded yet.")
+        return
+    for item in reversed(history):
+        recorded_at = item.get("recorded_at", "-")
+        confidence = item.get("confidence", "-")
+        savings = float(item.get("weekly_savings_usd", 0.0) or 0.0)
+        click.echo(f"{recorded_at}  confidence={confidence}  weekly_savings=${savings:.2f}")
 
 
 @cli.command("external-status")
@@ -4244,6 +4705,362 @@ def benchmark_savings(
     click.echo(f"saved report: {ctx.obj['root'] / 'benchmarks' / 'savings' / 'latest.json'}")
 
 
+@benchmark_group.command("savings-compact")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory of claude-*.jsonl session exports. Defaults to exports/ in the repo root.",
+)
+@click.option(
+    "--max-sessions",
+    default=None,
+    type=int,
+    show_default=True,
+    help="Maximum number of qualifying sessions to process.",
+)
+@click.option(
+    "--min-context",
+    "min_context_tokens",
+    default=80_000,
+    show_default=True,
+    type=int,
+    help="Skip sessions whose peak context is below this token threshold.",
+)
+@click.option("--output", "output_path", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_savings_compact(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+    min_context_tokens: int,
+    output_path: Path | None,
+    as_json: bool,
+) -> None:
+    """Measure additional context freed by Atelier compact vs native /compact.
+
+    Reads real Claude Code session exports, detects native compaction events
+    (context drops ≥ 40 %), and compares native output (measured) vs Atelier
+    estimate. Reports the *delta* only — never pretends native doesn't compact.
+
+    Output is written to <root>/benchmarks/savings/compact_latest.json.
+    """
+    from benchmarks.swe.compact_bench import run_compact_bench
+
+    if corpus_dir is None:
+        # Try to find exports/ relative to the project root
+        corpus_dir = ctx.obj["root"].parent / "exports"
+        if not corpus_dir.is_dir():
+            raise click.ClickException(
+                "Could not locate exports/ directory. Pass --corpus PATH explicitly."
+            )
+
+    report = run_compact_bench(
+        corpus_dir,
+        max_sessions=max_sessions,
+        min_context_tokens=min_context_tokens,
+    )
+
+    out_path = output_path or ctx.obj["root"] / "benchmarks" / "savings" / "compact_latest.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+
+    if as_json:
+        _emit(report, as_json=True)
+        return
+
+    n = report["sessions_benchmarked"]
+    delta = report["avg_delta_tokens"]
+    cost = report["total_cost_saved_usd"]
+    pct = report.get("atelier_vs_native_delta_pct", 0.0)
+    click.echo(
+        f"savings-compact: {n} sessions | "
+        f"avg delta {delta:+,} tokens ({pct:+.1f}% vs native) | "
+        f"${cost:.4f} additional savings"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("savings-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory of claude-*.jsonl session exports. Defaults to exports/ in the repo root.",
+)
+@click.option(
+    "--max-sessions",
+    default=None,
+    type=int,
+    show_default=True,
+    help="Maximum number of sessions to process.",
+)
+@click.option("--output", "output_path", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def benchmark_savings_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+    output_path: Path | None,
+    as_json: bool,
+) -> None:
+    """Measure cost savings from Atelier model routing vs actual session model.
+
+    Reads real Claude Code session exports, runs ModelRouter per turn, and
+    computes cost delta between actual model and recommended cheaper tier.
+    Only positive deltas count — sessions already on an optimal model show $0.
+
+    Output is written to <root>/benchmarks/savings/routing_latest.json.
+    """
+    from benchmarks.swe.routing_bench import run_routing_bench
+
+    if corpus_dir is None:
+        corpus_dir = ctx.obj["root"].parent / "exports"
+        if not corpus_dir.is_dir():
+            raise click.ClickException(
+                "Could not locate exports/ directory. Pass --corpus PATH explicitly."
+            )
+
+    report = run_routing_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_path = output_path or ctx.obj["root"] / "benchmarks" / "savings" / "routing_latest.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+
+    if as_json:
+        _emit(report, as_json=True)
+        return
+
+    n = report["sessions_benchmarked"]
+    turns = report["total_turns_analyzed"]
+    down = report["total_downtiered_turns"]
+    pct = report["downtiered_pct"]
+    cost = report["total_cost_saved_usd"]
+    by_tier = report.get("by_tier", {})
+    click.echo(
+        f"savings-routing: {n} sessions | "
+        f"{turns:,} turns | "
+        f"{down:,} downtiered ({pct:.1f}%) | "
+        f"${cost:.4f} saved"
+    )
+    click.echo(f"  by tier: cheap={by_tier.get('cheap', 0):,}  medium={by_tier.get('medium', 0):,}  expensive={by_tier.get('expensive', 0):,}")
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("quality-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=None, type=int, help="Cap sessions processed.")
+@click.pass_context
+def benchmark_quality_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+) -> None:
+    """Routing QUALITY benchmark: how safe are downtiered recommendations?
+
+    Classifies each downtiered turn as safe / moderate / risky using:
+      - tool risk (Edit=1.0, Bash=0.4, Read=0.0)
+      - output complexity (tokens as reasoning proxy)
+      - immediate error (did the tool call fail right after?)
+    """
+    from benchmarks.swe.routing_quality_bench import run_routing_quality_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    report = run_routing_quality_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "routing_quality_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    total_down = report["total_downtiered_turns"]
+    safe_pct = report["safe_pct"]
+    mod_pct = report["moderate_pct"]
+    risky_pct = report["risky_pct"]
+    env_pct = report["env_error_pct_on_downtiered"]
+    model_pct = report["model_error_pct_on_downtiered"]
+    retry_pct = report["retry_pct_on_downtiered"]
+    quality = report["avg_quality_score"]
+    click.echo(
+        f"quality-routing: {n} sessions | {total_down:,} downtiered turns | "
+        f"quality score {quality:.3f}"
+    )
+    click.echo(
+        f"  risk split: safe={safe_pct:.1f}%  moderate={mod_pct:.1f}%  risky={risky_pct:.1f}%"
+    )
+    click.echo(
+        f"  errors: env={env_pct:.1f}% (excluded)  model={model_pct:.1f}%  retries={retry_pct:.1f}%"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("quality-compact")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=None, type=int, help="Cap sessions processed.")
+@click.pass_context
+def benchmark_quality_compact(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int | None,
+) -> None:
+    """Compact QUALITY benchmark: does context survive compaction intact?
+
+    For each real compaction event measures:
+      - error rate drift (pre vs post compact)
+      - extra re-reads post compact (proxy for lost context)
+      - session continuation rate
+      - composite retention score (0–1)
+    """
+    from benchmarks.swe.compact_quality_bench import run_compact_quality_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    report = run_compact_quality_bench(corpus_dir, max_sessions=max_sessions)
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "compact_quality_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    n_events = report["total_compaction_events"]
+    retention = report["avg_retention_score"]
+    drift = report["avg_error_drift"]
+    rr = report["avg_extra_read_rate"]
+    cont = report["sessions_continued_pct"]
+    click.echo(
+        f"quality-compact: {n} sessions | {n_events} compaction events | "
+        f"retention score {retention:.3f}"
+    )
+    click.echo(
+        f"  error drift: {drift:+.3f}  extra re-reads: {rr:.3f}  continuation: {cont:.1f}%"
+    )
+    click.echo(f"saved report: {out_path}")
+
+
+@benchmark_group.command("replay-routing")
+@click.option(
+    "--corpus",
+    "corpus_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory containing claude/*.jsonl session exports.",
+)
+@click.option("--max-sessions", default=10, show_default=True, type=int,
+              help="Max sessions to replay (cost control).")
+@click.option("--max-turns", default=5, show_default=True, type=int,
+              help="Max haiku calls per session (cost control). 0 = unlimited.")
+@click.option("--context-lines", default=30, show_default=True, type=int,
+              help="Recent context lines sent to haiku per call.")
+@click.option("--haiku-model", default="claude-haiku-4-5", show_default=True,
+              help="Haiku model alias for --model flag.")
+@click.option("--delay", default=0.5, show_default=True, type=float,
+              help="Seconds between CLI calls (rate limiting).")
+@click.option("--verbose", is_flag=True, default=False,
+              help="Print each turn result as it completes.")
+@click.pass_context
+def benchmark_replay_routing(
+    ctx: click.Context,
+    corpus_dir: Path | None,
+    max_sessions: int,
+    max_turns: int,
+    context_lines: int,
+    haiku_model: str,
+    delay: float,
+    verbose: bool,
+) -> None:
+    """Routing REPLAY benchmark: actually call haiku on downtiered turns.
+
+    True counterfactual — uses the claude CLI (no API key required).
+    Reconstructs session context as text, asks haiku what tool it would call
+    next, and compares its choice to what sonnet actually did.
+
+    Estimated cost: ~$0.01–0.03 per turn replayed (haiku via Claude Code auth).
+
+    Quality labels per turn:
+      match        — same tool, similar input (similarity ≥ 0.7)
+      partial      — same tool, somewhat different input (0.3–0.7)
+      diverge      — same tool, very different input (< 0.3)
+      tool_mismatch — haiku chose a different tool entirely
+      parse_error  — haiku responded but JSON could not be parsed
+    """
+    from benchmarks.swe.routing_replay_bench import run_routing_replay_bench
+
+    root: Path = ctx.obj["root"]
+    if corpus_dir is None:
+        corpus_dir = root.parent / "exports"
+    if not corpus_dir.exists():
+        raise click.ClickException(f"corpus not found: {corpus_dir}")
+
+    max_t = max_turns if max_turns > 0 else None
+    click.echo(
+        f"Replaying with {haiku_model} (via claude CLI) | "
+        f"up to {max_sessions} sessions × {max_t or 'all'} turns each | "
+        f"context={context_lines} lines"
+    )
+
+    report = run_routing_replay_bench(
+        corpus_dir,
+        max_sessions=max_sessions,
+        max_turns_per_session=max_t,
+        context_lines=context_lines,
+        haiku_model=haiku_model,
+        rate_limit_delay=delay,
+        verbose=verbose,
+    )
+
+    out_dir = root / "benchmarks" / "savings"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "routing_replay_latest.json"
+    out_path.write_text(json.dumps(report, indent=2))
+
+    n = report["sessions_benchmarked"]
+    total = report["total_turns_replayed"]
+    match = report["tool_match_rate"]
+    sim = report["avg_input_similarity"]
+    ratio = report["avg_output_token_ratio"]
+    cost = report["total_haiku_cost_usd"]
+    labels = report["quality_label_counts"]
+    parse_errs = sum(1 for r in report.get("sessions", []) for t in r.get("turns", []) if t.get("parse_error"))
+
+    click.echo(
+        f"replay-routing: {n} sessions | {total} turns replayed | "
+        f"tool match {match:.1%} | cost ${cost:.4f}"
+    )
+    click.echo(f"  avg input similarity (matched turns): {sim:.3f}")
+    click.echo(f"  avg output token ratio: {ratio:.3f} (haiku/sonnet)")
+    click.echo(f"  quality: {json.dumps(labels)}")
+    if parse_errs:
+        click.echo(f"  parse errors: {parse_errs}", err=True)
+    click.echo(f"saved report: {out_path}")
+
+
 @benchmark_group.command("compare")
 @click.option(
     "--input",
@@ -4491,6 +5308,70 @@ def benchmark_full(
         raise click.ClickException("full benchmark failed in host verification")
 
 
+@benchmark_group.command("publish")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="Coverage window label included in the report (informational only).",
+)
+@click.option(
+    "--output",
+    "output_dir",
+    default="reports",
+    show_default=True,
+    type=click.Path(path_type=Path),
+    help="Parent directory for published reports (reports/YYYY-Www/).",
+)
+@click.option(
+    "--corpus",
+    "corpus_arg",
+    default="",
+    help="Optional corpus label for the Methodology section.",
+)
+@click.option("--dry-run", "dry_run", is_flag=True, help="Print what would be written; do not write.")
+@click.pass_context
+def benchmark_publish(
+    ctx: click.Context,
+    since: str,
+    output_dir: Path,
+    corpus_arg: str,
+    dry_run: bool,
+) -> None:
+    """Render latest benchmark results into a publishable weekly report.
+
+    Reads cached JSON files from {root}/benchmarks/savings/ and writes
+    reports/YYYY-Www/benchmark.{md,json}. Computes Δ vs the prior week's
+    report if available.
+    """
+    from atelier.infra.benchmarks.publisher import publish
+
+    root: Path = ctx.obj["root"]
+
+    # Resolve output_dir relative to cwd (not ~/.atelier)
+    if not output_dir.is_absolute():
+        output_dir = Path.cwd() / output_dir
+
+    mode_label = " [dry-run]" if dry_run else ""
+    click.echo(f"Building benchmark report{mode_label}…")
+
+    report_dir = publish(
+        root=root,
+        output_dir=output_dir,
+        since=since,
+        corpus_arg=corpus_arg,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        click.echo("Dry-run complete — no files written.")
+    else:
+        click.echo(f"Report written → {report_dir}")
+        click.echo(f"  {report_dir / 'benchmark.md'}")
+        click.echo(f"  {report_dir / 'benchmark.json'}")
+        click.echo(f"  {output_dir / 'index.json'} (updated)")
+
+
 def _register_swe_benchmark_group() -> None:
     from benchmarks.swe.run_swe_bench import swe as swe_benchmark_group
 
@@ -4648,9 +5529,9 @@ def servicectl_group() -> None:
 
 
 @servicectl_group.command("tick")
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -4682,9 +5563,9 @@ def servicectl_tick(
 
 @servicectl_group.command("start")
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -4873,9 +5754,9 @@ def servicectl_logs(ctx: click.Context, follow: bool, lines: int) -> None:
 
 @servicectl_group.command("run", hidden=True)
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -5532,6 +6413,495 @@ def main() -> None:
         from atelier.core.service.telemetry import shutdown_otel
 
         shutdown_otel()
+
+
+# --------------------------------------------------------------------------- #
+# outcomes                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("outcomes")
+def outcomes_group() -> None:
+    """Inspect captured route and compact decision outcomes."""
+
+
+@outcomes_group.command("show")
+@click.argument("session_id")
+@click.pass_context
+def outcomes_show(ctx: click.Context, session_id: str) -> None:
+    """Print JSON outcome data for SESSION_ID."""
+    from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
+
+    root: Path = ctx.obj["root"]
+    path = root / "runs" / f"{session_id}_outcomes.json"
+    data = load_outcomes_from_state(path)
+    click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+
+
+@outcomes_group.command("summary")
+@click.option("--since", default="7d", show_default=True, help="Look-back window, e.g. 7d, 24h.")
+@click.pass_context
+def outcomes_summary(ctx: click.Context, since: str) -> None:
+    """Aggregate outcome_scores by (kind, tool) and print averages."""
+    from atelier.infra.runtime.outcome_capture import (
+        load_outcomes_from_state,
+        summarise_outcomes,
+    )
+
+    cutoff = datetime.now(UTC) - _parse_duration(since)
+    root: Path = ctx.obj["root"]
+    runs_dir = root / "runs"
+    if not runs_dir.exists():
+        click.echo(json.dumps([], indent=2))
+        return
+
+    combined: dict[str, list[dict[str, Any]]] = {
+        "route_outcomes": [],
+        "compact_outcomes": [],
+    }
+    for outcomes_file in runs_dir.glob("*_outcomes.json"):
+        try:
+            mtime = datetime.fromtimestamp(outcomes_file.stat().st_mtime, tz=UTC)
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+        data = load_outcomes_from_state(outcomes_file)
+        combined["route_outcomes"].extend(data.get("route_outcomes") or [])
+        combined["compact_outcomes"].extend(data.get("compact_outcomes") or [])
+
+    summary = summarise_outcomes(combined)
+    click.echo(json.dumps(summary, indent=2, ensure_ascii=False, default=str))
+
+
+
+
+# --------------------------------------------------------------------------- #
+# session                                                                      #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("session")
+def session_group() -> None:
+    """Per-session cost and savings reports."""
+
+
+@session_group.command("report")
+@click.argument("session_id", required=False, default=None)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.option("--no-color", is_flag=True, default=False, help="Disable ANSI colours.")
+@click.pass_context
+def session_report_cmd(
+    ctx: click.Context,
+    session_id: str | None,
+    as_json: bool,
+    no_color: bool,
+) -> None:
+    """Show cost and savings breakdown for SESSION_ID (default: most recent)."""
+    from atelier.infra.runtime.session_report import (
+        list_run_files,
+        load_report,
+        render_json,
+        render_text,
+    )
+
+    root: Path = ctx.obj["root"]
+
+    if session_id is None:
+        files = list_run_files(root)
+        if not files:
+            click.echo("No sessions found — run any AI command first.", err=True)
+            raise SystemExit(1)
+        # Derive session_id from newest run file name
+        session_id = files[0].stem
+
+    report = load_report(session_id, root)
+    if report is None:
+        click.echo(f"Session '{session_id}' not found in {root / 'runs'}.", err=True)
+        raise SystemExit(1)
+
+    if as_json:
+        click.echo(render_json(report))
+    else:
+        click.echo(render_text(report, no_color=no_color))
+
+
+@session_group.command("list")
+@click.option("--since", default=None, help="Look-back window, e.g. 7d, 24h.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def session_list_cmd(ctx: click.Context, since: str | None, as_json: bool) -> None:
+    """List recent sessions with costs and durations (newest first, max 20)."""
+    import dataclasses
+
+    from atelier.infra.runtime.session_report import (
+        build_report,
+        list_run_files,
+    )
+
+    root: Path = ctx.obj["root"]
+    cutoff = datetime.now(UTC) - _parse_duration(since) if since else None
+    files = list_run_files(root, since=cutoff)[:20]
+
+    if not files:
+        msg = "No sessions found"
+        if since:
+            msg += f" in the last {since}"
+        click.echo(msg + ".", err=True)
+        return
+
+    rows = []
+    for f in files:
+        try:
+            snapshot = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        try:
+            report = build_report(snapshot, root)
+        except Exception:
+            continue
+        rows.append(report)
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                [dataclasses.asdict(r) for r in rows],
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    # Terminal table
+    hdr = f"  {'Session':<10} {'Started':<22} {'Duration':<14} {'Turns':>6} {'Cost':>9} {'Saved':>9}"
+    click.echo(hdr)
+    click.echo("  " + "─" * (len(hdr) - 2))
+    for r in rows:
+        sid = r.session_id[:10]
+        started = r.started_at.strftime("%Y-%m-%d %H:%M")
+        from atelier.infra.runtime.session_report import (
+            _fmt_cost,
+            _fmt_duration,
+        )
+
+        dur = _fmt_duration(r.duration_seconds, r.is_running)
+        click.echo(
+            f"  {sid:<10} {started:<22} {dur:<14} {r.total_turns:>6}"
+            f" {_fmt_cost(r.total_cost_usd):>9} {_fmt_cost(r.total_atelier_savings_usd):>9}"
+        )
+
+
+
+# --------------------------------------------------------------------------- #
+# memory                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("memory")
+def memory_group() -> None:
+    """Inspect native AI memory files from Claude, Codex, and Gemini."""
+
+
+def _make_memory_registry(cwd: Path | None = None) -> MemoryRegistry:  # type: ignore[name-defined]  # noqa: F821
+    from atelier.core.capabilities.cross_vendor_memory import MemoryRegistry
+    from atelier.core.capabilities.cross_vendor_memory.claude_adapter import ClaudeAdapter
+    from atelier.core.capabilities.cross_vendor_memory.codex_adapter import CodexAdapter
+    from atelier.core.capabilities.cross_vendor_memory.gemini_adapter import GeminiAdapter
+
+    return MemoryRegistry(
+        adapters=[  # type: ignore[list-item]
+            ClaudeAdapter(),
+            CodexAdapter(),
+            GeminiAdapter(cwd=cwd or Path.cwd()),
+        ]
+    )
+
+
+@memory_group.command("list")
+@click.option("--vendor", default=None, help="Filter to a single vendor: claude, codex, gemini.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def memory_list_cmd(ctx: click.Context, vendor: str | None, as_json: bool) -> None:
+    """List all detected memory facts, grouped by vendor."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+
+    if vendor:
+        facts = registry.by_vendor(vendor)
+    else:
+        facts = registry.all_facts()
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                [dataclasses.asdict(f) for f in facts],
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    if not facts:
+        click.echo("No memory facts found.", err=True)
+        return
+
+    # Group by vendor
+    by_vendor: dict[str, list] = {}
+    for f in facts:
+        by_vendor.setdefault(f.vendor, []).append(f)
+
+    total = len(facts)
+    n_vendors = len(by_vendor)
+    click.echo(f"Memory facts ({total} total, {n_vendors} vendor{'s' if n_vendors != 1 else ''})")
+    click.echo("")
+
+    vendor_labels = {"claude": "Anthropic — Claude Code", "codex": "OpenAI — Codex", "gemini": "Google — Gemini CLI"}
+    for v, vfacts in sorted(by_vendor.items()):
+        label = vendor_labels.get(v, v.capitalize())
+        click.echo(f"{label} ({len(vfacts)} fact{'s' if len(vfacts) != 1 else ''})")
+
+        # Group by source_path within vendor
+        by_path: dict[Path, list] = {}
+        for f in vfacts:
+            by_path.setdefault(f.source_path, []).append(f)
+
+        for path, pfacts in sorted(by_path.items(), key=lambda x: str(x[0])):
+            click.echo(f"  {path}  ({pfacts[0].source_kind})")
+            preview = pfacts[:3]
+            for fact in preview:
+                short = fact.content[:72].replace("\n", " ")
+                click.echo(f"    [{fact.fact_id}] {short}")
+            if len(pfacts) > 3:
+                click.echo(f"    ... {len(pfacts) - 3} more")
+        click.echo("")
+
+
+@memory_group.command("show")
+@click.argument("fact_id")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_show_cmd(fact_id: str, as_json: bool) -> None:
+    """Show full content and provenance for FACT_ID."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+    fact = registry.show(fact_id)
+
+    if fact is None:
+        click.echo(f"Fact '{fact_id}' not found.", err=True)
+        raise SystemExit(1)
+
+    if as_json:
+        click.echo(json.dumps(dataclasses.asdict(fact), default=str, indent=2))
+        return
+
+    click.echo(f"ID:        {fact.fact_id}")
+    click.echo(f"Vendor:    {fact.vendor}")
+    click.echo(f"Source:    {fact.source_path}:{fact.line_number or '?'}")
+    click.echo(f"Kind:      {fact.source_kind}")
+    click.echo(f"Read at:   {fact.captured_at.isoformat()}")
+    if fact.raw_meta:
+        click.echo(f"Meta:      {json.dumps(fact.raw_meta, default=str)}")
+    click.echo("")
+    click.echo(fact.content)
+
+
+@memory_group.command("find")
+@click.argument("query")
+@click.option("--limit", default=20, show_default=True, help="Max results.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_find_cmd(query: str, limit: int, as_json: bool) -> None:
+    """Find facts matching QUERY using substring + fuzzy search."""
+    import dataclasses
+
+    registry = _make_memory_registry()
+    facts = registry.find(query, limit=limit)
+
+    if as_json:
+        click.echo(json.dumps([dataclasses.asdict(f) for f in facts], default=str, indent=2))
+        return
+
+    if not facts:
+        click.echo(f"No facts found matching '{query}'.")
+        return
+
+    click.echo(f"Found {len(facts)} match{'es' if len(facts) != 1 else ''}:")
+    for f in facts:
+        short = f.content[:72].replace("\n", " ")
+        click.echo(f"  [{f.fact_id}] {short}")
+
+
+@memory_group.command("paths")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+def memory_paths_cmd(as_json: bool) -> None:
+    """Show all file paths the memory adapters read from."""
+    registry = _make_memory_registry()
+    paths_by_vendor = registry.source_paths_by_vendor()
+
+    if as_json:
+        click.echo(json.dumps(paths_by_vendor, indent=2))
+        return
+
+    if not paths_by_vendor:
+        click.echo("No memory source files found on this machine.")
+        return
+
+    for vendor, paths in sorted(paths_by_vendor.items()):
+        click.echo(f"{vendor}:")
+        for p in paths:
+            click.echo(f"  {p}")
+
+
+# --------------------------------------------------------------------------- #
+# insights                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _parse_since_arg(value: str) -> datetime:
+    """Parse ``--since`` argument.
+
+    Accepts:
+    * ``7d``, ``30d``, ``24h``, ``30m``  — duration relative to now
+    * ``YYYY-MM-DD``                       — absolute date (start of day UTC)
+    """
+    import re
+    from datetime import UTC, datetime, timedelta
+
+    stripped = value.strip()
+    # Relative duration (e.g. "7d", "24h", "30m")
+    match = re.fullmatch(r"(\d+)([dhm])", stripped)
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2)
+        delta = (
+            timedelta(days=amount) if unit == "d"
+            else timedelta(hours=amount) if unit == "h"
+            else timedelta(minutes=amount)
+        )
+        return datetime.now(UTC) - delta
+
+    # Absolute date (YYYY-MM-DD)
+    try:
+        return datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        pass
+
+    raise click.ClickException(
+        f"Cannot parse --since value {value!r}. "
+        "Use a duration like '7d', '24h', or a date like '2026-05-01'."
+    )
+
+
+@cli.command("insights")
+@click.option(
+    "--since",
+    default="7d",
+    show_default=True,
+    help="Time window: '7d', '30d', '24h', or a date like '2026-05-01'.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.option("--no-color", is_flag=True, default=False, help="Disable ANSI colours.")
+@click.option(
+    "--vendor",
+    default=None,
+    help="Filter output to a specific vendor (e.g. 'anthropic').",
+)
+@click.option(
+    "--group-by",
+    "group_by",
+    default="tool",
+    type=click.Choice(["tool", "vendor", "model", "session"]),
+    show_default=True,
+    help="Primary grouping for cost breakdown.",
+)
+@click.pass_context
+def insights_cmd(
+    ctx: click.Context,
+    since: str,
+    as_json: bool,
+    no_color: bool,
+    vendor: str | None,
+    group_by: str,
+) -> None:
+    """Weekly AI-spend insights and savings opportunities."""
+    from datetime import UTC, datetime
+
+    from atelier.infra.runtime.insights import (
+        InsightsWindow,
+        build_insights,
+        render_json,
+        render_text,
+    )
+
+    root: Path = ctx.obj["root"]
+    since_dt = _parse_since_arg(since)
+    until_dt = datetime.now(UTC)
+
+    window: InsightsWindow = build_insights(root, since=since_dt, until=until_dt)
+
+    if window.session_count == 0:
+        if as_json:
+            click.echo(render_json(window))
+        else:
+            since_str = since_dt.strftime("%Y-%m-%d")
+            click.echo(f"No sessions found since {since_str}.")
+        return
+
+    # Apply vendor filter to cost_by_vendor display (full window still computed).
+    if vendor and not as_json:
+        vendor_key = vendor.capitalize()
+        filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
+        click.echo(
+            f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}"
+            f" of ${window.total_cost_usd:.2f} total"
+        )
+
+    # Apply group-by override for display (swap cost_by_* fields shown).
+    display_window = window
+    if group_by == "vendor" and not as_json:
+        # Reorder: show vendor bars prominently (already first in default render).
+        pass
+    elif group_by == "model" and not as_json:
+        # Swap cost_by_tool → cost_by_model for the tool section.
+
+        display_window = InsightsWindow(
+            since=window.since,
+            until=window.until,
+            session_count=window.session_count,
+            total_duration_seconds=window.total_duration_seconds,
+            total_cost_usd=window.total_cost_usd,
+            total_atelier_savings_usd=window.total_atelier_savings_usd,
+            cost_by_vendor=window.cost_by_vendor,
+            cost_by_tool=window.cost_by_model,
+            cost_by_model=window.cost_by_model,
+            top_sessions=window.top_sessions,
+            outcomes_summary=window.outcomes_summary,
+            opportunities=window.opportunities,
+        )
+    elif group_by == "session" and not as_json:
+        # Replace cost_by_tool with per-session breakdown.
+        session_costs = {
+            s.session_id[:8]: s.cost_usd for s in window.top_sessions
+        }
+        display_window = InsightsWindow(
+            since=window.since,
+            until=window.until,
+            session_count=window.session_count,
+            total_duration_seconds=window.total_duration_seconds,
+            total_cost_usd=window.total_cost_usd,
+            total_atelier_savings_usd=window.total_atelier_savings_usd,
+            cost_by_vendor=window.cost_by_vendor,
+            cost_by_tool=session_costs,
+            cost_by_model=window.cost_by_model,
+            top_sessions=window.top_sessions,
+            outcomes_summary=window.outcomes_summary,
+            opportunities=window.opportunities,
+        )
+
+    if as_json:
+        click.echo(render_json(window))
+    else:
+        click.echo(render_text(display_window, no_color=no_color))
 
 
 if __name__ == "__main__":

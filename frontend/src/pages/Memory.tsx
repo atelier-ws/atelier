@@ -3,13 +3,22 @@ import {
   ApiError,
   api,
   type MemoryBlock,
+  type MemoryFact,
   type MemoryPassage,
   type MemoryRecallPassage,
   type Trace,
 } from "../api";
 import MemoryBlockCard from "../components/MemoryBlockCard";
 import ArchivalSearchBox from "../components/ArchivalSearchBox";
-import { MetricCard, SectionHeader } from "../components/WorkbenchUI";
+import {
+  Alert,
+  Card,
+  EmptyState,
+  MetricCard,
+  SectionHeader,
+  ToggleGroup,
+  cx,
+} from "../components/WorkbenchUI";
 
 interface EditDraft {
   block: MemoryBlock;
@@ -40,6 +49,9 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
 }
 
 export default function Memory() {
+  const [tab, setTab] = useState<"cross-vendor" | "knowledge">("cross-vendor");
+  const [facts, setFacts] = useState<MemoryFact[] | null>(null);
+  const [factsErr, setFactsErr] = useState<string | null>(null);
   const [traces, setTraces] = useState<Trace[]>([]);
   const [blocks, setBlocks] = useState<MemoryBlock[]>([]);
   const [recentPassages, setRecentPassages] = useState<MemoryPassage[]>([]);
@@ -50,6 +62,31 @@ export default function Memory() {
   const [error, setError] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+
+  // Load cross-vendor facts
+  useEffect(() => {
+    api
+      .memoryFacts()
+      .then(setFacts)
+      .catch((e) => setFactsErr(String(e)));
+  }, []);
+
+  // Group facts by vendor
+  const factsByVendor = useMemo(() => {
+    if (!facts) return {};
+    const groups: Record<string, MemoryFact[]> = {};
+    for (const f of facts) {
+      if (!groups[f.vendor]) groups[f.vendor] = [];
+      groups[f.vendor].push(f);
+    }
+    return groups;
+  }, [facts]);
+
+  const VENDOR_COLORS: Record<string, string> = {
+    anthropic: "text-orange-400",
+    openai: "text-green-400",
+    google: "text-blue-400",
+  };
 
   useEffect(() => {
     api
@@ -231,6 +268,68 @@ export default function Memory() {
 
   return (
     <div className="space-y-6">
+      <ToggleGroup
+        variant="underline"
+        tone="purple"
+        size="sm"
+        options={[
+          { value: "cross-vendor", label: "Cross-vendor" },
+          { value: "knowledge", label: "Knowledge Blocks" },
+        ]}
+        value={tab}
+        onChange={(value) =>
+          setTab(value as "cross-vendor" | "knowledge")
+        }
+      />
+
+      {/* Cross-vendor tab */}
+      {tab === "cross-vendor" && (
+        <div className="space-y-6">
+          {factsErr && <Alert tone="danger" description={factsErr} />}
+          {facts === null && !factsErr && (
+            <EmptyState title="Loading cross-vendor memory…" className="p-6" />
+          )}
+          {facts !== null && facts.length === 0 && (
+            <EmptyState
+              icon="⬡"
+              title="No cross-vendor facts yet"
+              description="Facts are shared across vendors after they are written to the memory registry."
+            />
+          )}
+          {Object.entries(factsByVendor).map(([vendor, vfacts]) => (
+            <Card key={vendor}>
+              <div
+                className={cx(
+                  "border-b border-neutral-800 px-4 py-2 text-xs font-bold uppercase tracking-widest",
+                  VENDOR_COLORS[vendor] ?? "text-neutral-400"
+                )}
+              >
+                {vendor}
+              </div>
+              <ul className="divide-y divide-neutral-800">
+                {vfacts.map((f) => (
+                  <li key={f.fact_id} className="px-4 py-3 text-xs">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-neutral-200">{f.source_kind}</p>
+                        <p className="mt-0.5 text-neutral-400">{f.content}</p>
+                        {f.source_path && (
+                          <p className="mt-0.5 font-mono text-neutral-600">{f.source_path}{f.line_number != null ? `:${f.line_number}` : ""}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-neutral-600">{f.fact_id.slice(0, 8)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Knowledge Blocks tab — existing content */}
+      {tab === "knowledge" && (
+        <div className="space-y-6">
       <section className="grid grid-cols-2 gap-3">
         <MetricCard
           label="Visible agents"
@@ -522,6 +621,8 @@ export default function Memory() {
               </button>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>
