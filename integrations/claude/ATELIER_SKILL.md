@@ -34,7 +34,7 @@ task(task="...", domain="...", tools=[...])
 rescue(task="...", error="...", domain="...")
 
 # After task - record the outcome
-trace(task="...", status="success|failed", ...)
+record(task="...", status="success|failed", ...)
 
 # For Shopify publish - verify against rubric
 verify(rubric_id="rubric_shopify_publish", checks={...})
@@ -102,7 +102,7 @@ atelier lesson decide(lesson_id="les_001", decision="approve", reviewer="atelier
 You: Update the product title for handle "winter-coat"
 → Call context with domain=beseam.shopify.publish
 → Call verify after publish with checks
-→ Call trace when done
+→ Call record when done
 ```
 
 ## Verification

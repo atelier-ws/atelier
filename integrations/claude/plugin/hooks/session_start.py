@@ -192,9 +192,16 @@ def main() -> int:
     transcript_path: str = payload.get("transcript_path", "") or ""
 
     try:
-        # Write session_id to session_state so other hooks/Stop can use it
+        # Write session_id + transcript_path to session_state so other hooks
+        # and the MCP server can find the transcript for title extraction.
         if session_id:
-            _write_session_state({"session_id": session_id, "atelier_root": str(_atelier_root())})
+            state_update: dict[str, Any] = {
+                "session_id": session_id,
+                "atelier_root": str(_atelier_root()),
+            }
+            if transcript_path:
+                state_update["transcript_path"] = transcript_path
+            _write_session_state(state_update)
 
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
