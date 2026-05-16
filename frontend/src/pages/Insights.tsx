@@ -1,19 +1,17 @@
 import { useEffect, useState } from "react";
 import { api, type InsightsWindow, type InsightsSessionSummary } from "../api";
-import { MetricCard, SectionHeader } from "../components/WorkbenchUI";
+import {
+  Alert,
+  Card,
+  EmptyState,
+  MetricCard,
+} from "../components/WorkbenchUI";
 import { useTimeRange } from "../lib/TimeRangeContext";
 
 function fmtUsd(v: number) {
   return `$${v.toFixed(2)}`;
 }
 
-function fmtDate(s: string) {
-  try {
-    return new Date(s).toLocaleString();
-  } catch {
-    return s;
-  }
-}
 
 function PctBar({ value, max }: { value: number; max: number }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
@@ -42,7 +40,9 @@ export default function Insights() {
 
   // Convert Record<string, number> to sorted pairs
   const toolEntries = data
-    ? Object.entries(data.cost_by_tool).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    ? Object.entries(data.cost_by_tool)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
     : [];
   const vendorEntries = data
     ? Object.entries(data.cost_by_vendor).sort((a, b) => b[1] - a[1])
@@ -50,31 +50,18 @@ export default function Insights() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader
-        title="Insights"
-        description={
-          data ? `${fmtDate(data.since)} → ${fmtDate(data.until)}` : "Loading…"
-        }
-      />
-
-      {err && (
-        <div className="border border-red-800 bg-red-950/30 p-4 text-sm text-red-300">{err}</div>
-      )}
+      {err && <Alert tone="danger" description={err} />}
 
       {data === null && !err && (
-        <div className="border border-neutral-800 p-6 text-center text-sm text-neutral-500">
-          Loading insights…
-        </div>
+        <EmptyState title="Loading insights…" className="p-6" />
       )}
 
       {isEmpty && (
-        <div className="border border-neutral-800 p-8 text-center text-sm text-neutral-500">
-          <p className="text-2xl mb-3">✦</p>
-          <p className="font-semibold">No insights yet</p>
-          <p className="mt-1 text-neutral-600">
-            Insights appear after Atelier captures session data.
-          </p>
-        </div>
+        <EmptyState
+          icon="✦"
+          title="No insights yet"
+          description="Insights appear after Atelier captures session data."
+        />
       )}
 
       {data !== null && !isEmpty && (
@@ -109,7 +96,7 @@ export default function Insights() {
 
           {/* Top sessions */}
           {data.top_sessions.length > 0 && (
-            <section className="border border-neutral-800 p-4">
+            <Card className="p-4">
               <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
                 Top Cost Sessions
               </h2>
@@ -122,7 +109,9 @@ export default function Insights() {
                         <span className="font-mono text-violet-400/80">
                           {s.session_id.slice(0, 16)}…
                         </span>
-                        <span className="text-amber-300">{fmtUsd(s.cost_usd)}</span>
+                        <span className="text-amber-300">
+                          {fmtUsd(s.cost_usd)}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <PctBar value={s.cost_usd} max={maxCost} />
@@ -131,12 +120,12 @@ export default function Insights() {
                   );
                 })}
               </div>
-            </section>
+            </Card>
           )}
 
           {/* Cost by tool */}
           {toolEntries.length > 0 && (
-            <section className="border border-neutral-800 p-4">
+            <Card className="p-4">
               <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
                 Cost by Tool
               </h2>
@@ -150,18 +139,22 @@ export default function Insights() {
                 <tbody>
                   {toolEntries.map(([tool, cost]) => (
                     <tr key={tool} className="border-b border-neutral-800/40">
-                      <td className="py-1 pr-4 font-mono text-neutral-300">{tool}</td>
-                      <td className="py-1 text-right text-amber-300">{fmtUsd(cost)}</td>
+                      <td className="py-1 pr-4 font-mono text-neutral-300">
+                        {tool}
+                      </td>
+                      <td className="py-1 text-right text-amber-300">
+                        {fmtUsd(cost)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </section>
+            </Card>
           )}
 
           {/* Cost by vendor */}
           {vendorEntries.length > 0 && (
-            <section className="border border-neutral-800 p-4">
+            <Card className="p-4">
               <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500">
                 Cost by Vendor
               </h2>
@@ -181,12 +174,12 @@ export default function Insights() {
                   );
                 })}
               </div>
-            </section>
+            </Card>
           )}
 
           {/* Opportunities */}
           {data.opportunities.length > 0 && (
-            <section className="border border-amber-900/40 bg-amber-950/10 p-4">
+            <Card tone="amber" className="p-4">
               <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-500">
                 Optimization Opportunities
               </h2>
@@ -194,14 +187,18 @@ export default function Insights() {
                 {data.opportunities.map((opp) => (
                   <li key={opp.kind} className="text-xs">
                     <div className="flex justify-between">
-                      <span className="font-semibold text-neutral-200">{opp.kind}</span>
-                      <span className="text-emerald-400">{fmtUsd(opp.estimated_savings_usd)}</span>
+                      <span className="font-semibold text-neutral-200">
+                        {opp.kind}
+                      </span>
+                      <span className="text-emerald-400">
+                        {fmtUsd(opp.estimated_savings_usd)}
+                      </span>
                     </div>
                     <p className="mt-0.5 text-neutral-500">{opp.message}</p>
                   </li>
                 ))}
               </ul>
-            </section>
+            </Card>
           )}
         </>
       )}

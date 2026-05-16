@@ -53,15 +53,15 @@ def test_apply_fuzzy_replace_handles_blank_line_drift() -> None:
     assert line_end == 4
 
 
-def test_apply_fuzzy_replace_raises_on_ambiguity_with_ranges() -> None:
+def test_apply_fuzzy_replace_picks_first_match_on_duplicate_blocks() -> None:
+    """Duplicate blocks: DMP picks the best (first) match — no ambiguity error."""
     content = "def hello():\n    return 1\n\ndef hello():\n    return 1\n"
     old = "def hello():\n\treturn 1\n"
     new = "def hello():\n    return 2\n"
 
-    with pytest.raises(FuzzyAmbiguousMatchError) as exc:
-        apply_fuzzy_replace(content, old, new)
+    updated, line_start, line_end = apply_fuzzy_replace(content, old, new)
 
-    message = str(exc.value)
-    assert "ranges" in message
-    assert "1-2" in message
-    assert "4-5" in message
+    assert "return 2" in updated
+    assert line_start == 1
+    # old_string is 2 lines → spans content lines 1–2 (first block)
+    assert line_end == 2

@@ -331,6 +331,111 @@ def _session_state_path() -> Path:
     return resolve_session_state_path()
 
 
+def _extract_session_title_from_transcript(transcript_path: str) -> str | None:
+    """Extract the first real user message from a Claude Code session JSONL.
+
+    Returns the first non-system, non-slash-command user turn (root turn only,
+    ``parentUuid`` is null).  Caps at 500 characters.  Fail-open: returns None
+    on any error or if the transcript is missing.
+    """
+    import re as _re
+
+    if not transcript_path:
+        return None
+    p = Path(transcript_path)
+    if not p.exists():
+        return None
+    try:
+        with p.open(encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("type") != "user":
+                    continue
+                # Root turns only (no parentUuid means it's a fresh prompt)
+                if entry.get("parentUuid") is not None:
+                    continue
+                msg = entry.get("message", {}) or {}
+                content = msg.get("content", "")
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            break
+                # Skip system injections and empty content
+                if "local-command-caveat" in text:
+                    continue
+                # Strip XML command tags
+                clean = _re.sub(r"<[^>]+>.*?</[^>]+>", "", text, flags=_re.DOTALL).strip()
+                # Skip slash-command inputs
+                if not clean or clean.startswith("/"):
+                    continue
+                return clean[:500]
+    except Exception:
+        return None
+    return None
+
+
+def _extract_user_prompts_from_transcript(transcript_path: str) -> list[str]:
+    """Return all real user prompts from a Claude Code session JSONL.
+
+    Each prompt is capped at 2 KB.  At most 50 prompts are returned.
+    Fail-open: returns empty list on any error.
+    """
+    import re as _re
+
+    _MAX_PROMPT = 2048
+    if not transcript_path:
+        return []
+    p = Path(transcript_path)
+    if not p.exists():
+        return []
+    prompts: list[str] = []
+    try:
+        with p.open(encoding="utf-8") as fh:
+            for raw in fh:
+                if len(prompts) >= 50:
+                    break
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("type") != "user":
+                    continue
+                if entry.get("isSidechain"):
+                    continue
+                msg = entry.get("message", {}) or {}
+                content = msg.get("content", "")
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            break
+                if "local-command-caveat" in text:
+                    continue
+                clean = _re.sub(r"<[^>]+>.*?</[^>]+>", "", text, flags=_re.DOTALL).strip()
+                if not clean or clean.startswith("/"):
+                    continue
+                prompts.append(clean[:_MAX_PROMPT])
+    except Exception:
+        pass
+    return prompts
+
+
 def _read_session_state() -> dict[str, Any]:
     p = _session_state_path()
     if not p.exists():
@@ -393,57 +498,6 @@ def _make_outcome_writer(led: RunLedger) -> Any:
 # Zero-config background service                                              #
 # --------------------------------------------------------------------------- #
 
-
-def _autostart_servicectl(root: Path) -> None:
-    """Start the background servicectl daemon for *root* if not already running.
-
-    Called once per MCP server session from ``_runtime()``.  Fails silently so
-    it can never break the MCP request/response loop.
-    """
-    import subprocess
-
-    try:
-        pid_path = root / "servicectl" / "servicectl.pid"
-        if pid_path.exists():
-            try:
-                pid = int(pid_path.read_text("utf-8").strip())
-                os.kill(pid, 0)  # raises if process is gone
-                return  # daemon is already running
-            except (ValueError, ProcessLookupError, OSError):
-                pid_path.unlink(missing_ok=True)
-
-        log_path = root / "servicectl" / "servicectl.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable,
-            "-m",
-            "atelier.gateway.adapters.cli",
-            "--root",
-            str(root),
-            "servicectl",
-            "run",
-            "--interval-seconds",
-            "60",
-            "--maintenance-interval-seconds",
-            "21600",
-        ]
-        env = os.environ.copy()
-        env["ATELIER_ROOT"] = str(root)
-        with log_path.open("a", encoding="utf-8") as log_fh:
-            proc = subprocess.Popen(
-                command,
-                stdout=log_fh,
-                stderr=subprocess.STDOUT,
-                env=env,
-                start_new_session=True,
-                close_fds=True,
-            )
-        pid_path.write_text(f"{proc.pid}\n", encoding="utf-8")
-    except Exception:
-        logger.warning(
-            "Suppressed exception at mcp_server.py:446",
-            exc_info=True,
-        )
 
 
 def _detect_default_branch(repo: Path) -> str | None:
@@ -1045,13 +1099,13 @@ def tool_rescue_failure(
     return payload
 
 
-@mcp_tool(name="trace")
+@mcp_tool(name="record")
 def tool_record_trace(
     agent: str,
     domain: str,
     task: str,
     status: Literal["success", "failed", "partial"],
-    files_touched: list[str] | None = None,
+    files_touched: list[str | dict[str, Any]] | None = None,
     tools_called: list[Any] | None = None,
     commands_run: list[str] | None = None,
     errors_seen: list[str] | None = None,
@@ -1069,6 +1123,7 @@ def tool_record_trace(
     missing_surfaces: list[str] | None = None,
     event_type: str | None = None,
     event_payload: dict[str, Any] | None = None,
+    capture_files: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record an observable trace from an agent run."""
     from atelier.core.foundation.redaction import redact, redact_list
@@ -1093,6 +1148,8 @@ def tool_record_trace(
         missing_surfaces = []
     if event_payload is None:
         event_payload = {}
+    if capture_files is None:
+        capture_files = []
     rt = _runtime()
     led = _get_ledger()
     rtc = _get_realtime_context()
@@ -1105,6 +1162,15 @@ def tool_record_trace(
         if isinstance(value, dict):
             return {str(key): _redact_json_strings(item) for key, item in value.items()}
         return value
+
+    def _normalize_file_touched(item: str | dict[str, Any]) -> str | dict[str, Any]:
+        """Normalize a files_touched entry, preserving diffs from dict items."""
+        if isinstance(item, dict):
+            path = redact(str(item.get("path", "")))
+            diff = redact(str(item.get("diff", "")))
+            event = str(item.get("event", "edit"))
+            return {"path": path, "diff": diff, "event": event}
+        return redact(str(item))
 
     def _normalize_tool_calls(items: list[Any]) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
@@ -1200,7 +1266,7 @@ def tool_record_trace(
         "domain": domain,
         "task": redact(task),
         "status": status,
-        "files_touched": redact_list([str(v) for v in files_touched]),
+        "files_touched": [_normalize_file_touched(v) for v in files_touched],
         "tools_called": _normalize_tool_calls(tools_called),
         "commands_run": redact_list([str(v) for v in commands_run]),
         "errors_seen": redact_list([str(v) for v in errors_seen]),
@@ -1264,11 +1330,81 @@ def tool_record_trace(
             rt.store.record_raw_artifact(artifact, redacted_content)
             raw_artifacts.append(artifact_id)
 
+    if capture_files:
+        source_session_id = (
+            os.environ.get("CLAUDE_SESSION_ID")
+            or os.environ.get("CODEX_SESSION_ID")
+            or os.environ.get("OPENCODE_SESSION_ID")
+            or "unknown"
+        )
+        for fpath in capture_files:
+            try:
+                p = Path(fpath)
+                if not p.is_file():
+                    continue
+                content = p.read_text(encoding="utf-8", errors="replace")
+                # We redact secrets from files before capture for safety
+                redacted_content = redact(content)
+                digest = sha256(redacted_content.encode("utf-8", errors="replace")).hexdigest()
+
+                # Use a stable but unique ID for the file artifact
+                artifact_id = f"file-{sha256(fpath.encode()).hexdigest()[:12]}-{digest[:12]}"
+
+                artifact = RawArtifact(
+                    id=artifact_id,
+                    source="mcp",
+                    source_session_id=source_session_id,
+                    kind="source.code",
+                    relative_path=f"{artifact_id}.txt",
+                    content_path=f"raw/mcp/{source_session_id}/{artifact_id}.txt",
+                    sha256_original=sha256(content.encode()).hexdigest(),
+                    sha256_redacted=digest,
+                    byte_count_original=len(content.encode("utf-8")),
+                    byte_count_redacted=len(redacted_content.encode("utf-8")),
+                    redacted=True,
+                    source_path=str(p.absolute()),
+                    source_file_mtime=datetime.fromtimestamp(p.stat().st_mtime, tz=UTC),
+                )
+                rt.store.record_raw_artifact(artifact, redacted_content)
+                raw_artifacts.append(artifact_id)
+            except Exception as e:
+                logger.warning("Failed to capture context file %s: %s", fpath, e)
+
     if raw_artifacts:
         payload["raw_artifact_ids"] = raw_artifacts
 
     if event_type:
         led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
+
+    # ── Enrich with session title from the Claude Code transcript ─────────────
+    # The transcript path is stored by the SessionStart hook so we can read it
+    # here without needing it as an explicit parameter.
+    _session_title: str | None = None
+    with contextlib.suppress(Exception):
+        _state = _read_session_state()
+        _transcript = str(_state.get("transcript_path") or "")
+        if _transcript:
+            _session_title = _extract_session_title_from_transcript(_transcript)
+            _user_prompts = _extract_user_prompts_from_transcript(_transcript)
+            if _session_title or _user_prompts:
+                led.record(
+                    "note",
+                    f"session_title: {(_session_title or '')[:80]}",
+                    {
+                        "session_title": _session_title,
+                        "transcript_path": _transcript,
+                        "user_prompts": _user_prompts[:50],
+                        "prompt_count": len(_user_prompts),
+                        "event": "SessionEnrichment",
+                    },
+                )
+            # Back-fill the ledger task with the session title when the context
+            # tool wasn't called (led.task is still the empty default).
+            if _session_title and not led.task:
+                led.task = _session_title
+
+    if _session_title:
+        payload["session_title"] = _session_title
 
     if "id" not in payload:
         payload["id"] = Trace.make_id(task, agent)
@@ -2318,7 +2454,7 @@ _REMOTE_TOOLS = frozenset(
         "context",
         "memory",
         "rescue",
-        "trace",
+        "record",
         "verify",
     }
 )
@@ -2357,7 +2493,7 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return typing.cast(dict[str, Any], client.memory(args))
     if name == "rescue":
         return typing.cast(dict[str, Any], client.rescue_failure(args))
-    if name == "trace":
+    if name == "record":
         return typing.cast(dict[str, Any], client.record_trace(args))
     if name == "verify":
         return typing.cast(dict[str, Any], client.run_rubric_gate(args))
@@ -2917,10 +3053,6 @@ def main() -> None:
         i = argv.index("--host")
         if i + 1 < len(argv):
             os.environ["ATELIER_AGENT"] = argv[i + 1]
-    # Kick off background daemons immediately at server start, before any
-    # tool call arrives.  Runs in daemon threads so they never block serve().
-    if not _service_backed_state():
-        threading.Thread(target=_autostart_servicectl, args=(_atelier_root(),), daemon=True).start()
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
 

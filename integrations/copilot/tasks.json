@@ -33,7 +33,7 @@
       "label": "Atelier: Record Trace",
       "type": "shell",
       "command": "atelier",
-      "args": ["trace", "--task", "${input:atelierTask}", "--status", "partial", "--json"],
+      "args": ["runs", "record", "--task", "${input:atelierTask}", "--status", "partial", "--json"],
       "problemMatcher": []
     }
   ],

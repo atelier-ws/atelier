@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from atelier.core.capabilities.cross_vendor_memory.base import MemoryFact, _fact_id
+from atelier.core.capabilities.cross_vendor_memory.base import _fact_id
 from atelier.core.capabilities.cross_vendor_memory.claude_adapter import (
     ClaudeAdapter,
     _parse_markdown_facts,

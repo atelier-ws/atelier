@@ -189,7 +189,11 @@ class SessionReport:
     started_at: datetime
     ended_at: datetime | None
     duration_seconds: float
+    active_duration_seconds: float
     vendor: str
+    agent_settings: dict[str, Any]
+    skills: list[str]
+    telemetry: dict[str, Any]
     models_used: dict[str, int]
     total_turns: int
     tool_call_count: int
@@ -213,6 +217,9 @@ class SessionReport:
     compact_events: int
     compact_savings_estimate_usd: float
     total_atelier_savings_usd: float
+
+    # Sources
+    raw_artifact_ids: list[str]
 
     # Top tools by estimated cost
     top_tools_by_cost: list[tuple[str, int, float]]
@@ -249,6 +256,29 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
     first_ts = event_times[0] if event_times else created_at
     last_ts = event_times[-1] if event_times else updated_at
     duration = max(0.0, (last_ts - first_ts).total_seconds())
+
+    # --- active duration ---
+    # Sum only the time chunks where the agent is working (from User -> Response)
+    active_duration = 0.0
+    current_start: datetime | None = None
+    for ev in raw_events:
+        ts = _parse_dt(str(ev.get("at") or ""))
+        if not ts:
+            continue
+        kind = str(ev.get("kind") or "")
+        if kind == "user_message":
+            current_start = ts
+        else:
+            if current_start:
+                chunk = (ts - current_start).total_seconds()
+                if 0 < chunk < 3600:  # ignore massive gaps/clock drift
+                    active_duration += chunk
+                current_start = ts
+            else:
+                current_start = ts
+    
+    if active_duration <= 0:
+        active_duration = duration
 
     # --- cost calls ---
     cost_data = snapshot.get("cost") or {}
@@ -297,12 +327,22 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
     # --- per-tool breakdown ---
     top_tools = CostTracker.per_tool_cost_breakdown(raw_events)
 
+    agent_settings = dict(snapshot.get("agent_settings") or {})
+    skills = list(snapshot.get("skills") or [])
+    telemetry = dict(snapshot.get("telemetry") or {})
+    raw_artifact_ids = list(snapshot.get("raw_artifact_ids") or [])
+
     return SessionReport(
         session_id=session_id,
         started_at=first_ts,
         ended_at=ended_at,
         duration_seconds=duration,
+        active_duration_seconds=active_duration,
         vendor=vendor,
+        agent_settings=agent_settings,
+        skills=skills,
+        telemetry=telemetry,
+        raw_artifact_ids=raw_artifact_ids,
         models_used=models_used,
         total_turns=total_turns,
         tool_call_count=tool_call_count,
