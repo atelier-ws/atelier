@@ -91,10 +91,11 @@ describe("SessionExplorerDetail", () => {
 
     render(<SessionExplorerDetail sessionId="sess-001" />);
 
-    expect(await screen.findByText(/Started model/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Model/i)).toBeInTheDocument();
     expect(screen.getAllByText("claude-sonnet-4-6").length).toBeGreaterThanOrEqual(
       1
     );
-    expect(screen.getByText("Estimated from trace tokens")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status: success")).toBeInTheDocument();
+    expect(screen.queryByText("Estimated from trace tokens")).not.toBeInTheDocument();
   });
 });
