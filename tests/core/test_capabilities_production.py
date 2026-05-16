@@ -912,6 +912,17 @@ def test_pricing_no_prefix_fallback_for_unknown_variant() -> None:
     assert p.output == 0.0
 
 
+def test_pricing_copilot_prefix_wildcard() -> None:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    # copilot/<anything> should match the zero-cost 'copilot/' entry.
+    p = get_model_pricing("copilot/gpt-5.5")
+    assert p.known is True
+    assert p.input == 0.0
+    assert p.output == 0.0
+    assert p.model_id == "copilot/"
+
+
 def test_pricing_dot_version_normalisation() -> None:
     from atelier.core.capabilities.pricing import get_model_pricing
 
