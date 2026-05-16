@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from click.testing import CliRunner
 
-from atelier.core.environment import NON_DEV_LLM_TOOLS
+from atelier.core.environment import (
+    DEV_LLM_TOOLS,
+    NON_DEV_LLM_TOOLS,
+    STABLE_LLM_TOOLS,
+)
 from atelier.gateway.adapters import mcp_server
+from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 
 EXPECTED_TOOLS = {
@@ -74,7 +81,7 @@ def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = _mock_client(
         {
-            "get_task_context": {"context": "Here are the relevant procedures.", "run_ledger": []},
+            "get_context": {"context": "Here are the relevant procedures.", "run_ledger": []},
             "rescue_failure": {
                 "rescue": "Try a narrower reproduction.",
                 "analysis": "repeat failure",
@@ -96,16 +103,18 @@ def test_initialize_returns_server_info() -> None:
         }
     )
     assert resp is not None
-    assert resp["result"]["serverInfo"]["name"] == "atelier-task"
+    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
     assert resp["result"]["protocolVersion"] == "2024-11-05"
 
 
 def test_notifications_initialized_returns_none() -> None:
-    resp = _handle({"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}})
+    resp = _handle(
+        {"jsonrpc": "2.0", "id": None, "method": "notifications/initialized", "params": {}}
+    )
     assert resp is None
 
 
-def test_tools_list_returns_exact_consolidated_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_list_returns_exact_consolidated_surface_in_dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     resp = _handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert resp is not None
@@ -114,7 +123,7 @@ def test_tools_list_returns_exact_consolidated_surface(monkeypatch: pytest.Monke
     assert set(TOOLS) == EXPECTED_TOOLS
 
 
-def test_tools_list_only_passive_decision_tools_without_dev_mode(
+def test_tools_list_only_product_tools_without_dev_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
@@ -123,11 +132,49 @@ def test_tools_list_only_passive_decision_tools_without_dev_mode(
     tools = resp["result"]["tools"]
     names = {tool["name"] for tool in tools}
     assert names == NON_DEV_LLM_TOOLS
-    assert "edit" not in names
-    assert "shell" not in names
-    context = next(tool for tool in tools if tool["name"] == "context")
-    assert "passive" in context["description"]
-    assert "no-op/pass" in context["description"]
+    assert names == STABLE_LLM_TOOLS
+    assert not (names & DEV_LLM_TOOLS)
+    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
+
+
+def test_cli_tools_list_respects_stable_and_dev_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    runner = CliRunner()
+
+    stable = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list"])
+    assert stable.exit_code == 0, stable.output
+    assert set(stable.output.splitlines()) == STABLE_LLM_TOOLS
+
+    dev = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list", "--dev"])
+    assert dev.exit_code == 0, dev.output
+    assert set(dev.output.splitlines()) == EXPECTED_TOOLS
+    assert "ATELIER_DEV_MODE" not in os.environ
+
+
+def test_cli_tools_call_invokes_stable_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(tmp_path / ".atelier"),
+            "tools",
+            "call",
+            "compact",
+            "--args",
+            '{"op":"output","content":"hello world","budget_tokens":10}',
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["method"] == "passthrough"
+    assert payload["compacted"] == "hello world"
 
 
 def test_tools_list_each_entry_has_schema() -> None:
@@ -150,7 +197,7 @@ def test_unknown_tool_returns_error() -> None:
     assert "unknown tool" in resp["error"]["message"]
 
 
-def test_get_task_context_can_include_folded_state(store_root: Path) -> None:
+def test_get_context_can_include_folded_state(store_root: Path) -> None:
     resp = _call(
         "context",
         {"task": "Fix publish regression", "include_run_ledger": True},
@@ -218,7 +265,9 @@ def test_run_rubric_gate_pass(store_root: Path) -> None:
 
 def test_compact_output_op_passthrough(store_root: Path) -> None:
     _ = store_root
-    payload = _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
+    payload = _result(
+        _call("compact", {"op": "output", "content": "short output", "content_type": "bash"})
+    )
     assert payload["compacted"] == "short output"
     assert payload["method"] == "passthrough"
 
@@ -227,7 +276,131 @@ def test_compact_advise_op(store_root: Path) -> None:
     _ = store_root
     payload = _result(_call("compact", {"op": "advise"}))
     assert "should_compact" in payload
+    assert "should_advise" in payload
+    assert "should_handover" in payload
     assert "suggested_prompt" in payload
+
+
+def test_compact_auto_gate_requires_boundary_and_turns(store_root: Path) -> None:
+    _ = store_root
+    led = mcp_server._get_ledger()
+    led.token_count = 160_000
+    for idx in range(16):
+        led.record("agent_message", f"working turn {idx}", {"idx": idx})
+
+    waiting = mcp_server._compact_advise()
+    assert waiting["should_advise"] is True
+    assert waiting["should_compact"] is False
+    assert waiting["task_boundary_detected"] is False
+
+    led.record_test("pytest", passed=True, detail="tests passed")
+    ready = mcp_server._compact_advise()
+    assert ready["should_auto_compact"] is True
+    assert ready["should_compact"] is True
+    assert ready["task_boundary_detected"] is True
+
+
+def test_compact_high_utilisation_bypasses_turns_gate(store_root: Path) -> None:
+    # Five huge turns push utilisation to >=90% before the 15-turn gate is met.
+    # The high-utilisation override should fire auto-compact at a task boundary
+    # even though turn_count < AUTO_COMPACT_MIN_TURNS.
+    _ = store_root
+    led = mcp_server._get_ledger()
+    led.token_count = 181_000  # 90.5% of 200k
+    for idx in range(5):
+        led.record("agent_message", f"dense turn {idx}", {"idx": idx})
+    led.record_test("pytest", passed=True, detail="all green")
+
+    result = mcp_server._compact_advise()
+    assert result["turn_count"] < mcp_server.AUTO_COMPACT_MIN_TURNS
+    assert result["should_auto_compact"] is True
+    assert "override" in result["reason"] or "auto-compact threshold" in result["reason"]
+
+
+def test_compact_handover_writes_markdown(store_root: Path) -> None:
+    root = store_root
+    led = mcp_server._get_ledger()
+    led.session_id = "handover-session"
+    led.task = "Finish a large refactor"
+    led.token_count = 190_000
+    led.record_file_event("src/app.py", "edit", diff="--- a/src/app.py\n+++ b/src/app.py\n")
+
+    payload = mcp_server._compact_advise()
+
+    assert payload["should_handover"] is True
+    assert payload["handover_file"]
+    handover_path = Path(payload["handover_file"])
+    assert handover_path == root / "runs" / "handover-session" / "HANDOVER.md"
+    assert "Session Handover" in handover_path.read_text(encoding="utf-8")
+
+
+def test_model_recommendation_emitted_before_tool_dispatch(store_root: Path) -> None:
+    _ = store_root
+    _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
+
+    led = mcp_server._get_ledger()
+    recommendations = [event for event in led.events if event.kind == "model_recommendation"]
+    assert recommendations
+    assert recommendations[-1].payload["tool_name"] == "compact"
+    assert recommendations[-1].payload["tier"] in {"cheap", "medium", "expensive"}
+    assert recommendations[-1].payload["lever"] == "model_routing"
+    assert recommendations[-1].payload["tokens_saved"] == 0
+    assert recommendations[-1].payload["cost_saved_usd"] >= 0
+
+
+def test_compact_session_op_emits_session_compaction_savings(
+    monkeypatch: pytest.MonkeyPatch, store_root: Path
+) -> None:
+    _ = store_root
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        mcp_server, "_append_live_savings_event", lambda event: events.append(event)
+    )
+    led = mcp_server._get_ledger()
+    led.token_count = 48_000
+    for idx in range(4):
+        led.record("agent_message", f"working turn {idx}", {"idx": idx})
+
+    payload = mcp_server._compress_context()
+
+    session_events = [event for event in events if event.get("kind") == "session_compaction"]
+    assert session_events
+    assert session_events[-1]["lever"] == "session_compaction"
+    assert session_events[-1]["tokens_saved"] > 0
+    assert session_events[-1]["cost_saved_usd"] > 0
+    assert payload["tokens_freed"] == session_events[-1]["tokens_saved"]
+    assert payload["cost_saved_usd"] == session_events[-1]["cost_saved_usd"]
+
+
+def test_compact_advise_emits_session_compaction_savings_when_auto_compacting(
+    monkeypatch: pytest.MonkeyPatch, store_root: Path
+) -> None:
+    _ = store_root
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        mcp_server, "_append_live_savings_event", lambda event: events.append(event)
+    )
+    led = mcp_server._get_ledger()
+    led.token_count = 160_000
+    for idx in range(16):
+        led.record("agent_message", f"working turn {idx}", {"idx": idx})
+    led.record_test("pytest", passed=True, detail="tests passed")
+
+    payload = mcp_server._compact_advise()
+
+    session_events = [event for event in events if event.get("kind") == "session_compaction"]
+    assert payload["should_compact"] is True
+    assert session_events
+    assert session_events[-1]["trigger"] == "compact_advise"
+    assert session_events[-1]["tokens_saved"] == payload["tokens_freed"]
+    assert session_events[-1]["cost_saved_usd"] == payload["cost_saved_usd"]
+
+
+def test_detect_agent_supports_all_five_cli_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    for host in ("claude", "codex", "copilot", "opencode", "gemini"):
+        monkeypatch.setenv("ATELIER_AGENT", host)
+        assert mcp_server._detect_agent() == host
+        monkeypatch.delenv("ATELIER_AGENT", raising=False)
 
 
 def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> None:
@@ -243,7 +416,9 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert search_payload["_meta"]["fileMatchCount"] == 1
 
 
-def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_smart_edit_surface_applies_patch(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _ = store_root
     monkeypatch.chdir(tmp_path)
     target = Path("edit.txt")
@@ -285,12 +460,16 @@ def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
 def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text(
+        "from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8"
+    )
 
     indexed = _result(_call("code", {"op": "index", "repo_root": str(tmp_path)}))
     assert indexed["symbols_indexed"] >= 2
 
-    searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _result(
+        _call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"})
+    )
     assert searched["items"]
 
     symbol = _result(
@@ -306,7 +485,9 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert "def alpha" in symbol["source"]
 
-    outline = _result(_call("code", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
+    outline = _result(
+        _call("code", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"})
+    )
     assert "a.py" in outline["files"]
 
     context = _result(
@@ -323,5 +504,7 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert context["token_count"] <= context["budget_tokens"]
 
-    impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "file_path": "a.py"}))
+    impact = _result(
+        _call("code", {"op": "impact", "repo_root": str(tmp_path), "file_path": "a.py"})
+    )
     assert "b.py" in impact["direct_importers"]

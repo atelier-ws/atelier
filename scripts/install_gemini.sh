@@ -16,7 +16,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "${SCRIPT_DIR}/lib/managed_context.sh"
-ATELIER_WRAPPER="${ATELIER_REPO}/scripts/atelier_mcp_stdio.sh"
 EXTENSION_DIR="${ATELIER_REPO}/integrations/gemini/extension"
 EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
 SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
@@ -61,34 +60,6 @@ info()  { echo "[atelier:gemini] $*"; }
 warn()  { echo "[atelier:gemini] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-patch_extension_manifest() {
-    local workspace_root='${workspacePath}'
-    if $WORKSPACE_SET; then
-        workspace_root="$WORKSPACE"
-    fi
-
-    if $DRY_RUN; then
-        echo "  [dry-run] patch $EXTENSION_MANIFEST to use $ATELIER_WRAPPER"
-        return
-    fi
-
-    python3 - <<PYEOF
-import json
-from pathlib import Path
-
-path = Path("$EXTENSION_MANIFEST")
-data = json.loads(path.read_text(encoding="utf-8"))
-server = data.setdefault("mcpServers", {}).setdefault("atelier", {})
-server["command"] = "$ATELIER_WRAPPER"
-server["args"] = server.get("args", [])
-server.setdefault("env", {})["ATELIER_WORKSPACE_ROOT"] = "$workspace_root"
-server["env"]["ATELIER_SERVICE_URL"] = "http://127.0.0.1:8787"
-path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-PYEOF
-
-    info "patched linked extension manifest to use ${ATELIER_WRAPPER}"
-}
-
 # ---- resolve install profile ------------------------------------------------
 atelier_resolve_install_profile "atelier:gemini"
 if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
@@ -113,7 +84,6 @@ else
 fi
 EXTENSION_DIR="$STAGING_DIR"
 EXTENSION_MANIFEST="${EXTENSION_DIR}/gemini-extension.json"
-patch_extension_manifest
 
 backup_file() {
     local f="$1"
@@ -165,12 +135,6 @@ if ! command -v gemini &>/dev/null; then
 fi
 info "Found Gemini CLI: $(gemini --version 2>/dev/null || echo 'version unknown')"
 
-if [ ! -x "$ATELIER_WRAPPER" ]; then
-    echo "[atelier:gemini] ERROR: Atelier MCP wrapper missing or not executable: $ATELIER_WRAPPER" >&2
-    exit 1
-fi
-info "Using Atelier MCP wrapper: $ATELIER_WRAPPER"
-
 # ---- validate + link packaged extension ------------------------------------
 info "Validating extension manifest"
 run "gemini extensions validate '$EXTENSION_DIR'"
@@ -205,23 +169,10 @@ else
     vfail "missing extension manifest: $EXTENSION_MANIFEST"
 fi
 
-COMMAND=$(python3 - <<PYEOF
-import json
-from pathlib import Path
-data = json.loads(Path("$EXTENSION_MANIFEST").read_text(encoding="utf-8"))
-print(data.get("mcpServers", {}).get("atelier", {}).get("command", ""))
-PYEOF
-)
-if [ "$COMMAND" = "$ATELIER_WRAPPER" ]; then
-    vpass "extension manifest points at repo MCP wrapper"
+if command -v atelier-mcp &>/dev/null; then
+    vpass "atelier-mcp is available on PATH"
 else
-    vfail "extension manifest does not point at repo MCP wrapper"
-fi
-
-if [ -x "$ATELIER_WRAPPER" ]; then
-    vpass "Atelier MCP wrapper exists: $ATELIER_WRAPPER"
-else
-    vfail "Atelier MCP wrapper missing or not executable: $ATELIER_WRAPPER"
+    vfail "atelier-mcp NOT found on PATH"
 fi
 
 if [ -d "${EXTENSION_DIR}/commands/atelier" ] && [ -f "${EXTENSION_DIR}/commands/atelier/status.toml" ] && [ -f "${EXTENSION_DIR}/commands/atelier/context.toml" ]; then
@@ -231,13 +182,13 @@ else
 fi
 
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ] && [ -f "${EXTENSION_DIR}/skills/task/SKILL.md" ]; then
+    if [ -d "${EXTENSION_DIR}/skills" ] && [ -f "${EXTENSION_DIR}/skills/status/SKILL.md" ] && [ -f "${EXTENSION_DIR}/skills/context/SKILL.md" ]; then
         vpass "extension skill bundle installed with dev skills: ${EXTENSION_DIR}/skills"
     else
-        vfail "extension dev skill bundle missing task or status skill: ${EXTENSION_DIR}/skills"
+        vfail "extension dev skill bundle missing context or status skill: ${EXTENSION_DIR}/skills"
     fi
 else
-    if [ ! -f "${EXTENSION_DIR}/skills/task/SKILL.md" ] && [ ! -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
+    if [ ! -f "${EXTENSION_DIR}/skills/context/SKILL.md" ] && [ ! -f "${EXTENSION_DIR}/skills/status/SKILL.md" ]; then
         vpass "extension stable skill bundle installed without dev-only skills: ${EXTENSION_DIR}/skills"
     else
         vfail "extension stable skill bundle unexpectedly contains dev-only skills: ${EXTENSION_DIR}/skills"

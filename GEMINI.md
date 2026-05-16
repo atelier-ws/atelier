@@ -3,7 +3,7 @@
 ## General Agent Guidelines
 - **No Shortcuts:** Never assume the structure of data or APIs. Always verify the source of truth (e.g., `api.ts` for frontend, `schemas.py` or `models.py` for backend) before implementation.
 - **Strict Verification:** Always run the project's build, lint, and type-check commands after making changes. A task is not complete until it passes all validation steps.
-- **Atelier Integration:** Use `mcp_atelier_trace` after every significant fix to record the outcome and help the system learn.
+- **Atelier Integration:** Use `mcp_atelier_record` after every significant fix to record the outcome and help the system learn.
 
 ## Frontend Engineering Standards (TypeScript/React)
 

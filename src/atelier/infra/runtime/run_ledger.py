@@ -56,6 +56,8 @@ class RunLedger:
         self.active_rubrics: list[str] = []
         self.current_blockers: list[str] = []
         self.next_required_validation: str | None = None
+        self.agent_settings: dict[str, Any] = {}
+        self.skills: list[str] = []
         self.token_count: int = 0
         self.tool_count: int = 0
         self.budget: dict[str, int] = {}
@@ -317,6 +319,24 @@ class RunLedger:
             "commands_run": commands_run,
         }
 
+    # ----- timing helpers ------------------------------------------------- #
+
+    @property
+    def first_event_at(self) -> datetime:
+        """Timestamp of the first ledger event, falling back to ``created_at``."""
+        return self.events[0].at if self.events else self.created_at
+
+    @property
+    def last_event_at(self) -> datetime:
+        """Timestamp of the most recent ledger event, falling back to ``updated_at``."""
+        return self.events[-1].at if self.events else self.updated_at
+
+    @property
+    def duration_seconds(self) -> float:
+        """Wall-clock seconds between first and last event (0 for single-event runs)."""
+        delta = self.last_event_at - self.first_event_at
+        return max(0.0, delta.total_seconds())
+
     # ----- snapshot / persistence ----------------------------------------- #
 
     def snapshot(self) -> dict[str, Any]:
@@ -349,6 +369,8 @@ class RunLedger:
             "active_rubrics": list(self.active_rubrics),
             "current_blockers": list(self.current_blockers),
             "next_required_validation": self.next_required_validation,
+            "agent_settings": dict(self.agent_settings),
+            "skills": list(self.skills),
             "token_count": self.token_count,
             "tool_count": self.tool_count,
             "budget": dict(self.budget),
@@ -399,6 +421,8 @@ class RunLedger:
         led.active_rubrics = list(snap.get("active_rubrics") or [])
         led.current_blockers = list(snap.get("current_blockers") or [])
         led.next_required_validation = snap.get("next_required_validation")
+        led.agent_settings = dict(snap.get("agent_settings") or {})
+        led.skills = list(snap.get("skills") or [])
         led.token_count = int(snap.get("token_count") or 0)
         led.tool_count = int(snap.get("tool_count") or 0)
         led.budget = dict(snap.get("budget") or {})

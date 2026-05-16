@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { MetricCard } from "../components/WorkbenchUI";
-import Traces from "./Traces";
+import { MetricCard, ToggleGroup } from "../components/WorkbenchUI";
+import Sessions from "./Sessions";
 import Watchdogs from "./Watchdogs";
 import Savings from "./Savings";
 import Insights from "./Insights";
@@ -59,30 +59,28 @@ export default function Runtime() {
         />
       </section>
 
-      <section className="border border-neutral-800 bg-neutral-950/70 p-5">
-        <div className="flex flex-wrap gap-0 border-b border-neutral-800">
-          {SECTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => navigate(`/runtime/${item.id}`, { replace: true })}
-              title={item.description}
-              className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-bold transition ${
-                active === item.id
-                  ? "border-neutral-500 bg-neutral-900/30 text-neutral-100"
-                  : "border-transparent text-neutral-500 hover:text-neutral-200"
-              }`}
-            >
+      <ToggleGroup
+        variant="underline"
+        size="sm"
+        options={SECTIONS.map((item) => ({
+          value: item.id,
+          label: (
+            <span className="flex items-center gap-2">
               <span>{item.icon}</span>
               <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+            </span>
+          ),
+          title: item.description,
+        }))}
+        value={active}
+        onChange={(value) =>
+          navigate(`/runtime/${value as RuntimeSection}`, { replace: true })
+        }
+      />
 
       {active === "operate" && (
-        <div className="space-y-8">
-          <Traces />
+        <div className="space-y-8 h-[calc(100vh-400px)]">
+          <Sessions />
           <Watchdogs />
         </div>
       )}
