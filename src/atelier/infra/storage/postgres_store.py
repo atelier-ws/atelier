@@ -638,7 +638,11 @@ class PostgresStore:
 
     def get_trace(self, trace_id: str) -> Trace | None:
         with self._connect() as conn:
+            # Try session_id first (most common for routing)
             row = conn.execute("SELECT * FROM traces WHERE session_id = %s", (trace_id,)).fetchone()
+            if row is None:
+                # Fallback to direct ID match
+                row = conn.execute("SELECT * FROM traces WHERE id = %s", (trace_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_trace(row)

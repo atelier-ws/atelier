@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from atelier.core.foundation.monitor_profiles import save_watchdog_profile_config
+from atelier.core.foundation.watchdog_profiles import save_watchdog_profile_config
 
 from atelier.gateway.adapters.runtime import ContextRuntime
 

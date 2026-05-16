@@ -10,7 +10,15 @@ import {
 } from "../api";
 import MemoryBlockCard from "../components/MemoryBlockCard";
 import ArchivalSearchBox from "../components/ArchivalSearchBox";
-import { MetricCard, SectionHeader, cx } from "../components/WorkbenchUI";
+import {
+  Alert,
+  Card,
+  EmptyState,
+  MetricCard,
+  SectionHeader,
+  ToggleGroup,
+  cx,
+} from "../components/WorkbenchUI";
 
 interface EditDraft {
   block: MemoryBlock;
@@ -260,47 +268,36 @@ export default function Memory() {
 
   return (
     <div className="space-y-6">
-      {/* Tab bar */}
-      <div className="flex gap-0 border-b border-neutral-800">
-        {(["cross-vendor", "knowledge"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cx(
-              "px-4 py-2 text-xs font-semibold uppercase tracking-widest transition-colors",
-              tab === t
-                ? "border-b-2 border-purple-500 text-purple-300"
-                : "text-neutral-500 hover:text-neutral-300"
-            )}
-          >
-            {t === "cross-vendor" ? "Cross-vendor" : "Knowledge Blocks"}
-          </button>
-        ))}
-      </div>
+      <ToggleGroup
+        variant="underline"
+        tone="purple"
+        size="sm"
+        options={[
+          { value: "cross-vendor", label: "Cross-vendor" },
+          { value: "knowledge", label: "Knowledge Blocks" },
+        ]}
+        value={tab}
+        onChange={(value) =>
+          setTab(value as "cross-vendor" | "knowledge")
+        }
+      />
 
       {/* Cross-vendor tab */}
       {tab === "cross-vendor" && (
         <div className="space-y-6">
-          {factsErr && (
-            <div className="text-sm text-red-400">{factsErr}</div>
-          )}
+          {factsErr && <Alert tone="danger" description={factsErr} />}
           {facts === null && !factsErr && (
-            <div className="border border-neutral-800 p-6 text-center text-sm text-neutral-500">
-              Loading cross-vendor memory…
-            </div>
+            <EmptyState title="Loading cross-vendor memory…" className="p-6" />
           )}
           {facts !== null && facts.length === 0 && (
-            <div className="border border-neutral-800 p-8 text-center text-sm text-neutral-500">
-              <p className="text-2xl mb-3">⬡</p>
-              <p className="font-semibold">No cross-vendor facts yet</p>
-              <p className="mt-1 text-neutral-600">
-                Facts are shared across vendors after they are written to the memory registry.
-              </p>
-            </div>
+            <EmptyState
+              icon="⬡"
+              title="No cross-vendor facts yet"
+              description="Facts are shared across vendors after they are written to the memory registry."
+            />
           )}
           {Object.entries(factsByVendor).map(([vendor, vfacts]) => (
-            <section key={vendor} className="border border-neutral-800">
+            <Card key={vendor}>
               <div
                 className={cx(
                   "border-b border-neutral-800 px-4 py-2 text-xs font-bold uppercase tracking-widest",
@@ -325,7 +322,7 @@ export default function Memory() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </Card>
           ))}
         </div>
       )}

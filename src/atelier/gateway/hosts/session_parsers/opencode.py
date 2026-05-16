@@ -16,6 +16,7 @@ from typing import Any, cast
 
 from atelier.core.foundation.models import (
     CommandRecord,
+    FileEditRecord,
     RawArtifact,
     ToolCall,
     Trace,
@@ -24,6 +25,7 @@ from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
     make_llm_usage_entry,
+    snapshot_edited_files,
     summarize_usage_entries,
 )
 
@@ -118,9 +120,29 @@ class OpenCodeImporter:
         tools_called: dict[str, int] = {}
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
-        files_touched: dict[str, Any] = {}
+        files_touched: dict[str, FileEditRecord] = {}
         commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
+
+        def _compute_diff(fp: str, inp: dict[str, Any]) -> str:
+            """Synthesize a diff from tool input arguments.
+
+            Returns a unified diff for edit tools (old_string → new_string),
+            or the raw content for write tools (consistent with _common.py).
+            """
+            raw_diff = inp.get("diff") or inp.get("patch")
+            if raw_diff:
+                return str(raw_diff).strip()
+            old = str(inp.get("old_string") or "")
+            new = str(inp.get("new_string") or "")
+            if old or new:
+                diff_lines = [f"--- a/{fp}", f"+++ b/{fp}"]
+                for line in old.splitlines():
+                    diff_lines.append(f"-{line}")
+                for line in new.splitlines():
+                    diff_lines.append(f"+{line}")
+                return "\n".join(diff_lines)
+            return str(inp.get("content") or "").strip()
 
         total_in = 0
         total_out = 0
@@ -167,9 +189,22 @@ class OpenCodeImporter:
                     cmd = str(state_inp.get("command", "") or state_inp.get("cmd", "")).strip()
                     if cmd:
                         commands_run.append(cmd[:200])
-                    fp = state_inp.get("file_path") or state_inp.get("path")
-                    if fp:
-                        files_touched[str(fp)] = state_inp
+                    # OpenCode tool inputs use camelCase filePath
+                    fp = (
+                        state_inp.get("filePath")
+                        or state_inp.get("file_path")
+                        or state_inp.get("path")
+                    )
+                    # Only record actual files (not bare directories)
+                    if fp and "." in str(fp).rsplit("/", 1)[-1]:
+                        fpath_str = str(fp)
+                        if fpath_str not in files_touched:
+                            diff_text = _compute_diff(fpath_str, state_inp)
+                            files_touched[fpath_str] = FileEditRecord(
+                                path=fpath_str,
+                                diff=diff_text[:4096],
+                                event="edit",
+                            )
                 elif ptype == "step-finish":
                     ts_tok = data.get("tokens") or {}
                     in_t = int(ts_tok.get("input", 0) or 0)
@@ -217,7 +252,7 @@ class OpenCodeImporter:
             domain="coding",
             task=str(session_row.get("title") or "untitled opencode session"),
             status="success",
-            files_touched=list(files_touched.keys()),
+            files_touched=list(files_touched.values()),
             tools_called=[
                 ToolCall(
                     name=n,
@@ -245,6 +280,11 @@ class OpenCodeImporter:
             created_at=session_mtime,
         )
         self.store.record_trace(trace, write_json=False)
+
+        # Best-effort: snapshot current on-disk state of every edited file
+        if files_touched:
+            snapshot_edited_files(self.store, list(files_touched.values()), session_id=session_id, source="opencode")
+
         return trace.id
 
     def _serialize_session(self, session_id: str, db_path: Path) -> str:

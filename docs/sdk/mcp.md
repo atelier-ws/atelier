@@ -28,7 +28,7 @@ to route the supported core calls through the HTTP service.
 Atelier distinguishes between developer mode and passive compatibility mode.
 
 - With `ATELIER_DEV_MODE=1`, the stdio MCP server exposes the full active tool surface.
-- Without developer mode, `trace` remains active and the host may still see some
+- Without developer mode, `record` remains active and the host may still see some
   compatibility tools as passive `noop` surfaces, but context/retrieval/edit
   workflows are intentionally not active.
 - Older host templates may use previous-generation tool names; the list below is
@@ -42,7 +42,7 @@ names:
 - `context`
 - `route`
 - `rescue`
-- `trace`
+- `record`
 - `verify`
 - `memory`
 - `read`

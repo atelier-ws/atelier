@@ -104,7 +104,8 @@ def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    assert {"context", "rescue", "trace"}.issubset(generated)
+    assert {"context", "rescue"}.issubset(generated)
+    assert "trace" not in generated
     assert "reasoning" not in generated
     assert "lint" not in generated
 

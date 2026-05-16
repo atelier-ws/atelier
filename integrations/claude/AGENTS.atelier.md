@@ -21,9 +21,9 @@ If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use
 Claude-native file reads, Grep/Glob, shell `rg`, or `grep`. Always return findings
 instead of waiting for tool availability to improve.
 
-## 3. Trace (After Task)
+## 3. Record (After Task)
 
-Call `trace` once done to record observable outcome (files, commands, errors, results).
+Call `record` once done to record observable outcome (files, commands, errors, results).
 
 ## Budget Optimizer
 

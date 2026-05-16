@@ -52,9 +52,9 @@ def test_context_reuse_returns_context(tmp_path: Path) -> None:
     assert isinstance(ctx, str)
 
 
-def test_context_reuse_inject_runtime_reasoning(tmp_path: Path) -> None:
+def test_context_reuse_inject_context(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    result = rt.inject_reasoning(
+    result = rt.inject_context(
         task="Deploy configuration update",
         domain="state.change",
         files=["products.py"],
@@ -86,7 +86,7 @@ def test_context_reuse_retrieve_includes_phase2_breakdown(tmp_path: Path) -> Non
 
 def test_context_reuse_inject_includes_rescue_chains(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    payload = rt.context_reuse.inject_runtime_reasoning(
+    payload = rt.context_reuse.inject_runtime_context(
         task="Recover from failed live change",
         domain="state.change",
         errors=["api quota exceeded"],

@@ -1,7 +1,7 @@
 import json
 import os
 import subprocess
-from pathlib import Path
+
 
 def test_mcp_stdio_smoke() -> None:
     """
