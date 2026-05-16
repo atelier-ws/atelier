@@ -14,8 +14,8 @@ import {
   parseInspectorData,
   groupTurns,
 } from "./helpers";
-import { StatusBadge } from "./StatusBadge";
-import { FileDetail } from "./DiffView";
+import { StatusDot } from "./StatusBadge";
+import { FileDetail, getFileEditInfo, type FileEditInfo } from "./DiffView";
 import {
   ConversationTurn,
   ToolCallDetail,
@@ -168,35 +168,6 @@ function MetaPill({
   );
 }
 
-function getCostStatusMeta(status?: "recorded" | "estimated" | "unavailable") {
-  switch (status) {
-    case "estimated":
-      return {
-        title: "Estimated from trace tokens",
-        shortLabel: "estimated",
-        tone: "amber" as const,
-        description:
-          "This session did not persist ledger call costs, so Atelier derived spend from stored token usage and the current pricing table.",
-      };
-    case "unavailable":
-      return {
-        title: "No cost data recorded",
-        shortLabel: "missing",
-        tone: "neutral" as const,
-        description:
-          "There were no priced call records or enough token metadata to derive spend for this run.",
-      };
-    default:
-      return {
-        title: "Recorded from ledger calls",
-        shortLabel: "recorded",
-        tone: "violet" as const,
-        description:
-          "Costs come from the run ledger's per-call usage records and are captured when the runtime records LLM calls.",
-      };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Main detail view
 // ---------------------------------------------------------------------------
@@ -271,18 +242,19 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     return reportModels[0] || null;
   }, [inspectorData, report, trace]);
 
-  const costMeta = useMemo(
-    () =>
-      getCostStatusMeta(
-        report?.cost_status ??
-          (report
-            ? report.total_cost_usd > 0
-              ? "recorded"
-              : "unavailable"
-            : undefined)
-      ),
-    [report]
-  );
+  // Derive file changes from the session ledger directly — every file_edit turn
+  // is already captured there. The trace's files_touched is redundant for this;
+  // trace should only carry signals that can't be reconstructed from the session.
+  // Dedup by path: last-write wins (preserves the most recent diff).
+  const ledgerFilesTouched = useMemo((): FileEditInfo[] => {
+    const byPath = new Map<string, FileEditInfo>();
+    for (const turn of inspectorData?.conversations ?? []) {
+      if (turn.kind !== "file_edit") continue;
+      const info = getFileEditInfo(turn);
+      if (info?.path) byPath.set(info.path, info);
+    }
+    return [...byPath.values()];
+  }, [inspectorData]);
 
   if (loading)
     return (
@@ -312,51 +284,34 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     <div className="flex flex-col h-full bg-[#0a0a0a] relative animate-in fade-in duration-500">
       {/* Header */}
       <header className="flex-shrink-0 px-8 py-4 border-b border-neutral-800/80 bg-[#0d0d0d]/95 backdrop-blur-md sticky top-0 z-20 shadow-2xl">
-        <div className="space-y-5">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0 flex-1 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-3">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1 space-y-2">
+              <h1 className="text-sm font-bold tracking-wide text-neutral-100 font-mono truncate uppercase">
                 {trace && (
-                  <StatusBadge
-                    status={trace.status}
-                    className="text-[10px] rounded-none px-2 py-0"
-                  />
-                )}
+                  <span
+                    className="inline-flex items-center px-1"
+                    title={trace.status}
+                  >
+                    <StatusDot status={trace.status} className="h-2.5 w-2.5" />
+                  </span>
+                )}{" "}
+                {trace?.task || "Execution Detail"}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <MetaPill label="Session" value={sessionId} />
+                <MetaPill
+                  label="Started"
+                  value={fmtDate(report?.started_at || trace?.created_at)}
+                />
                 {startedModel && (
-                  <MetaPill
-                    label="Started model"
-                    value={startedModel}
-                    tone="violet"
-                  />
+                  <MetaPill label="Model" value={startedModel} tone="violet" />
                 )}
                 <MetaPill
-                  label="Cost"
-                  value={costMeta.shortLabel}
-                  tone={
-                    costMeta.tone === "amber"
-                      ? "amber"
-                      : costMeta.tone === "violet"
-                        ? "violet"
-                        : "neutral"
-                  }
+                  label="Agent"
+                  value={`@${trace?.agent || "unknown"}`}
+                  tone="amber"
                 />
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-sm font-bold tracking-wide text-neutral-100 font-mono truncate uppercase">
-                  {trace?.task || "Execution Detail"}
-                </h1>
-                <div className="flex flex-wrap items-center gap-2">
-                  <MetaPill label="Session" value={sessionId} />
-                  <MetaPill
-                    label="Started"
-                    value={fmtDate(report?.started_at || trace?.created_at)}
-                  />
-                  <MetaPill
-                    label="Agent"
-                    value={`@${trace?.agent || "unknown"}`}
-                    tone="amber"
-                  />
-                </div>
               </div>
             </div>
 
@@ -394,77 +349,75 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
             </div>
           </div>
 
-          <div className="grid gap-3">
-            <div className="grid grid-cols-3 gap-1.5">
-              <HeaderStat
-                label="Total Cost"
-                value={
-                  report
-                    ? fmtUsd(report.total_cost_usd)
-                    : trace?.input_tokens
-                      ? "..."
-                      : "—"
-                }
-                tone="amber"
-              />
-              <HeaderStat
-                label="Savings"
-                value={report ? fmtUsd(report.total_atelier_savings_usd) : "—"}
-                tone="emerald"
-              />
-              <HeaderStat
-                label="Total Tokens"
-                value={
-                  report || trace
-                    ? fmtTok(
-                        (report?.input_tokens ?? trace?.input_tokens ?? 0) +
-                          (report?.output_tokens ?? trace?.output_tokens ?? 0)
-                      )
+          <div className="grid grid-cols-7 gap-1.5">
+            <HeaderStat
+              label="Cost"
+              value={
+                report
+                  ? fmtUsd(report.total_cost_usd)
+                  : trace?.input_tokens
+                    ? "..."
                     : "—"
-                }
-              />
-              <HeaderStat
-                label="In / Out"
-                value={
-                  report || trace
-                    ? `${fmtTok(report?.input_tokens ?? trace?.input_tokens ?? 0)} / ${fmtTok(report?.output_tokens ?? trace?.output_tokens ?? 0)}`
-                    : "—"
-                }
-              />
-              <HeaderStat
-                label="Cached"
-                value={
-                  report || trace
-                    ? fmtTok(
-                        report?.cache_read_tokens ??
-                          trace?.cached_input_tokens ??
-                          0
-                      )
-                    : "—"
-                }
-              />
-              <HeaderStat
-                label="Active Time"
-                value={
-                  report
-                    ? fmtDuration(
-                        report.active_duration_seconds || activeDurationSecs
-                      )
-                    : "—"
-                }
-              />
-            </div>
-            <div
-              className="flex items-center justify-between gap-3 rounded-sm border border-neutral-800/40 bg-black/15 px-2.5 py-1.5"
-              title={costMeta.description}
-            >
-              <span className="text-[8px] font-black uppercase tracking-[0.18em] text-neutral-500">
-                Pricing
-              </span>
-              <span className="truncate text-[10px] font-mono text-neutral-300">
-                {costMeta.title}
-              </span>
-            </div>
+              }
+              tone="amber"
+            />
+            <HeaderStat
+              label="Saved"
+              value={report ? fmtUsd(report.total_atelier_savings_usd) : "—"}
+              tone="emerald"
+            />
+            <HeaderStat
+              label="Input"
+              value={
+                report || trace || inspectorData
+                  ? fmtTok(
+                      report?.input_tokens ??
+                        trace?.input_tokens ??
+                        inspectorData?.tokens_pre ??
+                        0
+                    )
+                  : "—"
+              }
+            />
+            <HeaderStat
+              label="Output"
+              value={
+                report || trace || inspectorData
+                  ? fmtTok(
+                      report?.output_tokens ??
+                        trace?.output_tokens ??
+                        inspectorData?.tokens_post ??
+                        0
+                    )
+                  : "—"
+              }
+            />
+            <HeaderStat
+              label="Cache"
+              value={
+                report || trace
+                  ? fmtTok(
+                      report?.cache_read_tokens ??
+                        trace?.cached_input_tokens ??
+                        0
+                    )
+                  : "—"
+              }
+            />
+            <HeaderStat
+              label="Turns"
+              value={report ? String(report.total_turns) : "—"}
+            />
+            <HeaderStat
+              label="Time"
+              value={
+                report
+                  ? fmtDuration(
+                      report.active_duration_seconds || activeDurationSecs
+                    )
+                  : "—"
+              }
+            />
           </div>
         </div>
       </header>
@@ -536,7 +489,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 </div>
               </section>
 
-              {trace?.files_touched && trace.files_touched.length > 0 && (
+              {ledgerFilesTouched.length > 0 && (
                 <section className="space-y-6 pt-12 border-t border-neutral-900/50">
                   <div className="flex items-center gap-6">
                     <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-neutral-500 whitespace-nowrap">
@@ -544,14 +497,17 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     </h2>
                     <div className="h-px w-full bg-gradient-to-r from-neutral-800 to-transparent" />
                     <span className="text-[9px] text-neutral-500 font-mono font-bold uppercase tracking-widest flex-shrink-0">
-                      {trace.files_touched.length} file
-                      {trace.files_touched.length !== 1 ? "s" : ""} · current
-                      content &amp; total diff
+                      {ledgerFilesTouched.length} file
+                      {ledgerFilesTouched.length !== 1 ? "s" : ""} · from session
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {trace.files_touched.map((f, i) => (
-                      <FileDetail key={i} file={f} forceExpand={allExpanded} />
+                    {ledgerFilesTouched.map((f, i) => (
+                      <FileDetail
+                        key={i}
+                        file={f.diff ? { path: f.path, diff: f.diff } : f.path}
+                        forceExpand={allExpanded}
+                      />
                     ))}
                   </div>
                 </section>
@@ -583,17 +539,6 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     label="Started Model"
                     value={startedModel || "—"}
                     color="text-violet-400"
-                  />
-                  <SidebarMetric
-                    label="Cost Source"
-                    value={costMeta.shortLabel}
-                    color={
-                      costMeta.tone === "amber"
-                        ? "text-amber-400"
-                        : costMeta.tone === "violet"
-                          ? "text-violet-300"
-                          : "text-neutral-300"
-                    }
                   />
                   <SidebarMetric
                     label="Total Tokens"
@@ -741,28 +686,6 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   Audit Telemetry
                 </h3>
                 <div className="space-y-1.5 text-[9px] font-mono text-neutral-500">
-                  {report?.raw_artifact_ids &&
-                    report.raw_artifact_ids.length > 0 && (
-                      <div className="flex flex-col border-b border-neutral-800/20 pb-1.5 mb-1.5 last:border-0">
-                        <span className="uppercase text-[8px] font-bold mb-1">
-                          Source_Artifacts
-                        </span>
-                        <div className="space-y-1">
-                          {report.raw_artifact_ids.map((id) => (
-                            <a
-                              key={id}
-                              href={`/api/raw-artifacts/${id}/content`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block text-purple-500/70 hover:text-purple-400 transition-colors truncate"
-                              title={id}
-                            >
-                              → {id}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   {report?.telemetry &&
                     Object.entries(report.telemetry).map(([key, val], i) => (
                       <div

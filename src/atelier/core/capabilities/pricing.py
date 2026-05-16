@@ -28,7 +28,7 @@ import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal, Any, cast
+from typing import Any, Literal, cast
 
 logger = logging.getLogger(__name__)
 
