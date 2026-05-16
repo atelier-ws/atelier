@@ -1,0 +1,76 @@
+{
+  "week_label": "2026-W20",
+  "week_start": "2026-05-11",
+  "generated_at": "2026-05-15 19:58 UTC",
+  "since_arg": "7d",
+  "corpus_arg": "",
+  "corpus_path": "/home/pankaj/.atelier/benchmarks/savings",
+  "routing_savings": {
+    "sessions_benchmarked": 50,
+    "total_cost_saved_usd": 43.607052,
+    "avg_cost_saved_usd_per_session": 0.872141,
+    "downtiered_pct": 5.9,
+    "by_tier": {
+      "cheap": 73,
+      "expensive": 1347,
+      "medium": 3285
+    },
+    "total_baseline_cost_usd": 228.300283,
+    "generated_at": "2026-05-15T17:18:37.812141+00:00"
+  },
+  "compact_savings": {
+    "sessions_benchmarked": 15,
+    "total_cost_saved_usd": 1.635687,
+    "avg_cost_saved_usd_per_session": 0.109046,
+    "avg_delta_tokens": 36349,
+    "avg_atelier_freed_tokens_est": 239286,
+    "avg_native_freed_tokens_measured": 202938,
+    "atelier_vs_native_delta_pct": 17.91,
+    "avg_compaction_events_per_session": 2.47,
+    "generated_at": "2026-05-15T15:36:42.285184+00:00"
+  },
+  "routing_quality": {
+    "sessions_benchmarked": 23,
+    "total_downtiered_turns": 219,
+    "avg_quality_score": 0.887,
+    "safe_pct": 69.4,
+    "moderate_pct": 22.8,
+    "risky_pct": 7.8,
+    "env_error_pct_on_downtiered": 0.0,
+    "model_error_pct_on_downtiered": 5.0,
+    "retry_pct_on_downtiered": 2.7,
+    "generated_at": "2026-05-15T17:18:33.830429+00:00"
+  },
+  "compact_quality": {
+    "sessions_benchmarked": 20,
+    "total_compaction_events": 41,
+    "avg_retention_score": 0.81,
+    "avg_error_drift": -0.09,
+    "avg_extra_read_rate": 0.142,
+    "sessions_continued_pct": 81.5,
+    "generated_at": "2026-05-15T17:19:02.874549+00:00"
+  },
+  "routing_replay": {
+    "sessions_benchmarked": 3,
+    "total_turns_replayed": 9,
+    "tool_match_rate": 0.222,
+    "avg_input_similarity": 0.067,
+    "avg_output_token_ratio": 1.881,
+    "total_haiku_cost_usd": 0.063,
+    "quality_label_counts": {
+      "tool_mismatch": 7,
+      "diverge": 2
+    },
+    "haiku_model": "claude-haiku-4-5",
+    "generated_at": "2026-05-15T16:14:58.961089+00:00"
+  },
+  "prior": {},
+  "metric_snapshot": {
+    "routing_sessions": 50.0,
+    "routing_savings_usd": 43.607052,
+    "routing_quality": 0.887,
+    "compact_retention": 0.81,
+    "compact_savings_usd": 1.635687,
+    "replay_match": 0.222
+  }
+}

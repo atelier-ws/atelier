@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import mimetypes
 import sqlite3
 import threading
 from collections import defaultdict
@@ -59,6 +60,10 @@ def _normalize_lever(operation: str) -> str:
         return "search_read"
     if "batch_edit" in op:
         return "batch_edit"
+    if "session_compact" in op or ("compact" in op and "session" in op):
+        return "session_compaction"
+    if "model_recommend" in op or "model_routing" in op or "routing" in op:
+        return "model_routing"
     if "ast" in op and ("trunc" in op or "outline" in op):
         return "ast_truncation"
     if "sleep" in op:
@@ -90,7 +95,9 @@ def _normalize_external_period(period: Any) -> str:
 def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) -> str | None:
     target_days = max(1, days)
     periods = {
-        _normalize_external_period(run.get("period")) for run in runs if _normalize_external_period(run.get("period"))
+        _normalize_external_period(run.get("period"))
+        for run in runs
+        if _normalize_external_period(run.get("period"))
     }
     if not periods:
         return None
@@ -105,7 +112,9 @@ def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) ->
     )
 
 
-def _select_external_run_for_days(runs: list[dict[str, Any]], *, days: int) -> dict[str, Any] | None:
+def _select_external_run_for_days(
+    runs: list[dict[str, Any]], *, days: int
+) -> dict[str, Any] | None:
     if not runs:
         return None
 
@@ -256,7 +265,9 @@ def _model_usage_cost(usage: dict[str, Any]) -> float:
     )
 
 
-def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") -> dict[str, Any] | None:
+def _normalize_trace_usage_entry(
+    raw_entry: Any, *, fallback_model: str = ""
+) -> dict[str, Any] | None:
     if not isinstance(raw_entry, dict):
         return None
 
@@ -358,7 +369,9 @@ def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
             bucket[field] += value
 
     usages = list(aggregated.values())
-    usages.sort(key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True)
+    usages.sort(
+        key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True
+    )
     return usages
 
 
@@ -379,7 +392,11 @@ def _trace_session_model(
         return ""
 
     usages = model_usages if model_usages is not None else _trace_model_usages(payload)
-    usage_models = {str(usage.get("model") or "").strip() for usage in usages if str(usage.get("model") or "").strip()}
+    usage_models = {
+        str(usage.get("model") or "").strip()
+        for usage in usages
+        if str(usage.get("model") or "").strip()
+    }
     if len(usage_models) == 1:
         return next(iter(usage_models))
     if usage_models:
@@ -408,7 +425,9 @@ def _trace_cost_from_payload(payload: dict[str, Any]) -> float:
     return round(total_cost, 8)
 
 
-def _analytics_event_cost(model_id: str | None, event_type: str, input_tokens: int, output_tokens: int) -> float:
+def _analytics_event_cost(
+    model_id: str | None, event_type: str, input_tokens: int, output_tokens: int
+) -> float:
     if event_type == "prompt":
         return _llm_usage_cost(model_id, input_tokens=input_tokens)
     if event_type == "cached_prompt":
@@ -462,8 +481,12 @@ def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) ->
         for row in rows
         if row.get("event_type") in {"result", "thinking", "tool_call"}
     )
-    user_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string")
-    tool_calls = sum(int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call")
+    user_input_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string"
+    )
+    tool_calls = sum(
+        int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call"
+    )
     unique_tools = len(
         {
             str(row.get("tool_name") or "")
@@ -472,16 +495,28 @@ def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) ->
         }
     )
     cached_prompt_tokens = sum(
-        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "cached_prompt"
+        int(row.get("input_tokens") or 0)
+        for row in rows
+        if row.get("event_type") == "cached_prompt"
     )
-    model_response_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result")
+    model_response_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result"
+    )
     model_thinking_tokens = sum(
         int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "thinking"
     )
-    tool_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
-    tool_output_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    tool_input_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call"
+    )
+    tool_output_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call"
+    )
     total_cost = round(
-        sum(float(row.get("cost") or 0.0) for row in rows if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS),
+        sum(
+            float(row.get("cost") or 0.0)
+            for row in rows
+            if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS
+        ),
         6,
     )
     effective_days = max(1, days or 1)
@@ -675,7 +710,9 @@ def _group_analytics_rows(events: list[dict[str, Any]], *, limit: int) -> list[d
         row["output_tokens"] += int(event.get("output_tokens") or 0)
         row["call_count"] += int(event.get("call_count") or 0)
         row["cost"] = round(float(row.get("cost") or 0.0) + float(event.get("cost") or 0.0), 8)
-        row["first_seen"] = min(str(row.get("first_seen") or ""), str(event.get("first_seen") or ""))
+        row["first_seen"] = min(
+            str(row.get("first_seen") or ""), str(event.get("first_seen") or "")
+        )
         row["last_seen"] = max(str(row.get("last_seen") or ""), str(event.get("last_seen") or ""))
         session_ids[key].add(str(event["trace_id"]))
 
@@ -699,7 +736,9 @@ def _query_analytics_rows(
     start_day = None
     if days is not None:
         window_days = max(1, int(days))
-        start_day = (datetime.now().astimezone().date() - timedelta(days=window_days - 1)).isoformat()
+        start_day = (
+            datetime.now().astimezone().date() - timedelta(days=window_days - 1)
+        ).isoformat()
 
     params: list[Any] = []
 
@@ -759,39 +798,100 @@ def _iter_live_savings_events(root: Path) -> list[dict[str, Any]]:
 
 
 def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
-    path = root / "benchmarks" / "savings" / "latest.json"
-    if not path.exists():
+    bench_dir = root / "benchmarks" / "savings"
+
+    # ── Paired command benchmark (savings/latest.json) ─────────────────────
+    paired: dict[str, Any] = {}
+    paired_path = bench_dir / "latest.json"
+    if paired_path.exists():
+        try:
+            payload = json.loads(paired_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                paired_keys = {
+                    "session_id",
+                    "model",
+                    "n_prompts",
+                    "total_tokens_baseline",
+                    "total_tokens_atelier",
+                    "tokens_saved",
+                    "reduction_pct",
+                    "total_cost_baseline_usd",
+                    "total_cost_atelier_usd",
+                    "cost_saved_usd",
+                    "total_time_baseline_ms",
+                    "total_time_atelier_ms",
+                    "time_saved_ms",
+                    "baseline_success_rate",
+                    "atelier_success_rate",
+                }
+                paired = {k: payload[k] for k in paired_keys if k in payload}
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # ── Compact replay benchmark (compact_latest.json) ────────────────────
+    compact: dict[str, Any] = {}
+    compact_path = bench_dir / "compact_latest.json"
+    if compact_path.exists():
+        try:
+            payload = json.loads(compact_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                compact = {
+                    "sessions_benchmarked": payload.get("sessions_benchmarked", 0),
+                    "avg_native_freed_tokens_measured": payload.get(
+                        "avg_native_freed_tokens_measured", 0
+                    ),
+                    "avg_atelier_freed_tokens_est": payload.get("avg_atelier_freed_tokens_est", 0),
+                    "avg_delta_tokens": payload.get("avg_delta_tokens", 0),
+                    "atelier_vs_native_delta_pct": payload.get("atelier_vs_native_delta_pct", 0.0),
+                    "total_cost_saved_usd": payload.get("total_cost_saved_usd", 0.0),
+                    "generated_at": payload.get("generated_at", ""),
+                    "note": payload.get("note", ""),
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # ── Routing replay benchmark (routing_latest.json) ────────────────────
+    routing: dict[str, Any] = {}
+    routing_path = bench_dir / "routing_latest.json"
+    if routing_path.exists():
+        try:
+            payload = json.loads(routing_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                routing = {
+                    "sessions_benchmarked": payload.get("sessions_benchmarked", 0),
+                    "total_turns_analyzed": payload.get("total_turns_analyzed", 0),
+                    "total_downtiered_turns": payload.get("total_downtiered_turns", 0),
+                    "downtiered_pct": payload.get("downtiered_pct", 0.0),
+                    "total_cost_saved_usd": payload.get("total_cost_saved_usd", 0.0),
+                    "avg_cost_saved_usd_per_session": payload.get(
+                        "avg_cost_saved_usd_per_session", 0.0
+                    ),
+                    "by_tier": payload.get("by_tier", {}),
+                    "generated_at": payload.get("generated_at", ""),
+                    "note": payload.get("note", ""),
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    if not paired and not compact and not routing:
         return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    keys = {
-        "session_id",
-        "model",
-        "n_prompts",
-        "total_tokens_baseline",
-        "total_tokens_atelier",
-        "tokens_saved",
-        "reduction_pct",
-        "total_cost_baseline_usd",
-        "total_cost_atelier_usd",
-        "cost_saved_usd",
-        "total_time_baseline_ms",
-        "total_time_atelier_ms",
-        "time_saved_ms",
-        "baseline_success_rate",
-        "atelier_success_rate",
-    }
-    return {key: payload[key] for key in keys if key in payload}
+
+    result: dict[str, Any] = {}
+    if paired:
+        result.update(paired)
+    if compact:
+        result["compact_bench"] = compact
+    if routing:
+        result["routing_bench"] = routing
+    return result
 
 
 _OBSERVED_OPTIMIZATION_TITLES = {
     "search_read": "Search/read compaction",
     "batch_edit": "Batch edit",
     "compact_lifecycle": "Tool-output compaction",
+    "session_compaction": "Session compaction",
+    "model_routing": "Model routing (tier downgrade)",
     "scoped_recall": "Scoped recall",
     "reasonblock_inject": "ReasonBlock injection",
     "cached_read": "Cached reuse",
@@ -846,7 +946,9 @@ def _tracked_saved_tokens(store: ContextStore, trace: Trace) -> tuple[int, int]:
         tracked_turns += int(row.tool_calls or 0)
         lever_keys = [str(key or "") for key in row.lever_savings]
         non_marker_keys = [key for key in lever_keys if not key.startswith("tool:")]
-        if non_marker_keys and all(key.startswith("compact_tool_output:") for key in non_marker_keys):
+        if non_marker_keys and all(
+            key.startswith("compact_tool_output:") for key in non_marker_keys
+        ):
             continue
         actual_tokens = (
             int(row.input_tokens or 0)
@@ -894,7 +996,9 @@ def _window_metrics(store: ContextStore, traces: list[Trace]) -> dict[str, Any]:
         "trace_count": count,
         "avg_tokens": round(sum(int(item["tokens"]) for item in entries) / count),
         "avg_cost_usd": round(sum(float(item["cost_usd"]) for item in entries) / count, 6),
-        "avg_cache_leverage": round(sum(float(item["cache_leverage"]) for item in entries) / count, 4),
+        "avg_cache_leverage": round(
+            sum(float(item["cache_leverage"]) for item in entries) / count, 4
+        ),
         "avg_saved_tokens": round(sum(int(item["saved_tokens"]) for item in entries) / count),
         "tracked_turns": sum(int(item["tracked_turns"]) for item in entries),
         "from": entries[0]["created_at"],
@@ -906,27 +1010,27 @@ def _pct_change(before: float, after: float) -> float:
     if before <= 0:
         if after <= 0:
             return 0.0
-        return 100.0
-    return round(((after - before) / before) * 100.0, 1)
+        return 1.0
+    return round((after - before) / before, 4)
 
 
-def _impact_verdict(tokens_delta_pct: float, cost_delta_pct: float, cache_delta_pct: float) -> str:
+def _impact_verdict(tokens_delta: float, cost_delta: float, cache_delta: float) -> str:
     improvements = 0
     regressions = 0
 
-    if tokens_delta_pct <= -5.0:
+    if tokens_delta <= -0.05:
         improvements += 1
-    elif tokens_delta_pct >= 5.0:
+    elif tokens_delta >= 0.05:
         regressions += 1
 
-    if cost_delta_pct <= -5.0:
+    if cost_delta <= -0.05:
         improvements += 1
-    elif cost_delta_pct >= 5.0:
+    elif cost_delta >= 0.05:
         regressions += 1
 
-    if cache_delta_pct >= 5.0:
+    if cache_delta >= 0.05:
         improvements += 1
-    elif cache_delta_pct <= -5.0:
+    elif cache_delta <= -0.05:
         regressions += 1
 
     if improvements >= 2 and regressions == 0:
@@ -958,7 +1062,9 @@ def _build_impact_validation(
                 "cache_leverage_pct": 0.0,
                 "saved_tokens_pct": 0.0,
             },
-            "notes": ["Need at least two traces in the selected window to compare before vs after behavior."],
+            "notes": [
+                "Need at least two traces in the selected window to compare before vs after behavior."
+            ],
         }
 
     midpoint = max(1, len(traces) // 2)
@@ -967,8 +1073,12 @@ def _build_impact_validation(
 
     tokens_delta_pct = _pct_change(float(before["avg_tokens"]), float(after["avg_tokens"]))
     cost_delta_pct = _pct_change(float(before["avg_cost_usd"]), float(after["avg_cost_usd"]))
-    cache_delta_pct = _pct_change(float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"]))
-    saved_tokens_delta_pct = _pct_change(float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"]))
+    cache_delta_pct = _pct_change(
+        float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"])
+    )
+    saved_tokens_delta_pct = _pct_change(
+        float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"])
+    )
 
     notes: list[str] = []
     if after["avg_tokens"] < before["avg_tokens"]:
@@ -1011,13 +1121,14 @@ def _build_auto_optimizations(
     per_lever = {
         str(key): int(value or 0)
         for key, value in (savings_payload.get("per_lever") or {}).items()
-        if isinstance(key, str) and int(value or 0) > 0
+        if isinstance(key, str)
     }
     observed: dict[str, dict[str, Any]] = {}
 
     for event in live_events:
         tokens_saved = int(event.get("tokens_saved", 0) or 0)
-        if tokens_saved <= 0:
+        cost_saved_usd = float(event.get("cost_saved_usd", 0.0) or 0.0)
+        if tokens_saved <= 0 and cost_saved_usd <= 0:
             continue
         try:
             at_date = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00")).date()
@@ -1040,7 +1151,7 @@ def _build_auto_optimizations(
             },
         )
         item["tokens_saved"] += tokens_saved
-        item["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        item["cost_saved_usd"] += cost_saved_usd
         item["calls_saved"] += int(event.get("calls_saved", 0) or 0)
         session_id = str(event.get("session_id") or "")
         if session_id:
@@ -1050,7 +1161,8 @@ def _build_auto_optimizations(
             item["tools"].add(tool_name)
 
     rows: list[dict[str, Any]] = []
-    for lever, tokens_saved in per_lever.items():
+    for lever in set(per_lever) | set(observed):
+        tokens_saved = int(per_lever.get(lever, 0) or 0)
         item = observed.get(
             lever,
             {
@@ -1064,6 +1176,8 @@ def _build_auto_optimizations(
             },
         )
         item["tokens_saved"] = max(int(item["tokens_saved"]), tokens_saved)
+        if int(item["tokens_saved"]) <= 0 and float(item["cost_saved_usd"]) <= 0:
+            continue
         rows.append(
             {
                 "id": item["id"],
@@ -1076,7 +1190,11 @@ def _build_auto_optimizations(
             }
         )
 
-    return sorted(rows, key=lambda row: int(row["tokens_saved"]), reverse=True)[:8]
+    return sorted(
+        rows,
+        key=lambda row: (int(row["tokens_saved"]), float(row["cost_saved_usd"])),
+        reverse=True,
+    )[:8]
 
 
 def _reread_kind(event: dict[str, Any]) -> str | None:
@@ -1155,7 +1273,9 @@ def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
         kind_row["cost_saved_usd"] = round(float(kind_row["cost_saved_usd"]), 6)
 
     top_paths = []
-    for path_row in sorted(by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True)[:5]:
+    for path_row in sorted(
+        by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True
+    )[:5]:
         top_paths.append(
             {
                 "path": path_row["path"],
@@ -1219,7 +1339,212 @@ def _routine_trace_reason(trace: Trace) -> str | None:
     return "Success with bounded tokens, limited tools, and no visible recovery work."
 
 
-def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) -> dict[str, Any]:
+def _coerce_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 0
+    return 0
+
+
+def _coerce_float(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _live_event_datetime(event: dict[str, Any]) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(event.get("at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _recent_live_model_recommendations(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> list[dict[str, Any]]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    rows: list[dict[str, Any]] = []
+    for event in live_events:
+        if event.get("kind") != "model_recommendation":
+            continue
+        at_raw = str(event.get("at") or "")
+        at = _live_event_datetime(event)
+        if at is not None and at < cutoff:
+            continue
+        rows.append(
+            {
+                "at": at_raw,
+                "session_id": event.get("session_id") or "",
+                "agent": event.get("agent") or "",
+                "tool_name": event.get("tool_name") or "",
+                "tier": event.get("tier") or "",
+                "model": event.get("model") or "",
+                "score": _coerce_int(event.get("score") or 0),
+                "cache_affinity_model": event.get("cache_affinity_model"),
+                "cost_saved_usd": round(_coerce_float(event.get("cost_saved_usd") or 0.0), 6),
+                "vs_model": event.get("vs_model") or "",
+                "estimated_input_tokens": _coerce_int(event.get("estimated_input_tokens") or 0),
+                "reasons": [
+                    str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)
+                ],
+            }
+        )
+    rows.sort(key=lambda row: str(row["at"]), reverse=True)
+    return rows[:10]
+
+
+def _build_actual_routing_savings(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> dict[str, Any]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    calls_downtiered = 0
+    total_cost_saved = 0.0
+    by_tier: dict[str, dict[str, Any]] = {}
+    by_model: dict[str, dict[str, Any]] = {}
+    recent_events: list[dict[str, Any]] = []
+
+    for event in live_events:
+        lever = _normalize_lever(str(event.get("lever") or event.get("kind") or ""))
+        if lever != "model_routing":
+            continue
+        at = _live_event_datetime(event)
+        if at is not None and at < cutoff:
+            continue
+        cost_saved_usd = _coerce_float(event.get("cost_saved_usd") or 0.0)
+        if cost_saved_usd <= 0:
+            continue
+        tier = str(event.get("tier") or "unknown")
+        model = str(event.get("model") or "unknown")
+        calls_downtiered += 1
+        total_cost_saved += cost_saved_usd
+
+        tier_row = by_tier.setdefault(
+            tier,
+            {"tier": tier, "calls_downtiered": 0, "cost_saved_usd": 0.0, "models": set()},
+        )
+        tier_row["calls_downtiered"] += 1
+        tier_row["cost_saved_usd"] += cost_saved_usd
+        tier_row["models"].add(model)
+
+        model_row = by_model.setdefault(
+            model,
+            {
+                "model": model,
+                "tier": tier,
+                "calls_downtiered": 0,
+                "cost_saved_usd": 0.0,
+                "sessions": set(),
+            },
+        )
+        model_row["calls_downtiered"] += 1
+        model_row["cost_saved_usd"] += cost_saved_usd
+        session_id = str(event.get("session_id") or "")
+        if session_id:
+            model_row["sessions"].add(session_id)
+
+        recent_events.append(
+            {
+                "at": str(event.get("at") or ""),
+                "session_id": session_id,
+                "agent": str(event.get("agent") or ""),
+                "tool_name": str(event.get("tool_name") or ""),
+                "tier": tier,
+                "model": model,
+                "cost_saved_usd": round(cost_saved_usd, 6),
+                "vs_model": str(event.get("vs_model") or ""),
+                "reasons": [
+                    str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)
+                ],
+            }
+        )
+
+    by_tier_rows = [
+        {
+            "tier": row["tier"],
+            "calls_downtiered": int(row["calls_downtiered"]),
+            "cost_saved_usd": round(float(row["cost_saved_usd"]), 6),
+            "models": sorted(str(model) for model in row["models"]),
+        }
+        for row in by_tier.values()
+    ]
+    by_tier_rows.sort(key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+
+    by_model_rows = [
+        {
+            "model": row["model"],
+            "tier": row["tier"],
+            "calls_downtiered": int(row["calls_downtiered"]),
+            "cost_saved_usd": round(float(row["cost_saved_usd"]), 6),
+            "session_count": len({str(session_id) for session_id in row["sessions"]}),
+        }
+        for row in by_model.values()
+    ]
+    by_model_rows.sort(key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+
+    recent_events.sort(key=lambda row: str(row["at"]), reverse=True)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "window_days": window_days,
+        "calls_downtiered": calls_downtiered,
+        "cost_saved_usd": round(total_cost_saved, 6),
+        "by_tier": by_tier_rows,
+        "by_model": by_model_rows,
+        "recent_events": recent_events[:10],
+    }
+
+
+def _build_compact_session_history(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> list[dict[str, Any]]:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    rows: list[dict[str, Any]] = []
+    for event in live_events:
+        lever = _normalize_lever(str(event.get("lever") or event.get("kind") or ""))
+        if lever != "session_compaction":
+            continue
+        at = _live_event_datetime(event)
+        if at is not None and at < cutoff:
+            continue
+        tokens_freed = _coerce_int(event.get("tokens_freed") or event.get("tokens_saved") or 0)
+        cost_saved_usd = _coerce_float(event.get("cost_saved_usd") or 0.0)
+        if tokens_freed <= 0 and cost_saved_usd <= 0:
+            continue
+        rows.append(
+            {
+                "at": str(event.get("at") or ""),
+                "session_id": str(event.get("session_id") or ""),
+                "agent": str(event.get("agent") or ""),
+                "tokens_freed": tokens_freed,
+                "cost_saved_usd": round(cost_saved_usd, 6),
+                "utilisation_pct": round(_coerce_float(event.get("utilisation_pct") or 0.0), 1),
+                "reason": str(event.get("reason") or ""),
+                "trigger": str(event.get("trigger") or ""),
+                "tokens_before": _coerce_int(event.get("tokens_before") or 0),
+                "tokens_after_estimate": _coerce_int(event.get("tokens_after_estimate") or 0),
+            }
+        )
+    rows.sort(key=lambda row: str(row["at"]), reverse=True)
+    return rows[:10]
+
+
+def _build_model_routing_simulation(
+    traces: list[Trace], *, window_days: int, live_events: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     total_current_cost = 0.0
     total_simulated_cost = 0.0
@@ -1272,7 +1597,13 @@ def _build_model_routing_simulation(traces: list[Trace], *, window_days: int) ->
         "simulated_cost_usd": round(total_simulated_cost, 6),
         "total_tokens_rerouted": rerouted_tokens,
         "heuristic": "Conservative routine-trace filter: success only, no errors, <=120K total tokens, <=4 tool calls, <=2 files touched.",
-        "candidates": sorted(candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True)[:8],
+        "candidates": sorted(
+            candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True
+        )[:8],
+        "live_recommendations": _recent_live_model_recommendations(
+            live_events or [], window_days=window_days
+        ),
+        "actual_savings": _build_actual_routing_savings(live_events or [], window_days=window_days),
     }
 
 
@@ -1310,7 +1641,9 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
             naive = actual + cache_read_tokens
             total_naive += naive
             total_actual += actual
-            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(0, naive - actual)
+            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(
+                0, naive - actual
+            )
             at_raw = str(call.get("at", ""))
             try:
                 at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
@@ -1324,7 +1657,8 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
 
     for event in _iter_live_savings_events(root):
         tokens_saved = int(event.get("tokens_saved", 0) or 0)
-        if tokens_saved <= 0:
+        cost_saved_usd = float(event.get("cost_saved_usd", 0.0) or 0.0)
+        if tokens_saved <= 0 and cost_saved_usd <= 0:
             continue
         at_raw = str(event.get("at", ""))
         try:
@@ -1336,13 +1670,15 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
             continue
         lever = _normalize_lever(str(event.get("lever") or event.get("tool_name") or "plugin_live"))
         tool_name = str(event.get("tool_name") or lever)
-        total_naive += tokens_saved
-        per_lever[lever] += tokens_saved
-        live_cost_saved += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        per_lever.setdefault(lever, 0)
+        if tokens_saved > 0:
+            total_naive += tokens_saved
+            per_lever[lever] += tokens_saved
+        live_cost_saved += cost_saved_usd
         live_calls_saved += int(event.get("calls_saved", 0) or 0)
         live_time_saved_ms += int(event.get("time_saved_ms", 0) or 0)
         day_key = at_date.isoformat()
-        if day_key in by_day_seed:
+        if tokens_saved > 0 and day_key in by_day_seed:
             by_day_seed[day_key]["naive"] = int(by_day_seed[day_key]["naive"]) + tokens_saved
         key = (lever, tool_name)
         source = source_totals.setdefault(
@@ -1358,19 +1694,29 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         )
         source["calls_saved"] += int(event.get("calls_saved", 0) or 0)
         source["tokens_saved"] += tokens_saved
-        source["cost_saved_usd"] += float(event.get("cost_saved_usd", 0.0) or 0.0)
+        source["cost_saved_usd"] += cost_saved_usd
         source["time_saved_ms"] += int(event.get("time_saved_ms", 0) or 0)
 
-    reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    reduction_pct = (
+        round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    )
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
     cost_summary = CostTracker(root).total_savings()
     saved_usd = round(float(cost_summary["saved_usd"]) + live_cost_saved, 6)
     would_have_cost = round(float(cost_summary["would_have_cost_usd"]) + live_cost_saved, 6)
     actually_cost = float(cost_summary["actually_cost_usd"])
     saved_pct = round(100.0 * saved_usd / would_have_cost, 2) if would_have_cost > 0 else 0.0
-    top_sources = sorted(source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+    top_sources = sorted(
+        source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True
+    )
     for src in top_sources:
         src["cost_saved_usd"] = round(float(src["cost_saved_usd"]), 6)
+    cost_only_sources = [
+        dict(source)
+        for source in top_sources
+        if int(source.get("tokens_saved", 0) or 0) <= 0
+        and float(source.get("cost_saved_usd", 0.0) or 0.0) > 0
+    ]
 
     return {
         "window_days": window_days,
@@ -1388,6 +1734,7 @@ def _savings_summary_payload(root: Path, *, window_days: int) -> dict[str, Any]:
         "live_time_saved_ms": live_time_saved_ms,
         "live_saved_usd": round(live_cost_saved, 6),
         "top_sources": top_sources[:10],
+        "cost_only_sources": cost_only_sources[:10],
         "latest_benchmark": _latest_savings_benchmark(root),
     }
 
@@ -1490,6 +1837,22 @@ def _optimization_lever_tokens(
     return total
 
 
+def _optimization_lever_cost(
+    live_events: list[dict[str, Any]], *, lever: str, window_days: int
+) -> float:
+    cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
+    total = 0.0
+    for event in live_events:
+        normalized = _normalize_lever(str(event.get("lever") or event.get("kind") or ""))
+        if normalized != lever:
+            continue
+        at = _live_event_datetime(event)
+        if at is not None and at < cutoff:
+            continue
+        total += _coerce_float(event.get("cost_saved_usd") or 0.0)
+    return round(total, 6)
+
+
 def _optimization_lever_examples(
     top_sources: list[dict[str, Any]],
     *,
@@ -1506,7 +1869,9 @@ def _optimization_lever_examples(
     return examples[:3]
 
 
-def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _implemented_optimization_catalog(
+    savings_payload: dict[str, Any], live_events: list[dict[str, Any]], *, window_days: int
+) -> list[dict[str, Any]]:
     from atelier.core.capabilities.session_optimizer import SUPPORTED_OPTIMIZER_HOSTS
 
     supported_hosts = list(SUPPORTED_OPTIMIZER_HOSTS)
@@ -1515,7 +1880,9 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
         for key, value in (savings_payload.get("per_lever") or {}).items()
         if isinstance(key, str)
     }
-    top_sources = [item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)]
+    top_sources = [
+        item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)
+    ]
 
     catalog = [
         {
@@ -1574,6 +1941,22 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
             ),
         },
         {
+            "id": "session_compaction",
+            "title": "Session compaction",
+            "category": "context_lifecycle",
+            "automation": "Advisory - compact tool fires on utilisation >= 80%",
+            "status": "active",
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("session_compaction",)
+            ),
+            "observed_cost_saved_usd": _optimization_lever_cost(
+                live_events, lever="session_compaction", window_days=window_days
+            ),
+            "applies_to": supported_hosts,
+            "notes": "Compresses the conversation into a smaller carry-forward state at task boundaries.",
+            "examples": _optimization_lever_examples(top_sources, exact=("session_compaction",)),
+        },
+        {
             "id": "cached_read",
             "title": "Cached read reuse",
             "category": "cache",
@@ -1590,7 +1973,9 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
             "category": "memory",
             "automation": "Automatic when memory recall paths are used",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("scoped_recall",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("scoped_recall",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Pulls narrower memory slices instead of replaying broad historical context.",
             "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
@@ -1601,7 +1986,9 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
             "category": "context_reuse",
             "automation": "Automatic when matching reasoning blocks are selected",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("reasonblock_inject",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
             "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
@@ -1612,10 +1999,26 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
             "category": "context_pruning",
             "automation": "Automatic when structured truncation paths are used",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("ast_truncation",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("ast_truncation",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Keeps syntax-relevant structure while trimming low-value surrounding text.",
             "examples": _optimization_lever_examples(top_sources, exact=("ast_truncation",)),
+        },
+        {
+            "id": "model_routing",
+            "title": "Model routing (tier downgrade)",
+            "category": "model_selection",
+            "automation": "Advisory - route tool fires before every tool call",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "observed_cost_saved_usd": _optimization_lever_cost(
+                live_events, lever="model_routing", window_days=window_days
+            ),
+            "applies_to": supported_hosts,
+            "notes": "Recommends a cheaper model tier than opus for routine tool calls and records the estimated dollar delta.",
+            "examples": _optimization_lever_examples(top_sources, exact=("model_routing",)),
         },
         {
             "id": "loop_detection",
@@ -1634,7 +2037,10 @@ def _implemented_optimization_catalog(savings_payload: dict[str, Any]) -> list[d
     ]
     for item in catalog:
         observed_tokens = item.get("observed_tokens_saved")
-        if isinstance(observed_tokens, int) and observed_tokens > 0 and item["status"] == "active":
+        observed_cost = _coerce_float(item.get("observed_cost_saved_usd") or 0.0)
+        if (
+            (isinstance(observed_tokens, int) and observed_tokens > 0) or observed_cost > 0
+        ) and item["status"] == "active":
             item["status"] = "active_observed"
     return catalog
 
@@ -1691,19 +2097,17 @@ def _optimization_implementation_gaps() -> list[dict[str, Any]]:
                 "Atelier has search/read compaction and AST-aware truncation, but it does not yet expose repeat-read telemetry comparable to delta-read and structure-map measurement."
             ),
         },
-        {
-            "id": "model-routing-simulation",
-            "priority": "low",
-            "title": "Simulate cheaper model routing for routine traces",
-            "hosts": supported_hosts,
-            "notes": (
-                "The current optimizer flags expensive sessions, but it still does not estimate what could have been saved by routing clearly routine work to a cheaper model tier."
-            ),
-        },
     ]
 
 
-def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_days: int) -> dict[str, Any]:
+def _optimizations_summary_payload(
+    root: Path, store: ContextStore, *, window_days: int
+) -> dict[str, Any]:
+    from atelier.core.capabilities.optimization import (
+        load_current_policy,
+        load_history,
+        optimize_from_traces,
+    )
     from atelier.core.capabilities.session_optimizer import (
         build_trace_optimization_report,
         render_session_optimizer_guidance,
@@ -1715,10 +2119,18 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     recent_traces = _recent_traces(store, window_days=window_days)
     live_events = _iter_live_savings_events(root)
     recommendations = build_trace_optimization_report(traces, days=window_days)
+    advisor = optimize_from_traces(
+        traces,
+        current_policy=load_current_policy(root),
+        days=window_days,
+    )
+    advisor_history = load_history(root, limit=6)
     from atelier.core.foundation.paths import resolve_workspace_root
 
     project_root_candidate = resolve_workspace_root(root)
-    if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
+    if not (
+        (project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()
+    ):
         project_root_candidate = Path.cwd()
     from atelier.core.capabilities.optimization_audit import (
         build_context_audit,
@@ -1730,16 +2142,25 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         blocks_dir=getattr(store, "blocks_dir", None),
         rubrics_dir=getattr(store, "rubrics_dir", None),
     )
-    quality_score = build_session_quality_summary(traces, window_days=window_days, context_audit=context_audit)
+    quality_score = build_session_quality_summary(
+        traces, window_days=window_days, context_audit=context_audit
+    )
     runtime_coverage = _optimization_runtime_coverage()
-    implemented_levers = _implemented_optimization_catalog(savings)
+    implemented_levers = _implemented_optimization_catalog(
+        savings, live_events, window_days=window_days
+    )
     auto_optimizations = _build_auto_optimizations(savings, live_events, window_days=window_days)
     impact_validation = _build_impact_validation(store, recent_traces, window_days=window_days)
     reread_telemetry = _build_reread_telemetry(root, window_days=window_days)
-    model_routing_simulation = _build_model_routing_simulation(recent_traces, window_days=window_days)
+    model_routing_simulation = _build_model_routing_simulation(
+        recent_traces, window_days=window_days, live_events=live_events
+    )
+    compact_session_history = _build_compact_session_history(live_events, window_days=window_days)
 
     # Fetch latest codeburn:optimize report
-    external_optimizations = store.list_external_analytics_runs(tool="codeburn:optimize", days=window_days, limit=1)
+    external_optimizations = store.list_external_analytics_runs(
+        tool="codeburn:optimize", days=window_days, limit=1
+    )
     latest_external = external_optimizations[0] if external_optimizations else None
 
     automatic_hosts = sum(1 for item in runtime_coverage if item["automatic_at_start"])
@@ -1747,7 +2168,13 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     observed_levers = sum(
         1
         for item in implemented_levers
-        if isinstance(item.get("observed_tokens_saved"), int) and item["observed_tokens_saved"] > 0
+        if (
+            (
+                isinstance(item.get("observed_tokens_saved"), int)
+                and item["observed_tokens_saved"] > 0
+            )
+            or _coerce_float(item.get("observed_cost_saved_usd") or 0.0) > 0
+        )
     )
 
     return {
@@ -1761,6 +2188,8 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         "budget_rules": session_optimization_rules(),
         "implemented_levers": implemented_levers,
         "implementation_gaps": _optimization_implementation_gaps(),
+        "advisor": advisor.to_dict(),
+        "advisor_history": advisor_history,
         "recommendations": recommendations,
         "context_audit": context_audit,
         "quality_score": quality_score,
@@ -1768,6 +2197,7 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         "impact_validation": impact_validation,
         "reread_telemetry": reread_telemetry,
         "model_routing_simulation": model_routing_simulation,
+        "compact_session_history": compact_session_history,
         "external_optimizations": latest_external,
         "savings": savings,
         "data_sources": [
@@ -1807,7 +2237,7 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
 
 def create_app(store_root: str | Path | None = None) -> Any:
     """Construct the FastAPI instance."""
-    from fastapi import Body, Depends, FastAPI, HTTPException, Query, Security
+    from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Security
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -1826,7 +2256,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
             )
         if not cfg.api_key:
             logger.warning("API key not configured; rejecting request")
-            raise HTTPException(status_code=401, detail="Authentication required but no key configured")
+            raise HTTPException(
+                status_code=401, detail="Authentication required but no key configured"
+            )
         if auth.credentials != cfg.api_key:
             raise HTTPException(status_code=403, detail="Invalid API key")
         return "authenticated"
@@ -1903,7 +2335,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
 
             conn.row_factory = sqlite3.Row
-            for trace_row in conn.execute("SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)):
+            for trace_row in conn.execute(
+                "SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)
+            ):
                 try:
                     payload = json.loads(trace_row["payload"] or "{}")
                 except (TypeError, json.JSONDecodeError):
@@ -1982,7 +2416,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
         dependencies=[Depends(verify_api_key)],
         response_model=ContextResponse,
     )
-    def task_context(payload: ContextRequest = Body(...)) -> ContextResponse:  # noqa: B008
+    def reasoning_context(payload: ContextRequest = Body(...)) -> ContextResponse:  # noqa: B008
         result = _runtime().get_context(
             task=payload.task,
             domain=payload.domain,
@@ -2130,12 +2564,20 @@ def create_app(store_root: str | Path | None = None) -> Any:
         normalized.pop("tool_outputs", None)
 
         normalized["task"] = redact(str(normalized.get("task") or ""))
-        normalized["files_touched"] = redact_list([str(item) for item in normalized.get("files_touched") or []])
-        normalized["commands_run"] = redact_list([str(item) for item in normalized.get("commands_run") or []])
-        normalized["errors_seen"] = redact_list([str(item) for item in normalized.get("errors_seen") or []])
+        normalized["files_touched"] = redact_list(
+            [str(item) for item in normalized.get("files_touched") or []]
+        )
+        normalized["commands_run"] = redact_list(
+            [str(item) for item in normalized.get("commands_run") or []]
+        )
+        normalized["errors_seen"] = redact_list(
+            [str(item) for item in normalized.get("errors_seen") or []]
+        )
         normalized["diff_summary"] = redact(str(normalized.get("diff_summary") or ""))
         normalized["output_summary"] = redact(str(normalized.get("output_summary") or ""))
-        normalized["tools_called"] = _normalize_trace_tool_calls(list(normalized.get("tools_called") or []))
+        normalized["tools_called"] = _normalize_trace_tool_calls(
+            list(normalized.get("tools_called") or [])
+        )
         normalized["validation_results"] = _normalize_trace_validation_results(
             list(normalized.get("validation_results") or [])
         )
@@ -2144,7 +2586,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
     @app.post("/v1/traces", tags=["traces"], dependencies=[Depends(verify_api_key)])
     def record_trace(payload: dict[str, Any]) -> dict[str, Any]:
         if "id" not in payload:
-            payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
+            payload["id"] = Trace.make_id(
+                payload.get("task", "untitled"), payload.get("agent", "agent")
+            )
         normalized_payload, event_recorded = _normalize_trace_payload(payload)
         trace = Trace.model_validate(normalized_payload)
         get_store().record_trace(trace)
@@ -2266,7 +2710,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
             try:
                 since_dt = datetime.fromisoformat(since_str).replace(tzinfo=UTC)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"invalid since: {since_str!r}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"invalid since: {since_str!r}"
+                ) from exc
         passages = mem.search_passages(
             agent_id,
             str(query),
@@ -2388,7 +2834,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
         days: int | None = Query(None),
     ) -> dict[str, Any]:
         rows = _query_analytics_rows(store.db_path, grouped=grouped, days=days, limit=limit)
-        filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
+        filtered = _filter_analytics_rows(
+            rows, agent=agent, model=model, category=category, search=search
+        )
         return _build_analytics_summary(filtered, days=days)
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
@@ -2402,7 +2850,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
         top sessions, and tool-type distributions in one call.
         """
         db_path = store.db_path
-        start_day = (datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)).isoformat()
+        start_day = (
+            datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)
+        ).isoformat()
         host_filter = "AND COALESCE(host, agent) = ?" if host else ""
         sql = f"""
             SELECT
@@ -2753,9 +3203,12 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         return {
             "summary": {
-                "total_cost": round(sum(float(session["cost"]) for session in dashboard_sessions), 6),
+                "total_cost": round(
+                    sum(float(session["cost"]) for session in dashboard_sessions), 6
+                ),
                 "projected_monthly_cost": round(
-                    sum(float(session["cost"]) for session in dashboard_sessions) * (30 / max(days, 1)),
+                    sum(float(session["cost"]) for session in dashboard_sessions)
+                    * (30 / max(days, 1)),
                     6,
                 ),
                 "total_sessions": len(dashboard_sessions),
@@ -2809,10 +3262,444 @@ def create_app(store_root: str | Path | None = None) -> Any:
         return _load_pricing_table()
 
     # ------------------------------------------------------------------ #
+    # Raw artifact HTML viewer                                           #
+    # ------------------------------------------------------------------ #
+
+    def _render_raw_artifact_html(artifact: Any, content: str) -> str:
+        """Render raw artifact content as a standalone HTML page for browser viewing."""
+        import html as _html
+
+        meta = artifact.model_dump(mode="json")
+        meta_json = json.dumps(meta, default=str, indent=2)
+
+        line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+
+        # Attempt to detect JSONL: if >= 80% of non-empty lines parse as JSON
+        lines = content.rstrip("\n").split("\n")
+        json_lines = 0
+        non_empty = 0
+        for ln in lines:
+            if ln.strip():
+                non_empty += 1
+                try:
+                    json.loads(ln)
+                    json_lines += 1
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        is_jsonl = non_empty > 0 and (json_lines / non_empty) >= 0.8
+
+        # Escape content as a JS-safe string via JSON
+        content_js = json.dumps(content)
+
+        short_id = artifact.id[:24] + "…" if len(artifact.id) > 24 else artifact.id
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raw Artifact · {_html.escape(short_id)}</title>
+<style>
+  *, *::before, *::after {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  html {{ font-size: 14px; }}
+  body {{
+    background: #0a0a0a;
+    color: #d4d4d4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 24px;
+  }}
+  a {{ color: #61afef; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+
+  /* ── Metadata card ── */
+  .meta {{
+    background: #141416;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px 20px;
+  }}
+  .meta dt {{
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #555;
+    margin-top: 4px;
+  }}
+  .meta dd {{
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #b0b0b0;
+    word-break: break-all;
+  }}
+  .meta .id-val {{ color: #61afef; }}
+  .meta .src-val {{ color: #e5c07b; }}
+  .meta .kind-val {{ color: #98c379; }}
+  .meta .redacted-yes {{ color: #e06c75; }}
+  .meta .redacted-no {{ color: #98c379; }}
+  .meta .title-row {{
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #222;
+  }}
+  .meta .title-row h1 {{
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #888;
+  }}
+  .meta .title-row .artifact-id {{
+    font-family: "SF Mono", "Fira Code", Menlo, monospace;
+    font-size: 10px;
+    color: #61afef;
+    background: #1e1e24;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }}
+  .meta .line-count {{
+    margin-left: auto;
+    font-family: "SF Mono", "Fira Code", Menlo, monospace;
+    font-size: 10px;
+    color: #888;
+    background: #1e1e24;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }}
+
+  /* ── Toolbar ── */
+  .toolbar {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }}
+  .toolbar button {{
+    background: #1e1e24;
+    border: 1px solid #333;
+    color: #b0b0b0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }}
+  .toolbar button:hover {{
+    background: #2a2a32;
+    border-color: #555;
+    color: #e0e0e0;
+  }}
+  .toolbar button:active {{
+    transform: scale(0.97);
+  }}
+  .toolbar .copy-btn {{ color: #98c379; }}
+  .toolbar .copy-btn:hover {{ border-color: #98c379; }}
+  .toolbar .status {{
+    font-size: 10px;
+    color: #666;
+    margin-left: auto;
+  }}
+
+  /* ── Content area ── */
+  .content-wrap {{
+    background: #0d0d0f;
+    border: 1px solid #1a1a1e;
+    border-radius: 6px;
+    overflow: hidden;
+  }}
+  .line {{
+    display: flex;
+    min-height: 21px;
+    border-bottom: 1px solid #111113;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    transition: background 0.1s;
+  }}
+  .line:hover {{
+    background: #121216;
+  }}
+  .line:last-child {{ border-bottom: none; }}
+  .line-num {{
+    flex-shrink: 0;
+    width: 48px;
+    padding: 0 10px;
+    text-align: right;
+    color: #333;
+    font-size: 10px;
+    user-select: none;
+    border-right: 1px solid #16161a;
+    padding-right: 12px;
+    background: #0a0a0c;
+  }}
+  .line-content {{
+    flex: 1;
+    padding: 0 14px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }}
+  .line-content.raw-text {{
+    color: #888;
+    font-style: italic;
+  }}
+
+  /* ── JSON syntax highlighting ── */
+  .hl-key {{ color: #61afef; }}
+  .hl-str {{ color: #98c379; }}
+  .hl-num {{ color: #d19a66; }}
+  .hl-bool {{ color: #c678dd; }}
+  .hl-null {{ color: #c678dd; font-style: italic; }}
+  .hl-bracket {{ color: #777; }}
+  .hl-punc {{ color: #666; }}
+  .hl-comment {{ color: #555; font-style: italic; }}
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {{
+    body {{ padding: 12px; }}
+    .meta {{ grid-template-columns: 1fr 1fr; padding: 12px; }}
+    .line-num {{ width: 36px; padding: 0 6px; font-size: 9px; }}
+    .line-content {{ font-size: 10px; padding: 0 8px; }}
+  }}
+
+  /* ── Empty state ── */
+  .empty {{
+    padding: 40px 20px;
+    text-align: center;
+    color: #555;
+    font-size: 12px;
+  }}
+
+  /* ── Loading / error ── */
+  .error {{ color: #e06c75; padding: 20px; }}
+</style>
+</head>
+<body>
+
+<!-- Metadata -->
+<dl class="meta">
+  <div class="title-row">
+    <h1>⧩ Raw Artifact</h1>
+    <span class="artifact-id">{_html.escape(short_id)}</span>
+    <span class="line-count">{line_count} line{"s" if line_count != 1 else ""}</span>
+  </div>
+  <div>
+    <dt>Source</dt>
+    <dd class="src-val">{_html.escape(str(meta.get("source", "")))}</dd>
+  </div>
+  <div>
+    <dt>Kind</dt>
+    <dd class="kind-val">{_html.escape(str(meta.get("kind", "")))}</dd>
+  </div>
+  <div>
+    <dt>Created</dt>
+    <dd>{_html.escape(str(meta.get("created_at", "")))}</dd>
+  </div>
+  <div>
+    <dt>Redacted</dt>
+    <dd class="redacted-{"yes" if meta.get("redacted") else "no"}">{"Yes" if meta.get("redacted") else "No"}</dd>
+  </div>
+  <div>
+    <dt>Original Bytes</dt>
+    <dd>{_html.escape(str(meta.get("byte_count_original", "")))}</dd>
+  </div>
+  <div>
+    <dt>Redacted Bytes</dt>
+    <dd>{_html.escape(str(meta.get("byte_count_redacted", "")))}</dd>
+  </div>
+  <div>
+    <dt>Relative Path</dt>
+    <dd>{_html.escape(str(meta.get("relative_path", "") or "—"))}</dd>
+  </div>
+  <div>
+    <dt>Source Session</dt>
+    <dd>{_html.escape(str(meta.get("source_session_id", "")))}</dd>
+  </div>
+  <div>
+    <dt>Source Path</dt>
+    <dd>{_html.escape(str(meta.get("source_path", "")) or "—")}</dd>
+  </div>
+  <div>
+    <dt>Source File Mtime</dt>
+    <dd>{_html.escape(str(meta.get("source_file_mtime", "")) or "—")}</dd>
+  </div>
+</dl>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="copy-btn" onclick="copyContent()">⎘ Copy All</button>
+  <button onclick="toggleWrap()">↔ Wrap</button>
+  <button onclick="toggleCollapsed()">⊟ Collapse All</button>
+  <span class="status" id="status"></span>
+</div>
+
+<!-- Lines rendered by JS -->
+<div class="content-wrap" id="root"></div>
+
+<script>
+(function() {{
+  const CONTENT = {content_js};
+  const IS_JSONL = {json.dumps(is_jsonl)};
+  const META = {meta_json};
+
+  let wrapEnabled = false;
+  let allCollapsed = false;
+
+  function escapeHtml(s) {{
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }}
+
+  function colorizeJSON(obj) {{
+    const formatted = JSON.stringify(obj, null, 2);
+    // Tokenize the pretty-printed JSON
+    let s = escapeHtml(formatted);
+    // Keys: "key":
+    s = s.replace(/(&quot;[^&]*&quot;)\\s*:/g, '<span class="hl-key">$1</span>:');
+    s = s.replace(/(:\\s*)(&quot;[^&]*&quot;)/g, '$1<span class="hl-str">$2</span>');
+    s = s.replace(/(,\\s*)(&quot;[^&]*&quot;)/g, '$1<span class="hl-str">$2</span>');
+    s = s.replace(/(:\\s*)(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)/g, '$1<span class="hl-num">$2</span>');
+    s = s.replace(/(,\\s*)(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)/g, '$1<span class="hl-num">$2</span>');
+    s = s.replace(/(:\\s*)(true|false)/g, '$1<span class="hl-bool">$2</span>');
+    s = s.replace(/(,\\s*)(true|false)/g, '$1<span class="hl-bool">$2</span>');
+    s = s.replace(/(:\\s*)(null)/g, '$1<span class="hl-null">$2</span>');
+    s = s.replace(/(,\\s*)(null)/g, '$1<span class="hl-null">$2</span>');
+    // Brackets/punctuation
+    s = s.replace(/([\\[\\]{{}}])/g, '<span class="hl-bracket">$1</span>');
+    return s;
+  }}
+
+  function render() {{
+    const root = document.getElementById('root');
+    const lines = CONTENT.split('\\n');
+    // Remove trailing empty line from split if content ends with newline
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+    if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {{
+      root.innerHTML = '<div class="empty">∅ empty artifact</div>';
+      return;
+    }}
+
+    const fragments = [];
+    let jsonOk = 0;
+    let jsonFail = 0;
+
+    for (let i = 0; i < lines.length; i++) {{
+      const line = lines[i];
+      const trimmed = line.trim();
+      let contentHtml;
+
+      if (IS_JSONL && trimmed) {{
+        try {{
+          const parsed = JSON.parse(trimmed);
+          contentHtml = colorizeJSON(parsed);
+          jsonOk++;
+        }} catch (e) {{
+          contentHtml = '<span class="hl-comment">// JSON parse error: ' + escapeHtml(e.message) + '</span>\\n' + escapeHtml(line);
+          jsonFail++;
+        }}
+      }} else {{
+        contentHtml = escapeHtml(line);
+      }}
+
+      fragments.push(
+        '<div class="line">' +
+          '<span class="line-num">' + (i + 1) + '</span>' +
+          '<span class="line-content' + (contentHtml ? '' : ' raw-text') + '">' + (contentHtml || '\\u00A0') + '</span>' +
+        '</div>'
+      );
+    }}
+
+    root.innerHTML = fragments.join('');
+
+    const statusEl = document.getElementById('status');
+    if (IS_JSONL) {{
+      const total = jsonOk + jsonFail;
+      statusEl.textContent = jsonOk + '/' + total + ' JSON lines parsed' + (jsonFail ? ', ' + jsonFail + ' failed' : '');
+    }} else {{
+      statusEl.textContent = lines.length + ' lines';
+    }}
+  }}
+
+  window.copyContent = function() {{
+    navigator.clipboard.writeText(CONTENT).then(() => {{
+      const btn = document.querySelector('.copy-btn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    }});
+  }};
+
+  window.toggleWrap = function() {{
+    wrapEnabled = !wrapEnabled;
+    document.querySelectorAll('.line-content').forEach(el => {{
+      el.style.whiteSpace = wrapEnabled ? 'pre-wrap' : 'pre';
+      el.style.wordBreak = wrapEnabled ? 'break-all' : 'normal';
+    }});
+    const btn = document.querySelector('.toolbar button:nth-child(2)');
+    btn.textContent = wrapEnabled ? '↔ No Wrap' : '↔ Wrap';
+  }};
+
+  window.toggleCollapsed = function() {{
+    allCollapsed = !allCollapsed;
+    document.querySelectorAll('.line').forEach((el, i) => {{
+      const content = el.querySelector('.line-content');
+      if (allCollapsed && i > 10) {{
+        el.style.display = 'none';
+      }} else {{
+        el.style.display = '';
+      }}
+    }});
+    const btn = document.querySelector('.toolbar button:nth-child(3)');
+    if (allCollapsed) {{
+      // Show a "show all" row
+      const root = document.getElementById('root');
+      const showAll = document.createElement('div');
+      showAll.className = 'line';
+      showAll.style.cursor = 'pointer';
+      showAll.style.justifyContent = 'center';
+      showAll.style.padding = '12px';
+      showAll.style.color = '#61afef';
+      showAll.style.fontSize = '11px';
+      showAll.id = 'show-all-row';
+      showAll.textContent = '⊞ Show all ' + document.querySelectorAll('.line').length + ' lines';
+      showAll.onclick = function() {{ allCollapsed = false; toggleCollapsed(); }};
+      root.appendChild(showAll);
+      btn.textContent = '⊞ Expand All';
+    }} else {{
+      const row = document.getElementById('show-all-row');
+      if (row) row.remove();
+      btn.textContent = '⊟ Collapse All';
+    }}
+  }};
+
+  render();
+}})();
+</script>
+</body>
+</html>"""
+
+    # ------------------------------------------------------------------ #
     # Raw artifacts                                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
+    @app.get(
+        "/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)]
+    )
     def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
         """Return metadata for a stored raw artifact."""
         store_inst = get_store()
@@ -2826,9 +3713,12 @@ def create_app(store_root: str | Path | None = None) -> Any:
         tags=["artifacts"],
         dependencies=[Depends(verify_api_key)],
     )
-    def get_raw_artifact_content(artifact_id: str) -> Any:
-        """Return the raw JSONL content of a stored artifact as plain text."""
-        from fastapi.responses import PlainTextResponse
+    def get_raw_artifact_content(
+        artifact_id: str,
+        accept: str = Header(None),
+    ) -> Any:
+        """Return the raw artifact content as plain text or a pretty HTML page."""
+        from fastapi.responses import HTMLResponse, PlainTextResponse
 
         store_inst = get_store()
         artifact = store_inst.get_raw_artifact(artifact_id)
@@ -2838,7 +3728,27 @@ def create_app(store_root: str | Path | None = None) -> Any:
             content = store_inst.read_raw_artifact_content(artifact)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Content file not found on disk") from exc
+
+        # Serve a pretty-printed HTML page when a browser requests it
+        # (skip for very large files to avoid browser memory issues)
+        MAX_HTML_SIZE = 5 * 1024 * 1024  # 5 MB
+        if accept and "text/html" in accept and len(content) <= MAX_HTML_SIZE:
+            return HTMLResponse(_render_raw_artifact_html(artifact, content))
+
         return PlainTextResponse(content, media_type="text/plain")
+
+    @app.get("/v1/files/content", tags=["files"], dependencies=[Depends(verify_api_key)])
+    def get_file_content(path: str) -> Any:
+        """Return local file content with a browser-appropriate media type."""
+        from fastapi.responses import FileResponse
+
+        file_path = Path(path).expanduser()
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Path is not a file: {path}")
+        media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
     @app.get("/ledgers/{session_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_ledger(session_id: str) -> dict[str, Any]:
@@ -2889,23 +3799,69 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 if row:
                     trace = Trace.model_validate_json(coerce_trace_json(row[0]))
 
+        def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
+            raw_at = turn.get("at")
+            if isinstance(raw_at, (int, float)):
+                return (0, datetime.fromtimestamp(float(raw_at) / 1000, tz=UTC).isoformat())
+            if isinstance(raw_at, str):
+                stripped = raw_at.strip()
+                if stripped.isdigit():
+                    return (0, datetime.fromtimestamp(int(stripped) / 1000, tz=UTC).isoformat())
+                try:
+                    parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+                    return (0, parsed.isoformat())
+                except ValueError:
+                    return (1, stripped)
+            return (2, "")
+
         conversations: list[dict[str, Any]] = []
-        source_paths: list[str] = []
+        source_files: list[dict[str, Any]] = []
+        artifacts: list[dict[str, Any]] = []
+        seen_source_files: set[tuple[str, str]] = set()
         if trace:
             if trace.raw_artifact_ids:
-                # Reconstruct from raw artifacts (imported sessions)
+                # Reconstruct from all raw artifacts (main session + subagents)
                 for art_id in trace.raw_artifact_ids:
                     artifact = store_inst.get_raw_artifact(art_id)
                     if artifact:
+                        scope = (
+                            "subagent"
+                            if "subagents/" in str(artifact.relative_path).replace("\\", "/")
+                            else "main"
+                        )
+                        artifacts.append(
+                            {
+                                "id": artifact.id,
+                                "source": artifact.source,
+                                "kind": artifact.kind,
+                                "relative_path": artifact.relative_path,
+                                "source_path": artifact.source_path,
+                                "scope": scope,
+                            }
+                        )
                         if artifact.source_path:
-                            source_paths.append(artifact.source_path)
+                            source_file_key = (artifact.source_path, artifact.id)
+                            if source_file_key not in seen_source_files:
+                                source_files.append(
+                                    {"path": artifact.source_path, "artifact_id": artifact.id}
+                                )
+                                seen_source_files.add(source_file_key)
                         try:
                             raw_content = store_inst.read_raw_artifact_content(artifact)
                             from atelier.gateway.hosts.session_parsers._session_parser import (
                                 parse_session_turns,
                             )
 
-                            conversations = parse_session_turns(raw_content, artifact.source)
+                            artifact_turns = parse_session_turns(raw_content, artifact.source)
+                            for turn in artifact_turns:
+                                turn["artifact_id"] = artifact.id
+                                turn["artifact_source"] = artifact.source
+                                turn["artifact_kind"] = artifact.kind
+                                turn["artifact_label"] = Path(artifact.relative_path).name
+                                turn["source_scope"] = scope
+                                if scope == "subagent" and not turn.get("subagent_name"):
+                                    turn["subagent_name"] = Path(artifact.relative_path).stem
+                            conversations.extend(artifact_turns)
                         except Exception as exc:
                             logger.error(
                                 "Failed to reconstruct conversations from artifact %s (source=%s): %s",
@@ -2914,8 +3870,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
                                 exc,
                                 exc_info=True,
                             )
-                        if conversations:
-                            break
+                conversations.sort(key=_conversation_sort_key)
 
             # Calculate turn costs on the fly using backend pricing
             from atelier.core.capabilities.pricing import get_model_pricing
@@ -2933,8 +3888,10 @@ def create_app(store_root: str | Path | None = None) -> Any:
         if snap:
             if conversations:
                 snap["conversations"] = conversations
-            if source_paths:
-                snap["source_paths"] = source_paths
+            if source_files:
+                snap["source_files"] = source_files
+            if artifacts:
+                snap["artifacts"] = artifacts
             return snap
 
         if trace:
@@ -2951,7 +3908,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 "errors_seen": trace.errors_seen,
                 "tools_called": [tc.model_dump() for tc in trace.tools_called],
                 "conversations": conversations,
-                "source_paths": source_paths,
+                "source_files": source_files,
+                "artifacts": artifacts,
                 "raw_artifact_ids": trace.raw_artifact_ids,
                 "input_tokens": trace.input_tokens,
                 "output_tokens": trace.output_tokens,
@@ -2960,7 +3918,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 "cache_creation_input_tokens": trace.cache_creation_input_tokens,
                 "user_prompt_tokens": trace.user_prompt_tokens,
                 "model": trace.model,
-                "note": "Imported from session logs." if trace.raw_artifact_ids else "Live run trace.",
+                "note": "Imported from session logs."
+                if trace.raw_artifact_ids
+                else "Live run trace.",
                 "trace": trace.model_dump(mode="json"),
             }
 
@@ -3048,7 +4008,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
                                 for line in content[3:end].split("\n"):
                                     if line.startswith("description:"):
                                         desc = line.split(":", 1)[1].strip()
-                        skills.append({"name": skill_dir.name, "description": desc, "content": content})
+                        skills.append(
+                            {"name": skill_dir.name, "description": desc, "content": content}
+                        )
         return skills
 
     @app.get("/skills/{name}", tags=["ops"], dependencies=[Depends(verify_api_key)])
@@ -3056,7 +4018,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
         from atelier.core.environment import skill_visible
 
         if not skill_visible(name):
-            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
+            raise HTTPException(
+                status_code=404, detail=f"Skill not available outside dev mode: {name}"
+            )
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"
         if not md.exists():
@@ -3110,7 +4074,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
     @app.get("/v1/optimizations/summary", tags=["metrics"], dependencies=[Depends(verify_api_key)])
     def optimizations_summary(window_days: int = Query(14)) -> dict[str, Any]:
-        return _optimizations_summary_payload(Path(cfg.atelier_root), get_store(), window_days=window_days)
+        return _optimizations_summary_payload(
+            Path(cfg.atelier_root), get_store(), window_days=window_days
+        )
 
     @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_calls(limit: int = Query(200)) -> list[dict[str, Any]]:
@@ -3195,6 +4161,367 @@ def create_app(store_root: str | Path | None = None) -> Any:
         mem = make_memory_store(Path(cfg.atelier_root))
         passages = mem.list_passages(agent_id, limit=limit)
         return [p.model_dump(mode="json") for p in passages]
+
+    # ------------------------------------------------------------------ #
+    # Week-2 routes — Sessions, Memory facts, Insights, Outcomes,        #
+    # Reports (spec 06)                                                   #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/v1/sessions", tags=["sessions"], dependencies=[Depends(verify_api_key)])
+    def list_sessions(
+        since: str = Query("7d", description="Time window, e.g. '7d', '30d'"),
+        limit: int = Query(200, ge=1, le=1000),
+    ) -> list[dict[str, Any]]:
+        """List recent sessions with headline cost/savings fields."""
+        from datetime import timedelta
+
+        from atelier.infra.runtime.session_report import (
+            build_report,
+            list_run_files,
+        )
+
+        root = Path(cfg.atelier_root)
+
+        # Parse since
+        days = 7
+        if since.endswith("d"):
+            try:
+                days = int(since[:-1])
+            except ValueError:
+                pass
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+
+        files = list_run_files(root, since=cutoff)
+        results: list[dict[str, Any]] = []
+        for f in files[:limit]:
+            try:
+                snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
+                report = build_report(snap, root)
+                results.append(
+                    {
+                        "session_id": report.session_id,
+                        "started_at": report.started_at.isoformat(),
+                        "ended_at": report.ended_at.isoformat() if report.ended_at else None,
+                        "duration_seconds": report.duration_seconds,
+                        "active_duration_seconds": report.active_duration_seconds,
+                        "vendor": report.vendor,
+                        "agent_settings": report.agent_settings,
+                        "skills": report.skills,
+                        "telemetry": report.telemetry,
+                        "raw_artifact_ids": report.raw_artifact_ids,
+                        "total_turns": report.total_turns,
+                        "total_cost_usd": report.total_cost_usd,
+                        "total_atelier_savings_usd": report.total_atelier_savings_usd,
+                        "label": None,
+                        "models_used": report.models_used,
+                        "input_tokens": report.input_tokens,
+                        "output_tokens": report.output_tokens,
+                        "cached_input_tokens": report.cache_read_tokens,
+                    }
+                )
+            except Exception:
+                continue
+        return results
+
+    @app.get(
+        "/v1/sessions/{session_id}",
+        tags=["sessions"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_session(session_id: str) -> dict[str, Any]:
+        """Full session report for a single session_id."""
+        from atelier.infra.runtime.session_report import load_report
+
+        root = Path(cfg.atelier_root)
+        report = load_report(session_id, root)
+        if report is None:
+            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        return {
+            "session_id": report.session_id,
+            "started_at": report.started_at.isoformat(),
+            "ended_at": report.ended_at.isoformat() if report.ended_at else None,
+            "duration_seconds": report.duration_seconds,
+            "active_duration_seconds": report.active_duration_seconds,
+            "vendor": report.vendor,
+            "agent_settings": report.agent_settings,
+            "skills": report.skills,
+            "telemetry": report.telemetry,
+            "raw_artifact_ids": report.raw_artifact_ids,
+            "total_turns": report.total_turns,
+            "total_cost_usd": report.total_cost_usd,
+            "total_atelier_savings_usd": report.total_atelier_savings_usd,
+            "label": None,
+            "models_used": report.models_used,
+            "tool_call_count": report.tool_call_count,
+            "input_token_cost_usd": report.input_token_cost_usd,
+            "cache_write_cost_usd": report.cache_write_cost_usd,
+            "cache_read_cost_usd": report.cache_read_cost_usd,
+            "output_token_cost_usd": report.output_token_cost_usd,
+            "input_tokens": report.input_tokens,
+            "cache_write_tokens": report.cache_write_tokens,
+            "cache_read_tokens": report.cache_read_tokens,
+            "output_tokens": report.output_tokens,
+            "routing_downtiered_turns": report.routing_downtiered_turns,
+            "routing_savings_usd": report.routing_savings_usd,
+            "compact_events": report.compact_events,
+            "compact_savings_estimate_usd": report.compact_savings_estimate_usd,
+            "top_tools_by_cost": [
+                {"tool": t, "calls": c, "cost_usd": v} for t, c, v in report.top_tools_by_cost
+            ],
+        }
+
+    @app.get(
+        "/v1/memory/facts",
+        tags=["memory"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def list_memory_facts(
+        vendor: str | None = Query(None, description="Filter by vendor: claude, codex, gemini"),
+    ) -> list[dict[str, Any]]:
+        """List cross-vendor memory facts, optionally filtered by vendor."""
+        from atelier.core.capabilities.cross_vendor_memory.registry import MemoryRegistry
+
+        registry = MemoryRegistry()
+        facts = registry.by_vendor(vendor) if vendor else registry.all_facts()
+        return [
+            {
+                "fact_id": f.fact_id,
+                "vendor": f.vendor,
+                "source_path": str(f.source_path),
+                "source_kind": f.source_kind,
+                "content": f.content,
+                "line_number": f.line_number,
+                "captured_at": f.captured_at.isoformat(),
+                "raw_meta": f.raw_meta,
+            }
+            for f in facts
+        ]
+
+    @app.get(
+        "/v1/memory/facts/{fact_id}",
+        tags=["memory"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_memory_fact(fact_id: str) -> dict[str, Any]:
+        """Get a single cross-vendor memory fact by its stable fact_id."""
+        from atelier.core.capabilities.cross_vendor_memory.registry import MemoryRegistry
+
+        registry = MemoryRegistry()
+        fact = registry.show(fact_id)
+        if fact is None:
+            raise HTTPException(status_code=404, detail=f"Fact '{fact_id}' not found")
+        return {
+            "fact_id": fact.fact_id,
+            "vendor": fact.vendor,
+            "source_path": str(fact.source_path),
+            "source_kind": fact.source_kind,
+            "content": fact.content,
+            "line_number": fact.line_number,
+            "captured_at": fact.captured_at.isoformat(),
+            "raw_meta": fact.raw_meta,
+        }
+
+    # 60-second LRU cache — keyed on (since, root_str)
+    import functools
+
+    @functools.lru_cache(maxsize=32)
+    def _cached_insights(since_str: str, root_str: str) -> dict[str, Any]:
+        from datetime import timedelta
+
+        from atelier.infra.runtime.insights import build_insights
+
+        root = Path(root_str)
+        days = 7
+        if since_str.endswith("d"):
+            try:
+                days = int(since_str[:-1])
+            except ValueError:
+                pass
+        now = datetime.now(UTC)
+        since_dt = now - timedelta(days=days)
+        window = build_insights(root, since=since_dt, until=now)
+        return {
+            "since": window.since.isoformat(),
+            "until": window.until.isoformat(),
+            "session_count": window.session_count,
+            "total_duration_seconds": window.total_duration_seconds,
+            "total_cost_usd": window.total_cost_usd,
+            "total_atelier_savings_usd": window.total_atelier_savings_usd,
+            "cost_by_vendor": window.cost_by_vendor,
+            "cost_by_tool": window.cost_by_tool,
+            "cost_by_model": window.cost_by_model,
+            "top_sessions": [
+                {
+                    "session_id": s.session_id,
+                    "cost_usd": s.cost_usd,
+                    "label": s.label,
+                    "duration_seconds": s.duration_seconds,
+                }
+                for s in window.top_sessions
+            ],
+            "outcomes_summary": {
+                "route_decisions": window.outcomes_summary.route_decisions,
+                "route_avg_score": window.outcomes_summary.route_avg_score,
+                "compact_events": window.outcomes_summary.compact_events,
+                "compact_avg_score": window.outcomes_summary.compact_avg_score,
+                "sessions_with_high_extra_reads": window.outcomes_summary.sessions_with_high_extra_reads,
+            },
+            "opportunities": [
+                {
+                    "kind": o.kind,
+                    "message": o.message,
+                    "estimated_savings_usd": o.estimated_savings_usd,
+                    "sessions_affected": o.sessions_affected,
+                }
+                for o in window.opportunities
+            ],
+        }
+
+    import time as _time
+
+    _insights_cache_timestamps: dict[str, float] = {}
+    _INSIGHTS_CACHE_TTL = 60.0
+
+    @app.get("/v1/insights", tags=["insights"], dependencies=[Depends(verify_api_key)])
+    def get_insights(since: str = Query("7d")) -> dict[str, Any]:
+        """Weekly insights window — cost, top sessions, opportunities. Cached 60s."""
+        root_str = str(cfg.atelier_root)
+        cache_key = f"{since}:{root_str}"
+        now_ts = _time.monotonic()
+        if _insights_cache_timestamps.get(cache_key, 0) + _INSIGHTS_CACHE_TTL < now_ts:
+            _cached_insights.cache_clear()
+            _insights_cache_timestamps[cache_key] = now_ts
+        return _cached_insights(since, root_str)
+
+    @app.get(
+        "/v1/outcomes/summary",
+        tags=["outcomes"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_outcomes_summary(since: str = Query("7d")) -> dict[str, Any]:
+        """Aggregated route + compact outcome scores across all recent sessions."""
+        from datetime import timedelta
+
+        from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
+        from atelier.infra.runtime.session_report import list_run_files
+
+        root = Path(cfg.atelier_root)
+        days = 7
+        if since.endswith("d"):
+            try:
+                days = int(since[:-1])
+            except ValueError:
+                pass
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+
+        files = list_run_files(root, since=cutoff)
+        route_scores: list[float] = []
+        compact_scores: list[float] = []
+        high_extra_reads: list[str] = []
+
+        for f in files:
+            session_id = f.stem
+            state_path = root / "runs" / f"{session_id}.outcomes.json"
+            if not state_path.exists():
+                continue
+            try:
+                outcomes = load_outcomes_from_state(state_path)
+            except Exception:
+                continue
+
+            for entry in outcomes.get("route_outcomes", []):
+                ow = entry.get("outcome_window") or {}
+                sc = ow.get("outcome_score")
+                if sc is not None:
+                    route_scores.append(float(sc))
+
+            for entry in outcomes.get("compact_outcomes", []):
+                ow = entry.get("outcome_window") or {}
+                sc = ow.get("outcome_score")
+                if sc is not None:
+                    compact_scores.append(float(sc))
+                er = ow.get("extra_read_rate")
+                if er is not None and float(er) > 0.3:
+                    high_extra_reads.append(session_id)
+
+        return {
+            "route_decisions": len(route_scores),
+            "route_avg_score": round(sum(route_scores) / len(route_scores), 4)
+            if route_scores
+            else 0.0,
+            "compact_events": len(compact_scores),
+            "compact_avg_score": round(sum(compact_scores) / len(compact_scores), 4)
+            if compact_scores
+            else 0.0,
+            "sessions_with_high_extra_reads": list(set(high_extra_reads)),
+        }
+
+    @app.get(
+        "/v1/outcomes/{session_id}",
+        tags=["outcomes"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_outcomes_for_session(session_id: str) -> list[dict[str, Any]]:
+        """All outcome entries (route + compact) for a single session."""
+        from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
+
+        root = Path(cfg.atelier_root)
+        state_path = root / "runs" / f"{session_id}.outcomes.json"
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"No outcomes for session '{session_id}'")
+        try:
+            outcomes = load_outcomes_from_state(state_path)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Failed to load outcomes") from exc
+
+        entries: list[dict[str, Any]] = []
+        for entry in outcomes.get("route_outcomes", []):
+            entries.append({"kind": "route", **entry})
+        for entry in outcomes.get("compact_outcomes", []):
+            entries.append({"kind": "compact", **entry})
+        return entries
+
+    @app.get("/v1/reports", tags=["reports"], dependencies=[Depends(verify_api_key)])
+    def list_reports() -> list[dict[str, Any]]:
+        """List all published benchmark reports from reports/index.json."""
+        index_path = Path("reports") / "index.json"
+        if not index_path.exists():
+            return []
+        try:
+            index: list[dict[str, Any]] = json.loads(index_path.read_text())
+            return index
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    @app.get(
+        "/v1/reports/{week}",
+        tags=["reports"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def get_report(week: str) -> dict[str, Any]:
+        """Get a published benchmark report (markdown + json) for a specific ISO week."""
+        # Validate week format to prevent path traversal
+        import re
+
+        if not re.fullmatch(r"\d{4}-W\d{2}", week):
+            raise HTTPException(status_code=400, detail="Invalid week format — expected YYYY-Www")
+
+        report_dir = Path("reports") / week
+        md_path = report_dir / "benchmark.md"
+        json_path = report_dir / "benchmark.json"
+
+        if not md_path.exists():
+            raise HTTPException(status_code=404, detail=f"Report for week '{week}' not found")
+
+        try:
+            markdown_content = md_path.read_text(encoding="utf-8")
+            json_data: dict[str, Any] = (
+                json.loads(json_path.read_text()) if json_path.exists() else {}
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=500, detail="Failed to read report files") from exc
+
+        return {"week": week, "markdown": markdown_content, "json": json_data}
 
     return app
 

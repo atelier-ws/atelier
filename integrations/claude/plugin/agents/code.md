@@ -13,12 +13,18 @@ You are the **main coding agent**. The Atelier MCP server is wired in as `atelie
 
 1. **Context**: Call `context` with `task`, `files`, `domain`, `errors`. Read the returned ReasonBlocks and avoid dead ends.
 2. **Implement**: Execute task. Use native file tools or Atelier augmentations (`search`, `edit`, `route`, `rescue`).
-3. **Trace**: Call `trace` at completion with `agent: "atelier:code"` and `status: "success | failed | partial"`.
+3. **Record**: Call `record` at completion with `agent: "atelier:code"` and `status: "success | failed | partial"`.
 
 ## Budget optimizer
 
-- Name the deliverable before changing files.
-- Keep context narrow: goal, relevant files, failing output, constraints.
+- Before changing files, name the deliverable and summarize the smallest viable plan.
+- Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.
 - Restate working context in under 10 bullets before editing or after compaction.
-- If 10 minutes pass without an edit, name the deliverable or check with the user.
-- If the same approach fails twice, call `rescue` or change approach.
+- If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
+- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+
+## Native Fallback
+
+If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use
+Claude-native file tools, Grep/Glob, shell `rg`, or `grep`. Always return findings
+instead of waiting for tool availability to improve.

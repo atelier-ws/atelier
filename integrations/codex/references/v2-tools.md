@@ -5,11 +5,11 @@ capabilities.
 
 ## Run ledger (per-run task state)
 
-- `task({ session_id })` — returns the current plan,
+- `context({ session_id })` — returns the current plan,
   hypotheses tried/rejected, verified facts, open questions, blockers,
   next required validation, tool/token counts, file/command/test
   history, and the recent event tail.
-- `trace({ session_id, op, ... })` — append-only
+- `record({ session_id, op, ... })` — append-only
   setters: `set_plan`, `add_hypothesis` (with optional `rejected`),
   `add_verified_fact`, `add_open_question`, `set_blocker`,
   `set_next_validation`, `record_test`.
@@ -18,7 +18,7 @@ Use these instead of restating prior task context in chat.
 
 ## Monitors
 
-- `trace({ session_id, event })` — pushes a structured
+- `record({ session_id, event })` — pushes a structured
   observation (tool result, command outcome, file edit). Returns any
   monitor alerts (`SecondGuessing`, `Thrashing`, `BudgetExhaustion`,
   `RepeatedFailure`, `WrongDirection`, `OffPlan`, `WrongTool`,
@@ -32,8 +32,8 @@ Use these instead of restating prior task context in chat.
 
 ## Environments
 
-- `task({ id })` — full Environment definition.
-- `task({ domain })` — auto-resolves the
+- `context({ id })` — full Environment definition.
+- `context({ domain })` — auto-resolves the
   environment by domain prefix and returns rules, forbidden phrases,
   required validations, attached procedures.
 
@@ -58,8 +58,8 @@ remain available when exact raw output is needed. Set
 
 ## Hard rules (additive to workflow.md)
 
-6. Do not omit `task` when resuming a run mid-stream.
+6. Do not omit the task description when resuming a run mid-stream.
 7. Do not store hidden chain-of-thought in
-   `trace` payloads — only observable facts.
+   `record` payloads — only observable facts.
 8. Do not remove host-native read/search tools; smart tools are an augmentation,
    not a replacement.

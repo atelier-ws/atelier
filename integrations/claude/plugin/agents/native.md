@@ -20,6 +20,6 @@ Follow the same 3-step process as `atelier:code`:
 
 1. **Context**: Call `context` before starting.
 2. **Implement**: Execute task (optional: `rescue` on failure).
-3. **Trace**: Call `trace` at completion.
+3. **Record**: Call `record` at completion.
 
 Prefer small, focused native file-tool calls. Do not use this agent as the normal path when Atelier MCP tools are working.

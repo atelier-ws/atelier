@@ -1859,7 +1859,10 @@ function CcusagePanel({ toolWindow }: { toolWindow: ToolWindow }) {
     ...models.map((row) => toNumber(row.cost)),
     0.01
   );
-  const maxDayCost = Math.max(...daily.map((row) => toNumber(row.totalCost)), 0.01);
+  const maxDayCost = Math.max(
+    ...daily.map((row) => toNumber(row.totalCost)),
+    0.01
+  );
 
   return (
     <div className="space-y-6">
@@ -2176,7 +2179,7 @@ export default function External() {
     null;
 
   return (
-    <div className="min-h-screen max-w-7xl space-y-6 bg-black p-6 font-sans text-neutral-200 mx-auto">
+    <div className="min-h-screen space-y-6 bg-black p-6 font-sans text-neutral-200 mx-auto">
       {loading ? (
         <div className="p-6 text-sm italic text-neutral-500 animate-pulse">
           Loading external analyzer snapshots...

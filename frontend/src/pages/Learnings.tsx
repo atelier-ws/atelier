@@ -1,7 +1,12 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, type ReasonBlock, type PlanRecord, type Cluster } from "../api";
-import { Chip, MetricCard, SectionHeader } from "../components/WorkbenchUI";
+import {
+  Chip,
+  MetricCard,
+  SectionHeader,
+  ToggleGroup,
+} from "../components/WorkbenchUI";
 import Memory from "./Memory";
 import Rubrics from "./Rubrics";
 
@@ -50,25 +55,22 @@ export default function Learnings() {
         />
       </section>
 
-      <section className="border border-neutral-800 bg-neutral-950/70 p-5">
-        <div className="mt-5 flex gap-0 border-b border-neutral-800">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSection(s.id)}
-              className={`px-4 py-2 text-xs font-bold font-mono transition border-b-2 flex items-center gap-1.5 ${
-                active === s.id
-                  ? "border-neutral-500 text-neutral-100 bg-neutral-800/30"
-                  : "border-transparent text-neutral-500 hover:text-neutral-300"
-              }`}
-              title={s.desc}
-            >
+      <ToggleGroup
+        variant="underline"
+        size="sm"
+        options={SECTIONS.map((s) => ({
+          value: s.id,
+          label: (
+            <span className="flex items-center gap-1.5">
               <span>{s.icon}</span>
               <span>{s.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+            </span>
+          ),
+          title: s.desc,
+        }))}
+        value={active}
+        onChange={(value) => setSection(value as Section)}
+      />
 
       {active === "blocks" && <BlocksSection />}
       {active === "memory" && <Memory />}

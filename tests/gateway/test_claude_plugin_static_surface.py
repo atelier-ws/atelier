@@ -18,47 +18,59 @@ def test_plugin_mcp_server_is_loaded_at_session_start() -> None:
     server = config["mcpServers"]["atelier"]
     assert server["type"] == "stdio"
     assert server["alwaysLoad"] is True
-    assert "${CLAUDE_PLUGIN_ROOT}" in " ".join(server["args"])
+    assert server["command"] == "atelier-mcp"
+    assert server["args"] == ["--host", "claude"]
 
 
-def test_main_agent_bans_native_file_tools_in_dev_mode() -> None:
-    """code.md is the dev-mode agent definition.
+def test_main_agent_dev_variant_bans_native_file_tools() -> None:
+    """code.dev.md is the dev-mode agent definition.
 
     It bans native file tools to enforce use of Atelier MCP equivalents.
-    The install script writes a passive-mode variant (no disallowedTools)
-    when ATELIER_DEV_MODE is not set.
+    The stable code.md variant keeps native fallback available.
     """
-    frontmatter = _frontmatter(PLUGIN / "agents" / "code.md")
+    frontmatter = _frontmatter(PLUGIN / "agents" / "code.dev.md")
     # Native file tools must be banned — enforces Atelier tool use in dev mode
     for tool_name in ["Read", "Edit", "Write", "Grep", "Glob", "NotebookEdit"]:
         assert tool_name in frontmatter
     # Atelier dev tool names must NOT appear in frontmatter (they're in the body)
     assert "mcp__atelier__search" not in frontmatter
 
+    stable = _frontmatter(PLUGIN / "agents" / "code.md")
+    assert "disallowedTools" not in stable
 
-def test_explore_agent_is_read_only_and_uses_atelier_search() -> None:
+
+def test_explore_agent_is_fast_read_only_and_uses_native_fallback() -> None:
     frontmatter = _frontmatter(PLUGIN / "agents" / "explore.md")
+    body = (PLUGIN / "agents" / "explore.md").read_text(encoding="utf-8")
+    assert "model: haiku" in frontmatter
+    for tool_name in ["Read", "Grep", "Glob"]:
+        assert tool_name in frontmatter
+    assert "Edit" in frontmatter
+    assert "mcp__atelier__edit" not in frontmatter
+    assert "Agent" in frontmatter
+    assert "12 tool calls" in body
+
+
+def test_explore_dev_variant_can_use_mcp_read_search() -> None:
+    frontmatter = _frontmatter(PLUGIN / "agents" / "explore.dev.md")
+    assert "model: haiku" in frontmatter
     assert "mcp__atelier__search" in frontmatter
     assert "mcp__atelier__read" in frontmatter
-    assert "mcp__atelier__edit" in frontmatter
-    assert "Agent" in frontmatter
 
 
 def test_plugin_skills_are_packaged_locally() -> None:
     expected = {
         "analyze-failures",
         "benchmark",
-        "check-plan",
         "context",
         "evals",
         "recall",
-        "record-trace",
+        "record",
         "rescue",
         "savings",
         "settings",
         "share",
         "status",
-        "task",
     }
     found = {path.parent.name for path in (PLUGIN / "skills").glob("*/SKILL.md")}
     assert expected <= found

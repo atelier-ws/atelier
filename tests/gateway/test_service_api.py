@@ -5,13 +5,18 @@ Uses FastAPI TestClient with an in-memory SQLite store so no server starts.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from atelier.core.environment import NON_DEV_LLM_TOOLS
+from atelier.core.environment import (
+    DEV_LLM_TOOLS,
+    NON_DEV_LLM_TOOLS,
+    STABLE_LLM_TOOLS,
+)
 from atelier.core.service.api import create_app
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
@@ -80,7 +85,9 @@ def test_overview_accessible_no_auth(app_no_auth: TestClient) -> None:
     assert "total_blocks" in data
 
 
-def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mcp_status_matches_non_dev_tool_visibility(
+    store: SQLiteStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
     monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     app = create_app(store_root=store.root)
@@ -90,10 +97,15 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
 
     names = {tool["tool_name"] for tool in tools}
     assert names == NON_DEV_LLM_TOOLS
-    assert all(tool["mode"] == "passive" for tool in tools if tool["is_dev"])
+    assert names == STABLE_LLM_TOOLS
+    assert not (names & DEV_LLM_TOOLS)
+    assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == STABLE_LLM_TOOLS
+    assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "trace" in names
-    assert "memory" in names
     assert "compact" in names
+    assert "memory" not in names
+    assert "read" not in names
+    assert "search" not in names
     assert "shell" not in names
 
 
@@ -290,7 +302,9 @@ def test_external_analytics_endpoints_return_summary_and_detail(
     assert external_resp.status_code == 200
     external_data = external_resp.json()
     assert external_data["totals"]["runs_total"] == 2
-    assert external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
+    assert (
+        external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
+    )
 
     dashboard_resp = app_no_auth.get("/analytics/dashboard")
     assert dashboard_resp.status_code == 200
@@ -392,7 +406,9 @@ def test_dashboard_external_uses_period_matched_codeburn_snapshot(
     assert dashboard_resp.status_code == 200
 
     dashboard = dashboard_resp.json()
-    codeburn_snapshot = next(item for item in dashboard["external"]["latest"] if item["tool"] == "codeburn")
+    codeburn_snapshot = next(
+        item for item in dashboard["external"]["latest"] if item["tool"] == "codeburn"
+    )
     assert codeburn_snapshot["period"] == "today"
     assert dashboard["external"]["by_provider"] == [
         {
@@ -702,7 +718,9 @@ def test_dashboard_returns_hourly_usage_buckets(
     assert hourly[expected_hour]["sessions"] == 1
 
 
-def test_analytics_summary_uses_backend_pricing(app_no_auth: TestClient, store: SQLiteStore) -> None:
+def test_analytics_summary_uses_backend_pricing(
+    app_no_auth: TestClient, store: SQLiteStore
+) -> None:
     from atelier.core.capabilities.pricing import usage_cost_usd
     from atelier.core.foundation.models import ToolCall, Trace
 
@@ -727,7 +745,9 @@ def test_analytics_summary_uses_backend_pricing(app_no_auth: TestClient, store: 
     assert resp.status_code == 200
     summary = resp.json()
 
-    assert summary["total_cost"] == usage_cost_usd("claude-sonnet-4-5", input_tokens=120, output_tokens=40)
+    assert summary["total_cost"] == usage_cost_usd(
+        "claude-sonnet-4-5", input_tokens=120, output_tokens=40
+    )
     assert summary["tool_calls"] == 2
     assert summary["unique_tools"] == 1
 
@@ -881,6 +901,223 @@ def test_get_trace_by_id(app_no_auth: TestClient, store: SQLiteStore) -> None:
     data = resp.json()
     assert data["id"] == "trace-extract-test"
     assert data["task"] == "add product images"
+
+
+def test_compat_ledger_merges_main_and_subagent_artifacts(
+    app_no_auth: TestClient,
+    store: SQLiteStore,
+) -> None:
+    from atelier.core.foundation.models import RawArtifact, Trace
+
+    created_at = datetime.now(UTC)
+    main_artifact = RawArtifact(
+        id="claude-main-artifact",
+        source="claude",
+        source_session_id="sess-123",
+        kind="session.jsonl",
+        relative_path="sess-123.jsonl",
+        content_path="raw/claude/sess-123.jsonl",
+        sha256_original="a" * 64,
+        sha256_redacted="b" * 64,
+        byte_count_original=10,
+        byte_count_redacted=10,
+        created_at=created_at,
+        source_path="/tmp/main-session.jsonl",
+    )
+    subagent_artifact = RawArtifact(
+        id="claude-subagent-artifact",
+        source="claude",
+        source_session_id="sess-123",
+        kind="session.jsonl",
+        relative_path="sess-123/subagents/agent-42.jsonl",
+        content_path="raw/claude/sess-123/subagents/agent-42.jsonl",
+        sha256_original="c" * 64,
+        sha256_redacted="d" * 64,
+        byte_count_original=10,
+        byte_count_redacted=10,
+        created_at=created_at,
+        source_path="/tmp/subagent-session.jsonl",
+    )
+    store.record_raw_artifact(
+        main_artifact,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "timestamp": "2026-05-16T00:00:00Z",
+                        "message": {"id": "u1", "content": "main task"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-05-16T00:00:02Z",
+                        "message": {
+                            "id": "a1",
+                            "content": [{"type": "text", "text": "main reply"}],
+                            "usage": {"input_tokens": 10, "output_tokens": 4},
+                        },
+                    }
+                ),
+            ]
+        ),
+    )
+    store.record_raw_artifact(
+        subagent_artifact,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "timestamp": "2026-05-16T00:00:01Z",
+                        "agentId": "agent-42",
+                        "isSidechain": True,
+                        "message": {"id": "u2", "content": "subagent task"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-05-16T00:00:03Z",
+                        "agentId": "agent-42",
+                        "isSidechain": True,
+                        "message": {
+                            "id": "a2",
+                            "content": [{"type": "text", "text": "subagent reply"}],
+                            "usage": {"input_tokens": 8, "output_tokens": 3},
+                        },
+                    }
+                ),
+            ]
+        ),
+    )
+    store.record_trace(
+        Trace(
+            id="claude-sess-123",
+            session_id="sess-123",
+            agent="claude",
+            host="claude",
+            domain="coding",
+            task="merge artifacts",
+            status="success",
+            raw_artifact_ids=[main_artifact.id, subagent_artifact.id],
+            created_at=created_at,
+        ),
+        write_json=False,
+    )
+
+    resp = app_no_auth.get("/ledgers/sess-123")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert [turn["content"] for turn in data["conversations"]] == [
+        "main task",
+        "subagent task",
+        "main reply",
+        "subagent reply",
+    ]
+    assert {turn["source_scope"] for turn in data["conversations"]} == {
+        "main",
+        "subagent",
+    }
+    assert {artifact["scope"] for artifact in data["artifacts"]} == {
+        "main",
+        "subagent",
+    }
+
+
+def test_file_content_endpoint_serves_local_file(
+    app_no_auth: TestClient,
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "note.txt"
+    sample.write_text("hello rich sessions\n", encoding="utf-8")
+
+    resp = app_no_auth.get("/v1/files/content", params={"path": str(sample)})
+    assert resp.status_code == 200
+    assert resp.text == "hello rich sessions\n"
+    assert resp.headers["content-type"].startswith("text/plain")
+
+
+def test_compat_ledger_keeps_copilot_tool_result_content(
+    app_no_auth: TestClient,
+    store: SQLiteStore,
+) -> None:
+    from atelier.core.foundation.models import RawArtifact, Trace
+
+    created_at = datetime.now(UTC)
+    artifact = RawArtifact(
+        id="copilot-tool-artifact",
+        source="copilot",
+        source_session_id="copilot-sess-1",
+        kind="events.jsonl",
+        relative_path="events.jsonl",
+        content_path="raw/copilot/copy/events.jsonl",
+        sha256_original="e" * 64,
+        sha256_redacted="f" * 64,
+        byte_count_original=10,
+        byte_count_redacted=10,
+        created_at=created_at,
+        source_path="/tmp/events.jsonl",
+    )
+    store.record_raw_artifact(
+        artifact,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "tool.execution_start",
+                        "timestamp": "2026-05-16T00:00:00Z",
+                        "data": {
+                            "toolCallId": "call-1",
+                            "toolName": "view",
+                            "arguments": {
+                                "path": "/tmp/demo.tsx",
+                                "view_range": [10, 12],
+                            },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "tool.execution_complete",
+                        "timestamp": "2026-05-16T00:00:01Z",
+                        "data": {
+                            "toolCallId": "call-1",
+                            "result": {
+                                "content": "10. first line\n11. second line",
+                                "detailedContent": "10. first line\n11. second line",
+                            },
+                            "toolTelemetry": {"metrics": {"resultForLlmLength": 88}},
+                        },
+                    }
+                ),
+            ]
+        ),
+    )
+    store.record_trace(
+        Trace(
+            id="copilot-copilot-sess-1",
+            session_id="copilot-sess-1",
+            agent="copilot",
+            host="copilot",
+            domain="coding",
+            task="show tool results",
+            status="success",
+            raw_artifact_ids=[artifact.id],
+            created_at=created_at,
+        ),
+        write_json=False,
+    )
+
+    resp = app_no_auth.get("/ledgers/copilot-sess-1")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    view_turns = [turn for turn in data["conversations"] if turn.get("tool_name") == "view"]
+    assert len(view_turns) == 1
+    assert view_turns[0]["content"] == "10. first line\n11. second line"
 
 
 # --------------------------------------------------------------------------- #
