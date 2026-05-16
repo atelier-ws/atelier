@@ -246,8 +246,9 @@ def _alias_candidates(model_id: str) -> set[str]:
         _add(anthropic_match.group(1))
 
     if "/" in model_id and model_id.count("/") == 1:
-        _, tail = model_id.split("/", 1)
+        head, tail = model_id.split("/", 1)
         _add(tail)
+        _add(f"{head}/")
 
     return aliases
 
