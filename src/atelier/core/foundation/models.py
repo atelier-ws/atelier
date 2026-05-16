@@ -218,6 +218,10 @@ class Trace(BaseModel):
     workspace_path: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     snippets: list[str] | None = None
+    agent_settings: dict[str, Any] = Field(default_factory=dict)
+    skills: list[str] = Field(default_factory=list)
+    telemetry: dict[str, Any] = Field(default_factory=dict)
+    session_title: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -413,6 +417,7 @@ class LedgerEvent(BaseModel):
         "validation",
         "test_result",
         "note",
+        "model_recommendation",
         "reasoning",
         "agent_message",
     ]

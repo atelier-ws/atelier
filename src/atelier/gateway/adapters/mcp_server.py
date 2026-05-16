@@ -1,4 +1,4 @@
-"""MCP server (stdio JSON-RPC) for the Atelier task runtime.
+"""MCP server (stdio JSON-RPC) for the Atelier context runtime.
 
 Implements a minimal subset of the Model Context Protocol sufficient for
 Codex / Claude Code to discover and call the runtime tools.
@@ -27,11 +27,11 @@ from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
 from atelier.core.environment import (
+    dev_tool_disabled_message,
     is_dev_mode,
     mcp_tool_description,
     mcp_tool_mode,
     mcp_tool_visible_to_llm,
-    passive_tool_message,
 )
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
@@ -47,13 +47,21 @@ from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySid
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_NAME = "atelier-task"
+SERVER_NAME = "atelier-context"
 SERVER_VERSION = atelier_version
+CONTEXT_WINDOW_TOKENS = 200_000
+COMPACT_ADVISORY_THRESHOLD = 60.0
+AUTO_COMPACT_THRESHOLD = 80.0
+HANDOVER_THRESHOLD = 95.0
+AUTO_COMPACT_MIN_TURNS = 15
+# Bypass the min-turns gate when utilisation already exceeds this level —
+# a few very large turns can fill the window just as fast as many small ones.
+AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
 
 
 def _check_dev_mode(tool_name: str) -> str | None:
     if not is_dev_mode():
-        return passive_tool_message(tool_name)
+        return dev_tool_disabled_message(tool_name)
     return None
 
 
@@ -66,6 +74,7 @@ TOOLS: dict[str, dict[str, Any]] = {}
 
 def _tool_description(spec: dict[str, Any]) -> str:
     return mcp_tool_description(
+        str(spec.get("name", "") or ""),
         str(spec.get("description", "") or ""),
         is_dev=bool(spec.get("is_dev")),
     )
@@ -76,7 +85,7 @@ def _tool_visible_to_llm(tool_name: str, spec: dict[str, Any]) -> bool:
 
 
 def _tool_mode(spec: dict[str, Any]) -> str:
-    return mcp_tool_mode(is_dev=bool(spec.get("is_dev")))
+    return mcp_tool_mode(str(spec.get("name", "") or ""), is_dev=bool(spec.get("is_dev")))
 
 
 def mcp_tool(
@@ -94,7 +103,9 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            annotation = (
+                param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            )
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -123,6 +134,7 @@ def mcp_tool(
                 return func()
 
         TOOLS[tool_name] = {
+            "name": tool_name,
             "handler": handler_wrapper,
             "description": tool_description,
             "inputSchema": schema,
@@ -164,14 +176,20 @@ def _detect_agent() -> str:
     explicit = os.environ.get("ATELIER_AGENT", "").strip()
     if explicit:
         return explicit
-    if os.environ.get("CLAUDE_SESSION_ID"):
+    if os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("CLAUDE_CODE"):
         return "claude"
-    if os.environ.get("GEMINI_SESSION_ID") or os.environ.get("GEMINI_CLI_VERSION"):
+    if (
+        os.environ.get("GEMINI_SESSION_ID")
+        or os.environ.get("GEMINI_CLI_VERSION")
+        or os.environ.get("GEMINI_CLI")
+    ):
         return "gemini"
-    if os.environ.get("CODEX_SESSION_ID"):
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
         return "codex"
-    if os.environ.get("OPENCODE_SESSION_ID"):
+    if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
         return "opencode"
+    if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
+        return "copilot"
     # Default: the plugin lives in the Claude Code plugin system
     return "claude"
 
@@ -313,6 +331,111 @@ def _session_state_path() -> Path:
     return resolve_session_state_path()
 
 
+def _extract_session_title_from_transcript(transcript_path: str) -> str | None:
+    """Extract the first real user message from a Claude Code session JSONL.
+
+    Returns the first non-system, non-slash-command user turn (root turn only,
+    ``parentUuid`` is null).  Caps at 500 characters.  Fail-open: returns None
+    on any error or if the transcript is missing.
+    """
+    import re as _re
+
+    if not transcript_path:
+        return None
+    p = Path(transcript_path)
+    if not p.exists():
+        return None
+    try:
+        with p.open(encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("type") != "user":
+                    continue
+                # Root turns only (no parentUuid means it's a fresh prompt)
+                if entry.get("parentUuid") is not None:
+                    continue
+                msg = entry.get("message", {}) or {}
+                content = msg.get("content", "")
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            break
+                # Skip system injections and empty content
+                if "local-command-caveat" in text:
+                    continue
+                # Strip XML command tags
+                clean = _re.sub(r"<[^>]+>.*?</[^>]+>", "", text, flags=_re.DOTALL).strip()
+                # Skip slash-command inputs
+                if not clean or clean.startswith("/"):
+                    continue
+                return clean[:500]
+    except Exception:
+        return None
+    return None
+
+
+def _extract_user_prompts_from_transcript(transcript_path: str) -> list[str]:
+    """Return all real user prompts from a Claude Code session JSONL.
+
+    Each prompt is capped at 2 KB.  At most 50 prompts are returned.
+    Fail-open: returns empty list on any error.
+    """
+    import re as _re
+
+    _MAX_PROMPT = 2048
+    if not transcript_path:
+        return []
+    p = Path(transcript_path)
+    if not p.exists():
+        return []
+    prompts: list[str] = []
+    try:
+        with p.open(encoding="utf-8") as fh:
+            for raw in fh:
+                if len(prompts) >= 50:
+                    break
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("type") != "user":
+                    continue
+                if entry.get("isSidechain"):
+                    continue
+                msg = entry.get("message", {}) or {}
+                content = msg.get("content", "")
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            break
+                if "local-command-caveat" in text:
+                    continue
+                clean = _re.sub(r"<[^>]+>.*?</[^>]+>", "", text, flags=_re.DOTALL).strip()
+                if not clean or clean.startswith("/"):
+                    continue
+                prompts.append(clean[:_MAX_PROMPT])
+    except Exception:
+        pass
+    return prompts
+
+
 def _read_session_state() -> dict[str, Any]:
     p = _session_state_path()
     if not p.exists():
@@ -359,61 +482,22 @@ def _atelier_root() -> Path:
     return Path(os.environ.get("ATELIER_ROOT", str(default_store_root())))
 
 
+def _make_outcome_writer(led: RunLedger) -> Any:
+    """Return a FileStateWriter for outcomes alongside the run file, or None."""
+    with contextlib.suppress(Exception):
+        from atelier.infra.runtime.outcome_capture import FileStateWriter
+
+        root = led._root
+        if root is not None:
+            runs_dir = Path(root) / "runs"
+            return FileStateWriter(runs_dir / f"{led.session_id}_outcomes.json")
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Zero-config background service                                              #
 # --------------------------------------------------------------------------- #
 
-
-def _autostart_servicectl(root: Path) -> None:
-    """Start the background servicectl daemon for *root* if not already running.
-
-    Called once per MCP server session from ``_runtime()``.  Fails silently so
-    it can never break the MCP request/response loop.
-    """
-    import subprocess
-
-    try:
-        pid_path = root / "servicectl" / "servicectl.pid"
-        if pid_path.exists():
-            try:
-                pid = int(pid_path.read_text("utf-8").strip())
-                os.kill(pid, 0)  # raises if process is gone
-                return  # daemon is already running
-            except (ValueError, ProcessLookupError, OSError):
-                pid_path.unlink(missing_ok=True)
-
-        log_path = root / "servicectl" / "servicectl.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable,
-            "-m",
-            "atelier.gateway.adapters.cli",
-            "--root",
-            str(root),
-            "servicectl",
-            "run",
-            "--interval-seconds",
-            "60",
-            "--maintenance-interval-seconds",
-            "21600",
-        ]
-        env = os.environ.copy()
-        env["ATELIER_ROOT"] = str(root)
-        with log_path.open("a", encoding="utf-8") as log_fh:
-            proc = subprocess.Popen(
-                command,
-                stdout=log_fh,
-                stderr=subprocess.STDOUT,
-                env=env,
-                start_new_session=True,
-                close_fds=True,
-            )
-        pid_path.write_text(f"{proc.pid}\n", encoding="utf-8")
-    except Exception:
-        logger.warning(
-            "Suppressed exception at mcp_server.py:446",
-            exc_info=True,
-        )
 
 
 def _detect_default_branch(repo: Path) -> str | None:
@@ -721,6 +805,16 @@ def _workspace_path(file_path: str) -> Path:
     return Path(workspace) / p
 
 
+def _workspace_root() -> Path:
+    workspace = (
+        os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("VSCODE_CWD")
+        or os.getcwd()
+    )
+    return Path(workspace)
+
+
 @mcp_tool(name="context", is_dev=True)
 def tool_get_context(
     task: str,
@@ -803,12 +897,14 @@ def tool_get_context(
     return result
 
 
-@mcp_tool(name="route", is_dev=True)
+@mcp_tool(name="route")
 def tool_route(
     op: Literal["decide", "verify"],
     user_goal: str = "",
     repo_root: str = ".",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
+    task_type: Literal[
+        "debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"
+    ] = "feature",
     risk_level: Literal["low", "medium", "high"] = "medium",
     changed_files: list[str] | None = None,
     domain: str | None = None,
@@ -835,7 +931,7 @@ def tool_route(
     human_accepted: bool | None = None,
     benchmark_accepted: bool | None = None,
 ) -> dict[str, Any]:
-    """[DEV] Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
+    """Route op-dispatch: op=decide computes a route; op=verify checks the outcome."""
     rt = _runtime()
     led = _get_ledger()
 
@@ -863,16 +959,6 @@ def tool_route(
                 "step_index": step_index,
             },
         )
-        if stub := _check_dev_mode("route"):
-            return {
-                "id": "dev-mode-stub",
-                "task_type": task_type,
-                "step_type": step_type,
-                "risk_level": risk_level,
-                "action": "proceed",
-                "rationale": stub,
-            }
-
         decision = rt.route_decide(
             user_goal=user_goal,
             repo_root=repo_root,
@@ -886,6 +972,16 @@ def tool_route(
             evidence_summary=evidence_summary,
             ledger=led,
         )
+        # Persist compression hints so the compressor can use task_type and
+        # risk_level to dynamically scale its token budget at /compact time.
+        _write_session_state({
+            "compression_hints": {
+                "task_type": task_type,
+                "risk_level": risk_level,
+                "step_type": step_type,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        })
         return to_jsonable(decision)
 
     if route_decision_id is None:
@@ -905,16 +1001,6 @@ def tool_route(
             "benchmark_accepted": benchmark_accepted,
         },
     )
-    if stub := _check_dev_mode("route"):
-        return {
-            "id": "dev-mode-stub",
-            "task_type": task_type,
-            "step_type": step_type,
-            "risk_level": risk_level,
-            "action": "proceed",
-            "rationale": stub,
-        }
-
     envelope = rt.core_runtime.quality_router.verify(
         route_decision_id=route_decision_id,
         session_id=led.session_id,
@@ -1013,13 +1099,13 @@ def tool_rescue_failure(
     return payload
 
 
-@mcp_tool(name="trace")
+@mcp_tool(name="record")
 def tool_record_trace(
     agent: str,
     domain: str,
     task: str,
     status: Literal["success", "failed", "partial"],
-    files_touched: list[str] | None = None,
+    files_touched: list[str | dict[str, Any]] | None = None,
     tools_called: list[Any] | None = None,
     commands_run: list[str] | None = None,
     errors_seen: list[str] | None = None,
@@ -1037,6 +1123,7 @@ def tool_record_trace(
     missing_surfaces: list[str] | None = None,
     event_type: str | None = None,
     event_payload: dict[str, Any] | None = None,
+    capture_files: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record an observable trace from an agent run."""
     from atelier.core.foundation.redaction import redact, redact_list
@@ -1061,6 +1148,8 @@ def tool_record_trace(
         missing_surfaces = []
     if event_payload is None:
         event_payload = {}
+    if capture_files is None:
+        capture_files = []
     rt = _runtime()
     led = _get_ledger()
     rtc = _get_realtime_context()
@@ -1073,6 +1162,15 @@ def tool_record_trace(
         if isinstance(value, dict):
             return {str(key): _redact_json_strings(item) for key, item in value.items()}
         return value
+
+    def _normalize_file_touched(item: str | dict[str, Any]) -> str | dict[str, Any]:
+        """Normalize a files_touched entry, preserving diffs from dict items."""
+        if isinstance(item, dict):
+            path = redact(str(item.get("path", "")))
+            diff = redact(str(item.get("diff", "")))
+            event = str(item.get("event", "edit"))
+            return {"path": path, "diff": diff, "event": event}
+        return redact(str(item))
 
     def _normalize_tool_calls(items: list[Any]) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
@@ -1168,7 +1266,7 @@ def tool_record_trace(
         "domain": domain,
         "task": redact(task),
         "status": status,
-        "files_touched": redact_list([str(v) for v in files_touched]),
+        "files_touched": [_normalize_file_touched(v) for v in files_touched],
         "tools_called": _normalize_tool_calls(tools_called),
         "commands_run": redact_list([str(v) for v in commands_run]),
         "errors_seen": redact_list([str(v) for v in errors_seen]),
@@ -1232,11 +1330,81 @@ def tool_record_trace(
             rt.store.record_raw_artifact(artifact, redacted_content)
             raw_artifacts.append(artifact_id)
 
+    if capture_files:
+        source_session_id = (
+            os.environ.get("CLAUDE_SESSION_ID")
+            or os.environ.get("CODEX_SESSION_ID")
+            or os.environ.get("OPENCODE_SESSION_ID")
+            or "unknown"
+        )
+        for fpath in capture_files:
+            try:
+                p = Path(fpath)
+                if not p.is_file():
+                    continue
+                content = p.read_text(encoding="utf-8", errors="replace")
+                # We redact secrets from files before capture for safety
+                redacted_content = redact(content)
+                digest = sha256(redacted_content.encode("utf-8", errors="replace")).hexdigest()
+
+                # Use a stable but unique ID for the file artifact
+                artifact_id = f"file-{sha256(fpath.encode()).hexdigest()[:12]}-{digest[:12]}"
+
+                artifact = RawArtifact(
+                    id=artifact_id,
+                    source="mcp",
+                    source_session_id=source_session_id,
+                    kind="source.code",
+                    relative_path=f"{artifact_id}.txt",
+                    content_path=f"raw/mcp/{source_session_id}/{artifact_id}.txt",
+                    sha256_original=sha256(content.encode()).hexdigest(),
+                    sha256_redacted=digest,
+                    byte_count_original=len(content.encode("utf-8")),
+                    byte_count_redacted=len(redacted_content.encode("utf-8")),
+                    redacted=True,
+                    source_path=str(p.absolute()),
+                    source_file_mtime=datetime.fromtimestamp(p.stat().st_mtime, tz=UTC),
+                )
+                rt.store.record_raw_artifact(artifact, redacted_content)
+                raw_artifacts.append(artifact_id)
+            except Exception as e:
+                logger.warning("Failed to capture context file %s: %s", fpath, e)
+
     if raw_artifacts:
         payload["raw_artifact_ids"] = raw_artifacts
 
     if event_type:
         led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
+
+    # ── Enrich with session title from the Claude Code transcript ─────────────
+    # The transcript path is stored by the SessionStart hook so we can read it
+    # here without needing it as an explicit parameter.
+    _session_title: str | None = None
+    with contextlib.suppress(Exception):
+        _state = _read_session_state()
+        _transcript = str(_state.get("transcript_path") or "")
+        if _transcript:
+            _session_title = _extract_session_title_from_transcript(_transcript)
+            _user_prompts = _extract_user_prompts_from_transcript(_transcript)
+            if _session_title or _user_prompts:
+                led.record(
+                    "note",
+                    f"session_title: {(_session_title or '')[:80]}",
+                    {
+                        "session_title": _session_title,
+                        "transcript_path": _transcript,
+                        "user_prompts": _user_prompts[:50],
+                        "prompt_count": len(_user_prompts),
+                        "event": "SessionEnrichment",
+                    },
+                )
+            # Back-fill the ledger task with the session title when the context
+            # tool wasn't called (led.task is still the empty default).
+            if _session_title and not led.task:
+                led.task = _session_title
+
+    if _session_title:
+        payload["session_title"] = _session_title
 
     if "id" not in payload:
         payload["id"] = Trace.make_id(task, agent)
@@ -1305,16 +1473,49 @@ def _compress_context(session_id: str | None = None) -> Any:
     from atelier.infra.runtime.context_compressor import ContextCompressor
 
     led = _get_ledger()
+    if session_id:
+        led.session_id = session_id
     rtc = _get_realtime_context()
-    state = ContextCompressor().compress(led)
+    state = ContextCompressor().compress(
+        led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+    )
+    compaction_savings = _session_compaction_savings_payload(
+        led,
+        state,
+        tokens_before=int(led.token_count or 0),
+        trigger="compact_session",
+        reason="session compaction executed",
+    )
+    if int(compaction_savings["tokens_saved"]) > 0:
+        _append_live_savings_event(compaction_savings)
+
+    with contextlib.suppress(Exception):
+        from atelier.infra.runtime import outcome_capture
+
+        outcome_capture.schedule_compact(
+            session_id=led.session_id,
+            trigger="compact_session",
+            tokens_before=int(compaction_savings["tokens_before"]),
+            tokens_after=int(compaction_savings["tokens_after_estimate"]),
+            must_keep_keywords=list(led.active_reasonblocks),
+            errors_before=len(led.errors_seen) + len(led.repeated_failures),
+            writer=_make_outcome_writer(led),
+        )
+
     return {
         "preserved": {
             "latest_error": state.error_fingerprints[-1] if state.error_fingerprints else None,
             "active_rubrics": led.active_rubrics,
             "active_reasonblocks": led.active_reasonblocks,
+            "recent_turns": state.recent_turns,
+            "claude_md_hash": state.claude_md_hash,
         },
         "prompt_block": state.to_prompt_block(),
         "realtime": rtc.snapshot(),
+        "tokens_before": int(compaction_savings["tokens_before"]),
+        "tokens_after_estimate": int(compaction_savings["tokens_after_estimate"]),
+        "tokens_freed": int(compaction_savings["tokens_freed"]),
+        "cost_saved_usd": float(compaction_savings["cost_saved_usd"]),
     }
 
 
@@ -1335,7 +1536,9 @@ def _memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = expected_version if expected_version is not None else (existing.version if existing else 1)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -1371,7 +1574,9 @@ def _memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -1665,29 +1870,142 @@ def tool_sql(
     )
 
 
+_TASK_BOUNDARY_SUCCESS_RE = re.compile(
+    r"\b(done|complete|completed|success|successful|passed|tests?\s+pass(?:ed)?|validated|verified|committed|lgtm)\b",
+    re.IGNORECASE,
+)
+_TASK_BOUNDARY_FAILURE_RE = re.compile(
+    r"\b(fail(?:ed|ure)?|error|exception|traceback|blocked|todo|not\s+done|not\s+complete)\b",
+    re.IGNORECASE,
+)
+
+
+def _ledger_turn_count(led: RunLedger) -> int:
+    turn_events = [
+        event
+        for event in led.events
+        if event.kind
+        in {"agent_message", "reasoning", "test_result", "command_result", "tool_result"}
+    ]
+    if turn_events:
+        return len(turn_events)
+    return len(led.events)
+
+
+def _event_text(event: Any) -> str:
+    summary = str(getattr(event, "summary", ""))
+    payload = getattr(event, "payload", {})
+    return f"{summary}\n{json.dumps(payload, ensure_ascii=False, default=str)}"
+
+
+def _task_boundary_detected(led: RunLedger) -> bool:
+    """Return true only when recent ledger events show a clean stopping point."""
+    for event in led.events[-3:]:
+        text = _event_text(event)
+        if _TASK_BOUNDARY_SUCCESS_RE.search(text) and not _TASK_BOUNDARY_FAILURE_RE.search(text):
+            if event.kind == "test_result":
+                return bool(event.payload.get("passed"))
+            if event.kind == "command_result":
+                return bool(event.payload.get("ok"))
+            return True
+    return False
+
+
+def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
+    tokens_used = led.token_count + max(0, len(led.events) * 10)
+    utilisation_pct = round(100.0 * tokens_used / CONTEXT_WINDOW_TOKENS, 1)
+    turn_count = _ledger_turn_count(led)
+    boundary = _task_boundary_detected(led)
+    should_handover = utilisation_pct >= HANDOVER_THRESHOLD
+    # Bypass the min-turns gate when utilisation is already very high — a small
+    # number of dense turns (huge tool outputs, large file reads) can fill the
+    # window just as fast as many small ones.
+    turns_gate_passed = (
+        turn_count > AUTO_COMPACT_MIN_TURNS or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
+    )
+    should_auto_compact = (
+        not should_handover
+        and utilisation_pct >= AUTO_COMPACT_THRESHOLD
+        and turns_gate_passed
+        and boundary
+    )
+    should_advise = utilisation_pct >= COMPACT_ADVISORY_THRESHOLD
+
+    if should_handover:
+        reason = "context utilization reached handover threshold"
+    elif should_auto_compact:
+        reason = "context utilization reached auto-compact threshold at a task boundary"
+    elif utilisation_pct >= AUTO_COMPACT_THRESHOLD and not turns_gate_passed:
+        reason = f"auto-compact gated: fewer than {AUTO_COMPACT_MIN_TURNS} turns and below {AUTO_COMPACT_HIGH_UTIL_OVERRIDE}% override"
+    elif utilisation_pct >= AUTO_COMPACT_THRESHOLD and not boundary:
+        reason = "auto-compact waiting for a clean task boundary"
+    elif should_advise:
+        reason = "advisory threshold reached; no automatic action"
+    else:
+        reason = "below advisory threshold"
+
+    return {
+        "tokens_used": tokens_used,
+        "context_window": CONTEXT_WINDOW_TOKENS,
+        "utilisation_pct": utilisation_pct,
+        "turn_count": turn_count,
+        "task_boundary_detected": boundary,
+        "should_advise": should_advise,
+        "should_auto_compact": should_auto_compact,
+        "should_compact": should_auto_compact,
+        "should_handover": should_handover,
+        "reason": reason,
+        "thresholds": {
+            "advisory_pct": COMPACT_ADVISORY_THRESHOLD,
+            "auto_compact_pct": AUTO_COMPACT_THRESHOLD,
+            "handover_pct": HANDOVER_THRESHOLD,
+            "auto_compact_min_turns": AUTO_COMPACT_MIN_TURNS,
+        },
+    }
+
+
+def _write_handover_packet(led: RunLedger, state: Any) -> Path:
+    from atelier.infra.runtime.context_compressor import HandoverPacket
+
+    root = _atelier_root()
+    run_dir = root / "runs" / led.session_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    handover_path = run_dir / "HANDOVER.md"
+    packet = HandoverPacket.from_ledger(led, state, workspace_root=_workspace_root())
+    handover_path.write_text(packet.to_markdown(), encoding="utf-8")
+    return handover_path
+
+
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
     """Advise when to compact and what context to preserve.
 
     Returns a manifest with:
-    - should_compact: bool (true if utilisation >= 60%)
+    - should_advise: bool (true if utilisation >= 60%)
+    - should_compact: bool (true if utilisation >= 80%, after min-turn and boundary gates)
+    - should_handover: bool (true if utilisation >= 95%)
     """
     try:
+        from atelier.infra.runtime.context_compressor import ContextCompressor
+
         led = _get_ledger()
         if session_id:
             led.session_id = session_id
 
-        # Estimate tokens used: token_count from ledger + events
-        tokens_used = led.token_count
-        # Rough estimation: each event ~50 tokens average
-        event_tokens = max(0, len(led.events) * 10)
-        tokens_used += event_tokens
-
-        # Claude 3.5 Sonnet context window is 200K
-        context_window = 200_000
-        utilisation_pct = round(100.0 * tokens_used / context_window, 1)
-
-        # Determine if compaction is advised
-        should_compact = utilisation_pct >= 60.0
+        lifecycle = _context_lifecycle_decision(led)
+        utilisation_pct = float(lifecycle["utilisation_pct"])
+        should_compact = bool(lifecycle["should_compact"])
+        should_handover = bool(lifecycle["should_handover"])
+        state = ContextCompressor().compress(
+            led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+        )
+        compaction_savings = _session_compaction_savings_payload(
+            led,
+            state,
+            tokens_before=int(lifecycle["tokens_used"]),
+            trigger="compact_advise",
+            reason=str(lifecycle["reason"]),
+            utilisation_pct=utilisation_pct,
+        )
 
         # Collect preserve_blocks: top active ReasonBlocks from ledger
         preserve_blocks = list(set(led.active_reasonblocks))[:3]
@@ -1707,13 +2025,23 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
 
         # Collect open_files: last 5 files touched
         open_files = led.files_touched[-5:] if led.files_touched else []
+        handover_file: str | None = None
+        if should_handover:
+            handover_file = str(_write_handover_packet(led, state))
 
         # Build suggested prompt
-        suggested_prompt = (
-            f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
-            f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
-            f"Recently edited files: {', '.join(open_files) or '(none)'}"
-        )
+        if should_handover:
+            suggested_prompt = (
+                f"Session is at {utilisation_pct}% context utilisation. Read {handover_file} and continue "
+                "from a fresh agent context using the host-native agent/subagent mechanism."
+            )
+        else:
+            suggested_prompt = (
+                f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
+                f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+                f"Recently edited files: {', '.join(open_files) or '(none)'}. "
+                "Preserve the last 10 raw turns, active errors, and current CLAUDE.md hash."
+            )
 
         # Persist manifest to disk
         try:
@@ -1725,10 +2053,21 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 "created_at": datetime.now(UTC).isoformat(),
                 "session_id": led.session_id,
                 "should_compact": should_compact,
+                "should_advise": bool(lifecycle["should_advise"]),
+                "should_auto_compact": bool(lifecycle["should_auto_compact"]),
+                "should_handover": should_handover,
                 "utilisation_pct": utilisation_pct,
+                "turn_count": int(lifecycle["turn_count"]),
+                "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
+                "reason": str(lifecycle["reason"]),
+                "thresholds": lifecycle["thresholds"],
                 "preserve_blocks": preserve_blocks,
                 "pin_memory": pin_memory,
                 "open_files": open_files,
+                "recent_turns": state.recent_turns,
+                "claude_md_hash": state.claude_md_hash,
+                "active_errors": state.error_fingerprints,
+                "handover_file": handover_file,
                 "suggested_prompt": suggested_prompt,
             }
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -1738,22 +2077,56 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 exc_info=True,
             )
 
+        if should_compact and int(compaction_savings["tokens_saved"]) > 0:
+            _append_live_savings_event(compaction_savings)
+
         return {
             "should_compact": should_compact,
+            "should_advise": bool(lifecycle["should_advise"]),
+            "should_auto_compact": bool(lifecycle["should_auto_compact"]),
+            "should_handover": should_handover,
             "utilisation_pct": utilisation_pct,
+            "turn_count": int(lifecycle["turn_count"]),
+            "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
+            "reason": str(lifecycle["reason"]),
+            "thresholds": lifecycle["thresholds"],
             "preserve_blocks": preserve_blocks,
             "pin_memory": pin_memory,
             "open_files": open_files,
+            "recent_turns": state.recent_turns,
+            "claude_md_hash": state.claude_md_hash,
+            "active_errors": state.error_fingerprints,
+            "handover_file": handover_file,
             "suggested_prompt": suggested_prompt,
+            "tokens_before": int(compaction_savings["tokens_before"]),
+            "tokens_after_estimate": int(compaction_savings["tokens_after_estimate"]),
+            "tokens_freed": int(compaction_savings["tokens_freed"]),
+            "cost_saved_usd": float(compaction_savings["cost_saved_usd"]),
         }
     except Exception:
         # Fail-open: return conservative defaults
         return {
             "should_compact": False,
+            "should_advise": False,
+            "should_auto_compact": False,
+            "should_handover": False,
             "utilisation_pct": 0.0,
+            "turn_count": 0,
+            "task_boundary_detected": False,
+            "reason": "Unable to compute compaction advice; proceed conservatively.",
+            "thresholds": {
+                "advisory_pct": COMPACT_ADVISORY_THRESHOLD,
+                "auto_compact_pct": AUTO_COMPACT_THRESHOLD,
+                "handover_pct": HANDOVER_THRESHOLD,
+                "auto_compact_min_turns": AUTO_COMPACT_MIN_TURNS,
+            },
             "preserve_blocks": [],
             "pin_memory": [],
             "open_files": [],
+            "recent_turns": [],
+            "claude_md_hash": None,
+            "active_errors": [],
+            "handover_file": None,
             "suggested_prompt": "Unable to compute compaction advice; proceed with default compaction.",
         }
 
@@ -1836,7 +2209,9 @@ def tool_code(
     if op == "index":
         return cast(
             dict[str, Any],
-            engine.index_repo(include_globs=include_globs, exclude_globs=exclude_globs).model_dump(mode="json"),
+            engine.index_repo(include_globs=include_globs, exclude_globs=exclude_globs).model_dump(
+                mode="json"
+            ),
         )
 
     if op == "search":
@@ -1999,19 +2374,64 @@ def _compact_tool_output(
     return result.model_dump(mode="json")
 
 
-@mcp_tool(name="compact", is_dev=True)
+def _compact_score(
+    complexity: float,
+    must_keep: list[str],
+) -> dict[str, Any]:
+    """Store the model's self-assessed complexity and must-keep keywords.
+
+    These are persisted to session state and read by the ContextCompressor
+    when it next fires to dynamically scale the recent-turns token budget.
+
+    Parameters
+    ----------
+    complexity:
+        Float 0.0–1.0. 0 = trivial/read-only, 1.0 = deep debugging or
+        large refactor with many interdependencies.
+    must_keep:
+        Keywords or short phrases the model needs preserved verbatim.
+        Any recent turn whose summary contains one of these will be
+        prioritised and never evicted regardless of budget pressure.
+    """
+    complexity = max(0.0, min(1.0, float(complexity)))
+    hints: dict[str, Any] = _read_session_state().get("compression_hints") or {}
+    hints["model_complexity"] = complexity
+    hints["must_keep"] = must_keep[:20] if must_keep else []  # cap list length
+    hints["score_updated_at"] = datetime.now(UTC).isoformat()
+    _write_session_state({"compression_hints": hints})
+    return {
+        "stored": True,
+        "complexity": complexity,
+        "must_keep_count": len(must_keep),
+        "message": (
+            f"Complexity {complexity:.2f} and {len(must_keep)} must-keep "
+            "hints stored. The compressor will use these when /compact fires."
+        ),
+    }
+
+
+@mcp_tool(name="compact")
 def tool_compact(
-    op: Literal["output", "session", "advise"],
+    op: Literal["output", "session", "advise", "score"],
     content: str = "",
     content_type: str = "unknown",
     budget_tokens: int = 500,
     recovery_hint: str | None = None,
     session_id: str | None = None,
+    complexity: float = 0.5,
+    must_keep: list[str] | None = None,
 ) -> dict[str, Any]:
-    """[DEV] Compact op-dispatch: output, session, or advise."""
-    if stub := _check_dev_mode("compact"):
-        return {"prompt_block": stub, "output": stub, "advice": stub}
+    """Compact op-dispatch: output, session, advise, or score.
 
+    ops:
+      output  — compress a single tool output string
+      session — compress the full run ledger into a compact state block
+      advise  — check context utilisation and advise whether to compact
+      score   — store model-assessed complexity + must-keep keywords so the
+                 compressor uses them when /compact fires next
+    """
+    if op == "score":
+        return _compact_score(complexity=complexity, must_keep=must_keep or [])
     if op == "output":
         return _compact_tool_output(
             content=content,
@@ -2031,10 +2451,10 @@ def tool_compact(
 # Tools that are routed through the remote HTTP service in MCP remote mode.
 _REMOTE_TOOLS = frozenset(
     {
-        "task",
+        "context",
         "memory",
         "rescue",
-        "trace",
+        "record",
         "verify",
     }
 )
@@ -2067,13 +2487,13 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     client = _get_remote_client()
     import typing
 
-    if name == "task":
-        return typing.cast(dict[str, Any], client.get_task_context(args))
+    if name == "context":
+        return typing.cast(dict[str, Any], client.get_context(args))
     if name == "memory":
         return typing.cast(dict[str, Any], client.memory(args))
     if name == "rescue":
         return typing.cast(dict[str, Any], client.rescue_failure(args))
-    if name == "trace":
+    if name == "record":
         return typing.cast(dict[str, Any], client.record_trace(args))
     if name == "verify":
         return typing.cast(dict[str, Any], client.run_rubric_gate(args))
@@ -2097,7 +2517,7 @@ def _lever_for_tool(tool_name: str) -> str:
         return "compact_lifecycle"
     if lowered == "memory" or lowered.endswith("_memory"):
         return "scoped_recall"
-    if lowered == "task" or lowered.endswith("_task"):
+    if lowered == "context" or lowered.endswith("_context"):
         return "reasonblock_inject"
     return lowered or "unknown"
 
@@ -2190,7 +2610,12 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
+            if (
+                tool_name
+                and tool_name != lever
+                and tool_name not in lever_savings
+                and lever == base_lever
+            ):
                 lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
@@ -2210,7 +2635,9 @@ def _record_context_budget_for_tool(
                 "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
                 "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
                 "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
+                "cache_write_tokens_saved": int(
+                    live_savings.get("cache_write_tokens_saved", 0) or 0
+                ),
                 "live_tokens_saved": live_tokens_saved,
                 "tool_tokens_saved": tool_tokens_saved,
                 "tokens_saved": tokens_saved,
@@ -2224,7 +2651,9 @@ def _record_context_budget_for_tool(
         # Record the tool execution metrics
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
-            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+            actual_output_tokens = max(
+                0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4
+            )
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -2254,6 +2683,162 @@ def _record_context_budget_for_tool(
             "Suppressed exception at mcp_server.py:2231",
             exc_info=True,
         )
+
+
+_TASK_TEXT_KEYS = ("task", "user_goal", "query", "prompt", "content", "description", "error")
+
+
+def _task_text_from_args(args: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in _TASK_TEXT_KEYS:
+        value = args.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return "\n".join(parts)
+
+
+def _latest_cache_affinity_model(led: RunLedger) -> str | None:
+    for event in reversed(led.events):
+        payload = event.payload
+        raw_cache_write_tokens = (
+            payload.get("cache_write_tokens")
+            or payload.get("cache_creation_input_tokens")
+            or payload.get("cache_creation_tokens")
+            or 0
+        )
+        try:
+            cache_write_tokens = int(raw_cache_write_tokens)
+        except (TypeError, ValueError):
+            cache_write_tokens = 0
+        model = str(payload.get("model") or "").strip()
+        if cache_write_tokens > 0 and model:
+            return model
+    return None
+
+
+def _estimate_compacted_state_tokens(state: Any) -> int:
+    prompt_block = state.to_prompt_block()
+    preserved_chars = len(prompt_block) + sum(len(turn) for turn in state.recent_turns)
+    return max(0, preserved_chars // 4)
+
+
+def _session_compaction_savings_payload(
+    led: RunLedger,
+    state: Any,
+    *,
+    tokens_before: int,
+    trigger: str,
+    reason: str,
+    utilisation_pct: float | None = None,
+) -> dict[str, Any]:
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    tokens_after_estimate = _estimate_compacted_state_tokens(state)
+    tokens_freed = max(0, int(tokens_before) - tokens_after_estimate)
+    model = (
+        _latest_cache_affinity_model(led)
+        or str(getattr(led, "model", "") or "").strip()
+        or "claude-opus-4-7"
+    )
+    cost_saved_usd = round(get_model_pricing(model).cost_usd(input_tokens=tokens_freed), 6)
+    utilisation = (
+        round(float(utilisation_pct), 1)
+        if utilisation_pct is not None
+        else round(100.0 * max(0, int(tokens_before)) / CONTEXT_WINDOW_TOKENS, 1)
+    )
+    return {
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "session_compaction",
+        "lever": "session_compaction",
+        "session_id": led.session_id,
+        "agent": led.agent or _detect_agent(),
+        "model": model,
+        "trigger": trigger,
+        "reason": reason,
+        "tokens_saved": tokens_freed,
+        "tokens_freed": tokens_freed,
+        "cost_saved_usd": cost_saved_usd,
+        "tokens_before": max(0, int(tokens_before)),
+        "tokens_after_estimate": tokens_after_estimate,
+        "utilisation_pct": utilisation,
+    }
+
+
+def _emit_model_recommendation(
+    tool_name: str, args: dict[str, Any], led: RunLedger
+) -> dict[str, Any]:
+    from atelier.core.capabilities.model_routing import ModelRouter
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    router = ModelRouter()
+    # Gather session-phase signals from the ledger.
+    # recent_tool_calls: last 10 tool names from tool_call events (preserves order).
+    tool_call_events = [e for e in led.events if e.kind == "tool_call"]
+    recent_tool_calls = [e.payload.get("tool", "") for e in tool_call_events[-10:]]
+    turn_number = len(tool_call_events)
+    session_state: dict[str, Any] = {
+        "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
+        "cache_affinity_model": _latest_cache_affinity_model(led),
+        "turn_number": turn_number,
+        "recent_tool_calls": recent_tool_calls,
+    }
+    if "max_output_tokens" in args:
+        session_state["max_output_tokens"] = args["max_output_tokens"]
+    if "budget_tokens" in args:
+        session_state["max_output_tokens"] = args["budget_tokens"]
+    recommendation = router.score(tool_name, _task_text_from_args(args), session_state)
+    vs_model = "claude-opus-4-7"
+    turn_count = max(1, _ledger_turn_count(led))
+    estimated_input_tokens = max(1_000, int(led.token_count or 0) // turn_count)
+    cost_saved_usd = 0.0
+    if recommendation.model != vs_model:
+        expensive_pricing = get_model_pricing(vs_model)
+        recommended_pricing = get_model_pricing(recommendation.model)
+        cost_saved_usd = max(
+            0.0,
+            expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+            - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+        )
+    payload = {
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "model_recommendation",
+        "lever": "model_routing",
+        "session_id": led.session_id,
+        "agent": led.agent or _detect_agent(),
+        "tool_name": tool_name,
+        "tokens_saved": 0,
+        "cost_saved_usd": round(cost_saved_usd, 6),
+        "vs_model": vs_model,
+        "estimated_input_tokens": estimated_input_tokens,
+        **recommendation.to_dict(),
+    }
+    led.record(
+        "model_recommendation",
+        f"recommend {recommendation.tier} model {recommendation.model} for {tool_name}",
+        payload,
+    )
+    _append_live_savings_event(payload)
+
+    with contextlib.suppress(Exception):
+        from atelier.infra.runtime import outcome_capture
+
+        tool_call_events = [e for e in led.events if e.kind == "tool_call"]
+        turn_number = len(tool_call_events)
+        outcome_capture.schedule_route(
+            session_id=led.session_id,
+            tool=tool_name,
+            recommended_tier=str(recommendation.tier),
+            recommended_model=str(recommendation.model),
+            recommendation_followed=True,
+            scored_state={
+                "turn_number": turn_number,
+                "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
+                "session_phase": "execution" if turn_number > 5 else "exploration",
+            },
+            writer=_make_outcome_writer(led),
+        )
+
+    return payload
 
 
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
@@ -2295,22 +2880,40 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         started_at = time.perf_counter()
         remote_routed = name in _REMOTE_TOOLS
         try:
-            if not _service_backed_state():
-                _match_mcp_lexical(args if isinstance(args, dict) else {})
-            if not _service_backed_state():
-                rtc = _get_realtime_context()
-                rtc.record_tool_input(name, args)
             if remote_routed:
                 result = _dispatch_remote(name, args)
             else:
+                led = _get_ledger()
+                _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
+                if not _service_backed_state():
+                    _match_mcp_lexical(args if isinstance(args, dict) else {})
+                if not _service_backed_state():
+                    rtc = _get_realtime_context()
+                    rtc.record_tool_input(name, args)
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
                 result = handler(args)
 
-            if not _service_backed_state():
-                led = _get_ledger()
+                with contextlib.suppress(Exception):
+                    from atelier.infra.runtime import outcome_capture
+
+                    _READ_TOOLS = {
+                        "Read", "View", "read_file", "view", "view_range",
+                        "search_read", "grep", "glob", "cached_grep",
+                    }
+                    outcome_capture.advance(
+                        led.session_id,
+                        tool_name=name,
+                        is_error=False,
+                        is_read_tool=name in _READ_TOOLS,
+                        writer=_make_outcome_writer(led),
+                    )
+
+            if not remote_routed and not _service_backed_state():
                 result_text = json.dumps(result, ensure_ascii=False, default=str)
                 compact_text = (
-                    result_text if len(result_text) <= 1200 else result_text[:600] + "..." + result_text[-600:]
+                    result_text
+                    if len(result_text) <= 1200
+                    else result_text[:600] + "..." + result_text[-600:]
                 )
                 led.record(
                     "tool_result",
@@ -2325,9 +2928,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 rtc.persist()
 
                 # Record context budget metrics
-                _record_context_budget_for_tool(name, args if isinstance(args, dict) else {}, led, result)
+                _record_context_budget_for_tool(
+                    name, args if isinstance(args, dict) else {}, led, result
+                )
 
-            if not _service_backed_state():
+            if not remote_routed and not _service_backed_state():
                 with contextlib.suppress(Exception):
                     from atelier.core.service.telemetry import emit_product
                     from atelier.core.service.telemetry.schema import bucket_duration_ms
@@ -2336,18 +2941,34 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         "mcp_tool_called",
                         tool_name=name,
                         session_id=_get_product_session_id(),
-                        duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                        duration_ms_bucket=bucket_duration_ms(
+                            (time.perf_counter() - started_at) * 1000
+                        ),
                         ok=True,
                     )
 
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}
+                    ],
                     "structuredContent": result,
                 },
             )
         except Exception as exc:
+            if not remote_routed:
+                with contextlib.suppress(Exception):
+                    from atelier.infra.runtime import outcome_capture
+
+                    led = _get_ledger()
+                    outcome_capture.advance(
+                        led.session_id,
+                        tool_name=name,
+                        is_error=True,
+                        is_env_error=isinstance(exc, (OSError, IOError)),
+                        writer=_make_outcome_writer(led),
+                    )
             if not _service_backed_state():
                 rtc = _get_realtime_context()
                 rtc.record_tool_error(name, str(exc))
@@ -2361,7 +2982,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         "mcp_tool_called",
                         tool_name=name,
                         session_id=_get_product_session_id(),
-                        duration_ms_bucket=bucket_duration_ms((time.perf_counter() - started_at) * 1000),
+                        duration_ms_bucket=bucket_duration_ms(
+                            (time.perf_counter() - started_at) * 1000
+                        ),
                         ok=False,
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
@@ -2411,6 +3034,13 @@ def serve() -> None:
 def main() -> None:
     import threading
 
+    # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
+    os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
+    os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
+    os.environ.setdefault(
+        "ATELIER_KNOWLEDGE_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".knowledge")
+    )
+
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:
         print(f"atelier-mcp {SERVER_VERSION}")
@@ -2419,10 +3049,10 @@ def main() -> None:
         i = argv.index("--root")
         if i + 1 < len(argv):
             os.environ["ATELIER_ROOT"] = argv[i + 1]
-    # Kick off background daemons immediately at server start, before any
-    # tool call arrives.  Runs in daemon threads so they never block serve().
-    if not _service_backed_state():
-        threading.Thread(target=_autostart_servicectl, args=(_atelier_root(),), daemon=True).start()
+    if "--host" in argv:
+        i = argv.index("--host")
+        if i + 1 < len(argv):
+            os.environ["ATELIER_AGENT"] = argv[i + 1]
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
 

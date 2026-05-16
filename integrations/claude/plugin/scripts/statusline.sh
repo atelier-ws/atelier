@@ -80,12 +80,15 @@ import json
 import os
 from pathlib import Path
 
+from atelier.core.capabilities.plugin_runtime import load_live_savings_summary
+
 root_env = os.environ.get("ATELIER_STATUS_ROOT") or ""
 root = Path(root_env) if root_env else None
 usd_per_1k = float(os.environ["ATELIER_STATUS_USD_PER_1K"])
 saved_usd = 0.0
 ctx_saved = 0
 smart_calls = 0
+routing_saved_usd = 0.0
 session_id = os.environ.get("ATELIER_STATUS_SESSION_ID") or ""
 status_text = ""
 
@@ -114,8 +117,14 @@ if session_id:
       ctx_saved = int(savings.get("tokens_saved", 0) or 0)
     except Exception:
       pass
+  if root is not None:
+    live = load_live_savings_summary(root, session_id=session_id)
+    smart_calls = max(smart_calls, int(live.get("calls_saved", 0) or 0))
+    ctx_saved = max(ctx_saved, int(live.get("tokens_saved", 0) or 0))
+    saved_usd = max(saved_usd, float(live.get("saved_usd", 0.0) or 0.0))
+    routing_saved_usd = max(routing_saved_usd, float(live.get("routing_saved_usd", 0.0) or 0.0))
 
-if ctx_saved > 0:
+if saved_usd <= 0 and ctx_saved > 0:
   saved_usd = (ctx_saved / 1000.0) * usd_per_1k
 
 update = read_json("update.json")
@@ -139,15 +148,16 @@ elif free_plan.get("limit"):
 def k(n: int) -> str:
   return f"{n//1000}k" if n >= 1000 else str(n)
 
-print(f"${saved_usd:.3f}|{k(ctx_saved)}|{smart_calls}|{status_text}")
+print(f"${saved_usd:.3f}|{k(ctx_saved)}|{smart_calls}|{status_text}|${routing_saved_usd:.3f}")
 PYEOF
 )
-IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT <<EOF
+IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD <<EOF
 $SAVED_LINE
 EOF
 [ -z "$SAVED_USD" ] && SAVED_USD="\$0.000"
 [ -z "$SAVED_CTX" ] && SAVED_CTX="0"
 [ -z "$SAVED_CALLS" ] && SAVED_CALLS="0"
+[ -z "$ROUTING_USD" ] && ROUTING_USD="\$0.000"
 
 if [ -n "${ATELIER_NO_COLOR:-}" ]; then
   C_BRAND=""; C_PIPE=""; C_DIM=""; C_GREEN=""; C_RESET=""
@@ -181,10 +191,17 @@ else
   STATUS_SEG=""
 fi
 
-printf '%s%s%s %s %s%s ctx %s%% cache %s%s %s %s ↓ %s%s%s(%s%s%s) %s %dm%02ds\n' \
+if [ "$ROUTING_USD" != "\$0.000" ]; then
+  ROUTING_SEG=" ${SEP} routing: ${ROUTING_USD}"
+else
+  ROUTING_SEG=""
+fi
+
+printf '%s%s%s %s %s%s ctx %s%% cache %s%s %s %s ↓ %s%s%s(%s%s%s)%s %s %dm%02ds\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$PCT_INT" \
   "$CACHE_F" "$CACHE_NEW_SEG" \
   "$PIPE" "$COST_FMT" \
   "$C_GREEN" "$SAVED_USD" "$C_RESET" "$C_GREEN" "${SAVED_CTX}${SAVED_CALLS_SEG}" "$C_RESET" \
+  "$ROUTING_SEG" \
   "$PIPE" "$MINS" "$SECS"

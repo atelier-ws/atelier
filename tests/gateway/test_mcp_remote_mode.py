@@ -145,17 +145,20 @@ def test_initialize_request_returns_server_info(service_mode: None) -> None:
     resp = _handle(req)
     assert resp is not None
     assert "result" in resp
-    assert resp["result"]["serverInfo"]["name"] == "atelier-task"
+    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
 
 
-def test_tools_list_returns_all_tools(service_mode: None) -> None:
+def test_tools_list_returns_all_tools(
+    service_mode: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
     resp = _handle(req)
     assert resp is not None
     tools = {t["name"] for t in resp["result"]["tools"]}
     for remote_tool in _REMOTE_TOOLS:
         assert remote_tool in tools
-    assert "task" in tools
+    assert "context" in tools
     assert "reasoning" not in tools
     assert "lint" not in tools
     assert "compact" in tools
@@ -166,15 +169,15 @@ def test_tools_list_returns_all_tools(service_mode: None) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_remote_task_context_same_shape(service_mode: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_remote_context_same_shape(service_mode: None, monkeypatch: pytest.MonkeyPatch) -> None:
     expected = {"context": "Here are the relevant procedures."}
-    client = _mock_client({"get_task_context": expected})
+    client = _mock_client({"get_context": expected})
 
     import atelier.gateway.adapters.mcp_server as m
 
     m._remote_client = client
 
-    resp = _call_tool("task", {"task": "publish product"})
+    resp = _call_tool("context", {"task": "publish product"})
     assert "result" in resp
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert payload["context"] == "Here are the relevant procedures."
@@ -200,7 +203,7 @@ def test_remote_record_trace_same_shape(service_mode: None, monkeypatch: pytest.
 def test_remote_routed_tools_do_not_create_local_runtime_state(
     service_mode: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    client = _mock_client({"get_task_context": {"context": "remote"}})
+    client = _mock_client({"get_context": {"context": "remote"}})
     local_root = tmp_path / "no-local-atelier"
     monkeypatch.setenv("ATELIER_ROOT", str(local_root))
 
@@ -211,7 +214,7 @@ def test_remote_routed_tools_do_not_create_local_runtime_state(
     m._context_budget_recorder = None
     m._remote_client = client
 
-    resp = _call_tool("task", {"task": "publish product"})
+    resp = _call_tool("context", {"task": "publish product"})
 
     assert "result" in resp
     assert m._current_ledger is None
@@ -253,9 +256,9 @@ def test_remote_mode_live_service_round_trip(
     with _live_service(root) as base_url:
         monkeypatch.setenv("ATELIER_SERVICE_URL", base_url)
 
-        task = _call_tool("task", {"task": "deploy the app"})
-        task_payload = json.loads(task["result"]["content"][0]["text"])
-        assert "context" in task_payload
+        context = _call_tool("context", {"task": "deploy the app"})
+        context_payload = json.loads(context["result"]["content"][0]["text"])
+        assert "context" in context_payload
 
         memory = _call_tool(
             "memory",
@@ -325,7 +328,7 @@ def test_remote_service_unavailable_returns_structured_error(
 
     # Monkeypatch urlopen to raise immediately.
     with patch("urllib.request.urlopen", side_effect=URLError("Connection refused")):
-        resp = _call_tool("task", {"task": "t"})
+        resp = _call_tool("context", {"task": "t"})
 
     # The MCP wrapper must return a structured error, not raise.
     assert resp is not None
@@ -357,7 +360,7 @@ def test_remote_client_routes_correctly() -> None:
         return {"ok": True}
 
     with _patch.object(RemoteClient, "_request", _fake_request):
-        client.get_task_context({"task": "t"})
+        client.get_context({"task": "t"})
         client.rescue_failure({"task": "t", "error": "e"})
         client.run_rubric_gate({"rubric_id": "r", "checks": {}})
         client.record_trace({"agent": "a", "domain": "d", "task": "t", "status": "success"})

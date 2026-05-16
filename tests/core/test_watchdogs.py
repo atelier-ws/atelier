@@ -78,6 +78,6 @@ def test_run_watchdogs_returns_alerts_list() -> None:
         tool_calls=[("shopify.publish", "x")],
     )
     alerts = run_watchdogs(state, [])
-    names = {a.monitor for a in alerts}
+    names = {a.watchdog for a in alerts}
     assert "repeated_command_failure" in names
     assert "high_risk_action" in names

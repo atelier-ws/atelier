@@ -18,7 +18,7 @@ _TOOLS_HINT = (
     "\n\nThe Atelier MCP server is available. You may call tools such as "
     "`reasoning`, `lint`, "
     "`rescue`, `verify`, and "
-    "`trace`. Use them when they help."
+    "`record`. Use them when they help."
 )
 
 _FORCED_HINT = (
@@ -27,7 +27,7 @@ _FORCED_HINT = (
     "  2. Call `lint` before producing the patch.\n"
     "  3. If you fail twice on the same step, call `rescue`.\n"
     "  4. Call `verify` before submitting.\n"
-    "  5. Call `trace` once you finish."
+    "  5. Call `record` once you finish."
 )
 
 

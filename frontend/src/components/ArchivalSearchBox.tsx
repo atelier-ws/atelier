@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Button, Input } from "./WorkbenchUI";
 
 interface ArchivalSearchBoxProps {
   loading: boolean;
@@ -24,22 +25,21 @@ export default function ArchivalSearchBox({
       <label htmlFor="archival-query" className="sr-only">
         Search archival memory
       </label>
-      <input
+      <Input
         id="archival-query"
         aria-label="Archival memory query"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search archival memory"
-        className="flex-1 bg-transparent border border-neutral-700 text-sm px-3 py-2 text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-500/60"
+        className="flex-1 bg-transparent"
       />
-      <button
+      <Button
         type="submit"
         aria-label="Search archival memory"
         disabled={loading}
-        className="text-xs px-3 py-2 border border-neutral-700 text-neutral-200 hover:text-amber-300 hover:border-amber-500/40 disabled:opacity-60"
       >
         {loading ? "Searching..." : "Search"}
-      </button>
+      </Button>
     </form>
   );
 }

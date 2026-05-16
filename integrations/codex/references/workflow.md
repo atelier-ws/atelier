@@ -78,14 +78,14 @@ verify({
 ### 6. Record trace
 
 ```json
-trace({
+record({
   "agent": "codex",
   "domain": "beseam.shopify.publish",
   "task": "Fix Shopify publish validation",
   "status": "success",
   "files_touched": ["backend/src/modules/shopify/publish.py"],
   "tools_called": [
-    {"name": "task", "args_hash": "", "count": 1},
+    {"name": "context", "args_hash": "", "count": 1},
     {"name": "edit", "args_hash": "", "count": 3}
   ],
   "commands_run": ["pytest tests/test_publish.py"],

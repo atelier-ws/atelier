@@ -114,6 +114,54 @@ def _extract_commands_from_history(history: list[dict[str, Any]]) -> list[str]:
     return commands
 
 
+def _extract_file_edits_from_history(history: list[dict[str, Any]]) -> dict[str, FileEditRecord]:
+    """Extract file edits with synthesized diffs from API conversation history.
+
+    Goes through assistant tool_use blocks for edit/write tools and computes
+    a unified diff from the old/new strings or content.
+    """
+    file_edits: dict[str, FileEditRecord] = {}
+    _FILE_EDIT_TOOLS = {
+        "edit", "write", "create", "replace", "apply_patch",
+        "write_file", "edit_file", "multiedit",
+    }
+    for msg in history:
+        if msg.get("role") != "assistant":
+            continue
+        for block in msg.get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            name = str(block.get("name") or "")
+            if name not in _FILE_EDIT_TOOLS:
+                continue
+            inp = block.get("input") or {}
+            fpath = str(
+                inp.get("file_path") or inp.get("path") or inp.get("target_file") or ""
+            ).strip()
+            if not fpath:
+                continue
+            raw_diff = inp.get("diff") or inp.get("patch")
+            if not raw_diff and inp.get("old_string") is not None:
+                old = str(inp.get("old_string") or "")
+                new = str(inp.get("new_string") or "")
+                raw_diff = f"--- a/{fpath}\n+++ b/{fpath}\n"
+                for line in old.splitlines():
+                    raw_diff += f"-{line}\n"
+                for line in new.splitlines():
+                    raw_diff += f"+{line}\n"
+            if not raw_diff:
+                diff_text = str(inp.get("content") or "").strip()
+            else:
+                diff_text = str(raw_diff).strip()
+            if fpath not in file_edits:
+                file_edits[fpath] = FileEditRecord(
+                    path=fpath,
+                    diff=diff_text[:4096],
+                    event="edit",
+                )
+    return file_edits
+
+
 def _extract_task_text(history_entry: dict[str, Any], history: list[dict[str, Any]]) -> str:
     task = str(history_entry.get("task") or "").strip()
     if task:
@@ -227,15 +275,16 @@ class ClineImporter:
         tools_called_counts = _extract_tools_from_history(history)
         commands_run = _extract_commands_from_history(history)
 
-        files_touched: list[FileEditRecord | str] = []
+        # Extract file edits with synthesized diffs from API conversation history
+        file_edits_from_history = _extract_file_edits_from_history(history)
+        files_touched: list[FileEditRecord | str] = list(file_edits_from_history.values())
+        # Also include files from metadata that weren't in history (as bare paths)
+        seen_paths = set(file_edits_from_history)
         for fc in metadata.get("files_in_context") or []:
             path = fc.get("path")
-            if not path:
+            if not path or str(path) in seen_paths:
                 continue
-            if fc.get("cline_edit_date"):
-                files_touched.append(FileEditRecord(path=str(path), diff="", event="edit"))
-            else:
-                files_touched.append(str(path))
+            files_touched.append(str(path))
 
         model_usage = metadata.get("model_usage") or []
         model = str(model_usage[-1].get("model_id") or "") if model_usage else ""
