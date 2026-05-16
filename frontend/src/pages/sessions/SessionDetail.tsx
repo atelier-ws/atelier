@@ -16,7 +16,11 @@ import {
 } from "./helpers";
 import { StatusBadge } from "./StatusBadge";
 import { FileDetail } from "./DiffView";
-import { ConversationTurn, ToolCallDetail, CommandDetail } from "./TurnRenderers";
+import {
+  ConversationTurn,
+  ToolCallDetail,
+  CommandDetail,
+} from "./TurnRenderers";
 
 // ---------------------------------------------------------------------------
 // Header stat chip
@@ -29,21 +33,23 @@ function HeaderStat({
 }: {
   label: string;
   value: string;
-  tone?: "amber" | "emerald";
+  tone?: "amber" | "emerald" | "violet";
 }) {
   return (
-    <div className="flex-1 min-w-0 px-4 py-2 border-r last:border-0 border-neutral-800/40 hover:bg-neutral-800/20 transition-colors group">
-      <div className="text-[8px] text-neutral-400 uppercase font-black tracking-widest mb-0.5 group-hover:text-neutral-500 transition-colors">
+    <div className="flex min-w-0 items-center justify-between gap-3 border border-neutral-800/40 bg-black/15 px-2.5 py-1.5 transition-colors hover:bg-neutral-800/20 group">
+      <div className="truncate text-[8px] text-neutral-400 uppercase font-black tracking-[0.18em] group-hover:text-neutral-500 transition-colors">
         {label}
       </div>
       <div
         className={cx(
-          "text-[11px] font-bold font-mono truncate",
+          "truncate text-[10px] font-bold font-mono leading-none",
           tone === "amber"
             ? "text-amber-500/90"
             : tone === "emerald"
               ? "text-emerald-500/90"
-              : "text-neutral-400"
+              : tone === "violet"
+                ? "text-violet-400"
+                : "text-neutral-400"
         )}
       >
         {value}
@@ -136,6 +142,61 @@ function SidebarList({
   );
 }
 
+function MetaPill({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "violet" | "amber";
+}) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.2em]",
+        tone === "violet"
+          ? "border-violet-900/30 bg-violet-950/25 text-violet-200"
+          : tone === "amber"
+            ? "border-amber-900/30 bg-amber-950/25 text-amber-200"
+            : "border-neutral-800 bg-black/20 text-neutral-400"
+      )}
+    >
+      <span className="text-neutral-500">{label}</span>
+      <span className="normal-case tracking-normal text-current">{value}</span>
+    </span>
+  );
+}
+
+function getCostStatusMeta(status?: "recorded" | "estimated" | "unavailable") {
+  switch (status) {
+    case "estimated":
+      return {
+        title: "Estimated from trace tokens",
+        shortLabel: "estimated",
+        tone: "amber" as const,
+        description:
+          "This session did not persist ledger call costs, so Atelier derived spend from stored token usage and the current pricing table.",
+      };
+    case "unavailable":
+      return {
+        title: "No cost data recorded",
+        shortLabel: "missing",
+        tone: "neutral" as const,
+        description:
+          "There were no priced call records or enough token metadata to derive spend for this run.",
+      };
+    default:
+      return {
+        title: "Recorded from ledger calls",
+        shortLabel: "recorded",
+        tone: "violet" as const,
+        description:
+          "Costs come from the run ledger's per-call usage records and are captured when the runtime records LLM calls.",
+      };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main detail view
 // ---------------------------------------------------------------------------
@@ -197,6 +258,32 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     return ms / 1000;
   }, [inspectorData, report]);
 
+  const startedModel = useMemo(() => {
+    if (report?.started_model) return report.started_model;
+    const firstConversationModel = inspectorData?.conversations?.find(
+      (turn) => turn.model
+    )?.model;
+    if (firstConversationModel) return firstConversationModel;
+    if (trace?.model) return trace.model;
+    const reportModels = report?.models_used
+      ? Object.keys(report.models_used)
+      : [];
+    return reportModels[0] || null;
+  }, [inspectorData, report, trace]);
+
+  const costMeta = useMemo(
+    () =>
+      getCostStatusMeta(
+        report?.cost_status ??
+          (report
+            ? report.total_cost_usd > 0
+              ? "recorded"
+              : "unavailable"
+            : undefined)
+      ),
+    [report]
+  );
+
   if (loading)
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4 bg-[#0a0a0a]">
@@ -225,34 +312,55 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     <div className="flex flex-col h-full bg-[#0a0a0a] relative animate-in fade-in duration-500">
       {/* Header */}
       <header className="flex-shrink-0 px-8 py-4 border-b border-neutral-800/80 bg-[#0d0d0d]/95 backdrop-blur-md sticky top-0 z-20 shadow-2xl">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-8">
-            <div className="min-w-0 flex-1 space-y-1">
-              <div className="flex items-center gap-3">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {trace && (
                   <StatusBadge
                     status={trace.status}
                     className="text-[10px] rounded-none px-2 py-0"
                   />
                 )}
+                {startedModel && (
+                  <MetaPill
+                    label="Started model"
+                    value={startedModel}
+                    tone="violet"
+                  />
+                )}
+                <MetaPill
+                  label="Cost"
+                  value={costMeta.shortLabel}
+                  tone={
+                    costMeta.tone === "amber"
+                      ? "amber"
+                      : costMeta.tone === "violet"
+                        ? "violet"
+                        : "neutral"
+                  }
+                />
+              </div>
+              <div className="space-y-2">
                 <h1 className="text-sm font-bold tracking-wide text-neutral-100 font-mono truncate uppercase">
                   {trace?.task || "Execution Detail"}
                 </h1>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 text-[9px] text-neutral-400 font-mono font-bold uppercase">
-                <span>SESSION: {sessionId}</span>
-                <span>•</span>
-                <span>
-                  {fmtDate(report?.started_at || trace?.created_at)}
-                </span>
-                <span>•</span>
-                <span className="text-amber-600">
-                  @{trace?.agent || "unknown"}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <MetaPill label="Session" value={sessionId} />
+                  <MetaPill
+                    label="Started"
+                    value={fmtDate(report?.started_at || trace?.created_at)}
+                  />
+                  <MetaPill
+                    label="Agent"
+                    value={`@${trace?.agent || "unknown"}`}
+                    tone="amber"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 self-start">
               {report?.raw_artifact_ids &&
                 report.raw_artifact_ids.length > 0 && (
                   <a
@@ -286,85 +394,77 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
             </div>
           </div>
 
-          {/* Stats strip */}
-          <div className="flex flex-wrap items-center gap-px bg-neutral-800/20 border border-neutral-800/40 p-0.5 rounded-sm">
-            <HeaderStat
-              label="Total Cost"
-              value={
-                report
-                  ? fmtUsd(report.total_cost_usd)
-                  : trace?.input_tokens
-                    ? "..."
+          <div className="grid gap-3">
+            <div className="grid grid-cols-3 gap-1.5">
+              <HeaderStat
+                label="Total Cost"
+                value={
+                  report
+                    ? fmtUsd(report.total_cost_usd)
+                    : trace?.input_tokens
+                      ? "..."
+                      : "—"
+                }
+                tone="amber"
+              />
+              <HeaderStat
+                label="Savings"
+                value={report ? fmtUsd(report.total_atelier_savings_usd) : "—"}
+                tone="emerald"
+              />
+              <HeaderStat
+                label="Total Tokens"
+                value={
+                  report || trace
+                    ? fmtTok(
+                        (report?.input_tokens ?? trace?.input_tokens ?? 0) +
+                          (report?.output_tokens ?? trace?.output_tokens ?? 0)
+                      )
                     : "—"
-              }
-              tone="amber"
-            />
-            <HeaderStat
-              label="Atelier Savings"
-              value={report ? fmtUsd(report.total_atelier_savings_usd) : "—"}
-              tone="emerald"
-            />
-            <HeaderStat
-              label="Turns / Msgs"
-              value={
-                report
-                  ? `${report.total_turns} / ${inspectorData?.conversations?.length || "—"}`
-                  : inspectorData?.conversations?.length
-                    ? `— / ${inspectorData.conversations.length}`
+                }
+              />
+              <HeaderStat
+                label="In / Out"
+                value={
+                  report || trace
+                    ? `${fmtTok(report?.input_tokens ?? trace?.input_tokens ?? 0)} / ${fmtTok(report?.output_tokens ?? trace?.output_tokens ?? 0)}`
                     : "—"
-              }
-            />
-            <HeaderStat
-              label="Total Tokens"
-              value={
-                report || trace
-                  ? fmtTok(
-                      (report?.input_tokens ?? trace?.input_tokens ?? 0) +
-                        (report?.output_tokens ?? trace?.output_tokens ?? 0)
-                    )
-                  : "—"
-              }
-            />
-            <HeaderStat
-              label="In / Out"
-              value={
-                report || trace
-                  ? `${fmtTok(report?.input_tokens ?? trace?.input_tokens ?? 0)} / ${fmtTok(report?.output_tokens ?? trace?.output_tokens ?? 0)}`
-                  : "—"
-              }
-            />
-            <HeaderStat
-              label="Cached"
-              value={
-                report || trace
-                  ? fmtTok(
-                      report?.cache_read_tokens ??
-                        trace?.cached_input_tokens ??
-                        0
-                    )
-                  : "—"
-              }
-            />
-            <HeaderStat
-              label="Tools"
-              value={
-                trace
-                  ? String(trace.tools_called.length)
-                  : report
-                    ? String(report.tool_call_count)
+                }
+              />
+              <HeaderStat
+                label="Cached"
+                value={
+                  report || trace
+                    ? fmtTok(
+                        report?.cache_read_tokens ??
+                          trace?.cached_input_tokens ??
+                          0
+                      )
                     : "—"
-              }
-            />
-            <HeaderStat
-              label="Active Time"
-              value={
-                report
-                  ? fmtDuration(
-                      report.active_duration_seconds || activeDurationSecs
-                    )
-                  : "—"
-              }
-            />
+                }
+              />
+              <HeaderStat
+                label="Active Time"
+                value={
+                  report
+                    ? fmtDuration(
+                        report.active_duration_seconds || activeDurationSecs
+                      )
+                    : "—"
+                }
+              />
+            </div>
+            <div
+              className="flex items-center justify-between gap-3 rounded-sm border border-neutral-800/40 bg-black/15 px-2.5 py-1.5"
+              title={costMeta.description}
+            >
+              <span className="text-[8px] font-black uppercase tracking-[0.18em] text-neutral-500">
+                Pricing
+              </span>
+              <span className="truncate text-[10px] font-mono text-neutral-300">
+                {costMeta.title}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -480,6 +580,22 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     color="text-emerald-500"
                   />
                   <SidebarMetric
+                    label="Started Model"
+                    value={startedModel || "—"}
+                    color="text-violet-400"
+                  />
+                  <SidebarMetric
+                    label="Cost Source"
+                    value={costMeta.shortLabel}
+                    color={
+                      costMeta.tone === "amber"
+                        ? "text-amber-400"
+                        : costMeta.tone === "violet"
+                          ? "text-violet-300"
+                          : "text-neutral-300"
+                    }
+                  />
+                  <SidebarMetric
                     label="Total Tokens"
                     value={
                       report
@@ -592,16 +708,17 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     items={inspectorData.source_files}
                   />
                 )}
-              {inspectorData?.artifacts && inspectorData.artifacts.length > 0 && (
-                <SidebarList
-                  title="Session Artifacts"
-                  items={inspectorData.artifacts.map((artifact) => ({
-                    path: `${artifact.scope === "subagent" ? "subagent" : "main"} · ${artifact.relative_path}`,
-                    artifact_id: artifact.id,
-                  }))}
-                  color="text-sky-500/70"
-                />
-              )}
+              {inspectorData?.artifacts &&
+                inspectorData.artifacts.length > 0 && (
+                  <SidebarList
+                    title="Session Artifacts"
+                    items={inspectorData.artifacts.map((artifact) => ({
+                      path: `${artifact.label || (artifact.scope === "subagent" ? "subagent" : "main")} · ${artifact.relative_path.split("/").pop() || artifact.relative_path}`,
+                      artifact_id: artifact.id,
+                    }))}
+                    color="text-sky-500/70"
+                  />
+                )}
               {inspectorData?.pinned_blocks &&
                 inspectorData.pinned_blocks.length > 0 && (
                   <SidebarList

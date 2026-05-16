@@ -25,6 +25,7 @@ const sampleTraces: TraceListResponse = {
     {
       id: "abc123def456ghi",
       agent: "anthropic",
+      model: "claude-3-5-sonnet",
       task: "Fix login bug",
       status: "completed",
       files_touched: [],
@@ -54,6 +55,8 @@ const sampleSessions: SessionSummary[] = [
     duration_seconds: 1800,
     active_duration_seconds: 1500,
     vendor: "anthropic",
+    started_model: "claude-3-5-sonnet",
+    cost_status: "estimated",
     total_turns: 10,
     total_cost_usd: 0.42,
     total_atelier_savings_usd: 0.1,
@@ -109,6 +112,8 @@ describe("Sessions page", () => {
     renderSessions();
     // Task text from the trace item
     expect(await screen.findByText("Fix login bug")).toBeInTheDocument();
+    expect(screen.getByText("claude-3-5-sonnet")).toBeInTheDocument();
+    expect(screen.getByText("Estimated from tokens")).toBeInTheDocument();
     // $0.42 appears in summary MetricCards
     expect(screen.getAllByText("$0.420").length).toBeGreaterThanOrEqual(1);
   });
