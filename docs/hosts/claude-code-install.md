@@ -137,10 +137,10 @@ Select from the `/agents` list in Claude Code:
 ## V2 Tools — Memory and Context Savings
 
 With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Claude Code includes
-`context`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`,
+`context`, `route`, `rescue`, `record`, `verify`, `memory`, `read`, `edit`,
 `sql`, `search`, `compact`, `shell`, and the `code` helpers.
 
-Without developer mode, `trace` remains the most reliable active surface and
+Without developer mode, `record` remains the most reliable active surface and
 some other tools may still appear as passive compatibility stubs.
 
 Host-native file reads, search, shell, slash commands, and agents remain the raw

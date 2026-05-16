@@ -126,9 +126,17 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
     # Which line contains match_char?
     start_line_idx = max(0, bisect_right(offsets, match_char) - 1)
 
-    # Replace the same number of lines as old_string spans
+    # Replace the same number of logical lines as old_string spans.
+    # When the content has extra blank lines (e.g. blank-line drift),
+    # skip over them so the replacement boundary stays anchored to the
+    # last non-blank line that holds old_string content.
     n_old_lines = max(1, len(old_string.splitlines()))
-    end_line_idx = min(start_line_idx + n_old_lines, len(lines))
+    consumed = 0
+    end_line_idx = start_line_idx
+    while consumed < n_old_lines and end_line_idx < len(lines):
+        if lines[end_line_idx].strip():
+            consumed += 1
+        end_line_idx += 1
 
     region_start = offsets[start_line_idx]
     region_end = offsets[end_line_idx]

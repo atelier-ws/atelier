@@ -72,7 +72,7 @@ Atelier follows a simple **3-step process** for reliable coding:
 
 1. **Context**: Retrieve procedures and facts before starting.
 2. **Implement**: Execute the task (with optional rescue/route).
-3. **Trace**: Record the outcome once done.
+3. **Record**: Record the outcome once done.
 
 Passive tracking works automatically. Active context features require `ATELIER_DEV_MODE=1`.
 
@@ -100,7 +100,7 @@ Common runtime commands:
 ```bash
 atelier background status
 atelier worker list
-atelier trace list
+atelier runs list
 atelier tools call search --dev --args '{"query":"read after write verification"}' --json
 ```
 

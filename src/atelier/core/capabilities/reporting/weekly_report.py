@@ -28,7 +28,7 @@ from atelier.core.foundation.models import (
 )
 from atelier.core.foundation.store import ContextStore
 
-_CONTEXT_TOOL_NAMES = {"get_context", "context"}
+_CONTEXT_TOOL_NAMES = {"reasoning", "get_context", "context"}
 _RESCUE_TOOL_NAMES = {"rescue_failure", "rescue"}
 
 

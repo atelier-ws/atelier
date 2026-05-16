@@ -378,6 +378,10 @@ def _build_trace_from_normalized_content(
     tool_args: dict[str, dict[str, Any] | None] = {}
     tool_input_tokens: dict[str, int] = {}
     tool_output_tokens: dict[str, int] = {}
+    agent_settings: dict[str, Any] = {}
+    skills: list[str] = []
+    synthetic_count = 0
+    provider_id = ""
 
     for line in raw_content.splitlines():
         stripped = line.strip()
@@ -388,19 +392,55 @@ def _build_trace_from_normalized_content(
         except json.JSONDecodeError:
             continue
 
-        event_type = event.get("type")
+        event_type = event.get("type") or event.get("_type")
         if event_type == "session":
             created_at = parse_datetime(event.get("timestamp"), default=created_at)
             if not task_text:
                 title = str(event.get("title") or "").strip()
                 if title:
                     task_text = title
+            
+            # Extract settings if available
+            if "settings" in event:
+                agent_settings.update(event["settings"])
+            if "skills" in event:
+                skills.extend(event["skills"])
             continue
+
+        if event_type == "message":
+            data = event.get("data") or {}
+            if data.get("synthetic"):
+                synthetic_count += 1
+            if not provider_id:
+                provider_id = data.get("providerID") or data.get("provider") or ""
 
         if event_type != "message":
             continue
 
-        message = event.get("message") or {}
+        message = event.get("message") or event.get("data") or {}
+        role = str(message.get("role") or "")
+        
+        # Scrape for skills/settings in system messages or context
+        if role == "user" or role == "system":
+            texts_to_scan = []
+            for part in message.get("content") or []:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    texts_to_scan.append(part.get("text") or "")
+            if message.get("text"):
+                texts_to_scan.append(message["text"])
+            
+            for txt in texts_to_scan:
+                # Look for MCP servers/skills
+                if "active mcp servers" in txt.lower():
+                    matches = re.findall(r"- ([\w.-]+)", txt)
+                    skills.extend(matches)
+                if "agent settings" in txt.lower():
+                    matches = re.findall(r"(\w+):\s*(.+)", txt)
+                    for k, v in matches:
+                        agent_settings[k] = v.strip()
+            continue
+
+        message = event.get("message") or event.get("data") or {}
         role = str(message.get("role") or "")
         timestamp = parse_datetime(event.get("timestamp"), default=created_at)
         if timestamp < created_at:
@@ -506,6 +546,12 @@ def _build_trace_from_normalized_content(
 
     usage_summary = summarize_usage_entries(usage_entries, fallback_model=model_seen)
 
+    telemetry = {
+        "synthetic_messages_count": synthetic_count,
+    }
+    if provider_id:
+        telemetry["provider_id"] = provider_id
+
     trace = Trace(
         id=artifact.id,
         session_id=session_id,
@@ -540,6 +586,9 @@ def _build_trace_from_normalized_content(
         model=usage_summary["model"],
         usage_entries=usage_summary["usage_entries"],
         model_usages=usage_summary["model_usages"],
+        agent_settings=agent_settings,
+        skills=unique_strings(skills),
+        telemetry=telemetry,
         created_at=created_at,
     )
     return trace
@@ -575,6 +624,77 @@ def import_paths_with_progress(
             _tb.print_exc()
             print(f"[atelier] skipping {source} session {path.name}: {exc}")
     return imported
+
+
+_SNAPSHOT_MAX_BYTES = 256 * 1024  # 256 KB — skip large / generated files
+
+
+def snapshot_edited_files(
+    store: ContextStore,
+    files_touched: list[FileEditRecord],
+    *,
+    session_id: str,
+    source: str,
+) -> int:
+    """Read current on-disk content for each edited file and persist as a
+    ``file.snapshot`` RawArtifact linked to *session_id*.
+
+    Best-effort: missing, binary, or oversized files are silently skipped.
+    Returns the number of files successfully snapshotted.
+    """
+    seen: set[str] = set()
+    saved = 0
+    for rec in files_touched:
+        fpath = str(rec.path or "").strip()
+        if not fpath or fpath in seen:
+            continue
+        seen.add(fpath)
+
+        p = Path(fpath)
+        if not p.is_file():
+            continue
+
+        try:
+            size = p.stat().st_size
+            if size > _SNAPSHOT_MAX_BYTES:
+                continue
+            raw_bytes = p.read_bytes()
+            # Skip binary files
+            try:
+                file_content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+        except OSError:
+            continue
+
+        snap_id = f"snap-{sanitize_id(session_id)}-{sha256_text(fpath)[:12]}"
+
+        # Skip if already stored (idempotent re-imports)
+        if store.get_raw_artifact(snap_id) is not None:
+            saved += 1
+            continue
+
+        artifact = RawArtifact(
+            id=snap_id,
+            source=source,
+            source_session_id=session_id,
+            kind="file.snapshot",
+            relative_path=fpath,
+            content_path=fpath,
+            sha256_original=sha256_text(file_content),
+            sha256_redacted=sha256_text(file_content),
+            byte_count_original=len(raw_bytes),
+            byte_count_redacted=len(raw_bytes),
+            created_at=utcnow(),
+            source_file_mtime=None,
+        )
+        try:
+            store.record_raw_artifact(artifact, file_content)
+            saved += 1
+        except Exception:
+            logger.debug("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
+
+    return saved
 
 
 def record_normalized_session(
@@ -621,4 +741,9 @@ def record_normalized_session(
         source_mtime=source_mtime,
     )
     store.record_trace(trace, write_json=False)
+
+    # Best-effort: snapshot current on-disk state of every edited file
+    if trace.files_touched:
+        snapshot_edited_files(store, trace.files_touched, session_id=session_id, source=source)
+
     return trace.id

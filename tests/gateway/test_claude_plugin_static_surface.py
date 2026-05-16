@@ -65,7 +65,7 @@ def test_plugin_skills_are_packaged_locally() -> None:
         "context",
         "evals",
         "recall",
-        "record-trace",
+        "record",
         "rescue",
         "savings",
         "settings",

@@ -40,7 +40,8 @@ def _seed_ledger(root: Path, session_id: str = "run1") -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path) -> None:
+def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     root = tmp_path / ".atelier"
     _invoke(root, "init")
 
@@ -54,12 +55,12 @@ def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path) -> None:
         "dead_ends: []\n",
         encoding="utf-8",
     )
-    res = _invoke(root, "add-block", str(block_yaml))
+    res = _invoke(root, "block", "add", str(block_yaml))
     assert res.exit_code == 0, res.output
     assert "upserted" in res.output
 
     # list-blocks should include it
-    res2 = _invoke(root, "list-blocks", "--json")
+    res2 = _invoke(root, "block", "list", "--json")
     assert res2.exit_code == 0, res2.output
     blocks = json.loads(res2.output)
     assert any(b["domain"] == "coding.custom" for b in blocks)
