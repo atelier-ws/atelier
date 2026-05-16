@@ -14,7 +14,7 @@ DEV_MODE_ENV_VAR = "ATELIER_DEV_MODE"
 TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 INSTALL_PROFILES = frozenset({"stable", "dev"})
 
-STABLE_LLM_TOOLS = frozenset({"compact", "route", "trace"})
+STABLE_LLM_TOOLS = frozenset({"compact", "route", "record"})
 DEV_LLM_TOOLS = frozenset(
     {
         "code",
@@ -40,7 +40,7 @@ DEV_ONLY_SKILLS = frozenset(
         "savings",
         "settings",
         "status",
-        "trace",
+        "record",
     }
 )
 

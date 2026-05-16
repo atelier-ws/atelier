@@ -7,10 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from atelier.infra.runtime.session_report import (
-    SessionReport,
     _derive_vendor,
     _read_compact_savings,
     _read_routing_savings,
@@ -20,7 +17,6 @@ from atelier.infra.runtime.session_report import (
     render_json,
     render_text,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                      #

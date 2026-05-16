@@ -95,21 +95,28 @@ describe("Watchdogs page", () => {
         }
         if (url.includes("/api/traces")) {
           return Promise.resolve(
-            jsonResponse([
-              {
-                id: "t1",
-                agent: "copilot",
-                task: "task",
-                status: "completed",
-                files_touched: [],
-                tools_called: [],
-                commands_run: [],
-                errors_seen: [],
-                repeated_failures: [{ signature: "sig", count: 2 }],
-                validation_results: [{ name: "lint", passed: false }],
-                created_at: "2026-05-08T00:00:00Z",
+            jsonResponse({
+              items: [
+                {
+                  id: "t1",
+                  agent: "copilot",
+                  task: "task",
+                  status: "completed",
+                  files_touched: [],
+                  tools_called: [],
+                  commands_run: [],
+                  errors_seen: [],
+                  repeated_failures: [{ signature: "sig", count: 2 }],
+                  validation_results: [{ name: "lint", passed: false }],
+                  created_at: "2026-05-08T00:00:00Z",
+                },
+              ],
+              metrics: {
+                stats: { total: 1, success: 1, failed: 0, partial: 0 },
+                hosts: [],
+                domains: [],
               },
-            ])
+            })
           );
         }
         if (url.includes("/api/plans")) {

@@ -8,7 +8,7 @@ Use the built-in help for the exact command tree:
 
 ```bash
 atelier -h
-atelier help trace
+atelier help runs
 atelier help benchmark
 atelier help background
 ```
@@ -75,7 +75,7 @@ Atelier persists observable execution state rather than hidden reasoning.
 
 | Command                    | Purpose                                               |
 | -------------------------- | ----------------------------------------------------- |
-| `atelier trace ...`        | Record, list, and inspect trace data.                 |
+| `atelier runs ...`         | Record, list, and inspect run data.                   |
 | `atelier ledger ...`       | Manage run ledgers and session state.                 |
 | `atelier compress-context` | Summarize a run ledger into a smaller state packet.   |
 | `atelier context-report`   | Emit compression and provenance details for a run.    |
@@ -84,7 +84,7 @@ Atelier persists observable execution state rather than hidden reasoning.
 Examples:
 
 ```bash
-atelier trace list
+atelier runs list
 atelier ledger list
 atelier compress-context --help
 ```

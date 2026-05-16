@@ -121,6 +121,7 @@ export interface Trace {
   raw_artifact_ids?: string[];
   _live?: boolean; // true for RunLedger sessions not yet committed to SQLite
   snippets?: string[];
+  workspace_path?: string;
 
   // Metrics
   input_tokens?: number;
@@ -138,6 +139,47 @@ export interface ConversationEntry {
   tokens?: Record<string, number>;
   raw?: any;
   cost?: number;
+  path?: string;
+  diff?: string;
+  tool_name?: string;
+  arguments?: unknown;
+  todos?: Array<{
+    content: string;
+    status?: string;
+    priority?: string;
+    id?: string;
+  }>;
+  attachments?: SessionAttachment[];
+  subagent_id?: string;
+  subagent_name?: string;
+  subagent_status?: string;
+  subagent_description?: string;
+  artifact_id?: string;
+  artifact_source?: string;
+  artifact_kind?: string;
+  artifact_label?: string;
+  source_scope?: string;
+}
+
+export interface SessionAttachment {
+  type: string;
+  path?: string;
+  display_name?: string;
+  title?: string;
+  content?: string;
+  size_label?: string;
+  line_count?: number;
+  mime_type?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SessionArtifact {
+  id: string;
+  source: string;
+  kind: string;
+  relative_path: string;
+  source_path?: string | null;
+  scope: string;
 }
 
 export interface NestedTrace {
@@ -845,15 +887,9 @@ export interface RunInspectorData {
   tokens_pre: number | null;
   tokens_post: number | null;
   source_paths?: string[];
-  conversations?: Array<{
-    kind: string;
-    at?: string;
-    summary: string;
-    content: string;
-    tokens?: Record<string, number>;
-    raw?: any;
-    cost?: number;
-  }>;
+  source_files?: Array<{ path: string; artifact_id?: string }>;
+  artifacts?: SessionArtifact[];
+  conversations?: ConversationEntry[];
 }
 
 export interface WatchdogLibraryEntry {
@@ -888,12 +924,20 @@ export interface SessionSummary {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number;
+  active_duration_seconds: number;
   vendor: string;
+  agent_settings?: Record<string, any>;
+  skills?: string[];
+  telemetry?: Record<string, any>;
+  raw_artifact_ids?: string[];
   total_turns: number;
   total_cost_usd: number;
   total_atelier_savings_usd: number;
   label: string | null;
   models_used: Record<string, number>;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_input_tokens?: number;
 }
 
 export interface TopTool {
@@ -1397,6 +1441,8 @@ export const api = {
     get<RawArtifact>(`/raw-artifacts/${artifactId}`),
   rawArtifactContent: (artifactId: string) =>
     getText(`/raw-artifacts/${artifactId}/content`),
+  fileContentUrl: (path: string) =>
+    `${BASE}/v1/files/content?path=${encodeURIComponent(path)}`,
   // -----------------------------------------------------------------------
   // Week-2 endpoints (Spec 06)
   // -----------------------------------------------------------------------
@@ -1407,8 +1453,7 @@ export const api = {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);
   },
-  memoryFact: (factId: string) =>
-    get<MemoryFact>(`/v1/memory/facts/${factId}`),
+  memoryFact: (factId: string) => get<MemoryFact>(`/v1/memory/facts/${factId}`),
   insightsWindow: (since = "7d") =>
     get<InsightsWindow>(`/v1/insights?since=${since}`),
   outcomesSummary: (since = "7d") =>

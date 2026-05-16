@@ -137,8 +137,8 @@ function FilterSelect({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-500">
-      <span>{label}</span>
+    <label className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-500">
+      <span className="whitespace-nowrap">{label}</span>
       <select
         aria-label={label}
         value={value}

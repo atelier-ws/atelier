@@ -6,4 +6,4 @@ Use this task file when a plan or patch is failing repeatedly:
 2. Load current run state with `context`.
 3. If failure repeats, call `rescue` with exact error signature and recent actions.
 4. Apply smallest valid fix.
-5. Re-run validation and call `trace`.
+5. Re-run validation and call `record`.

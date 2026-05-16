@@ -7,7 +7,7 @@ Atelier is the Agent Reasoning Runtime. Operate using this **3-step process**:
 
 1. **Context**: Call `context` with `task`, `domain`, `files`, `tools`, `errors`. Read the retrieved procedures and avoid dead ends.
 2. **Implement**: Execute task (optional: `rescue` on failure, `route` for decisions).
-3. **Trace**: Call `trace` at completion to record the outcome.
+3. **Record**: Call `record` at completion to record the outcome.
 
 Budget optimizer: before changing files, name the deliverable and summarize
 the smallest viable plan. Keep context narrow: use only the current goal,
