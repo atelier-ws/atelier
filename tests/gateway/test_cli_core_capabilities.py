@@ -19,7 +19,7 @@ def test_bench_runtime(tmp_path: Path) -> None:
     code, out = _invoke(root, "init")
     assert code == 0, out
 
-    code, out = _invoke(root, "bench", "runtime", "--json")
+    code, out = _invoke(root, "benchmark", "runtime", "--json")
     assert code == 0, out
     metrics = json.loads(out)
     assert "total_tool_calls" in metrics

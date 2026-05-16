@@ -1,194 +1,427 @@
-import { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, type SessionSummary } from "../api";
+import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { api, type Trace, type SessionSummary } from "../api";
 import { MetricCard, SectionHeader, cx } from "../components/WorkbenchUI";
 import { useTimeRange } from "../lib/TimeRangeContext";
+import {
+  fmtUsd,
+  fmtTok,
+  fmtDate,
+  fmtDuration,
+  extractHost,
+  HOST_COLORS,
+} from "./sessions/helpers";
+import { StatusBadge } from "./sessions/StatusBadge";
+import { SessionExplorerDetail } from "./sessions/SessionDetail";
 
-type SortKey = "started_at" | "total_cost_usd" | "total_atelier_savings_usd" | "total_turns";
-type SortDir = "asc" | "desc";
+// ---------------------------------------------------------------------------
+// Highlight search terms in text (JSX — lives here, not in helpers.ts)
+// ---------------------------------------------------------------------------
 
-function fmtUsd(v: number) {
-  return `$${v.toFixed(2)}`;
+function highlightSearchText(value: string, query: string): ReactNode {
+  if (!value || !query.trim()) return value;
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return value;
+  const pattern = terms
+    .slice()
+    .sort((l, r) => r.length - l.length)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  if (!pattern) return value;
+  const matcher = new RegExp(`(${pattern})`, "gi");
+  return value.split(matcher).map((part, i) =>
+    terms.includes(part.toLowerCase()) ? (
+      <mark
+        key={i}
+        className="bg-purple-500/30 text-purple-200 rounded-[1px] px-0.5 border border-purple-500/20"
+      >
+        {part}
+      </mark>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
 }
 
-function fmtDate(s: string) {
-  try {
-    return new Date(s).toLocaleString();
-  } catch {
-    return s;
-  }
-}
+// ---------------------------------------------------------------------------
+// Main Sessions page — sidebar list + master-detail routing
+// ---------------------------------------------------------------------------
 
 export default function Sessions() {
   const { range } = useTimeRange();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [items, setItems] = useState<SessionSummary[] | null>(null);
+  const [traces, setTraces] = useState<Trace[] | null>(null);
+  const [loadingTraces, setLoadingTraces] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("started_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const tracesRequestSeq = useRef(0);
+  const [summaries, setSummaries] = useState<SessionSummary[] | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Debounce search input → query
   useEffect(() => {
-    setItems(null);
+    const timer = setTimeout(() => {
+      const nextQuery = searchInput.trim();
+      setQuery(nextQuery);
+      const next = new URLSearchParams(searchParams);
+      if (nextQuery) next.set("q", nextQuery);
+      else next.delete("q");
+      setSearchParams(next, { replace: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, setSearchParams, searchParams]);
+
+  // Fetch traces on query / range change
+  useEffect(() => {
+    const requestSeq = ++tracesRequestSeq.current;
+    setLoadingTraces(true);
+    setPage(0);
     setErr(null);
     api
+      .traces(50, 0, "all", "all", query)
+      .then((res) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setTraces(res.items);
+        setHasMore(res.items.length >= 50);
+        setLoadingTraces(false);
+      })
+      .catch((e) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setErr(String(e));
+        setLoadingTraces(false);
+      });
+  }, [query, range]);
+
+  // Fetch session summaries for cost/token stats in sidebar cards
+  useEffect(() => {
+    api
       .sessions(range)
-      .then(setItems)
-      .catch((e) => setErr(String(e)));
+      .then(setSummaries)
+      .catch(() => null);
   }, [range]);
 
-  const sorted = useMemo(() => {
-    if (!items) return [];
-    return [...items].sort((a, b) => {
-      const av = a[sortKey] as string | number;
-      const bv = b[sortKey] as string | number;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-  }, [items, sortKey, sortDir]);
-
-  const totalCost = items ? items.reduce((s, i) => s + i.total_cost_usd, 0) : 0;
-  const totalSavings = items ? items.reduce((s, i) => s + i.total_atelier_savings_usd, 0) : 0;
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  }
-
-  function SortArrow({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <span className="ml-1 text-neutral-600">⇅</span>;
-    return <span className="ml-1 text-purple-400">{sortDir === "asc" ? "↑" : "↓"}</span>;
-  }
+  const loadMore = () => {
+    if (loadingTraces || !hasMore) return;
+    const requestSeq = tracesRequestSeq.current;
+    setLoadingTraces(true);
+    const nextOffset = (page + 1) * 50;
+    api
+      .traces(50, nextOffset, "all", "all", query)
+      .then((res) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setTraces((prev) => (prev ? [...prev, ...res.items] : res.items));
+        setHasMore(res.items.length >= 50);
+        setPage((p) => p + 1);
+        setLoadingTraces(false);
+      })
+      .catch((e) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setErr(String(e));
+        setLoadingTraces(false);
+      });
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-[calc(100vh-180px)] overflow-hidden border border-neutral-800 bg-[#070707]">
+      {/* Sidebar — master list */}
+      <aside
+        className={cx(
+          "flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#0a0a0a] transition-all duration-200 ease-in-out overflow-hidden",
+          sidebarCollapsed ? "w-12" : "w-80"
+        )}
+      >
+        {sidebarCollapsed ? (
+          /* ── Collapsed: narrow strip ── */
+          <div className="flex flex-col items-center py-3 gap-4 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
+              title="Expand sidebar"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className="w-3.5 h-3.5"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.22 2.22a.75.75 0 0 1 1.06 0L11.06 7.5l-4.78 4.78a.75.75 0 1 1-1.06-1.06L9.44 7.5 5.22 3.28a.75.75 0 0 1 0-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500 [writing-mode:vertical-lr]">
+              History
+            </span>
+          </div>
+        ) : (
+          /* ── Expanded: full sidebar ── */
+          <>
+            <div className="p-4 border-b border-neutral-800 space-y-3 bg-[#0d0d0d]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 whitespace-nowrap">
+                    History
+                  </h2>
+                  {loadingTraces && (
+                    <span className="text-[10px] text-purple-500 animate-pulse shrink-0">
+                      Scanning...
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
+                  title="Collapse sidebar"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className="w-3 h-3"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10.78 2.22a.75.75 0 0 1 0 1.06L6.56 7.5l4.22 4.22a.75.75 0 1 1-1.06 1.06L4.94 7.5l4.78-4.78a.75.75 0 0 1 1.06 0Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search history..."
+                  className="w-full bg-[#141414] border border-neutral-800 px-3 py-2 text-xs text-neutral-200 outline-none focus:border-purple-600 transition-all rounded-sm shadow-inner"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchInput("")}
+                    className="px-2 border border-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {err && (
+                <div className="p-4 text-xs text-red-500 font-mono">
+                  {err}
+                </div>
+              )}
+
+              {traces?.map((t) => {
+                const sid = t.session_id || t.id;
+                const isActive = id === sid;
+                const summary = summaries?.find((s) => s.session_id === sid);
+
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() =>
+                      navigate(
+                        `/sessions/${sid}${query ? `?q=${encodeURIComponent(query)}` : ""}`
+                      )
+                    }
+                    className={cx(
+                      "w-full text-left p-4 border-b border-neutral-800 transition-all hover:bg-neutral-800/40 group/card",
+                      isActive
+                        ? "bg-purple-900/10 border-r-2 border-r-purple-500 shadow-[inset_0_0_20px_rgba(168,85,247,0.05)]"
+                        : ""
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cx(
+                            "text-[8px] px-1.5 py-0.5 border uppercase font-bold tracking-tight font-mono rounded-[1px]",
+                            HOST_COLORS[extractHost(t)] ||
+                              "bg-neutral-800 text-neutral-400 border-neutral-500"
+                          )}
+                        >
+                          {extractHost(t)}
+                        </span>
+                        <StatusBadge
+                          status={t.status}
+                          className="text-[7px] tracking-[0.2em]"
+                        />
+                      </div>
+                      <span className="text-[9px] text-neutral-400 font-mono">
+                        {fmtDate(t.created_at)}
+                      </span>
+                    </div>
+
+                    <p
+                      className={cx(
+                        "text-xs font-mono line-clamp-2 mb-3 leading-relaxed",
+                        isActive
+                          ? "text-neutral-100 font-bold"
+                          : "text-neutral-400 group-hover/card:text-neutral-300"
+                      )}
+                    >
+                      {highlightSearchText(t.task || "Untitled Task", query)}
+                    </p>
+
+                    {/* Embedded stats */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-neutral-800/40 pt-2.5">
+                      {(
+                        [
+                          [
+                            "Cost",
+                            summary ? fmtUsd(summary.total_cost_usd) : "—",
+                            "text-red-500/90",
+                          ],
+                          [
+                            "Saved",
+                            summary
+                              ? fmtUsd(summary.total_atelier_savings_usd)
+                              : "—",
+                            "text-emerald-500/90",
+                          ],
+                          [
+                            "In/Out",
+                            `${fmtTok(summary?.input_tokens ?? t.input_tokens ?? 0)}/${fmtTok(summary?.output_tokens ?? t.output_tokens ?? 0)}`,
+                            "text-neutral-400",
+                          ],
+                          [
+                            "Cache",
+                            fmtTok(
+                              summary?.cached_input_tokens ??
+                                t.cached_input_tokens ??
+                                0
+                            ),
+                            "text-neutral-400",
+                          ],
+                          [
+                            "Turns",
+                            String(summary?.total_turns || "—"),
+                            "text-neutral-400",
+                          ],
+                          [
+                            "Time",
+                            summary
+                              ? fmtDuration(
+                                  summary.active_duration_seconds ||
+                                    summary.duration_seconds
+                                )
+                              : "—",
+                            "text-neutral-400",
+                          ],
+                        ] as [string, string, string][]
+                      ).map(([label, value, valCls]) => (
+                        <div
+                          key={label}
+                          className="flex justify-between text-[8px] font-mono tracking-widest uppercase"
+                        >
+                          <span className="text-neutral-400">{label}</span>
+                          <span className={cx("font-black", valCls)}>
+                            {value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+
+              {!loadingTraces && hasMore && traces && (
+                <button
+                  onClick={loadMore}
+                  className="w-full p-4 text-[10px] text-neutral-400 hover:text-neutral-200 uppercase tracking-widest font-bold"
+                >
+                  Load More
+                </button>
+              )}
+
+              {!loadingTraces && traces?.length === 0 && (
+                <div className="p-12 text-center text-xs text-neutral-500 italic font-mono">
+                  No sessions found
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 overflow-hidden">
+        {id ? (
+          <SessionExplorerDetail sessionId={id} />
+        ) : (
+          <EmptyState summaries={summaries} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Empty state — shown when no session is selected
+// ---------------------------------------------------------------------------
+
+function EmptyState({ summaries }: { summaries: SessionSummary[] | null }) {
+  const totalCost = summaries?.reduce((s, i) => s + i.total_cost_usd, 0) ?? 0;
+  const totalSaved =
+    summaries?.reduce((s, i) => s + i.total_atelier_savings_usd, 0) ?? 0;
+
+  return (
+    <div className="h-full overflow-y-auto custom-scrollbar p-12 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <SectionHeader
-        title="Sessions"
-        description={`Recent sessions — sorted by ${sortKey.replace(/_/g, " ")}`}
+        title="Session Explorer"
+        description="Deep dive into agent execution, reasoning, and costs."
       />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         <MetricCard
           label="Sessions"
-          value={items ? String(items.length) : "—"}
+          value={summaries ? String(summaries.length) : "—"}
           tone="violet"
         />
         <MetricCard
-          label="Total cost"
-          value={items ? fmtUsd(totalCost) : "—"}
+          label="Total Cost"
+          value={summaries ? fmtUsd(totalCost) : "—"}
           tone="amber"
         />
         <MetricCard
-          label="Atelier savings"
-          value={items ? fmtUsd(totalSavings) : "—"}
+          label="Savings"
+          value={summaries ? fmtUsd(totalSaved) : "—"}
           tone="emerald"
         />
         <MetricCard
-          label="Avg cost"
-          value={items && items.length ? fmtUsd(totalCost / items.length) : "—"}
+          label="Efficiency"
+          value={
+            summaries
+              ? `${Math.round((totalSaved / (totalCost || 1)) * 100)}%`
+              : "—"
+          }
           tone="neutral"
         />
       </div>
 
-      {err && (
-        <div className="border border-red-800 bg-red-950/30 p-4 text-sm text-red-300">{err}</div>
-      )}
-
-      {items === null && !err && (
-        <div className="border border-neutral-800 p-6 text-center text-sm text-neutral-500">
-          Loading sessions…
-        </div>
-      )}
-
-      {items !== null && items.length === 0 && (
-        <div className="border border-neutral-800 p-8 text-center text-sm text-neutral-500">
-          <p className="text-2xl mb-3">◫</p>
-          <p className="font-semibold">No sessions yet</p>
-          <p className="mt-1 text-neutral-600">
-            Sessions appear here after you run a Claude Code session with Atelier active.
-          </p>
-        </div>
-      )}
-
-      {sorted.length > 0 && (
-        <div className="overflow-x-auto border border-neutral-800">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-neutral-800 bg-neutral-900/60 text-neutral-400">
-              <tr>
-                <th className="px-3 py-2">Session ID</th>
-                <th
-                  className="cursor-pointer px-3 py-2 hover:text-neutral-200"
-                  onClick={() => toggleSort("started_at")}
-                >
-                  Started <SortArrow k="started_at" />
-                </th>
-                <th className="px-3 py-2">Vendor</th>
-                <th
-                  className="cursor-pointer px-3 py-2 hover:text-neutral-200"
-                  onClick={() => toggleSort("total_turns")}
-                >
-                  Turns <SortArrow k="total_turns" />
-                </th>
-                <th
-                  className="cursor-pointer px-3 py-2 text-right hover:text-neutral-200"
-                  onClick={() => toggleSort("total_cost_usd")}
-                >
-                  Cost <SortArrow k="total_cost_usd" />
-                </th>
-                <th
-                  className="cursor-pointer px-3 py-2 text-right hover:text-neutral-200"
-                  onClick={() => toggleSort("total_atelier_savings_usd")}
-                >
-                  Savings <SortArrow k="total_atelier_savings_usd" />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((s) => (
-                <tr
-                  key={s.session_id}
-                  className="cursor-pointer border-b border-neutral-800/60 hover:bg-neutral-800/30"
-                  onClick={() => navigate(`/sessions/${s.session_id}`)}
-                >
-                  <td className="px-3 py-2 font-mono text-purple-400/80">
-                    {s.session_id.slice(0, 12)}…
-                  </td>
-                  <td className="px-3 py-2 text-neutral-400">{fmtDate(s.started_at)}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={cx(
-                        "px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        s.vendor === "anthropic"
-                          ? "bg-orange-500/10 text-orange-400"
-                          : s.vendor === "openai"
-                          ? "bg-green-500/10 text-green-400"
-                          : s.vendor === "google"
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "bg-neutral-700/40 text-neutral-400"
-                      )}
-                    >
-                      {s.vendor}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-neutral-300">{s.total_turns}</td>
-                  <td className="px-3 py-2 text-right text-amber-300">
-                    {fmtUsd(s.total_cost_usd)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-green-400">
-                    {s.total_atelier_savings_usd > 0
-                      ? fmtUsd(s.total_atelier_savings_usd)
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="border border-neutral-800 bg-[#0d0d0d] p-16 text-center rounded-sm">
+        <p className="text-4xl mb-6 text-neutral-500 font-mono">❯_</p>
+        <h3 className="text-xs font-bold text-neutral-500 mb-2 uppercase tracking-[0.4em]">
+          Select History
+        </h3>
+        <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
+          Explore the internal reasoning logs, tool executions, and file diffs
+          for any past agent run.
+        </p>
+      </div>
     </div>
   );
 }

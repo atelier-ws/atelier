@@ -30,12 +30,12 @@ All V2 tools are Atelier augmentations. Copilot native tools (file reads, search
 
 - **Primary:** `mcp_live` — Atelier MCP tool calls and VS Code task outputs are captured.
   capture_sources: `["mcp"]`.
-- **Fallback:** `manual` — agent calls `trace` with observable facts only.
+- **Fallback:** `manual` — agent calls `record` with observable facts only.
 - **Missing surfaces in primary mode:** `native_chat_edits`, `file_edits`.
 - `full_live` and `hook_enforced` are not available for Copilot; hard blocking of
   model/tool calls and `provider_enforced` are future-only and disabled.
 
-When calling `trace` from a Copilot session, include:
+When calling `record` from a Copilot session, include:
 
 ```json
 "trace_confidence": "mcp_live",

@@ -35,6 +35,7 @@ from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
     _SIZE_LIMIT_BYTES,
     make_llm_usage_entry,
+    snapshot_edited_files,
     summarize_usage_entries,
 )
 
@@ -155,11 +156,28 @@ def _tool_result_streams(content: Any, is_error: bool = False) -> tuple[str, str
 
 
 def _infer_file_edit_diff(tool_name: str, inp: dict[str, Any], result_text: str | None = None) -> str:
-    # Very basic diff inference for Claude's Write/Edit tools
-    if tool_name == "Write":
-        return f"+ {inp.get('content', '')[:1000]}"
-    if tool_name == "Edit":
-        return f"Editing {inp.get('file_path')}"
+    # Smarter diff inference for Claude's Write/Edit tools
+    if tool_name in {"Write", "write", "write_file"}:
+        content = inp.get("content", "")
+        if content:
+            return f"+ {content[:4000]}"
+    
+    if result_text:
+        # If the tool result contains a unified diff, use it
+        if "--- " in result_text and "+++ " in result_text:
+            lines = result_text.splitlines()
+            for i, line in enumerate(lines):
+                if line.startswith("--- "):
+                    return "\n".join(lines[i:])
+    
+    # Check input for patch/diff
+    patch = inp.get("patch") or inp.get("diff")
+    if patch:
+        return str(patch)
+        
+    if tool_name in {"Edit", "EditFile", "replace"}:
+        return f"Modified {inp.get('file_path') or inp.get('path')}"
+        
     return ""
 
 
@@ -229,6 +247,10 @@ class ClaudeImporter:
         title = ""
         created_at: datetime = _utcnow()
         first_ts_set = False
+        agent_settings: dict[str, Any] = {}
+        skills: list[str] = []
+        latencies: list[float] = []
+        ttfts: list[float] = []
 
         for f_path in all_files:
             try:
@@ -290,6 +312,11 @@ class ClaudeImporter:
                         task = lp[:200]
                 elif ev_type == "user":
                     if ev.get("isMeta"):
+                        # Extract skills/settings from metadata injection
+                        c_str = str(msg.get("content", ""))
+                        if "active mcp servers" in c_str.lower():
+                            matches = re.findall(r"- ([\w.-]+)", c_str)
+                            skills.extend(matches)
                         continue
                     content = msg.get("content", "")
                     text_ext = _extract_user_text(content)
@@ -336,6 +363,15 @@ class ClaudeImporter:
                                     if diff:
                                         files_touched[idx] = FileEditRecord(path=path, diff=diff[:4096], event="edit")
                 elif ev_type == "assistant":
+                    # Capture performance telemetry
+                    perf = ev.get("performance") or {}
+                    latency = perf.get("total_latency_ms") or perf.get("latency_ms")
+                    ttft = perf.get("time_to_first_token_ms") or perf.get("ttft_ms")
+                    if latency:
+                        latencies.append(float(latency))
+                    if ttft:
+                        ttfts.append(float(ttft))
+
                     usage = msg.get("usage", {}) or {}
                     m = msg.get("model") or ev.get("model")
                     # Claude Code emits "<synthetic>" for cached/injected replies that
@@ -421,6 +457,12 @@ class ClaudeImporter:
             fallback_model=model_seen,
         )
 
+        telemetry = {}
+        if latencies:
+            telemetry["avg_latency_ms"] = round(sum(latencies) / len(latencies), 1)
+        if ttfts:
+            telemetry["avg_ttft_ms"] = round(sum(ttfts) / len(ttfts), 1)
+
         if task == "untitled claude session" and title:
             task = title
 
@@ -458,7 +500,16 @@ class ClaudeImporter:
             model_usages=usage_summary["model_usages"],
             output_tokens=usage_summary["output_tokens"],
             thinking_tokens=usage_summary["thinking_tokens"],
+            agent_settings=agent_settings,
+            skills=sorted(set(skills)),
+            telemetry=telemetry,
             created_at=created_at,
         )
         self.store.record_trace(trace, write_json=False)
+
+        # Best-effort: snapshot current on-disk state of every edited file
+        ft = [r for r in files_touched if isinstance(r, FileEditRecord)]
+        if ft:
+            snapshot_edited_files(self.store, ft, session_id=session_id, source="claude")
+
         return trace.id

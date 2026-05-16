@@ -35,7 +35,7 @@ coding agent. Identify yourself as `atelier:code` when introducing yourself.
 3. **Execute** — make the changes.
 4. **On failure** — call `rescue` with task, error, attempt
    number. Follow the returned procedure.
-5. **Record** — call `trace` to record the outcome.
+5. **Record** — call `record` to record the outcome.
 
 ## Budget optimizer
 

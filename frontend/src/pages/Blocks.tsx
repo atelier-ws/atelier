@@ -1,5 +1,16 @@
 import { useEffect, useState, useMemo } from "react";
 import { api, type ReasonBlock } from "../api";
+import {
+  Alert,
+  Chip,
+  DisclosureCard,
+  EmptyState,
+  FeaturePanel,
+  FieldLabel,
+  Input,
+  Select,
+  ToggleGroup,
+} from "../components/WorkbenchUI";
 
 export default function Blocks() {
   const [items, setItems] = useState<ReasonBlock[] | null>(null);
@@ -40,8 +51,8 @@ export default function Blocks() {
     });
   }, [items, filter, domainFilter, search]);
 
-  if (err) return <div className="text-red-400">Error: {err}</div>;
-  if (!items) return <div className="text-neutral-500">Loading…</div>;
+  if (err) return <Alert tone="danger" description={err} />;
+  if (!items) return <EmptyState title="Loading blocks…" className="p-6" />;
 
   const toggleExpanded = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -49,59 +60,46 @@ export default function Blocks() {
 
   return (
     <div className="space-y-6">
-      {/* Feature Info */}
-      <section className="border border-neutral-800 bg-neutral-900/50 p-5">
-        <div className="flex items-start gap-4">
-          <div className="text-3xl flex-shrink-0">🧠</div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="font-mono font-bold text-neutral-200 text-lg">
-                ReasonBlocks
-              </h2>
-              <span className="text-[10px] px-2 py-0.5 font-mono font-bold uppercase tracking-wide bg-emerald-900/30 text-emerald-300">
-                stable
-              </span>
-            </div>
-            <p className="font-mono text-[11px] text-neutral-500 mb-3">
-              Reusable Reasoning Procedures
-            </p>
-            <p className="text-xs text-neutral-300 leading-relaxed mb-3">
-              Stored, reviewable procedures that tell agents how to do things
-              safely in a specific domain. Blocks are injected into agent
-              context before execution via get_reasoning_context. They live in
-              SQLite and are mirrored to .atelier/blocks/*.md for PR
-              reviewability.
-            </p>
-            <div className="text-xs text-emerald-300/90 space-y-1">
-              <p>✓ Human-reviewable procedures in git (markdown mirrors)</p>
-              <p>✓ Domain-specific injection — only relevant blocks fetched</p>
-              <p>✓ 7%+ per-call token savings reproducible in benchmarks</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <FeaturePanel
+        icon="🧠"
+        title="ReasonBlocks"
+        subtitle="Reusable Reasoning Procedures"
+        description={
+          <>
+            Stored, reviewable procedures that tell agents how to do things
+            safely in a specific domain. Blocks are injected into agent context
+            before execution via get_reasoning_context. They live in SQLite and
+            are mirrored to .atelier/blocks/*.md for PR reviewability.
+          </>
+        }
+        bullets={[
+          "Human-reviewable procedures in git (markdown mirrors)",
+          "Domain-specific injection — only relevant blocks fetched",
+          "7%+ per-call token savings reproducible in benchmarks",
+        ]}
+      />
       {/* Filters & Blocks List */}
       <div className="space-y-3">
         {/* Filters */}
-        <div className="flex gap-2 flex-wrap items-center mb-4">
-          {(["all", "active", "retired", "deprecated"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-[10px] px-2.5 py-1 uppercase font-bold tracking-tight font-mono transition border ${
-                filter === f
-                  ? "border-neutral-500 bg-neutral-800 text-neutral-100"
-                  : "border-neutral-700 text-neutral-500 hover:text-neutral-300"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-          <select
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <ToggleGroup
+            options={(["all", "active", "retired", "deprecated"] as const).map(
+              (value) => ({
+                value,
+                label: value,
+              })
+            )}
+            value={filter}
+            onChange={(value) =>
+              setFilter(value as "all" | "active" | "retired" | "deprecated")
+            }
+          />
+          <Select
             aria-label="Filter blocks by domain"
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
-            className="text-[10px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-400 font-mono"
+            uiSize="xs"
+            className="min-w-[148px] bg-neutral-900/50 text-neutral-400"
           >
             <option value="all">All domains</option>
             {domains.map((d) => (
@@ -109,13 +107,14 @@ export default function Blocks() {
                 {d}
               </option>
             ))}
-          </select>
-          <input
+          </Select>
+          <Input
             type="text"
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="ml-auto text-[11px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-300 placeholder:text-neutral-600 w-40 font-mono"
+            uiSize="xs"
+            className="ml-auto w-40 bg-neutral-900/50"
           />
         </div>
 
@@ -130,19 +129,20 @@ export default function Blocks() {
             />
           ))}
           {filtered.length === 0 && (
-            <div className="text-neutral-500 text-sm italic py-4 font-mono">
-              No blocks match the current filters.
-            </div>
+            <EmptyState
+              title="No blocks match the current filters."
+              className="p-4"
+            />
           )}
         </div>
 
         {/* Stats footer */}
         <div className="pt-4 border-t border-neutral-800">
-          <div className="text-[10px] text-neutral-600 font-mono">
+          <FieldLabel className="text-neutral-600">
             Showing {filtered.length} of {items.length} blocks
-          </div>
+          </FieldLabel>
         </div>
-      </div>{" "}
+      </div>
     </div>
   );
 }
@@ -157,81 +157,60 @@ function BlockCard({
   onToggle: () => void;
 }) {
   return (
-    <div className="border border-neutral-800 bg-neutral-900/50 overflow-hidden transition-all">
-      {/* Header */}
-      <button
-        onClick={onToggle}
-        className="w-full px-5 py-4 text-left hover:bg-neutral-800/50 transition-colors flex items-start justify-between"
-      >
-        <div className="flex-1 flex items-start gap-4 min-w-0">
-          {/* Icon/Status */}
-          <div className="text-lg flex-shrink-0 mt-0.5">
-            {block.status === "active"
-              ? "●"
-              : block.status === "retired"
-                ? "◐"
-                : "○"}
-          </div>
-
-          {/* Title & Details */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-1 flex-wrap">
-              {/* Expandable indicator */}
-              <span
-                className={`text-neutral-500 font-mono text-xs transition-transform ${
-                  isExpanded ? "rotate-90" : ""
-                }`}
-              >
-                ❯
-              </span>
-              <h3 className="font-mono font-bold text-neutral-200 text-sm">
-                {block.title}
-              </h3>
-              <StatusBadge status={block.status} />
-              {block.domain && (
-                <span className="text-[10px] px-1.5 py-0.5 bg-neutral-800 text-neutral-300 uppercase font-bold tracking-tight font-mono">
-                  {block.domain}
+    <DisclosureCard
+      open={isExpanded}
+      onToggle={onToggle}
+      header={
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-1 items-start gap-4">
+            <div className="mt-0.5 shrink-0 text-lg">
+              {block.status === "active"
+                ? "●"
+                : block.status === "retired"
+                  ? "◐"
+                  : "○"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-3">
+                <span
+                  className={`text-neutral-500 font-mono text-xs transition-transform ${
+                    isExpanded ? "rotate-90" : ""
+                  }`}
+                >
+                  ❯
                 </span>
-              )}
-            </div>
-            <div className="text-[10px] text-neutral-500 font-mono">
-              {block.id}
+                <h3 className="font-mono text-sm font-bold text-neutral-200">
+                  {block.title}
+                </h3>
+                <StatusBadge status={block.status} />
+                {block.domain && <Chip tone="neutral">{block.domain}</Chip>}
+              </div>
+              <FieldLabel>{block.id}</FieldLabel>
             </div>
           </div>
         </div>
-      </button>
-
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="border-t border-neutral-800 bg-neutral-950/50 px-5 py-4">
-          <BlockDetail block={block} />
-        </div>
-      )}
-    </div>
+      }
+    >
+      <BlockDetail block={block} />
+    </DisclosureCard>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    active: "bg-emerald-900/40 text-emerald-400",
-    retired: "bg-neutral-700 text-neutral-400",
-    deprecated: "bg-red-900/40 text-red-400",
+  const map: Record<string, "emerald" | "neutral" | "red"> = {
+    active: "emerald",
+    retired: "neutral",
+    deprecated: "red",
   };
   return (
-    <span
-      className={`text-[10px] px-1.5 py-0.5 font-bold uppercase tracking-tight font-mono ${map[status] || map.retired}`}
-    >
+    <Chip tone={map[status] || map.retired}>
       {status}
-    </span>
+    </Chip>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-2">
-      {children}
-    </div>
-  );
+  return <FieldLabel className="mb-2">{children}</FieldLabel>;
 }
 
 function BlockDetail({ block }: { block: ReasonBlock }) {

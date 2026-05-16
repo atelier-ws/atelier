@@ -514,14 +514,8 @@ class CopilotImporter:
         validation_results: list[ValidationResult] = []
         reasoning_snippets: list[str] = []
         task = initial_task or "untitled copilot session"
-        # Copilot exposes usage at three different layers, captured separately
-        # so we can pick the right one at the end and avoid double-counting:
-        #   - shutdown_entries:  session.shutdown.modelMetrics (cumulative,
-        #     authoritative when present — includes assistant turns + compaction)
-        #   - compaction_entries: session.compaction_complete.compactionTokensUsed
-        #     (per-compaction LLM call, has input/output/cache_read/cache_write)
-        #   - assistant_turn_entries: assistant.message.outputTokens (per-turn,
-        #     no input/cache info in the event payload)
+        
+        compaction_count = 0
         shutdown_entries: list[Any] = []
         compaction_entries: list[Any] = []
         assistant_turn_entries: list[Any] = []
@@ -543,6 +537,9 @@ class CopilotImporter:
                 continue
 
             etype = ev.get("type")
+
+            if etype == "session.compaction_complete":
+                compaction_count += 1
 
             if etype == "session.start":
                 fallback_model = (ev.get("data") or {}).get("selectedModel") or fallback_model
@@ -726,6 +723,7 @@ class CopilotImporter:
             "usage_entries": usage_summary["usage_entries"],
             "model_usages": usage_summary["model_usages"],
             "user_prompt_tokens": user_prompt_tokens,
+            "compaction_count": compaction_count,
         }
 
     def import_session(self, session_dir: Path, *, force: bool = False) -> str | None:
@@ -813,6 +811,14 @@ class CopilotImporter:
             initial_task=str(workspace_data.get("summary") or ""),
         )
 
+        telemetry = {
+            "compaction_count": state["compaction_count"],
+        }
+        if machine_id := workspace_data.get("machine_id"):
+            telemetry["machine_id"] = str(machine_id)
+        if vscode_ver := workspace_data.get("vscode_version"):
+            telemetry["vscode_version"] = str(vscode_ver)
+
         trace = Trace(
             id=f"copilot-{filename_session_id}",
             session_id=actual_session_id,
@@ -849,6 +855,7 @@ class CopilotImporter:
             usage_entries=state["usage_entries"],
             model_usages=state["model_usages"],
             workspace_path=workspace_cwd,
+            telemetry=telemetry,
             created_at=_parse_workspace_dt(workspace_data.get("created_at")),
         )
         self.store.record_trace(trace, write_json=False)
@@ -1264,9 +1271,7 @@ class CopilotImporter:
                         command_tools[cmd] = name
                         command_tools[display_cmd] = name
                 elif name in ("glob", "grep", "rg"):
-                    pattern = _extract_first_text(args, ("pattern", "query"), limit=100)
-                    if pattern:
-                        files_touched.setdefault(f"{name}:{pattern}", None)
+                    pass  # search patterns are not file edits — skip
 
         elif etype == "tool_call":
             name = data.get("name")

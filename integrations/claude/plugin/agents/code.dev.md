@@ -21,7 +21,7 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 
 2. **Implement**: Execute task. Use `search` for token-saving reads, `edit` for batch edits, and `route` for complex decisions.
 
-3. **Trace**: Call `trace` at completion with the observable summary (files_touched, tools_called, commands_run, errors_seen, diff_summary, status).
+3. **Record**: Call `record` at completion with the observable summary (files_touched, tools_called, commands_run, errors_seen, diff_summary, status).
 
 ## Advanced workflow
 
@@ -36,7 +36,7 @@ The procedures in the Atelier store encode hard-won lessons. Use them.
 - Use `memory` or `task` for previous-session or procedural context.
 - Use `Bash` for commands that genuinely need a shell: tests, builds, git inspection, package tools, and environment checks.
 - If Atelier MCP tools return `noop`, are hidden, or are unavailable, switch to
-  `atelier:native` or native file/search tools and say why in the trace. Always
+  `atelier:native` or native file/search tools and say why in the record. Always
   return findings instead of waiting for tool availability to improve.
 
 ## Budget optimizer

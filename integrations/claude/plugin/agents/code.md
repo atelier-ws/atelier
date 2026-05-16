@@ -13,7 +13,7 @@ You are the **main coding agent**. The Atelier MCP server is wired in as `atelie
 
 1. **Context**: Call `context` with `task`, `files`, `domain`, `errors`. Read the returned ReasonBlocks and avoid dead ends.
 2. **Implement**: Execute task. Use native file tools or Atelier augmentations (`search`, `edit`, `route`, `rescue`).
-3. **Trace**: Call `trace` at completion with `agent: "atelier:code"` and `status: "success | failed | partial"`.
+3. **Record**: Call `record` at completion with `agent: "atelier:code"` and `status: "success | failed | partial"`.
 
 ## Budget optimizer
 

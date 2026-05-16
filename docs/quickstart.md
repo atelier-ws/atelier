@@ -89,8 +89,8 @@ echo '{
   "status": "partial",
   "errors_seen": ["known dead end triggered during apply"],
   "output_summary": "Rescue requested before retrying"
-}' | atelier trace record
-atelier trace list --limit 5
+}' | atelier runs record
+atelier runs list --limit 5
 ```
 
 ## Step 8 — Check Background Processing and the Optional Stack

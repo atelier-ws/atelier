@@ -1437,15 +1437,15 @@ def telemetry_lexical_status() -> None:
     click.echo(f"lexical frustration detection: {'on' if cfg.lexical_frustration_enabled else 'off'}")
 
 
-# ----- trace --------------------------------------------------------------- #
+# ----- runs ----------------------------------------------------------------- #
 
 
-@cli.group("trace")
-def trace_group() -> None:
-    """Trace record, list, and inspect commands."""
+@cli.group("runs")
+def runs_group() -> None:
+    """Run record, list, and inspect commands."""
 
 
-@trace_group.command("record")
+@runs_group.command("record")
 @click.option(
     "--input",
     "input_path",
@@ -1467,7 +1467,7 @@ def trace_record(ctx: click.Context, input_path: Path | str) -> None:
     click.echo(trace.id)
 
 
-@trace_group.command("list")
+@runs_group.command("list")
 @click.option("--domain", default=None, help="Filter by domain.")
 @click.option("--status", default=None, type=click.Choice(["success", "failed", "partial"]))
 @click.option("--agent", default=None, help="Filter by agent name.")
@@ -1495,7 +1495,7 @@ def trace_list(
         click.echo(f"{t.id}\t{t.agent}\t{t.status}\t{t.domain}\t{t.task[:60]}")
 
 
-@trace_group.command("show")
+@runs_group.command("show")
 @click.argument("trace_id")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
@@ -4112,7 +4112,10 @@ def optimize_shadow(
     if ctx.invoked_subcommand is not None:
         return
 
-    from atelier.core.capabilities.optimization.policy import record_shadow_consent, shadow_consent_at
+    from atelier.core.capabilities.optimization.policy import (
+        record_shadow_consent,
+        shadow_consent_at,
+    )
     from atelier.core.capabilities.optimization.shadow import build_shadow_state, save_shadow_state
 
     if shadow_consent_at(ctx.obj["root"]) is None:
@@ -5526,9 +5529,9 @@ def servicectl_group() -> None:
 
 
 @servicectl_group.command("tick")
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -5560,9 +5563,9 @@ def servicectl_tick(
 
 @servicectl_group.command("start")
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -5751,9 +5754,9 @@ def servicectl_logs(ctx: click.Context, follow: bool, lines: int) -> None:
 
 @servicectl_group.command("run", hidden=True)
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
-@click.option("--maintenance-interval-seconds", default=21600, show_default=True, type=int)
-@click.option("--session-import-interval-seconds", default=300, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=86400, show_default=True, type=int)
+@click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
+@click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
 @click.option(
     "--external-analytics-period",
     "external_analytics_periods",
@@ -6599,7 +6602,7 @@ def memory_group() -> None:
     """Inspect native AI memory files from Claude, Codex, and Gemini."""
 
 
-def _make_memory_registry(cwd: Path | None = None) -> "MemoryRegistry":  # type: ignore[name-defined]  # noqa: F821
+def _make_memory_registry(cwd: Path | None = None) -> MemoryRegistry:  # type: ignore[name-defined]  # noqa: F821
     from atelier.core.capabilities.cross_vendor_memory import MemoryRegistry
     from atelier.core.capabilities.cross_vendor_memory.claude_adapter import ClaudeAdapter
     from atelier.core.capabilities.cross_vendor_memory.codex_adapter import CodexAdapter
@@ -6754,15 +6757,15 @@ def memory_paths_cmd(as_json: bool) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _parse_since_arg(value: str) -> "datetime":
+def _parse_since_arg(value: str) -> datetime:
     """Parse ``--since`` argument.
 
     Accepts:
     * ``7d``, ``30d``, ``24h``, ``30m``  — duration relative to now
     * ``YYYY-MM-DD``                       — absolute date (start of day UTC)
     """
-    from datetime import UTC, datetime, timedelta
     import re
+    from datetime import UTC, datetime, timedelta
 
     stripped = value.strip()
     # Relative duration (e.g. "7d", "24h", "30m")
@@ -6860,7 +6863,6 @@ def insights_cmd(
         pass
     elif group_by == "model" and not as_json:
         # Swap cost_by_tool → cost_by_model for the tool section.
-        from dataclasses import replace
 
         display_window = InsightsWindow(
             since=window.since,

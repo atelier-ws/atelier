@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import mimetypes
 import sqlite3
 import threading
 from collections import defaultdict
@@ -836,7 +837,9 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
             if isinstance(payload, dict):
                 compact = {
                     "sessions_benchmarked": payload.get("sessions_benchmarked", 0),
-                    "avg_native_freed_tokens_measured": payload.get("avg_native_freed_tokens_measured", 0),
+                    "avg_native_freed_tokens_measured": payload.get(
+                        "avg_native_freed_tokens_measured", 0
+                    ),
                     "avg_atelier_freed_tokens_est": payload.get("avg_atelier_freed_tokens_est", 0),
                     "avg_delta_tokens": payload.get("avg_delta_tokens", 0),
                     "atelier_vs_native_delta_pct": payload.get("atelier_vs_native_delta_pct", 0.0),
@@ -860,7 +863,9 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
                     "total_downtiered_turns": payload.get("total_downtiered_turns", 0),
                     "downtiered_pct": payload.get("downtiered_pct", 0.0),
                     "total_cost_saved_usd": payload.get("total_cost_saved_usd", 0.0),
-                    "avg_cost_saved_usd_per_session": payload.get("avg_cost_saved_usd_per_session", 0.0),
+                    "avg_cost_saved_usd_per_session": payload.get(
+                        "avg_cost_saved_usd_per_session", 0.0
+                    ),
                     "by_tier": payload.get("by_tier", {}),
                     "generated_at": payload.get("generated_at", ""),
                     "note": payload.get("note", ""),
@@ -2232,7 +2237,7 @@ def _optimizations_summary_payload(
 
 def create_app(store_root: str | Path | None = None) -> Any:
     """Construct the FastAPI instance."""
-    from fastapi import Body, Depends, FastAPI, HTTPException, Query, Security
+    from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Security
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -3257,6 +3262,438 @@ def create_app(store_root: str | Path | None = None) -> Any:
         return _load_pricing_table()
 
     # ------------------------------------------------------------------ #
+    # Raw artifact HTML viewer                                           #
+    # ------------------------------------------------------------------ #
+
+    def _render_raw_artifact_html(artifact: Any, content: str) -> str:
+        """Render raw artifact content as a standalone HTML page for browser viewing."""
+        import html as _html
+
+        meta = artifact.model_dump(mode="json")
+        meta_json = json.dumps(meta, default=str, indent=2)
+
+        line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+
+        # Attempt to detect JSONL: if >= 80% of non-empty lines parse as JSON
+        lines = content.rstrip("\n").split("\n")
+        json_lines = 0
+        non_empty = 0
+        for ln in lines:
+            if ln.strip():
+                non_empty += 1
+                try:
+                    json.loads(ln)
+                    json_lines += 1
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        is_jsonl = non_empty > 0 and (json_lines / non_empty) >= 0.8
+
+        # Escape content as a JS-safe string via JSON
+        content_js = json.dumps(content)
+
+        short_id = artifact.id[:24] + "…" if len(artifact.id) > 24 else artifact.id
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raw Artifact · {_html.escape(short_id)}</title>
+<style>
+  *, *::before, *::after {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  html {{ font-size: 14px; }}
+  body {{
+    background: #0a0a0a;
+    color: #d4d4d4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 24px;
+  }}
+  a {{ color: #61afef; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+
+  /* ── Metadata card ── */
+  .meta {{
+    background: #141416;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px 20px;
+  }}
+  .meta dt {{
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #555;
+    margin-top: 4px;
+  }}
+  .meta dd {{
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #b0b0b0;
+    word-break: break-all;
+  }}
+  .meta .id-val {{ color: #61afef; }}
+  .meta .src-val {{ color: #e5c07b; }}
+  .meta .kind-val {{ color: #98c379; }}
+  .meta .redacted-yes {{ color: #e06c75; }}
+  .meta .redacted-no {{ color: #98c379; }}
+  .meta .title-row {{
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #222;
+  }}
+  .meta .title-row h1 {{
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #888;
+  }}
+  .meta .title-row .artifact-id {{
+    font-family: "SF Mono", "Fira Code", Menlo, monospace;
+    font-size: 10px;
+    color: #61afef;
+    background: #1e1e24;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }}
+  .meta .line-count {{
+    margin-left: auto;
+    font-family: "SF Mono", "Fira Code", Menlo, monospace;
+    font-size: 10px;
+    color: #888;
+    background: #1e1e24;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }}
+
+  /* ── Toolbar ── */
+  .toolbar {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }}
+  .toolbar button {{
+    background: #1e1e24;
+    border: 1px solid #333;
+    color: #b0b0b0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }}
+  .toolbar button:hover {{
+    background: #2a2a32;
+    border-color: #555;
+    color: #e0e0e0;
+  }}
+  .toolbar button:active {{
+    transform: scale(0.97);
+  }}
+  .toolbar .copy-btn {{ color: #98c379; }}
+  .toolbar .copy-btn:hover {{ border-color: #98c379; }}
+  .toolbar .status {{
+    font-size: 10px;
+    color: #666;
+    margin-left: auto;
+  }}
+
+  /* ── Content area ── */
+  .content-wrap {{
+    background: #0d0d0f;
+    border: 1px solid #1a1a1e;
+    border-radius: 6px;
+    overflow: hidden;
+  }}
+  .line {{
+    display: flex;
+    min-height: 21px;
+    border-bottom: 1px solid #111113;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    transition: background 0.1s;
+  }}
+  .line:hover {{
+    background: #121216;
+  }}
+  .line:last-child {{ border-bottom: none; }}
+  .line-num {{
+    flex-shrink: 0;
+    width: 48px;
+    padding: 0 10px;
+    text-align: right;
+    color: #333;
+    font-size: 10px;
+    user-select: none;
+    border-right: 1px solid #16161a;
+    padding-right: 12px;
+    background: #0a0a0c;
+  }}
+  .line-content {{
+    flex: 1;
+    padding: 0 14px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }}
+  .line-content.raw-text {{
+    color: #888;
+    font-style: italic;
+  }}
+
+  /* ── JSON syntax highlighting ── */
+  .hl-key {{ color: #61afef; }}
+  .hl-str {{ color: #98c379; }}
+  .hl-num {{ color: #d19a66; }}
+  .hl-bool {{ color: #c678dd; }}
+  .hl-null {{ color: #c678dd; font-style: italic; }}
+  .hl-bracket {{ color: #777; }}
+  .hl-punc {{ color: #666; }}
+  .hl-comment {{ color: #555; font-style: italic; }}
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {{
+    body {{ padding: 12px; }}
+    .meta {{ grid-template-columns: 1fr 1fr; padding: 12px; }}
+    .line-num {{ width: 36px; padding: 0 6px; font-size: 9px; }}
+    .line-content {{ font-size: 10px; padding: 0 8px; }}
+  }}
+
+  /* ── Empty state ── */
+  .empty {{
+    padding: 40px 20px;
+    text-align: center;
+    color: #555;
+    font-size: 12px;
+  }}
+
+  /* ── Loading / error ── */
+  .error {{ color: #e06c75; padding: 20px; }}
+</style>
+</head>
+<body>
+
+<!-- Metadata -->
+<dl class="meta">
+  <div class="title-row">
+    <h1>⧩ Raw Artifact</h1>
+    <span class="artifact-id">{_html.escape(short_id)}</span>
+    <span class="line-count">{line_count} line{"s" if line_count != 1 else ""}</span>
+  </div>
+  <div>
+    <dt>Source</dt>
+    <dd class="src-val">{_html.escape(str(meta.get("source", "")))}</dd>
+  </div>
+  <div>
+    <dt>Kind</dt>
+    <dd class="kind-val">{_html.escape(str(meta.get("kind", "")))}</dd>
+  </div>
+  <div>
+    <dt>Created</dt>
+    <dd>{_html.escape(str(meta.get("created_at", "")))}</dd>
+  </div>
+  <div>
+    <dt>Redacted</dt>
+    <dd class="redacted-{"yes" if meta.get("redacted") else "no"}">{"Yes" if meta.get("redacted") else "No"}</dd>
+  </div>
+  <div>
+    <dt>Original Bytes</dt>
+    <dd>{_html.escape(str(meta.get("byte_count_original", "")))}</dd>
+  </div>
+  <div>
+    <dt>Redacted Bytes</dt>
+    <dd>{_html.escape(str(meta.get("byte_count_redacted", "")))}</dd>
+  </div>
+  <div>
+    <dt>Relative Path</dt>
+    <dd>{_html.escape(str(meta.get("relative_path", "") or "—"))}</dd>
+  </div>
+  <div>
+    <dt>Source Session</dt>
+    <dd>{_html.escape(str(meta.get("source_session_id", "")))}</dd>
+  </div>
+  <div>
+    <dt>Source Path</dt>
+    <dd>{_html.escape(str(meta.get("source_path", "")) or "—")}</dd>
+  </div>
+  <div>
+    <dt>Source File Mtime</dt>
+    <dd>{_html.escape(str(meta.get("source_file_mtime", "")) or "—")}</dd>
+  </div>
+</dl>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="copy-btn" onclick="copyContent()">⎘ Copy All</button>
+  <button onclick="toggleWrap()">↔ Wrap</button>
+  <button onclick="toggleCollapsed()">⊟ Collapse All</button>
+  <span class="status" id="status"></span>
+</div>
+
+<!-- Lines rendered by JS -->
+<div class="content-wrap" id="root"></div>
+
+<script>
+(function() {{
+  const CONTENT = {content_js};
+  const IS_JSONL = {json.dumps(is_jsonl)};
+  const META = {meta_json};
+
+  let wrapEnabled = false;
+  let allCollapsed = false;
+
+  function escapeHtml(s) {{
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }}
+
+  function colorizeJSON(obj) {{
+    const formatted = JSON.stringify(obj, null, 2);
+    // Tokenize the pretty-printed JSON
+    let s = escapeHtml(formatted);
+    // Keys: "key":
+    s = s.replace(/(&quot;[^&]*&quot;)\\s*:/g, '<span class="hl-key">$1</span>:');
+    s = s.replace(/(:\\s*)(&quot;[^&]*&quot;)/g, '$1<span class="hl-str">$2</span>');
+    s = s.replace(/(,\\s*)(&quot;[^&]*&quot;)/g, '$1<span class="hl-str">$2</span>');
+    s = s.replace(/(:\\s*)(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)/g, '$1<span class="hl-num">$2</span>');
+    s = s.replace(/(,\\s*)(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)/g, '$1<span class="hl-num">$2</span>');
+    s = s.replace(/(:\\s*)(true|false)/g, '$1<span class="hl-bool">$2</span>');
+    s = s.replace(/(,\\s*)(true|false)/g, '$1<span class="hl-bool">$2</span>');
+    s = s.replace(/(:\\s*)(null)/g, '$1<span class="hl-null">$2</span>');
+    s = s.replace(/(,\\s*)(null)/g, '$1<span class="hl-null">$2</span>');
+    // Brackets/punctuation
+    s = s.replace(/([\\[\\]{{}}])/g, '<span class="hl-bracket">$1</span>');
+    return s;
+  }}
+
+  function render() {{
+    const root = document.getElementById('root');
+    const lines = CONTENT.split('\\n');
+    // Remove trailing empty line from split if content ends with newline
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+    if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {{
+      root.innerHTML = '<div class="empty">∅ empty artifact</div>';
+      return;
+    }}
+
+    const fragments = [];
+    let jsonOk = 0;
+    let jsonFail = 0;
+
+    for (let i = 0; i < lines.length; i++) {{
+      const line = lines[i];
+      const trimmed = line.trim();
+      let contentHtml;
+
+      if (IS_JSONL && trimmed) {{
+        try {{
+          const parsed = JSON.parse(trimmed);
+          contentHtml = colorizeJSON(parsed);
+          jsonOk++;
+        }} catch (e) {{
+          contentHtml = '<span class="hl-comment">// JSON parse error: ' + escapeHtml(e.message) + '</span>\\n' + escapeHtml(line);
+          jsonFail++;
+        }}
+      }} else {{
+        contentHtml = escapeHtml(line);
+      }}
+
+      fragments.push(
+        '<div class="line">' +
+          '<span class="line-num">' + (i + 1) + '</span>' +
+          '<span class="line-content' + (contentHtml ? '' : ' raw-text') + '">' + (contentHtml || '\\u00A0') + '</span>' +
+        '</div>'
+      );
+    }}
+
+    root.innerHTML = fragments.join('');
+
+    const statusEl = document.getElementById('status');
+    if (IS_JSONL) {{
+      const total = jsonOk + jsonFail;
+      statusEl.textContent = jsonOk + '/' + total + ' JSON lines parsed' + (jsonFail ? ', ' + jsonFail + ' failed' : '');
+    }} else {{
+      statusEl.textContent = lines.length + ' lines';
+    }}
+  }}
+
+  window.copyContent = function() {{
+    navigator.clipboard.writeText(CONTENT).then(() => {{
+      const btn = document.querySelector('.copy-btn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    }});
+  }};
+
+  window.toggleWrap = function() {{
+    wrapEnabled = !wrapEnabled;
+    document.querySelectorAll('.line-content').forEach(el => {{
+      el.style.whiteSpace = wrapEnabled ? 'pre-wrap' : 'pre';
+      el.style.wordBreak = wrapEnabled ? 'break-all' : 'normal';
+    }});
+    const btn = document.querySelector('.toolbar button:nth-child(2)');
+    btn.textContent = wrapEnabled ? '↔ No Wrap' : '↔ Wrap';
+  }};
+
+  window.toggleCollapsed = function() {{
+    allCollapsed = !allCollapsed;
+    document.querySelectorAll('.line').forEach((el, i) => {{
+      const content = el.querySelector('.line-content');
+      if (allCollapsed && i > 10) {{
+        el.style.display = 'none';
+      }} else {{
+        el.style.display = '';
+      }}
+    }});
+    const btn = document.querySelector('.toolbar button:nth-child(3)');
+    if (allCollapsed) {{
+      // Show a "show all" row
+      const root = document.getElementById('root');
+      const showAll = document.createElement('div');
+      showAll.className = 'line';
+      showAll.style.cursor = 'pointer';
+      showAll.style.justifyContent = 'center';
+      showAll.style.padding = '12px';
+      showAll.style.color = '#61afef';
+      showAll.style.fontSize = '11px';
+      showAll.id = 'show-all-row';
+      showAll.textContent = '⊞ Show all ' + document.querySelectorAll('.line').length + ' lines';
+      showAll.onclick = function() {{ allCollapsed = false; toggleCollapsed(); }};
+      root.appendChild(showAll);
+      btn.textContent = '⊞ Expand All';
+    }} else {{
+      const row = document.getElementById('show-all-row');
+      if (row) row.remove();
+      btn.textContent = '⊟ Collapse All';
+    }}
+  }};
+
+  render();
+}})();
+</script>
+</body>
+</html>"""
+
+    # ------------------------------------------------------------------ #
     # Raw artifacts                                                       #
     # ------------------------------------------------------------------ #
 
@@ -3276,9 +3713,12 @@ def create_app(store_root: str | Path | None = None) -> Any:
         tags=["artifacts"],
         dependencies=[Depends(verify_api_key)],
     )
-    def get_raw_artifact_content(artifact_id: str) -> Any:
-        """Return the raw JSONL content of a stored artifact as plain text."""
-        from fastapi.responses import PlainTextResponse
+    def get_raw_artifact_content(
+        artifact_id: str,
+        accept: str = Header(None),
+    ) -> Any:
+        """Return the raw artifact content as plain text or a pretty HTML page."""
+        from fastapi.responses import HTMLResponse, PlainTextResponse
 
         store_inst = get_store()
         artifact = store_inst.get_raw_artifact(artifact_id)
@@ -3288,7 +3728,27 @@ def create_app(store_root: str | Path | None = None) -> Any:
             content = store_inst.read_raw_artifact_content(artifact)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Content file not found on disk") from exc
+
+        # Serve a pretty-printed HTML page when a browser requests it
+        # (skip for very large files to avoid browser memory issues)
+        MAX_HTML_SIZE = 5 * 1024 * 1024  # 5 MB
+        if accept and "text/html" in accept and len(content) <= MAX_HTML_SIZE:
+            return HTMLResponse(_render_raw_artifact_html(artifact, content))
+
         return PlainTextResponse(content, media_type="text/plain")
+
+    @app.get("/v1/files/content", tags=["files"], dependencies=[Depends(verify_api_key)])
+    def get_file_content(path: str) -> Any:
+        """Return local file content with a browser-appropriate media type."""
+        from fastapi.responses import FileResponse
+
+        file_path = Path(path).expanduser()
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Path is not a file: {path}")
+        media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
     @app.get("/ledgers/{session_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_ledger(session_id: str) -> dict[str, Any]:
@@ -3339,23 +3799,69 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 if row:
                     trace = Trace.model_validate_json(coerce_trace_json(row[0]))
 
+        def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
+            raw_at = turn.get("at")
+            if isinstance(raw_at, (int, float)):
+                return (0, datetime.fromtimestamp(float(raw_at) / 1000, tz=UTC).isoformat())
+            if isinstance(raw_at, str):
+                stripped = raw_at.strip()
+                if stripped.isdigit():
+                    return (0, datetime.fromtimestamp(int(stripped) / 1000, tz=UTC).isoformat())
+                try:
+                    parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+                    return (0, parsed.isoformat())
+                except ValueError:
+                    return (1, stripped)
+            return (2, "")
+
         conversations: list[dict[str, Any]] = []
-        source_paths: list[str] = []
+        source_files: list[dict[str, Any]] = []
+        artifacts: list[dict[str, Any]] = []
+        seen_source_files: set[tuple[str, str]] = set()
         if trace:
             if trace.raw_artifact_ids:
-                # Reconstruct from raw artifacts (imported sessions)
+                # Reconstruct from all raw artifacts (main session + subagents)
                 for art_id in trace.raw_artifact_ids:
                     artifact = store_inst.get_raw_artifact(art_id)
                     if artifact:
+                        scope = (
+                            "subagent"
+                            if "subagents/" in str(artifact.relative_path).replace("\\", "/")
+                            else "main"
+                        )
+                        artifacts.append(
+                            {
+                                "id": artifact.id,
+                                "source": artifact.source,
+                                "kind": artifact.kind,
+                                "relative_path": artifact.relative_path,
+                                "source_path": artifact.source_path,
+                                "scope": scope,
+                            }
+                        )
                         if artifact.source_path:
-                            source_paths.append(artifact.source_path)
+                            source_file_key = (artifact.source_path, artifact.id)
+                            if source_file_key not in seen_source_files:
+                                source_files.append(
+                                    {"path": artifact.source_path, "artifact_id": artifact.id}
+                                )
+                                seen_source_files.add(source_file_key)
                         try:
                             raw_content = store_inst.read_raw_artifact_content(artifact)
                             from atelier.gateway.hosts.session_parsers._session_parser import (
                                 parse_session_turns,
                             )
 
-                            conversations = parse_session_turns(raw_content, artifact.source)
+                            artifact_turns = parse_session_turns(raw_content, artifact.source)
+                            for turn in artifact_turns:
+                                turn["artifact_id"] = artifact.id
+                                turn["artifact_source"] = artifact.source
+                                turn["artifact_kind"] = artifact.kind
+                                turn["artifact_label"] = Path(artifact.relative_path).name
+                                turn["source_scope"] = scope
+                                if scope == "subagent" and not turn.get("subagent_name"):
+                                    turn["subagent_name"] = Path(artifact.relative_path).stem
+                            conversations.extend(artifact_turns)
                         except Exception as exc:
                             logger.error(
                                 "Failed to reconstruct conversations from artifact %s (source=%s): %s",
@@ -3364,8 +3870,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
                                 exc,
                                 exc_info=True,
                             )
-                        if conversations:
-                            break
+                conversations.sort(key=_conversation_sort_key)
 
             # Calculate turn costs on the fly using backend pricing
             from atelier.core.capabilities.pricing import get_model_pricing
@@ -3383,8 +3888,10 @@ def create_app(store_root: str | Path | None = None) -> Any:
         if snap:
             if conversations:
                 snap["conversations"] = conversations
-            if source_paths:
-                snap["source_paths"] = source_paths
+            if source_files:
+                snap["source_files"] = source_files
+            if artifacts:
+                snap["artifacts"] = artifacts
             return snap
 
         if trace:
@@ -3401,7 +3908,8 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 "errors_seen": trace.errors_seen,
                 "tools_called": [tc.model_dump() for tc in trace.tools_called],
                 "conversations": conversations,
-                "source_paths": source_paths,
+                "source_files": source_files,
+                "artifacts": artifacts,
                 "raw_artifact_ids": trace.raw_artifact_ids,
                 "input_tokens": trace.input_tokens,
                 "output_tokens": trace.output_tokens,
@@ -3695,12 +4203,20 @@ def create_app(store_root: str | Path | None = None) -> Any:
                         "started_at": report.started_at.isoformat(),
                         "ended_at": report.ended_at.isoformat() if report.ended_at else None,
                         "duration_seconds": report.duration_seconds,
+                        "active_duration_seconds": report.active_duration_seconds,
                         "vendor": report.vendor,
+                        "agent_settings": report.agent_settings,
+                        "skills": report.skills,
+                        "telemetry": report.telemetry,
+                        "raw_artifact_ids": report.raw_artifact_ids,
                         "total_turns": report.total_turns,
                         "total_cost_usd": report.total_cost_usd,
                         "total_atelier_savings_usd": report.total_atelier_savings_usd,
                         "label": None,
                         "models_used": report.models_used,
+                        "input_tokens": report.input_tokens,
+                        "output_tokens": report.output_tokens,
+                        "cached_input_tokens": report.cache_read_tokens,
                     }
                 )
             except Exception:
@@ -3725,7 +4241,12 @@ def create_app(store_root: str | Path | None = None) -> Any:
             "started_at": report.started_at.isoformat(),
             "ended_at": report.ended_at.isoformat() if report.ended_at else None,
             "duration_seconds": report.duration_seconds,
+            "active_duration_seconds": report.active_duration_seconds,
             "vendor": report.vendor,
+            "agent_settings": report.agent_settings,
+            "skills": report.skills,
+            "telemetry": report.telemetry,
+            "raw_artifact_ids": report.raw_artifact_ids,
             "total_turns": report.total_turns,
             "total_cost_usd": report.total_cost_usd,
             "total_atelier_savings_usd": report.total_atelier_savings_usd,
@@ -3745,8 +4266,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
             "compact_events": report.compact_events,
             "compact_savings_estimate_usd": report.compact_savings_estimate_usd,
             "top_tools_by_cost": [
-                {"tool": t, "calls": c, "cost_usd": v}
-                for t, c, v in report.top_tools_by_cost
+                {"tool": t, "calls": c, "cost_usd": v} for t, c, v in report.top_tools_by_cost
             ],
         }
 
@@ -3926,9 +4446,13 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         return {
             "route_decisions": len(route_scores),
-            "route_avg_score": round(sum(route_scores) / len(route_scores), 4) if route_scores else 0.0,
+            "route_avg_score": round(sum(route_scores) / len(route_scores), 4)
+            if route_scores
+            else 0.0,
             "compact_events": len(compact_scores),
-            "compact_avg_score": round(sum(compact_scores) / len(compact_scores), 4) if compact_scores else 0.0,
+            "compact_avg_score": round(sum(compact_scores) / len(compact_scores), 4)
+            if compact_scores
+            else 0.0,
             "sessions_with_high_extra_reads": list(set(high_extra_reads)),
         }
 
@@ -3991,7 +4515,9 @@ def create_app(store_root: str | Path | None = None) -> Any:
 
         try:
             markdown_content = md_path.read_text(encoding="utf-8")
-            json_data: dict[str, Any] = json.loads(json_path.read_text()) if json_path.exists() else {}
+            json_data: dict[str, Any] = (
+                json.loads(json_path.read_text()) if json_path.exists() else {}
+            )
         except (OSError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 

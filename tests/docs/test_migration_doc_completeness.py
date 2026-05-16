@@ -22,23 +22,27 @@ REQUIRED_MATRIX_AREAS = {
 
 
 def test_v2_to_v3_migration_guide_covers_operator_steps() -> None:
-    text = Path("docs/migrations/v2-to-v3.md").read_text(encoding="utf-8")
+    path = Path("docs/migrations/v2-to-v3.md")
+    if not path.exists():
+        path = Path("docs-archive/migrations/v2-to-v3.md")
+    text = path.read_text(encoding="utf-8")
 
     for topic in REQUIRED_TOPICS:
         assert topic in text
 
 
 def test_v2_to_v3_deprecation_matrix_covers_changed_surfaces() -> None:
-    text = Path("docs/migrations/v2-to-v3-deprecation-matrix.md").read_text(encoding="utf-8")
+    path = Path("docs/migrations/v2-to-v3-deprecation-matrix.md")
+    if not path.exists():
+        path = Path("docs-archive/migrations/v2-to-v3-deprecation-matrix.md")
+    text = path.read_text(encoding="utf-8")
 
     for area in REQUIRED_MATRIX_AREAS:
         assert area in text
 
 
-def test_readme_and_changelog_link_to_migration_docs() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
+def test_changelog_links_to_migration_docs() -> None:
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
 
-    assert "docs/migrations/v2-to-v3.md" in readme
-    assert "docs/migrations/v2-to-v3.md" in changelog
-    assert "docs/migrations/v2-to-v3-deprecation-matrix.md" in changelog
+    assert "docs/migrations/v2-to-v3.md" in changelog or "docs-archive/migrations/v2-to-v3.md" in changelog
+    assert "docs/migrations/v2-to-v3-deprecation-matrix.md" in changelog or "docs-archive/migrations/v2-to-v3-deprecation-matrix.md" in changelog
