@@ -89,6 +89,38 @@ def _write_trace(
     store.record_trace(trace, write_json=False)
 
 
+def _write_imported_trace(
+    root: Path,
+    session_id: str,
+    *,
+    host: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_input_tokens: int = 0,
+    cache_creation_input_tokens: int = 0,
+    raw_artifact_ids: list[str] | None = None,
+) -> None:
+    store = ContextStore(root)
+    store.init()
+    trace = Trace(
+        id=f"{host}-{session_id}",
+        session_id=session_id,
+        agent="atelier:code",
+        host=host,
+        domain="coding",
+        task=f"{host} imported session",
+        status="success",
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_input_tokens=cached_input_tokens,
+        cache_creation_input_tokens=cache_creation_input_tokens,
+        raw_artifact_ids=raw_artifact_ids or [],
+    )
+    store.record_trace(trace, write_json=False)
+
+
 def _write_raw_artifact(
     root: Path,
     *,
@@ -113,6 +145,252 @@ def _write_raw_artifact(
         byte_count_redacted=len(content.encode("utf-8")),
     )
     store.record_raw_artifact(artifact, content)
+
+
+def _build_imported_host_fixture(host: str) -> tuple[str, dict[str, int | str]]:
+    if host == "claude":
+        return (
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "assistant",
+                            "timestamp": "2026-05-16T00:00:05Z",
+                            "message": {
+                                "id": "msg-claude-1",
+                                "model": "claude-sonnet-4-6",
+                                "usage": {
+                                    "input_tokens": 100,
+                                    "output_tokens": 50,
+                                    "cache_read_input_tokens": 20,
+                                    "cache_creation_input_tokens": 10,
+                                },
+                                "content": [
+                                    {"type": "text", "text": "Inspecting the session."},
+                                    {
+                                        "type": "tool_use",
+                                        "name": "Bash",
+                                        "input": {"command": "ls"},
+                                    },
+                                ],
+                            },
+                        }
+                    )
+                ]
+            ),
+            {
+                "model": "claude-sonnet-4-6",
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cached_input_tokens": 20,
+                "cache_creation_input_tokens": 10,
+            },
+        )
+    if host == "codex":
+        return (
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session_meta",
+                            "timestamp": "2026-05-16T00:00:00Z",
+                            "payload": {"id": "codex-session"},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn_context",
+                            "timestamp": "2026-05-16T00:00:01Z",
+                            "payload": {"model": "gpt-5-mini"},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "response_item",
+                            "timestamp": "2026-05-16T00:00:02Z",
+                            "payload": {
+                                "type": "function_call",
+                                "name": "exec_command",
+                                "arguments": '{"cmd": "pytest -q"}',
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "event_msg",
+                            "timestamp": "2026-05-16T00:00:03Z",
+                            "payload": {
+                                "type": "token_count",
+                                "info": {
+                                    "last_token_usage": {
+                                        "input_tokens": 200,
+                                        "output_tokens": 60,
+                                    },
+                                    "total_token_usage": {
+                                        "input_tokens": 300,
+                                        "output_tokens": 90,
+                                        "cached_input_tokens": 40,
+                                    },
+                                },
+                            },
+                        }
+                    ),
+                ]
+            ),
+            {
+                "model": "gpt-5-mini",
+                "input_tokens": 260,
+                "output_tokens": 90,
+                "cached_input_tokens": 40,
+                "cache_creation_input_tokens": 0,
+            },
+        )
+    if host == "copilot":
+        return (
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "assistant.message",
+                            "timestamp": "2026-05-16T00:00:01Z",
+                            "data": {
+                                "model": "copilot-gpt-4",
+                                "outputTokens": 80,
+                                "toolRequests": [{"toolCallId": "tc1", "name": "edit"}],
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "session.shutdown",
+                            "timestamp": "2026-05-16T00:00:04Z",
+                            "data": {
+                                "modelMetrics": {
+                                    "copilot-gpt-4": {
+                                        "usage": {
+                                            "inputTokens": 300,
+                                            "outputTokens": 110,
+                                            "cacheReadTokens": 40,
+                                            "cacheWriteTokens": 15,
+                                            "reasoningTokens": 10,
+                                        }
+                                    }
+                                }
+                            },
+                        }
+                    ),
+                ]
+            ),
+            {
+                "model": "copilot-gpt-4",
+                "input_tokens": 300,
+                "output_tokens": 110,
+                "cached_input_tokens": 40,
+                "cache_creation_input_tokens": 15,
+            },
+        )
+    if host == "gemini":
+        return (
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "id": "gemini-msg-1",
+                            "type": "gemini",
+                            "timestamp": "2026-05-16T00:00:02Z",
+                            "model": "gemini-2.5-pro",
+                            "tokens": {"input": 120, "output": 35, "thoughts": 8, "cached": 25},
+                            "content": "Applied the requested edit.",
+                            "toolCalls": [
+                                {
+                                    "name": "write_file",
+                                    "args": {
+                                        "path": "frontend/src/pages/Sessions.tsx",
+                                        "content": "updated",
+                                    },
+                                }
+                            ],
+                        }
+                    )
+                ]
+            ),
+            {
+                "model": "gemini-2.5-pro",
+                "input_tokens": 120,
+                "output_tokens": 35,
+                "cached_input_tokens": 25,
+                "cache_creation_input_tokens": 0,
+            },
+        )
+    if host == "opencode":
+        return (
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "_type": "part",
+                            "role": "assistant",
+                            "timestamp": 1778891735304,
+                            "data": {
+                                "type": "tool",
+                                "tool": "bash",
+                                "state": {"input": {"command": "pytest -q"}},
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "_type": "part",
+                            "role": "assistant",
+                            "timestamp": 1778891735404,
+                            "data": {"type": "text", "text": "Validated the change."},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "_type": "message",
+                            "role": "assistant",
+                            "timestamp": 1778891735454,
+                            "data": {
+                                "role": "assistant",
+                                "providerID": "opencode",
+                                "modelID": "big-pickle",
+                                "tokens": {
+                                    "input": 140,
+                                    "output": 30,
+                                    "reasoning": 5,
+                                    "cache": {"read": 20, "write": 10},
+                                },
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "_type": "part",
+                            "role": "assistant",
+                            "timestamp": 1778891735504,
+                            "data": {
+                                "type": "step-finish",
+                                "tokens": {
+                                    "input": 140,
+                                    "output": 30,
+                                    "reasoning": 5,
+                                    "cache": {"read": 20, "write": 10},
+                                },
+                            },
+                        }
+                    ),
+                ]
+            ),
+            {
+                "model": "opencode/big-pickle",
+                "input_tokens": 140,
+                "output_tokens": 30,
+                "cached_input_tokens": 20,
+                "cache_creation_input_tokens": 10,
+            },
+        )
+    raise AssertionError(f"Unsupported host fixture: {host}")
 
 
 def _write_outcomes(root: Path, session_id: str) -> Path:
@@ -225,6 +503,61 @@ class TestListSessions:
         resp = c.get("/v1/sessions")
         assert resp.status_code == 200
         assert resp.json() == []
+
+    @pytest.mark.parametrize("host", ["claude", "codex", "copilot", "gemini", "opencode"])
+    def test_imported_sessions_prefer_raw_artifact_resumming(
+        self,
+        host: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session_id = f"{host}-session"
+        artifact_id = f"{host}-artifact"
+        content, expected = _build_imported_host_fixture(host)
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            source=host,
+            content=content,
+        )
+        _write_imported_trace(
+            tmp_path,
+            session_id,
+            host=host,
+            model=str(expected["model"]),
+            input_tokens=int(expected["input_tokens"]) + 999,
+            output_tokens=int(expected["output_tokens"]) + 111,
+            cached_input_tokens=int(expected["cached_input_tokens"]) + 77,
+            cache_creation_input_tokens=int(expected["cache_creation_input_tokens"]) + 55,
+            raw_artifact_ids=[artifact_id],
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        item = next(row for row in listing.json() if row["session_id"] == session_id)
+
+        assert item["started_model"] == expected["model"]
+        assert item["input_tokens"] == expected["input_tokens"]
+        assert item["output_tokens"] == expected["output_tokens"]
+        assert item["cached_input_tokens"] == expected["cached_input_tokens"]
+        assert item["cache_write_tokens"] == expected["cache_creation_input_tokens"]
+
+        detail = client.get(f"/v1/sessions/{session_id}")
+        assert detail.status_code == 200
+        data = detail.json()
+        assert data["started_model"] == expected["model"]
+        assert data["input_tokens"] == expected["input_tokens"]
+        assert data["output_tokens"] == expected["output_tokens"]
+        assert data["cached_input_tokens"] == expected["cached_input_tokens"]
+        assert data["cache_write_tokens"] == expected["cache_creation_input_tokens"]
 
 
 # ---------------------------------------------------------------------------

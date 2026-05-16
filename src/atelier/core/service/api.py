@@ -425,6 +425,73 @@ def _trace_cost_from_payload(payload: dict[str, Any]) -> float:
     return round(total_cost, 8)
 
 
+def _trace_cost_breakdown_from_payload(payload: dict[str, Any]) -> dict[str, float]:
+    usage_entries = _trace_usage_entries(payload)
+    if not usage_entries:
+        return {
+            "input_token_cost_usd": 0.0,
+            "output_token_cost_usd": 0.0,
+            "cache_read_cost_usd": 0.0,
+            "cache_write_cost_usd": 0.0,
+        }
+
+    input_token_cost_usd = 0.0
+    output_token_cost_usd = 0.0
+    cache_read_cost_usd = 0.0
+    cache_write_cost_usd = 0.0
+    for entry in usage_entries:
+        if entry.get("kind") == "tool":
+            continue
+        model_id = str(entry.get("model") or "_default")
+        input_token_cost_usd += _llm_usage_cost(
+            model_id, input_tokens=int(entry.get("input_tokens") or 0)
+        )
+        output_token_cost_usd += _llm_usage_cost(
+            model_id, output_tokens=int(entry.get("output_tokens") or 0)
+        )
+        cache_read_cost_usd += _llm_usage_cost(
+            model_id, cache_read_tokens=int(entry.get("cached_input_tokens") or 0)
+        )
+        cache_write_cost_usd += _llm_usage_cost(
+            model_id,
+            cache_write_tokens=int(entry.get("cache_creation_input_tokens") or 0),
+        )
+    return {
+        "input_token_cost_usd": round(input_token_cost_usd, 8),
+        "output_token_cost_usd": round(output_token_cost_usd, 8),
+        "cache_read_cost_usd": round(cache_read_cost_usd, 8),
+        "cache_write_cost_usd": round(cache_write_cost_usd, 8),
+    }
+
+
+def _trace_models_used_from_payload(
+    payload: dict[str, Any],
+    usage_entries: list[dict[str, Any]] | None = None,
+    model_usages: list[dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    entries = usage_entries if usage_entries is not None else _trace_usage_entries(payload)
+    models_used: dict[str, int] = {}
+    for entry in entries:
+        if entry.get("kind") == "tool":
+            continue
+        model_id = str(entry.get("model") or "").strip()
+        if model_id:
+            models_used[model_id] = models_used.get(model_id, 0) + 1
+    if models_used:
+        return models_used
+
+    usages = model_usages if model_usages is not None else _trace_model_usages(payload)
+    for usage in usages:
+        model_id = str(usage.get("model") or "").strip()
+        if model_id:
+            models_used[model_id] = 1
+    if models_used:
+        return models_used
+
+    started_model = _trace_session_model(payload, entries, usages).strip()
+    return {started_model: 1} if started_model else {}
+
+
 def _analytics_event_cost(
     model_id: str | None, event_type: str, input_tokens: int, output_tokens: int
 ) -> float:
@@ -2564,9 +2631,19 @@ def create_app(store_root: str | Path | None = None) -> Any:
         normalized.pop("tool_outputs", None)
 
         normalized["task"] = redact(str(normalized.get("task") or ""))
-        normalized["files_touched"] = redact_list(
-            [str(item) for item in normalized.get("files_touched") or []]
-        )
+        _raw_files = normalized.get("files_touched") or []
+        _files_normalized: list[Any] = []
+        for _item in _raw_files:
+            if isinstance(_item, dict) and "path" in _item:
+                _entry: dict[str, Any] = {"path": redact(str(_item["path"]))}
+                if _item.get("diff"):
+                    _entry["diff"] = str(_item["diff"])
+                if _item.get("event"):
+                    _entry["event"] = str(_item["event"])
+                _files_normalized.append(_entry)
+            else:
+                _files_normalized.append(redact(str(_item)))
+        normalized["files_touched"] = _files_normalized
         normalized["commands_run"] = redact_list(
             [str(item) for item in normalized.get("commands_run") or []]
         )
@@ -4350,27 +4427,83 @@ def create_app(store_root: str | Path | None = None) -> Any:
         trace: Trace,
         store_inst: Any | None = None,
     ) -> dict[str, Any]:
+        from atelier.gateway.hosts.session_parsers._session_parser import (
+            extract_session_usage_summary,
+        )
         from atelier.infra.runtime.session_report import _derive_vendor
+
+        def _prefer_positive_int(authoritative: int, fallback: int) -> int:
+            return authoritative if authoritative > 0 else fallback
+
+        def _prefer_positive_float(authoritative: float, fallback: float) -> float:
+            return authoritative if authoritative > 0 else fallback
 
         store_inst = store_inst or get_store()
         conversations, _, _ = _reconstruct_trace_conversations(session_id, trace, store_inst)
+        trace_payload = to_jsonable(trace)
+        trace_usage_entries = _trace_usage_entries(trace_payload)
+        trace_model_usages = _trace_model_usages(trace_payload)
+        raw_usage_summary: dict[str, Any] = {
+            "started_model": None,
+            "models_used": {},
+            "total_turns": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "thinking_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "usage_entries": [],
+        }
+
+        for art_id in trace.raw_artifact_ids:
+            artifact = store_inst.get_raw_artifact(art_id)
+            if artifact is None:
+                continue
+            try:
+                raw_content = store_inst.read_raw_artifact_content(artifact)
+                summary = extract_session_usage_summary(raw_content, artifact.source)
+            except Exception as exc:
+                logger.error(
+                    "Failed to summarize imported artifact %s for session %s: %s",
+                    art_id,
+                    session_id,
+                    exc,
+                    exc_info=True,
+                )
+                continue
+            if raw_usage_summary["started_model"] is None and summary.get("started_model"):
+                raw_usage_summary["started_model"] = summary["started_model"]
+            for key in (
+                "total_turns",
+                "input_tokens",
+                "output_tokens",
+                "thinking_tokens",
+                "cached_input_tokens",
+                "cache_creation_input_tokens",
+            ):
+                raw_usage_summary[key] += int(summary.get(key, 0) or 0)
+            for model_id, count in dict(summary.get("models_used") or {}).items():
+                raw_usage_summary["models_used"][model_id] = int(
+                    raw_usage_summary["models_used"].get(model_id, 0)
+                ) + int(count or 0)
+            raw_usage_summary["usage_entries"].extend(list(summary.get("usage_entries") or []))
 
         started_at = trace.created_at
         ended_at = trace.created_at
         active_duration_seconds = 0.0
         current_active_start: datetime | None = None
 
-        models_used: dict[str, int] = {}
-        started_model: str | None = None
-        input_tokens = 0
-        output_tokens = 0
-        cache_read_tokens = 0
-        cache_write_tokens = 0
-        input_token_cost_usd = 0.0
-        output_token_cost_usd = 0.0
-        cache_read_cost_usd = 0.0
-        cache_write_cost_usd = 0.0
-        total_turns = 0
+        reconstructed_models_used: dict[str, int] = {}
+        reconstructed_started_model: str | None = None
+        reconstructed_input_tokens = 0
+        reconstructed_output_tokens = 0
+        reconstructed_cache_read_tokens = 0
+        reconstructed_cache_write_tokens = 0
+        reconstructed_input_token_cost_usd = 0.0
+        reconstructed_output_token_cost_usd = 0.0
+        reconstructed_cache_read_cost_usd = 0.0
+        reconstructed_cache_write_cost_usd = 0.0
+        reconstructed_total_turns = 0
         tool_costs: dict[str, dict[str, float]] = {}
 
         for turn in conversations:
@@ -4394,7 +4527,7 @@ def create_app(store_root: str | Path | None = None) -> Any:
             turn_cache_read = int(tokens.get("cache_read") or 0)
             turn_cache_write = int(tokens.get("cache_write") or 0)
             if turn_input or turn_output or turn_cache_read or turn_cache_write:
-                total_turns += 1
+                reconstructed_total_turns += 1
 
             model_id = str(turn.get("model") or "").strip()
             countable_model_id = (
@@ -4403,9 +4536,11 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 else ""
             )
             if countable_model_id:
-                if started_model is None:
-                    started_model = countable_model_id
-                models_used[countable_model_id] = models_used.get(countable_model_id, 0) + 1
+                if reconstructed_started_model is None:
+                    reconstructed_started_model = countable_model_id
+                reconstructed_models_used[countable_model_id] = (
+                    reconstructed_models_used.get(countable_model_id, 0) + 1
+                )
 
             turn_input_cost = _llm_usage_cost(model_id or "_default", input_tokens=turn_input)
             turn_output_cost = _llm_usage_cost(model_id or "_default", output_tokens=turn_output)
@@ -4420,14 +4555,14 @@ def create_app(store_root: str | Path | None = None) -> Any:
             )
             turn["cost"] = round(turn_total_cost, 8)
 
-            input_tokens += turn_input
-            output_tokens += turn_output
-            cache_read_tokens += turn_cache_read
-            cache_write_tokens += turn_cache_write
-            input_token_cost_usd += turn_input_cost
-            output_token_cost_usd += turn_output_cost
-            cache_read_cost_usd += turn_cache_read_cost
-            cache_write_cost_usd += turn_cache_write_cost
+            reconstructed_input_tokens += turn_input
+            reconstructed_output_tokens += turn_output
+            reconstructed_cache_read_tokens += turn_cache_read
+            reconstructed_cache_write_tokens += turn_cache_write
+            reconstructed_input_token_cost_usd += turn_input_cost
+            reconstructed_output_token_cost_usd += turn_output_cost
+            reconstructed_cache_read_cost_usd += turn_cache_read_cost
+            reconstructed_cache_write_cost_usd += turn_cache_write_cost
 
             if turn_total_cost > 0:
                 tool_name = str(
@@ -4445,57 +4580,241 @@ def create_app(store_root: str | Path | None = None) -> Any:
                 bucket["calls"] += 1
                 bucket["cost_usd"] += turn_total_cost
 
-        if (
-            input_tokens <= 0
-            and output_tokens <= 0
-            and cache_read_tokens <= 0
-            and cache_write_tokens <= 0
-        ):
-            input_tokens = int(trace.input_tokens or 0)
-            output_tokens = int(trace.output_tokens or 0)
-            cache_read_tokens = int(trace.cached_input_tokens or 0)
-            cache_write_tokens = int(trace.cache_creation_input_tokens or 0)
-            started_model = started_model or (trace.model or None)
-            if not models_used and started_model:
-                models_used[started_model] = 1
-            if input_tokens or output_tokens or cache_read_tokens or cache_write_tokens:
-                total_turns = max(total_turns, 1)
-                input_token_cost_usd = _llm_usage_cost(
-                    started_model or "_default", input_tokens=input_tokens
-                )
-                output_token_cost_usd = _llm_usage_cost(
-                    started_model or "_default", output_tokens=output_tokens
-                )
-                cache_read_cost_usd = _llm_usage_cost(
-                    started_model or "_default", cache_read_tokens=cache_read_tokens
-                )
-                cache_write_cost_usd = _llm_usage_cost(
-                    started_model or "_default", cache_write_tokens=cache_write_tokens
-                )
-
         duration_seconds = max(0.0, (ended_at - started_at).total_seconds())
         if active_duration_seconds <= 0:
             active_duration_seconds = duration_seconds
 
-        total_cost_usd = round(
-            input_token_cost_usd
-            + output_token_cost_usd
-            + cache_read_cost_usd
-            + cache_write_cost_usd,
-            6,
-        )
-        if not started_model and models_used:
-            started_model = next(iter(models_used))
+        def _usage_cost_breakdown(
+            usage_entries: list[dict[str, Any]],
+            *,
+            fallback_model: str | None,
+        ) -> dict[str, float]:
+            input_cost = 0.0
+            output_cost = 0.0
+            cache_read_cost = 0.0
+            cache_write_cost = 0.0
+            for entry in usage_entries:
+                model_id = str(entry.get("model") or fallback_model or "_default")
+                input_cost += _llm_usage_cost(
+                    model_id, input_tokens=int(entry.get("input_tokens") or 0)
+                )
+                output_cost += _llm_usage_cost(
+                    model_id, output_tokens=int(entry.get("output_tokens") or 0)
+                )
+                cache_read_cost += _llm_usage_cost(
+                    model_id, cache_read_tokens=int(entry.get("cached_input_tokens") or 0)
+                )
+                cache_write_cost += _llm_usage_cost(
+                    model_id,
+                    cache_write_tokens=int(entry.get("cache_creation_input_tokens") or 0),
+                )
+            return {
+                "input_token_cost_usd": input_cost,
+                "output_token_cost_usd": output_cost,
+                "cache_read_cost_usd": cache_read_cost,
+                "cache_write_cost_usd": cache_write_cost,
+                "total_cost_usd": input_cost + output_cost + cache_read_cost + cache_write_cost,
+            }
 
+        trace_started_model = (
+            _trace_session_model(
+                trace_payload,
+                trace_usage_entries,
+                trace_model_usages,
+            )
+            or None
+        )
+        trace_models_used = _trace_models_used_from_payload(
+            trace_payload,
+            trace_usage_entries,
+            trace_model_usages,
+        )
+        trace_input_tokens = int(trace_payload.get("input_tokens") or 0)
+        trace_output_tokens = int(trace_payload.get("output_tokens") or 0)
+        trace_cache_read_tokens = int(trace_payload.get("cached_input_tokens") or 0)
+        trace_cache_write_tokens = int(trace_payload.get("cache_creation_input_tokens") or 0)
+        trace_total_turns = len(
+            [entry for entry in trace_usage_entries if entry.get("kind") != "tool"]
+        )
+        if trace_total_turns <= 0 and (
+            trace_input_tokens > 0
+            or trace_output_tokens > 0
+            or trace_cache_read_tokens > 0
+            or trace_cache_write_tokens > 0
+            or bool(trace_models_used)
+        ):
+            trace_total_turns = 1
+
+        trace_cost_breakdown = _trace_cost_breakdown_from_payload(trace_payload)
+        trace_input_token_cost_usd = float(trace_cost_breakdown["input_token_cost_usd"])
+        trace_output_token_cost_usd = float(trace_cost_breakdown["output_token_cost_usd"])
+        trace_cache_read_cost_usd = float(trace_cost_breakdown["cache_read_cost_usd"])
+        trace_cache_write_cost_usd = float(trace_cost_breakdown["cache_write_cost_usd"])
+        trace_total_cost_usd = _trace_cost_from_payload(trace_payload)
+        if trace_total_cost_usd <= 0 and (
+            trace_input_tokens > 0
+            or trace_output_tokens > 0
+            or trace_cache_read_tokens > 0
+            or trace_cache_write_tokens > 0
+        ):
+            pricing_model = (
+                trace_started_model or reconstructed_started_model or trace.model or "_default"
+            )
+            trace_input_token_cost_usd = _llm_usage_cost(
+                pricing_model, input_tokens=trace_input_tokens
+            )
+            trace_output_token_cost_usd = _llm_usage_cost(
+                pricing_model, output_tokens=trace_output_tokens
+            )
+            trace_cache_read_cost_usd = _llm_usage_cost(
+                pricing_model, cache_read_tokens=trace_cache_read_tokens
+            )
+            trace_cache_write_cost_usd = _llm_usage_cost(
+                pricing_model, cache_write_tokens=trace_cache_write_tokens
+            )
+            trace_total_cost_usd = round(
+                trace_input_token_cost_usd
+                + trace_output_token_cost_usd
+                + trace_cache_read_cost_usd
+                + trace_cache_write_cost_usd,
+                8,
+            )
+
+        authoritative_started_model = (
+            str(raw_usage_summary.get("started_model") or "").strip() or None
+        )
+        authoritative_models_used = dict(raw_usage_summary.get("models_used") or {})
+        authoritative_input_tokens = int(raw_usage_summary.get("input_tokens") or 0)
+        authoritative_output_tokens = int(raw_usage_summary.get("output_tokens") or 0)
+        authoritative_cache_read_tokens = int(raw_usage_summary.get("cached_input_tokens") or 0)
+        authoritative_cache_write_tokens = int(
+            raw_usage_summary.get("cache_creation_input_tokens") or 0
+        )
+        authoritative_total_turns = int(raw_usage_summary.get("total_turns") or 0)
+        has_authoritative_usage = (
+            authoritative_total_turns > 0
+            or authoritative_input_tokens > 0
+            or authoritative_output_tokens > 0
+            or authoritative_cache_read_tokens > 0
+            or authoritative_cache_write_tokens > 0
+            or bool(authoritative_models_used)
+        )
+        authoritative_cost_breakdown = _usage_cost_breakdown(
+            list(raw_usage_summary.get("usage_entries") or []),
+            fallback_model=authoritative_started_model
+            or trace_started_model
+            or reconstructed_started_model
+            or trace.model,
+        )
+
+        started_model = (
+            authoritative_started_model
+            or reconstructed_started_model
+            or trace_started_model
+            or (trace.model or None)
+        )
+        models_used = authoritative_models_used or reconstructed_models_used or trace_models_used
+        if not models_used and started_model:
+            models_used = {started_model: 1}
+
+        input_tokens = (
+            authoritative_input_tokens
+            if has_authoritative_usage
+            else _prefer_positive_int(trace_input_tokens, reconstructed_input_tokens)
+        )
+        output_tokens = (
+            authoritative_output_tokens
+            if has_authoritative_usage
+            else _prefer_positive_int(trace_output_tokens, reconstructed_output_tokens)
+        )
+        cache_read_tokens = (
+            authoritative_cache_read_tokens
+            if has_authoritative_usage
+            else _prefer_positive_int(trace_cache_read_tokens, reconstructed_cache_read_tokens)
+        )
+        cache_write_tokens = (
+            authoritative_cache_write_tokens
+            if has_authoritative_usage
+            else _prefer_positive_int(trace_cache_write_tokens, reconstructed_cache_write_tokens)
+        )
+        total_turns = (
+            authoritative_total_turns
+            if authoritative_total_turns > 0
+            else trace_total_turns
+            if trace_total_turns > 0
+            else reconstructed_total_turns
+        )
+
+        input_token_cost_usd = (
+            float(authoritative_cost_breakdown["input_token_cost_usd"])
+            if has_authoritative_usage
+            else _prefer_positive_float(
+                trace_input_token_cost_usd, reconstructed_input_token_cost_usd
+            )
+        )
+        output_token_cost_usd = (
+            float(authoritative_cost_breakdown["output_token_cost_usd"])
+            if has_authoritative_usage
+            else _prefer_positive_float(
+                trace_output_token_cost_usd, reconstructed_output_token_cost_usd
+            )
+        )
+        cache_read_cost_usd = (
+            float(authoritative_cost_breakdown["cache_read_cost_usd"])
+            if has_authoritative_usage
+            else _prefer_positive_float(
+                trace_cache_read_cost_usd, reconstructed_cache_read_cost_usd
+            )
+        )
+        cache_write_cost_usd = (
+            float(authoritative_cost_breakdown["cache_write_cost_usd"])
+            if has_authoritative_usage
+            else _prefer_positive_float(
+                trace_cache_write_cost_usd, reconstructed_cache_write_cost_usd
+            )
+        )
+        total_cost_usd = (
+            round(float(authoritative_cost_breakdown["total_cost_usd"]), 6)
+            if has_authoritative_usage
+            else _prefer_positive_float(
+                trace_total_cost_usd,
+                round(
+                    reconstructed_input_token_cost_usd
+                    + reconstructed_output_token_cost_usd
+                    + reconstructed_cache_read_cost_usd
+                    + reconstructed_cache_write_cost_usd,
+                    6,
+                ),
+            )
+        )
+
+        trace_tool_costs = [
+            {
+                "tool": str(tool.name or "unknown"),
+                "calls": int(tool.count or 1),
+                "cost_usd": round(
+                    _analytics_event_cost(
+                        started_model or "_default",
+                        "tool_call",
+                        int(tool.input_tokens or 0),
+                        int(tool.output_tokens or 0),
+                    ),
+                    6,
+                ),
+            }
+            for tool in trace.tools_called
+        ]
         top_tools_by_cost = sorted(
-            (
+            trace_tool_costs
+            if trace_tool_costs
+            else [
                 {
                     "tool": name,
                     "calls": int(values["calls"]),
                     "cost_usd": round(values["cost_usd"], 6),
                 }
                 for name, values in tool_costs.items()
-            ),
+            ],
             key=lambda item: cast(float, item["cost_usd"]),
             reverse=True,
         )[:5]
@@ -4524,13 +4843,14 @@ def create_app(store_root: str | Path | None = None) -> Any:
                     or input_tokens > 0
                     or output_tokens > 0
                     or cache_read_tokens > 0
+                    or cache_write_tokens > 0
                 )
                 else "unavailable"
             ),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cached_input_tokens": cache_read_tokens,
-            "tool_call_count": len(trace.tools_called),
+            "tool_call_count": sum(int(tool.count or 1) for tool in trace.tools_called),
             "input_token_cost_usd": round(input_token_cost_usd, 6),
             "cache_write_cost_usd": round(cache_write_cost_usd, 6),
             "cache_read_cost_usd": round(cache_read_cost_usd, 6),
