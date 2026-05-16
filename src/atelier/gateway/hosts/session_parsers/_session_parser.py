@@ -61,6 +61,19 @@ _SYSTEM_PREFIXES_CODEX = (
 
 _PASTED_CONTENT_TAG_RE = re.compile(r"<pasted_content\s+([^>]+?)\s*/?>", re.IGNORECASE)
 _PASTED_CONTENT_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
+_MODEL_FIELD_KEYS = (
+    "model",
+    "modelId",
+    "model_id",
+    "modelName",
+    "model_name",
+    "assistantModel",
+    "assistant_model",
+    "currentModel",
+    "current_model",
+    "defaultModel",
+    "default_model",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +136,9 @@ def _turn(
         "tokens": tokens or {},
         "raw": raw,
     }
+    model = extra.get("model") if "model" in extra else _extract_model_id(raw)
+    if isinstance(model, str) and model.strip():
+        turn["model"] = model.strip()
     # For file_edit turns, surface path + diff as top-level keys so the
     # frontend can render inline diffs without re-parsing the raw event.
     if kind == "file_edit":
@@ -135,6 +151,43 @@ def _turn(
             continue
         turn[key] = value
     return turn
+
+
+def _extract_model_id(value: Any, *, max_depth: int = 4) -> str | None:
+    queue: list[tuple[Any, int]] = [(value, 0)]
+    seen: set[int] = set()
+
+    while queue:
+        current, depth = queue.pop(0)
+        if current is None or depth > max_depth:
+            continue
+        marker = id(current)
+        if marker in seen:
+            continue
+        seen.add(marker)
+
+        if isinstance(current, dict):
+            for key in _MODEL_FIELD_KEYS:
+                raw_model = current.get(key)
+                if isinstance(raw_model, str):
+                    model = raw_model.strip()
+                    if model and model.lower() not in {"unknown", "auto", "default"}:
+                        return model
+            if depth == max_depth:
+                continue
+            for child in current.values():
+                if isinstance(child, (dict, list)):
+                    queue.append((child, depth + 1))
+            continue
+
+        if isinstance(current, list):
+            if depth == max_depth:
+                continue
+            for child in current:
+                if isinstance(child, (dict, list)):
+                    queue.append((child, depth + 1))
+
+    return None
 
 
 def _coerce_jsonish(value: Any) -> Any:
