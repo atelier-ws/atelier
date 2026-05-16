@@ -5,6 +5,7 @@ Tests cover: happy path + 404 for all 9 new endpoints.
 Architecture: create_app() with a custom store_root pointing to a
 tmp_path fixture so every test is fully isolated with no real filesystem reads.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,6 +15,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+
+from atelier.core.foundation.models import RawArtifact, Trace
+from atelier.core.foundation.store import ContextStore
 
 # ---------------------------------------------------------------------------
 # Helpers to build fake on-disk data
@@ -61,6 +65,56 @@ def _write_run(root: Path, session_id: str, cost: float = 0.5) -> Path:
     return p
 
 
+def _write_trace(
+    root: Path,
+    session_id: str,
+    *,
+    model: str = "claude-sonnet-4-5",
+    input_tokens: int = 1500,
+    output_tokens: int = 250,
+) -> None:
+    store = ContextStore(root)
+    store.init()
+    trace = Trace(
+        id=f"trace-{session_id}",
+        session_id=session_id,
+        agent="copilot",
+        domain="ui",
+        task="Session UI audit",
+        status="success",
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+    store.record_trace(trace, write_json=False)
+
+
+def _write_raw_artifact(
+    root: Path,
+    *,
+    artifact_id: str,
+    session_id: str,
+    content: str,
+    source: str = "cursor",
+    relative_path: str | None = None,
+) -> None:
+    store = ContextStore(root)
+    store.init()
+    artifact = RawArtifact(
+        id=artifact_id,
+        source=source,
+        source_session_id=session_id,
+        kind="session_log",
+        relative_path=relative_path or f"{session_id}.jsonl",
+        content_path=f"raw/{artifact_id}.jsonl",
+        sha256_original="orig",
+        sha256_redacted="redacted",
+        byte_count_original=len(content.encode("utf-8")),
+        byte_count_redacted=len(content.encode("utf-8")),
+    )
+    store.record_raw_artifact(artifact, content)
+
+
 def _write_outcomes(root: Path, session_id: str) -> Path:
     runs_dir = root / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +154,9 @@ def _write_reports_index(cwd_reports: Path) -> None:
     week_dir = cwd_reports / "2026-W20"
     week_dir.mkdir(parents=True, exist_ok=True)
     (week_dir / "benchmark.md").write_text("# Benchmark report 2026-W20\n\nContent here.")
-    (week_dir / "benchmark.json").write_text(json.dumps({"week": "2026-W20", "metric_snapshot": {}}))
+    (week_dir / "benchmark.json").write_text(
+        json.dumps({"week": "2026-W20", "metric_snapshot": {}})
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +209,12 @@ class TestListSessions:
         assert "total_cost_usd" in item
         assert "vendor" in item
         assert "total_turns" in item
+        assert "started_model" in item
+        assert "cost_status" in item
 
-    def test_returns_200_with_no_sessions(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_200_with_no_sessions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
         monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
         monkeypatch.chdir(tmp_path)
@@ -192,6 +252,89 @@ class TestGetSession:
         assert "output_token_cost_usd" in data
         assert "routing_savings_usd" in data
         assert "compact_events" in data
+
+    def test_estimates_cost_from_trace_when_ledger_cost_is_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_run(tmp_path, "sess-est", cost=0.0)
+        _write_trace(tmp_path, "sess-est", model="claude-sonnet-4-5")
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        data = client.get("/v1/sessions/sess-est").json()
+
+        assert data["started_model"] == "claude-sonnet-4-5"
+        assert data["cost_status"] == "estimated"
+        assert data["total_cost_usd"] > 0
+
+    def test_imported_session_uses_raw_artifact_usage_when_trace_model_is_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session_id = "sess-imported"
+        artifact_id = "artifact-imported"
+        content = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-05-16T00:00:00Z",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "Check import pricing"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": "2026-05-16T00:00:05Z",
+                        "message": {
+                            "role": "assistant",
+                            "model": "claude-sonnet-4-6",
+                            "usage": {"input": 1200, "output": 300, "cacheRead": 200},
+                            "content": [{"type": "text", "text": "Done"}],
+                        },
+                    }
+                ),
+            ]
+        )
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            content=content,
+        )
+        _write_trace(
+            tmp_path,
+            session_id,
+            model="",
+            input_tokens=0,
+            output_tokens=0,
+        )
+        store = ContextStore(tmp_path)
+        trace = store.get_trace(f"trace-{session_id}")
+        assert trace is not None
+        trace.raw_artifact_ids = [artifact_id]
+        store.record_trace(trace, write_json=False)
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        data = client.get(f"/v1/sessions/{session_id}").json()
+
+        assert data["started_model"] == "claude-sonnet-4-6"
+        assert data["cost_status"] == "estimated"
+        assert data["total_cost_usd"] > 0
+        assert data["models_used"] == {"claude-sonnet-4-6": 1}
 
 
 # ---------------------------------------------------------------------------
