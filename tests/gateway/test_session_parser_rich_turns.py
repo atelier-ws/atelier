@@ -30,6 +30,7 @@ def test_parse_copilot_rich_turns_handles_pasted_content_subagents_and_string_pa
                     "type": "assistant.message",
                     "timestamp": "2026-05-16T00:00:05Z",
                     "data": {
+                        "model": "gpt-5.4",
                         "toolRequests": [
                             {
                                 "name": "TodoWrite",
@@ -47,7 +48,7 @@ def test_parse_copilot_rich_turns_handles_pasted_content_subagents_and_string_pa
                                 "name": "apply_patch",
                                 "arguments": "*** Begin Patch\n*** Update File: /tmp/demo.py\n+print('hello')\n*** End Patch\n",
                             },
-                        ]
+                        ],
                     },
                 }
             ),
@@ -93,6 +94,7 @@ def test_parse_copilot_rich_turns_handles_pasted_content_subagents_and_string_pa
     assert turns[1]["attachments"][0]["content"] == "# Selection\n\nhello"
     assert turns[2]["todos"][0]["content"] == "Ship richer session cards"
     assert turns[3]["path"] == "/tmp/demo.py"
+    assert turns[2]["model"] == "gpt-5.4"
     assert turns[4]["subagent_status"] == "started"
     assert turns[5]["subagent_status"] == "completed"
 
