@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-05-18T22:19:09.790Z"
-last_activity: 2026-05-18 -- Phase 2 planning complete
+last_updated: "2026-05-19T01:24:39+02:00"
+last_activity: 2026-05-19 -- Phase 02 Plan 01 complete
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
   percent: 14
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** Agents can find and change code through budget-aware, precomputed intelligence with near-zero token overhead by default.
-**Current focus:** Phase 2 — structural discovery & symbol safe change flows
+**Current focus:** Phase 02 — structural-discovery-symbol-safe-change-flows
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-18 -- Phase 2 planning complete
+Phase: 02 (structural-discovery-symbol-safe-change-flows) — EXECUTING
+Plan: 2 of 4
+Status: Phase 02 executing after Plan 01 recovery closeout
+Last activity: 2026-05-19 -- Phase 02 Plan 01 complete
 
 Progress: [██████████] 100%
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 01 P01 | 24min | 3 tasks | 10 files |
 | Phase 01 P02 | 33m | 3 tasks | 11 files |
 | Phase 01 P03 | 76m | 3 tasks | 9 files |
+| Phase 02 P01 | 55min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Persist SCIP artifact signatures in engine_state so fresh CodeContextEngine instances invalidate stale retrieval-cache entries after artifact refresh.
 - [Phase 01]: Default code search to snippet=none so hardened symbol lookup stays budget-safe unless callers opt into snippets.
 - [Phase 01]: Measure the M2 token gate against serialized text-search-plus-read payloads versus low-budget single-hit code search.
+- [Phase 02]: Resolve ast-grep availability through env override, exact binary discovery, then pinned managed bootstrap before returning `tool_unavailable`.
 
 ### Pending Todos
 
