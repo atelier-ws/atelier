@@ -35,7 +35,6 @@ from atelier.core.service.telemetry import emit_product_local
 from atelier.infra.code_intel.astgrep import (
     AstGrepAdapter,
     AstGrepToolUnavailable,
-    PatternMatch,
     PatternRewriteResult,
     PatternSearchResult,
 )
