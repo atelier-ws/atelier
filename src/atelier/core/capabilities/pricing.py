@@ -114,13 +114,15 @@ _warned_unknown_models: set[str] = set()
 
 def _load_litellm_model_cost() -> dict[str, object]:
     """Import LiteLLM's pricing catalog without surfacing optional AWS preload noise."""
+    import importlib
 
     previous_litellm_log = os.environ.get("LITELLM_LOG")
     if previous_litellm_log is None:
         os.environ["LITELLM_LOG"] = "ERROR"
 
     try:
-        from litellm import model_cost
+        litellm = importlib.import_module("litellm")
+        model_cost = getattr(litellm, "model_cost", {})
     except Exception:
         return {}
     finally:

@@ -56,7 +56,7 @@ def test_worktree_env_is_stable_for_the_same_path(tmp_path: Path) -> None:
 
 
 class _EvidenceHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         if self.path == "/health":
             body = {"status": "ok"}
         elif self.path.startswith("/analytics/summary"):
