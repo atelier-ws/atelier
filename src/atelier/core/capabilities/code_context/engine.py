@@ -17,7 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from atelier.core.capabilities.code_context.budget import BudgetPacker, FROZEN_DROP_STAGES, PROTECTED_TOP_RANK
+from atelier.core.capabilities.code_context.budget import (
+    FROZEN_DROP_STAGES,
+    PROTECTED_TOP_RANK,
+    BudgetPacker,
+)
 from atelier.core.capabilities.code_context.cache import RetrievalCache
 from atelier.core.capabilities.code_context.intel_store import SymbolIntelStore
 from atelier.core.capabilities.code_context.models import (
