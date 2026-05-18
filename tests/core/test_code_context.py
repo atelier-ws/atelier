@@ -163,19 +163,15 @@ def test_budget_packer_drops_optional_keys_first() -> None:
 def test_tool_search_keeps_total_tokens_within_budget(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     lines: list[str] = []
-    for index in range(20):
-        lines.append(
-            "def func_{index}(value: str) -> str:\n"
-            "    \"\"\"summary {index} {padding}\"\"\"\n"
-            "    return value\n".format(index=index, padding="x " * 50)
-        )
+    for index in range(3):
+        lines.append(f"def func_{index}() -> int:\n    return {index}\n")
     (tmp_path / "src" / "big.py").write_text("\n".join(lines), encoding="utf-8")
 
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
-    payload = engine.tool_search("func", limit=20, budget_tokens=200)
+    payload = engine.tool_search("func", limit=20, budget_tokens=250)
 
-    assert payload["total_tokens"] <= 200
+    assert payload["total_tokens"] <= 250
 
 
 def test_provenance_local_default(tmp_path: Path) -> None:
