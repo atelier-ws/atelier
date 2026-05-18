@@ -71,6 +71,7 @@ def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:
     assert "tokens_saved" in first
     assert first["provenance"] == "local"
     assert second["provenance"] == "cached"
+    assert all("snippet" not in item for item in first["items"])
 
 
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
