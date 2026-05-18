@@ -140,7 +140,7 @@ def _write_manifest(repo_root: Path, asset: ManagedAstGrepAsset, binary_path: Pa
 
 def _download_managed_asset(asset: ManagedAstGrepAsset) -> bytes:
     with urllib.request.urlopen(asset.url, timeout=60) as response:
-        data = response.read()
+        data = cast(bytes, response.read())
     digest = hashlib.sha256(data).hexdigest()
     if digest != asset.sha256:
         raise ValueError(f"checksum mismatch for {asset.archive_name}")

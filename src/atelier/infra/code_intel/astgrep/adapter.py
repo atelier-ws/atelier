@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from atelier.infra.code_intel.astgrep.binaries import discover_astgrep_binary
-from atelier.infra.code_intel.astgrep.rewrite import RewriteCandidate, RewriteOutcome, execute_rewrite
+from atelier.infra.code_intel.astgrep.rewrite import (
+    RewriteCandidate,
+    RewriteOutcome,
+    execute_rewrite,
+)
 
 
 class AstGrepToolUnavailable(RuntimeError):
