@@ -497,6 +497,7 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     assert searched["items"]
     assert searched["cache_hit"] is False
+    assert all("snippet" not in item for item in searched["items"])
     cached_search = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     assert cached_search["cache_hit"] is True
     assert cached_search["provenance"] == "cached"
