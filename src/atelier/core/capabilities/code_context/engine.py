@@ -6,6 +6,7 @@ import ast
 import contextlib
 import fnmatch
 import hashlib
+import json
 import re
 import shutil
 import sqlite3
@@ -15,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from atelier.core.capabilities.code_context.budget import BudgetPacker
+from atelier.core.capabilities.code_context.cache import RetrievalCache
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
     ImpactResult,
@@ -36,6 +39,57 @@ _JS_IMPORT_RE = re.compile(
 )
 _RUST_MOD_RE = re.compile(r"^\s*(?:pub\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.M)
 _GO_IMPORT_RE = re.compile(r"^\s*import\s+(?:\((.*?)\)|\"([^\"]+)\")", re.M | re.S)
+_LOCAL_PROVENANCE = "local"
+_SEARCH_ESSENTIAL_KEYS = [
+    "symbol_id",
+    "symbol_name",
+    "qualified_name",
+    "file_path",
+    "kind",
+    "signature",
+    "start_line",
+    "end_line",
+    "language",
+    "provenance",
+]
+_SEARCH_OPTIONAL_KEYS = ["doc_summary", "score", "repo_id", "content_hash", "parent_symbol", "start_byte", "end_byte"]
+_OUTLINE_ESSENTIAL_KEYS = ["file_path", "name", "qualified_name", "kind", "signature", "line_start", "line_end"]
+_SYMBOL_ESSENTIAL_KEYS = [
+    "symbol_id",
+    "symbol_name",
+    "qualified_name",
+    "file_path",
+    "kind",
+    "signature",
+    "start_line",
+    "end_line",
+    "language",
+    "provenance",
+]
+_SYMBOL_OPTIONAL_KEYS = ["source", "doc_summary", "content_hash", "parent_symbol", "start_byte", "end_byte", "repo_id", "score"]
+_INDEX_ESSENTIAL_KEYS = [
+    "repo_id",
+    "repo_root",
+    "files_indexed",
+    "symbols_indexed",
+    "imports_indexed",
+    "index_version",
+    "provenance",
+]
+_CONTEXT_ESSENTIAL_KEYS = [
+    "task",
+    "budget_tokens",
+    "token_count",
+    "tokens_saved_vs_full_files",
+    "symbols",
+    "content",
+    "provenance",
+]
+_IMPACT_ESSENTIAL_KEYS = ["file_path", "direct_importers", "affected_tests", "risk_level", "provenance"]
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 @dataclass(frozen=True)
@@ -130,6 +184,8 @@ class CodeContextEngine:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
+        self._cache = RetrievalCache(self.db_path)
+        self._budget = BudgetPacker()
 
     def index_repo(
         self,
@@ -186,6 +242,7 @@ class CodeContextEngine:
                 files_indexed += 1
                 symbols_indexed += len(extracted)
                 imports_indexed += len(imports)
+            index_version = self._bump_index_version(conn)
         emit_product_local(
             "code_index_completed",
             repo_id=self.repo_id,
@@ -199,7 +256,219 @@ class CodeContextEngine:
             files_indexed=files_indexed,
             symbols_indexed=symbols_indexed,
             imports_indexed=imports_indexed,
+            index_version=index_version,
         )
+
+    def tool_index(
+        self,
+        *,
+        include_globs: list[str] | None = None,
+        exclude_globs: list[str] | None = None,
+        force: bool = True,
+        budget_tokens: int = 4000,
+    ) -> dict[str, Any]:
+        stats = self.index_repo(include_globs=include_globs, exclude_globs=exclude_globs, force=force)
+        return self._pack_single_payload(
+            stats.model_dump(mode="json"),
+            budget_tokens=budget_tokens,
+            essential_keys=_INDEX_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=["db_path"],
+        )
+
+    def tool_search(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        kind: str | None = None,
+        language: str | None = None,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        cache_args = {
+            "query": query,
+            "limit": limit,
+            "kind": kind,
+            "language": language,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get("code.search", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        items = [
+            item.model_dump(mode="json")
+            for item in self.search_symbols(query, limit=limit, kind=kind, language=language, auto_index=False)
+        ]
+        payload = self._pack_items_payload(
+            items,
+            budget_tokens=budget_tokens,
+            essential_keys=_SEARCH_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_SEARCH_OPTIONAL_KEYS,
+        )
+        self._cache_set("code.search", cache_args, payload)
+        return payload
+
+    def tool_symbol(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        cache_args = {
+            "symbol_id": symbol_id,
+            "qualified_name": qualified_name,
+            "symbol_name": symbol_name,
+            "file_path": normalized_file_path,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get("code.symbol", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        payload = self._pack_single_payload(
+            self.get_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=normalized_file_path,
+                auto_index=False,
+            ),
+            budget_tokens=budget_tokens,
+            essential_keys=_SYMBOL_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_SYMBOL_OPTIONAL_KEYS,
+        )
+        self._cache_set("code.symbol", cache_args, payload)
+        return payload
+
+    def tool_outline(
+        self,
+        *,
+        file_path: str | None = None,
+        limit: int = 200,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        cache_args = {
+            "file_path": normalized_file_path,
+            "limit": limit,
+            "budget_tokens": budget_tokens,
+            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
+        }
+        hit, cached = self._cache_get("code.outline", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
+        flat_items = self._flatten_outline(raw["files"])
+        full_payload = {
+            "repo_id": str(raw["repo_id"]),
+            "files": raw["files"],
+            "symbol_count": int(raw["symbol_count"]),
+            "provenance": _LOCAL_PROVENANCE,
+        }
+        full_total_tokens = self._compute_total_tokens({**full_payload, "cache_hit": False, "tokens_saved": 0})
+
+        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._finalize_packed_payload(
+                {
+                    "repo_id": str(raw["repo_id"]),
+                    "files": self._group_outline(packed_items),
+                    "symbol_count": len(packed_items),
+                    "cache_hit": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                },
+                full_total_tokens=full_total_tokens,
+            )
+
+        payload = self._fit_items_to_budget(
+            flat_items,
+            budget_tokens=budget_tokens,
+            essential_keys=_OUTLINE_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=[],
+            build_payload=build_payload,
+        )
+        self._cache_set("code.outline", cache_args, payload)
+        return payload
+
+    def tool_context(
+        self,
+        *,
+        task: str,
+        seed_files: list[str] | None = None,
+        budget_tokens: int = 4000,
+        max_symbols: int = 8,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
+        cache_args = {
+            "task": task,
+            "seed_files": normalized_seeds,
+            "budget_tokens": budget_tokens,
+            "max_symbols": max_symbols,
+        }
+        hit, cached = self._cache_get("code.context", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        raw = self.context_pack(
+            task=task,
+            seed_files=normalized_seeds,
+            budget_tokens=budget_tokens,
+            max_symbols=max_symbols,
+            auto_index=False,
+        )
+        payload = self._pack_single_payload(
+            raw.model_dump(mode="json"),
+            budget_tokens=budget_tokens,
+            essential_keys=_CONTEXT_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=["telemetry", "import_neighbors", "repo_map"],
+            base_tokens_saved=raw.tokens_saved_vs_full_files,
+        )
+        self._cache_set("code.context", cache_args, payload)
+        return payload
+
+    def tool_impact(
+        self,
+        file_path: str,
+        *,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        normalized_file_path = self._normalize_file_arg(file_path)
+        cache_args = {
+            "file_path": normalized_file_path,
+            "budget_tokens": budget_tokens,
+            "file_mtime_ns": self._file_mtime_ns(normalized_file_path),
+        }
+        hit, cached = self._cache_get("code.impact", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        payload = self._pack_single_payload(
+            self.impact(normalized_file_path, auto_index=False).model_dump(mode="json"),
+            budget_tokens=budget_tokens,
+            essential_keys=_IMPACT_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=["transitive_importers", "dead_code_candidates"],
+        )
+        self._cache_set("code.impact", cache_args, payload)
+        return payload
 
     def search_symbols(
         self,
@@ -479,6 +748,7 @@ class CodeContextEngine:
             affected_tests=affected_tests,
             risk_level=risk,
             dead_code_candidates=self._dead_code_candidates(rel),
+            provenance=_LOCAL_PROVENANCE,
         )
 
     def changed_symbols(self, *, base_ref: str = "HEAD") -> list[SymbolRecord]:
@@ -495,6 +765,7 @@ class CodeContextEngine:
         return []
 
     def _connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
@@ -502,6 +773,10 @@ class CodeContextEngine:
     def _init_schema(self, conn: sqlite3.Connection) -> None:
         conn.executescript("""
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS engine_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS files (
                 repo_id TEXT NOT NULL,
                 file_path TEXT NOT NULL,
@@ -547,6 +822,7 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols(repo_id, symbol_name);
             CREATE INDEX IF NOT EXISTS idx_imports_target ON imports(repo_id, target_file);
             """)
+        conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
 
     def _insert_symbol(
         self,
@@ -918,6 +1194,204 @@ class CodeContextEngine:
                     )
                 )
         return matches
+
+    def _cache_get(self, tool_name: str, args: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
+        return self._cache.get(
+            tool_name=tool_name,
+            args=args,
+            index_version=self._current_index_version(),
+            repo_id=self.repo_id,
+        )
+
+    def _cache_set(self, tool_name: str, args: dict[str, Any], payload: dict[str, Any]) -> None:
+        self._cache.set(
+            tool_name=tool_name,
+            args=args,
+            index_version=self._current_index_version(),
+            repo_id=self.repo_id,
+            payload=payload,
+        )
+
+    def _current_index_version(self) -> int:
+        with self._connect() as conn:
+            self._init_schema(conn)
+            row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
+        return int(row["value"]) if row is not None else 0
+
+    def _bump_index_version(self, conn: sqlite3.Connection) -> int:
+        row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
+        current = int(row["value"]) if row is not None else 0
+        next_version = current + 1
+        conn.execute(
+            """
+            INSERT INTO engine_state(key, value)
+            VALUES ('index_version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (str(next_version),),
+        )
+        return next_version
+
+    def _payload_tokens(self, payload: Any) -> int:
+        return count_tokens(_canonical_json(payload))
+
+    def _compute_total_tokens(self, payload: dict[str, Any]) -> int:
+        total_tokens = 0
+        while True:
+            candidate = dict(payload)
+            candidate["total_tokens"] = total_tokens
+            measured = self._payload_tokens(candidate)
+            if measured == total_tokens:
+                return measured
+            total_tokens = measured
+
+    def _finalize_packed_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        full_total_tokens: int,
+        base_tokens_saved: int = 0,
+    ) -> dict[str, Any]:
+        finalized = dict(payload)
+        tokens_saved = max(0, base_tokens_saved)
+        while True:
+            finalized["tokens_saved"] = tokens_saved
+            total_tokens = self._compute_total_tokens(finalized)
+            updated_tokens_saved = max(base_tokens_saved, full_total_tokens - total_tokens)
+            if updated_tokens_saved == tokens_saved:
+                finalized["total_tokens"] = total_tokens
+                return finalized
+            tokens_saved = updated_tokens_saved
+
+    def _fit_items_to_budget(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        budget_tokens: int,
+        essential_keys: list[str],
+        optional_keys_in_drop_order: list[str],
+        build_payload: Any,
+    ) -> dict[str, Any]:
+        minimal_items, _, _ = self._budget.pack(
+            items,
+            0,
+            essential_keys=essential_keys,
+            optional_keys_in_drop_order=optional_keys_in_drop_order,
+        )
+        best_payload = build_payload(minimal_items)
+        if best_payload["total_tokens"] > budget_tokens:
+            return best_payload
+
+        low = 0
+        high = max(0, budget_tokens)
+        while low <= high:
+            mid = (low + high) // 2
+            packed_items, _, _ = self._budget.pack(
+                items,
+                mid,
+                essential_keys=essential_keys,
+                optional_keys_in_drop_order=optional_keys_in_drop_order,
+            )
+            candidate = build_payload(packed_items)
+            if candidate["total_tokens"] <= budget_tokens:
+                best_payload = candidate
+                low = mid + 1
+            else:
+                high = mid - 1
+
+        return best_payload
+
+    def _pack_items_payload(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        budget_tokens: int,
+        essential_keys: list[str],
+        optional_keys_in_drop_order: list[str],
+    ) -> dict[str, Any]:
+        full_payload = {
+            "items": items,
+            "cache_hit": False,
+            "provenance": _LOCAL_PROVENANCE,
+        }
+        full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
+
+        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._finalize_packed_payload(
+                {
+                    "items": packed_items,
+                    "cache_hit": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                },
+                full_total_tokens=full_total_tokens,
+            )
+
+        return self._fit_items_to_budget(
+            items,
+            budget_tokens=budget_tokens,
+            essential_keys=essential_keys,
+            optional_keys_in_drop_order=optional_keys_in_drop_order,
+            build_payload=build_payload,
+        )
+
+    def _pack_single_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        budget_tokens: int,
+        essential_keys: list[str],
+        optional_keys_in_drop_order: list[str],
+        base_tokens_saved: int = 0,
+    ) -> dict[str, Any]:
+        full_payload = dict(payload)
+        full_payload.setdefault("cache_hit", False)
+        full_payload.setdefault("provenance", _LOCAL_PROVENANCE)
+        full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": max(0, base_tokens_saved)})
+
+        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
+            packed_payload = dict(packed_items[0]) if packed_items else dict(full_payload)
+            packed_payload["cache_hit"] = False
+            packed_payload["provenance"] = _LOCAL_PROVENANCE
+            return self._finalize_packed_payload(
+                packed_payload,
+                full_total_tokens=full_total_tokens,
+                base_tokens_saved=base_tokens_saved,
+            )
+
+        return self._fit_items_to_budget(
+            [full_payload],
+            budget_tokens=budget_tokens,
+            essential_keys=[*essential_keys, "cache_hit", "tokens_saved", "provenance"],
+            optional_keys_in_drop_order=optional_keys_in_drop_order,
+            build_payload=build_payload,
+        )
+
+    def _mark_cache_hit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        cached = cast(dict[str, Any], json.loads(_canonical_json(payload)))
+        cached["cache_hit"] = True
+        cached["provenance"] = "cached"
+        cached["total_tokens"] = self._compute_total_tokens(cached)
+        return cached
+
+    def _flatten_outline(self, files: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for file_path in sorted(files):
+            for item in files[file_path]:
+                items.append({"file_path": file_path, **item})
+        return items
+
+    def _group_outline(self, items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for item in items:
+            file_path = str(item["file_path"])
+            grouped.setdefault(file_path, []).append({k: v for k, v in item.items() if k != "file_path"})
+        return grouped
+
+    def _file_mtime_ns(self, file_path: str) -> int | None:
+        path = self._resolve_inside_repo(file_path)
+        with contextlib.suppress(OSError):
+            return path.stat().st_mtime_ns
+        return None
 
     def _python_text_search(self, query: str, search_path: Path, *, limit: int, ignore_case: bool) -> list[TextMatch]:
         query_cmp = query.lower() if ignore_case else query
