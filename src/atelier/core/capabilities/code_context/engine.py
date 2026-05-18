@@ -292,7 +292,7 @@ class CodeContextEngine:
         limit: int = 20,
         kind: str | None = None,
         language: str | None = None,
-        snippet: Literal["none", "head", "full"] = "head",
+        snippet: Literal["none", "head", "full"] = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
         scope: Literal["repo", "external", "deleted"] = "repo",
@@ -318,7 +318,7 @@ class CodeContextEngine:
             return self._mark_cache_hit(cached)
 
         items = [
-            item.model_dump(mode="json")
+            item.model_dump(mode="json", exclude_none=True)
             for item in self.search_symbols(
                 query,
                 limit=limit,
@@ -510,7 +510,7 @@ class CodeContextEngine:
         limit: int = 20,
         kind: str | None = None,
         language: str | None = None,
-        snippet: Literal["none", "head", "full"] = "head",
+        snippet: Literal["none", "head", "full"] = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
         scope: Literal["repo", "external", "deleted"] = "repo",
@@ -1366,7 +1366,11 @@ class CodeContextEngine:
         )
         best_payload = build_payload(minimal_items)
         if best_payload["total_tokens"] > budget_tokens:
-            return best_payload
+            for end in range(len(minimal_items) - 1, -1, -1):
+                candidate = build_payload(minimal_items[:end])
+                if candidate["total_tokens"] <= budget_tokens:
+                    return candidate
+            return build_payload([])
 
         low = 0
         high = max(0, budget_tokens)
