@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 1 planning completed; 3 execution plans are ready with accepted warning-level scope notes.
-last_updated: "2026-05-18T20:46:59.716Z"
+status: verifying
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-05-18T21:16:04.390Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 14
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 
 Phase: 01 (retrieval-core-routed-symbol-search) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-18
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [███████░░░] 67%
 *Updated after each plan completion*
 | Phase 01 P01 | 24min | 3 tasks | 10 files |
 | Phase 01 P02 | 33m | 3 tasks | 11 files |
+| Phase 01 P03 | 76m | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Phase 1 benchmark coverage starts with deterministic repeated symbol-search smoke checks before threshold assertions.
 - [Phase 01]: Use repo-local .atelier/cache/scip/<repo_id>/*.scip artifacts with local-only binary discovery for the Phase 1 M1 bootstrap path.
 - [Phase 01]: Persist SCIP artifact signatures in engine_state so fresh CodeContextEngine instances invalidate stale retrieval-cache entries after artifact refresh.
+- [Phase 01]: Default code search to snippet=none so hardened symbol lookup stays budget-safe unless callers opt into snippets.
+- [Phase 01]: Measure the M2 token gate against serialized text-search-plus-read payloads versus low-budget single-hit code search.
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-18T20:46:20.581Z
-Stopped at: Phase 1 planning completed; 3 execution plans are ready with accepted warning-level scope notes.
+Last session: 2026-05-18T21:16:04.383Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
