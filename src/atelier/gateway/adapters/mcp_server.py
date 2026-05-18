@@ -1921,7 +1921,7 @@ def tool_code(
     limit: int = 20,
     kind: str | None = None,
     language: str | None = None,
-    snippet: Literal["none", "head", "full"] = "head",
+    snippet: Literal["none", "head", "full"] = "none",
     snippet_lines: int = 8,
     file_glob: str | None = None,
     scope: Literal["repo", "external", "deleted"] = "repo",
