@@ -26,6 +26,7 @@ class SymbolRecord(BaseModel):
     doc_summary: str | None = None
     content_hash: str
     score: float | None = None
+    provenance: str = "local"
 
 
 class IndexStats(BaseModel):
@@ -37,6 +38,7 @@ class IndexStats(BaseModel):
     files_indexed: int
     symbols_indexed: int
     imports_indexed: int
+    index_version: int = 0
 
 
 class TextMatch(BaseModel):
@@ -60,6 +62,9 @@ class ContextPack(BaseModel):
     import_neighbors: list[str]
     content: str
     telemetry: dict[str, Any]
+    cache_hit: bool = False
+    tokens_saved: int = 0
+    provenance: str = "local"
 
 
 class ImpactResult(BaseModel):
@@ -71,6 +76,9 @@ class ImpactResult(BaseModel):
     affected_tests: list[str]
     risk_level: Literal["low", "medium", "high", "critical"]
     dead_code_candidates: list[str]
+    cache_hit: bool = False
+    tokens_saved: int = 0
+    provenance: str = "local"
 
 
 __all__ = [
