@@ -668,6 +668,46 @@ def test_code_context_pattern_search_surface_is_cached(
     assert cached["provenance"] == "cached"
 
 
+def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n",
+        encoding="utf-8",
+    )
+
+    _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000}))
+    _result(
+        _call(
+            "code",
+            {
+                "op": "symbol",
+                "repo_root": str(tmp_path),
+                "qualified_name": "OrderService",
+                "file_path": "src/orders.py",
+                "budget_tokens": 4000,
+            },
+        )
+    )
+
+    status = _result(_call("code", {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 200}))
+    invalidated = _result(
+        _call(
+            "code",
+            {"op": "cache_invalidate", "repo_root": str(tmp_path), "cache_tool": "search", "budget_tokens": 200},
+        )
+    )
+
+    assert status["entries_by_tool"] == {"code.search": 1, "code.symbol": 1}
+    assert "items" not in status
+    assert "matches" not in status
+    assert invalidated["scope"]["cache_tool"] == "search"
+    assert invalidated["invalidated_entries"] == 1
+
+
 def test_code_context_pattern_rewrite_reindexes_changed_files(
     store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import (
     tool_code,
     tool_smart_edit,
+    tool_smart_read,
     tool_smart_search,
     tool_sql,
 )
@@ -176,4 +179,106 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         dry_run=True,
         limit=20,
         budget_tokens=220,
+    )
+
+
+def test_tool_code_cache_diagnostics_dispatch_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_cache_status.return_value = {
+        "entry_count": 2,
+        "entries_by_tool": {"code.search": 1, "code.symbol": 1},
+        "repo_id": "repo",
+        "index_version": 1,
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 0,
+        "total_tokens": 42,
+    }
+    fake_engine.tool_cache_invalidate.return_value = {
+        "invalidated_entries": 1,
+        "entries_by_tool": {"code.search": 1},
+        "scope": {"cache_tool": "search"},
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 0,
+        "total_tokens": 40,
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    status = tool_code({"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 220})
+    invalidated = tool_code(
+        {"op": "cache_invalidate", "repo_root": str(tmp_path), "cache_tool": "search", "budget_tokens": 220}
+    )
+
+    assert status["entry_count"] == 2
+    assert invalidated["invalidated_entries"] == 1
+    fake_engine.tool_cache_status.assert_called_once_with(budget_tokens=220)
+    fake_engine.tool_cache_invalidate.assert_called_once_with(cache_tool="search", budget_tokens=220)
+
+
+def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n",
+        encoding="utf-8",
+    )
+
+    tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
+    tool_code(
+        {
+            "op": "symbol",
+            "repo_root": str(tmp_path),
+            "qualified_name": "OrderService",
+            "file_path": "src/orders.py",
+            "budget_tokens": 4000,
+        }
+    )
+
+    status = tool_code({"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 4000})
+    invalidated = tool_code(
+        {"op": "cache_invalidate", "repo_root": str(tmp_path), "cache_tool": "search", "budget_tokens": 4000}
+    )
+    search_after = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
+    symbol_after = tool_code(
+        {
+            "op": "symbol",
+            "repo_root": str(tmp_path),
+            "qualified_name": "OrderService",
+            "file_path": "src/orders.py",
+            "budget_tokens": 4000,
+        }
+    )
+
+    assert status["entries_by_tool"] == {"code.search": 1, "code.symbol": 1}
+    assert "payload_json" not in json.dumps(status, sort_keys=True)
+    assert "items" not in status
+    assert invalidated["entries_by_tool"] == {"code.search": 1}
+    assert search_after["cache_hit"] is False
+    assert symbol_after["cache_hit"] is True
+
+
+def test_read_default_outline_mode_is_smaller_than_expand_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "big_module.py"
+    target.write_text(
+        "\n".join(
+            [
+                "class OrderService:",
+                "    def calculate_total(self, items: list[int]) -> int:",
+                "        return sum(items)",
+                "",
+            ]
+            + [f"def helper_{index}() -> int:\n    return {index}\n" for index in range(40)]
+        ),
+        encoding="utf-8",
+    )
+
+    default_payload = tool_smart_read({"path": str(target)})
+    expanded_payload = tool_smart_read({"path": str(target), "expand": True})
+
+    assert count_tokens(json.dumps(default_payload, sort_keys=True, default=str)) < count_tokens(
+        json.dumps(expanded_payload, sort_keys=True, default=str)
     )
