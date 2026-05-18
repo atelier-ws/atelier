@@ -83,4 +83,4 @@ class BudgetPacker:
         return working, dropped_count, token_count
 
 
-__all__ = ["BudgetPacker", "FROZEN_DROP_STAGES", "PROTECTED_TOP_RANK"]
+__all__ = ["FROZEN_DROP_STAGES", "PROTECTED_TOP_RANK", "BudgetPacker"]
