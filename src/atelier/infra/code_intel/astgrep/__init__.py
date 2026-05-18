@@ -13,7 +13,11 @@ from atelier.infra.code_intel.astgrep.binaries import (
     bootstrap_managed_astgrep,
     discover_astgrep_binary,
 )
-from atelier.infra.code_intel.astgrep.rewrite import RewriteCandidate, RewriteOutcome, execute_rewrite
+from atelier.infra.code_intel.astgrep.rewrite import (
+    RewriteCandidate,
+    RewriteOutcome,
+    execute_rewrite,
+)
 
 __all__ = [
     "AstGrepAdapter",
