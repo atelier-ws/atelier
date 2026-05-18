@@ -123,12 +123,12 @@ The M12 milestone spans defaults and diagnostics for operations that do not exis
   - `tests/infra/code_intel/scip/test_scip_adapter.py`
   - `tests/benchmarks/code_intel/test_symbol_search_bench.py`
 
-## Open Questions For Planning
+## Resolved Planning Decisions
 
-1. Should M3 extend the current JSON `.scip` fixture shape with references/usages, or introduce a separate persisted refs index?
-2. Should M4 inject symbol resolution helpers into `rich_edit.py`, or introduce a new core service that `tool_smart_edit` uses before file writes?
-3. Which diagnostics belong in the early M12 plan versus the M4/M3 follow-through plans?
-4. What is the safest fallback story when `ast-grep` is not installed locally?
+1. **Usages artifact strategy:** Phase 2 will extend the current persisted JSON `.scip` fixture/artifact shape with reference payloads instead of introducing a second persisted references index. This keeps M3 on the existing routed seam and avoids inventing a parallel store before the scale phases.
+2. **Rich-edit seam strategy:** Phase 2 will introduce a dedicated core helper (`symbol_edit.py`) for symbol resolution and stale-target checks. `rich_edit.py` remains a dispatcher and atomic file writer.
+3. **M12 split:** the early M12 plan owns cache/budget/default-policy freeze plus additive diagnostics for shipped flows. The M4 and M3 plans own the follow-through checks for symbol-edit and usages defaults, diagnostics, trace capture, and final validation closeout.
+4. **ast-grep availability strategy:** Phase 2 will use explicit env override first, exact `ast-grep` binary discovery second, and a pinned managed bootstrap/download path third (version/checksum manifest owned in the new ast-grep package). Only after those paths fail should the runtime return `tool_unavailable`.
 
 ## Planning Guidance
 
@@ -136,3 +136,4 @@ The M12 milestone spans defaults and diagnostics for operations that do not exis
 - Plan M12 as a hardening pass that establishes policy and diagnostics without overclaiming full milestone closure.
 - Give M4 explicit brownfield guardrails around symbol identity and edit span ownership.
 - Give M3 explicit schema/backend work; do not phrase it as a trivial adapter branch.
+- The planning ambiguity gates for usages storage, rich-edit seams, M12 split, and ast-grep bootstrap are now resolved above and should be treated as locked planning inputs.
