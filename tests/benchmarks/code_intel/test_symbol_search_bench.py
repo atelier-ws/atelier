@@ -9,6 +9,8 @@ from pathlib import Path
 from time import perf_counter_ns
 
 from atelier.core.capabilities.code_context import CodeContextEngine
+from atelier.core.capabilities.repo_map.budget import count_tokens
+from atelier.gateway.adapters.mcp_server import tool_code, tool_smart_read, tool_smart_search
 from benchmarks.code_intel.symbol_search_bench import run_symbol_search_bench
 
 
@@ -84,6 +86,17 @@ def _measure_ns(func: Callable[[], None], iterations: int) -> int:
         func()
     elapsed = perf_counter_ns() - start
     return max(1, elapsed // iterations)
+
+
+def _text_search_plus_read_tokens(repo_root: Path, query: str) -> int:
+    search_payload = tool_smart_search({"query": query, "path": str(repo_root / "src"), "budget_tokens": 4000})
+    matches = search_payload.get("matches", [])
+    assert matches, f"expected text-search match for {query}"
+    first_match = matches[0]
+    read_payload = tool_smart_read({"path": str(first_match["path"]), "max_lines": 20})
+    return count_tokens(json.dumps(search_payload, sort_keys=True, default=str)) + count_tokens(
+        json.dumps(read_payload, sort_keys=True, default=str)
+    )
 
 
 def test_symbol_search_bench_smoke(tmp_path: Path) -> None:
@@ -171,3 +184,19 @@ def test_scip_navigation_tokens_at_most_half_of_local_baseline(tmp_path: Path) -
         routed_tokens += int(payload["total_tokens"])
 
     assert routed_tokens <= local_tokens / 2
+
+
+def test_symbol_search_uses_at_most_25pct_of_text_search_tokens(tmp_path: Path) -> None:
+    repo_root = tmp_path / "m2_repo"
+    _write_fixture_repo(repo_root)
+
+    queries = ["OrderService", "calculate_total", "helper", "checkout"]
+    baseline_tokens = 0
+    symbol_tokens = 0
+    for query in queries:
+        baseline_tokens += _text_search_plus_read_tokens(repo_root, query)
+        payload = tool_code({"op": "search", "repo_root": str(repo_root), "query": query, "limit": 1, "budget_tokens": 120})
+        assert payload["items"], f"expected code-search match for {query}"
+        symbol_tokens += int(payload["total_tokens"])
+
+    assert symbol_tokens <= baseline_tokens * 0.25
