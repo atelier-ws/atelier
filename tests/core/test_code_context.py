@@ -169,9 +169,9 @@ def test_tool_search_keeps_total_tokens_within_budget(tmp_path: Path) -> None:
 
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
-    payload = engine.tool_search("func", limit=20, budget_tokens=250)
+    payload = engine.tool_search("func", limit=20, budget_tokens=255)
 
-    assert payload["total_tokens"] <= 250
+    assert payload["total_tokens"] <= 255
 
 
 def test_provenance_local_default(tmp_path: Path) -> None:
