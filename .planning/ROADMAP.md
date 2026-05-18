@@ -65,7 +65,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Add `code op="pattern"` via ast-grep on the existing `code` surface with explicit binary handling, budget-safe payloads, and benchmark evidence (M5)
+- [x] 02-01-PLAN.md — Add `code op="pattern"` via ast-grep on the existing `code` surface with explicit binary handling, budget-safe payloads, and benchmark evidence (M5)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
-| 2. Structural Discovery & Symbol-Safe Change Flows | 0/4 | Not started | - |
+| 2. Structural Discovery & Symbol-Safe Change Flows | 1/4 | In Progress|  |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
 | 5. Scale Decision & Extended Retrieval Reach | 0/3 | Not started | - |
