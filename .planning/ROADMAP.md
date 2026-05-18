@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Complete/harden shared retrieval cache, budget packing, and the benchmark harness gap inside `code_context` (M0)
+- [x] 01-01-PLAN.md — Complete/harden shared retrieval cache, budget packing, and the benchmark harness gap inside `code_context` (M0)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -166,7 +166,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Retrieval Core & Routed Symbol Search | 0/3 | Not started | - |
+| 1. Retrieval Core & Routed Symbol Search | 1/3 | In Progress|  |
 | 2. Structural Discovery & Symbol-Safe Change Flows | 0/4 | Not started | - |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
