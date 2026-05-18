@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from click.testing import CliRunner
 
+from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.environment import (
     DEV_LLM_TOOLS,
     NON_DEV_LLM_TOOLS,
@@ -68,6 +70,45 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
     for method_name, retval in return_values.items():
         getattr(client, method_name).return_value = retval
     return client
+
+
+def _write_gateway_scip_fixture(repo_root: Path, *, symbol_id: str) -> Path:
+    engine = CodeContextEngine(repo_root)
+    source = (repo_root / "a.py").read_text(encoding="utf-8")
+    artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / "python.scip"
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "repo_id": engine.repo_id,
+                "language": "python",
+                "symbols": [
+                    {
+                        "symbol_id": symbol_id,
+                        "repo_id": engine.repo_id,
+                        "file_path": "a.py",
+                        "language": "python",
+                        "symbol_name": "alpha",
+                        "qualified_name": "alpha",
+                        "kind": "function",
+                        "signature": "def alpha():",
+                        "start_byte": 0,
+                        "end_byte": len(source.encode("utf-8")),
+                        "start_line": 1,
+                        "end_line": 2,
+                        "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                        "source": source,
+                        "provenance": "scip",
+                    }
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return artifact_path
 
 
 @pytest.fixture()
@@ -450,9 +491,15 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
 
     indexed = _result(_call("code", {"op": "index", "repo_root": str(tmp_path)}))
     assert indexed["symbols_indexed"] >= 2
+    assert indexed["cache_hit"] is False
+    assert indexed["provenance"] == "local"
 
     searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     assert searched["items"]
+    assert searched["cache_hit"] is False
+    cached_search = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    assert cached_search["cache_hit"] is True
+    assert cached_search["provenance"] == "cached"
 
     symbol = _result(
         _call(
@@ -466,9 +513,11 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
         )
     )
     assert "def alpha" in symbol["source"]
+    assert symbol["provenance"] == "local"
 
     outline = _result(_call("code", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "a.py" in outline["files"]
+    assert outline["provenance"] == "local"
 
     context = _result(
         _call(
@@ -483,6 +532,45 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
         )
     )
     assert context["token_count"] <= context["budget_tokens"]
+    assert context["provenance"] == "local"
 
     impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "b.py" in impact["direct_importers"]
+    assert impact["provenance"] == "local"
+
+
+def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
+
+    first = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    cached = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    artifact_path.write_text(
+        artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
+        encoding="utf-8",
+    )
+    fresh = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+
+    assert first["cache_hit"] is False
+    assert first["provenance"] == "scip"
+    assert first["items"][0]["symbol_id"] == "scip-alpha-v1"
+    assert cached["cache_hit"] is True
+    assert fresh["cache_hit"] is False
+    assert fresh["provenance"] == "scip"
+    assert fresh["items"][0]["symbol_id"] == "scip-alpha-v2"
+
+
+def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    engine = CodeContextEngine(tmp_path)
+    artifact_dir = tmp_path / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
+
+    searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+
+    assert searched["cache_hit"] is False
+    assert searched["provenance"] == "local"
+    assert searched["items"][0]["symbol_name"] == "alpha"

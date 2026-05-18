@@ -2,10 +2,88 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter_ns
 
+from atelier.core.capabilities.code_context import CodeContextEngine
 from benchmarks.code_intel.symbol_search_bench import run_symbol_search_bench
+
+
+def _write_fixture_repo(root: Path) -> None:
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n"
+        "\n"
+        "def helper() -> OrderService:\n"
+        "    return OrderService()\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "checkout.py").write_text(
+        "from src.orders import OrderService\n\n"
+        "def checkout(items: list[int]) -> int:\n"
+        "    return OrderService().calculate_total(items)\n",
+        encoding="utf-8",
+    )
+
+
+def _write_scip_fixture(engine: CodeContextEngine) -> None:
+    artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    symbols = []
+    for qualified_name, file_path in (
+        ("OrderService", "src/orders.py"),
+        ("OrderService.calculate_total", "src/orders.py"),
+        ("helper", "src/orders.py"),
+        ("checkout", "src/checkout.py"),
+    ):
+        source = (engine.repo_root / file_path).read_text(encoding="utf-8")
+        symbol_name = qualified_name.rsplit(".", 1)[-1]
+        kind = "method" if "." in qualified_name else "class" if symbol_name == "OrderService" else "function"
+        symbols.append(
+            {
+                "symbol_id": f"scip-{qualified_name}",
+                "repo_id": engine.repo_id,
+                "file_path": file_path,
+                "language": "python",
+                "symbol_name": symbol_name,
+                "qualified_name": qualified_name,
+                "kind": kind,
+                "signature": source.splitlines()[0],
+                "start_byte": 0,
+                "end_byte": len(source.encode("utf-8")),
+                "start_line": 1,
+                "end_line": max(1, len(source.splitlines())),
+                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                "source": source,
+                "provenance": "scip",
+            }
+        )
+    (artifact_dir / "python.scip").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "repo_id": engine.repo_id,
+                "language": "python",
+                "symbols": symbols,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _measure_ns(func: Callable[[], None], iterations: int) -> int:
+    start = perf_counter_ns()
+    for _ in range(iterations):
+        func()
+    elapsed = perf_counter_ns() - start
+    return max(1, elapsed // iterations)
 
 
 def test_symbol_search_bench_smoke(tmp_path: Path) -> None:
@@ -27,3 +105,68 @@ def test_symbol_search_bench_result_is_json_serializable(tmp_path: Path) -> None
 
     assert reloaded["cached_cache_hit"] is True
     assert reloaded["uncached_provenance"] == "local"
+
+
+def test_scip_vs_local_latency_ratio_min_100x(tmp_path: Path) -> None:
+    local_repo_root = tmp_path / "latency_local_repo"
+    routed_repo_root = tmp_path / "latency_routed_repo"
+    _write_fixture_repo(local_repo_root)
+    _write_fixture_repo(routed_repo_root)
+
+    local_counter = {"value": 0}
+
+    def run_local_once() -> None:
+        db_path = local_repo_root / f"local_{local_counter['value']}.sqlite"
+        local_counter["value"] += 1
+        engine = CodeContextEngine(local_repo_root, db_path=db_path)
+        search_payload = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+        assert search_payload["items"]
+        symbol_payload = engine.tool_symbol(symbol_id=search_payload["items"][0]["symbol_id"], budget_tokens=4000)
+        assert symbol_payload["provenance"] == "local"
+
+    scip_engine = CodeContextEngine(routed_repo_root, db_path=routed_repo_root / "scip.sqlite")
+    scip_engine.index_repo()
+    _write_scip_fixture(scip_engine)
+    warmed = scip_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    assert warmed["provenance"] == "scip"
+
+    def run_scip_once() -> None:
+        hits = scip_engine.search_symbols("OrderService", limit=5)
+        assert hits
+        assert hits[0].provenance == "scip"
+
+    local_latency_ns = _measure_ns(run_local_once, iterations=5)
+    scip_latency_ns = _measure_ns(run_scip_once, iterations=500)
+    ratio = local_latency_ns / scip_latency_ns
+
+    assert ratio >= 100, f"expected >=100x warm SCIP speedup, got {ratio:.2f}x"
+
+
+def test_scip_navigation_tokens_at_most_half_of_local_baseline(tmp_path: Path) -> None:
+    local_repo_root = tmp_path / "tokens_local_repo"
+    routed_repo_root = tmp_path / "tokens_routed_repo"
+    _write_fixture_repo(local_repo_root)
+    _write_fixture_repo(routed_repo_root)
+
+    local_engine = CodeContextEngine(local_repo_root, db_path=local_repo_root / "local_nav.sqlite")
+    local_engine.index_repo()
+    scip_engine = CodeContextEngine(routed_repo_root, db_path=routed_repo_root / "scip_nav.sqlite")
+    scip_engine.index_repo()
+    _write_scip_fixture(scip_engine)
+
+    local_queries = ["OrderService", "helper", "checkout"]
+    local_tokens = 0
+    for query in local_queries:
+        search_payload = local_engine.tool_search(query, limit=1, budget_tokens=4000)
+        assert search_payload["items"]
+        symbol_payload = local_engine.tool_symbol(symbol_id=search_payload["items"][0]["symbol_id"], budget_tokens=4000)
+        local_tokens += int(search_payload["total_tokens"]) + int(symbol_payload["total_tokens"])
+
+    routed_tokens = 0
+    for query in local_queries:
+        payload = scip_engine.tool_search(query, limit=1, budget_tokens=260)
+        assert payload["items"]
+        assert payload["provenance"] == "scip"
+        routed_tokens += int(payload["total_tokens"])
+
+    assert routed_tokens <= local_tokens / 2
