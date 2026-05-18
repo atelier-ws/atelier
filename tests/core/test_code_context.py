@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.code_context.budget import BudgetPacker
+from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -212,3 +213,97 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp
 
     assert payload["items"][0]["symbol_name"] == "OrderService"
     assert all("snippet" not in item for item in payload["items"])
+
+
+def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+
+    status = engine.tool_cache_status(budget_tokens=4000)
+
+    assert status["entry_count"] == 2
+    assert status["entries_by_tool"] == {"code.search": 1, "code.symbol": 1}
+    assert status["repo_id"] == engine.repo_id
+    assert "payload_json" not in str(status)
+    assert "items" not in status
+    assert "matches" not in status
+
+    invalidated = engine.tool_cache_invalidate(cache_tool="search", budget_tokens=4000)
+
+    assert invalidated["invalidated_entries"] == 1
+    assert invalidated["entries_by_tool"] == {"code.search": 1}
+    assert invalidated["scope"]["cache_tool"] == "search"
+
+    status_after = engine.tool_cache_status(budget_tokens=4000)
+    assert status_after["entry_count"] == 1
+    assert status_after["entries_by_tool"] == {"code.symbol": 1}
+
+    fresh_search = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    cached_symbol = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+    assert fresh_search["cache_hit"] is False
+    assert cached_symbol["cache_hit"] is True
+
+
+def test_low_token_defaults_stay_lighter_for_search_and_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n"
+        "\n"
+        "class OrderServiceFactory:\n"
+        "    def build(self) -> OrderService:\n"
+        "        return OrderService()\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "http.py").write_text(
+        "\n".join(
+            f"def fetch_{index}(url: str) -> object:\n    return requests.get(url)\n"
+            for index in range(30)
+        ),
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    search_default = engine.tool_search("OrderService", limit=5, snippet="none", budget_tokens=4000)
+    search_heavy = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=4000)
+
+    assert search_default["total_tokens"] < search_heavy["total_tokens"]
+
+    tight = engine.tool_search("fetch_", limit=20, snippet="full", budget_tokens=210)
+    assert tight["total_tokens"] <= 210
+    assert tight["items"]
+    for key in ("symbol_id", "symbol_name", "file_path", "start_line", "signature"):
+        assert key in tight["items"][0]
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.code_context.engine.AstGrepAdapter.search",
+        lambda self, *, pattern, language=None, file_glob=None, limit=20: PatternSearchResult(
+            matches=[
+                PatternMatch(
+                    file_path="src/http.py",
+                    line=index + 1,
+                    column=4,
+                    end_line=index + 1,
+                    end_column=28,
+                    snippet="return requests.get(url)",
+                    captures={"URL": "url"},
+                )
+                for index in range(30)
+            ],
+            truncated=limit < 30,
+            total_matches=30,
+        ),
+    )
+
+    pattern_default = engine.tool_pattern(pattern="requests.get($URL)", budget_tokens=4000)
+    pattern_heavy = engine.tool_pattern(pattern="requests.get($URL)", limit=100, budget_tokens=4000)
+
+    assert pattern_default["total_tokens"] < pattern_heavy["total_tokens"]
