@@ -201,3 +201,20 @@ def test_scip_refresh_invalidates_cached_search(tmp_path: Path) -> None:
     assert fresh["cache_hit"] is False
     assert fresh["provenance"] == "scip"
     assert fresh["items"][0]["symbol_id"] == "scip-v2"
+
+
+def test_scip_refresh_invalidates_cached_search_for_new_engine_instance(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1")
+
+    cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
+    fresh_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    fresh = fresh_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+
+    assert cached["provenance"] == "scip"
+    assert fresh["cache_hit"] is False
+    assert fresh["provenance"] == "scip"
+    assert fresh["items"][0]["symbol_id"] == "scip-v2"
