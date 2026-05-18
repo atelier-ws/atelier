@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
@@ -15,6 +17,44 @@ def _write_fixture_repo(root: Path) -> None:
         "        return sum(items)\n",
         encoding="utf-8",
     )
+
+
+def _write_scip_fixture(engine: CodeContextEngine, *, symbol_id: str = "scip-order-service") -> Path:
+    source = (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
+    artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / "python.scip"
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "repo_id": engine.repo_id,
+                "language": "python",
+                "symbols": [
+                    {
+                        "symbol_id": symbol_id,
+                        "repo_id": engine.repo_id,
+                        "file_path": "src/orders.py",
+                        "language": "python",
+                        "symbol_name": "OrderService",
+                        "qualified_name": "OrderService",
+                        "kind": "class",
+                        "signature": "class OrderService:",
+                        "start_byte": 0,
+                        "end_byte": len(source.encode("utf-8")),
+                        "start_line": 1,
+                        "end_line": 3,
+                        "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                        "source": source,
+                        "provenance": "scip",
+                    }
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return artifact_path
 
 
 class _HealthyScipProvider:
@@ -110,3 +150,54 @@ def test_store_falls_back_to_local_provider(tmp_path: Path) -> None:
     assert hits
     assert hits[0].symbol_name == "OrderService"
     assert hits[0].provenance == "local"
+
+
+def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture(engine)
+
+    hits = engine.search_symbols("OrderService", limit=5)
+    symbol = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+
+    assert hits
+    assert hits[0].symbol_id == "scip-order-service"
+    assert hits[0].provenance == "scip"
+    assert symbol["symbol_id"] == "scip-order-service"
+    assert symbol["provenance"] == "scip"
+    assert "class OrderService" in symbol["source"]
+
+
+def test_scip_provider_falls_back_when_artifact_is_invalid(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id / "python.scip"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("{not json", encoding="utf-8")
+
+    hits = engine.search_symbols("OrderService", limit=5)
+
+    assert hits
+    assert hits[0].symbol_name == "OrderService"
+    assert hits[0].provenance == "local"
+
+
+def test_scip_refresh_invalidates_cached_search(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1")
+
+    first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
+    fresh = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+
+    assert first["cache_hit"] is False
+    assert first["provenance"] == "scip"
+    assert cached["cache_hit"] is True
+    assert fresh["cache_hit"] is False
+    assert fresh["provenance"] == "scip"
+    assert fresh["items"][0]["symbol_id"] == "scip-v2"
