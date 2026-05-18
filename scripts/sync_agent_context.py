@@ -125,30 +125,33 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
 
 
 def render_copilot_body(output_path: Path) -> str:
-    return "\n".join(
-        [
-            generated_notice(output_path),
-            "",
-            "## Atelier - Copilot Instructions",
-            "",
-            "Use the Atelier 3-step process for every task:",
-            "1. **Context**: call `context` with the task, domain, and tools.",
-            "2. **Implement**: execute the task and use `route` or `rescue` when needed.",
-            "3. **Record**: call `record` when the work is done.",
-            "",
-            "Treat this file as a thin entrypoint. The live source of truth is:",
-            "",
-            doc_links(output_path),
-            "",
-            budget_section(),
-            "",
-            fallback_section("copilot"),
-            "",
-            "## Validation",
-            "",
-            f"{validation_line(output_path)} Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
-        ]
-    ).rstrip() + "\n"
+    return (
+        "\n".join(
+            [
+                generated_notice(output_path),
+                "",
+                "## Atelier - Copilot Instructions",
+                "",
+                "Use the Atelier 3-step process for every task:",
+                "1. **Context**: call `context` with the task, domain, and tools.",
+                "2. **Implement**: execute the task and use `route` or `rescue` when needed.",
+                "3. **Record**: call `record` when the work is done.",
+                "",
+                "Treat this file as a thin entrypoint. The live source of truth is:",
+                "",
+                doc_links(output_path),
+                "",
+                budget_section(),
+                "",
+                fallback_section("copilot"),
+                "",
+                "## Validation",
+                "",
+                f"{validation_line(output_path)} Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
+            ]
+        ).rstrip()
+        + "\n"
+    )
 
 
 def render_copilot_workspace(output_path: Path) -> str:
@@ -157,88 +160,94 @@ def render_copilot_workspace(output_path: Path) -> str:
 
 
 def render_chatmode(output_path: Path) -> str:
-    return "\n".join(
-        [
-            "---",
-            'description: "Atelier - Agent Reasoning Runtime coding agent"',
-            "tools:",
-            "  [",
-            '    "codebase",',
-            '    "changes",',
-            '    "editFiles",',
-            '    "fetch",',
-            '    "findTestFiles",',
-            '    "githubRepo",',
-            '    "problems",',
-            '    "runCommands",',
-            '    "runTasks",',
-            '    "runTests",',
-            '    "search",',
-            '    "searchResults",',
-            '    "terminalLastCommand",',
-            '    "terminalSelection",',
-            '    "testFailure",',
-            '    "usages",',
-            '    "vscodeAPI",',
-            "  ]",
-            "---",
-            "",
-            generated_notice(output_path),
-            "",
-            "# atelier:code",
-            "",
-            "You are operating as *atelier:code*.",
-            "",
-            "Use this chat mode as a thin entrypoint to the live repo rules:",
-            "",
-            doc_links(output_path),
-            "",
-            "## Operating loop",
-            "",
-            "1. **Context** - call MCP tool `context` with task, domain, files, and tools.",
-            "2. **Plan** - keep the plan small and concrete.",
-            "3. **Execute** - make the change.",
-            "4. **Recover** - call `rescue` after two failed attempts.",
-            "5. **Record** - call `record` with the observable result.",
-            "",
-            budget_section(),
-            "",
-            fallback_section("copilot"),
-        ]
-    ).rstrip() + "\n"
+    return (
+        "\n".join(
+            [
+                "---",
+                'description: "Atelier - Agent Reasoning Runtime coding agent"',
+                "tools:",
+                "  [",
+                '    "codebase",',
+                '    "changes",',
+                '    "editFiles",',
+                '    "fetch",',
+                '    "findTestFiles",',
+                '    "githubRepo",',
+                '    "problems",',
+                '    "runCommands",',
+                '    "runTasks",',
+                '    "runTests",',
+                '    "search",',
+                '    "searchResults",',
+                '    "terminalLastCommand",',
+                '    "terminalSelection",',
+                '    "testFailure",',
+                '    "usages",',
+                '    "vscodeAPI",',
+                "  ]",
+                "---",
+                "",
+                generated_notice(output_path),
+                "",
+                "# atelier:code",
+                "",
+                "You are operating as *atelier:code*.",
+                "",
+                "Use this chat mode as a thin entrypoint to the live repo rules:",
+                "",
+                doc_links(output_path),
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context** - call MCP tool `context` with task, domain, files, and tools.",
+                "2. **Plan** - keep the plan small and concrete.",
+                "3. **Execute** - make the change.",
+                "4. **Recover** - call `rescue` after two failed attempts.",
+                "5. **Record** - call `record` with the observable result.",
+                "",
+                budget_section(),
+                "",
+                fallback_section("copilot"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
 
 
 def render_claude_code_agent(output_path: Path) -> str:
-    return "\n".join(
-        [
-            "---",
-            "name: code",
-            "description: Main coding agent. Edits, refactors, fixes bugs, and ships features. Uses the Atelier task loop for planning and validation.",
-            'tools: ["*"]',
-            "color: purple",
-            "---",
-            "",
-            generated_notice(output_path),
-            "",
-            "# Atelier Code Agent",
-            "",
-            "You are the **main coding agent**. The Atelier MCP server is wired in as `atelier`.",
-            "",
-            "Use this file as a thin entrypoint and follow the live docs tree:",
-            "",
-            doc_links(output_path),
-            "",
-            "## Operating loop",
-            "",
-            "1. **Context**: Call `context` with `task`, `files`, `domain`, and `errors`.",
-            "2. **Implement**: Execute the task. Use native file tools or Atelier augmentations as appropriate.",
-            '3. **Record**: Call `record` at completion with `agent: "atelier:code"`.',
-            "",
-            budget_section(),
-            "",
-            fallback_section("claude"),
-        ]
-    ).rstrip() + "\n"
+    return (
+        "\n".join(
+            [
+                "---",
+                "name: code",
+                "description: Main coding agent. Edits, refactors, fixes bugs, and ships features. Uses the Atelier task loop for planning and validation.",
+                'tools: ["*"]',
+                "color: purple",
+                "---",
+                "",
+                generated_notice(output_path),
+                "",
+                "# Atelier Code Agent",
+                "",
+                "You are the **main coding agent**. The Atelier MCP server is wired in as `atelier`.",
+                "",
+                "Use this file as a thin entrypoint and follow the live docs tree:",
+                "",
+                doc_links(output_path),
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context**: Call `context` with `task`, `files`, `domain`, and `errors`.",
+                "2. **Implement**: Execute the task. Use native file tools or Atelier augmentations as appropriate.",
+                '3. **Record**: Call `record` at completion with `agent: "atelier:code"`.',
+                "",
+                budget_section(),
+                "",
+                fallback_section("claude"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
 
 
 def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
@@ -270,16 +279,19 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         f"{HOST_DISPLAY[host]} host-specific notes live in [docs/agent-os/host-overrides/{host}.md]({override}).",
     ]
     if host == "opencode":
-        return "\n".join(
-            [
-                "---",
-                'description: Atelier - main coding agent for the Agent Reasoning Runtime',
-                "mode: primary",
-                "---",
-                "",
-                *lines,
-            ]
-        ).rstrip() + "\n"
+        return (
+            "\n".join(
+                [
+                    "---",
+                    "description: Atelier - main coding agent for the Agent Reasoning Runtime",
+                    "mode: primary",
+                    "---",
+                    "",
+                    *lines,
+                ]
+            ).rstrip()
+            + "\n"
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -299,43 +311,52 @@ def sync_host_configs() -> dict[Path, str]:
 def build_outputs() -> dict[Path, str]:
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
-        ROOT / "GEMINI.md": render_project_entrypoint(
+        ROOT
+        / "GEMINI.md": render_project_entrypoint(
             ROOT / "GEMINI.md",
             title="Project Instructions: Atelier",
             host="gemini",
         ),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(ROOT / ".github/chatmodes/atelier.chatmode.md"),
-        ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_body(
+        ROOT
+        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_body(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
-        ROOT / "integrations/copilot/chatmodes/atelier.chatmode.md": render_chatmode(
+        ROOT
+        / "integrations/copilot/chatmodes/atelier.chatmode.md": render_chatmode(
             ROOT / "integrations/copilot/chatmodes/atelier.chatmode.md"
         ),
-        ROOT / "integrations/claude/AGENTS.atelier.md": render_host_surface(
+        ROOT
+        / "integrations/claude/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/claude/AGENTS.atelier.md",
             title="Atelier Agent Persona",
             host="claude",
         ),
-        ROOT / "integrations/claude/plugin/agents/code.md": render_claude_code_agent(
+        ROOT
+        / "integrations/claude/plugin/agents/code.md": render_claude_code_agent(
             ROOT / "integrations/claude/plugin/agents/code.md"
         ),
-        ROOT / "integrations/codex/AGENTS.atelier.md": render_host_surface(
+        ROOT
+        / "integrations/codex/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/codex/AGENTS.atelier.md",
             title="Atelier - Codex Agent",
             host="codex",
         ),
-        ROOT / "integrations/gemini/GEMINI.atelier.md": render_host_surface(
+        ROOT
+        / "integrations/gemini/GEMINI.atelier.md": render_host_surface(
             ROOT / "integrations/gemini/GEMINI.atelier.md",
             title="Atelier - Gemini CLI Agent",
             host="gemini",
         ),
-        ROOT / "integrations/gemini/extension/GEMINI.md": render_host_surface(
+        ROOT
+        / "integrations/gemini/extension/GEMINI.md": render_host_surface(
             ROOT / "integrations/gemini/extension/GEMINI.md",
             title="Atelier - Gemini CLI Default Identity",
             host="gemini",
         ),
-        ROOT / "integrations/opencode/agents/atelier.md": render_host_surface(
+        ROOT
+        / "integrations/opencode/agents/atelier.md": render_host_surface(
             ROOT / "integrations/opencode/agents/atelier.md",
             title="atelier:code",
             host="opencode",
