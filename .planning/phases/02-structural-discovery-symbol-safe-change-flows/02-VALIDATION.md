@@ -39,7 +39,7 @@ created: 2026-05-18
 | Plan | Milestone | Requirement | Secure / correct behavior | Expected automated coverage |
 |------|-----------|-------------|---------------------------|-----------------------------|
 | `02-01` | M5 | `DISC-02` | `code op="pattern"` stays on the existing MCP surface, resolves the explicit `ast-grep` binary safely, and returns structural matches or rewrites without silently falling back to regex behavior | `tests/gateway/test_mcp_tool_handlers.py`, `tests/gateway/test_p0_mcp_surfaces.py`, new infra/benchmark coverage under `tests/benchmarks/code_intel/` |
-| `02-02` | M12 | Phase-wide hardening | Cache, budget, payload defaults, and diagnostics stay additive and low-token across pattern/search/edit/usages flows | `tests/core/test_code_context.py`, `tests/gateway/test_p0_mcp_surfaces.py`, payload-size/diagnostic checks in benchmark tests |
+| `02-02` | M12 | Phase-wide hardening (partial close only) | Cache, budget, payload defaults, and diagnostics stay additive and low-token across the shipped search/pattern flows, while Plans `02-03` and `02-04` keep ownership of symbol-edit and usages follow-through checks | `tests/core/test_code_context.py`, `tests/gateway/test_p0_mcp_surfaces.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/benchmarks/code_intel/test_cost_discipline.py` |
 | `02-03` | M4 | `DISC-01` | Symbol-safe edit descriptors resolve the intended symbol, reject ambiguous or stale targets clearly, and preserve existing edit/diff recording semantics | `tests/core/test_rich_edit.py`, `tests/gateway/test_mcp_jsonrpc_e2e.py`, plus targeted edit-path regressions |
 | `02-04` | M3 | `NAVG-02` | `code op="usages"` returns grouped references on the existing `code` surface with routed backend support or explicit fallback behavior | `tests/core/test_code_context.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/infra/code_intel/scip/test_scip_adapter.py`, usages-vs-grep benchmark coverage |
 
@@ -79,3 +79,9 @@ created: 2026-05-18
 - [ ] Wave 0 benchmark/test gaps closed
 - [ ] Phase 2 traces and benchmark evidence captured
 - [ ] Final approval recorded
+
+## M12 Partial-Close Contract
+
+- Plan `02-02` freezes cache keys, budget packing order, low-token defaults, and additive diagnostics for the currently shipped `code` flows.
+- Plan `02-02` does **not** fully close M12. Plans `02-03` and `02-04` own the remaining follow-through checks for symbol-edit and usages defaults, diagnostics, trace capture, and validation sign-off.
+- Any validation summary or trace recorded from Plan `02-02` must describe M12 as a **partial close** until those later plans land.
