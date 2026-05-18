@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Roadmap initialization completed; Phase 1 is ready for detailed planning.
-last_updated: "2026-05-18T19:36:36.255Z"
-last_activity: 2026-05-18 -- Phase 1 planning complete
+stopped_at: Phase 1 planning completed; 3 execution plans are ready with accepted warning-level scope notes.
+last_updated: "2026-05-18T20:06:57.783Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** Agents can find and change code through budget-aware, precomputed intelligence with near-zero token overhead by default.
-**Current focus:** Phase 1 - Retrieval Core & Routed Symbol Search
+**Current focus:** Phase 01 — retrieval-core-routed-symbol-search
 
 ## Current Position
 
-Phase: 1 of 7 (Retrieval Core & Routed Symbol Search)
-Plan: 0 of 3 in current phase
+Phase: 01 (retrieval-core-routed-symbol-search) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-05-18 -- Phase 1 planning complete
+Last activity: 2026-05-18
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 01 P01 | 24min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - [Init] Use `docs/plans/active/code-intel/` M0-M18 as the project source of truth for delivery order and scope.
 - [Init] Extend existing MCP/runtime surfaces before adding any new top-level tool registrations.
 - [Init] Keep the M18 build-vs-integrate checkpoint as the gate for M16 large-repo backend work.
+- [Phase 01]: Budget-fit helpers now size packed code payloads against the final wrapper envelope.
+- [Phase 01]: Phase 1 benchmark coverage starts with deterministic repeated symbol-search smoke checks before threshold assertions.
 
 ### Pending Todos
 
@@ -84,6 +87,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-18 00:00
+Last session: 2026-05-18T20:04:56.166Z
 Stopped at: Phase 1 planning completed; 3 execution plans are ready with accepted warning-level scope notes.
 Resume file: None
