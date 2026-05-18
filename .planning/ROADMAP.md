@@ -13,7 +13,7 @@ This brownfield roadmap extends Atelier's existing CLI, MCP, HTTP, and frontend-
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Retrieval Core & Routed Symbol Search** - Establish shared cache/budget primitives, routed symbol backends, and hardened symbol lookup on existing `code` ops.
+- [x] **Phase 1: Retrieval Core & Routed Symbol Search** - Establish shared cache/budget primitives, routed symbol backends, and hardened symbol lookup on existing `code` ops. (completed 2026-05-18)
 - [ ] **Phase 2: Structural Discovery & Symbol-Safe Change Flows** - Add structural pattern search, freeze low-token defaults, and ship symbol edits plus usages.
 - [ ] **Phase 3: Semantic Recall & Relationship Navigation** - Layer semantic retrieval, symbol-linked memory, and caller/callee graph traversal.
 - [ ] **Phase 4: Historical Code Intelligence** - Make deleted symbols, renames, blame, and churn first-class code-intel queries.
@@ -47,7 +47,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Harden existing `code op="search"` params, ranking, snippets, provenance, and validation evidence (M2)
+- [x] 01-03-PLAN.md — Harden existing `code op="search"` params, ranking, snippets, provenance, and validation evidence (M2)
 
 ### Phase 2: Structural Discovery & Symbol-Safe Change Flows
 
@@ -166,7 +166,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Retrieval Core & Routed Symbol Search | 2/3 | In Progress|  |
+| 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
 | 2. Structural Discovery & Symbol-Safe Change Flows | 0/4 | Not started | - |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
