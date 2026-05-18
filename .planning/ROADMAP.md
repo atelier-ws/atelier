@@ -69,7 +69,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Freeze cache, budget, defaults, and diagnostics across current code-intel flows, but keep M12 marked partial until Plans 03 and 04 complete follow-through validation (M12 core freeze)
+- [x] 02-02-PLAN.md — Freeze cache, budget, defaults, and diagnostics across current code-intel flows, but keep M12 marked partial until Plans 03 and 04 complete follow-through validation (M12 core freeze)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
-| 2. Structural Discovery & Symbol-Safe Change Flows | 1/4 | In Progress|  |
+| 2. Structural Discovery & Symbol-Safe Change Flows | 2/4 | In Progress|  |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
 | 5. Scale Decision & Extended Retrieval Reach | 0/3 | Not started | - |

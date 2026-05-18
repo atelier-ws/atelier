@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-05-19T01:24:39+02:00"
-last_activity: 2026-05-19 -- Phase 02 Plan 01 complete
+last_updated: "2026-05-19T01:54:54+02:00"
+last_activity: 2026-05-19 -- Phase 02 Plan 02 complete
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 14
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 02 (structural-discovery-symbol-safe-change-flows) — EXECUTING
-Plan: 2 of 4
-Status: Phase 02 executing after Plan 01 recovery closeout
-Last activity: 2026-05-19 -- Phase 02 Plan 01 complete
+Plan: 3 of 4
+Status: Phase 02 executing after Plan 02 recovery closeout
+Last activity: 2026-05-19 -- Phase 02 Plan 02 complete
 
 Progress: [██████████] 100%
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 01 P02 | 33m | 3 tasks | 11 files |
 | Phase 01 P03 | 76m | 3 tasks | 9 files |
 | Phase 02 P01 | 55min | 3 tasks | 12 files |
+| Phase 02 P02 | 22min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Default code search to snippet=none so hardened symbol lookup stays budget-safe unless callers opt into snippets.
 - [Phase 01]: Measure the M2 token gate against serialized text-search-plus-read payloads versus low-budget single-hit code search.
 - [Phase 02]: Resolve ast-grep availability through env override, exact binary discovery, then pinned managed bootstrap before returning `tool_unavailable`.
+- [Phase 02]: Treat M12 as a partial close only until Plans 02-03 and 02-04 complete symbol-edit and usages follow-through validation.
 
 ### Pending Todos
 
