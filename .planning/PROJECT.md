@@ -31,18 +31,22 @@ with near-zero token overhead by default.
   `context`, and `impact` operations that can be extended in place — existing
 - ✓ Atelier already records traces, telemetry, and smart-read savings, giving a
   baseline for measuring code-intel cost reductions — existing
+- ✓ Phase 1 validated shared retrieval cache and wrapper-aware budget packing on
+  existing `code` operations with `cache_hit`, `tokens_saved`, and provenance
+  metadata
+- ✓ Phase 1 validated routed SCIP-backed symbol intelligence behind the existing
+  `code` surface with safe local fallback and cache invalidation
+- ✓ Phase 1 validated hardened `code op="search"` defaults with ranked,
+  snippet-free responses plus benchmark and trace evidence
 
 ### Active
 
-- [ ] Add shared retrieval cache and token-budget packing to existing `code`
-  operations so cache metadata, provenance, and savings are first-class
-- [ ] Add routed symbol intelligence backends behind the existing `code`
-  surface, starting with SCIP and later layering structural, semantic, git, and
-  scale-oriented retrieval
-- [ ] Extend the current tool surface with the planned code-intel behaviors from
-  `docs/plans/active/code-intel/` M0-M18 without breaking existing entry points
-- [ ] Deliver the roadmap until Atelier's default code/search/edit workflows are
-  near-zero-token, budget-aware, traceable, and validated end to end
+- [ ] Extend the current tool surface with the remaining planned code-intel
+  behaviors from `docs/plans/active/code-intel/` M3-M18 without breaking
+  existing entry points
+- [ ] Deliver the remaining roadmap phases until Atelier's default
+  code/search/edit workflows are near-zero-token, budget-aware, traceable, and
+  validated end to end
 
 ### Out of Scope
 
@@ -99,6 +103,12 @@ should be treated as the reference for implementation planning.
 | Treat the full `docs/plans/active/code-intel/` M0-M18 program as active scope | The user directed project initialization to follow that full plan set | — Pending |
 | Define success as near-zero-token default code/search/edit flows, not feature parity with other tools | Matches both the code-intel north star and the user's definition of done | — Pending |
 
+## Current State
+
+- Phase 1 complete — retrieval cache, routed SCIP lookup, and hardened code
+  search are validated on the existing `code` surface.
+- Next up: Phase 2 — Structural Discovery & Symbol-Safe Change Flows.
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -117,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-18 after initialization*
+*Last updated: 2026-05-18 after Phase 1 completion*
