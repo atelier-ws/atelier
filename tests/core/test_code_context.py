@@ -192,3 +192,23 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     assert symbol_payload["provenance"] == "local"
     assert context_payload["provenance"] == "local"
     assert cached_search["provenance"] == "cached"
+
+
+def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n"
+        "\n"
+        "class OrderServiceFactory:\n"
+        "    def build(self) -> OrderService:\n"
+        "        return OrderService()\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_search("OrderService", limit=5, snippet="none", budget_tokens=4000)
+
+    assert payload["items"][0]["symbol_name"] == "OrderService"
+    assert all("snippet" not in item for item in payload["items"])
