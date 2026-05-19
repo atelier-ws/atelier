@@ -14,7 +14,7 @@
 
 - [x] **NAVG-01**: Agent can search symbols with hardened defaults for snippets, ranking, and provenance on the existing `code op="search"` path.
 - [x] **NAVG-02**: Agent can find usages of a symbol through `code op="usages"` without falling back to ad hoc text search by default.
-- [ ] **NAVG-03**: Agent can inspect callers and callees for a symbol through `code op="callers"` and `code op="callees"`.
+- [x] **NAVG-03**: Agent can inspect callers and callees for a symbol through `code op="callers"` and `code op="callees"`.
 - [ ] **NAVG-04**: Agent can search and resolve code intelligence across supported multi-repo workspaces with repo-aware results.
 
 ### Editing & Discovery
@@ -65,7 +65,7 @@ Roadmap mapping for all v1 requirements.
 | FNDN-02 | Phase 1 | Complete |
 | NAVG-01 | Phase 1 | Complete |
 | NAVG-02 | Phase 2 | Complete |
-| NAVG-03 | Phase 3 | Pending |
+| NAVG-03 | Phase 3 | Complete |
 | NAVG-04 | Phase 6 | Pending |
 | DISC-01 | Phase 2 | Complete |
 | DISC-02 | Phase 2 | Complete |
