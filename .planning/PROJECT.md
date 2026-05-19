@@ -46,11 +46,17 @@ with near-zero token overhead by default.
 - ✓ Phase 2 validated grouped `code op="usages"` results with routed reference
   support, explicit treesitter fallback, and cache hit-rate telemetry visible
   on the Overview surface
+- ✓ Phase 3 validated semantic and hybrid ranking on the existing
+  `code op="search"` surface while keeping exact-name lexical behavior intact
+- ✓ Phase 3 validated `memory op="recall_symbol"` with low-token default
+  definition-plus-memory bundles and opt-in heavier evidence sections
+- ✓ Phase 3 validated `code op="callers"` / `code op="callees"` with routed
+  SCIP call-edge traversal, cheap defaults, and explicit unavailable behavior
 
 ### Active
 
 - [ ] Extend the current tool surface with the remaining planned code-intel
-  behaviors from `docs/plans/active/code-intel/` M6-M18 without breaking
+  behaviors from `docs/plans/active/code-intel/` M9-M18 without breaking
   existing entry points
 - [ ] Deliver the remaining roadmap phases until Atelier's default
   code/search/edit workflows are near-zero-token, budget-aware, traceable, and
@@ -118,7 +124,10 @@ should be treated as the reference for implementation planning.
 - Phase 2 complete — structural pattern search, symbol-safe edits, usages
   navigation, and the M12 telemetry/validation closeout are now recorded on the
   existing `code` / `edit` surfaces.
-- Next up: Phase 3 — Semantic Recall & Relationship Navigation.
+- Phase 3 complete — semantic search, symbol-linked recall, and routed
+  caller/callee traversal are now recorded on the existing `code` / `memory`
+  surfaces.
+- Next up: Phase 4 — Historical Code Intelligence.
 
 ## Evolution
 
@@ -138,4 +147,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-19 after Phase 2 completion*
+*Last updated: 2026-05-19 after Phase 3 completion*
