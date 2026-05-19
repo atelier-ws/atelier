@@ -189,6 +189,7 @@ def test_tools_list_only_product_tools_without_dev_mode(tmp_path: Path, monkeypa
     assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
 
 
+@pytest.mark.slow  # Spawns a real atelier-mcp subprocess for end-to-end stdio
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
     target = mcp_env / "stdio.txt"
     target.write_text("hello world\n", encoding="utf-8")
