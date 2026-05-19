@@ -674,6 +674,43 @@ def _workspace_root() -> Path:
     return Path(workspace)
 
 
+def _bootstrap_context_status(root: Path) -> dict[str, Any]:
+    from atelier.core.capabilities.code_context import CodeContextEngine
+    from atelier.core.service.bootstrap_context import bootstrap_status, missing_bootstrap_labels
+    from atelier.core.service.jobs import JOB_BOOTSTRAP_CONTEXT
+    from atelier.infra.storage.factory import create_store
+
+    repo_root = _workspace_root().resolve()
+    repo_id = CodeContextEngine(repo_root).repo_id
+    memory_store = _memory_store()
+    state = bootstrap_status(memory_store, repo_id)
+    store = create_store(root)
+    store.init()
+    jobs = [
+        job
+        for job in store.list_jobs(job_type=JOB_BOOTSTRAP_CONTEXT, limit=200)
+        if isinstance(job.get("payload"), dict) and job["payload"].get("repo_id") == repo_id
+    ]
+    queued = False
+    active_job = next((job for job in jobs if job["status"] in {"pending", "running", "failed"}), None)
+    blocking_job = next((job for job in jobs if job["status"] in {"pending", "running", "failed", "dead"}), None)
+    job_id: str | None = None
+    if state != "warm" and blocking_job is None:
+        job_id = store.enqueue_job(
+            JOB_BOOTSTRAP_CONTEXT,
+            {"repo_root": str(repo_root), "repo_id": repo_id},
+        )
+        queued = True
+    status = "warm" if state == "warm" else ("warming" if queued or active_job or job_id else state)
+    return {
+        "repo_id": repo_id,
+        "queued": queued,
+        "job_id": job_id,
+        "status": status,
+        "missing_labels": missing_bootstrap_labels(memory_store, repo_id),
+    }
+
+
 @mcp_tool(name="context", is_dev=True)
 def tool_get_context(
     task: str,
@@ -733,6 +770,7 @@ def tool_get_context(
         )
         _emit_reasonblock_retrieved(scored, domain)
 
+    bootstrap = _bootstrap_context_status(_atelier_root())
     payload = rt.get_context(
         task=task,
         domain=domain,
@@ -745,7 +783,17 @@ def tool_get_context(
         agent_id=agent_id,
         recall=recall,
     )
-    return payload if isinstance(payload, dict) else {"context": payload}
+    result = payload if isinstance(payload, dict) else {"context": payload}
+    if bootstrap["status"] != "warm":
+        import threading
+
+        threading.Thread(
+            target=_run_worker_tick_safe,
+            args=(_atelier_root(),),
+            daemon=True,
+        ).start()
+    result["bootstrap"] = bootstrap
+    return result
 
 
 @mcp_tool(name="route")
