@@ -10,6 +10,7 @@ import pytest
 
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import (
+    TOOLS,
     tool_code,
     tool_smart_edit,
     tool_smart_read,
@@ -134,6 +135,12 @@ def test_tool_code_search_name_first_contract_stays_unchanged(tmp_path: Path, mo
     )
 
 
+def test_tool_code_schema_exposes_additive_repo_filter() -> None:
+    properties = TOOLS["code"]["inputSchema"]["properties"]
+
+    assert "repo" in properties
+
+
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
@@ -255,6 +262,33 @@ def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> N
 def test_tool_code_pattern_requires_pattern(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="pattern is required for code pattern"):
         tool_code({"op": "pattern", "repo_root": str(tmp_path), "dry_run": True})
+
+
+def test_tool_code_workspace_repo_filter_rejects_unsupported_ops(tmp_path: Path) -> None:
+    billing_root = tmp_path.parent / "billing"
+    billing_root.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".atelier").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".atelier" / "workspace.toml").write_text(
+        "\n".join(
+            [
+                "[workspace]",
+                'id = "fixture-workspace"',
+                "",
+                "[[workspace.repos]]",
+                'name = "atelier"',
+                'path = "."',
+                "",
+                "[[workspace.repos]]",
+                'name = "billing"',
+                'path = "../billing"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="repo filter is only supported for workspace search and symbol operations"):
+        tool_code({"op": "outline", "repo_root": str(tmp_path), "repo": "billing", "file_path": "src/config.py"})
 
 
 def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:

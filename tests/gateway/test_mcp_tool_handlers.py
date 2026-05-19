@@ -200,6 +200,38 @@ def _write_bootstrap_fixture_repo(root: Path) -> None:
     )
 
 
+def _write_workspace_fixture_repo(root: Path, *, module_name: str, class_name: str = "SharedConfig") -> None:
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "src" / "config.py").write_text(
+        f"class {class_name}:\n"
+        f"    SOURCE = '{module_name}'\n",
+        encoding="utf-8",
+    )
+
+
+def _write_workspace_fixture_config(workspace_root: Path, sibling_root: Path) -> None:
+    (workspace_root / ".atelier").mkdir(parents=True, exist_ok=True)
+    (workspace_root / ".atelier" / "workspace.toml").write_text(
+        "\n".join(
+            [
+                "[workspace]",
+                'id = "fixture-workspace"',
+                "",
+                "[[workspace.repos]]",
+                'name = "atelier"',
+                'path = "."',
+                "",
+                "[[workspace.repos]]",
+                'name = "billing"',
+                f'path = "{os.path.relpath(sibling_root, workspace_root)}"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 @pytest.fixture()
 def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
@@ -687,6 +719,60 @@ def test_edit_symbol_rejects_external_target_cleanly(store_root: Path, tmp_path:
 
     assert payload["rolled_back"] is True
     assert payload["failed"][0]["error"] == "external_symbol_edit_not_allowed"
+
+
+def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
+    store_root: Path,
+    tmp_path: Path,
+) -> None:
+    _ = store_root
+    billing_root = tmp_path.parent / "billing"
+    _write_workspace_fixture_repo(tmp_path, module_name="atelier")
+    _write_workspace_fixture_repo(billing_root, module_name="billing")
+    _write_workspace_fixture_config(tmp_path, billing_root)
+
+    payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "SharedConfig", "budget_tokens": 4000})
+    billing_only = tool_code(
+        {"op": "search", "repo_root": str(tmp_path), "query": "SharedConfig", "repo": "billing", "budget_tokens": 4000}
+    )
+
+    assert [(item["repo_name"], item["file_path"]) for item in payload["items"]] == [
+        ("atelier", "src/config.py"),
+        ("billing", "src/config.py"),
+    ]
+    assert [item["repo_name"] for item in billing_only["items"]] == ["billing"]
+
+
+def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
+    store_root: Path,
+    tmp_path: Path,
+) -> None:
+    _ = store_root
+    billing_root = tmp_path.parent / "billing"
+    _write_workspace_fixture_repo(tmp_path, module_name="atelier")
+    _write_workspace_fixture_repo(billing_root, module_name="billing")
+    _write_workspace_fixture_config(tmp_path, billing_root)
+    _write_gateway_scip_fixture(
+        billing_root,
+        symbol_id="scip-requests-get",
+        artifact_name="external-python.scip",
+        file_path="external/requests/api.py",
+        symbol_name="get",
+        qualified_name="requests.get",
+        source="def get(url: str) -> str:\n    return url\n",
+    )
+
+    default_symbol = tool_code({"op": "symbol", "repo_root": str(tmp_path), "symbol_name": "SharedConfig"})
+    billing_symbol = tool_code({"op": "symbol", "repo_root": str(tmp_path), "symbol_name": "SharedConfig", "repo": "billing"})
+    external_payload = tool_code(
+        {"op": "search", "repo_root": str(tmp_path), "query": "get", "scope": "external", "repo": "billing"}
+    )
+
+    assert default_symbol["repo_name"] == "atelier"
+    assert billing_symbol["repo_name"] == "billing"
+    assert billing_symbol["qualified_name"] == "SharedConfig"
+    assert external_payload["items"][0]["repo_name"] == "billing"
+    assert external_payload["items"][0]["origin"] == "external"
 
 
 def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
