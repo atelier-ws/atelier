@@ -16,6 +16,7 @@ from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.graph import build_reference_graph
 from atelier.core.capabilities.repo_map.pagerank import personalized_pagerank
 from atelier.core.capabilities.tool_supervision.search_read import search_read, search_read_to_dict
+from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 from atelier.infra.storage.vector import cosine_similarity, generate_embedding
 
 SearchMode = Literal["chunks", "full", "map"]
@@ -205,6 +206,31 @@ def _normalize_scores(scores: dict[str, float]) -> dict[str, float]:
     return {key: value / highest for key, value in scores.items() if math.isfinite(value)}
 
 
+def _search_with_backend(
+    *,
+    repo_root: Path,
+    search_path: Path,
+    query: str,
+    max_files: int,
+    max_chars_per_file: int,
+    include_outline: bool,
+) -> dict[str, Any] | None:
+    supervisor = get_zoekt_supervisor(repo_root)
+    if not supervisor.should_route(search_path):
+        return None
+    health = supervisor.health()
+    if not health.ok:
+        return None
+    result = supervisor.search(
+        query=query,
+        search_path=search_path,
+        max_files=max_files,
+        max_chars_per_file=max_chars_per_file,
+        include_outline=include_outline,
+    )
+    return search_read_to_dict(result)
+
+
 def smart_search(
     *,
     query: str,
@@ -249,14 +275,23 @@ def smart_search(
     else:
         cache = {}
 
-    chunk_result = search_read(
+    payload = _search_with_backend(
+        repo_root=repo_root,
+        search_path=search_path,
         query=query,
-        path=str(search_path),
         max_files=max_files,
         max_chars_per_file=max_chars_per_file,
         include_outline=include_outline,
     )
-    payload = search_read_to_dict(chunk_result)
+    if payload is None:
+        chunk_result = search_read(
+            query=query,
+            path=str(search_path),
+            max_files=max_files,
+            max_chars_per_file=max_chars_per_file,
+            include_outline=include_outline,
+        )
+        payload = search_read_to_dict(chunk_result)
     paths = [str(match.get("path", "")) for match in payload.get("matches", []) if isinstance(match, dict)]
     rel_paths = [
         str(Path(item).resolve().relative_to(repo_root)) if Path(item).resolve().is_relative_to(repo_root) else item
