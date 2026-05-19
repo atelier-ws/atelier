@@ -313,6 +313,118 @@ def _write_rename_history_fixture(repo_root: Path) -> str:
     )
 
 
+def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
+    _init_git_fixture_repo(repo_root)
+    service_path = repo_root / "service.py"
+    service_path.write_text(
+        "def risk_score() -> int:\n"
+        "    value = 1\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    _commit_all(
+        repo_root,
+        "add risk score",
+        author_name="Alice",
+        author_email="alice@example.com",
+        author_date="2025-01-01T00:00:00+00:00",
+    )
+    service_path.write_text(
+        "def risk_score() -> int:\n"
+        "    value = 3\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    indexed_sha = _commit_all(
+        repo_root,
+        "tune risk score",
+        author_name="Bob",
+        author_email="bob@example.com",
+        author_date="2025-04-01T00:00:00+00:00",
+    )
+    service_path.write_text(
+        "def risk_score() -> int:\n"
+        "    value = 5\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    head_sha = _commit_all(
+        repo_root,
+        "finalize risk score",
+        author_name="Carol",
+        author_email="carol@example.com",
+        author_date="2025-05-01T00:00:00+00:00",
+    )
+    return indexed_sha, head_sha
+
+
+def _write_scip_fixture_for_symbol(
+    repo_root: Path,
+    *,
+    file_path: str,
+    symbol_name: str,
+    index_sha: str,
+) -> None:
+    engine = CodeContextEngine(repo_root)
+    source = (repo_root / file_path).read_text(encoding="utf-8")
+    artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "repo_id": engine.repo_id,
+        "language": "python",
+        "index_sha": index_sha,
+        "symbols": [
+            {
+                "symbol_id": f"scip-{symbol_name}",
+                "repo_id": engine.repo_id,
+                "file_path": file_path,
+                "language": "python",
+                "symbol_name": symbol_name,
+                "qualified_name": symbol_name,
+                "kind": "function",
+                "signature": f"def {symbol_name}() -> int:",
+                "start_byte": source.index(f"def {symbol_name}"),
+                "end_byte": len(source.encode("utf-8")),
+                "start_line": 1,
+                "end_line": 3,
+                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                "source": source,
+                "provenance": "scip",
+            }
+        ],
+    }
+    (artifact_dir / "python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+
+def _write_live_temporal_fixture(repo_root: Path) -> None:
+    _init_git_fixture_repo(repo_root)
+    (repo_root / "archived.py").write_text(
+        "def archived_worker() -> int:\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    _commit_all(
+        repo_root,
+        "add archived worker",
+        author_name="Alice",
+        author_email="alice@example.com",
+        author_date="2025-01-01T00:00:00+00:00",
+    )
+    (repo_root / "recent.py").write_text(
+        "def active_worker() -> int:\n"
+        "    return 2\n",
+        encoding="utf-8",
+    )
+    _commit_all(
+        repo_root,
+        "add active worker",
+        author_name="Bob",
+        author_email="bob@example.com",
+        author_date="2025-05-01T00:00:00+00:00",
+    )
+
+
 def test_code_context_indexes_searches_and_retrieves_exact_symbol(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -490,6 +602,59 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(tmp_path: 
 
     assert payload["items"][0]["deleted_at_sha"] == "abc123"
     assert payload["provenance"] == "graveyard"
+
+
+def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    indexed_sha, head_sha = _write_blame_fixture(repo_root)
+    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=indexed_sha)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
+
+    assert payload["error"] == "index_stale"
+    assert payload["hint"] == 'run code op="index" first'
+    assert payload["index_sha"] == indexed_sha
+    assert payload["head_sha"] == head_sha
+    assert payload["freshness"] == "stale"
+
+
+def test_tool_blame_returns_ownership_metadata_with_optional_churn(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    _indexed_sha, head_sha = _write_blame_fixture(repo_root)
+    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=head_sha)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
+    without_churn = engine.tool_blame(query="risk_score", include_churn=False, budget_tokens=4000)
+
+    assert payload["symbol_name"] == "risk_score"
+    assert payload["qualified_name"] == "risk_score"
+    assert payload["last_author"] == "carol@example.com"
+    assert payload["last_commit_sha"] == head_sha
+    assert payload["freshness"] == "fresh"
+    assert payload["churn"]["commit_count"] == 2
+    assert payload["distinct_authors"] == 1
+    assert "churn" not in without_churn or without_churn["churn"] is None
+
+
+def test_tool_search_repo_scope_applies_temporal_filters_after_ranking(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    _write_live_temporal_fixture(repo_root)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+
+    unfiltered = engine.tool_search("worker", scope="repo", limit=5, budget_tokens=4000)
+    filtered = engine.tool_search(
+        "worker",
+        scope="repo",
+        since="2025-04-01",
+        touched_by="bob@example.com",
+        limit=5,
+        budget_tokens=4000,
+    )
+
+    assert {item["file_path"] for item in unfiltered["items"]} == {"archived.py", "recent.py"}
+    assert [item["file_path"] for item in filtered["items"]] == ["recent.py"]
 
 
 def test_budget_packer_drops_optional_keys_first() -> None:
