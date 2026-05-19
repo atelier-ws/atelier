@@ -112,7 +112,8 @@ def _record_trace(atelier_root: Path) -> str:
 
 
 def run_bootstrap_prefetch_bench(work_dir: Path | None = None) -> BootstrapPrefetchBenchResult:
-    bench_root = (work_dir or Path.cwd()) / "code_intel_bootstrap_prefetch"
+    base_dir = work_dir or Path(os.environ.get("TMPDIR") or Path.cwd())
+    bench_root = Path(base_dir) / "code_intel_bootstrap_prefetch"
     repo_root = bench_root / "fixture_repo"
     atelier_root = bench_root / ".atelier"
     _write_fixture_repo(repo_root)
