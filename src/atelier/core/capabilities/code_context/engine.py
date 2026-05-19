@@ -22,6 +22,12 @@ from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
     BudgetPacker,
 )
+from atelier.core.capabilities.code_context.call_graph import (
+    CallGraphDirection,
+    CallGraphNode,
+    build_call_graph_payload,
+    traverse_call_graph,
+)
 from atelier.core.capabilities.code_context.cache import RetrievalCache
 from atelier.core.capabilities.code_context.embedding import (
     SearchMode,
@@ -111,6 +117,8 @@ _PATTERN_ESSENTIAL_KEYS = ["file_path", "line", "column", "end_line", "end_colum
 _PATTERN_OPTIONAL_KEYS = ["snippet"]
 _CACHE_STATUS_ESSENTIAL_KEYS = ["repo_id", "index_version", "entry_count", "entries_by_tool", "total_bytes", "max_bytes"]
 _CACHE_INVALIDATE_ESSENTIAL_KEYS = ["repo_id", "index_version", "invalidated_entries", "entries_by_tool", "scope"]
+_CALL_GRAPH_ESSENTIAL_KEYS = ["target", "direction", "depth", "related", "edges", "data_status", "provenance"]
+_CALL_GRAPH_OPTIONAL_KEYS = ["related_count", "edge_count", "truncated", "message", "snapshot"]
 _CACHE_TOOL_ALIASES = {
     "all": None,
     "search": "code.search",
@@ -119,6 +127,8 @@ _CACHE_TOOL_ALIASES = {
     "context": "code.context",
     "impact": "code.impact",
     "usages": "code.usages",
+    "callers": "code.callers",
+    "callees": "code.callees",
     "pattern": "code.pattern",
 }
 
@@ -604,6 +614,70 @@ class CodeContextEngine:
             self._cache_set("code.usages", cache_args, payload)
         return payload
 
+    def tool_callers(
+        self,
+        query: str | None = None,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        depth: int = 1,
+        limit: int = 20,
+        snapshot: bool = False,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        return self._tool_call_graph(
+            "callers",
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+            kind=kind,
+            language=language,
+            depth=depth,
+            limit=limit,
+            snapshot=snapshot,
+            budget_tokens=budget_tokens,
+            auto_index=auto_index,
+        )
+
+    def tool_callees(
+        self,
+        query: str | None = None,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        depth: int = 1,
+        limit: int = 20,
+        snapshot: bool = False,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        return self._tool_call_graph(
+            "callees",
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+            kind=kind,
+            language=language,
+            depth=depth,
+            limit=limit,
+            snapshot=snapshot,
+            budget_tokens=budget_tokens,
+            auto_index=auto_index,
+        )
+
     def tool_pattern(
         self,
         *,
@@ -1074,7 +1148,8 @@ class CodeContextEngine:
     ) -> dict[str, Any]:
         if auto_index:
             self._ensure_indexed()
-        target = self._resolve_reference_target(
+        target = self._resolve_symbol_target(
+            operation_name="usages",
             query=query,
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -1126,6 +1201,89 @@ class CodeContextEngine:
             optional_keys_in_drop_order=_USAGES_OPTIONAL_KEYS,
             build_payload=build_payload,
         )
+
+    def _tool_call_graph(
+        self,
+        direction: CallGraphDirection,
+        *,
+        query: str | None = None,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        depth: int = 1,
+        limit: int = 20,
+        snapshot: bool = False,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        self._sync_symbol_intel()
+        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        bounded_depth = max(1, depth)
+        cache_args = {
+            "direction": direction,
+            "query": query,
+            "symbol_id": symbol_id,
+            "qualified_name": qualified_name,
+            "symbol_name": symbol_name,
+            "file_path": normalized_file_path,
+            "kind": kind,
+            "language": language,
+            "depth": bounded_depth,
+            "limit": limit,
+            "snapshot": snapshot,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get(f"code.{direction}", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+        target = self._resolve_symbol_target(
+            operation_name=direction,
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=normalized_file_path,
+            kind=kind,
+            language=language,
+            file_glob=None,
+        )
+        if target.get("error"):
+            return self._pack_single_payload(
+                target,
+                budget_tokens=budget_tokens,
+                essential_keys=["error", "message", "matches", "cache_hit", "provenance"],
+                optional_keys_in_drop_order=["provenance_breakdown"],
+            )
+        lookup = self.intel_store.find_callers if direction == "callers" else self.intel_store.find_callees
+        traversal = traverse_call_graph(
+            target,
+            direction=direction,
+            depth=bounded_depth,
+            limit=limit,
+            snapshot=snapshot,
+            lookup_neighbors=lambda current_symbol_id: lookup(symbol_id=current_symbol_id),
+        )
+        payload = build_call_graph_payload(
+            target,
+            direction=direction,
+            depth=bounded_depth,
+            result=traversal,
+        )
+        payload["provenance"] = str(target.get("provenance") or _LOCAL_PROVENANCE)
+        packed = self._pack_single_payload(
+            payload,
+            budget_tokens=budget_tokens,
+            essential_keys=_CALL_GRAPH_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_CALL_GRAPH_OPTIONAL_KEYS,
+        )
+        if "error" not in packed:
+            self._cache_set(f"code.{direction}", cache_args, packed)
+        return packed
 
     def impact(self, file_path: str, *, auto_index: bool = True) -> ImpactResult:
         """Approximate import blast radius and dead-code candidates for a file."""
@@ -1655,9 +1813,10 @@ class CodeContextEngine:
         ]
         return {key: payload[key] for key in keys if key in payload}
 
-    def _resolve_reference_target(
+    def _resolve_symbol_target(
         self,
         *,
+        operation_name: str,
         query: str | None,
         symbol_id: str | None,
         qualified_name: str | None,
@@ -1666,7 +1825,7 @@ class CodeContextEngine:
         kind: str | None,
         language: str | None,
         file_glob: str | None,
-    ) -> dict[str, Any]:
+        ) -> dict[str, Any]:
         if symbol_id or qualified_name or (symbol_name and file_path):
             try:
                 return self.get_symbol(
@@ -1685,7 +1844,9 @@ class CodeContextEngine:
                 }
         target_query = query or qualified_name or symbol_name
         if not target_query:
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
+            raise ValueError(
+                f"query, symbol_id, qualified_name, or symbol_name is required for code {operation_name}"
+            )
         candidates = self.search_symbols(
             target_query,
             limit=20,
@@ -1716,7 +1877,7 @@ class CodeContextEngine:
         if len(deduped) > 1:
             return {
                 "error": "disambiguation_required",
-                "message": "multiple symbols match the usages query",
+                "message": f"multiple symbols match the {operation_name} query",
                 "matches": [
                     {
                         "symbol_id": candidate.symbol_id,
@@ -1799,7 +1960,7 @@ class CodeContextEngine:
         qualified_name: str | None = None,
         file_path: str | None = None,
         symbol_name: str | None = None,
-    ) -> None:
+    ) -> list[CallGraphNode] | None:
         del symbol_id, qualified_name, file_path, symbol_name
         return None
 
@@ -1810,7 +1971,7 @@ class CodeContextEngine:
         qualified_name: str | None = None,
         file_path: str | None = None,
         symbol_name: str | None = None,
-    ) -> None:
+    ) -> list[CallGraphNode] | None:
         del symbol_id, qualified_name, file_path, symbol_name
         return None
 
