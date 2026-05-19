@@ -455,6 +455,84 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(tmp_path: Path,
     )
 
 
+def test_tool_code_blame_is_an_additive_extension_to_code_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_blame.return_value = {
+        "symbol_name": "risk_score",
+        "qualified_name": "risk_score",
+        "file_path": "service.py",
+        "freshness": "fresh",
+        "last_author": "carol@example.com",
+        "last_commit_sha": "abc123",
+        "distinct_authors": 2,
+        "local_edits": False,
+        "cache_hit": False,
+        "provenance": "blame",
+        "tokens_saved": 10,
+        "total_tokens": 120,
+    }
+    fake_engine.tool_search.return_value = {
+        "items": [{"symbol_name": "OrderService", "file_path": "src/orders.py", "provenance": "local"}],
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 8,
+        "total_tokens": 90,
+        "mode": "auto",
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    blame = tool_code({"op": "blame", "repo_root": str(tmp_path), "query": "risk_score", "budget_tokens": 220})
+    search = tool_code(
+        {
+            "op": "search",
+            "repo_root": str(tmp_path),
+            "query": "OrderService",
+            "include_churn": False,
+            "budget_tokens": 220,
+        }
+    )
+
+    assert sorted(blame.keys()) == [
+        "cache_hit",
+        "distinct_authors",
+        "file_path",
+        "freshness",
+        "last_author",
+        "last_commit_sha",
+        "local_edits",
+        "provenance",
+        "qualified_name",
+        "symbol_name",
+        "tokens_saved",
+        "total_tokens",
+    ]
+    assert blame["provenance"] == "blame"
+    assert search["provenance"] == "local"
+    fake_engine.tool_blame.assert_called_once_with(
+        query="risk_score",
+        symbol_id=None,
+        qualified_name=None,
+        symbol_name=None,
+        file_path=None,
+        include_churn=True,
+        budget_tokens=220,
+    )
+    fake_engine.tool_search.assert_called_once_with(
+        "OrderService",
+        limit=20,
+        mode="auto",
+        kind=None,
+        language=None,
+        snippet="none",
+        snippet_lines=8,
+        file_glob=None,
+        scope="repo",
+        budget_tokens=220,
+    )
+
+
 def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
