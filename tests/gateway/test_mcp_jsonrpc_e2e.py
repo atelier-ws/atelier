@@ -494,6 +494,39 @@ def test_edit_atomic_rollback_e2e(mcp_env: Path) -> None:
     assert good.read_text(encoding="utf-8") == "original\n"
 
 
+def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
+    target = mcp_env / "service.py"
+    target.write_text(
+        "class AuthService:\n"
+        "    def verify(self, token: str) -> bool:\n"
+        "        return token == 'ok'\n",
+        encoding="utf-8",
+    )
+
+    payload = _payload(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "kind": "symbol",
+                        "name": "AuthService.verify",
+                        "mode": "replace",
+                        "new_body": (
+                            "def verify(self, token: str) -> bool:\n"
+                            "    return token.startswith('ok')"
+                        ),
+                    }
+                ]
+            },
+        )
+    )
+
+    assert payload["failed"] == []
+    assert payload["applied"][0]["kind"] == "symbol"
+    assert "startswith('ok')" in target.read_text(encoding="utf-8")
+
+
 def test_sql_actions_e2e(mcp_env: Path) -> None:
     db_path = mcp_env / "data.db"
     conn = sqlite3.connect(db_path)
