@@ -742,7 +742,9 @@ class AtelierRuntimeCore:
         emit_product(
             "value_estimate",
             tokens_saved_estimate=int(supervision.get("token_savings", 0) or 0),
-            cache_hits=int(supervision.get("cache_hits", 0) or 0),
+            cache_hits=int(supervision.get("avoided_tool_calls", 0) or 0),
+            total_tool_calls=int(supervision.get("total_tool_calls", 0) or 0),
+            cache_hit_rate=float(supervision.get("cache_hit_rate", 0.0) or 0.0),
             blocks_applied=files_cached,
         )
         return {
