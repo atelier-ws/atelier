@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-05-19T08:09:03+02:00"
-last_activity: 2026-05-19 -- Phase 02 Plan 03 complete
+status: verifying
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-05-19T08:29:03+02:00"
+last_activity: 2026-05-19 -- Phase 02 Plan 04 complete
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 14
 ---
 
@@ -25,18 +25,18 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 
 ## Current Position
 
-Phase: 02 (structural-discovery-symbol-safe-change-flows) — EXECUTING
-Plan: 4 of 4
-Status: Phase 02 executing after Plan 03 closeout; only usages and final M12 follow-through remain
-Last activity: 2026-05-19 -- Phase 02 Plan 03 complete
+Phase: 02 (structural-discovery-symbol-safe-change-flows) — VERIFYING
+Plan: complete (4 of 4)
+Status: Phase 02 ready for verification after Plan 04 closeout
+Last activity: 2026-05-19 -- Phase 02 Plan 04 complete
 
-Progress: [███████░░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -45,7 +45,7 @@ Progress: [███████░░░] 75%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | - | - |
-| 02 | 3 | - | - |
+| 02 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -59,6 +59,7 @@ Progress: [███████░░░] 75%
 | Phase 02 P01 | 55min | 3 tasks | 12 files |
 | Phase 02 P02 | 22min | 2 tasks | 11 files |
 | Phase 02 P03 | inline | 3 tasks | 9 files |
+| Phase 02 P04 | inline | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,7 @@ Recent decisions affecting current work:
 - [Phase 02]: Resolve ast-grep availability through env override, exact binary discovery, then pinned managed bootstrap before returning `tool_unavailable`.
 - [Phase 02]: Treat M12 as a partial close only until Plans 02-03 and 02-04 complete symbol-edit and usages follow-through validation.
 - [Phase 02]: Use the file's exact line-span text rather than the dedented symbol payload when applying symbol replacements through rich edit.
+- [Phase 02]: Missing routed usage data falls back explicitly to treesitter references instead of grep/text-search behavior.
 
 ### Pending Todos
 
