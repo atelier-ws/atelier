@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -16,6 +14,7 @@ from typing import Any
 from atelier.core.foundation.models import Trace
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.adapters.mcp_server import tool_smart_search
+from atelier.infra.code_intel.zoekt.adapter import reset_zoekt_supervisors
 
 
 @dataclass(frozen=True)
@@ -61,33 +60,25 @@ def _workspace_env(workspace_root: Path, atelier_root: Path) -> Iterator[None]:
             if value is None:
                 os.environ.pop(name, None)
             else:
-                os.environ[name] = value
+                os.environ[name] = str(value)
 
 
 @contextmanager
 def _env_override(**values: str) -> Iterator[None]:
-    prior = {name: os.environ.get(name) for name in values}
+    prior = [(name, os.environ.get(name)) for name in values]
     for name, value in values.items():
         os.environ[name] = value
     try:
         yield
     finally:
-        for name, value in prior.items():
-            if value is None:
+        for name, previous_value in prior:
+            if previous_value is None:
                 os.environ.pop(name, None)
             else:
-                os.environ[name] = value
+                os.environ[name] = previous_value
 
 
-def _write_fake_binary(root: Path) -> tuple[Path, str]:
-    payload = b"#!/bin/sh\nexit 0\n"
-    binary_path = root / "zoekt-webserver"
-    binary_path.write_bytes(payload)
-    binary_path.chmod(0o755)
-    return binary_path, hashlib.sha256(payload).hexdigest()
-
-
-def _write_fixture_repo(repo_root: Path, *, files: int = 180, lines_per_file: int = 120) -> None:
+def _write_fixture_repo(repo_root: Path, *, files: int = 1500, lines_per_file: int = 300) -> None:
     src = repo_root / "src"
     src.mkdir(parents=True, exist_ok=True)
     target_line = "def zoekt_target() -> str: return 'needle token benchmark target'\n"
@@ -131,7 +122,17 @@ def _record_trace(atelier_root: Path, *, speedup_ratio: float, backend: str) -> 
 
 
 def _search_payload(repo_root: Path, *, query: str, budget_tokens: int) -> dict[str, Any]:
-    return tool_smart_search({"query": query, "path": str(repo_root), "budget_tokens": budget_tokens})
+    return dict(
+        tool_smart_search(
+            {
+                "query": query,
+                "path": str(repo_root),
+                "budget_tokens": budget_tokens,
+                "max_files": 1,
+                "include_outline": False,
+            }
+        )
+    )
 
 
 def run_zoekt_bench(
@@ -144,18 +145,15 @@ def run_zoekt_bench(
     repo_root = bench_root / "fixture_repo"
     atelier_root = bench_root / ".atelier"
     _write_fixture_repo(repo_root)
-    binary_path, sha256 = _write_fake_binary(bench_root)
+    reset_zoekt_supervisors()
     with _workspace_env(repo_root, atelier_root):
         with _env_override(ATELIER_ZOEKT_LOC_THRESHOLD="99999999"):
             baseline_latency_ns, baseline_payload = _measure_average_ns(
                 lambda: _search_payload(repo_root, query=query, budget_tokens=budget_tokens),
                 iterations=3,
             )
-        with _env_override(
-            ATELIER_ZOEKT_LOC_THRESHOLD="20",
-            ATELIER_ZOEKT_BIN=str(binary_path),
-            ATELIER_ZOEKT_BIN_SHA256=sha256,
-        ):
+        reset_zoekt_supervisors()
+        with _env_override(ATELIER_ZOEKT_LOC_THRESHOLD="20"):
             _search_payload(repo_root, query=query, budget_tokens=budget_tokens)
             warm_latency_ns, zoekt_payload = _measure_average_ns(
                 lambda: _search_payload(repo_root, query=query, budget_tokens=budget_tokens),
