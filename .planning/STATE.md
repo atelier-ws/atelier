@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Phase 05 Plan 02 ready to execute after 05-01 option-a ratification
-last_updated: "2026-05-19T19:26:03.298Z"
-last_activity: 2026-05-19 -- 05-01 completed with ratified option-a; 05-02 is unblocked as written
+stopped_at: Phase 05 Plan 02 remains pending after 05-03 M17 completion
+last_updated: "2026-05-19T19:40:33.302Z"
+last_activity: 2026-05-19 -- 05-03 completed with M17 literal-edge trace evidence; 05-02 remains pending
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 17
-  completed_plans: 15
-  percent: 88
+  completed_plans: 16
+  percent: 94
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 ## Current Position
 
 Phase: 05 (scale-decision-and-extended-retrieval-reach) — IN PROGRESS
-Plan: 05-01 complete; 05-02 may proceed as written and 05-03 remains pending
-Status: Maintainer ratified `option-a`, so the M18 gate is closed and the search-only Zoekt path is the accepted Phase 5 backend direction
-Last activity: 2026-05-19 -- 05-01 completed with ratified option-a; 05-02 is unblocked as written
+Plan: 05-01 and 05-03 complete; 05-02 may proceed as written and is the only remaining Phase 5 plan
+Status: M17 literal-only cross-language edges are complete with recorded trace evidence, while the search-only Zoekt decision from 05-01 still governs the remaining Phase 5 work
+Last activity: 2026-05-19 -- 05-03 completed with M17 literal-edge trace evidence; 05-02 remains pending
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -68,6 +68,7 @@ Progress: [█████████░] 88%
 | Phase 04 P03 | 2 min | 2 tasks | 6 files |
 | Phase 04 P04 | inline | 3 tasks | 10 files |
 | Phase 05 P01 | inline | 3 tasks | 5 files |
+| Phase 05 P03 | inline | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Limit M17 to literal-only static cross-language edges surfaced additively on `code op="symbol"` and `code op="usages"`.
 - [Phase 05]: Ratified option-a: Zoekt standalone serves search workloads only. — This preserves the search-first integration surface and unblocks 05-02 as written.
 - [Phase 05]: Keep lifecycle ownership in a session-scoped search backend supervisor. — The scale backend must remain outside per-call CodeContextEngine rebuilds.
+- [Phase 05]: Keep cross-language resolver logic under `infra/code_intel/cross_lang/` and limit `engine.py` to typed hydration plus optional-key preservation.
+- [Phase 05]: Surface `cross_lang_refs`, `edge_kind`, and `confidence` additively so cross-language evidence never replaces local or routed references.
+- [Phase 05]: Close M17 with a fixture benchmark and recorded trace evidence on the shipped `code op="symbol"` and `code op="usages"` paths.
 
 ### Pending Todos
 
@@ -135,6 +139,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T19:26:03.298Z
-Stopped at: Phase 05 Plan 02 ready to execute after 05-01 option-a ratification
+Last session: 2026-05-19T19:40:33.292Z
+Stopped at: Phase 05 Plan 02 remains pending after 05-03 M17 completion
 Resume file: .planning/phases/05-scale-decision-and-extended-retrieval-reach/05-02-PLAN.md
