@@ -11,7 +11,7 @@ from time import perf_counter_ns
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import tool_code, tool_smart_read, tool_smart_search
-from benchmarks.code_intel.symbol_search_bench import run_symbol_search_bench
+from benchmarks.code_intel.symbol_search_bench import run_semantic_symbol_search_bench, run_symbol_search_bench
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -118,6 +118,26 @@ def test_symbol_search_bench_result_is_json_serializable(tmp_path: Path) -> None
 
     assert reloaded["cached_cache_hit"] is True
     assert reloaded["uncached_provenance"] == "local"
+
+
+def test_semantic_symbol_search_bench_meets_m6_ndcg_gate(tmp_path: Path) -> None:
+    result = run_semantic_symbol_search_bench(tmp_path)
+
+    assert result.semantic_ndcg_at_5 >= 0.7
+    assert result.hybrid_ndcg_at_5 >= 0.7
+    assert all(
+        int(mode_result["total_tokens"]) <= result.budget_tokens
+        for fixture in result.fixtures
+        for mode_result in fixture["modes"].values()
+        if mode_result["total_tokens"] is not None
+    )
+
+
+def test_semantic_symbol_search_bench_preserves_exact_identifier_regression_gate(tmp_path: Path) -> None:
+    payload = run_semantic_symbol_search_bench(tmp_path).to_dict()
+
+    assert payload["lexical_exact_identifier_first"] is True
+    assert payload["hybrid_ndcg_at_5"] >= payload["lexical_ndcg_at_5"]
 
 
 def test_scip_vs_local_latency_ratio_min_100x(tmp_path: Path) -> None:
