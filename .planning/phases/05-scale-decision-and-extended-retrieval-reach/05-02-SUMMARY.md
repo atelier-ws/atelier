@@ -12,7 +12,7 @@ provides:
   - M16 public-search benchmark evidence and recorded trace
 affects: [Phase 06, search, benchmarks, validation]
 tech-stack:
-  added: [local Zoekt-compatible HTTP seam]
+  added: [managed official Zoekt runtime]
   patterns: [session-scoped backend supervisor, additive search metadata, warm-path benchmark validation]
 key-files:
   created:
@@ -45,7 +45,7 @@ completed: 2026-05-19
 
 # Phase 5 Plan 02: Validated large-repo backend routing for search workloads Summary
 
-**Large-repo smart_search now routes through a session-scoped Zoekt backend with additive provenance metadata and a recorded M16 warm-path benchmark trace.**
+**Large-repo smart_search now routes through a session-scoped real Zoekt backend with additive provenance metadata and a recorded M16 warm-path benchmark trace.**
 
 ## Performance
 
@@ -56,7 +56,7 @@ completed: 2026-05-19
 - **Files modified:** 14
 
 ## Accomplishments
-- Added a pinned-binary Zoekt runtime seam with local-only health, lifecycle reuse, and byte-range-aware client payloads.
+- Added a managed real Zoekt runtime seam with pinned image provenance, lifecycle reuse, and byte-range-aware client payloads.
 - Routed large-repo text search through the existing smart_search stack with fallback for small repos or unhealthy backend state.
 - Added an M16 benchmark plus validation-matrix coverage and recorded trace `20260519T195519-gsd-executor-8d67f874`.
 
@@ -69,8 +69,8 @@ Each task was committed atomically:
 3. **Task 3: Add the public-search scale benchmark and validation evidence** - `3d71881` (feat)
 
 ## Files Created/Modified
-- `src/atelier/infra/code_intel/zoekt/binary.py` - resolves checksum-verified pinned binary paths for the local backend seam.
-- `src/atelier/infra/code_intel/zoekt/server.py` - owns the local-only HTTP lifecycle and health endpoint reused per workspace.
+- `src/atelier/infra/code_intel/zoekt/binary.py` - resolves the pinned managed Zoekt image and records runtime provenance in `.atelier/bin/MANIFEST.json`.
+- `src/atelier/infra/code_intel/zoekt/server.py` - owns the managed runtime lifecycle, filtered workspace mirror, and host bridge reused per workspace.
 - `src/atelier/infra/code_intel/zoekt/client.py` - maps backend responses into byte-range-preserving client matches.
 - `src/atelier/infra/code_intel/zoekt/indexer.py` - builds the warm in-memory index used by routed large-repo searches.
 - `src/atelier/infra/code_intel/zoekt/adapter.py` - adds threshold, health, and fallback routing for the search stack.
@@ -115,6 +115,6 @@ None.
 
 ## Next Phase Readiness
 - Phase 5 is fully complete and Phase 6 can build on the search-backend supervisor and validation patterns established here.
-- Operators still need a real pinned Zoekt binary or manifest entry outside tests for non-fixture runtime activation.
+- The managed runtime now activates in a normal checkout with no manual `ATELIER_ZOEKT_BIN*` setup.
 
 ## Self-Check: PASSED
