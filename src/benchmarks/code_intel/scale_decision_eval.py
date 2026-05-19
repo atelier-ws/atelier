@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from typing import Literal
 
@@ -222,6 +223,47 @@ def select_recommended_candidate(report: EvaluationReport) -> CandidateRow:
     return max(report.rows, key=lambda row: row.score)
 
 
+def render_checkpoint_appendix(report: EvaluationReport, *, date: str, evaluator: str) -> str:
+    selected = report.rows_by_key[report.decision.selected_candidate_key]
+    selected_title = {
+        "zoekt-standalone": "Zoekt standalone",
+        "src-cli": "`src` CLI",
+        "sourcegraph-self-hosted": "Sourcegraph self-hosted",
+        "scip-mcp": "external `scip-mcp` integration",
+    }.get(selected.key, selected.label)
+    lines = [
+        "## Evaluation memo",
+        "",
+        f"> **Date:** {date}",
+        f"> **Evaluator:** {evaluator}",
+        "",
+        "### Findings",
+        "",
+        _render_matrix_table(report.rows),
+        "",
+        "### Repo-specific Phase 5 answers",
+        "",
+        f"- `search_scope`: `{report.decision.search_scope}`",
+        f"- `result_shape`: `{report.decision.result_shape}`",
+        f"- `lifecycle_owner`: `{report.decision.lifecycle_owner}`",
+        f"- `selected_option`: `{report.decision.selected_option_id}`",
+        "- `code op=\"search\"` remains on the existing local/SCIP/semantic name-first path until a later adapter proves symbol-shape parity.",
+        "",
+        "### Decision",
+        "",
+        f"**Selected approach:** Proceed with {selected_title} for `{report.decision.search_scope}` workloads only",
+        "",
+        f"**Rationale:** {report.decision.rationale}",
+        "",
+        f"**05-02 status:** {'may proceed as written' if report.decision.keeps_05_02_as_written else 'must be replanned before implementation'}",
+        "",
+        f"**Risks:** {report.decision.risks}",
+        "",
+        "Any non-`option-a` winner would require replacing `05-02-PLAN.md` before backend work starts.",
+    ]
+    return "\n".join(lines)
+
+
 def _evaluate_candidate(spec: CandidateSpec) -> CandidateRow:
     score = sum(1 for criterion in CRITERIA if spec.criteria[criterion])
     return CandidateRow(
@@ -236,6 +278,22 @@ def _evaluate_candidate(spec: CandidateSpec) -> CandidateRow:
         keeps_05_02_as_written=spec.keeps_05_02_as_written,
         selected_option_id=spec.selected_option_id,
     )
+
+
+def _render_matrix_table(rows: tuple[CandidateRow, ...]) -> str:
+    rendered = [
+        "| Candidate | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | Score | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        rendered.append(
+            "| "
+            + row.label
+            + " | "
+            + " | ".join("✅" if row.criteria[criterion] else "❌" for criterion in CRITERIA)
+            + f" | {row.score}/9 | {'✅' if row.passes else '❌'} |"
+        )
+    return "\n".join(rendered)
 
 
 def _placeholder_decision() -> DecisionSummary:
@@ -253,6 +311,14 @@ def _placeholder_decision() -> DecisionSummary:
     )
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", default="2026-05-19")
+    parser.add_argument("--evaluator", default="Copilot")
+    args = parser.parse_args()
+    print(render_checkpoint_appendix(evaluate_default_candidates(), date=args.date, evaluator=args.evaluator))
+
+
 __all__ = [
     "CRITERIA",
     "CandidateRow",
@@ -261,5 +327,10 @@ __all__ = [
     "PASSING_SCORE",
     "RepoAnswers",
     "evaluate_default_candidates",
+    "render_checkpoint_appendix",
     "select_recommended_candidate",
 ]
+
+
+if __name__ == "__main__":
+    main()
