@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Awaiting Phase 04 human approval
-last_updated: "2026-05-19T13:35:00Z"
-last_activity: 2026-05-19 -- Phase 04 automated verification cleared; human/UAT approval is now the only remaining gate
+status: executing
+stopped_at: Completed Phase 04
+last_updated: "2026-05-19T13:40:00Z"
+last_activity: 2026-05-19 -- Phase 04 completed after recorded human approval
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
   completed_plans: 14
-  percent: 43
+  percent: 57
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19)
 
 **Core value:** Agents can find and change code through budget-aware, precomputed intelligence with near-zero token overhead by default.
-**Current focus:** Phase 04 — historical-code-intelligence
+**Current focus:** Phase 05 — scale-decision-and-extended-retrieval-reach
 
 ## Current Position
 
-Phase: 04 (historical-code-intelligence) — HUMAN REVIEW PENDING
-Plan: 04-01 through 04-04 complete; awaiting Phase 04 human/UAT approval
-Status: Phase 04 automated verification is complete; only manual/UAT gates remain
-Last activity: 2026-05-19 -- Phase 04 automated verification cleared; human/UAT approval is now the only remaining gate
+Phase: 05 (scale-decision-and-extended-retrieval-reach) — READY
+Plan: 04 complete; 05-01 next
+Status: Phase 04 complete; Phase 5 checkpoint planning is next
+Last activity: 2026-05-19 -- Phase 04 completed after recorded human approval
 
 Progress: [██████████] 100%
 
