@@ -6,16 +6,17 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+from atelier.infra.code_intel.zoekt.adapter import reset_zoekt_supervisors
 from atelier.infra.code_intel.zoekt.binary import discover_zoekt_binary
 from atelier.infra.code_intel.zoekt.client import ZoektClient
-from atelier.infra.code_intel.zoekt.server import get_zoekt_server, reset_zoekt_servers
+from atelier.infra.code_intel.zoekt.server import get_zoekt_server
 
 
 @pytest.fixture(autouse=True)
 def _reset_supervisors() -> None:
-    reset_zoekt_servers()
+    reset_zoekt_supervisors()
     yield
-    reset_zoekt_servers()
+    reset_zoekt_supervisors()
 
 
 def _write_fixture_repo(repo_root: Path) -> None:
