@@ -102,6 +102,11 @@ class ScipSymbolIntelProvider:
                 return payload
         return None
 
+    def index_sha(self) -> str | None:
+        for artifact in self._artifacts:
+            return artifact.index_sha
+        return None
+
     def find_references(
         self,
         *,

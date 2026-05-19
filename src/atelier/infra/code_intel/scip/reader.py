@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from atelier.core.capabilities.code_context.call_graph import CallGraphNode
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 _MAX_SCIP_ARTIFACT_BYTES = 10 * 1024 * 1024
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class ScipArtifactError(ValueError):
@@ -24,6 +26,7 @@ class LoadedScipArtifact:
     """Parsed SCIP artifact indexes for fast routed symbol lookups."""
 
     path: Path
+    index_sha: str
     symbols: tuple[SymbolRecord, ...]
     symbol_payloads: dict[str, dict[str, Any]]
     reference_payloads: dict[str, tuple[UsageReference, ...]]
@@ -183,6 +186,9 @@ class ScipArtifactReader:
             raise ScipArtifactError(f"invalid SCIP artifact: {path}") from exc
         if not isinstance(payload, dict):
             raise ScipArtifactError(f"unexpected SCIP payload shape: {path}")
+        index_sha = payload.get("index_sha")
+        if not isinstance(index_sha, str) or not _GIT_SHA_RE.fullmatch(index_sha):
+            raise ScipArtifactError(f"missing or invalid index_sha in SCIP artifact: {path}")
         symbols_payload = payload.get("symbols")
         if not isinstance(symbols_payload, list):
             raise ScipArtifactError(f"missing symbols in SCIP artifact: {path}")
@@ -214,6 +220,7 @@ class ScipArtifactReader:
             symbols.append(symbol)
             symbol_payloads[symbol.symbol_id] = {
                 **symbol.model_dump(mode="json"),
+                "index_sha": index_sha,
                 "source": source or self._source_from_repo(symbol),
             }
         for raw_symbol_id, raw_references in references_payload.items():
@@ -253,6 +260,7 @@ class ScipArtifactReader:
             callees_available = True
         return LoadedScipArtifact(
             path=path,
+            index_sha=index_sha,
             symbols=tuple(symbols),
             symbol_payloads=symbol_payloads,
             reference_payloads=reference_payloads,
