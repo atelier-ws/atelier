@@ -1,4 +1,4 @@
-"""Pinned binary discovery for the local Zoekt seam."""
+"""Managed runtime discovery for the Zoekt search seam."""
 
 from __future__ import annotations
 
@@ -13,18 +13,20 @@ from typing import Any, cast
 
 _ENV_VAR = "ATELIER_ZOEKT_BIN"
 _SHA_ENV_VAR = "ATELIER_ZOEKT_BIN_SHA256"
-_EXPECTED_BINARY = "zoekt-webserver"
+_DOCKER_BINARY = "docker"
 
 
 @dataclass(frozen=True)
 class ZoektBinaryResolution:
-    """Structured Zoekt binary resolution status."""
+    """Structured Zoekt runtime resolution status."""
 
     available: bool
     path: Path | None = None
     source: str | None = None
     checked: tuple[str, ...] = ()
     reason: str | None = None
+    runtime: str = "binary"
+    image_ref: str | None = None
 
 
 def _is_executable(path: Path) -> bool:
@@ -64,55 +66,42 @@ def _load_manifest(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _managed_candidate(repo_root: Path) -> tuple[Path | None, str | None]:
+def _managed_candidate(repo_root: Path) -> tuple[str | None, str | None]:
     payload = _load_manifest(_manifest_path(repo_root))
     zoekt = payload.get("zoekt")
     if not isinstance(zoekt, dict):
         return None, None
-    binary_path = zoekt.get("binary_path")
-    sha256 = zoekt.get("sha256")
-    if not isinstance(binary_path, str) or not isinstance(sha256, str):
+    image_ref = zoekt.get("image_ref")
+    version = zoekt.get("version")
+    if not isinstance(image_ref, str) or not isinstance(version, str):
         return None, None
-    return (repo_root / binary_path).resolve(), sha256
+    return image_ref, version
 
 
-def _managed_install_path(repo_root: Path) -> Path:
-    return repo_root / ".atelier" / "bin" / "zoekt-webserver"
-
-
-def _write_manifest(repo_root: Path, *, binary_path: Path, sha256: str, version: str) -> None:
+def _write_manifest(repo_root: Path, *, image_ref: str, version: str) -> None:
     manifest_path = _manifest_path(repo_root)
     payload = _load_manifest(manifest_path)
     payload["zoekt"] = {
-        "binary_path": str(binary_path.relative_to(repo_root).as_posix()),
-        "sha256": sha256,
+        "image_ref": image_ref,
         "version": version,
         "source": "managed",
+        "runtime": "docker",
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _provision_managed_candidate(repo_root: Path) -> tuple[Path, str] | None:
+def _provision_managed_candidate(repo_root: Path) -> tuple[str, str] | None:
     versions = _load_versions()
     zoekt = versions.get("zoekt")
     if not isinstance(zoekt, dict):
         return None
     version = zoekt.get("version")
-    if not isinstance(version, str) or not version.strip():
+    image_ref = zoekt.get("image_ref")
+    if not isinstance(version, str) or not version.strip() or not isinstance(image_ref, str) or not image_ref.strip():
         return None
-    install_path = _managed_install_path(repo_root)
-    install_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = (
-        "#!/bin/sh\n"
-        f"# Atelier managed Zoekt shim {version}\n"
-        "exit 0\n"
-    ).encode("utf-8")
-    install_path.write_bytes(payload)
-    install_path.chmod(0o755)
-    sha256 = hashlib.sha256(payload).hexdigest()
-    _write_manifest(repo_root, binary_path=install_path, sha256=sha256, version=version)
-    return install_path, sha256
+    _write_manifest(repo_root, image_ref=image_ref, version=version)
+    return image_ref, version
 
 
 def _validate(path: Path, expected_sha256: str | None) -> bool:
@@ -124,7 +113,7 @@ def _validate(path: Path, expected_sha256: str | None) -> bool:
 
 
 def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
-    """Resolve a pinned Zoekt binary via env override or managed manifest."""
+    """Resolve a pinned Zoekt runtime via env override or managed manifest."""
 
     root = Path(repo_root).resolve()
     checked: list[str] = []
@@ -140,6 +129,7 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
                 path=resolved,
                 source="env",
                 checked=tuple(checked),
+                runtime="binary",
             )
         return ZoektBinaryResolution(
             available=False,
@@ -147,45 +137,39 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
             reason=f"{_ENV_VAR} did not resolve to an executable with a matching {_SHA_ENV_VAR}",
         )
 
-    system_candidate = shutil.which(_EXPECTED_BINARY)
-    if system_candidate:
-        checked.append(system_candidate)
-        resolved = Path(system_candidate).resolve()
-        if _validate(resolved, os.environ.get(_SHA_ENV_VAR)):
-            return ZoektBinaryResolution(
-                available=True,
-                path=resolved,
-                source="system",
-                checked=tuple(checked),
-            )
+    docker_binary = shutil.which(_DOCKER_BINARY)
+    if docker_binary:
+        checked.append(docker_binary)
 
-    managed_path, managed_sha256 = _managed_candidate(root)
-    if managed_path is not None:
-        checked.append(str(managed_path))
-        if _validate(managed_path, managed_sha256):
-            return ZoektBinaryResolution(
-                available=True,
-                path=managed_path,
-                source="managed",
-                checked=tuple(checked),
-            )
+    managed_image, managed_version = _managed_candidate(root)
+    if managed_image is not None and managed_version is not None and docker_binary:
+        checked.append(managed_image)
+        return ZoektBinaryResolution(
+            available=True,
+            path=Path(docker_binary).resolve(),
+            source="managed",
+            checked=tuple(checked),
+            runtime="docker",
+            image_ref=managed_image,
+        )
 
     provisioned = _provision_managed_candidate(root)
-    if provisioned is not None:
-        provisioned_path, provisioned_sha256 = provisioned
-        checked.append(str(provisioned_path))
-        if _validate(provisioned_path, provisioned_sha256):
-            return ZoektBinaryResolution(
-                available=True,
-                path=provisioned_path,
-                source="managed",
-                checked=tuple(checked),
-            )
+    if provisioned is not None and docker_binary:
+        provisioned_image, _provisioned_version = provisioned
+        checked.append(provisioned_image)
+        return ZoektBinaryResolution(
+            available=True,
+            path=Path(docker_binary).resolve(),
+            source="managed",
+            checked=tuple(checked),
+            runtime="docker",
+            image_ref=provisioned_image,
+        )
 
     return ZoektBinaryResolution(
         available=False,
         checked=tuple(checked),
-        reason="zoekt binary could not be verified from env override, system path, or managed bootstrap",
+        reason="zoekt runtime could not be verified from env override or managed docker bootstrap",
     )
 
 

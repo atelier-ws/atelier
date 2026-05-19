@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,10 @@ import pytest
 from benchmarks.code_intel.zoekt_bench import run_zoekt_bench
 
 pytestmark = pytest.mark.slow
+skip_docker = pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for the real Zoekt benchmark")
 
 
+@skip_docker
 def test_zoekt_bench_is_json_serializable_and_records_trace(tmp_path: Path) -> None:
     payload = run_zoekt_bench(tmp_path).to_dict()
 
@@ -22,6 +25,7 @@ def test_zoekt_bench_is_json_serializable_and_records_trace(tmp_path: Path) -> N
     assert reloaded["backend"] == "zoekt"
 
 
+@skip_docker
 def test_zoekt_bench_meets_m16_speed_and_budget_gates(tmp_path: Path) -> None:
     result = run_zoekt_bench(tmp_path)
 

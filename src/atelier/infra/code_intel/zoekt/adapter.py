@@ -22,7 +22,7 @@ from .indexer import ZoektIndexer
 from .server import ZoektServer, get_zoekt_server, reset_zoekt_servers
 
 _DEFAULT_LOC_THRESHOLD = 500_000
-_SUPERVISORS: dict[str, "ZoektSupervisor"] = {}
+_SUPERVISORS: dict[str, ZoektSupervisor] = {}
 _SUPERVISORS_LOCK = threading.Lock()
 
 
@@ -47,8 +47,7 @@ class ZoektSupervisor:
 
     @property
     def server(self) -> ZoektServer:
-        path = self._binary_resolution.path if self._binary_resolution and self._binary_resolution.path else None
-        return get_zoekt_server(self.repo_root, binary_path=path)
+        return get_zoekt_server(self.repo_root, resolution=self._binary_resolution)
 
     def threshold_lines(self) -> int:
         raw = os.environ.get("ATELIER_ZOEKT_LOC_THRESHOLD", "").strip()
@@ -77,10 +76,11 @@ class ZoektSupervisor:
             self.ensure_started()
             server_health = self.server.health()
         except Exception as exc:
+            runtime_ref = resolution.image_ref or (str(resolution.path) if resolution.path is not None else None)
             return ZoektBackendHealth(
                 ok=False,
                 backend="zoekt",
-                binary_path=str(resolution.path),
+                binary_path=runtime_ref,
                 index_age_seconds=None,
                 reason=str(exc),
             )
@@ -91,19 +91,18 @@ class ZoektSupervisor:
             index_age_seconds=server_health.index_age_seconds,
         )
 
-    def ensure_started(self) -> str:
+    def ensure_started(self) -> ZoektClient:
         with self._lock:
             if self._client is not None:
-                return self._client.base_url
+                return self._client
             resolution = discover_zoekt_binary(self.repo_root)
-            if not resolution.available or resolution.path is None:
+            if not resolution.available:
                 raise RuntimeError(resolution.reason or "zoekt binary unavailable")
             self._binary_resolution = resolution
-            server = get_zoekt_server(self.repo_root, binary_path=resolution.path)
-            setattr(server, "_search_repo", self._indexer.search_files)
-            base_url = server.ensure_started()
-            self._client = ZoektClient(base_url)
-            return base_url
+            server = get_zoekt_server(self.repo_root, resolution=resolution)
+            server.ensure_started()
+            self._client = ZoektClient(server)
+            return self._client
 
     def search(
         self,
@@ -114,8 +113,7 @@ class ZoektSupervisor:
         max_chars_per_file: int,
         include_outline: bool,
     ) -> SearchReadResult:
-        base_url = self.ensure_started()
-        client = self._client or ZoektClient(base_url)
+        client = self.ensure_started()
         rel_glob = _path_to_glob(self.repo_root, Path(search_path).resolve())
         raw_matches = client.search(query, num_matches=max_files, file_glob=rel_glob)
         file_matches: list[FileMatch] = []
