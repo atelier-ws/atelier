@@ -277,7 +277,9 @@ def test_memory_recall_symbol_explicit_includes_widen_payload(
 ) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     symbol_id = _write_symbol_recall_fixture(tmp_path)
-    ContextStore(mcp_root).record_trace(
+    trace_store = ContextStore(mcp_root)
+    trace_store.init()
+    trace_store.record_trace(
         Trace(
             id=Trace.make_id("recall trace", "gsd-executor"),
             agent="gsd-executor",
