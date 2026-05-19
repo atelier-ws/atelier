@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
-| 2. Structural Discovery & Symbol-Safe Change Flows | 2/4 | In Progress|  |
+| 2. Structural Discovery & Symbol-Safe Change Flows | 4/4 | Verifying |  |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
 | 5. Scale Decision & Extended Retrieval Reach | 0/3 | Not started | - |

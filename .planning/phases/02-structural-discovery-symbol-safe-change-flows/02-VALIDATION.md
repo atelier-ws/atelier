@@ -1,9 +1,9 @@
 ---
 phase: 2
 slug: structural-discovery-symbol-safe-change-flows
-status: pending
+status: human_needed
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-05-18
 ---
 
@@ -79,6 +79,8 @@ created: 2026-05-18
 - [x] Wave 0 benchmark/test gaps closed
 - [x] Phase 2 traces and benchmark evidence captured
 - [ ] Final approval recorded
+
+**Approval:** automated verification complete; awaiting human/UAT approval
 
 ## M12 Partial-Close Contract
 
