@@ -47,7 +47,7 @@ source: phase-planning
 
 | Plan | Milestone | Requirement | Secure / correct behavior | Expected automated coverage |
 |------|-----------|-------------|---------------------------|-----------------------------|
-| `03-01` | M6 | `DISC-03` | `code op="search"` stays on the existing MCP surface, adds semantic/hybrid ranking beside lexical exact-name behavior, and keeps cache/budget discipline intact | `tests/core/test_code_context.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/gateway/test_p0_mcp_surfaces.py`, `tests/benchmarks/code_intel/test_symbol_search_bench.py` |
+| `03-01` | M6 | `DISC-03` | `code op="search"` stays on the existing MCP surface, adds semantic/hybrid ranking beside lexical exact-name behavior, keeps cache/budget discipline intact, and records trace evidence against `M6-semantic-rank.md` | `tests/core/test_code_context.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/gateway/test_p0_mcp_surfaces.py`, `tests/benchmarks/code_intel/test_symbol_search_bench.py` |
 | `03-02` | M7 | `DISC-04` | `memory op="recall_symbol"` returns a fused symbol-linked bundle with low-token defaults, reuses existing memory/trace surfaces, and does not add a parallel `code op="recall"` path | `tests/core/capabilities/archival_recall/test_symbol_recall.py`, `tests/gateway/test_mcp_memory_tools.py`, `tests/benchmarks/code_intel/test_recall_symbol_bench.py` |
 | `03-03` | M8 | `NAVG-03` | `code op="callers"` / `op="callees"` traverse routed SCIP call edges with depth-limited, cycle-safe behavior and explicit no-call-edge responses instead of a live-LSP fallback | `tests/core/test_code_context.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/gateway/test_p0_mcp_surfaces.py`, `tests/infra/code_intel/scip/test_scip_adapter.py`, `tests/benchmarks/code_intel/test_call_graph_bench.py` |
 
@@ -77,6 +77,13 @@ source: phase-planning
 | Review brownfield coexistence in `mcp_server.py` and `engine.py` | `DISC-03`, `DISC-04`, `NAVG-03` | Automated tests prove behavior, not whether shared hotspots stayed narrow and additive | Review final diffs and confirm heavy ranking/recall/graph logic lives in helper modules, not inline in the hotspots. |
 | Exercise an intent-first agent workflow | `DISC-03`, `DISC-04`, `NAVG-03` | Benchmarks and unit tests do not prove real operator UX | 1. Run a natural-language `code op="search"` query where the exact name is unknown. 2. Run `memory op="recall_symbol"` on the returned target. 3. Run `code op="callers"` or `op="callees"` on that symbol. 4. Confirm the workflow stays on existing MCP surfaces without grep-first or line-number fallback. |
 | Confirm missing call-edge data stays explicit | `NAVG-03` | Automated fixtures prove shaped responses, but not operator understanding of the degraded mode | Run callers/callees on a repo or fixture without SCIP call edges and confirm the response is structured as empty/unavailable with no invented live-LSP fallback language. |
+
+---
+
+## Wave Trace Evidence
+
+- `03-01` closes with a recorded trace referencing `docs/plans/active/code-intel/M6-semantic-rank.md` after the semantic benchmark and exact-name regression gate pass.
+- Keep the trace payload tied to the shipped `code op="search"` surface rather than a helper-only implementation detail so validation evidence matches the public behavior.
 
 ---
 
