@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 05 completed after 05-02 M16 closeout
-last_updated: "2026-05-19T19:58:27.943Z"
-last_activity: 2026-05-19 -- 05-02 completed with M16 Zoekt trace evidence and closed Phase 5
+status: approval_pending
+stopped_at: Phase 05 reached human/UAT approval gate after real Zoekt verification
+last_updated: "2026-05-19T21:13:11Z"
+last_activity: 2026-05-19 -- Phase 05 re-verified with the managed real Zoekt runtime; waiting for final approval
 progress:
   total_phases: 7
   completed_phases: 5
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19)
 
 **Core value:** Agents can find and change code through budget-aware, precomputed intelligence with near-zero token overhead by default.
-**Current focus:** Phase 06 — bootstrap-dependency-scope-and-multi-repo-workspaces
+**Current focus:** Phase 05 approval — scale-decision-and-extended-retrieval-reach
 
 ## Current Position
 
-Phase: 05 (scale-decision-and-extended-retrieval-reach) — COMPLETE
+Phase: 05 (scale-decision-and-extended-retrieval-reach) — APPROVAL PENDING
 Plan: 05-01, 05-02, and 05-03 complete
-Status: M16 search-only Zoekt routing and M17 literal-only cross-language edges are complete with recorded trace evidence; Phase 6 is next
-Last activity: 2026-05-19 -- 05-02 completed with M16 Zoekt trace evidence and closed Phase 5
+Status: M16 search-only Zoekt routing and M17 literal-only cross-language edges are verified; waiting for final human/UAT sign-off before Phase 6 starts
+Last activity: 2026-05-19 -- Phase 05 re-verified with the managed real Zoekt runtime and exact M16 validation row passing
 
 Progress: [██████████] 100%
 
@@ -126,8 +126,8 @@ None yet.
 ### Blockers/Concerns
 
 - Brownfield repository: existing worktree edits already touch `code_context` and MCP files, so execution plans must avoid overwriting unrelated changes.
-- Phase 05-01 closed with `option-a`; keep 05-02 on the search-only Zoekt track and do not widen the integration surface during implementation.
-- `05-02` and `05-03` were accepted with warning-level breadth notes; split them if file scope expands during execution.
+- Phase 05 is waiting on final human/UAT sign-off; do not advance to Phase 06 until approval is recorded.
+- Phase 05-01 closed with `option-a`; Phase 05 implementation must stay on the search-only Zoekt track and keep the integration surface narrow.
 - Phase 1 plans were accepted with warning-level checker findings around plan breadth and pattern-map alignment; re-surface them during execution if file scope expands further.
 - Phase 2 plans were accepted with warning-level checker findings about file breadth across `mcp_server.py`, `engine.py`, and related brownfield hotspots; re-surface them during execution if scope expands further.
 - Broad repo tests still have earlier-phase failures outside Phase 04 scope; see `.planning/phases/04-historical-code-intelligence/deferred-items.md`.
@@ -142,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T19:57:11.549Z
-Stopped at: Phase 05 completed after 05-02 M16 closeout
+Last session: 2026-05-19T21:13:11Z
+Stopped at: Phase 05 reached the human/UAT approval gate after real Zoekt verification
 Resume file: None
