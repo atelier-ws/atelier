@@ -39,13 +39,13 @@ class ScipSymbolIntelProvider:
         self._health = ProviderHealth(status="unhealthy", reason="no SCIP artifacts")
 
     def refresh(self) -> bool:
-        artifact_paths = self._indexer.discover_artifacts()
-        changed = self._watcher.refresh(artifact_paths)
+        discovered_artifacts = self._indexer.discover_artifacts()
+        changed = self._watcher.refresh([artifact.path for artifact in discovered_artifacts])
         loaded: list[LoadedScipArtifact] = []
         invalid_count = 0
-        for path in artifact_paths:
+        for artifact in discovered_artifacts:
             try:
-                loaded.append(self._reader.load(path))
+                loaded.append(self._reader.load(artifact.path, origin=artifact.origin))
             except ScipArtifactError:
                 invalid_count += 1
         self._artifacts = loaded
@@ -70,10 +70,15 @@ class ScipSymbolIntelProvider:
         limit: int = 20,
         kind: str | None = None,
         language: str | None = None,
+        scope: Literal["repo", "external"] = "repo",
     ) -> list[SymbolRecord]:
         matches: list[SymbolRecord] = []
         seen: set[str] = set()
         for artifact in self._artifacts:
+            if scope == "repo" and artifact.origin != "internal":
+                continue
+            if scope == "external" and artifact.origin != "external":
+                continue
             for symbol in artifact.search_symbols(query, limit=limit, kind=kind, language=language):
                 if symbol.symbol_id in seen:
                     continue

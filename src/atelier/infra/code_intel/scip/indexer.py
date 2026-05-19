@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from atelier.infra.code_intel.scip.binaries import discover_scip_binaries
+from atelier.infra.code_intel.scip.external_artifacts import (
+    DiscoveredScipArtifact,
+    classify_scip_artifact,
+    discover_external_scip_artifacts,
+)
 
 
 def default_scip_cache_root(repo_root: Path, repo_id: str) -> Path:
@@ -21,20 +26,26 @@ class ScipIndexer:
         self.repo_id = repo_id
         self.cache_root = (cache_root or default_scip_cache_root(self.repo_root, repo_id)).resolve()
 
-    def discover_artifacts(self) -> list[Path]:
+    def discover_artifacts(self) -> list[DiscoveredScipArtifact]:
         """Return existing `.scip` artifacts under the allowed repo-local cache roots."""
 
         roots = [self.cache_root]
-        artifacts: list[Path] = []
+        artifacts: list[DiscoveredScipArtifact] = []
         seen: set[Path] = set()
         for root in roots:
             if not root.exists():
                 continue
             for path in sorted(root.glob("*.scip")):
                 resolved = path.resolve()
+                if resolved.name.startswith("external-"):
+                    continue
                 if resolved not in seen and resolved.is_file():
                     seen.add(resolved)
-                    artifacts.append(resolved)
+                    artifacts.append(classify_scip_artifact(resolved))
+            for artifact in discover_external_scip_artifacts(root):
+                if artifact.path not in seen:
+                    seen.add(artifact.path)
+                    artifacts.append(artifact)
         return artifacts
 
     def available_binaries(self) -> dict[str, Path]:
