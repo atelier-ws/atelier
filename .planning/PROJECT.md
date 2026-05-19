@@ -128,7 +128,7 @@ should be treated as the reference for implementation planning.
   caller/callee traversal are now recorded on the existing `code` / `memory`
   surfaces.
 - Phase 4 complete — historical search, blame, churn, and temporal filters are now recorded on the existing `code` surface.
-- Phase 5 is implemented and verified; final human/UAT approval is pending before Phase 6 starts.
+- Next up: Phase 6 — Bootstrap, Dependency Scope & Multi-Repo Workspaces.
 
 ## Evolution
 
@@ -148,4 +148,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-19 after Phase 5 verification*
+*Last updated: 2026-05-19 after Phase 5 approval*
