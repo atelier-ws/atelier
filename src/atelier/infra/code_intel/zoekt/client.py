@@ -1,12 +1,13 @@
-"""urllib-based client for the local Zoekt-compatible search seam."""
+"""Client helpers for the managed Zoekt runtime."""
 
 from __future__ import annotations
 
-import json
+import base64
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from typing import Any
-from urllib.parse import urlencode
-from urllib.request import urlopen
+
+from .server import ZoektServer
 
 
 @dataclass(frozen=True)
@@ -24,40 +25,79 @@ class ZoektFileResult:
 
 
 class ZoektClient:
-    """Small JSON client for the local Zoekt search API."""
+    """JSON client wrapper around the managed Zoekt runtime."""
 
-    def __init__(self, base_url: str) -> None:
-        self.base_url = base_url.rstrip("/")
+    def __init__(self, server: ZoektServer) -> None:
+        self.server = server
 
     def health(self) -> dict[str, Any]:
-        with urlopen(f"{self.base_url}/healthz", timeout=5) as response:
-            return json.loads(response.read().decode("utf-8"))
+        health = self.server.health()
+        return {
+            "ok": health.ok,
+            "backend": health.backend,
+            "binary_path": health.binary_path,
+            "index_age_seconds": health.index_age_seconds,
+        }
 
     def search(self, query: str, *, num_matches: int = 50, file_glob: str | None = None) -> list[ZoektFileResult]:
-        effective_query = query if not file_glob else f"{query} file:{file_glob}"
-        params = urlencode({"q": effective_query, "num": num_matches})
-        with urlopen(f"{self.base_url}/api/search?{params}", timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        payload = self.server.raw_search({"Q": query})
         files = payload.get("Result", {}).get("Files", [])
         results: list[ZoektFileResult] = []
         for item in files:
             if not isinstance(item, dict):
                 continue
-            raw_matches = item.get("Matches", [])
+            path = str(item.get("FileName") or "")
+            if file_glob and not fnmatch(path, file_glob):
+                continue
+            raw_matches = item.get("LineMatches", [])
             matches: list[ZoektClientMatch] = []
             for raw in raw_matches:
                 if not isinstance(raw, dict):
                     continue
-                matches.append(
-                    ZoektClientMatch(
-                        byte_start=int(raw.get("ByteStart", 0)),
-                        byte_end=int(raw.get("ByteEnd", 0)),
-                        line_number=int(raw.get("LineNumber", 0)),
-                        line_text=str(raw.get("Line") or ""),
+                line_number = int(raw.get("LineNumber", 0))
+                line_start = int(raw.get("LineStart", 0))
+                encoded_line = str(raw.get("Line") or "")
+                try:
+                    line_text = base64.b64decode(encoded_line).decode("utf-8", errors="replace").rstrip("\n")
+                except (ValueError, TypeError):
+                    line_text = ""
+                line_fragments = raw.get("LineFragments", [])
+                if not isinstance(line_fragments, list) or not line_fragments:
+                    line_end = int(raw.get("LineEnd", line_start))
+                    matches.append(
+                        ZoektClientMatch(
+                            byte_start=line_start,
+                            byte_end=line_end,
+                            line_number=line_number,
+                            line_text=line_text,
+                        )
                     )
-                )
-            results.append(ZoektFileResult(path=str(item.get("FileName") or ""), matches=matches))
+                    continue
+                for fragment in line_fragments:
+                    if not isinstance(fragment, dict):
+                        continue
+                    byte_start = _int_value(fragment.get("Offset", fragment.get("LineOffset", line_start)))
+                    byte_end = byte_start + _int_value(fragment.get("MatchLength", 0))
+                    matches.append(
+                        ZoektClientMatch(
+                            byte_start=byte_start,
+                            byte_end=byte_end,
+                            line_number=line_number,
+                            line_text=line_text,
+                        )
+                    )
+            if matches:
+                results.append(ZoektFileResult(path=path, matches=matches[:num_matches]))
+            if len(results) >= num_matches:
+                break
         return results
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 __all__ = ["ZoektClient", "ZoektClientMatch", "ZoektFileResult"]

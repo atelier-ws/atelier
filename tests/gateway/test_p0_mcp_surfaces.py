@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -27,20 +27,15 @@ def test_mcp_search_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert result["_meta"]["fileMatchCount"] == 1
 
 
-def _write_fake_zoekt_binary(root: Path) -> tuple[Path, str]:
-    payload = b"#!/bin/sh\nexit 0\n"
-    binary_path = root / "zoekt-webserver"
-    binary_path.write_bytes(payload)
-    binary_path.chmod(0o755)
-    return binary_path, hashlib.sha256(payload).hexdigest()
+skip_docker = pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for the managed Zoekt runtime")
 
 
+@skip_docker
 def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
-    binary_path, sha256 = _write_fake_zoekt_binary(tmp_path)
-    monkeypatch.setenv("ATELIER_ZOEKT_BIN", str(binary_path))
-    monkeypatch.setenv("ATELIER_ZOEKT_BIN_SHA256", sha256)
+    monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
+    monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
     src = tmp_path / "src"
     src.mkdir()
     for index in range(24):
