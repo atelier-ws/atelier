@@ -56,6 +56,8 @@ class Snippet:
     line_end: int
     score: float
     text: str
+    byte_start: int | None = None
+    byte_end: int | None = None
 
 
 @dataclass
@@ -73,6 +75,8 @@ class SearchReadResult:
     total_tokens: int
     tokens_saved_vs_naive: int
     cache_hit: bool
+    backend: str = "ripgrep"
+    index_age_seconds: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +428,8 @@ def search_read(
         total_tokens=total_tokens,
         tokens_saved_vs_naive=tokens_saved,
         cache_hit=cache_hit,
+        backend="ripgrep",
+        index_age_seconds=None,
     )
 
 
@@ -440,6 +446,8 @@ def search_read_to_dict(result: SearchReadResult) -> dict[str, Any]:
                         "line_end": s.line_end,
                         "score": s.score,
                         "text": s.text,
+                        "byte_start": s.byte_start,
+                        "byte_end": s.byte_end,
                     }
                     for s in m.snippets
                 ],
@@ -451,4 +459,6 @@ def search_read_to_dict(result: SearchReadResult) -> dict[str, Any]:
         "total_tokens": result.total_tokens,
         "tokens_saved_vs_naive": result.tokens_saved_vs_naive,
         "cache_hit": result.cache_hit,
+        "backend": result.backend,
+        "index_age_seconds": result.index_age_seconds,
     }
