@@ -1927,7 +1927,18 @@ def _code_context_engine(repo_root: str = ".") -> Any:
 
 @mcp_tool(name="code", is_dev=True)
 def tool_code(
-    op: Literal["index", "search", "symbol", "outline", "context", "impact", "pattern", "cache_status", "cache_invalidate"],
+    op: Literal[
+        "index",
+        "search",
+        "symbol",
+        "outline",
+        "context",
+        "impact",
+        "usages",
+        "pattern",
+        "cache_status",
+        "cache_invalidate",
+    ],
     repo_root: str = ".",
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
@@ -1939,6 +1950,7 @@ def tool_code(
     language: str | None = None,
     snippet: Literal["none", "head", "full"] = "none",
     snippet_lines: int = 8,
+    group_by: Literal["file", "caller", "none"] = "file",
     file_glob: str | None = None,
     scope: Literal["repo", "external", "deleted"] = "repo",
     symbol_id: str | None = None,
@@ -1950,7 +1962,7 @@ def tool_code(
     budget_tokens: int = 4000,
     max_symbols: int = 8,
     dry_run: bool = True,
-    cache_tool: Literal["all", "search", "symbol", "outline", "context", "impact", "pattern"] | None = None,
+    cache_tool: Literal["all", "search", "symbol", "outline", "context", "impact", "usages", "pattern"] | None = None,
 ) -> dict[str, Any]:
     """Index, search, inspect, outline, pack, or analyze code context."""
     engine = _code_context_engine(repo_root)
@@ -2025,6 +2037,27 @@ def tool_code(
                 language=language,
                 file_glob=file_glob,
                 dry_run=dry_run,
+                limit=limit,
+                budget_tokens=budget_tokens,
+            ),
+        )
+
+    if op == "usages":
+        if not any([query, symbol_id, qualified_name, symbol_name]):
+            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
+        return cast(
+            dict[str, Any],
+            engine.tool_usages(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                file_glob=file_glob,
+                group_by=group_by,
+                snippet_lines=3 if snippet_lines == 8 else snippet_lines,
                 limit=limit,
                 budget_tokens=budget_tokens,
             ),
