@@ -1,7 +1,7 @@
 ---
 phase: 4
 slug: historical-code-intelligence
-status: human_needed
+status: approved
 created: 2026-05-19
 source: phase-planning
 ---
@@ -121,6 +121,6 @@ source: phase-planning
 - [x] Wave 2 deleted-history search surface and M14 benchmark/trace evidence completed
 - [x] Wave 3 blame/freshness substrate completed without leaking surface work
 - [x] Wave 4 blame surface, benchmark, cost-discipline, and M15 trace evidence completed
-- [ ] Manual hotspot and stale-index checks recorded
+- [x] Manual hotspot and stale-index checks recorded
 
-**Approval:** pending human/UAT sign-off after automated verification
+**Approval:** approved after final verification, type-gate fix, and recorded human/UAT sign-off

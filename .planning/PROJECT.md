@@ -127,7 +127,8 @@ should be treated as the reference for implementation planning.
 - Phase 3 complete — semantic search, symbol-linked recall, and routed
   caller/callee traversal are now recorded on the existing `code` / `memory`
   surfaces.
-- Phase 4 implemented and automatically verified; human/UAT approval is still pending before Phase 5 starts.
+- Phase 4 complete — historical search, blame, churn, and temporal filters are now recorded on the existing `code` surface.
+- Next up: Phase 5 — Scale Decision & Extended Retrieval Reach.
 
 ## Evolution
 
@@ -147,4 +148,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-19 after Phase 4 automated verification*
+*Last updated: 2026-05-19 after Phase 4 completion*
