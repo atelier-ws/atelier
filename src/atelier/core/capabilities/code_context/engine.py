@@ -14,7 +14,7 @@ import subprocess
 from bisect import bisect_right
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -133,6 +133,21 @@ _CACHE_STATUS_ESSENTIAL_KEYS = ["repo_id", "index_version", "entry_count", "entr
 _CACHE_INVALIDATE_ESSENTIAL_KEYS = ["repo_id", "index_version", "invalidated_entries", "entries_by_tool", "scope"]
 _CALL_GRAPH_ESSENTIAL_KEYS = ["target", "direction", "depth", "related", "edges", "data_status", "provenance"]
 _CALL_GRAPH_OPTIONAL_KEYS = ["related_count", "edge_count", "truncated", "message", "snapshot"]
+_BLAME_ESSENTIAL_KEYS = [
+    "symbol_name",
+    "qualified_name",
+    "file_path",
+    "line_start",
+    "line_end",
+    "freshness",
+    "last_author",
+    "last_commit_sha",
+    "age_days",
+    "local_edits",
+    "distinct_authors",
+    "provenance",
+]
+_BLAME_OPTIONAL_KEYS = ["index_sha", "head_sha", "last_modified", "last_commit_summary", "hunks", "churn"]
 _CACHE_TOOL_ALIASES = {
     "all": None,
     "search": "code.search",
@@ -408,8 +423,9 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         resolved_mode = resolve_search_mode(query, mode)
-        parsed_since = _parse_since_filter(since) if scope == "deleted" else None
-        normalized_touched_by = _normalize_touched_by(touched_by) if scope == "deleted" else None
+        temporal_scope = scope in {"repo", "deleted"}
+        parsed_since = _parse_since_filter(since) if temporal_scope else None
+        normalized_touched_by = _normalize_touched_by(touched_by) if temporal_scope else None
         cache_args = {
             "query": query,
             "limit": limit,
@@ -448,6 +464,12 @@ class CodeContextEngine:
             item.model_dump(mode="json", exclude_none=True) if isinstance(item, SymbolRecord) else dict(item)
             for item in raw_items
         ]
+        if scope == "repo" and (parsed_since is not None or normalized_touched_by is not None):
+            changed_files = self._deleted_history_adapter().changed_files(
+                since_ts=parsed_since,
+                touched_by=normalized_touched_by,
+            )
+            items = [item for item in items if str(item.get("file_path") or "") in changed_files]
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
         optional_keys = _DELETED_SEARCH_OPTIONAL_KEYS if scope == "deleted" else _SEARCH_OPTIONAL_KEYS
         payload = self._pack_items_payload(
@@ -458,6 +480,119 @@ class CodeContextEngine:
             extra_payload={"mode": resolved_mode},
         )
         self._cache_set("code.search", cache_args, payload)
+        return payload
+
+    def tool_blame(
+        self,
+        *,
+        query: str | None = None,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        include_churn: bool = True,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        self._sync_symbol_intel()
+        target = self._resolve_symbol_target(
+            operation_name="blame",
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+            kind=None,
+            language=None,
+            file_glob=None,
+        )
+        if target.get("error"):
+            return self._pack_single_payload(
+                target,
+                budget_tokens=budget_tokens,
+                essential_keys=["error", "message", "matches", "cache_hit", "provenance"],
+                optional_keys_in_drop_order=["provenance_breakdown"],
+            )
+        head_sha = self._current_head_sha()
+        index_sha = str(target.get("index_sha") or head_sha)
+        normalized_file_path = str(target["file_path"])
+        cache_args = {
+            "query": query,
+            "symbol_id": symbol_id or target.get("symbol_id"),
+            "qualified_name": qualified_name or target.get("qualified_name"),
+            "symbol_name": symbol_name or target.get("symbol_name"),
+            "file_path": normalized_file_path,
+            "include_churn": include_churn,
+            "index_sha": index_sha,
+            "head_sha": head_sha,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get("code.blame", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+        if index_sha != head_sha:
+            payload = self._pack_single_payload(
+                {
+                    "error": "index_stale",
+                    "hint": 'run code op="index" first',
+                    "symbol_name": str(target["symbol_name"]),
+                    "qualified_name": str(target["qualified_name"]),
+                    "file_path": normalized_file_path,
+                    "freshness": "stale",
+                    "index_sha": index_sha,
+                    "head_sha": head_sha,
+                    "provenance": "blame",
+                },
+                budget_tokens=budget_tokens,
+                essential_keys=["error", "hint", "symbol_name", "qualified_name", "file_path", "freshness", "provenance"],
+                optional_keys_in_drop_order=["index_sha", "head_sha"],
+            )
+            self._cache_set("code.blame", cache_args, payload)
+            return payload
+        from atelier.infra.code_intel.git_history.blame import BlameAnnotator
+        from atelier.infra.code_intel.git_history.models import BlameRequest
+
+        annotation = BlameAnnotator(self.repo_root).annotate(
+            BlameRequest(
+                file_path=normalized_file_path,
+                line_start=int(target["start_line"]),
+                line_end=int(target["end_line"]),
+                index_sha=index_sha,
+                head_sha=head_sha,
+                include_churn=include_churn,
+            )
+        )
+        latest_commit_ts = max(hunk.commit_time for hunk in annotation.hunks)
+        payload_data: dict[str, Any] = {
+            "symbol_name": str(target["symbol_name"]),
+            "qualified_name": str(target["qualified_name"]),
+            "file_path": normalized_file_path,
+            "line_start": int(target["start_line"]),
+            "line_end": int(target["end_line"]),
+            "index_sha": index_sha,
+            "head_sha": head_sha,
+            "freshness": annotation.freshness,
+            "last_modified": datetime.fromtimestamp(latest_commit_ts, tz=UTC).isoformat().replace("+00:00", "Z"),
+            "last_author": annotation.last_author,
+            "last_commit_sha": annotation.last_commit_sha,
+            "last_commit_summary": annotation.last_commit_summary,
+            "age_days": annotation.age_days,
+            "local_edits": annotation.local_edits,
+            "distinct_authors": len({hunk.author_email for hunk in annotation.hunks if hunk.author_email}),
+            "hunks": [asdict(hunk) for hunk in annotation.hunks],
+            "provenance": "blame",
+        }
+        if annotation.churn is not None:
+            payload_data["churn"] = asdict(annotation.churn)
+        payload = self._pack_single_payload(
+            payload_data,
+            budget_tokens=budget_tokens,
+            essential_keys=_BLAME_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_BLAME_OPTIONAL_KEYS,
+        )
+        self._cache_set("code.blame", cache_args, payload)
         return payload
 
     def tool_symbol(
@@ -2492,6 +2627,13 @@ class CodeContextEngine:
                 self._bump_index_version(conn)
                 return True
         return False
+
+    def _current_head_sha(self) -> str:
+        from atelier.infra.code_intel.git_history import require_pygit2
+
+        pygit2 = require_pygit2()
+        repo = pygit2.Repository(str(self.repo_root))
+        return str(repo.revparse_single("HEAD").id)
 
     def _deleted_history_adapter(self) -> Any:
         if self._deleted_history_search_adapter is None:

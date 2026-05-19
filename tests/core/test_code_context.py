@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from atelier.core.capabilities.code_context import CodeContextEngine
@@ -315,6 +316,7 @@ def _write_rename_history_fixture(repo_root: Path) -> str:
 
 def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
     _init_git_fixture_repo(repo_root)
+    now = datetime.now(tz=UTC)
     service_path = repo_root / "service.py"
     service_path.write_text(
         "def risk_score() -> int:\n"
@@ -327,7 +329,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         "add risk score",
         author_name="Alice",
         author_email="alice@example.com",
-        author_date="2025-01-01T00:00:00+00:00",
+        author_date=(now - timedelta(days=240)).isoformat(),
     )
     service_path.write_text(
         "def risk_score() -> int:\n"
@@ -340,7 +342,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         "tune risk score",
         author_name="Bob",
         author_email="bob@example.com",
-        author_date="2025-04-01T00:00:00+00:00",
+        author_date=(now - timedelta(days=30)).isoformat(),
     )
     service_path.write_text(
         "def risk_score() -> int:\n"
@@ -353,7 +355,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         "finalize risk score",
         author_name="Carol",
         author_email="carol@example.com",
-        author_date="2025-05-01T00:00:00+00:00",
+        author_date=(now - timedelta(days=7)).isoformat(),
     )
     return indexed_sha, head_sha
 
@@ -634,7 +636,7 @@ def test_tool_blame_returns_ownership_metadata_with_optional_churn(tmp_path: Pat
     assert payload["last_commit_sha"] == head_sha
     assert payload["freshness"] == "fresh"
     assert payload["churn"]["commit_count"] == 2
-    assert payload["distinct_authors"] == 1
+    assert payload["distinct_authors"] == 2
     assert "churn" not in without_churn or without_churn["churn"] is None
 
 
