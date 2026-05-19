@@ -108,12 +108,24 @@ Plans:
   1. Agent can search deleted or renamed symbols and filter historical results by time window or author.
   2. Agent can inspect blame and churn metadata for a symbol to judge ownership and stability before editing.
 
-**Plans**: 2 plans
+**Plans**: 4 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 04-01: Git-history graveyard for deleted symbols, renames, and temporal filters (M14)
-- [ ] 04-02: Blame and churn annotations on `code op="blame"` plus live temporal filtering (M15)
+- [ ] 04-01-PLAN.md — Pin and bootstrap `pygit2`, then build the isolated git-history graveyard substrate with real infra tests only
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Wire deleted-history search on the existing `code` surface, add graveyard benchmark evidence, and close explicit M14 trace ownership
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-03-PLAN.md — Build blame/churn substrate and explicit freshness metadata propagation with infra tests only
+
+**Wave 4** *(blocked on Wave 2 and Wave 3 completion)*
+
+- [ ] 04-04-PLAN.md — Wire `code op="blame"` and live temporal filtering, then close M15 benchmark, cost-discipline, and trace evidence
 
 ### Phase 5: Scale Decision & Extended Retrieval Reach
 
@@ -179,7 +191,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
 | 2. Structural Discovery & Symbol-Safe Change Flows | 4/4 | Complete | 2026-05-19 |
 | 3. Semantic Recall & Relationship Navigation | 3/3 | Complete   | 2026-05-19 |
-| 4. Historical Code Intelligence | 0/2 | Not started | - |
+| 4. Historical Code Intelligence | 0/4 | Not started | - |
 | 5. Scale Decision & Extended Retrieval Reach | 0/3 | Not started | - |
 | 6. Bootstrap, Dependency Scope & Multi-Repo Workspaces | 0/3 | Not started | - |
 | 7. Maintainer Playbooks & Scorecards | 0/1 | Not started | - |

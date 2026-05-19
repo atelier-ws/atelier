@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed Phase 03
-last_updated: "2026-05-19T12:58:48+02:00"
-last_activity: 2026-05-19 -- Phase 03 completed after recorded human approval
+stopped_at: Phase 04 planning complete
+last_updated: "2026-05-19T13:20:00+02:00"
+last_activity: 2026-05-19 -- Phase 04 planned as four execution waves and marked execution-ready
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 10
+  total_plans: 14
   completed_plans: 10
   percent: 43
 ---
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 
 ## Current Position
 
-Phase: 04 (historical-code-intelligence) — NOT STARTED
-Plan: not planned yet
-Status: Phase 03 complete; next up is Phase 04 planning
-Last activity: 2026-05-19 -- Phase 03 completed after recorded human approval
+Phase: 04 (historical-code-intelligence) — PLANNED
+Plan: 04-01, 04-02, 04-03, 04-04 ready for execution
+Status: Phase 03 complete; Phase 04 planning is complete and execution-ready
+Last activity: 2026-05-19 -- Phase 04 planned as four execution waves and marked execution-ready
 
 Progress: [██████████] 100%
 
@@ -100,6 +100,7 @@ None yet.
 ### Blockers/Concerns
 
 - Brownfield repository: existing worktree edits already touch `code_context` and MCP files, so execution plans must avoid overwriting unrelated changes.
+- Phase 04 Wave 4 remains the broadest plan in the set; keep the blame gateway/engine closeout tightly bounded during execution.
 - Phase 5 must complete the checkpoint plan before any M16 implementation work starts.
 - Phase 1 plans were accepted with warning-level checker findings around plan breadth and pattern-map alignment; re-surface them during execution if file scope expands further.
 - Phase 2 plans were accepted with warning-level checker findings about file breadth across `mcp_server.py`, `engine.py`, and related brownfield hotspots; re-surface them during execution if scope expands further.
