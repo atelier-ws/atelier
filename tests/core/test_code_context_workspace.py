@@ -100,3 +100,94 @@ def test_workspace_router_rejects_unknown_repo_filter(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unknown workspace repo"):
         router.route("search", query="SharedConfig", repo="missing")
+
+
+def test_workspace_router_adds_repo_name_and_preserves_origin_on_merged_search_results(tmp_path: Path) -> None:
+    _write_workspace_config(tmp_path)
+    billing_root = (tmp_path.parent / "billing").resolve()
+
+    class FakeEngine:
+        def __init__(self, repo_root: Path) -> None:
+            self.repo_root = repo_root
+
+        def tool_search(self, query: str, **_: object) -> dict[str, object]:
+            if self.repo_root == billing_root:
+                return {
+                    "items": [
+                        {
+                            "symbol_name": query,
+                            "qualified_name": "requests.get",
+                            "file_path": "external/requests/api.py",
+                            "repo_id": "repo-2",
+                            "origin": "external",
+                        }
+                    ],
+                    "cache_hit": False,
+                    "provenance": "local",
+                    "tokens_saved": 0,
+                    "total_tokens": 30,
+                }
+            return {
+                "items": [
+                    {
+                        "symbol_name": query,
+                        "qualified_name": query,
+                        "file_path": "src/config.py",
+                        "repo_id": "repo-1",
+                        "origin": "internal",
+                    }
+                ],
+                "cache_hit": False,
+                "provenance": "local",
+                "tokens_saved": 0,
+                "total_tokens": 20,
+            }
+
+    router = WorkspaceCodeRouter(
+        repo_root=tmp_path,
+        engine_factory=lambda repo_root: FakeEngine(Path(repo_root).resolve()),
+    )
+
+    merged = router.route("search", query="SharedConfig", limit=5)
+
+    assert [(item["repo_name"], item["origin"]) for item in merged["items"]] == [
+        ("atelier", "internal"),
+        ("billing", "external"),
+    ]
+
+
+def test_workspace_router_symbol_defaults_to_first_repo_and_respects_repo_filter(tmp_path: Path) -> None:
+    _write_workspace_config(tmp_path)
+    billing_root = (tmp_path.parent / "billing").resolve()
+
+    class FakeEngine:
+        def __init__(self, repo_root: Path) -> None:
+            self.repo_root = repo_root
+
+        def tool_symbol(self, **_: object) -> dict[str, object]:
+            if self.repo_root == billing_root:
+                return {
+                    "symbol_name": "SharedConfig",
+                    "qualified_name": "billing.SharedConfig",
+                    "file_path": "src/config.py",
+                    "repo_id": "repo-2",
+                }
+            return {
+                "symbol_name": "SharedConfig",
+                "qualified_name": "atelier.SharedConfig",
+                "file_path": "src/config.py",
+                "repo_id": "repo-1",
+            }
+
+    router = WorkspaceCodeRouter(
+        repo_root=tmp_path,
+        engine_factory=lambda repo_root: FakeEngine(Path(repo_root).resolve()),
+    )
+
+    default_symbol = router.route("symbol", symbol_name="SharedConfig")
+    billing_symbol = router.route("symbol", symbol_name="SharedConfig", repo="billing")
+
+    assert default_symbol["repo_name"] == "atelier"
+    assert default_symbol["qualified_name"] == "atelier.SharedConfig"
+    assert billing_symbol["repo_name"] == "billing"
+    assert billing_symbol["qualified_name"] == "billing.SharedConfig"
