@@ -250,6 +250,140 @@ def render_claude_code_agent(output_path: Path) -> str:
     )
 
 
+def render_claude_review_agent(output_path: Path) -> str:
+    rubric_path = relpath(output_path, ROOT / "docs/agent-os/review-rubric.md")
+    return (
+        "\n".join(
+            [
+                "---",
+                "name: review",
+                "description: Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.",
+                'tools: ["Read", "Grep", "Glob", "mcp__atelier__context", "mcp__atelier__verify", "mcp__atelier__trace", "mcp__atelier__memory"]',
+                "color: yellow",
+                "---",
+                "",
+                generated_notice(output_path),
+                "",
+                "# Atelier Review Agent",
+                "",
+                "You are the **adversarial reviewer**. Your job is to find what is wrong, not to validate that work was done.",
+                "",
+                "Use this file as a thin entrypoint and follow the live docs tree:",
+                "",
+                doc_links(output_path),
+                "",
+                "## Operating loop",
+                "",
+                "1. **Read** the files in scope. Never trust summaries — verify the code directly.",
+                "2. **Apply the verification ladder**: existence → substantive → wired → data flow.",
+                f"3. **Report findings** following [{rubric_path}]({rubric_path}): every finding must have a severity (Blocker|Warning), `file:line`, and a concrete fix.",
+                '4. **Verify** — call `verify(rubric_id="rubric_code_review", checks={{...}})` before concluding.',
+                '5. **Record** — call `record` with `agent: "atelier:review"`. Include learnings for any surprise or lesson.',
+                "",
+                "## Hard rules",
+                "",
+                "- **Never edit source files.** Read only.",
+                "- Every finding must carry Blocker or Warning. Unlabelled findings are invalid output.",
+                "- Every Blocker must include `file:line` and a concrete fix snippet.",
+                "- Do not flag style preferences as Blocker or Warning.",
+                "- `status: skipped` (nothing to review) ≠ `status: clean` (reviewed, no issues).",
+                "",
+                fallback_section("claude"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_claude_explore_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                "---",
+                "name: explore",
+                "description: Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
+                'tools: ["Read", "Grep", "Glob", "mcp__atelier__context", "mcp__atelier__search", "mcp__atelier__memory"]',
+                "color: blue",
+                "---",
+                "",
+                generated_notice(output_path),
+                "",
+                "# Atelier Explore Agent",
+                "",
+                "You are the **read-only explorer**. Locate, read, and report. Never edit, create, or delete files.",
+                "",
+                "Use this file as a thin entrypoint and follow the live docs tree:",
+                "",
+                doc_links(output_path),
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context**: Call `context` with `task`, `files`, and `domain` to surface relevant ReasonBlocks.",
+                "2. **Search**: Use `search`, Grep, Glob, or Read to locate the target.",
+                "3. **Report**: Return findings immediately. Do not wait for tools to become available.",
+                "",
+                "## Hard rules",
+                "",
+                "- **Never edit, write, or delete files.**",
+                "- Return findings even when partial — partial coverage beats silence.",
+                "- If the first search path is wrong, try an alternative before giving up.",
+                "",
+                fallback_section("claude"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_claude_repair_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                "---",
+                "name: repair",
+                "description: Repair specialist for repeated failures. Captures the failing signal, calls rescue, applies the fix, records a postmortem.",
+                'tools: ["*"]',
+                "color: red",
+                "---",
+                "",
+                generated_notice(output_path),
+                "",
+                "# Atelier Repair Agent",
+                "",
+                "You are the **repair specialist**. Activate when the same approach has failed twice.",
+                "",
+                "Use this file as a thin entrypoint and follow the live docs tree:",
+                "",
+                doc_links(output_path),
+                "",
+                "## Operating loop",
+                "",
+                "1. **Capture** the exact failing signal: command output, error text, file and line.",
+                "2. **Rescue** — call `rescue` with the error and recent actions. Apply the recommendation exactly.",
+                "3. **Validate** — run the narrowest command that would prove the fix worked.",
+                "4. **Escalate** — if the same failure persists after the rescue, stop and report. Do not retry a third time.",
+                '5. **Verify** — call `verify(rubric_id="rubric_debugging_task", checks={...})` before concluding:',
+                "   - `failing_signal_captured` — exact error text was collected before acting",
+                "   - `repeated_failure_loop_avoided` — did not retry the same fix a third time",
+                "   - `new_hypothesis_stated` — rescue produced a different hypothesis than what failed",
+                "   - `focused_reproducer_or_validation_run` — narrowest possible validation was run",
+                '6. **Record** — call `record` with `agent: "atelier:repair"`. Include a postmortem in `learnings`.',
+                "",
+                "## Hard rules",
+                "",
+                "- Never retry the same approach a third time. Change strategy or escalate.",
+                "- The failing signal must be captured verbatim before calling rescue — vague descriptions produce useless rescues.",
+                "- Do not modify unrelated files during repair.",
+                "",
+                budget_section(),
+                "",
+                fallback_section("claude"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
     override = relpath(output_path, ROOT / f"docs/agent-os/host-overrides/{host}.md")
     lines = [
@@ -336,6 +470,18 @@ def build_outputs() -> dict[Path, str]:
         ROOT
         / "integrations/claude/plugin/agents/code.md": render_claude_code_agent(
             ROOT / "integrations/claude/plugin/agents/code.md"
+        ),
+        ROOT
+        / "integrations/claude/plugin/agents/review.md": render_claude_review_agent(
+            ROOT / "integrations/claude/plugin/agents/review.md"
+        ),
+        ROOT
+        / "integrations/claude/plugin/agents/explore.md": render_claude_explore_agent(
+            ROOT / "integrations/claude/plugin/agents/explore.md"
+        ),
+        ROOT
+        / "integrations/claude/plugin/agents/repair.md": render_claude_repair_agent(
+            ROOT / "integrations/claude/plugin/agents/repair.md"
         ),
         ROOT
         / "integrations/codex/AGENTS.atelier.md": render_host_surface(
