@@ -17,41 +17,61 @@ def _write_fixture_repo(root: Path) -> None:
         "        return sum(items)\n",
         encoding="utf-8",
     )
+    (root / "src" / "checkout.py").write_text(
+        "from src.orders import OrderService\n\n"
+        "def checkout(items: list[int]) -> int:\n"
+        "    return OrderService().calculate_total(items)\n",
+        encoding="utf-8",
+    )
 
 
-def _write_scip_fixture(engine: CodeContextEngine, *, symbol_id: str = "scip-order-service") -> Path:
+def _write_scip_fixture(
+    engine: CodeContextEngine, *, symbol_id: str = "scip-order-service", include_references: bool = False
+) -> Path:
     source = (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
     artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_dir / "python.scip"
-    artifact_path.write_text(
-        json.dumps(
+    payload: dict[str, object] = {
+        "version": 1,
+        "repo_id": engine.repo_id,
+        "language": "python",
+        "symbols": [
             {
-                "version": 1,
+                "symbol_id": symbol_id,
                 "repo_id": engine.repo_id,
+                "file_path": "src/orders.py",
                 "language": "python",
-                "symbols": [
-                    {
-                        "symbol_id": symbol_id,
-                        "repo_id": engine.repo_id,
-                        "file_path": "src/orders.py",
-                        "language": "python",
-                        "symbol_name": "OrderService",
-                        "qualified_name": "OrderService",
-                        "kind": "class",
-                        "signature": "class OrderService:",
-                        "start_byte": 0,
-                        "end_byte": len(source.encode("utf-8")),
-                        "start_line": 1,
-                        "end_line": 3,
-                        "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                        "source": source,
-                        "provenance": "scip",
-                    }
-                ],
-            },
-            sort_keys=True,
-        ),
+                "symbol_name": "OrderService",
+                "qualified_name": "OrderService",
+                "kind": "class",
+                "signature": "class OrderService:",
+                "start_byte": 0,
+                "end_byte": len(source.encode("utf-8")),
+                "start_line": 1,
+                "end_line": 3,
+                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                "source": source,
+                "provenance": "scip",
+            }
+        ],
+    }
+    if include_references:
+        payload["references"] = {
+            symbol_id: [
+                {
+                    "file_path": "src/checkout.py",
+                    "line": 4,
+                    "column": 12,
+                    "end_line": 4,
+                    "end_column": 23,
+                    "snippet": "    return OrderService().calculate_total(items)",
+                    "provenance": "scip",
+                }
+            ]
+        }
+    artifact_path.write_text(
+        json.dumps(payload, sort_keys=True),
         encoding="utf-8",
     )
     return artifact_path
@@ -105,6 +125,17 @@ class _HealthyScipProvider:
         file_path: str | None = None,
         symbol_name: str | None = None,
     ) -> dict[str, object] | None:
+        del symbol_id, qualified_name, file_path, symbol_name
+        return None
+
+    def find_references(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[object] | None:
         del symbol_id, qualified_name, file_path, symbol_name
         return None
 
@@ -167,6 +198,33 @@ def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None
     assert symbol["symbol_id"] == "scip-order-service"
     assert symbol["provenance"] == "scip"
     assert "class OrderService" in symbol["source"]
+
+
+def test_scip_provider_routes_usages_payloads(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture(engine, include_references=True)
+
+    payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
+
+    assert payload["target"]["symbol_id"] == "scip-order-service"
+    assert payload["provenance"] == "scip"
+    assert payload["provenance_breakdown"] == {"scip": 1}
+    assert payload["references"]["src/checkout.py"][0]["provenance"] == "scip"
+
+
+def test_scip_provider_falls_back_to_treesitter_when_reference_data_is_missing(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture(engine, include_references=False)
+
+    payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
+
+    assert payload["target"]["provenance"] == "scip"
+    assert payload["provenance"] == "treesitter"
+    assert payload["provenance_breakdown"] == {"treesitter": 1}
 
 
 def test_scip_provider_falls_back_when_artifact_is_invalid(tmp_path: Path) -> None:

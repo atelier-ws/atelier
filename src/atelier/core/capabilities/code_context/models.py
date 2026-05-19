@@ -51,6 +51,19 @@ class TextMatch(BaseModel):
     text: str
 
 
+class UsageReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file_path: str
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+    snippet: str | None = None
+    caller: str | None = None
+    provenance: str = "local"
+
+
 class ContextPack(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,4 +101,5 @@ __all__ = [
     "IndexStats",
     "SymbolRecord",
     "TextMatch",
+    "UsageReference",
 ]

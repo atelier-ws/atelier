@@ -30,6 +30,7 @@ from atelier.core.capabilities.code_context.models import (
     IndexStats,
     SymbolRecord,
     TextMatch,
+    UsageReference,
 )
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.budget import count_tokens
@@ -98,6 +99,8 @@ _CONTEXT_ESSENTIAL_KEYS = [
     "provenance",
 ]
 _IMPACT_ESSENTIAL_KEYS = ["file_path", "direct_importers", "affected_tests", "risk_level", "provenance"]
+_USAGES_ESSENTIAL_KEYS = ["file_path", "line", "column", "end_line", "end_column", "provenance"]
+_USAGES_OPTIONAL_KEYS = ["snippet", "caller"]
 _PATTERN_ESSENTIAL_KEYS = ["file_path", "line", "column", "end_line", "end_column", "captures"]
 _PATTERN_OPTIONAL_KEYS = ["snippet"]
 _CACHE_STATUS_ESSENTIAL_KEYS = ["repo_id", "index_version", "entry_count", "entries_by_tool", "total_bytes", "max_bytes"]
@@ -109,6 +112,7 @@ _CACHE_TOOL_ALIASES = {
     "outline": "code.outline",
     "context": "code.context",
     "impact": "code.impact",
+    "usages": "code.usages",
     "pattern": "code.pattern",
 }
 
@@ -216,6 +220,7 @@ class CodeContextEngine:
             packer=self._budget,
             local_search=self._search_symbols_local,
             local_get_symbol=self._get_symbol_local,
+            local_find_references=self._find_references_local,
         )
         self._register_symbol_intel_providers()
 
@@ -524,6 +529,63 @@ class CodeContextEngine:
             optional_keys_in_drop_order=["transitive_importers", "dead_code_candidates"],
         )
         self._cache_set("code.impact", cache_args, payload)
+        return payload
+
+    def tool_usages(
+        self,
+        query: str | None = None,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        file_glob: str | None = None,
+        group_by: Literal["file", "caller", "none"] = "file",
+        snippet_lines: int = 3,
+        limit: int = 20,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        self._sync_symbol_intel()
+        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        cache_args = {
+            "query": query,
+            "symbol_id": symbol_id,
+            "qualified_name": qualified_name,
+            "symbol_name": symbol_name,
+            "file_path": normalized_file_path,
+            "kind": kind,
+            "language": language,
+            "file_glob": file_glob,
+            "group_by": group_by,
+            "snippet_lines": snippet_lines,
+            "limit": limit,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get("code.usages", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+        payload = self.find_references(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=normalized_file_path,
+            kind=kind,
+            language=language,
+            file_glob=file_glob,
+            group_by=group_by,
+            snippet_lines=snippet_lines,
+            limit=limit,
+            auto_index=False,
+            budget_tokens=budget_tokens,
+        )
+        if "error" not in payload:
+            self._cache_set("code.usages", cache_args, payload)
         return payload
 
     def tool_pattern(
@@ -907,6 +969,78 @@ class CodeContextEngine:
                 raise RuntimeError(proc.stderr.strip() or "ripgrep failed")
             return self._parse_rg_output(proc.stdout, limit=limit)
         return self._python_text_search(query, search_path, limit=limit, ignore_case=ignore_case)
+
+    def find_references(
+        self,
+        query: str | None = None,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        file_glob: str | None = None,
+        group_by: Literal["file", "caller", "none"] = "file",
+        snippet_lines: int = 3,
+        limit: int = 20,
+        auto_index: bool = True,
+        budget_tokens: int = 4000,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        target = self._resolve_reference_target(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=file_path,
+            kind=kind,
+            language=language,
+            file_glob=file_glob,
+        )
+        if target.get("error"):
+            return self._pack_single_payload(
+                target,
+                budget_tokens=budget_tokens,
+                essential_keys=["error", "message", "matches", "cache_hit", "provenance"],
+                optional_keys_in_drop_order=["provenance_breakdown"],
+            )
+        references = self.intel_store.find_references(
+            symbol_id=str(target["symbol_id"]),
+            qualified_name=str(target["qualified_name"]),
+            file_path=str(target["file_path"]),
+            symbol_name=str(target["symbol_name"]),
+        )
+        items = [self._usage_item(reference, snippet_lines=snippet_lines) for reference in references]
+        if file_glob:
+            items = [item for item in items if Path(str(item["file_path"])).match(file_glob)]
+        full_payload = self._build_usages_payload(
+            target=target,
+            items=items,
+            group_by=group_by,
+            truncated=False,
+        )
+        full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
+
+        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._finalize_packed_payload(
+                self._build_usages_payload(
+                    target=target,
+                    items=packed_items,
+                    group_by=group_by,
+                    truncated=len(packed_items) < len(items),
+                ),
+                full_total_tokens=full_total_tokens,
+            )
+
+        return self._fit_items_to_budget(
+            items[:limit],
+            budget_tokens=budget_tokens,
+            essential_keys=_USAGES_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_USAGES_OPTIONAL_KEYS,
+            build_payload=build_payload,
+        )
 
     def impact(self, file_path: str, *, auto_index: bool = True) -> ImpactResult:
         """Approximate import blast radius and dead-code candidates for a file."""
@@ -1367,6 +1501,211 @@ class CodeContextEngine:
     def _read_file_slice(self, rel: str, start_byte: int, end_byte: int) -> str:
         data = (self.repo_root / rel).read_bytes()
         return data[start_byte:end_byte].decode("utf-8", errors="replace")
+
+    def _usage_item(self, reference: UsageReference, *, snippet_lines: int) -> dict[str, Any]:
+        payload = reference.model_dump(mode="json", exclude_none=True)
+        if snippet_lines > 0 and "snippet" not in payload:
+            payload["snippet"] = self._reference_snippet(reference.file_path, reference.line, snippet_lines)
+        return payload
+
+    def _reference_snippet(self, file_path: str, line: int, snippet_lines: int) -> str:
+        lines = self._read_file(file_path).splitlines()
+        if not lines:
+            return ""
+        start = max(0, line - 1)
+        end = min(len(lines), start + max(1, snippet_lines))
+        return "\n".join(lines[start:end])
+
+    def _build_usages_payload(
+        self,
+        *,
+        target: dict[str, Any],
+        items: list[dict[str, Any]],
+        group_by: Literal["file", "caller", "none"],
+        truncated: bool,
+    ) -> dict[str, Any]:
+        provenance_breakdown = self._provenance_breakdown(items)
+        provenance = self._items_provenance(items) if items else str(target.get("provenance") or _LOCAL_PROVENANCE)
+        payload: dict[str, Any] = {
+            "target": self._usage_target_summary(target),
+            "references": self._group_usages(items, group_by=group_by),
+            "reference_count": len(items),
+            "group_by": group_by,
+            "truncated": truncated,
+            "cache_hit": False,
+            "provenance": provenance,
+            "provenance_breakdown": provenance_breakdown,
+        }
+        return payload
+
+    def _group_usages(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        group_by: Literal["file", "caller", "none"],
+    ) -> list[dict[str, Any]] | dict[str, list[dict[str, Any]]]:
+        if group_by == "none":
+            return items
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for item in items:
+            if group_by == "caller":
+                key = str(item.get("caller") or item["file_path"])
+            else:
+                key = str(item["file_path"])
+            grouped.setdefault(key, []).append(item)
+        return grouped
+
+    def _usage_target_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        keys = [
+            "symbol_id",
+            "symbol_name",
+            "qualified_name",
+            "file_path",
+            "kind",
+            "signature",
+            "start_line",
+            "end_line",
+            "language",
+            "provenance",
+        ]
+        return {key: payload[key] for key in keys if key in payload}
+
+    def _resolve_reference_target(
+        self,
+        *,
+        query: str | None,
+        symbol_id: str | None,
+        qualified_name: str | None,
+        symbol_name: str | None,
+        file_path: str | None,
+        kind: str | None,
+        language: str | None,
+        file_glob: str | None,
+    ) -> dict[str, Any]:
+        if symbol_id or qualified_name or (symbol_name and file_path):
+            try:
+                return self.get_symbol(
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=file_path,
+                    auto_index=False,
+                )
+            except LookupError:
+                return {
+                    "error": "symbol_not_found",
+                    "message": "no matching symbol was found",
+                    "cache_hit": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                }
+        target_query = query or qualified_name or symbol_name
+        if not target_query:
+            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
+        candidates = self.search_symbols(
+            target_query,
+            limit=20,
+            kind=kind,
+            language=language,
+            snippet="none",
+            file_glob=file_glob,
+            auto_index=False,
+        )
+        exact = [
+            candidate
+            for candidate in candidates
+            if (
+                candidate.qualified_name == target_query
+                or candidate.symbol_name == target_query
+            )
+            and (file_path is None or candidate.file_path == file_path)
+        ]
+        matches = exact or candidates
+        deduped = list({candidate.symbol_id: candidate for candidate in matches}.values())
+        if not deduped:
+            return {
+                "error": "symbol_not_found",
+                "message": "no matching symbol was found",
+                "cache_hit": False,
+                "provenance": _LOCAL_PROVENANCE,
+            }
+        if len(deduped) > 1:
+            return {
+                "error": "disambiguation_required",
+                "message": "multiple symbols match the usages query",
+                "matches": [
+                    {
+                        "symbol_id": candidate.symbol_id,
+                        "qualified_name": candidate.qualified_name,
+                        "symbol_name": candidate.symbol_name,
+                        "file_path": candidate.file_path,
+                        "start_line": candidate.start_line,
+                        "provenance": candidate.provenance,
+                    }
+                    for candidate in deduped[:10]
+                ],
+                "cache_hit": False,
+                "provenance": _LOCAL_PROVENANCE,
+            }
+        return self.get_symbol(symbol_id=deduped[0].symbol_id, auto_index=False)
+
+    def _find_references_local(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[UsageReference]:
+        try:
+            target = self._get_symbol_local(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                file_path=file_path,
+                symbol_name=symbol_name,
+            )
+        except LookupError:
+            target = self._get_symbol_local(
+                qualified_name=qualified_name,
+                file_path=file_path,
+                symbol_name=symbol_name,
+            )
+        target_name = str(target["symbol_name"])
+        target_file = str(target["file_path"])
+        target_start = int(target["start_line"])
+        target_end = int(target["end_line"])
+        results: list[UsageReference] = []
+        seen: set[tuple[str, int, int]] = set()
+        for rel in self._indexed_files():
+            path = self.repo_root / rel
+            try:
+                tags = extract_tags(path)
+            except OSError:
+                continue
+            lines = self._read_file(rel).splitlines()
+            for tag in tags:
+                if tag.kind != "reference" or tag.name != target_name:
+                    continue
+                if rel == target_file and target_start <= tag.line <= target_end:
+                    continue
+                line_text = lines[tag.line - 1] if 1 <= tag.line <= len(lines) else ""
+                column = max(1, line_text.find(target_name) + 1) if line_text else 1
+                key = (rel, tag.line, column)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append(
+                    UsageReference(
+                        file_path=rel,
+                        line=tag.line,
+                        column=column,
+                        end_line=tag.line,
+                        end_column=column + len(target_name) - 1,
+                        snippet=line_text,
+                        provenance="treesitter",
+                    )
+                )
+        results.sort(key=lambda item: (item.file_path, item.line, item.column))
+        return results
 
     def _parse_rg_output(self, output: str, *, limit: int) -> list[TextMatch]:
         matches: list[TextMatch] = []
