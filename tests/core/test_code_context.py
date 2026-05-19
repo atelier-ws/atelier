@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 from pathlib import Path
 
 from atelier.core.capabilities.code_context import CodeContextEngine
@@ -225,6 +227,92 @@ def _write_call_graph_scip_fixture(engine: CodeContextEngine, *, include_call_gr
     (artifact_dir / "python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
 
 
+def _git(args: list[str], repo_root: Path, *, env: dict[str, str] | None = None) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return completed.stdout.strip()
+
+
+def _commit_all(
+    repo_root: Path,
+    message: str,
+    *,
+    author_name: str = "Fixture Tester",
+    author_email: str = "fixture@example.com",
+    author_date: str | None = None,
+) -> str:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": author_name,
+            "GIT_AUTHOR_EMAIL": author_email,
+            "GIT_COMMITTER_NAME": author_name,
+            "GIT_COMMITTER_EMAIL": author_email,
+        }
+    )
+    if author_date is not None:
+        env["GIT_AUTHOR_DATE"] = author_date
+        env["GIT_COMMITTER_DATE"] = author_date
+    _git(["add", "-A"], repo_root, env=env)
+    _git(["commit", "-m", message], repo_root, env=env)
+    return _git(["rev-parse", "HEAD"], repo_root, env=env)
+
+
+def _init_git_fixture_repo(repo_root: Path) -> None:
+    repo_root.mkdir()
+    _git(["init"], repo_root)
+    _git(["config", "user.name", "Fixture Tester"], repo_root)
+    _git(["config", "user.email", "fixture@example.com"], repo_root)
+
+
+def _write_deleted_history_fixture(repo_root: Path) -> str:
+    _init_git_fixture_repo(repo_root)
+    (repo_root / "legacy.py").write_text(
+        "class LegacyCheckout:\n"
+        "    def process(self) -> int:\n"
+        "        return 1\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
+    (repo_root / "legacy.py").unlink()
+    return _commit_all(
+        repo_root,
+        "delete legacy symbol",
+        author_email="history@example.com",
+        author_date="2025-01-01T00:00:00+00:00",
+    )
+
+
+def _write_rename_history_fixture(repo_root: Path) -> str:
+    _init_git_fixture_repo(repo_root)
+    (repo_root / "legacy.py").write_text(
+        "class LegacyCheckout:\n"
+        "    def process(self) -> int:\n"
+        "        return 1\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
+    _git(["mv", "legacy.py", "modern.py"], repo_root)
+    (repo_root / "modern.py").write_text(
+        "class ModernCheckout:\n"
+        "    def process(self) -> int:\n"
+        "        return 2\n",
+        encoding="utf-8",
+    )
+    return _commit_all(
+        repo_root,
+        "rename legacy symbol",
+        author_email="renames@example.com",
+        author_date="2025-02-01T00:00:00+00:00",
+    )
+
+
 def test_code_context_indexes_searches_and_retrieves_exact_symbol(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -306,6 +394,102 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     assert indexed["index_version"] >= 2
     assert fresh["cache_hit"] is False
     assert fresh["provenance"] == "local"
+
+
+def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    delete_sha = _write_deleted_history_fixture(repo_root)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+
+    first = engine.tool_search("LegacyCheckout", scope="deleted", limit=5, budget_tokens=4000)
+    second = engine.tool_search("LegacyCheckout", scope="deleted", limit=5, budget_tokens=4000)
+
+    assert first["cache_hit"] is False
+    assert first["provenance"] == "graveyard"
+    assert first["items"][0]["symbol_name"] == "LegacyCheckout"
+    assert first["items"][0]["deleted_at_sha"] == delete_sha
+    assert first["items"][0]["last_author"] == "history@example.com"
+    assert second["cache_hit"] is True
+    assert second["provenance"] == "cached"
+
+
+def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    rename_sha = _write_rename_history_fixture(repo_root)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    payload = engine.tool_search("ModernCheckout", scope="deleted", limit=5, budget_tokens=4000)
+
+    assert payload["items"][0]["symbol_name"] == "LegacyCheckout"
+    assert payload["items"][0]["rename_target"] == "modern.py"
+    assert payload["items"][0]["deleted_at_sha"] == rename_sha
+    assert payload["items"][0]["rename_note"]
+
+
+def test_tool_search_deleted_scope_applies_temporal_and_touched_by_filters_and_widens_cache_keys(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    _write_deleted_history_fixture(repo_root)
+    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
+
+    filtered = engine.tool_search(
+        "LegacyCheckout",
+        scope="deleted",
+        since="2100-01-01",
+        touched_by="history@example.com",
+        limit=5,
+        budget_tokens=4000,
+    )
+    unfiltered = engine.tool_search("LegacyCheckout", scope="deleted", touched_by="history@example.com", limit=5, budget_tokens=4000)
+    additive = engine.tool_search(
+        "LegacyCheckout",
+        scope="deleted",
+        since="2000-01-01",
+        touched_by="history@example.com",
+        limit=5,
+        budget_tokens=4000,
+    )
+
+    assert filtered["items"] == []
+    assert unfiltered["cache_hit"] is False
+    assert unfiltered["items"][0]["last_author"] == "history@example.com"
+    assert additive["cache_hit"] is False
+    assert additive["items"][0]["last_author"] == "history@example.com"
+
+
+def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
+
+    def fake_search(self: object, query: str, *, limit: int, since_ts: int | None, touched_by: str | None, language: str | None) -> list[dict[str, object]]:
+        _ = (self, query, limit, since_ts, touched_by, language)
+        return [
+            {
+                "symbol_id": "graveyard-test",
+                "repo_id": engine.repo_id,
+                "file_path": "legacy.py",
+                "language": "python",
+                "symbol_name": "LegacyCheckout",
+                "qualified_name": "LegacyCheckout",
+                "kind": "historical",
+                "signature": "class LegacyCheckout",
+                "start_line": 1,
+                "end_line": 1,
+                "provenance": "graveyard",
+                "deleted_at_sha": "abc123",
+            }
+        ]
+
+    monkeypatch.setattr(DeletedHistorySearchAdapter, "search", fake_search)
+
+    payload = engine.tool_search("LegacyCheckout", scope="deleted", limit=5, budget_tokens=4000)
+
+    assert payload["items"][0]["deleted_at_sha"] == "abc123"
+    assert payload["provenance"] == "graveyard"
 
 
 def test_budget_packer_drops_optional_keys_first() -> None:
