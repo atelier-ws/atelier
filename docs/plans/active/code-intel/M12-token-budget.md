@@ -97,7 +97,7 @@ target model uses a different tokenizer (BPE vs cl100k_base etc.), add
 
 - All ops from M2/M3/M4/M5/M7/M8 audited; defaults are outline-first.
 - Cost-discipline benchmark passes (≤ 30% of baseline aggregate).
-- Cache hit-rate metric visible in the Insights tab.
+- Cache hit-rate metric visible in the Overview telemetry surface.
 - `code op="cache_status"` and `code op="cache_invalidate"` diagnostic ops registered (no new top-level tool).
 - Validation matrix updated.
 
