@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from atelier.core.capabilities.code_context.models import SymbolRecord
 from atelier.infra.embeddings.local import LocalEmbedder
 from atelier.infra.embeddings.null_embedder import NullEmbedder
-from atelier.infra.storage.vector import cosine_similarity, get_cached_embedding, put_cached_embedding, vector_cache_key
+from atelier.infra.storage.vector import (
+    cosine_similarity,
+    get_cached_embedding,
+    put_cached_embedding,
+    vector_cache_key,
+)
 
 SearchMode = Literal["auto", "lexical", "semantic", "hybrid"]
 
@@ -19,6 +25,14 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 _STOP_WORDS = frozenset({"a", "an", "for", "how", "in", "of", "the", "to", "with"})
 _DEFAULT_RRF_K = 60
 _DEFAULT_CANDIDATE_LIMIT = 200
+
+
+@dataclass
+class _FusionEntry:
+    symbol: SymbolRecord
+    score: float
+    lexical_rank: int | None = None
+    semantic_rank: int | None = None
 
 
 def is_identifier_query(query: str) -> bool:
@@ -114,37 +128,34 @@ class SemanticSearchRanker:
         limit: int,
     ) -> list[SymbolRecord]:
         """Fuse lexical and semantic rankings with reciprocal rank fusion."""
-        fused: dict[str, dict[str, object]] = {}
+        fused: dict[str, _FusionEntry] = {}
         for rank, symbol in enumerate(lexical_hits, start=1):
             entry = fused.setdefault(
                 symbol.symbol_id,
-                {"symbol": symbol, "score": 0.0, "lexical_rank": rank, "semantic_rank": None},
+                _FusionEntry(symbol=symbol, score=0.0, lexical_rank=rank),
             )
-            entry["score"] = float(entry["score"]) + 1.0 / (self.rrf_k + rank)
+            entry.score += 1.0 / (self.rrf_k + rank)
         for rank, symbol in enumerate(semantic_hits, start=1):
             entry = fused.setdefault(
                 symbol.symbol_id,
-                {"symbol": symbol, "score": 0.0, "lexical_rank": None, "semantic_rank": rank},
+                _FusionEntry(symbol=symbol, score=0.0, semantic_rank=rank),
             )
-            entry["score"] = float(entry["score"]) + 1.0 / (self.rrf_k + rank)
-            if entry.get("lexical_rank") is None:
-                entry["symbol"] = symbol
-            entry["semantic_rank"] = rank
+            entry.score += 1.0 / (self.rrf_k + rank)
+            if entry.lexical_rank is None:
+                entry.symbol = symbol
+            entry.semantic_rank = rank
 
         ordered = sorted(
             fused.values(),
             key=lambda entry: (
-                -float(entry["score"]),
-                int(entry["semantic_rank"] or 10_000),
-                int(entry["lexical_rank"] or 10_000),
-                str(cast(SymbolRecord, entry["symbol"]).file_path),
-                int(cast(SymbolRecord, entry["symbol"]).start_line),
+                -entry.score,
+                entry.semantic_rank or 10_000,
+                entry.lexical_rank or 10_000,
+                entry.symbol.file_path,
+                entry.symbol.start_line,
             ),
         )
-        return [
-            cast(SymbolRecord, entry["symbol"]).model_copy(update={"score": float(entry["score"])})
-            for entry in ordered[:limit]
-        ]
+        return [entry.symbol.model_copy(update={"score": entry.score}) for entry in ordered[:limit]]
 
     def _embed_query(self, query: str) -> list[float]:
         cache_key = vector_cache_key("code-search-query", f"{self.embedder.name}:{query.strip().lower()}")
