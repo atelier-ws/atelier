@@ -290,7 +290,10 @@ class SymbolRecallCapability:
         return items[:limit]
 
     def _trim_to_budget(self, payload: dict[str, Any], *, budget_tokens: int) -> dict[str, Any]:
-        working = json.loads(json.dumps(payload, default=str))
+        cloned = json.loads(json.dumps(payload, default=str))
+        if not isinstance(cloned, dict):
+            raise RuntimeError("symbol recall payload clone must stay a mapping")
+        working: dict[str, Any] = cloned
         working["truncated_sections"] = []
         trim_order = ["tests", "decisions", "traces", "memory"]
         while self._compute_total_tokens({**working, "tokens_saved": 0}) > budget_tokens:
