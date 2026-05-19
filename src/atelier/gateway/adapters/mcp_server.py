@@ -641,6 +641,21 @@ def _archival_recall() -> ArchivalRecallCapability:
     return ArchivalRecallCapability(_memory_store(), make_embedder(), redactor=redact)
 
 
+def _symbol_recall() -> Any:
+    from atelier.core.capabilities.archival_recall.symbol_recall import SymbolRecallCapability
+    from atelier.core.foundation.store import ContextStore
+
+    workspace_root = _workspace_root()
+    trace_store = ContextStore(_atelier_root())
+    trace_store.init()
+    return SymbolRecallCapability(
+        repo_root=workspace_root,
+        engine=_code_context_engine(str(workspace_root)),
+        memory_store=_memory_store(),
+        trace_store=trace_store,
+    )
+
+
 def _workspace_path(file_path: str) -> Path:
     p = Path(file_path)
     if p.is_absolute():
@@ -1379,7 +1394,7 @@ def _memory_recall(
 
 @mcp_tool(name="memory", is_dev=True)
 def tool_memory(
-    op: Literal["block_upsert", "block_get", "archive", "recall", "transcript_recall", "summarize"],
+    op: Literal["block_upsert", "block_get", "archive", "recall", "recall_symbol", "transcript_recall", "summarize"],
     agent_id: str | None = None,
     label: str | None = None,
     value: str | None = None,
@@ -1397,9 +1412,12 @@ def tool_memory(
     query: str | None = None,
     top_k: int = 5,
     since: str | None = None,
+    include: list[Literal["definition", "memory", "traces", "decisions", "tests"]] | None = None,
+    horizon_days: int = 180,
+    budget_tokens: int = 3000,
     session_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """[DEV] Memory op-dispatch: block_upsert, block_get, archive, recall, transcript_recall, or summarize."""
+    """[DEV] Memory op-dispatch: block_upsert, block_get, archive, recall, recall_symbol, transcript_recall, or summarize."""
     if stub := _check_dev_mode("memory"):
         return {"context": stub, "passages": [], "text": stub}
 
@@ -1438,6 +1456,18 @@ def tool_memory(
             top_k=top_k,
             tags=tags,
             since=since,
+        )
+    if op == "recall_symbol":
+        return cast(
+            dict[str, Any],
+            _symbol_recall().recall_symbol(
+                query=require("query", query),
+                agent_id=agent_id,
+                include=cast(list[str] | None, include),
+                horizon_days=horizon_days,
+                budget_tokens=budget_tokens,
+                top_k=top_k,
+            ),
         )
     if op == "transcript_recall":
         from atelier.core.capabilities.local_recall import recall_transcripts
