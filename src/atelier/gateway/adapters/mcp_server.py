@@ -1475,13 +1475,27 @@ def tool_smart_read(
     }
 
 
-def _collect_touched_paths(edits: list[dict[str, Any]]) -> list[str]:
+def _snapshot_path(raw_path: str) -> str:
+    if "#cell=" in raw_path:
+        return raw_path.split("#cell=", 1)[0]
+    match = re.search(r"#\d+(?:-\d+)?$", raw_path)
+    return raw_path[: match.start()] if match else raw_path
+
+
+def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path | None = None) -> list[str]:
     """Extract the file paths referenced in a list of edit descriptors."""
     paths: set[str] = set()
     for edit in edits:
         raw = str(edit.get("file_path") or edit.get("path") or "")
+        if not raw and str(edit.get("kind") or "") == "symbol":
+            from atelier.core.capabilities.tool_supervision.symbol_edit import (
+                preview_symbol_edit_path,
+            )
+
+            with contextlib.suppress(Exception):
+                raw = preview_symbol_edit_path(edit, repo_root=repo_root)
         if raw:
-            paths.add(raw)
+            paths.add(_snapshot_path(raw))
     return sorted(paths)
 
 
@@ -1544,7 +1558,7 @@ def tool_smart_edit(
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
 
     # Snapshot file contents before applying edits so we can compute diffs
-    paths = _collect_touched_paths(edits)
+    paths = _collect_touched_paths(edits, repo_root=Path(workspace))
     snapshots = _snapshot_paths(paths)
 
     use_legacy_batch = edits and all(
