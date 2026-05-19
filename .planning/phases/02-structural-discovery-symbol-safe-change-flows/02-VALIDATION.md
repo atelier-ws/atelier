@@ -40,7 +40,7 @@ created: 2026-05-18
 |------|-----------|-------------|---------------------------|-----------------------------|
 | `02-01` | M5 | `DISC-02` | `code op="pattern"` stays on the existing MCP surface, resolves the explicit `ast-grep` binary safely, and returns structural matches or rewrites without silently falling back to regex behavior | `tests/gateway/test_mcp_tool_handlers.py`, `tests/gateway/test_p0_mcp_surfaces.py`, new infra/benchmark coverage under `tests/benchmarks/code_intel/` |
 | `02-02` | M12 | Phase-wide hardening (partial close only) | Cache, budget, payload defaults, and diagnostics stay additive and low-token across the shipped search/pattern flows, while Plans `02-03` and `02-04` keep ownership of symbol-edit and usages follow-through checks | `tests/core/test_code_context.py`, `tests/gateway/test_p0_mcp_surfaces.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/benchmarks/code_intel/test_cost_discipline.py` |
-| `02-03` | M4 | `DISC-01` | Symbol-safe edit descriptors resolve the intended symbol, reject ambiguous or stale targets clearly, and preserve existing edit/diff recording semantics | `tests/core/test_rich_edit.py`, `tests/gateway/test_mcp_jsonrpc_e2e.py`, plus targeted edit-path regressions |
+| `02-03` | M4 | `DISC-01` | Symbol-safe edit descriptors resolve the intended symbol, reject ambiguous or stale targets clearly, preserve existing edit/diff recording semantics, and stay within the M12 token gate for edit follow-through | `tests/core/capabilities/tool_supervision/test_rich_edit_symbol.py`, `tests/gateway/test_mcp_jsonrpc_e2e.py::test_symbol_edit_descriptor_e2e`, `tests/benchmarks/code_intel/test_symbol_edit_bench.py` |
 | `02-04` | M3 | `NAVG-02` | `code op="usages"` returns grouped references on the existing `code` surface with routed backend support or explicit fallback behavior | `tests/core/test_code_context.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/infra/code_intel/scip/test_scip_adapter.py`, usages-vs-grep benchmark coverage |
 
 ---
@@ -83,5 +83,6 @@ created: 2026-05-18
 ## M12 Partial-Close Contract
 
 - Plan `02-02` freezes cache keys, budget packing order, low-token defaults, and additive diagnostics for the currently shipped `code` flows.
-- Plan `02-02` does **not** fully close M12. Plans `02-03` and `02-04` own the remaining follow-through checks for symbol-edit and usages defaults, diagnostics, trace capture, and validation sign-off.
-- Any validation summary or trace recorded from Plan `02-02` must describe M12 as a **partial close** until those later plans land.
+- Plan `02-03` closes the edit-side follow-through by adding symbol-edit regression coverage, the symbol-edit benchmark gate, and an M4 trace tied to `docs/plans/active/code-intel/M4-edit-symbol.md`.
+- Plan `02-04` remains the final M12 blocker because usages still owns the remaining defaults, diagnostics, trace capture, and validation sign-off.
+- Any validation summary or trace recorded before Plan `02-04` lands must still describe M12 as a **partial close**.
