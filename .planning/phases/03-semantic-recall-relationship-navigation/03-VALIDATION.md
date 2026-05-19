@@ -84,6 +84,7 @@ source: phase-planning
 
 - `03-01` closes with a recorded trace referencing `docs/plans/active/code-intel/M6-semantic-rank.md` after the semantic benchmark and exact-name regression gate pass.
 - Keep the trace payload tied to the shipped `code op="search"` surface rather than a helper-only implementation detail so validation evidence matches the public behavior.
+- `03-02` closes with a recorded trace referencing `docs/plans/active/code-intel/M7-recall-symbol.md` after the recall benchmark proves the default definition-plus-memory bundle stays under budget and smaller than the expanded/manual paths.
 
 ---
 
