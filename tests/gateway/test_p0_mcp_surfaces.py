@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -24,6 +25,36 @@ def test_mcp_search_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     result = tool_smart_search({"content_regex": "needle", "file_glob_patterns": ["*.py"]})
 
     assert result["_meta"]["fileMatchCount"] == 1
+
+
+def _write_fake_zoekt_binary(root: Path) -> tuple[Path, str]:
+    payload = b"#!/bin/sh\nexit 0\n"
+    binary_path = root / "zoekt-webserver"
+    binary_path.write_bytes(payload)
+    binary_path.chmod(0o755)
+    return binary_path, hashlib.sha256(payload).hexdigest()
+
+
+def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
+    binary_path, sha256 = _write_fake_zoekt_binary(tmp_path)
+    monkeypatch.setenv("ATELIER_ZOEKT_BIN", str(binary_path))
+    monkeypatch.setenv("ATELIER_ZOEKT_BIN_SHA256", sha256)
+    src = tmp_path / "src"
+    src.mkdir()
+    for index in range(24):
+        (src / f"module_{index}.py").write_text(
+            "".join(f"def item_{index}_{line}() -> str: return 'needle token {index}'\n" for line in range(24)),
+            encoding="utf-8",
+        )
+
+    result = tool_smart_search({"query": "needle token", "path": str(tmp_path), "budget_tokens": 4000})
+
+    assert result["backend"] == "zoekt"
+    assert isinstance(result["index_age_seconds"], int)
+    assert "matches" in result
+    assert "total_tokens" in result
 
 
 def test_mcp_edit_rich_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,6 +107,36 @@ def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:
     assert first["provenance"] == "local"
     assert second["provenance"] == "cached"
     assert all("snippet" not in item for item in first["items"])
+
+
+def test_tool_code_search_name_first_contract_stays_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_search.return_value = {
+        "items": [{"symbol_name": "OrderService", "file_path": "src/orders.py", "provenance": "local"}],
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 8,
+        "total_tokens": 90,
+        "mode": "auto",
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 220})
+
+    assert payload["provenance"] == "local"
+    assert "backend" not in payload
+    fake_engine.tool_search.assert_called_once_with(
+        "OrderService",
+        limit=20,
+        mode="auto",
+        kind=None,
+        language=None,
+        snippet="none",
+        snippet_lines=8,
+        file_glob=None,
+        scope="repo",
+        budget_tokens=220,
+    )
 
 
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
