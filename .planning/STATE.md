@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-05-19T22:54:02.242Z"
-last_activity: 2026-05-19 -- Phase 06 Plan 01 completed with deterministic bootstrap warm-path validation
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-05-19T23:05:18.747Z"
+last_activity: 2026-05-19 -- Phase 06 Plan 02 completed with explicit external dependency scope routing and edit rejection
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 20
-  completed_plans: 18
-  percent: 90
+  completed_plans: 19
+  percent: 95
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 ## Current Position
 
 Phase: 06 (bootstrap-dependency-scope-and-multi-repo-workspaces) — IN PROGRESS
-Plan: 06-01 complete; 06-02 and 06-03 pending
-Status: M11 first-context bootstrap is complete with pinned repo-scoped memory reuse and recorded benchmark trace evidence; 06-02 is next
-Last activity: 2026-05-19 -- Phase 06 Plan 01 completed with deterministic bootstrap warm-path validation
+Plan: 06-01 and 06-02 complete; 06-03 pending
+Status: M11 bootstrap and M9 external dependency scope routing are complete with recorded benchmark trace evidence; 06-03 is next
+Last activity: 2026-05-19 -- Phase 06 Plan 02 completed with explicit external dependency scope routing and edit rejection
 
-Progress: [█████████░] 90%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 17
+- Total plans completed: 19
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -71,6 +71,7 @@ Progress: [█████████░] 90%
 | Phase 05 P03 | inline | 3 tasks | 14 files |
 | Phase 05 P02 | inline | 3 tasks | 14 files |
 | Phase 06 P01 | 11m | 3 tasks | 10 files |
+| Phase 06 P02 | 5m | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Recent decisions affecting current work:
 - [Phase 05]: Skip local reranking on routed Zoekt matches so the warm path preserves the M16 speed gain.
 - [Phase 06]: Persist bootstrap blocks under a repo-scoped bootstrap:<repo_id> namespace while keeping bootstrap/<repo_id>/... labels stable for later-session reuse.
 - [Phase 06]: Keep bootstrap implicit on tool_get_context by enqueueing one deduped bootstrap_context job on the existing worker path and injecting persisted blocks during runtime context assembly.
+- [Phase 06]: Keep dependency routing opt-in through `scope="external"` while preserving repo-default symbol search behavior and the existing hashed `repo_id` cache layout.
+- [Phase 06]: Reject external dependency symbol edits in `symbol_edit.py` before any file read so routed origin metadata can gate mutation safely and remain reusable for workspace routing.
 
 ### Pending Todos
 
@@ -144,6 +147,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T22:54:02.242Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-05-19T23:05:18.733Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
