@@ -747,6 +747,88 @@ def test_tool_code_search_dispatches_deleted_scope_filters_without_gateway_histo
     )
 
 
+def test_tool_code_blame_dispatches_additively_without_gateway_aggregation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_blame.return_value = {
+        "symbol_name": "risk_score",
+        "qualified_name": "risk_score",
+        "file_path": "service.py",
+        "freshness": "fresh",
+        "last_author": "carol@example.com",
+        "last_commit_sha": "abc123",
+        "local_edits": False,
+        "distinct_authors": 2,
+        "cache_hit": False,
+        "provenance": "blame",
+        "tokens_saved": 12,
+        "total_tokens": 150,
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    payload = tool_code(
+        {
+            "op": "blame",
+            "repo_root": str(tmp_path),
+            "query": "risk_score",
+            "include_churn": False,
+            "budget_tokens": 220,
+        }
+    )
+
+    assert payload["provenance"] == "blame"
+    assert payload["symbol_name"] == "risk_score"
+    fake_engine.tool_blame.assert_called_once_with(
+        query="risk_score",
+        symbol_id=None,
+        qualified_name=None,
+        symbol_name=None,
+        file_path=None,
+        include_churn=False,
+        budget_tokens=220,
+    )
+
+
+def test_tool_code_include_churn_remains_additive_for_non_blame_ops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_search.return_value = {
+        "items": [{"symbol_name": "OrderService", "file_path": "src/orders.py", "provenance": "local"}],
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 10,
+        "total_tokens": 100,
+        "mode": "auto",
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    payload = tool_code(
+        {
+            "op": "search",
+            "repo_root": str(tmp_path),
+            "query": "OrderService",
+            "include_churn": False,
+            "budget_tokens": 220,
+        }
+    )
+
+    assert payload["provenance"] == "local"
+    fake_engine.tool_search.assert_called_once_with(
+        "OrderService",
+        limit=20,
+        mode="auto",
+        kind=None,
+        language=None,
+        snippet="none",
+        snippet_lines=8,
+        file_glob=None,
+        scope="repo",
+        budget_tokens=220,
+    )
+
+
 def test_code_context_usages_surface_groups_references(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     (tmp_path / "src").mkdir()
