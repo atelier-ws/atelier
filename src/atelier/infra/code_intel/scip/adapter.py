@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from atelier.core.capabilities.code_context.intel_store import ProviderHealth
+from atelier.core.capabilities.code_context.call_graph import CallGraphNode
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.code_intel.scip.reader import (
@@ -111,6 +112,44 @@ class ScipSymbolIntelProvider:
     ) -> list[UsageReference] | None:
         for artifact in self._artifacts:
             payload = artifact.find_references(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                file_path=file_path,
+                symbol_name=symbol_name,
+            )
+            if payload is not None:
+                return payload
+        return None
+
+    def find_callers(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        for artifact in self._artifacts:
+            payload = artifact.find_callers(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                file_path=file_path,
+                symbol_name=symbol_name,
+            )
+            if payload is not None:
+                return payload
+        return None
+
+    def find_callees(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        for artifact in self._artifacts:
+            payload = artifact.find_callees(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 file_path=file_path,
