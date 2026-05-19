@@ -98,14 +98,14 @@ otherwise the build path (Zoekt standalone) is chosen.
 
 ## Evaluation matrix
 
-Complete this table as part of the evaluation; one ✅/❌ per cell:
+Completed from `src/benchmarks/code_intel/scale_decision_eval.py`:
 
 | Candidate | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | Score | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `src` CLI adapter         | ? | ? | ? | ? | n/a | n/a | ? | ? | ? | _/9 | ? |
-| Sourcegraph self-hosted   | ? | ? | ? | ? | ? | ? | ? | ? | ? | _/9 | ? |
-| `scip-mcp` (if exists)    | ? | ? | ? | ? | ? | ? | ? | ? | ? | _/9 | ? |
-| Zoekt standalone (default)| ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 9/9 | ✅ baseline |
+| `src` CLI adapter | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 3/9 | ❌ |
+| Sourcegraph self-hosted | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | 6/9 | ❌ |
+| External `scip-mcp` integration | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | 2/9 | ❌ |
+| Zoekt standalone (default) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 9/9 | ✅ |
 
 Zoekt is the baseline because the M16 spec already commits to those numbers
 based on Sourcegraph's published benchmarks; the table forces every
@@ -134,19 +134,36 @@ tool landscape changes (e.g., Sourcegraph releases an embeddable MCP server).
 
 ---
 
-## Evaluation memo (to be filled in on claim)
+## Evaluation memo
 
-> **Date:** _____
-> **Evaluator:** _____
+> **Date:** 2026-05-19
+> **Evaluator:** Copilot
 
 ### Findings
 
-_Fill in after evaluation._
+| Candidate | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | Score | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `src` CLI adapter | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 3/9 | ❌ |
+| Sourcegraph self-hosted | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | 6/9 | ❌ |
+| External `scip-mcp` integration | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | 2/9 | ❌ |
+| Zoekt standalone (default) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 9/9 | ✅ |
+
+### Repo-specific Phase 5 answers
+
+- `search_scope`: `search`
+- `result_shape`: `text`
+- `lifecycle_owner`: `session-scoped search backend supervisor owned by the MCP/runtime layer`
+- `selected_option`: `option-a`
+- `code op="search"` remains on the existing local/SCIP/semantic name-first path until a later adapter proves symbol-shape parity.
 
 ### Decision
 
-**Selected approach:** _____
+**Selected approach:** Proceed with Zoekt standalone for `search` workloads only
 
-**Rationale:** _____
+**Rationale:** Best fit for Atelier's large-repo text-search need, with explicit offline operation and the cleanest path to keep Phase 5 on the search stack.
 
-**Risks:** _____
+**05-02 status:** may proceed as written
+
+**Risks:** 05-02 must still introduce lifecycle ownership outside per-call engine rebuilds, but the integration surface stays aligned with the accepted plan.
+
+Any non-`option-a` winner would require replacing `05-02-PLAN.md` before backend work starts.
