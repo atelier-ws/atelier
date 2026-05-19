@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+pytestmark = pytest.mark.slow  # Each test spawns a real Python subprocess (~2s each)
+
 from atelier.infra.runtime.run_ledger import RunLedger
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -3028,8 +3028,14 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         if _mem_store is None:
             from atelier.infra.storage.factory import make_memory_store
 
-            _mem_store = make_memory_store(Path(cfg.atelier_root))
+            _mem_store = make_memory_store(store_path)
         return _mem_store
+
+    def _team_manager_or_none() -> Any | None:
+        from atelier.core.capabilities.team import TeamWorkspaceManager
+
+        manager = TeamWorkspaceManager(store_path)
+        return manager if manager.exists() else None
 
     @app.get("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_list_or_get(
@@ -3037,14 +3043,29 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         label: str | None = None,
         include_tombstoned: bool = False,
         limit: int = 200,
+        user_id: str | None = None,
+        shared_only: bool = False,
     ) -> Any:
         mem = _get_mem_store()
+        manager = _team_manager_or_none()
         if label is not None:
             block = mem.get_block(agent_id, label, include_tombstoned=include_tombstoned)
             if block is None:
                 raise HTTPException(status_code=404, detail=f"Block not found: {label!r}")
+            if manager is not None:
+                from atelier.core.capabilities.team import visible_memory_blocks
+
+                visible = visible_memory_blocks([block], manager=manager, user_id=user_id, shared_only=shared_only)
+                if not visible:
+                    raise HTTPException(status_code=403, detail="block is not visible to this workspace user")
+                block = visible[0]
             return block
-        return mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
+        blocks = mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
+        if manager is not None:
+            from atelier.core.capabilities.team import visible_memory_blocks
+
+            blocks = visible_memory_blocks(blocks, manager=manager, user_id=user_id, shared_only=shared_only)
+        return blocks
 
     @app.post("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
     def memory_upsert_block(payload: dict[str, Any]) -> Any:
@@ -3056,6 +3077,18 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         label = payload.get("label")
         if not label:
             raise HTTPException(status_code=400, detail="label is required")
+        metadata = dict(payload.get("metadata") or {})
+        manager = _team_manager_or_none()
+        if manager is not None:
+            workspace = manager.load_workspace()
+            member = manager.require_member(str(payload.get("user_id") or ""), workspace=workspace)
+            metadata.setdefault("scope", "private")
+            metadata.setdefault("workspace_id", workspace.id)
+            metadata.setdefault("owner_user_id", member.user_id)
+            if metadata.get("scope") == "shared":
+                from atelier.core.capabilities.team import ensure_shared_memory_write
+
+                ensure_shared_memory_write(member)
         existing = mem.get_block(agent_id, label)
         if existing is None:
             value = str(payload.get("value", ""))
@@ -3070,7 +3103,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 description=str(payload.get("description", "")),
                 read_only=bool(payload.get("read_only", False)),
                 pinned=bool(payload.get("pinned", False)),
-                metadata=payload.get("metadata") or {},
+                metadata=metadata,
             )
         else:
             expected_version = payload.get("expected_version")
@@ -3083,6 +3116,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             for field in ("value", "description", "read_only", "pinned", "metadata", "limit_chars"):
                 if field in payload and payload[field] is not None:
                     update[field] = payload[field]
+            if "metadata" not in update:
+                update["metadata"] = metadata or existing.metadata
+            else:
+                update["metadata"] = metadata
             block = existing.model_copy(update=update)
         actor = str(payload.get("actor") or f"api:{agent_id}")
         try:
@@ -3139,6 +3176,159 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             since=since_dt,
         )
         return {"passages": [p.model_dump(mode="json") for p in passages]}
+
+    @app.get("/v1/team/workspace", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_workspace_get() -> Any:
+        manager = _team_manager_or_none()
+        if manager is None:
+            raise HTTPException(status_code=404, detail="team workspace not initialized")
+        return manager.load_workspace()
+
+    @app.post("/v1/team/workspace", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_workspace_init(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.team import TeamWorkspaceError, TeamWorkspaceManager
+
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        try:
+            return TeamWorkspaceManager(store_path).init_workspace(
+                name=name,
+                admin_email=str(payload.get("admin_email") or "admin@local"),
+            )
+        except TeamWorkspaceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/team/invite", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_invite(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.team import TeamPermissionError, TeamWorkspaceManager
+
+        emails = [str(item).strip().lower() for item in payload.get("emails") or [] if str(item).strip()]
+        if not emails:
+            raise HTTPException(status_code=400, detail="emails are required")
+        manager = TeamWorkspaceManager(store_path)
+        try:
+            invites = manager.invite_members(
+                emails,
+                role=str(payload.get("role") or "member"),  # type: ignore[arg-type]
+                actor_user_id=str(payload.get("user_id") or "") or None,
+            )
+        except TeamPermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return [invite.model_dump(mode="json") for invite in invites]
+
+    @app.post("/v1/team/join", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_join(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.team import TeamWorkspaceError, TeamWorkspaceManager
+
+        code = str(payload.get("invite_code") or "").strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="invite_code is required")
+        try:
+            member = TeamWorkspaceManager(store_path).join_workspace(
+                code,
+                user_id=str(payload.get("user_id") or "") or None,
+            )
+        except TeamWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return member
+
+    @app.post("/v1/team/role", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_role(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.team import (
+            TeamPermissionError,
+            TeamWorkspaceError,
+            TeamWorkspaceManager,
+        )
+
+        user_id = str(payload.get("target_user_id") or "").strip().lower()
+        role = str(payload.get("role") or "").strip()
+        if not user_id or not role:
+            raise HTTPException(status_code=400, detail="target_user_id and role are required")
+        manager = TeamWorkspaceManager(store_path)
+        try:
+            return manager.set_role(user_id, role, actor_user_id=str(payload.get("user_id") or "") or None)  # type: ignore[arg-type]
+        except TeamPermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except TeamWorkspaceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/v1/team/usage", tags=["team"], dependencies=[Depends(verify_api_key)])
+    def team_usage(user_id: str | None = None, since: str | None = None) -> Any:
+        from atelier.core.capabilities.team import (
+            TeamPermissionError,
+            TeamWorkspaceManager,
+            summarize_workspace_usage,
+        )
+
+        manager = TeamWorkspaceManager(store_path)
+        try:
+            manager.require_admin(user_id or None)
+        except TeamPermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        since_dt = datetime.fromisoformat(since).replace(tzinfo=UTC) if since else None
+        return summarize_workspace_usage(store_path, manager=manager, since=since_dt)
+
+    @app.get("/v1/governance/policy", tags=["governance"], dependencies=[Depends(verify_api_key)])
+    def governance_get() -> Any:
+        from atelier.core.capabilities.governance import load_policy
+
+        return load_policy(store_path)
+
+    @app.post("/v1/governance/policy", tags=["governance"], dependencies=[Depends(verify_api_key)])
+    def governance_set(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.governance import GovernancePolicy, save_policy
+        from atelier.core.capabilities.team import (
+            TeamAuditEvent,
+            TeamPermissionError,
+            TeamWorkspaceManager,
+        )
+
+        manager = TeamWorkspaceManager(store_path)
+        try:
+            actor = manager.require_admin(str(payload.get("user_id") or "") or None)
+        except TeamPermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        policy = GovernancePolicy.model_validate(payload.get("policy") or {})
+        saved = save_policy(store_path, policy)
+        manager.append_audit_event(
+            TeamAuditEvent(action="governance.apply", actor_user_id=actor.user_id, details={"source": "api"})
+        )
+        return saved
+
+    @app.post("/v1/audit/export", tags=["audit"], dependencies=[Depends(verify_api_key)])
+    def audit_export(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.audit_export import export_audit_bundle
+        from atelier.core.capabilities.team import (
+            TeamAuditEvent,
+            TeamPermissionError,
+            TeamWorkspaceManager,
+        )
+
+        out_dir = payload.get("out_dir")
+        if not out_dir:
+            raise HTTPException(status_code=400, detail="out_dir is required")
+        manager = TeamWorkspaceManager(store_path)
+        try:
+            actor = manager.require_admin(str(payload.get("user_id") or "") or None)
+        except TeamPermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        since_raw = str(payload.get("since") or "").strip()
+        since_dt = datetime.fromisoformat(since_raw).replace(tzinfo=UTC) if since_raw else None
+        result = export_audit_bundle(store_path, out_dir=Path(str(out_dir)), since=since_dt)
+        manager.append_audit_event(
+            TeamAuditEvent(action="audit.export", actor_user_id=actor.user_id, details={"bundle_dir": result["bundle_dir"]})
+        )
+        return result
+
+    @app.post("/v1/audit/verify", tags=["audit"], dependencies=[Depends(verify_api_key)])
+    def audit_verify(payload: dict[str, Any]) -> Any:
+        from atelier.core.capabilities.audit_export import verify_audit_bundle
+
+        bundle_dir = payload.get("bundle_dir")
+        if not bundle_dir:
+            raise HTTPException(status_code=400, detail="bundle_dir is required")
+        return verify_audit_bundle(store_path, bundle_dir=Path(str(bundle_dir)))
 
     # ------------------------------------------------------------------ #
     # Telemetry                                                           #
