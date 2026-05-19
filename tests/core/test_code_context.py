@@ -400,9 +400,12 @@ def _write_scip_fixture_for_symbol(
     file_path: str,
     symbol_name: str,
     index_sha: str,
+    artifact_name: str = "python.scip",
+    qualified_name: str | None = None,
+    source: str | None = None,
 ) -> None:
     engine = CodeContextEngine(repo_root)
-    source = (repo_root / file_path).read_text(encoding="utf-8")
+    symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
     artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -417,20 +420,20 @@ def _write_scip_fixture_for_symbol(
                 "file_path": file_path,
                 "language": "python",
                 "symbol_name": symbol_name,
-                "qualified_name": symbol_name,
+                "qualified_name": qualified_name or symbol_name,
                 "kind": "function",
                 "signature": f"def {symbol_name}() -> int:",
-                "start_byte": source.index(f"def {symbol_name}"),
-                "end_byte": len(source.encode("utf-8")),
+                "start_byte": symbol_source.index(f"def {symbol_name}") if f"def {symbol_name}" in symbol_source else 0,
+                "end_byte": len(symbol_source.encode("utf-8")),
                 "start_line": 1,
-                "end_line": 3,
-                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "source": source,
+                "end_line": len(symbol_source.splitlines()),
+                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
+                "source": symbol_source,
                 "provenance": "scip",
             }
         ],
     }
-    (artifact_dir / "python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    (artifact_dir / artifact_name).write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
 
 
 def _write_live_temporal_fixture(repo_root: Path) -> None:
@@ -691,6 +694,54 @@ def test_tool_search_repo_scope_applies_temporal_filters_after_ranking(tmp_path:
 
     assert {item["file_path"] for item in unfiltered["items"]} == {"archived.py", "recent.py"}
     assert [item["file_path"] for item in filtered["items"]] == ["recent.py"]
+
+
+def test_code_context_repo_scope_excludes_external_hits_by_default(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture_for_symbol(
+        tmp_path,
+        file_path="src/orders.py",
+        symbol_name="OrderService",
+        qualified_name="OrderService",
+        index_sha="a" * 40,
+    )
+    _write_scip_fixture_for_symbol(
+        tmp_path,
+        file_path="external/requests/api.py",
+        symbol_name="get",
+        qualified_name="requests.get",
+        index_sha="b" * 40,
+        artifact_name="external-python.scip",
+        source="def get(url: str) -> str:\n    return url\n",
+    )
+
+    repo_hits = engine.search_symbols("get", limit=5)
+
+    assert repo_hits == []
+
+
+def test_code_context_external_scope_returns_external_hits_and_origin_metadata(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture_for_symbol(
+        tmp_path,
+        file_path="external/requests/api.py",
+        symbol_name="get",
+        qualified_name="requests.get",
+        index_sha="b" * 40,
+        artifact_name="external-python.scip",
+        source="def get(url: str) -> str:\n    return url\n",
+    )
+
+    external_hits = engine.search_symbols("get", limit=5, scope="external")
+    external_symbol = engine.get_symbol(symbol_id="scip-get")
+
+    assert [hit.qualified_name for hit in external_hits] == ["requests.get"]
+    assert external_hits[0].origin == "external"
+    assert external_symbol["origin"] == "external"
 
 
 def test_budget_packer_drops_optional_keys_first() -> None:

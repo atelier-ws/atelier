@@ -29,7 +29,7 @@ from atelier.core.environment import (
 )
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.cli import cli
-from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_code
+from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_code, tool_smart_edit
 
 EXPECTED_TOOLS = {
     "context",
@@ -86,13 +86,18 @@ def _write_gateway_scip_fixture(
     *,
     symbol_id: str,
     include_call_graph: bool = False,
+    artifact_name: str = "python.scip",
+    file_path: str = "a.py",
+    symbol_name: str = "alpha",
+    qualified_name: str = "alpha",
+    source: str | None = None,
 ) -> Path:
     engine = CodeContextEngine(repo_root)
-    source = (repo_root / "a.py").read_text(encoding="utf-8")
+    symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
     caller_source = (repo_root / "b.py").read_text(encoding="utf-8") if (repo_root / "b.py").exists() else ""
     artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = artifact_dir / "python.scip"
+    artifact_path = artifact_dir / artifact_name
     payload: dict[str, Any] = {
         "version": 1,
         "repo_id": engine.repo_id,
@@ -102,18 +107,18 @@ def _write_gateway_scip_fixture(
             {
                 "symbol_id": symbol_id,
                 "repo_id": engine.repo_id,
-                "file_path": "a.py",
+                "file_path": file_path,
                 "language": "python",
-                "symbol_name": "alpha",
-                "qualified_name": "alpha",
+                "symbol_name": symbol_name,
+                "qualified_name": qualified_name,
                 "kind": "function",
-                "signature": "def alpha():",
+                "signature": f"def {symbol_name}():",
                 "start_byte": 0,
-                "end_byte": len(source.encode("utf-8")),
+                "end_byte": len(symbol_source.encode("utf-8")),
                 "start_line": 1,
-                "end_line": 2,
-                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "source": source,
+                "end_line": len(symbol_source.splitlines()),
+                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
+                "source": symbol_source,
                 "provenance": "scip",
             }
         ],
@@ -632,6 +637,58 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
     assert target.read_text(encoding="utf-8") == "hello atelier"
 
 
+def test_code_context_external_scope_surface_returns_external_hits_only(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    _write_gateway_scip_fixture(
+        tmp_path,
+        symbol_id="scip-requests-get",
+        artifact_name="external-python.scip",
+        file_path="external/requests/api.py",
+        symbol_name="get",
+        qualified_name="requests.get",
+        source="def get(url: str) -> str:\n    return url\n",
+    )
+
+    repo_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get"})
+    external_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get", "scope": "external"})
+
+    assert repo_payload["items"] == []
+    assert [item["qualified_name"] for item in external_payload["items"]] == ["requests.get"]
+    assert external_payload["items"][0]["origin"] == "external"
+
+
+def test_edit_symbol_rejects_external_target_cleanly(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    _write_gateway_scip_fixture(
+        tmp_path,
+        symbol_id="scip-requests-get",
+        artifact_name="external-python.scip",
+        file_path="external/requests/api.py",
+        symbol_name="get",
+        qualified_name="requests.get",
+        source="def get(url: str) -> str:\n    return url\n",
+    )
+
+    payload = tool_smart_edit(
+        {
+            "edits": [
+                {
+                    "kind": "symbol",
+                    "symbol_id": "scip-requests-get",
+                    "mode": "replace",
+                    "new_body": "def get(url: str) -> str:\n    return 'patched'\n",
+                }
+            ]
+        }
+    )
+
+    assert payload["rolled_back"] is True
+    assert payload["failed"][0]["error"] == "external_symbol_edit_not_allowed"
+
+
 def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     target = tmp_path / "sample.py"
@@ -739,20 +796,17 @@ def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root:
         encoding="utf-8",
     )
 
-    payload = _result(
-        _call(
-            "code",
-            {
-                "op": "search",
-                "repo_root": str(tmp_path),
-                "query": "OrderService",
-                "snippet": "head",
-                "snippet_lines": 2,
-                "file_glob": "src/*.py",
-                "scope": "repo",
-                "budget_tokens": 4000,
-            },
-        )
+    payload = tool_code(
+        {
+            "op": "search",
+            "repo_root": str(tmp_path),
+            "query": "OrderService",
+            "snippet": "head",
+            "snippet_lines": 2,
+            "file_glob": "src/*.py",
+            "scope": "repo",
+            "budget_tokens": 4000,
+        }
     )
 
     assert payload["cache_hit"] is False
