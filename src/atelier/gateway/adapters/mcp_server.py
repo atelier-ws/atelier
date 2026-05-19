@@ -1946,6 +1946,7 @@ def tool_code(
     pattern: str | None = None,
     rewrite: str | None = None,
     limit: int = 20,
+    mode: Literal["auto", "lexical", "semantic", "hybrid"] = "auto",
     kind: str | None = None,
     language: str | None = None,
     snippet: Literal["none", "head", "full"] = "none",
@@ -1985,6 +1986,7 @@ def tool_code(
             engine.tool_search(
                 query,
                 limit=limit,
+                mode=mode,
                 kind=kind,
                 language=language,
                 snippet=snippet,
