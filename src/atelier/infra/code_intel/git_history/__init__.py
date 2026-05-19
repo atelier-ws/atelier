@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import ModuleType
 
+_PYGIT2: ModuleType | None
+
 
 class GitHistoryBootstrapError(RuntimeError):
     """Raised when the git-history substrate cannot load its required backend."""
