@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from atelier.infra.code_intel.git_history import require_pygit2
 
@@ -13,7 +14,7 @@ class RenameRecord:
     new_path: str
 
 
-def detect_renames(diff: object) -> dict[str, RenameRecord]:
+def detect_renames(diff: Any) -> dict[str, RenameRecord]:
     """Return rename records keyed by old path after mutating the diff in place."""
 
     pygit2 = require_pygit2()
