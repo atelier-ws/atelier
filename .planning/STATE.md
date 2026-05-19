@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed Phase 04
-last_updated: "2026-05-19T13:40:00Z"
-last_activity: 2026-05-19 -- Phase 04 completed after recorded human approval
+status: planning
+stopped_at: Phase 05 planning complete
+last_updated: "2026-05-19T14:05:00Z"
+last_activity: 2026-05-19 -- Phase 05 planned with M18 checkpoint, Zoekt search branch, and literal-only cross-language execution waves
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 14
+  total_plans: 17
   completed_plans: 14
   percent: 57
 ---
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 
 ## Current Position
 
-Phase: 05 (scale-decision-and-extended-retrieval-reach) — READY
-Plan: 04 complete; 05-01 next
-Status: Phase 04 complete; Phase 5 checkpoint planning is next
-Last activity: 2026-05-19 -- Phase 04 completed after recorded human approval
+Phase: 05 (scale-decision-and-extended-retrieval-reach) — PLANNED
+Plan: 05-01, 05-02, 05-03 ready; 05-01 decision gate runs first
+Status: Phase 05 planned; execution is gated by the M18 checkpoint outcome
+Last activity: 2026-05-19 -- Phase 05 planned with M18 checkpoint, Zoekt search branch, and literal-only cross-language execution waves
 
 Progress: [██████████] 100%
 
@@ -105,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 04]: Require trusted SCIP artifacts to carry a 40-character index_sha and preserve it in routed symbol payloads. — Lets later blame orchestration compare indexed data to HEAD without guessing.
 - [Phase 04]: Treat routed SCIP `index_sha` metadata as the authoritative stale-index gate for `code op="blame"`, while local-only symbols fall back to current HEAD.
 - [Phase 04]: Reuse shipped historical public surfaces in cost discipline by folding one deleted-history scenario and one blame scenario into the aggregate benchmark.
+- [Phase 05]: Run the M18 checkpoint before any M16 backend work and record whether the selected backend serves `search`, `code`, or both.
+- [Phase 05]: Keep M16 on the existing `search` stack first; do not replace `SymbolIntelStore` or widen `engine.py` / `mcp_server.py`.
+- [Phase 05]: Limit M17 to literal-only static cross-language edges surfaced additively on `code op="symbol"` and `code op="usages"`.
 
 ### Pending Todos
 
@@ -114,6 +117,7 @@ None yet.
 
 - Brownfield repository: existing worktree edits already touch `code_context` and MCP files, so execution plans must avoid overwriting unrelated changes.
 - Phase 5 must complete the checkpoint plan before any M16 implementation work starts.
+- `05-02` and `05-03` were accepted with warning-level breadth notes; split them if file scope expands during execution.
 - Phase 1 plans were accepted with warning-level checker findings around plan breadth and pattern-map alignment; re-surface them during execution if file scope expands further.
 - Phase 2 plans were accepted with warning-level checker findings about file breadth across `mcp_server.py`, `engine.py`, and related brownfield hotspots; re-surface them during execution if scope expands further.
 - Broad repo tests still have earlier-phase failures outside Phase 04 scope; see `.planning/phases/04-historical-code-intelligence/deferred-items.md`.
@@ -128,6 +132,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T13:35:00Z
-Stopped at: Awaiting Phase 04 human approval
+Last session: 2026-05-19T14:05:00Z
+Stopped at: Phase 05 planning complete
 Resume file: None

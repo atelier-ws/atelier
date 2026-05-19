@@ -269,6 +269,14 @@ Contributor verification flow:
 make verify
 ```
 
+When working from multiple git worktrees, bootstrap each worktree once with:
+
+```bash
+make worktree-env
+```
+
+If `.env.worktree` is present, `make start` and `make restart` automatically pass it to Docker Compose so each worktree gets its own ports, container names, and `.atelier-worktree` runtime root.
+
 ## Per-Agent Host Setup
 
 After installation, use the host-specific guides if you want to inspect or customize integration:
