@@ -228,6 +228,8 @@ class CodeContextEngine:
             local_search=self._search_symbols_local,
             local_get_symbol=self._get_symbol_local,
             local_find_references=self._find_references_local,
+            local_find_callers=self._find_callers_local,
+            local_find_callees=self._find_callees_local,
         )
         self._register_symbol_intel_providers()
 
@@ -1789,6 +1791,28 @@ class CodeContextEngine:
                 )
         results.sort(key=lambda item: (item.file_path, item.line, item.column))
         return results
+
+    def _find_callers_local(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> None:
+        del symbol_id, qualified_name, file_path, symbol_name
+        return None
+
+    def _find_callees_local(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> None:
+        del symbol_id, qualified_name, file_path, symbol_name
+        return None
 
     def _parse_rg_output(self, output: str, *, limit: int) -> list[TextMatch]:
         matches: list[TextMatch] = []

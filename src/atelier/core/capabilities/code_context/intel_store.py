@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from atelier.core.capabilities.code_context.budget import BudgetPacker
 from atelier.core.capabilities.code_context.cache import RetrievalCache
+from atelier.core.capabilities.code_context.call_graph import CallGraphNode
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 
@@ -60,6 +61,24 @@ class SymbolIntelProvider(Protocol):
         symbol_name: str | None = None,
     ) -> list[UsageReference] | None: ...
 
+    def find_callers(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None: ...
+
+    def find_callees(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None: ...
+
 
 class SymbolIntelStore:
     """Routes symbol lookups to healthy providers before local fallback."""
@@ -72,12 +91,16 @@ class SymbolIntelStore:
         local_search: Callable[..., list[SymbolRecord]],
         local_get_symbol: Callable[..., dict[str, Any]],
         local_find_references: Callable[..., list[UsageReference]],
+        local_find_callers: Callable[..., list[CallGraphNode] | None],
+        local_find_callees: Callable[..., list[CallGraphNode] | None],
     ) -> None:
         self._cache = cache
         self._packer = packer
         self._local_search = local_search
         self._local_get_symbol = local_get_symbol
         self._local_find_references = local_find_references
+        self._local_find_callers = local_find_callers
+        self._local_find_callees = local_find_callees
         self._providers: list[SymbolIntelProvider] = []
 
     @property
@@ -167,6 +190,64 @@ class SymbolIntelStore:
             if payload is not None:
                 return payload
         return self._local_find_references(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            file_path=file_path,
+            symbol_name=symbol_name,
+        )
+
+    def find_callers(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        for provider in self._providers:
+            if not self._provider_is_healthy(provider):
+                continue
+            try:
+                payload = provider.find_callers(
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    file_path=file_path,
+                    symbol_name=symbol_name,
+                )
+            except Exception:
+                continue
+            if payload is not None:
+                return payload
+        return self._local_find_callers(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            file_path=file_path,
+            symbol_name=symbol_name,
+        )
+
+    def find_callees(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        for provider in self._providers:
+            if not self._provider_is_healthy(provider):
+                continue
+            try:
+                payload = provider.find_callees(
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    file_path=file_path,
+                    symbol_name=symbol_name,
+                )
+            except Exception:
+                continue
+            if payload is not None:
+                return payload
+        return self._local_find_callees(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
             file_path=file_path,
