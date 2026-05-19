@@ -23,6 +23,12 @@ from atelier.core.capabilities.code_context.budget import (
     BudgetPacker,
 )
 from atelier.core.capabilities.code_context.cache import RetrievalCache
+from atelier.core.capabilities.code_context.embedding import (
+    SearchMode,
+    SemanticSearchRanker,
+    resolve_search_mode,
+    semantic_candidate_limit,
+)
 from atelier.core.capabilities.code_context.intel_store import SymbolIntelStore
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
@@ -215,6 +221,7 @@ class CodeContextEngine:
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
+        self._semantic_ranker = SemanticSearchRanker(self.repo_root)
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -318,6 +325,7 @@ class CodeContextEngine:
         query: str,
         *,
         limit: int = 20,
+        mode: SearchMode = "auto",
         kind: str | None = None,
         language: str | None = None,
         snippet: Literal["none", "head", "full"] = "none",
@@ -330,9 +338,12 @@ class CodeContextEngine:
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
+        resolved_mode = resolve_search_mode(query, mode)
         cache_args = {
             "query": query,
             "limit": limit,
+            "mode": mode,
+            "resolved_mode": resolved_mode,
             "kind": kind,
             "language": language,
             "snippet": snippet,
@@ -340,6 +351,7 @@ class CodeContextEngine:
             "file_glob": file_glob,
             "scope": scope,
             "budget_tokens": budget_tokens,
+            "semantic_candidate_limit": semantic_candidate_limit(limit),
         }
         hit, cached = self._cache_get("code.search", cache_args)
         if hit and cached is not None:
@@ -350,6 +362,7 @@ class CodeContextEngine:
             for item in self.search_symbols(
                 query,
                 limit=limit,
+                mode=resolved_mode,
                 kind=kind,
                 language=language,
                 snippet=snippet,
@@ -364,6 +377,7 @@ class CodeContextEngine:
             budget_tokens=budget_tokens,
             essential_keys=_SEARCH_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_SEARCH_OPTIONAL_KEYS,
+            extra_payload={"mode": resolved_mode},
         )
         self._cache_set("code.search", cache_args, payload)
         return payload
@@ -698,6 +712,7 @@ class CodeContextEngine:
         query: str,
         *,
         limit: int = 20,
+        mode: SearchMode = "auto",
         kind: str | None = None,
         language: str | None = None,
         snippet: Literal["none", "head", "full"] = "none",
@@ -709,7 +724,28 @@ class CodeContextEngine:
         """BM25/FTS-ranked symbol search with routed-provider fallback."""
         if auto_index:
             self._ensure_indexed()
-        hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language)
+        resolved_mode = resolve_search_mode(query, mode)
+        if resolved_mode == "lexical":
+            hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language)
+        else:
+            candidate_limit = semantic_candidate_limit(limit)
+            lexical_hits = self.intel_store.search_symbols(
+                query,
+                limit=candidate_limit,
+                kind=kind,
+                language=language,
+            )
+            semantic_hits = self._search_symbols_semantic_local(
+                query,
+                limit=candidate_limit,
+                kind=kind,
+                language=language,
+            )
+            hits = (
+                semantic_hits[:limit]
+                if resolved_mode == "semantic"
+                else self._semantic_ranker.reciprocal_rank_fuse(lexical_hits, semantic_hits, limit=limit)
+            )
         if scope != "repo":
             return []
         if file_glob:
@@ -765,6 +801,53 @@ class CodeContextEngine:
             operation="search",
             result_count=len(rows),
         )
+        return [_row_to_symbol(row) for row in rows]
+
+    def _search_symbols_semantic_local(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        kind: str | None = None,
+        language: str | None = None,
+    ) -> list[SymbolRecord]:
+        candidates = self._semantic_symbol_candidates(limit=limit, kind=kind, language=language)
+        return self._semantic_ranker.semantic_search(
+            query,
+            candidates=candidates,
+            limit=limit,
+            source_loader=lambda symbol: self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte),
+        )
+
+    def _semantic_symbol_candidates(
+        self,
+        *,
+        limit: int,
+        kind: str | None = None,
+        language: str | None = None,
+    ) -> list[SymbolRecord]:
+        filters = ["repo_id = ?"]
+        params: list[Any] = [self.repo_id]
+        if kind:
+            filters.append("kind = ?")
+            params.append(kind)
+        if language:
+            filters.append("language = ?")
+            params.append(language)
+        params.append(limit)
+        where_sql = " AND ".join(filters)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                f"""
+                SELECT *, NULL AS score
+                FROM symbols
+                WHERE {where_sql}
+                ORDER BY file_path, start_line
+                LIMIT ?
+                """,
+                tuple(params),
+            ).fetchall()
         return [_row_to_symbol(row) for row in rows]
 
     def get_symbol(
@@ -1899,7 +1982,9 @@ class CodeContextEngine:
         budget_tokens: int,
         essential_keys: list[str],
         optional_keys_in_drop_order: list[str],
+        extra_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        extra = dict(extra_payload or {})
         provenance = self._items_provenance(items)
         provenance_breakdown = self._provenance_breakdown(items)
         full_payload = {
@@ -1907,6 +1992,7 @@ class CodeContextEngine:
             "cache_hit": False,
             "provenance": provenance,
             "provenance_breakdown": provenance_breakdown,
+            **extra,
         }
         full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
 
@@ -1917,6 +2003,7 @@ class CodeContextEngine:
                     "cache_hit": False,
                     "provenance": provenance,
                     "provenance_breakdown": self._provenance_breakdown(packed_items),
+                    **extra,
                 },
                 full_total_tokens=full_total_tokens,
             )
