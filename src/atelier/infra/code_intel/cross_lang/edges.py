@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -27,6 +28,18 @@ class CrossLangEdge(BaseModel):
     tgt_symbol_id: str | None = None
     tgt_language: str
     tgt_file_path: str | None = None
+    edge_kind: CrossLangEdgeKind
+    confidence: float
+
+
+@dataclass(frozen=True)
+class CrossLangCandidate:
+    src_language: str
+    src_file_path: str
+    src_line: int
+    tgt_symbol_name: str
+    tgt_language: str
+    tgt_file_path: str | None
     edge_kind: CrossLangEdgeKind
     confidence: float
 
