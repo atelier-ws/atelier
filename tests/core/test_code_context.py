@@ -10,6 +10,7 @@ from pathlib import Path
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.code_context.budget import BudgetPacker
 from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
+from atelier.infra.code_intel.cross_lang.runner import CrossLangRunner
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -226,6 +227,39 @@ def _write_call_graph_scip_fixture(engine: CodeContextEngine, *, include_call_gr
             },
         }
     (artifact_dir / "python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+
+def _write_cross_lang_fixture_repo(root: Path) -> None:
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "plugins").mkdir(parents=True, exist_ok=True)
+    (root / "scripts").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "plugins" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "plugins" / "worker.py").write_text(
+        "def plugin_entry() -> str:\n"
+        "    return 'worker'\n",
+        encoding="utf-8",
+    )
+    (root / "scripts" / "worker.py").write_text(
+        "def main() -> int:\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "local_worker.py").write_text(
+        "from scripts.worker import main\n\n"
+        "def call_local() -> int:\n"
+        "    return main()\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "bootstrap.py").write_text(
+        "import importlib\n"
+        "import subprocess\n\n"
+        "def load_plugin() -> object:\n"
+        "    return importlib.import_module('plugins.worker')\n\n"
+        "def launch_worker() -> None:\n"
+        "    subprocess.run(['python', 'scripts/worker.py'], check=False)\n",
+        encoding="utf-8",
+    )
 
 
 def _git(args: list[str], repo_root: Path, *, env: dict[str, str] | None = None) -> str:
@@ -751,6 +785,38 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
     assert payload["reference_count"] >= 1
     assert payload["provenance_breakdown"]["treesitter"] >= 1
     assert payload["cache_hit"] is False
+
+
+def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(tmp_path: Path) -> None:
+    _write_cross_lang_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    CrossLangRunner(repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection).resolve_all()
+
+    payload = engine.tool_symbol(qualified_name="load_plugin", file_path="src/bootstrap.py", budget_tokens=4000)
+
+    assert payload["qualified_name"] == "load_plugin"
+    assert payload["symbol_name"] == "load_plugin"
+    assert payload["source"]
+    assert payload["cross_lang_refs"][0]["edge_kind"] == "dynamic_import"
+    assert payload["cross_lang_refs"][0]["confidence"] >= 0.7
+
+
+def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(tmp_path: Path) -> None:
+    _write_cross_lang_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    CrossLangRunner(repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection).resolve_all()
+
+    payload = engine.tool_usages(symbol_name="main", file_path="scripts/worker.py", budget_tokens=4000)
+
+    assert payload["target"]["qualified_name"] == "main"
+    assert payload["references"]["src/local_worker.py"][0]["provenance"] == "treesitter"
+    assert payload["references"]["src/bootstrap.py"][0]["provenance"] == "cross_lang"
+    assert payload["references"]["src/bootstrap.py"][0]["edge_kind"] == "subprocess"
+    assert payload["references"]["src/bootstrap.py"][0]["confidence"] >= 0.7
+    assert payload["provenance_breakdown"]["treesitter"] >= 1
+    assert payload["provenance_breakdown"]["cross_lang"] >= 1
 
 
 def test_tool_usages_returns_disambiguation_payload_for_ambiguous_name(tmp_path: Path) -> None:
