@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from atelier.infra.code_intel.git_history import require_pygit2
 from atelier.infra.code_intel.git_history.graveyard import SymbolGraveyard
@@ -11,13 +12,14 @@ from atelier.infra.code_intel.git_history.renames import detect_renames
 from atelier.infra.tree_sitter.tags import detect_language, extract_tags_from_text
 
 
-def _load_blob_text(repo: object, tree: object, file_path: str) -> str | None:
+def _load_blob_text(repo: Any, tree: Any, file_path: str) -> str | None:
     try:
         entry = tree[file_path]
     except KeyError:
         return None
     blob = repo[entry.id]
-    return blob.read_raw().decode("utf-8", errors="replace")
+    raw_bytes = cast(bytes, blob.read_raw())
+    return raw_bytes.decode("utf-8", errors="replace")
 
 
 def _iter_definition_entries(
