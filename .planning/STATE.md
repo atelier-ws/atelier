@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-05-19T11:48:19.359Z"
-last_activity: 2026-05-19 -- Completed 04-01 with explicit pygit2 bootstrap and git-history graveyard substrate
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-05-19T12:03:48.000Z"
+last_activity: 2026-05-19 -- Completed 04-02 with deleted-history search on code op=search plus M14 benchmark and trace closeout
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 14
-  completed_plans: 11
-  percent: 79
+  completed_plans: 12
+  percent: 86
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 ## Current Position
 
 Phase: 04 (historical-code-intelligence) — IN PROGRESS
-Plan: 04-01 complete; 04-02 next
-Status: Phase 04 execution started; Wave 1 bootstrap and graveyard substrate are complete
-Last activity: 2026-05-19 -- Completed 04-01 with explicit pygit2 bootstrap and git-history graveyard substrate
+Plan: 04-02 complete; 04-03 next
+Status: Phase 04 execution in progress; Wave 2 deleted-history search and M14 closeout are complete
+Last activity: 2026-05-19 -- Completed 04-02 with deleted-history search on code op=search plus M14 benchmark and trace closeout
 
-Progress: [████████░░] 79%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -64,6 +64,7 @@ Progress: [████████░░] 79%
 | Phase 03 P02 | 16min | 3 tasks | 8 files |
 | Phase 03 P03 | 11min | 3 tasks | 15 files |
 | Phase 04 P01 | 5min | 2 tasks | 10 files |
+| Phase 04 P02 | 10min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Ship snapshot as opt-in metadata while keeping depth=1 and snapshot=False as the cheap default.
 - [Phase 04]: Pin pygit2 exactly at 1.19.2 and gate git-history code behind require_pygit2(). — Keeps bootstrap explicit and forbids hidden GitPython or subprocess fallback.
 - [Phase 04]: Parse deleted and renamed blobs through extract_tags_from_text() rather than live file reads. — Deleted-history ingestion must work for blobs that no longer exist in the working tree.
+- [Phase 04]: Keep deleted-history search on the existing `code op="search"` surface with additive `since` and `touched_by` params.
+- [Phase 04]: Use a dedicated git-history adapter so `engine.py` stays on filter parsing, cache keys, and dispatch orchestration.
+- [Phase 04]: Close M14 with the shipped deleted-search path benchmark plus explicit trace ownership.
 
 ### Pending Todos
 
@@ -118,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T11:46:51.329Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-05-19T12:03:48.000Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
