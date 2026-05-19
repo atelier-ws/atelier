@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-05-19T12:03:48.000Z"
-last_activity: 2026-05-19 -- Completed 04-02 with deleted-history search on code op=search plus M14 benchmark and trace closeout
+status: executing
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-05-19T12:14:47.407Z"
+last_activity: 2026-05-19 -- Completed 04-03 with blame/churn substrate and explicit SCIP freshness propagation
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 43
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 ## Current Position
 
 Phase: 04 (historical-code-intelligence) — IN PROGRESS
-Plan: 04-02 complete; 04-03 next
-Status: Phase 04 execution in progress; Wave 2 deleted-history search and M14 closeout are complete
-Last activity: 2026-05-19 -- Completed 04-02 with deleted-history search on code op=search plus M14 benchmark and trace closeout
+Plan: 04-03 complete; 04-04 next
+Status: Phase 04 execution in progress; Wave 3 blame/churn substrate and freshness propagation are complete
+Last activity: 2026-05-19 -- Completed 04-03 with blame/churn substrate and explicit SCIP freshness propagation
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [█████████░] 86%
 | Phase 03 P03 | 11min | 3 tasks | 15 files |
 | Phase 04 P01 | 5min | 2 tasks | 10 files |
 | Phase 04 P02 | 10min | 3 tasks | 9 files |
+| Phase 04 P03 | 2 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Keep deleted-history search on the existing `code op="search"` surface with additive `since` and `touched_by` params.
 - [Phase 04]: Use a dedicated git-history adapter so `engine.py` stays on filter parsing, cache keys, and dispatch orchestration.
 - [Phase 04]: Close M14 with the shipped deleted-search path benchmark plus explicit trace ownership.
+- [Phase 04]: Keep stale-index handling infra-local in Wave 3 by returning freshness metadata instead of wiring public errors early. — Leaves public error shaping for Wave 4.
+- [Phase 04]: Require trusted SCIP artifacts to carry a 40-character index_sha and preserve it in routed symbol payloads. — Lets later blame orchestration compare indexed data to HEAD without guessing.
 
 ### Pending Todos
 
@@ -122,6 +125,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T12:03:48.000Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-05-19T12:14:47.400Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
