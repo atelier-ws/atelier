@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import atelier.core.service.usage_sync  # noqa: F401
+
 from benchmarks.code_intel.scale_decision_eval import (
     evaluate_default_candidates,
     select_recommended_candidate,
