@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from atelier.core.capabilities.code_context.budget import (
     FROZEN_DROP_STAGES,
@@ -57,6 +57,9 @@ from atelier.infra.code_intel.astgrep import (
     PatternSearchResult,
 )
 from atelier.infra.tree_sitter.tags import detect_language, extract_tags
+
+if TYPE_CHECKING:
+    from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
 _MAX_FILE_BYTES = 1_000_000
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
@@ -148,6 +151,7 @@ _BLAME_ESSENTIAL_KEYS = [
     "provenance",
 ]
 _BLAME_OPTIONAL_KEYS = ["index_sha", "head_sha", "last_modified", "last_commit_summary", "hunks", "churn"]
+DeletedHistoryItem = dict[str, Any]
 _CACHE_TOOL_ALIASES = {
     "all": None,
     "search": "code.search",
@@ -310,7 +314,7 @@ class CodeContextEngine:
             local_find_callers=self._find_callers_local,
             local_find_callees=self._find_callees_local,
         )
-        self._deleted_history_search_adapter: Any | None = None
+        self._deleted_history_search_adapter: DeletedHistorySearchAdapter | None = None
         self._register_symbol_intel_providers()
 
     def index_repo(
@@ -446,24 +450,38 @@ class CodeContextEngine:
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
-        raw_items = self.search_symbols(
-            query,
-            limit=limit,
-            mode=resolved_mode,
-            kind=kind,
-            language=language,
-            snippet=snippet,
-            snippet_lines=snippet_lines,
-            file_glob=file_glob,
-            scope=scope,
-            since=since,
-            touched_by=touched_by,
-            auto_index=False,
-        )
-        items = [
-            item.model_dump(mode="json", exclude_none=True) if isinstance(item, SymbolRecord) else dict(item)
-            for item in raw_items
-        ]
+        if scope == "deleted":
+            raw_deleted_items = self.search_symbols(
+                query,
+                limit=limit,
+                mode=resolved_mode,
+                kind=kind,
+                language=language,
+                snippet=snippet,
+                snippet_lines=snippet_lines,
+                file_glob=file_glob,
+                scope="deleted",
+                since=since,
+                touched_by=touched_by,
+                auto_index=False,
+            )
+            items = [dict(item) for item in raw_deleted_items]
+        else:
+            raw_items = self.search_symbols(
+                query,
+                limit=limit,
+                mode=resolved_mode,
+                kind=kind,
+                language=language,
+                snippet=snippet,
+                snippet_lines=snippet_lines,
+                file_glob=file_glob,
+                scope=scope,
+                since=since,
+                touched_by=touched_by,
+                auto_index=False,
+            )
+            items = [item.model_dump(mode="json", exclude_none=True) for item in raw_items]
         if scope == "repo" and (parsed_since is not None or normalized_touched_by is not None):
             changed_files = self._deleted_history_adapter().changed_files(
                 since_ts=parsed_since,
@@ -984,6 +1002,42 @@ class CodeContextEngine:
             optional_keys_in_drop_order=[],
         )
 
+    @overload
+    def search_symbols(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        mode: SearchMode = "auto",
+        kind: str | None = None,
+        language: str | None = None,
+        snippet: Literal["none", "head", "full"] = "none",
+        snippet_lines: int = 8,
+        file_glob: str | None = None,
+        scope: Literal["repo", "external"] = "repo",
+        since: str | None = None,
+        touched_by: str | None = None,
+        auto_index: bool = True,
+    ) -> list[SymbolRecord]: ...
+
+    @overload
+    def search_symbols(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        mode: SearchMode = "auto",
+        kind: str | None = None,
+        language: str | None = None,
+        snippet: Literal["none", "head", "full"] = "none",
+        snippet_lines: int = 8,
+        file_glob: str | None = None,
+        scope: Literal["deleted"],
+        since: str | None = None,
+        touched_by: str | None = None,
+        auto_index: bool = True,
+    ) -> list[DeletedHistoryItem]: ...
+
     def search_symbols(
         self,
         query: str,
@@ -999,7 +1053,7 @@ class CodeContextEngine:
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
-    ) -> list[SymbolRecord | dict[str, Any]]:
+    ) -> list[SymbolRecord] | list[DeletedHistoryItem]:
         """BM25/FTS-ranked symbol search with routed-provider fallback."""
         if auto_index and scope != "deleted":
             self._ensure_indexed()
@@ -2635,7 +2689,7 @@ class CodeContextEngine:
         repo = pygit2.Repository(str(self.repo_root))
         return str(repo.revparse_single("HEAD").id)
 
-    def _deleted_history_adapter(self) -> Any:
+    def _deleted_history_adapter(self) -> DeletedHistorySearchAdapter:
         if self._deleted_history_search_adapter is None:
             from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
