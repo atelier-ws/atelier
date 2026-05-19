@@ -4,8 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 from atelier.core.capabilities.code_context.models import SymbolRecord
+from atelier.infra.code_intel.scip.reader import ScipArtifactError, ScipArtifactReader
+
+FIXTURE_INDEX_SHA = "1234567890abcdef1234567890abcdef12345678"
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -32,6 +37,7 @@ def _write_scip_fixture(
     include_references: bool = False,
     include_call_graph: bool = False,
     call_graph: dict[str, object] | None = None,
+    index_sha: str | None = FIXTURE_INDEX_SHA,
 ) -> Path:
     source = (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
     checkout_source = (engine.repo_root / "src" / "checkout.py").read_text(encoding="utf-8")
@@ -85,6 +91,8 @@ def _write_scip_fixture(
             else []
         ),
     }
+    if index_sha is not None:
+        payload["index_sha"] = index_sha
     if include_references:
         payload["references"] = {
             symbol_id: [
@@ -260,6 +268,44 @@ def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None
     assert symbol["symbol_id"] == "scip-order-service"
     assert symbol["provenance"] == "scip"
     assert "class OrderService" in symbol["source"]
+    assert symbol["index_sha"] == FIXTURE_INDEX_SHA
+
+
+def test_loaded_scip_artifact_exposes_index_sha_metadata(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = _write_scip_fixture(engine)
+    reader = ScipArtifactReader(
+        repo_root=engine.repo_root,
+        allowed_roots=[engine.repo_root, artifact_path.parent],
+    )
+
+    artifact = reader.load(artifact_path)
+    symbol = artifact.get_symbol(symbol_id="scip-order-service")
+
+    assert artifact.index_sha == FIXTURE_INDEX_SHA
+    assert symbol is not None
+    assert symbol["index_sha"] == FIXTURE_INDEX_SHA
+
+
+def test_scip_reader_rejects_missing_or_malformed_index_sha_metadata(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = _write_scip_fixture(engine, index_sha=None)
+    reader = ScipArtifactReader(
+        repo_root=engine.repo_root,
+        allowed_roots=[engine.repo_root, artifact_path.parent],
+    )
+
+    with pytest.raises(ScipArtifactError, match="index_sha"):
+        reader.load(artifact_path)
+
+    artifact_path = _write_scip_fixture(engine, index_sha="not-a-sha")
+
+    with pytest.raises(ScipArtifactError, match="index_sha"):
+        reader.load(artifact_path)
 
 
 def test_scip_provider_routes_usages_payloads(tmp_path: Path) -> None:
