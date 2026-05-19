@@ -60,26 +60,61 @@ class WorkspaceCodeRouter:
         tokens_saved = 0
         cache_hit = True
         provenance = "local"
+        provenance_breakdown: dict[str, int] = {}
+        mode: str | None = None
         for repo_root in targets:
             payload = self.engine_factory(repo_root).tool_search(**kwargs)
-            merged_items.extend(list(payload.get("items", [])))
+            repo_name = self._repo_name_for_root(repo_root)
+            merged_items.extend(self._annotate_items(list(payload.get("items", [])), repo_name=repo_name))
             total_tokens += int(payload.get("total_tokens", 0))
             tokens_saved += int(payload.get("tokens_saved", 0))
             cache_hit = cache_hit and bool(payload.get("cache_hit", False))
             provenance = str(payload.get("provenance", provenance))
-        return {
+            mode = str(payload.get("mode", mode or "")) or mode
+            payload_breakdown = payload.get("provenance_breakdown")
+            if isinstance(payload_breakdown, dict):
+                for key, value in payload_breakdown.items():
+                    provenance_breakdown[str(key)] = provenance_breakdown.get(str(key), 0) + int(value)
+            elif payload.get("items"):
+                provenance_breakdown[provenance] = provenance_breakdown.get(provenance, 0) + len(
+                    list(payload.get("items", []))
+                )
+        result = {
             "items": merged_items,
             "cache_hit": cache_hit,
             "provenance": provenance,
             "tokens_saved": tokens_saved,
             "total_tokens": total_tokens,
         }
+        if mode is not None:
+            result["mode"] = mode
+        if provenance_breakdown:
+            result["provenance_breakdown"] = provenance_breakdown
+        return result
 
     def _route_symbol(self, targets: list[Path], **kwargs: Any) -> dict[str, Any]:
         last_error: dict[str, Any] | None = None
         for repo_root in targets:
             payload = self.engine_factory(repo_root).tool_symbol(**kwargs)
             if "error" not in payload:
-                return payload
+                return self._annotate_item(payload, repo_name=self._repo_name_for_root(repo_root))
             last_error = payload
         return last_error or {"error": "symbol_not_found"}
+
+    def _repo_name_for_root(self, repo_root: Path) -> str | None:
+        if self.config is None:
+            return None
+        for entry in self.config.repos:
+            if entry.repo_root == repo_root:
+                return entry.name
+        return None
+
+    def _annotate_items(self, items: list[dict[str, Any]], *, repo_name: str | None) -> list[dict[str, Any]]:
+        return [self._annotate_item(item, repo_name=repo_name) for item in items]
+
+    def _annotate_item(self, item: dict[str, Any], *, repo_name: str | None) -> dict[str, Any]:
+        if repo_name is None:
+            return dict(item)
+        annotated = dict(item)
+        annotated["repo_name"] = repo_name
+        return annotated

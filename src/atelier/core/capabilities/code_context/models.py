@@ -44,6 +44,7 @@ class SymbolRecord(BaseModel):
     score: float | None = None
     provenance: str = "local"
     origin: Literal["internal", "external"] = "internal"
+    repo_name: str | None = None
     cross_lang_refs: list[CrossLangReference] | None = None
 
 
@@ -81,6 +82,7 @@ class UsageReference(BaseModel):
     provenance: str = "local"
     edge_kind: str | None = None
     confidence: float | None = None
+    repo_name: str | None = None
 
 
 class ContextPack(BaseModel):
