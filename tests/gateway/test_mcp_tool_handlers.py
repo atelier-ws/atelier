@@ -94,6 +94,7 @@ def _write_gateway_scip_fixture(
         "version": 1,
         "repo_id": engine.repo_id,
         "language": "python",
+        "index_sha": "a" * 40,
         "symbols": [
             {
                 "symbol_id": symbol_id,

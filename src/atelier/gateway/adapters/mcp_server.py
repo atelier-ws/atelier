@@ -1960,6 +1960,7 @@ def tool_code(
     op: Literal[
         "index",
         "search",
+        "blame",
         "symbol",
         "outline",
         "context",
@@ -1990,6 +1991,7 @@ def tool_code(
     scope: Literal["repo", "external", "deleted"] = "repo",
     since: str | None = None,
     touched_by: str | None = None,
+    include_churn: bool = True,
     symbol_id: str | None = None,
     qualified_name: str | None = None,
     symbol_name: str | None = None,
@@ -2035,6 +2037,22 @@ def tool_code(
         return cast(
             dict[str, Any],
             engine.tool_search(query, **search_kwargs),
+        )
+
+    if op == "blame":
+        if not (query or symbol_id or qualified_name or symbol_name):
+            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code blame")
+        return cast(
+            dict[str, Any],
+            engine.tool_blame(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                include_churn=include_churn,
+                budget_tokens=budget_tokens,
+            ),
         )
 
     if op == "symbol":
