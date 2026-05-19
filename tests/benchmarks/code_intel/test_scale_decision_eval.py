@@ -6,6 +6,7 @@ import atelier.core.service.usage_sync  # noqa: F401
 
 from benchmarks.code_intel.scale_decision_eval import (
     evaluate_default_candidates,
+    render_checkpoint_appendix,
     select_recommended_candidate,
 )
 
@@ -49,3 +50,32 @@ def test_scale_decision_eval_defaults_to_search_first_without_symbol_shape_parit
     assert recommendation.repo_answers.search_scope == "search"
     assert recommendation.repo_answers.result_shape == "text"
     assert recommendation.repo_answers.proves_symbol_shape_parity is False
+
+
+def test_scale_decision_eval_renders_memo_from_rubric_data() -> None:
+    report = evaluate_default_candidates()
+
+    memo = render_checkpoint_appendix(report, date="2026-05-19", evaluator="Copilot")
+
+    assert "| `src` CLI adapter | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 3/9 | ❌ |" in memo
+    assert "| Zoekt standalone (default) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 9/9 | ✅ |" in memo
+    assert "**Date:** 2026-05-19" in memo
+    assert "**Evaluator:** Copilot" in memo
+
+
+def test_scale_decision_eval_memo_states_explicit_repo_default_outcome() -> None:
+    memo = render_checkpoint_appendix(evaluate_default_candidates(), date="2026-05-19", evaluator="Copilot")
+
+    assert "**Selected approach:** Proceed with Zoekt standalone for `search` workloads only" in memo
+    assert "- `search_scope`: `search`" in memo
+    assert "- `result_shape`: `text`" in memo
+    assert (
+        "- `lifecycle_owner`: `session-scoped search backend supervisor owned by the MCP/runtime layer`" in memo
+    )
+
+
+def test_scale_decision_eval_memo_calls_out_whether_05_02_needs_replanning() -> None:
+    memo = render_checkpoint_appendix(evaluate_default_candidates(), date="2026-05-19", evaluator="Copilot")
+
+    assert "**05-02 status:** may proceed as written" in memo
+    assert "Any non-`option-a` winner would require replacing `05-02-PLAN.md` before backend work starts." in memo
