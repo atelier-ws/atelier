@@ -195,6 +195,33 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     assert cached_search["provenance"] == "cached"
 
 
+def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
+
+    assert payload["target"]["qualified_name"] == "OrderService"
+    assert payload["group_by"] == "file"
+    assert payload["references"]["src/checkout.py"][0]["provenance"] == "treesitter"
+    assert payload["reference_count"] >= 1
+    assert payload["provenance_breakdown"]["treesitter"] >= 1
+    assert payload["cache_hit"] is False
+
+
+def test_tool_usages_returns_disambiguation_payload_for_ambiguous_name(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
+    (tmp_path / "src" / "b.py").write_text("def helper() -> int:\n    return 2\n", encoding="utf-8")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_usages(query="helper", budget_tokens=4000)
+
+    assert payload["error"] == "disambiguation_required"
+    assert len(payload["matches"]) == 2
+    assert payload["cache_hit"] is False
+
+
 def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(

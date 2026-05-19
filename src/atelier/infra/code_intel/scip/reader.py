@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from atelier.core.capabilities.code_context.models import SymbolRecord
+from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 _MAX_SCIP_ARTIFACT_BYTES = 10 * 1024 * 1024
 
@@ -25,6 +25,7 @@ class LoadedScipArtifact:
     path: Path
     symbols: tuple[SymbolRecord, ...]
     symbol_payloads: dict[str, dict[str, Any]]
+    reference_payloads: dict[str, tuple[UsageReference, ...]]
 
     def search_symbols(
         self,
@@ -69,6 +70,33 @@ class LoadedScipArtifact:
             return dict(self.symbol_payloads[symbol.symbol_id])
         return None
 
+    def find_references(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[UsageReference] | None:
+        matched_symbol: SymbolRecord | None = None
+        for symbol in self.symbols:
+            if symbol_id and symbol.symbol_id != symbol_id:
+                continue
+            if qualified_name and symbol.qualified_name != qualified_name:
+                continue
+            if symbol_name and symbol.symbol_name != symbol_name:
+                continue
+            if file_path and symbol.file_path != file_path:
+                continue
+            matched_symbol = symbol
+            break
+        if matched_symbol is None:
+            return None
+        payload = self.reference_payloads.get(matched_symbol.symbol_id)
+        if payload is None:
+            return None
+        return list(payload)
+
 
 class ScipArtifactReader:
     """Parses trusted repo-local `.scip` artifacts into routed symbol indexes."""
@@ -95,8 +123,12 @@ class ScipArtifactReader:
         symbols_payload = payload.get("symbols")
         if not isinstance(symbols_payload, list):
             raise ScipArtifactError(f"missing symbols in SCIP artifact: {path}")
+        references_payload = payload.get("references", {})
+        if not isinstance(references_payload, dict):
+            raise ScipArtifactError(f"invalid references in SCIP artifact: {path}")
         symbols: list[SymbolRecord] = []
         symbol_payloads: dict[str, dict[str, Any]] = {}
+        reference_payloads: dict[str, tuple[UsageReference, ...]] = {}
         for raw in symbols_payload:
             if not isinstance(raw, dict):
                 raise ScipArtifactError(f"malformed symbol entry in SCIP artifact: {path}")
@@ -116,7 +148,28 @@ class ScipArtifactReader:
                 **symbol.model_dump(mode="json"),
                 "source": source or self._source_from_repo(symbol),
             }
-        return LoadedScipArtifact(path=path, symbols=tuple(symbols), symbol_payloads=symbol_payloads)
+        for raw_symbol_id, raw_references in references_payload.items():
+            if not isinstance(raw_symbol_id, str) or not isinstance(raw_references, list):
+                raise ScipArtifactError(f"invalid reference entry in SCIP artifact: {path}")
+            references: list[UsageReference] = []
+            for raw_reference in raw_references:
+                if not isinstance(raw_reference, dict):
+                    raise ScipArtifactError(f"malformed reference entry in SCIP artifact: {path}")
+                payload_reference = dict(raw_reference)
+                payload_reference.setdefault("provenance", "scip")
+                payload_reference.setdefault("end_line", payload_reference.get("line"))
+                payload_reference.setdefault("end_column", payload_reference.get("column"))
+                try:
+                    references.append(UsageReference.model_validate(payload_reference))
+                except ValidationError as exc:
+                    raise ScipArtifactError(f"invalid reference entry in SCIP artifact: {path}") from exc
+            reference_payloads[raw_symbol_id] = tuple(references)
+        return LoadedScipArtifact(
+            path=path,
+            symbols=tuple(symbols),
+            symbol_payloads=symbol_payloads,
+            reference_payloads=reference_payloads,
+        )
 
     def _validate_path(self, artifact_path: Path) -> None:
         for root in self.allowed_roots:
