@@ -14,7 +14,7 @@ This brownfield roadmap extends Atelier's existing CLI, MCP, HTTP, and frontend-
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Retrieval Core & Routed Symbol Search** - Establish shared cache/budget primitives, routed symbol backends, and hardened symbol lookup on existing `code` ops. (completed 2026-05-18)
-- [ ] **Phase 2: Structural Discovery & Symbol-Safe Change Flows** - Add structural pattern search, freeze low-token defaults, and ship symbol edits plus usages.
+- [x] **Phase 2: Structural Discovery & Symbol-Safe Change Flows** - Add structural pattern search, freeze low-token defaults, and ship symbol edits plus usages. (completed 2026-05-19)
 - [ ] **Phase 3: Semantic Recall & Relationship Navigation** - Layer semantic retrieval, symbol-linked memory, and caller/callee graph traversal.
 - [ ] **Phase 4: Historical Code Intelligence** - Make deleted symbols, renames, blame, and churn first-class code-intel queries.
 - [ ] **Phase 5: Scale Decision & Extended Retrieval Reach** - Gate large-repo backend work, then ship validated scale routing and cross-language edges.
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Retrieval Core & Routed Symbol Search | 3/3 | Complete   | 2026-05-18 |
-| 2. Structural Discovery & Symbol-Safe Change Flows | 4/4 | Verifying |  |
+| 2. Structural Discovery & Symbol-Safe Change Flows | 4/4 | Complete | 2026-05-19 |
 | 3. Semantic Recall & Relationship Navigation | 0/3 | Not started | - |
 | 4. Historical Code Intelligence | 0/2 | Not started | - |
 | 5. Scale Decision & Extended Retrieval Reach | 0/3 | Not started | - |
