@@ -1988,6 +1988,8 @@ def tool_code(
     snapshot: bool = False,
     file_glob: str | None = None,
     scope: Literal["repo", "external", "deleted"] = "repo",
+    since: str | None = None,
+    touched_by: str | None = None,
     symbol_id: str | None = None,
     qualified_name: str | None = None,
     symbol_name: str | None = None,
@@ -2015,20 +2017,24 @@ def tool_code(
     if op == "search":
         if not query:
             raise ValueError("query is required for code search")
+        search_kwargs: dict[str, Any] = {
+            "limit": limit,
+            "mode": mode,
+            "kind": kind,
+            "language": language,
+            "snippet": snippet,
+            "snippet_lines": snippet_lines,
+            "file_glob": file_glob,
+            "scope": scope,
+            "budget_tokens": budget_tokens,
+        }
+        if since is not None:
+            search_kwargs["since"] = since
+        if touched_by is not None:
+            search_kwargs["touched_by"] = touched_by
         return cast(
             dict[str, Any],
-            engine.tool_search(
-                query,
-                limit=limit,
-                mode=mode,
-                kind=kind,
-                language=language,
-                snippet=snippet,
-                snippet_lines=snippet_lines,
-                file_glob=file_glob,
-                scope=scope,
-                budget_tokens=budget_tokens,
-            ),
+            engine.tool_search(query, **search_kwargs),
         )
 
     if op == "symbol":
