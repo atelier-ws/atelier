@@ -162,7 +162,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — First-context bootstrap and pinned memory prefetch pipeline (M11)
+- [x] 06-01-PLAN.md — First-context bootstrap and pinned memory prefetch pipeline (M11)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -200,5 +200,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Semantic Recall & Relationship Navigation | 3/3 | Complete   | 2026-05-19 |
 | 4. Historical Code Intelligence | 4/4 | Complete | 2026-05-19 |
 | 5. Scale Decision & Extended Retrieval Reach | 3/3 | Complete   | 2026-05-19 |
-| 6. Bootstrap, Dependency Scope & Multi-Repo Workspaces | 0/3 | Not started | - |
+| 6. Bootstrap, Dependency Scope & Multi-Repo Workspaces | 1/3 | In Progress|  |
 | 7. Maintainer Playbooks & Scorecards | 0/1 | Not started | - |

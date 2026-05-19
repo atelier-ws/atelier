@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 05 completed after real Zoekt verification and approval
-last_updated: "2026-05-19T21:16:00Z"
-last_activity: 2026-05-19 -- Phase 05 approved after managed real Zoekt verification and human/UAT sign-off
+status: in_progress
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-05-19T22:54:02.242Z"
+last_activity: 2026-05-19 -- Phase 06 Plan 01 completed with deterministic bootstrap warm-path validation
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 17
-  completed_plans: 17
-  percent: 100
+  total_plans: 20
+  completed_plans: 18
+  percent: 90
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 
 ## Current Position
 
-Phase: 05 (scale-decision-and-extended-retrieval-reach) — COMPLETE
-Plan: 05-01, 05-02, and 05-03 complete
-Status: M16 search-only Zoekt routing and M17 literal-only cross-language edges are complete with recorded trace evidence; Phase 6 is next
-Last activity: 2026-05-19 -- Phase 05 approved after managed real Zoekt verification and human/UAT sign-off
+Phase: 06 (bootstrap-dependency-scope-and-multi-repo-workspaces) — IN PROGRESS
+Plan: 06-01 complete; 06-02 and 06-03 pending
+Status: M11 first-context bootstrap is complete with pinned repo-scoped memory reuse and recorded benchmark trace evidence; 06-02 is next
+Last activity: 2026-05-19 -- Phase 06 Plan 01 completed with deterministic bootstrap warm-path validation
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [██████████] 100%
 | Phase 05 P01 | inline | 3 tasks | 5 files |
 | Phase 05 P03 | inline | 3 tasks | 14 files |
 | Phase 05 P02 | inline | 3 tasks | 14 files |
+| Phase 06 P01 | 11m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,8 @@ Recent decisions affecting current work:
 - [Phase 05]: Close M17 with a fixture benchmark and recorded trace evidence on the shipped `code op="symbol"` and `code op="usages"` paths.
 - [Phase 05]: Keep Zoekt lifecycle ownership in a session-scoped supervisor outside CodeContextEngine and route only the existing smart_search stack.
 - [Phase 05]: Skip local reranking on routed Zoekt matches so the warm path preserves the M16 speed gain.
+- [Phase 06]: Persist bootstrap blocks under a repo-scoped bootstrap:<repo_id> namespace while keeping bootstrap/<repo_id>/... labels stable for later-session reuse.
+- [Phase 06]: Keep bootstrap implicit on tool_get_context by enqueueing one deduped bootstrap_context job on the existing worker path and injecting persisted blocks during runtime context assembly.
 
 ### Pending Todos
 
@@ -141,6 +144,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T21:16:00Z
-Stopped at: Phase 05 completed after real Zoekt verification and approval
+Last session: 2026-05-19T22:54:02.242Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
