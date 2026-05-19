@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from atelier.core.capabilities.code_context.call_graph import CallGraphNode
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
+from atelier.infra.code_intel.scip.external_artifacts import ScipArtifactOrigin
 
 _MAX_SCIP_ARTIFACT_BYTES = 10 * 1024 * 1024
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -26,6 +27,7 @@ class LoadedScipArtifact:
     """Parsed SCIP artifact indexes for fast routed symbol lookups."""
 
     path: Path
+    origin: ScipArtifactOrigin
     index_sha: str
     symbols: tuple[SymbolRecord, ...]
     symbol_payloads: dict[str, dict[str, Any]]
@@ -171,7 +173,7 @@ class ScipArtifactReader:
         self.repo_root = repo_root.resolve()
         self.allowed_roots = [root.resolve() for root in allowed_roots]
 
-    def load(self, artifact_path: Path) -> LoadedScipArtifact:
+    def load(self, artifact_path: Path, *, origin: ScipArtifactOrigin = "internal") -> LoadedScipArtifact:
         path = artifact_path.resolve()
         self._validate_path(path)
         try:
@@ -209,6 +211,7 @@ class ScipArtifactReader:
             raw_payload = dict(raw)
             source = str(raw_payload.pop("source", "") or "")
             raw_payload.setdefault("provenance", "scip")
+            raw_payload.setdefault("origin", origin)
             raw_payload.setdefault("repo_id", str(payload.get("repo_id") or ""))
             raw_payload.setdefault("content_hash", "")
             try:
@@ -221,6 +224,7 @@ class ScipArtifactReader:
             symbol_payloads[symbol.symbol_id] = {
                 **symbol.model_dump(mode="json"),
                 "index_sha": index_sha,
+                "origin": symbol.origin,
                 "source": source or self._source_from_repo(symbol),
             }
         for raw_symbol_id, raw_references in references_payload.items():
@@ -260,6 +264,7 @@ class ScipArtifactReader:
             callees_available = True
         return LoadedScipArtifact(
             path=path,
+            origin=origin,
             index_sha=index_sha,
             symbols=tuple(symbols),
             symbol_payloads=symbol_payloads,
