@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-05-19T12:14:47.407Z"
-last_activity: 2026-05-19 -- Completed 04-03 with blame/churn substrate and explicit SCIP freshness propagation
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-05-19T12:39:23Z"
+last_activity: 2026-05-19 -- Completed 04-04 with additive blame MCP wiring, live temporal repo filtering, and M15 benchmark/trace closeout
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
-  completed_plans: 13
-  percent: 43
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19)
 
 **Core value:** Agents can find and change code through budget-aware, precomputed intelligence with near-zero token overhead by default.
-**Current focus:** Phase 04 — historical-code-intelligence
+**Current focus:** Phase 05 — scale-decision-and-extended-retrieval-reach
 
 ## Current Position
 
-Phase: 04 (historical-code-intelligence) — IN PROGRESS
-Plan: 04-03 complete; 04-04 next
-Status: Phase 04 execution in progress; Wave 3 blame/churn substrate and freshness propagation are complete
-Last activity: 2026-05-19 -- Completed 04-03 with blame/churn substrate and explicit SCIP freshness propagation
+Phase: 05 (scale-decision-and-extended-retrieval-reach) — READY
+Plan: 04-04 complete; 05-01 next
+Status: Phase 04 complete; historical code intelligence is closed and Phase 5 checkpoint planning is next
+Last activity: 2026-05-19 -- Completed 04-04 with additive blame MCP wiring, live temporal repo filtering, and M15 benchmark/trace closeout
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 14
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -66,6 +66,7 @@ Progress: [█████████░] 93%
 | Phase 04 P01 | 5min | 2 tasks | 10 files |
 | Phase 04 P02 | 10min | 3 tasks | 9 files |
 | Phase 04 P03 | 2 min | 2 tasks | 6 files |
+| Phase 04 P04 | inline | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Close M14 with the shipped deleted-search path benchmark plus explicit trace ownership.
 - [Phase 04]: Keep stale-index handling infra-local in Wave 3 by returning freshness metadata instead of wiring public errors early. — Leaves public error shaping for Wave 4.
 - [Phase 04]: Require trusted SCIP artifacts to carry a 40-character index_sha and preserve it in routed symbol payloads. — Lets later blame orchestration compare indexed data to HEAD without guessing.
+- [Phase 04]: Treat routed SCIP `index_sha` metadata as the authoritative stale-index gate for `code op="blame"`, while local-only symbols fall back to current HEAD.
+- [Phase 04]: Reuse shipped historical public surfaces in cost discipline by folding one deleted-history scenario and one blame scenario into the aggregate benchmark.
 
 ### Pending Todos
 
@@ -110,10 +113,10 @@ None yet.
 ### Blockers/Concerns
 
 - Brownfield repository: existing worktree edits already touch `code_context` and MCP files, so execution plans must avoid overwriting unrelated changes.
-- Phase 04 Wave 4 remains the broadest plan in the set; keep the blame gateway/engine closeout tightly bounded during execution.
 - Phase 5 must complete the checkpoint plan before any M16 implementation work starts.
 - Phase 1 plans were accepted with warning-level checker findings around plan breadth and pattern-map alignment; re-surface them during execution if file scope expands further.
 - Phase 2 plans were accepted with warning-level checker findings about file breadth across `mcp_server.py`, `engine.py`, and related brownfield hotspots; re-surface them during execution if scope expands further.
+- Repo-wide `make typecheck` and `make test` still have pre-existing failures outside 04-04 scope; see `.planning/phases/04-historical-code-intelligence/deferred-items.md`.
 
 ## Deferred Items
 
@@ -121,10 +124,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Validation | Pre-existing typecheck debt in git-history helpers and union-typing call sites outside Wave 4 files | Deferred | 2026-05-19 |
+| Validation | Pre-existing unrelated red tests still block `make test` despite Wave 4 targeted suites passing | Deferred | 2026-05-19 |
 
 ## Session Continuity
 
-Last session: 2026-05-19T12:14:47.400Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-05-19T12:39:23Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
