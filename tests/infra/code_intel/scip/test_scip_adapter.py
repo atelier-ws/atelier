@@ -8,6 +8,7 @@ import pytest
 
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 from atelier.core.capabilities.code_context.models import SymbolRecord
+from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.code_intel.scip.reader import ScipArtifactError, ScipArtifactReader
 
 FIXTURE_INDEX_SHA = "1234567890abcdef1234567890abcdef12345678"
@@ -34,16 +35,21 @@ def _write_scip_fixture(
     engine: CodeContextEngine,
     *,
     symbol_id: str = "scip-order-service",
+    symbol_name: str = "OrderService",
+    qualified_name: str = "OrderService",
+    file_path: str = "src/orders.py",
+    source: str | None = None,
     include_references: bool = False,
     include_call_graph: bool = False,
     call_graph: dict[str, object] | None = None,
     index_sha: str | None = FIXTURE_INDEX_SHA,
+    artifact_name: str = "python.scip",
 ) -> Path:
-    source = (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
+    symbol_source = source or (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
     checkout_source = (engine.repo_root / "src" / "checkout.py").read_text(encoding="utf-8")
     artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = artifact_dir / "python.scip"
+    artifact_path = artifact_dir / artifact_name
     payload: dict[str, object] = {
         "version": 1,
         "repo_id": engine.repo_id,
@@ -52,18 +58,18 @@ def _write_scip_fixture(
             {
                 "symbol_id": symbol_id,
                 "repo_id": engine.repo_id,
-                "file_path": "src/orders.py",
+                "file_path": file_path,
                 "language": "python",
-                "symbol_name": "OrderService",
-                "qualified_name": "OrderService",
+                "symbol_name": symbol_name,
+                "qualified_name": qualified_name,
                 "kind": "class",
-                "signature": "class OrderService:",
+                "signature": f"class {symbol_name}:",
                 "start_byte": 0,
-                "end_byte": len(source.encode("utf-8")),
+                "end_byte": len(symbol_source.encode("utf-8")),
                 "start_line": 1,
-                "end_line": 3,
-                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "source": source,
+                "end_line": len(symbol_source.splitlines()),
+                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
+                "source": symbol_source,
                 "provenance": "scip",
             }
         ]
@@ -269,6 +275,81 @@ def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None
     assert symbol["provenance"] == "scip"
     assert "class OrderService" in symbol["source"]
     assert symbol["index_sha"] == FIXTURE_INDEX_SHA
+    assert hits[0].origin == "internal"
+    assert symbol["origin"] == "internal"
+
+
+def test_scip_indexer_discovers_external_artifacts_under_existing_cache_root(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture(engine, artifact_name="python.scip")
+    _write_scip_fixture(
+        engine,
+        artifact_name="external-python.scip",
+        symbol_id="external-requests-session",
+        symbol_name="Session",
+        qualified_name="requests.Session",
+        file_path="external/requests/sessions.py",
+        source="class Session:\n    pass\n",
+    )
+
+    artifacts = ScipIndexer(engine.repo_root, engine.repo_id).discover_artifacts()
+
+    assert [artifact.path.name for artifact in artifacts] == ["python.scip", "external-python.scip"]
+    assert [artifact.origin for artifact in artifacts] == ["internal", "external"]
+
+
+def test_scip_provider_tags_external_artifacts_with_external_origin(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    _write_scip_fixture(engine, artifact_name="python.scip")
+    _write_scip_fixture(
+        engine,
+        artifact_name="external-python.scip",
+        symbol_id="external-requests-session",
+        symbol_name="Session",
+        qualified_name="requests.Session",
+        file_path="external/requests/sessions.py",
+        source="class Session:\n    pass\n",
+    )
+
+    provider = engine.intel_store.providers[0]
+    provider.refresh()
+    internal_hits = provider.search_symbols("OrderService", limit=5, scope="repo")
+    external_hits = provider.search_symbols("Session", limit=5, scope="external")
+    external_symbol = provider.get_symbol(symbol_id="external-requests-session")
+
+    assert internal_hits
+    assert internal_hits[0].origin == "internal"
+    assert external_hits
+    assert external_hits[0].origin == "external"
+    assert external_symbol is not None
+    assert external_symbol["origin"] == "external"
+    assert external_symbol["qualified_name"] == "requests.Session"
+
+
+def test_scip_provider_rejects_invalid_external_artifacts_through_trusted_reader_path(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    artifact_path = _write_scip_fixture(
+        engine,
+        artifact_name="external-python.scip",
+        symbol_id="external-requests-session",
+        symbol_name="Session",
+        qualified_name="requests.Session",
+        file_path="external/requests/sessions.py",
+        source="class Session:\n    pass\n",
+    )
+    artifact_path.write_text("{not json", encoding="utf-8")
+
+    hits = engine.search_symbols("OrderService", limit=5)
+
+    assert hits
+    assert hits[0].symbol_name == "OrderService"
+    assert hits[0].origin == "internal"
 
 
 def test_loaded_scip_artifact_exposes_index_sha_metadata(tmp_path: Path) -> None:
