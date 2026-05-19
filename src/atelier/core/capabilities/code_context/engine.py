@@ -39,6 +39,7 @@ from atelier.core.capabilities.code_context.embedding import (
 from atelier.core.capabilities.code_context.intel_store import SymbolIntelStore
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
+    CrossLangReference,
     ImpactResult,
     IndexStats,
     SymbolRecord,
@@ -56,6 +57,7 @@ from atelier.infra.code_intel.astgrep import (
     PatternRewriteResult,
     PatternSearchResult,
 )
+from atelier.infra.code_intel.cross_lang import CrossLangEdge, CrossLangEdgeStore
 from atelier.infra.tree_sitter.tags import detect_language, extract_tags
 
 if TYPE_CHECKING:
@@ -108,7 +110,17 @@ _SYMBOL_ESSENTIAL_KEYS = [
     "language",
     "provenance",
 ]
-_SYMBOL_OPTIONAL_KEYS = ["source", "doc_summary", "content_hash", "parent_symbol", "start_byte", "end_byte", "repo_id", "score"]
+_SYMBOL_OPTIONAL_KEYS = [
+    "source",
+    "doc_summary",
+    "content_hash",
+    "parent_symbol",
+    "start_byte",
+    "end_byte",
+    "repo_id",
+    "score",
+    "cross_lang_refs",
+]
 _INDEX_ESSENTIAL_KEYS = [
     "repo_id",
     "repo_root",
@@ -129,7 +141,7 @@ _CONTEXT_ESSENTIAL_KEYS = [
 ]
 _IMPACT_ESSENTIAL_KEYS = ["file_path", "direct_importers", "affected_tests", "risk_level", "provenance"]
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "column", "end_line", "end_column", "provenance"]
-_USAGES_OPTIONAL_KEYS = ["snippet", "caller"]
+_USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
 _PATTERN_ESSENTIAL_KEYS = ["file_path", "line", "column", "end_line", "end_column", "captures"]
 _PATTERN_OPTIONAL_KEYS = ["snippet"]
 _CACHE_STATUS_ESSENTIAL_KEYS = ["repo_id", "index_version", "entry_count", "entries_by_tool", "total_bytes", "max_bytes"]
@@ -639,12 +651,14 @@ class CodeContextEngine:
             return self._mark_cache_hit(cached)
 
         payload = self._pack_single_payload(
-            self.get_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=normalized_file_path,
-                auto_index=False,
+            self._hydrate_symbol_cross_lang(
+                self.get_symbol(
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=normalized_file_path,
+                    auto_index=False,
+                )
             ),
             budget_tokens=budget_tokens,
             essential_keys=_SYMBOL_ESSENTIAL_KEYS,
@@ -652,6 +666,75 @@ class CodeContextEngine:
         )
         self._cache_set("code.symbol", cache_args, payload)
         return payload
+
+    def _hydrate_symbol_cross_lang(self, payload: dict[str, Any]) -> dict[str, Any]:
+        symbol_id = str(payload.get("symbol_id") or "")
+        symbol_name = str(payload.get("symbol_name") or "")
+        if not symbol_id:
+            return payload
+        refs: list[CrossLangReference] = []
+        for edge in self._cross_lang_store().query_by_source_symbol(symbol_id):
+            refs.append(self._symbol_cross_lang_ref(edge, direction="outgoing"))
+        for edge in self._cross_lang_store().query_by_target_symbol(tgt_symbol_id=symbol_id, tgt_symbol_name=symbol_name):
+            refs.append(self._symbol_cross_lang_ref(edge, direction="incoming"))
+        if not refs:
+            return payload
+        deduped = list(
+            {
+                (
+                    ref.direction,
+                    ref.symbol_id,
+                    ref.symbol_name,
+                    ref.file_path,
+                    ref.line,
+                    ref.edge_kind,
+                ): ref
+                for ref in refs
+            }.values()
+        )
+        allowed = {key: value for key, value in payload.items() if key in SymbolRecord.model_fields}
+        validated = SymbolRecord.model_validate(
+            {
+                **allowed,
+                "cross_lang_refs": [ref.model_dump(mode="json", exclude_none=True) for ref in deduped],
+            }
+        ).model_dump(mode="json", exclude_none=True)
+        if "source" in payload:
+            validated["source"] = payload["source"]
+        return validated
+
+    def _symbol_cross_lang_ref(
+        self,
+        edge: CrossLangEdge,
+        *,
+        direction: Literal["incoming", "outgoing"],
+    ) -> CrossLangReference:
+        if direction == "incoming":
+            return CrossLangReference(
+                symbol_id=edge.src_symbol_id,
+                symbol_name=edge.src_symbol_name,
+                qualified_name=edge.src_qualified_name,
+                language=edge.src_language,
+                file_path=edge.src_file_path,
+                line=edge.src_line,
+                direction=direction,
+                edge_kind=edge.edge_kind,
+                confidence=edge.confidence,
+            )
+        return CrossLangReference(
+            symbol_id=edge.tgt_symbol_id,
+            symbol_name=edge.tgt_symbol_name,
+            qualified_name=None,
+            language=edge.tgt_language,
+            file_path=edge.tgt_file_path,
+            line=edge.src_line,
+            direction=direction,
+            edge_kind=edge.edge_kind,
+            confidence=edge.confidence,
+        )
+
+    def _cross_lang_store(self) -> CrossLangEdgeStore:
+        return CrossLangEdgeStore(self.connection)
 
     def tool_outline(
         self,
@@ -1437,7 +1520,12 @@ class CodeContextEngine:
             file_path=str(target["file_path"]),
             symbol_name=str(target["symbol_name"]),
         )
-        items = [self._usage_item(reference, snippet_lines=snippet_lines) for reference in references]
+        cross_lang_refs = self._cross_lang_usage_references(target)
+        ordered_references = [
+            *references,
+            *sorted(cross_lang_refs, key=lambda item: (item.file_path, item.line, item.column, item.provenance)),
+        ]
+        items = [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
         if file_glob:
             items = [item for item in items if Path(str(item["file_path"])).match(file_glob)]
         full_payload = self._build_usages_payload(
@@ -1466,6 +1554,28 @@ class CodeContextEngine:
             optional_keys_in_drop_order=_USAGES_OPTIONAL_KEYS,
             build_payload=build_payload,
         )
+
+    def _cross_lang_usage_references(self, target: dict[str, Any]) -> list[UsageReference]:
+        symbol_id = str(target.get("symbol_id") or "")
+        symbol_name = str(target.get("symbol_name") or "")
+        if not symbol_id:
+            return []
+        refs: list[UsageReference] = []
+        for edge in self._cross_lang_store().query_by_target_symbol(tgt_symbol_id=symbol_id, tgt_symbol_name=symbol_name):
+            refs.append(
+                UsageReference(
+                    file_path=edge.src_file_path,
+                    line=edge.src_line,
+                    column=1,
+                    end_line=edge.src_line,
+                    end_column=1,
+                    caller=edge.src_qualified_name,
+                    provenance="cross_lang",
+                    edge_kind=edge.edge_kind,
+                    confidence=edge.confidence,
+                )
+            )
+        return refs
 
     def _tool_call_graph(
         self,

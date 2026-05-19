@@ -7,6 +7,21 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 
+class CrossLangReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol_id: str | None = None
+    symbol_name: str
+    qualified_name: str | None = None
+    language: str
+    file_path: str | None = None
+    line: int | None = None
+    direction: Literal["incoming", "outgoing"]
+    provenance: str = "cross_lang"
+    edge_kind: str
+    confidence: float
+
+
 class SymbolRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -28,6 +43,7 @@ class SymbolRecord(BaseModel):
     content_hash: str
     score: float | None = None
     provenance: str = "local"
+    cross_lang_refs: list[CrossLangReference] | None = None
 
 
 class IndexStats(BaseModel):
@@ -62,6 +78,8 @@ class UsageReference(BaseModel):
     snippet: str | None = None
     caller: str | None = None
     provenance: str = "local"
+    edge_kind: str | None = None
+    confidence: float | None = None
 
 
 class ContextPack(BaseModel):
@@ -97,6 +115,7 @@ class ImpactResult(BaseModel):
 
 __all__ = [
     "ContextPack",
+    "CrossLangReference",
     "ImpactResult",
     "IndexStats",
     "SymbolRecord",
