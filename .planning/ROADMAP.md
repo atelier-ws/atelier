@@ -160,10 +160,17 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 06-01: First-context bootstrap and pinned memory prefetch pipeline (M11)
-- [ ] 06-02: External dependency indexing and `scope="external"` routing (M9)
-- [ ] 06-03: Multi-repo workspace routing and repo-aware result handling (M10)
+- [ ] 06-01-PLAN.md — First-context bootstrap and pinned memory prefetch pipeline (M11)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-02-PLAN.md — External dependency indexing and `scope="external"` routing (M9)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-03-PLAN.md — Multi-repo workspace routing and repo-aware result handling (M10)
 
 ### Phase 7: Maintainer Playbooks & Scorecards
 
