@@ -167,3 +167,9 @@ tool landscape changes (e.g., Sourcegraph releases an embeddable MCP server).
 **Risks:** 05-02 must still introduce lifecycle ownership outside per-call engine rebuilds, but the integration surface stays aligned with the accepted plan.
 
 Any non-`option-a` winner would require replacing `05-02-PLAN.md` before backend work starts.
+
+### Maintainer ratification
+
+- **Ratified option:** `option-a`
+- **Meaning:** Proceed with Zoekt standalone for `search` workloads only.
+- **Phase 5 effect:** `05-02` is unblocked as written; no replanning is required before M16 backend implementation begins.
