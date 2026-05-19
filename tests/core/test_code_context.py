@@ -32,6 +32,28 @@ def _write_fixture_repo(root: Path) -> None:
     )
 
 
+def _write_semantic_fixture_repo(root: Path) -> None:
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "src" / "auth.py").write_text(
+        "def issue_access_token(user_id: str) -> str:\n"
+        "    \"\"\"Create a login session token for an authenticated user.\"\"\"\n"
+        "    session_token = f'session:{user_id}'\n"
+        "    return session_token\n"
+        "\n"
+        "def revoke_access_token(token: str) -> None:\n"
+        "    \"\"\"Invalidate a session token after logout.\"\"\"\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "audit.py").write_text(
+        "def create_login_history_for_authenticated_user(user_id: str) -> dict[str, str]:\n"
+        "    \"\"\"Record login history entries for audit review.\"\"\"\n"
+        "    return {'user_id': user_id}\n",
+        encoding="utf-8",
+    )
+
+
 def test_code_context_indexes_searches_and_retrieves_exact_symbol(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -240,6 +262,55 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp
 
     assert payload["items"][0]["symbol_name"] == "OrderService"
     assert all("snippet" not in item for item in payload["items"])
+
+
+def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(tmp_path: Path) -> None:
+    _write_semantic_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    query = "create login token for authenticated user"
+
+    lexical_hits = engine.search_symbols(query, limit=5, mode="lexical")
+    semantic_hits = engine.search_symbols(query, limit=5, mode="semantic")
+    hybrid_hits = engine.search_symbols(query, limit=5, mode="hybrid")
+
+    assert lexical_hits
+    assert semantic_hits
+    assert hybrid_hits
+    assert lexical_hits[0].symbol_name == "create_login_history_for_authenticated_user"
+    assert semantic_hits[0].symbol_name == "issue_access_token"
+    assert hybrid_hits[0].symbol_name == "issue_access_token"
+
+
+def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Path) -> None:
+    _write_semantic_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    hits = engine.search_symbols("issue_access_token", limit=5, mode="auto")
+    payload = engine.tool_search("issue_access_token", limit=5, mode="auto", budget_tokens=4000)
+
+    assert hits
+    assert hits[0].symbol_name == "issue_access_token"
+    assert payload["items"][0]["symbol_name"] == "issue_access_token"
+    assert payload["mode"] == "lexical"
+
+
+def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path) -> None:
+    _write_semantic_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    query = "create login token for authenticated user"
+
+    lexical_first = engine.tool_search(query, limit=5, mode="lexical", budget_tokens=4000)
+    semantic_first = engine.tool_search(query, limit=5, mode="semantic", budget_tokens=4000)
+    lexical_second = engine.tool_search(query, limit=5, mode="lexical", budget_tokens=4000)
+    semantic_second = engine.tool_search(query, limit=5, mode="semantic", budget_tokens=4000)
+
+    assert lexical_first["cache_hit"] is False
+    assert semantic_first["cache_hit"] is False
+    assert lexical_second["cache_hit"] is True
+    assert semantic_second["cache_hit"] is True
+    assert lexical_first["mode"] == "lexical"
+    assert semantic_first["mode"] == "semantic"
+    assert lexical_first["items"][0]["symbol_name"] != semantic_first["items"][0]["symbol_name"]
 
 
 def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(
