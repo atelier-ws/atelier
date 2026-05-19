@@ -1965,6 +1965,8 @@ def tool_code(
         "context",
         "impact",
         "usages",
+        "callers",
+        "callees",
         "pattern",
         "cache_status",
         "cache_invalidate",
@@ -1982,6 +1984,8 @@ def tool_code(
     snippet: Literal["none", "head", "full"] = "none",
     snippet_lines: int = 8,
     group_by: Literal["file", "caller", "none"] = "file",
+    depth: int = 1,
+    snapshot: bool = False,
     file_glob: str | None = None,
     scope: Literal["repo", "external", "deleted"] = "repo",
     symbol_id: str | None = None,
@@ -1993,7 +1997,7 @@ def tool_code(
     budget_tokens: int = 4000,
     max_symbols: int = 8,
     dry_run: bool = True,
-    cache_tool: Literal["all", "search", "symbol", "outline", "context", "impact", "usages", "pattern"] | None = None,
+    cache_tool: Literal["all", "search", "symbol", "outline", "context", "impact", "usages", "callers", "callees", "pattern"] | None = None,
 ) -> dict[str, Any]:
     """Index, search, inspect, outline, pack, or analyze code context."""
     engine = _code_context_engine(repo_root)
@@ -2091,6 +2095,46 @@ def tool_code(
                 group_by=group_by,
                 snippet_lines=3 if snippet_lines == 8 else snippet_lines,
                 limit=limit,
+                budget_tokens=budget_tokens,
+            ),
+        )
+
+    if op == "callers":
+        if not any([query, symbol_id, qualified_name, symbol_name]):
+            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callers")
+        return cast(
+            dict[str, Any],
+            engine.tool_callers(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                depth=depth,
+                limit=limit,
+                snapshot=snapshot,
+                budget_tokens=budget_tokens,
+            ),
+        )
+
+    if op == "callees":
+        if not any([query, symbol_id, qualified_name, symbol_name]):
+            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callees")
+        return cast(
+            dict[str, Any],
+            engine.tool_callees(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                depth=depth,
+                limit=limit,
+                snapshot=snapshot,
                 budget_tokens=budget_tokens,
             ),
         )
