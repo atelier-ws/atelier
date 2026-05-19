@@ -43,6 +43,7 @@ class SymbolRecord(BaseModel):
     content_hash: str
     score: float | None = None
     provenance: str = "local"
+    origin: Literal["internal", "external"] = "internal"
     cross_lang_refs: list[CrossLangReference] | None = None
 
 
