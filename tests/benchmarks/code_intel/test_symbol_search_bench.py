@@ -8,10 +8,14 @@ from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter_ns
 
+import pytest
+
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import tool_code, tool_smart_read, tool_smart_search
 from benchmarks.code_intel.symbol_search_bench import run_semantic_symbol_search_bench, run_symbol_search_bench
+
+pytestmark = pytest.mark.slow  # Full repo-map + token-budget benchmark; takes ~15-20s
 
 
 def _write_fixture_repo(root: Path) -> None:

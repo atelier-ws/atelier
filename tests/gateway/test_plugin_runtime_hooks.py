@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+pytestmark = pytest.mark.slow  # Each test spawns a real Python subprocess (~2s each)
+
 from atelier.core.capabilities.plugin_runtime import (
     aggregate_session_stats,
     apply_session_start_files,

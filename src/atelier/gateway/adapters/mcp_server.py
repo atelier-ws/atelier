@@ -750,9 +750,13 @@ def tool_get_context(
 
 @mcp_tool(name="route")
 def tool_route(
-    op: Literal["decide", "verify"],
+    op: Literal["decide", "verify", "recommend"],
     user_goal: str = "",
     repo_root: str = ".",
+    tool_name: str = "",
+    task_text: str = "",
+    session_state: dict[str, Any] | None = None,
+    actual_vendor: str | None = None,
     task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
     risk_level: Literal["low", "medium", "high"] = "medium",
     changed_files: list[str] | None = None,
@@ -794,6 +798,27 @@ def tool_route(
         repeated_failure_signatures = []
     if evidence_summary is None:
         evidence_summary = {}
+
+    if op == "recommend":
+        led.record_tool_call(
+            "route",
+            {
+                "op": op,
+                "tool_name": tool_name,
+                "actual_vendor": actual_vendor,
+            },
+        )
+        if session_state is None:
+            session_state = _model_recommendation_state(led, {})
+        from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
+
+        advisor = CrossVendorRouteAdvisor(_atelier_root())
+        return advisor.recommend(
+            tool_name=tool_name,
+            task_text=task_text or user_goal,
+            session_state=session_state,
+            actual_vendor=actual_vendor,
+        )
 
     if op == "decide":
         led.record_tool_call(
@@ -2701,12 +2726,108 @@ def _session_compaction_savings_payload(
 
 
 def _emit_model_recommendation(tool_name: str, args: dict[str, Any], led: RunLedger) -> dict[str, Any]:
+    from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
+    from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
     from atelier.core.capabilities.model_routing import ModelRouter
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    router = ModelRouter()
-    # Gather session-phase signals from the ledger.
-    # recent_tool_calls: last 10 tool names from tool_call events (preserves order).
+    session_state = _model_recommendation_state(led, args)
+    estimated_input_tokens = max(1_000, int(session_state.get("expected_input_tokens") or 0))
+    advisor = CrossVendorRouteAdvisor(_atelier_root())
+    try:
+        recommendation = advisor.recommend(
+            tool_name=tool_name,
+            task_text=_task_text_from_args(args),
+            session_state=session_state,
+        )
+        vs_model = recommendation["actual_model"] or "claude-opus-4-7"
+        cost_saved_usd = 0.0
+        if recommendation["model"] != vs_model:
+            expensive_pricing = get_model_pricing(vs_model)
+            recommended_pricing = get_model_pricing(recommendation["model"])
+            cost_saved_usd = max(
+                0.0,
+                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+            )
+        payload = {
+            "at": datetime.now(UTC).isoformat(),
+            "kind": "model_recommendation",
+            "lever": "model_routing",
+            "session_id": led.session_id,
+            "agent": led.agent or _detect_agent(),
+            "tool_name": tool_name,
+            "tokens_saved": 0,
+            "cost_saved_usd": round(cost_saved_usd, 6),
+            "vs_model": vs_model,
+            "estimated_input_tokens": estimated_input_tokens,
+            **recommendation,
+        }
+    except RouteConfigError as exc:
+        legacy = ModelRouter().score(tool_name, _task_text_from_args(args), session_state)
+        vs_model = "claude-opus-4-7"
+        cost_saved_usd = 0.0
+        if legacy.model != vs_model:
+            expensive_pricing = get_model_pricing(vs_model)
+            recommended_pricing = get_model_pricing(legacy.model)
+            cost_saved_usd = max(
+                0.0,
+                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+            )
+        payload = {
+            "at": datetime.now(UTC).isoformat(),
+            "kind": "model_recommendation",
+            "lever": "model_routing",
+            "session_id": led.session_id,
+            "agent": led.agent or _detect_agent(),
+            "tool_name": tool_name,
+            "tokens_saved": 0,
+            "configured": False,
+            "cost_saved_usd": round(cost_saved_usd, 6),
+            "estimated_input_tokens": estimated_input_tokens,
+            "vs_model": vs_model,
+            "error": str(exc),
+            **legacy.to_dict(),
+        }
+    led.record(
+        "model_recommendation",
+        f"recommend {payload.get('model', 'unconfigured')} for {tool_name}",
+        payload,
+    )
+    _append_live_savings_event(payload)
+
+    if payload.get("configured") is not False:
+        from atelier.infra.runtime import outcome_capture
+
+        outcome_capture.schedule_route(
+            session_id=led.session_id,
+            tool=tool_name,
+            recommended_vendor=str(payload.get("vendor") or ""),
+            recommended_tier=str(payload.get("tier") or ""),
+            recommended_model=str(payload.get("model") or ""),
+            actual_vendor=str(payload.get("actual_vendor") or ""),
+            actual_model=str(payload.get("actual_model") or ""),
+            recommendation_followed=bool(payload.get("recommendation_followed")),
+            applied_lessons=[str(item) for item in payload.get("applied_lessons") or []],
+            cost_cap_triggered=bool(payload.get("cost_cap_triggered")),
+            cost_cap_limit_usd_per_session=(
+                float(payload["cost_cap_limit_usd_per_session"])
+                if payload.get("cost_cap_limit_usd_per_session") is not None
+                else None
+            ),
+            scored_state={
+                "turn_number": int(session_state.get("turn_number") or 0),
+                "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
+                "session_phase": "execution" if int(session_state.get("turn_number") or 0) > 5 else "exploration",
+            },
+            writer=_make_outcome_writer(led),
+        )
+
+    return payload
+
+
+def _model_recommendation_state(led: RunLedger, args: dict[str, Any]) -> dict[str, Any]:
     tool_call_events = [e for e in led.events if e.kind == "tool_call"]
     recent_tool_calls = [e.payload.get("tool", "") for e in tool_call_events[-10:]]
     turn_number = len(tool_call_events)
@@ -2715,64 +2836,23 @@ def _emit_model_recommendation(tool_name: str, args: dict[str, Any], led: RunLed
         "cache_affinity_model": _latest_cache_affinity_model(led),
         "turn_number": turn_number,
         "recent_tool_calls": recent_tool_calls,
+        "session_cost_usd": round(
+            sum(
+                float((event.payload or {}).get("cost_usd") or 0.0)
+                for event in led.events
+                if event.kind == "tool_call" and (event.payload or {}).get("kind") == "llm_call"
+            ),
+            6,
+        ),
     }
     if "max_output_tokens" in args:
         session_state["max_output_tokens"] = args["max_output_tokens"]
     if "budget_tokens" in args:
         session_state["max_output_tokens"] = args["budget_tokens"]
-    recommendation = router.score(tool_name, _task_text_from_args(args), session_state)
-    vs_model = "claude-opus-4-7"
-    turn_count = max(1, _ledger_turn_count(led))
-    estimated_input_tokens = max(1_000, int(led.token_count or 0) // turn_count)
-    cost_saved_usd = 0.0
-    if recommendation.model != vs_model:
-        expensive_pricing = get_model_pricing(vs_model)
-        recommended_pricing = get_model_pricing(recommendation.model)
-        cost_saved_usd = max(
-            0.0,
-            expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
-            - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
-        )
-    payload = {
-        "at": datetime.now(UTC).isoformat(),
-        "kind": "model_recommendation",
-        "lever": "model_routing",
-        "session_id": led.session_id,
-        "agent": led.agent or _detect_agent(),
-        "tool_name": tool_name,
-        "tokens_saved": 0,
-        "cost_saved_usd": round(cost_saved_usd, 6),
-        "vs_model": vs_model,
-        "estimated_input_tokens": estimated_input_tokens,
-        **recommendation.to_dict(),
-    }
-    led.record(
-        "model_recommendation",
-        f"recommend {recommendation.tier} model {recommendation.model} for {tool_name}",
-        payload,
-    )
-    _append_live_savings_event(payload)
-
-    with contextlib.suppress(Exception):
-        from atelier.infra.runtime import outcome_capture
-
-        tool_call_events = [e for e in led.events if e.kind == "tool_call"]
-        turn_number = len(tool_call_events)
-        outcome_capture.schedule_route(
-            session_id=led.session_id,
-            tool=tool_name,
-            recommended_tier=str(recommendation.tier),
-            recommended_model=str(recommendation.model),
-            recommendation_followed=True,
-            scored_state={
-                "turn_number": turn_number,
-                "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
-                "session_phase": "execution" if turn_number > 5 else "exploration",
-            },
-            writer=_make_outcome_writer(led),
-        )
-
-    return payload
+    expected_input_tokens = max(1_000, int(led.token_count or 0) // max(1, _ledger_turn_count(led)))
+    session_state["expected_input_tokens"] = expected_input_tokens
+    session_state.setdefault("expected_output_tokens", max(1, int(expected_input_tokens * 0.2)))
+    return session_state
 
 
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
