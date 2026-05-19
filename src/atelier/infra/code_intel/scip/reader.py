@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from atelier.core.capabilities.code_context.call_graph import CallGraphNode
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 _MAX_SCIP_ARTIFACT_BYTES = 10 * 1024 * 1024
@@ -26,6 +27,10 @@ class LoadedScipArtifact:
     symbols: tuple[SymbolRecord, ...]
     symbol_payloads: dict[str, dict[str, Any]]
     reference_payloads: dict[str, tuple[UsageReference, ...]]
+    caller_payloads: dict[str, tuple[CallGraphNode, ...]]
+    callee_payloads: dict[str, tuple[CallGraphNode, ...]]
+    callers_available: bool = False
+    callees_available: bool = False
 
     def search_symbols(
         self,
@@ -97,6 +102,64 @@ class LoadedScipArtifact:
             return None
         return list(payload)
 
+    def find_callers(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        matched_symbol = self._match_symbol(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            file_path=file_path,
+            symbol_name=symbol_name,
+        )
+        if matched_symbol is None or not self.callers_available:
+            return None
+        return list(self.caller_payloads.get(matched_symbol.symbol_id, ()))
+
+    def find_callees(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[CallGraphNode] | None:
+        matched_symbol = self._match_symbol(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            file_path=file_path,
+            symbol_name=symbol_name,
+        )
+        if matched_symbol is None or not self.callees_available:
+            return None
+        return list(self.callee_payloads.get(matched_symbol.symbol_id, ()))
+
+    def _match_symbol(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> SymbolRecord | None:
+        matched_symbol: SymbolRecord | None = None
+        for symbol in self.symbols:
+            if symbol_id and symbol.symbol_id != symbol_id:
+                continue
+            if qualified_name and symbol.qualified_name != qualified_name:
+                continue
+            if symbol_name and symbol.symbol_name != symbol_name:
+                continue
+            if file_path and symbol.file_path != file_path:
+                continue
+            matched_symbol = symbol
+            break
+        return matched_symbol
+
 
 class ScipArtifactReader:
     """Parses trusted repo-local `.scip` artifacts into routed symbol indexes."""
@@ -126,9 +189,14 @@ class ScipArtifactReader:
         references_payload = payload.get("references", {})
         if not isinstance(references_payload, dict):
             raise ScipArtifactError(f"invalid references in SCIP artifact: {path}")
+        call_graph_payload = payload.get("call_graph")
+        if call_graph_payload is not None and not isinstance(call_graph_payload, dict):
+            raise ScipArtifactError(f"invalid call_graph in SCIP artifact: {path}")
         symbols: list[SymbolRecord] = []
         symbol_payloads: dict[str, dict[str, Any]] = {}
         reference_payloads: dict[str, tuple[UsageReference, ...]] = {}
+        caller_payloads: dict[str, tuple[CallGraphNode, ...]] = {}
+        callee_payloads: dict[str, tuple[CallGraphNode, ...]] = {}
         for raw in symbols_payload:
             if not isinstance(raw, dict):
                 raise ScipArtifactError(f"malformed symbol entry in SCIP artifact: {path}")
@@ -164,11 +232,34 @@ class ScipArtifactReader:
                 except ValidationError as exc:
                     raise ScipArtifactError(f"invalid reference entry in SCIP artifact: {path}") from exc
             reference_payloads[raw_symbol_id] = tuple(references)
+        callers_available = False
+        callees_available = False
+        if call_graph_payload is not None:
+            callers_raw = call_graph_payload.get("callers", {})
+            callees_raw = call_graph_payload.get("callees", {})
+            if not isinstance(callers_raw, dict) or not isinstance(callees_raw, dict):
+                raise ScipArtifactError(f"invalid call_graph entries in SCIP artifact: {path}")
+            caller_payloads = self._parse_call_graph_payload(
+                callers_raw,
+                symbol_payloads=symbol_payloads,
+                artifact_path=path,
+            )
+            callee_payloads = self._parse_call_graph_payload(
+                callees_raw,
+                symbol_payloads=symbol_payloads,
+                artifact_path=path,
+            )
+            callers_available = True
+            callees_available = True
         return LoadedScipArtifact(
             path=path,
             symbols=tuple(symbols),
             symbol_payloads=symbol_payloads,
             reference_payloads=reference_payloads,
+            caller_payloads=caller_payloads,
+            callee_payloads=callee_payloads,
+            callers_available=callers_available,
+            callees_available=callees_available,
         )
 
     def _validate_path(self, artifact_path: Path) -> None:
@@ -181,13 +272,45 @@ class ScipArtifactReader:
         raise ScipArtifactError(f"untrusted SCIP artifact path: {artifact_path}")
 
     def _source_from_repo(self, symbol: SymbolRecord) -> str:
-        path = (self.repo_root / symbol.file_path).resolve()
+        path = self._validate_relative_repo_path(symbol.file_path, label="symbol source")
+        data = path.read_bytes()
+        return data[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+
+    def _parse_call_graph_payload(
+        self,
+        raw_payload: dict[str, Any],
+        *,
+        symbol_payloads: dict[str, dict[str, Any]],
+        artifact_path: Path,
+    ) -> dict[str, tuple[CallGraphNode, ...]]:
+        parsed: dict[str, tuple[CallGraphNode, ...]] = {}
+        for raw_symbol_id, raw_neighbors in raw_payload.items():
+            if not isinstance(raw_symbol_id, str) or not isinstance(raw_neighbors, list):
+                raise ScipArtifactError(f"invalid call_graph entry in SCIP artifact: {artifact_path}")
+            neighbors: list[CallGraphNode] = []
+            for raw_neighbor in raw_neighbors:
+                if not isinstance(raw_neighbor, dict):
+                    raise ScipArtifactError(f"malformed call_graph entry in SCIP artifact: {artifact_path}")
+                payload_neighbor = dict(raw_neighbor)
+                payload_neighbor.setdefault("provenance", "scip")
+                try:
+                    neighbor = CallGraphNode.model_validate(payload_neighbor)
+                except ValidationError as exc:
+                    raise ScipArtifactError(f"invalid call_graph entry in SCIP artifact: {artifact_path}") from exc
+                self._validate_relative_repo_path(neighbor.file_path, label="call graph")
+                if neighbor.symbol_id not in symbol_payloads:
+                    raise ScipArtifactError(f"unknown call_graph symbol id in SCIP artifact: {artifact_path}")
+                neighbors.append(neighbor)
+            parsed[raw_symbol_id] = tuple(neighbors)
+        return parsed
+
+    def _validate_relative_repo_path(self, raw_path: str, *, label: str) -> Path:
+        path = (self.repo_root / raw_path).resolve()
         try:
             path.relative_to(self.repo_root)
         except ValueError as exc:
-            raise ScipArtifactError(f"path escape denied for symbol source: {symbol.file_path}") from exc
-        data = path.read_bytes()
-        return data[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+            raise ScipArtifactError(f"path escape denied for {label}: {raw_path}") from exc
+        return path
 
 
 __all__ = ["LoadedScipArtifact", "ScipArtifactError", "ScipArtifactReader"]
