@@ -148,6 +148,30 @@ def test_tool_code_pattern_requires_pattern(tmp_path: Path) -> None:
         tool_code({"op": "pattern", "repo_root": str(tmp_path), "dry_run": True})
 
 
+def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "checkout.py").write_text(
+        "from src.orders import OrderService\n\n"
+        "def checkout(items: list[int]) -> int:\n"
+        "    return OrderService().calculate_total(items)\n",
+        encoding="utf-8",
+    )
+
+    payload = tool_code({"op": "usages", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
+
+    assert payload["target"]["qualified_name"] == "OrderService"
+    assert payload["group_by"] == "file"
+    assert "src/checkout.py" in payload["references"]
+    assert payload["references"]["src/checkout.py"][0]["provenance"] == "treesitter"
+
+
 def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_engine = MagicMock()
     fake_engine.tool_pattern.return_value = {
@@ -177,6 +201,39 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         language=None,
         file_glob=None,
         dry_run=True,
+        limit=20,
+        budget_tokens=220,
+    )
+
+
+def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_usages.return_value = {
+        "target": {"qualified_name": "OrderService"},
+        "references": {"src/checkout.py": [{"file_path": "src/checkout.py", "line": 4, "column": 12, "provenance": "scip"}]},
+        "group_by": "file",
+        "cache_hit": False,
+        "provenance": "scip",
+        "tokens_saved": 10,
+        "total_tokens": 80,
+    }
+    monkeypatch.setattr("atelier.gateway.adapters.mcp_server._code_context_engine", lambda repo_root=".": fake_engine)
+
+    payload = tool_code({"op": "usages", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 220})
+
+    assert payload["cache_hit"] is False
+    assert payload["provenance"] == "scip"
+    fake_engine.tool_usages.assert_called_once_with(
+        query="OrderService",
+        symbol_id=None,
+        qualified_name=None,
+        symbol_name=None,
+        file_path=None,
+        kind=None,
+        language=None,
+        file_glob=None,
+        group_by="file",
+        snippet_lines=3,
         limit=20,
         budget_tokens=220,
     )

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from atelier.core.capabilities.code_context.intel_store import ProviderHealth
-from atelier.core.capabilities.code_context.models import SymbolRecord
+from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.code_intel.scip.reader import (
     LoadedScipArtifact,
@@ -92,6 +92,25 @@ class ScipSymbolIntelProvider:
     ) -> dict[str, Any] | None:
         for artifact in self._artifacts:
             payload = artifact.get_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                file_path=file_path,
+                symbol_name=symbol_name,
+            )
+            if payload is not None:
+                return payload
+        return None
+
+    def find_references(
+        self,
+        *,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        file_path: str | None = None,
+        symbol_name: str | None = None,
+    ) -> list[UsageReference] | None:
+        for artifact in self._artifacts:
+            payload = artifact.find_references(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 file_path=file_path,
