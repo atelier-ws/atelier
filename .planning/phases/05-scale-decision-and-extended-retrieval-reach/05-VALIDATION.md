@@ -127,6 +127,6 @@ source: phase-planning
 - [x] Wave 1 M18 gate completed and decision recorded
 - [x] Wave 1 M17 literal-edge work completed with targeted tests and benchmark smoke
 - [x] Wave 2 M16 search-backend routing completed after the M18 gate
-- [ ] Manual hotspot and payload checks recorded
+- [x] Manual hotspot and payload checks recorded
 
-**Approval:** pending final human/UAT sign-off
+**Approval:** approved after real-runtime verification, exact M16 validation-row pass, and recorded human/UAT sign-off
