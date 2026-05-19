@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 from bisect import bisect_right
 from collections.abc import Callable
+from datetime import UTC, date, datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -59,6 +60,7 @@ from atelier.infra.tree_sitter.tags import detect_language, extract_tags
 
 _MAX_FILE_BYTES = 1_000_000
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
+_SINCE_RELATIVE_RE = re.compile(r"^(?P<amount>\d+)(?P<unit>[dwmy])$")
 _JS_IMPORT_RE = re.compile(
     r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))"
 )
@@ -78,6 +80,18 @@ _SEARCH_ESSENTIAL_KEYS = [
     "provenance",
 ]
 _SEARCH_OPTIONAL_KEYS = ["snippet", "doc_summary", "score", "repo_id", "content_hash", "parent_symbol", "start_byte", "end_byte"]
+_DELETED_SEARCH_ESSENTIAL_KEYS = [
+    *_SEARCH_ESSENTIAL_KEYS,
+    "deleted_at",
+    "deleted_at_sha",
+    "last_author",
+]
+_DELETED_SEARCH_OPTIONAL_KEYS = [
+    "rename_target",
+    "rename_note",
+    "last_commit_msg",
+    "matched_on",
+]
 _OUTLINE_ESSENTIAL_KEYS = ["file_path", "name", "qualified_name", "kind", "signature", "line_start", "line_end"]
 _SYMBOL_ESSENTIAL_KEYS = [
     "symbol_id",
@@ -192,6 +206,46 @@ def _safe_fts_query(query: str) -> str:
     return " OR ".join(term[:64] for term in terms[:12])
 
 
+def _parse_since_filter(value: str | None) -> int | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("since must not be empty")
+    match = _SINCE_RELATIVE_RE.fullmatch(normalized.lower())
+    if match:
+        amount = int(match.group("amount"))
+        unit = match.group("unit")
+        delta = {
+            "d": timedelta(days=amount),
+            "w": timedelta(weeks=amount),
+            "m": timedelta(days=amount * 30),
+            "y": timedelta(days=amount * 365),
+        }[unit]
+        return int((datetime.now(UTC) - delta).timestamp())
+    iso_value = normalized.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(iso_value)
+    except ValueError:
+        try:
+            parsed_date = date.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ValueError("since must be an ISO date/datetime or relative duration like 30d") from exc
+        parsed = datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=UTC)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return int(parsed.timestamp())
+
+
+def _normalize_touched_by(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("touched_by must not be empty")
+    return normalized
+
+
 def _row_to_symbol(row: sqlite3.Row) -> SymbolRecord:
     row_keys = set(row.keys())
     return SymbolRecord(
@@ -241,6 +295,7 @@ class CodeContextEngine:
             local_find_callers=self._find_callers_local,
             local_find_callees=self._find_callees_local,
         )
+        self._deleted_history_search_adapter: Any | None = None
         self._register_symbol_intel_providers()
 
     def index_repo(
@@ -344,13 +399,17 @@ class CodeContextEngine:
         snippet_lines: int = 8,
         file_glob: str | None = None,
         scope: Literal["repo", "external", "deleted"] = "repo",
+        since: str | None = None,
+        touched_by: str | None = None,
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
-        if auto_index:
+        if auto_index and scope != "deleted":
             self._ensure_indexed()
         self._sync_symbol_intel()
         resolved_mode = resolve_search_mode(query, mode)
+        parsed_since = _parse_since_filter(since) if scope == "deleted" else None
+        normalized_touched_by = _normalize_touched_by(touched_by) if scope == "deleted" else None
         cache_args = {
             "query": query,
             "limit": limit,
@@ -362,6 +421,8 @@ class CodeContextEngine:
             "snippet_lines": snippet_lines,
             "file_glob": file_glob,
             "scope": scope,
+            "since_ts": parsed_since,
+            "touched_by": normalized_touched_by,
             "budget_tokens": budget_tokens,
             "semantic_candidate_limit": semantic_candidate_limit(limit),
         }
@@ -369,26 +430,31 @@ class CodeContextEngine:
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
+        raw_items = self.search_symbols(
+            query,
+            limit=limit,
+            mode=resolved_mode,
+            kind=kind,
+            language=language,
+            snippet=snippet,
+            snippet_lines=snippet_lines,
+            file_glob=file_glob,
+            scope=scope,
+            since=since,
+            touched_by=touched_by,
+            auto_index=False,
+        )
         items = [
-            item.model_dump(mode="json", exclude_none=True)
-            for item in self.search_symbols(
-                query,
-                limit=limit,
-                mode=resolved_mode,
-                kind=kind,
-                language=language,
-                snippet=snippet,
-                snippet_lines=snippet_lines,
-                file_glob=file_glob,
-                scope=scope,
-                auto_index=False,
-            )
+            item.model_dump(mode="json", exclude_none=True) if isinstance(item, SymbolRecord) else dict(item)
+            for item in raw_items
         ]
+        essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
+        optional_keys = _DELETED_SEARCH_OPTIONAL_KEYS if scope == "deleted" else _SEARCH_OPTIONAL_KEYS
         payload = self._pack_items_payload(
             items,
             budget_tokens=budget_tokens,
-            essential_keys=_SEARCH_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=_SEARCH_OPTIONAL_KEYS,
+            essential_keys=essential_keys,
+            optional_keys_in_drop_order=optional_keys,
             extra_payload={"mode": resolved_mode},
         )
         self._cache_set("code.search", cache_args, payload)
@@ -795,11 +861,21 @@ class CodeContextEngine:
         snippet_lines: int = 8,
         file_glob: str | None = None,
         scope: Literal["repo", "external", "deleted"] = "repo",
+        since: str | None = None,
+        touched_by: str | None = None,
         auto_index: bool = True,
-    ) -> list[SymbolRecord]:
+    ) -> list[SymbolRecord | dict[str, Any]]:
         """BM25/FTS-ranked symbol search with routed-provider fallback."""
-        if auto_index:
+        if auto_index and scope != "deleted":
             self._ensure_indexed()
+        if scope == "deleted":
+            return self._deleted_history_adapter().search(
+                query,
+                limit=limit,
+                since_ts=_parse_since_filter(since),
+                touched_by=_normalize_touched_by(touched_by),
+                language=language,
+            )
         resolved_mode = resolve_search_mode(query, mode)
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language)
@@ -1343,6 +1419,11 @@ class CodeContextEngine:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        return conn
+
+    def connection(self) -> sqlite3.Connection:
+        conn = self._connect()
+        self._init_schema(conn)
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
@@ -2411,6 +2492,17 @@ class CodeContextEngine:
                 self._bump_index_version(conn)
                 return True
         return False
+
+    def _deleted_history_adapter(self) -> Any:
+        if self._deleted_history_search_adapter is None:
+            from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
+
+            self._deleted_history_search_adapter = DeletedHistorySearchAdapter(
+                repo_root=self.repo_root,
+                repo_id=self.repo_id,
+                connection_factory=self.connection,
+            )
+        return self._deleted_history_search_adapter
 
 
 __all__ = ["CodeContextEngine"]
