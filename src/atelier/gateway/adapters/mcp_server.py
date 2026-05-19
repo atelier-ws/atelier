@@ -2028,6 +2028,18 @@ def _code_context_engine(repo_root: str = ".") -> Any:
     return CodeContextEngine(resolved)
 
 
+def _workspace_code_router(repo_root: str = ".") -> Any:
+    from atelier.core.capabilities.code_context.workspace_router import WorkspaceCodeRouter
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    root = Path(repo_root)
+    resolved = root if root.is_absolute() else Path(workspace) / root
+    return WorkspaceCodeRouter(
+        repo_root=resolved,
+        engine_factory=lambda target_root: _code_context_engine(str(target_root)),
+    )
+
+
 @mcp_tool(name="code", is_dev=True)
 def tool_code(
     op: Literal[
@@ -2046,6 +2058,7 @@ def tool_code(
         "cache_invalidate",
     ],
     repo_root: str = ".",
+    repo: str | None = None,
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
     query: str | None = None,
@@ -2077,6 +2090,12 @@ def tool_code(
     cache_tool: Literal["all", "search", "symbol", "outline", "context", "impact", "usages", "callers", "callees", "pattern"] | None = None,
 ) -> dict[str, Any]:
     """Index, search, inspect, outline, pack, or analyze code context."""
+    workspace_router = _workspace_code_router(repo_root)
+    if repo is not None and not workspace_router.is_configured:
+        raise ValueError("repo filter requires .atelier/workspace.toml")
+    if repo is not None and op not in {"search", "symbol"}:
+        raise ValueError("repo filter is only supported for workspace search and symbol operations")
+
     engine = _code_context_engine(repo_root)
 
     if op == "index":
@@ -2107,6 +2126,11 @@ def tool_code(
             search_kwargs["since"] = since
         if touched_by is not None:
             search_kwargs["touched_by"] = touched_by
+        if workspace_router.is_configured:
+            return cast(
+                dict[str, Any],
+                workspace_router.route("search", repo=repo, query=query, **search_kwargs),
+            )
         return cast(
             dict[str, Any],
             engine.tool_search(query, **search_kwargs),
@@ -2129,6 +2153,19 @@ def tool_code(
         )
 
     if op == "symbol":
+        if workspace_router.is_configured:
+            return cast(
+                dict[str, Any],
+                workspace_router.route(
+                    "symbol",
+                    repo=repo,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=file_path,
+                    budget_tokens=budget_tokens,
+                ),
+            )
         return cast(
             dict[str, Any],
             engine.tool_symbol(
