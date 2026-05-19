@@ -77,7 +77,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 02-04-PLAN.md — Add `code op="usages"` routed reference navigation, benchmark it against grep/read, and close the remaining M12 follow-through validation (M3)
+- [x] 02-04-PLAN.md — Add `code op="usages"` routed reference navigation, benchmark it against grep/read, and close the remaining M12 follow-through validation (M3)
 
 ### Phase 3: Semantic Recall & Relationship Navigation
 
