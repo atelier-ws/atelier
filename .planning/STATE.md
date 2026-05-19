@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 05 planning complete
-last_updated: "2026-05-19T14:05:00Z"
-last_activity: 2026-05-19 -- Phase 05 planned with M18 checkpoint, Zoekt search branch, and literal-only cross-language execution waves
+status: checkpoint
+stopped_at: Phase 05 Plan 01 Task 3 decision checkpoint awaiting maintainer ratification
+last_updated: "2026-05-19T16:05:28.320Z"
+last_activity: 2026-05-19 -- 05-01 completed Tasks 1-2, recorded M18 trace evidence, and is awaiting backend-choice ratification at Task 3
 progress:
   total_phases: 7
   completed_phases: 4
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-19)
 
 ## Current Position
 
-Phase: 05 (scale-decision-and-extended-retrieval-reach) — PLANNED
-Plan: 05-01, 05-02, 05-03 ready; 05-01 decision gate runs first
-Status: Phase 05 planned; execution is gated by the M18 checkpoint outcome
-Last activity: 2026-05-19 -- Phase 05 planned with M18 checkpoint, Zoekt search branch, and literal-only cross-language execution waves
+Phase: 05 (scale-decision-and-extended-retrieval-reach) — CHECKPOINT
+Plan: 05-01 awaiting Task 3 maintainer decision; 05-02 and 05-03 remain blocked behind the M18 gate
+Status: Tasks 1-2 of 05-01 are complete, with a search-only Zoekt recommendation pending ratification at the blocking decision checkpoint
+Last activity: 2026-05-19 -- 05-01 completed Tasks 1-2, recorded M18 trace evidence, and is awaiting backend-choice ratification at Task 3
 
 Progress: [██████████] 100%
 
@@ -117,6 +117,7 @@ None yet.
 
 - Brownfield repository: existing worktree edits already touch `code_context` and MCP files, so execution plans must avoid overwriting unrelated changes.
 - Phase 5 must complete the checkpoint plan before any M16 implementation work starts.
+- Phase 05 Plan 01 is paused at Task 3 until a maintainer selects one checkpoint option (`option-a`, `option-b`, `option-c`, or `option-d`).
 - `05-02` and `05-03` were accepted with warning-level breadth notes; split them if file scope expands during execution.
 - Phase 1 plans were accepted with warning-level checker findings around plan breadth and pattern-map alignment; re-surface them during execution if file scope expands further.
 - Phase 2 plans were accepted with warning-level checker findings about file breadth across `mcp_server.py`, `engine.py`, and related brownfield hotspots; re-surface them during execution if scope expands further.
@@ -132,6 +133,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-19T14:05:00Z
-Stopped at: Phase 05 planning complete
-Resume file: None
+Last session: 2026-05-19T16:05:28.311Z
+Stopped at: Phase 05 Plan 01 Task 3 decision checkpoint awaiting maintainer ratification
+Resume file: .planning/phases/05-scale-decision-and-extended-retrieval-reach/05-01-SUMMARY.md
