@@ -25,6 +25,7 @@ class DeletedHistorySearchAdapter:
         self._connection_factory = connection_factory
         self._head_state_key = f"graveyard_head:{repo_id}"
         self._rename_target_cache: dict[tuple[str, str], str | None] = {}
+        self._changed_files_cache: dict[tuple[int | None, str | None, str | None], frozenset[str]] = {}
 
     def search(
         self,
@@ -112,6 +113,63 @@ class DeletedHistorySearchAdapter:
             return str(repo.revparse_single("HEAD").id)
         except Exception:
             return None
+
+    def changed_files(self, *, since_ts: int | None, touched_by: str | None) -> set[str]:
+        current_head = self._current_head()
+        cache_key = (since_ts, touched_by, current_head)
+        cached = self._changed_files_cache.get(cache_key)
+        if cached is not None:
+            return set(cached)
+        if current_head is None:
+            return set()
+        pygit2 = require_pygit2()
+        try:
+            repo = pygit2.Repository(str(self._repo_root))
+            head = repo.revparse_single("HEAD")
+        except Exception:
+            return set()
+        changed: set[str] = set()
+        touched_by_filter = touched_by.lower() if touched_by is not None else None
+        for commit in repo.walk(head.id, pygit2.enums.SortMode.TIME):
+            if since_ts is not None and commit.commit_time < since_ts:
+                break
+            author_haystacks = (
+                str(getattr(commit.author, "email", "") or "").lower(),
+                str(getattr(commit.author, "name", "") or "").lower(),
+            )
+            if touched_by_filter is not None and all(touched_by_filter not in haystack for haystack in author_haystacks):
+                continue
+            changed.update(self._commit_changed_files(repo, commit))
+        frozen = frozenset(path for path in changed if path)
+        self._changed_files_cache[cache_key] = frozen
+        return set(frozen)
+
+    def _commit_changed_files(self, repo: Any, commit: Any) -> set[str]:
+        if not commit.parents:
+            return self._tree_paths(repo, commit.tree)
+        changed: set[str] = set()
+        diff = commit.parents[0].tree.diff_to_tree(commit.tree)
+        for patch in diff:
+            delta = patch.delta
+            new_path = str(delta.new_file.path or "")
+            old_path = str(delta.old_file.path or "")
+            if new_path:
+                changed.add(new_path)
+            elif old_path:
+                changed.add(old_path)
+        return changed
+
+    def _tree_paths(self, repo: Any, tree: Any) -> set[str]:
+        paths: set[str] = set()
+        for entry in tree:
+            entry_obj = repo[entry.id]
+            entry_path = str(entry.name)
+            if hasattr(entry_obj, "__iter__") and type(entry_obj).__name__.lower().endswith("tree"):
+                for child_path in self._tree_paths(repo, entry_obj):
+                    paths.add(f"{entry_path}/{child_path}")
+                continue
+            paths.add(entry_path)
+        return paths
 
     def _search_rows(
         self,
