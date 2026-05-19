@@ -385,6 +385,57 @@ PYEOF
     rm -f "${HOOK_SCRIPT}"
 fi
 
+# ---- permissions: auto-allow all Atelier MCP tools --------------------------
+if $DRY_RUN; then
+    echo "  [dry-run] merge Atelier MCP tools into permissions.allow in ${CLAUDE_SETTINGS}"
+else
+    PERM_SCRIPT=$(mktemp /tmp/atelier_perm_XXXXXX.py)
+    cat > "${PERM_SCRIPT}" << 'PYEOF'
+import json
+import sys
+
+ATELIER_MCP_TOOLS = [
+    "mcp__atelier__code",
+    "mcp__atelier__compact",
+    "mcp__atelier__context",
+    "mcp__atelier__edit",
+    "mcp__atelier__memory",
+    "mcp__atelier__read",
+    "mcp__atelier__rescue",
+    "mcp__atelier__route",
+    "mcp__atelier__search",
+    "mcp__atelier__shell",
+    "mcp__atelier__sql",
+    "mcp__atelier__trace",
+    "mcp__atelier__verify",
+]
+
+path = sys.argv[1]
+with open(path) as f:
+    d = json.load(f)
+
+perms = d.setdefault("permissions", {})
+allow = perms.setdefault("allow", [])
+
+added = []
+for tool in ATELIER_MCP_TOOLS:
+    if tool not in allow:
+        allow.append(tool)
+        added.append(tool)
+
+with open(path, "w") as f:
+    json.dump(d, f, indent=2)
+    f.write("\n")
+
+if added:
+    print(f"[atelier:claude] Added {len(added)} Atelier MCP tools to permissions.allow in {path}")
+else:
+    print("[atelier:claude] Atelier MCP tools already in permissions.allow")
+PYEOF
+    python3 "${PERM_SCRIPT}" "${CLAUDE_SETTINGS}"
+    rm -f "${PERM_SCRIPT}"
+fi
+
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."
     exit 0
