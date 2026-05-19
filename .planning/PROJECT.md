@@ -38,11 +38,19 @@ with near-zero token overhead by default.
   `code` surface with safe local fallback and cache invalidation
 - ✓ Phase 1 validated hardened `code op="search"` defaults with ranked,
   snippet-free responses plus benchmark and trace evidence
+- ✓ Phase 2 validated `code op="pattern"` on the existing `code` surface with
+  explicit ast-grep discovery/bootstrap handling, structured rewrites, and
+  benchmark evidence
+- ✓ Phase 2 validated `edit kind="symbol"` on the existing `edit` surface with
+  ambiguity/staleness guards plus reindex and memory follow-through
+- ✓ Phase 2 validated grouped `code op="usages"` results with routed reference
+  support, explicit treesitter fallback, and cache hit-rate telemetry visible
+  on the Overview surface
 
 ### Active
 
 - [ ] Extend the current tool surface with the remaining planned code-intel
-  behaviors from `docs/plans/active/code-intel/` M3-M18 without breaking
+  behaviors from `docs/plans/active/code-intel/` M6-M18 without breaking
   existing entry points
 - [ ] Deliver the remaining roadmap phases until Atelier's default
   code/search/edit workflows are near-zero-token, budget-aware, traceable, and
@@ -107,7 +115,10 @@ should be treated as the reference for implementation planning.
 
 - Phase 1 complete — retrieval cache, routed SCIP lookup, and hardened code
   search are validated on the existing `code` surface.
-- Next up: Phase 2 — Structural Discovery & Symbol-Safe Change Flows.
+- Phase 2 complete — structural pattern search, symbol-safe edits, usages
+  navigation, and the M12 telemetry/validation closeout are now recorded on the
+  existing `code` / `edit` surfaces.
+- Next up: Phase 3 — Semantic Recall & Relationship Navigation.
 
 ## Evolution
 
@@ -127,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-18 after Phase 1 completion*
+*Last updated: 2026-05-19 after Phase 2 completion*
