@@ -26,17 +26,17 @@ DOC_LINKS = [
 
 HOST_FALLBACKS = {
     "copilot": "Copilot or VS Code native file reads, workspace search, shell `rg`, or `grep`",
+    "antigravity": "Antigravity or agy native file reads, workspace search, shell `rg`, or `grep`",
     "claude": "Claude-native file tools, Grep/Glob, shell `rg`, or `grep`",
     "codex": "native Codex file reads, shell `rg`, `grep`, or direct repository search",
-    "gemini": "Gemini-native file reads, shell `rg`, `grep`, or direct repository search",
     "opencode": "opencode-native file reads, repository search, shell `rg`, or `grep`",
 }
 
 HOST_DISPLAY = {
+    "antigravity": "Antigravity",
     "copilot": "Copilot",
     "claude": "Claude",
     "codex": "Codex",
-    "gemini": "Gemini",
     "opencode": "OpenCode",
 }
 
@@ -477,7 +477,7 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
 
 def sync_host_configs() -> dict[Path, str]:
     outputs: dict[Path, str] = {}
-    for host in ("claude", "codex", "copilot", "gemini", "opencode"):
+    for host in ("claude", "codex", "copilot", "antigravity", "opencode"):
         path = ROOT / "src/atelier/gateway/hosts/configs" / f"{host}.yaml"
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         templates = data.get("prompt_templates", [])
@@ -491,12 +491,6 @@ def sync_host_configs() -> dict[Path, str]:
 def build_outputs() -> dict[Path, str]:
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
-        ROOT
-        / "GEMINI.md": render_project_entrypoint(
-            ROOT / "GEMINI.md",
-            title="Project Instructions: Atelier",
-            host="gemini",
-        ),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(ROOT / ".github/chatmodes/atelier.chatmode.md"),
         ROOT
@@ -536,16 +530,10 @@ def build_outputs() -> dict[Path, str]:
             host="codex",
         ),
         ROOT
-        / "integrations/gemini/GEMINI.atelier.md": render_host_surface(
-            ROOT / "integrations/gemini/GEMINI.atelier.md",
-            title="Atelier - Gemini CLI Agent",
-            host="gemini",
-        ),
-        ROOT
-        / "integrations/gemini/extension/GEMINI.md": render_host_surface(
-            ROOT / "integrations/gemini/extension/GEMINI.md",
-            title="Atelier - Gemini CLI Default Identity",
-            host="gemini",
+        / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
+            ROOT / "integrations/antigravity/AGENTS.atelier.md",
+            title="Atelier - Antigravity Agent",
+            host="antigravity",
         ),
         ROOT
         / "integrations/opencode/agents/atelier.md": render_host_surface(

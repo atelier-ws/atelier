@@ -662,7 +662,7 @@ def _servicectl_refresh_host_status(root: Path) -> dict[str, str]:
         ("codex", "codex"),
         ("opencode", None),
         ("copilot", None),
-        ("gemini", "gemini"),
+        ("antigravity", "agy"),
     ]
     status: dict[str, str] = {}
     for hid, check in hosts:
@@ -672,6 +672,8 @@ def _servicectl_refresh_host_status(root: Path) -> dict[str, str]:
             installed = shutil.which("opencode") is not None
         elif hid == "copilot":
             installed = shutil.which("code") is not None
+        elif hid == "antigravity":
+            installed = shutil.which("agy") is not None or shutil.which("antigravity") is not None
         else:
             installed = False
         status[hid] = "installed" if installed else "not_installed"

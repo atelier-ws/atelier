@@ -10,7 +10,7 @@
 #   --codex        Only install Codex
 #   --opencode     Only install opencode
 #   --copilot      Only install Copilot
-#   --gemini       Only install Gemini CLI
+#   --antigravity  Only install Antigravity / agy
 #   --dry-run      Pass through to all install scripts
 #   --print-only   Pass through to all install scripts
 #   --strict       Pass through; scripts exit nonzero if CLI absent
@@ -51,18 +51,18 @@ DO_CLAUDE=false
 DO_CODEX=false
 DO_OPENCODE=false
 DO_COPILOT=false
-DO_GEMINI=false
+DO_ANTIGRAVITY=false
 EXPLICIT=false
 PASSTHROUGH=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true; DO_COPILOT=true; DO_GEMINI=true ;;
+        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true; DO_COPILOT=true; DO_ANTIGRAVITY=true ;;
         --claude)    EXPLICIT=true; DO_CLAUDE=true ;;
         --codex)     EXPLICIT=true; DO_CODEX=true ;;
         --opencode)  EXPLICIT=true; DO_OPENCODE=true ;;
         --copilot)   EXPLICIT=true; DO_COPILOT=true ;;
-        --gemini)    EXPLICIT=true; DO_GEMINI=true ;;
+        --antigravity) EXPLICIT=true; DO_ANTIGRAVITY=true ;;
         --dry-run|--print-only|--strict) PASSTHROUGH+=("$1") ;;
         --workspace)
             if [ $# -lt 2 ]; then
@@ -79,7 +79,7 @@ done
 
 # Default: all hosts
 if ! $EXPLICIT; then
-    DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true; DO_COPILOT=true; DO_GEMINI=true
+    DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true; DO_COPILOT=true; DO_ANTIGRAVITY=true
 fi
 
 PASS=()
@@ -208,7 +208,7 @@ $DO_CLAUDE    && run_installer claude
 $DO_CODEX     && run_installer codex
 $DO_OPENCODE  && run_installer opencode
 $DO_COPILOT   && run_installer copilot
-$DO_GEMINI    && run_installer gemini
+$DO_ANTIGRAVITY && run_installer antigravity
 
 echo ""
 print_message "$C_CYAN" "══════════════════════════════════════════════"

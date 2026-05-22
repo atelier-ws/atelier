@@ -135,7 +135,7 @@ fi
 
 # ---- per-host uninstallers --------------------------------------------------
 if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
-    for host in claude codex opencode copilot gemini; do
+    for host in claude codex opencode copilot antigravity; do
         script="${SCRIPT_DIR}/uninstall_${host}.sh"
         [ -f "$script" ] || continue
         echo ""

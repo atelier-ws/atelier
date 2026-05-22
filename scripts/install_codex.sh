@@ -80,6 +80,7 @@ STAGING_DIR="${HOME}/.atelier/codex-plugin-${INSTALL_PROFILE}"
 run "mkdir -p '$STAGING_DIR/.codex-plugin'"
 run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
 run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
+run "cp -R '${ATELIER_REPO}/integrations/codex/hooks' '$STAGING_DIR/'"
 run "mkdir -p '$STAGING_DIR/agents'"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then

@@ -625,7 +625,7 @@ def test_compact_advise_emits_session_compaction_savings_when_auto_compacting(
 
 
 def test_detect_agent_supports_all_five_cli_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
-    for host in ("claude", "codex", "copilot", "opencode", "gemini"):
+    for host in ("claude", "codex", "copilot", "opencode", "antigravity"):
         monkeypatch.setenv("ATELIER_AGENT", host)
         assert mcp_server._detect_agent() == host
         monkeypatch.delenv("ATELIER_AGENT", raising=False)
