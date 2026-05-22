@@ -145,37 +145,54 @@ def _iter_files(
 ) -> list[tuple[Path, PatternSpec]]:
     expanded = list(patterns)
     if type_alias:
-        expanded.extend(PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), []))
+        expanded.extend(
+            PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), [])
+        )
     if not expanded and base.is_file():
         expanded.append(PatternSpec(pattern=str(base.relative_to(root))))
+    elif not expanded and base.is_dir():
+        # No glob/type specified — walk all files under base
+        fallback_spec = PatternSpec(pattern=".")
+        found: dict[Path, PatternSpec] = {}
+        for item in base.rglob("*"):
+            if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
+                found.setdefault(item.resolve(), fallback_spec)
+        return sorted(found.items(), key=lambda pair: str(pair[0]))
 
-    found: dict[Path, PatternSpec] = {}
+    candidates: dict[Path, PatternSpec] = {}
     for spec in expanded:
         raw = spec.pattern or "."
         if _has_glob(raw):
-            matches = base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
+            matches = (
+                base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
+            )
             for match in matches:
                 if match.is_file() and not any(part in _SKIP_DIRS for part in match.parts):
-                    found.setdefault(match.resolve(), spec)
+                    candidates.setdefault(match.resolve(), spec)
             continue
 
         candidate = _safe_resolve(root, raw)
         if candidate.is_file():
-            found.setdefault(candidate, spec)
+            candidates.setdefault(candidate, spec)
             continue
         if candidate.is_dir():
             for item in candidate.rglob("*"):
                 if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
-                    found.setdefault(item.resolve(), spec)
+                    candidates.setdefault(item.resolve(), spec)
 
-    return sorted(found.items(), key=lambda pair: str(pair[0]))
+    return sorted(candidates.items(), key=lambda pair: str(pair[0]))
 
 
 def _is_text_file(path: Path) -> bool:
-    return path.suffix.lower() in _TEXT_SUFFIXES or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
+    return (
+        path.suffix.lower() in _TEXT_SUFFIXES
+        or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
+    )
 
 
-def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
+def _line_window(
+    lines: list[str], line_no: int, before: int, after: int
+) -> tuple[int, int, list[str]]:
     start = max(1, line_no - before)
     end = min(len(lines), line_no + after)
     return start, end, lines[start - 1 : end]
@@ -268,7 +285,9 @@ def _extract_pdf(path: Path) -> str:
 def _imports_for(path: Path, source: str) -> list[str]:
     imports: list[str] = []
     if path.suffix.lower() == ".py":
-        for match in re.finditer(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", source, flags=re.M):
+        for match in re.finditer(
+            r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", source, flags=re.M
+        ):
             imports.append(match.group(1) or match.group(2) or "")
     else:
         for match in re.finditer(
@@ -279,7 +298,9 @@ def _imports_for(path: Path, source: str) -> list[str]:
     return [item for item in imports if item]
 
 
-def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, PatternSpec]]) -> list[str]:
+def _imported_by_for(
+    root: Path, target: Path, candidates: list[tuple[Path, PatternSpec]]
+) -> list[str]:
     rel_target = str(target.relative_to(root)) if target.is_relative_to(root) else str(target)
     stem = target.stem
     module = rel_target.removesuffix(".py").replace("/", ".")
@@ -295,7 +316,12 @@ def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, Patt
         imports = _imports_for(candidate, source)
         hit = False
         for item in imports:
-            if item == module or item.endswith(f".{stem}") or item.endswith(f"/{stem}") or item.endswith(target_js):
+            if (
+                item == module
+                or item.endswith(f".{stem}")
+                or item.endswith(f"/{stem}")
+                or item.endswith(target_js)
+            ):
                 hit = True
                 break
         if not hit:
@@ -340,7 +366,9 @@ def _find_symbol_spans(path: Path, source: str) -> list[tuple[int, int, str]]:
     suffix = path.suffix.lower()
     spans: list[tuple[int, int, str]] = []
     if suffix == ".py":
-        for match in re.finditer(r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M):
+        for match in re.finditer(
+            r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M
+        ):
             name = match.group(1)
             start = source.count("\n", 0, match.start()) + 1
             spans.append((start, start, name))
@@ -483,7 +511,9 @@ def _render_text_result(
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
-    match_lines = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=include_all)
+    match_lines = _match_line_numbers(
+        lines, regex, content_regex, include_all_when_no_regex=include_all
+    )
     if include_all and lines_per_file:
         match_lines = match_lines[: max(0, lines_per_file)]
 
@@ -495,7 +525,11 @@ def _render_text_result(
         return None, 0
 
     use_summary = bool(summary)
-    if summary is None and path.suffix.lower() in {".py", ".ts", ".tsx", ".js", ".jsx"} and len(lines) > 500:
+    if (
+        summary is None
+        and path.suffix.lower() in {".py", ".ts", ".tsx", ".js", ".jsx"}
+        and len(lines) > 500
+    ):
         use_summary = True
     if use_summary:
         outline = _summarize(path, source)
@@ -540,7 +574,12 @@ def search_workspace(
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
     if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {"isError": True, "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}]}
+        return {
+            "isError": True,
+            "content": [
+                {"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}
+            ],
+        }
 
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
@@ -577,7 +616,11 @@ def search_workspace(
             lines = source.splitlines()
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
-                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                rel = (
+                    str(candidate.relative_to(root))
+                    if candidate.is_relative_to(root)
+                    else str(candidate)
+                )
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -591,7 +634,11 @@ def search_workspace(
                 continue
             if spec.graph_mode == "imported_by":
                 imported = _imported_by_for(root, candidate, candidates)
-                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                rel = (
+                    str(candidate.relative_to(root))
+                    if candidate.is_relative_to(root)
+                    else str(candidate)
+                )
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -604,7 +651,9 @@ def search_workspace(
                 )
                 continue
 
-            line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
+            line_nos = _match_line_numbers(
+                lines, regex, content_regex, include_all_when_no_regex=regex is None
+            )
             if regex and not line_nos:
                 continue
             ranges, symbols = _symbol_windows(
@@ -616,7 +665,11 @@ def search_workspace(
                 lines_after=max(0, lines_after),
             )
             match_count = len(line_nos)
-            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+            rel = (
+                str(candidate.relative_to(root))
+                if candidate.is_relative_to(root)
+                else str(candidate)
+            )
             score = float(match_count) + (0.15 * len(symbols))
             ranked.append(
                 RankedMatch(
@@ -625,7 +678,9 @@ def search_workspace(
                     match_count=match_count,
                     ranges=ranges,
                     symbols=symbols[:6],
-                    why="regex matched symbol-aware ranges" if symbols else "regex matched merged line ranges",
+                    why="regex matched symbol-aware ranges"
+                    if symbols
+                    else "regex matched merged line ranges",
                 )
             )
 
@@ -640,13 +695,18 @@ def search_workspace(
 
         ranked.sort(key=lambda item: (-item.score, item.file))
         top_score = max(item.score for item in ranked) or 1.0
-        normalized = [RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)}) for item in ranked]
+        normalized = [
+            RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)})
+            for item in ranked
+        ]
         selected: list[RankedMatch] = []
         used_tokens = 0
         for idx, item in enumerate(normalized):
             max_ranges = 4 if idx == 0 else 3 if idx == 1 else 2
             reduced_ranges = item.ranges[:max_ranges]
-            est = max(30, len(item.file) // 4 + (len(reduced_ranges) * 24) + (len(item.symbols) * 8))
+            est = max(
+                30, len(item.file) // 4 + (len(reduced_ranges) * 24) + (len(item.symbols) * 8)
+            )
             if selected and used_tokens + est > total_budget:
                 break
             used_tokens += est
@@ -681,7 +741,10 @@ def search_workspace(
             "matches": matches_payload,
             "next": next_actions[: min(12, len(next_actions))],
             "context_budget_tokens": total_budget,
-            "handles": {k: {"file": v[0], "range": f'{v[1][0]}-{v[1][1]}' if v[1] else None} for k, v in handles.items()},
+            "handles": {
+                k: {"file": v[0], "range": f"{v[1][0]}-{v[1][1]}" if v[1] else None}
+                for k, v in handles.items()
+            },
             "_meta": {"fileMatchCount": len(matches_payload), "capChars": cap_chars},
         }
 
@@ -700,12 +763,18 @@ def search_workspace(
             continue
         if spec.graph_mode == "imported_by":
             imported = _imported_by_for(root, candidate, candidates)
-            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+            rel = (
+                str(candidate.relative_to(root))
+                if candidate.is_relative_to(root)
+                else str(candidate)
+            )
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:
-                blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
+                blocks.append(
+                    {"type": "text", "text": "[truncated: structured output cap reached]"}
+                )
                 break
             text = rendered[:remaining]
             total_chars += len(text)

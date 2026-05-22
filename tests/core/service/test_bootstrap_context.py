@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from atelier.core.service.bootstrap_context import (
+    _render_architecture_sketch,
     build_bootstrap_plan,
     expected_bootstrap_labels,
     list_bootstrap_blocks,
@@ -99,3 +100,17 @@ def test_partial_bootstrap_metadata_allows_retry_without_rewriting_completed_blo
     assert completed_block.version == original_version
     assert first_label in result.reused_labels
     assert len(list_bootstrap_blocks(memory_store, plan.repo_id)) == 4
+
+
+def test_architecture_sketch_filters_non_project_paths() -> None:
+    rendered = _render_architecture_sketch(
+        {
+            "ranked_files": [
+                ".claude/worktrees/agent-x/src/hidden.py",
+                "src/atelier/core/runtime/engine.py",
+            ]
+        },
+        {},
+    )
+    assert "src/atelier/core/runtime/engine.py" in rendered
+    assert ".claude/worktrees" not in rendered
