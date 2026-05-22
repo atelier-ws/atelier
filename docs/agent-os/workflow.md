@@ -46,6 +46,23 @@ run a long search), delegate to a cheaper model instead of doing it inline:
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, restate the expected deliverable.
 
+## Symbol-first navigation
+
+When the symbol name is known, use `code` ops — not text search:
+
+1. **Known symbol name** → `code op="symbol"` (name-first lookup). Never `code op="search"` or raw grep.
+2. **"Find code that looks like X"** → `code op="pattern"` (ast-grep structural match).
+3. **"Find X and everything that calls/uses it"** → `code op="symbol"` then `code op="usages"`.
+4. **Refactors targeting a named symbol** → `edit kind="symbol"` or `code op="pattern" rewrite=...`. Not raw `edit` with line numbers.
+
+Callers/callees: use `code op="callers"` / `code op="callees"` instead of reading the file and tracing manually.
+
+Deleted or renamed symbols: use `code op="search" scope="deleted"` with optional `since=` and `touched_by=` filters.
+
+External dependencies: use `code op="search" scope="external"`. Do not attempt `edit kind="symbol"` on external targets — the engine rejects these before any file read.
+
+Multi-repo workspaces: add `repo=<name>` to `code op="search"` or `code op="symbol"` to scope results.
+
 ## Documentation loop
 
 Update live docs when you change:
