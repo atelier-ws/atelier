@@ -393,7 +393,8 @@ def _ensure_openmemory_service_env(root: Path) -> Path:
     env_path = _openmemory_service_env_path(root)
     env_path.parent.mkdir(parents=True, exist_ok=True)
     values = {
-        "OPENAI_API_KEY": os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")),
+        # Do not persist API keys to disk in plaintext.
+        # Keep sensitive secrets in process environment at runtime instead.
         "USER": os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "")),
         "ATELIER_OPENMEMORY_URL": os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765"),
     }
