@@ -25,7 +25,7 @@ SUPPORTED_HOSTS = [
     "Codex CLI",
     "Copilot",
     "opencode",
-    "Gemini CLI",
+    "Antigravity",
 ]
 
 CONFIDENCE_LEVELS = [

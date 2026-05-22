@@ -15,7 +15,7 @@ from typing import Any
 ATELIER_ROOT = os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier"))
 MCP_BIN = os.environ.get("ATELIER_MCP_BIN", "atelier-mcp")
 
-HOSTS = ("claude", "codex", "gemini", "copilot", "opencode")
+HOSTS = ("claude", "codex", "antigravity", "copilot", "opencode")
 
 
 # ---------------------------------------------------------------------------

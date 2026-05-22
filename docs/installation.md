@@ -285,4 +285,4 @@ After installation, use the host-specific guides if you want to inspect or custo
 - [hosts/copilot-install.md](hosts/copilot-install.md)
 - [hosts/codex-install.md](hosts/codex-install.md)
 - [hosts/opencode-install.md](hosts/opencode-install.md)
-- [hosts/gemini-cli-install.md](hosts/gemini-cli-install.md)
+- [hosts/antigravity-install.md](hosts/antigravity-install.md)

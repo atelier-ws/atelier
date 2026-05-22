@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,12 @@ def _detect_language(path: str) -> str:
 # -- tool detection -----------------------------------------------------------
 
 def _has(tool: str) -> bool:
+    # Check the current Python interpreter's bin directory first.
+    # This finds tools installed as project dev dependencies (e.g. ruff from
+    # `uv sync --dev`) without requiring a separate global install.
+    bin_dir = Path(sys.executable).parent
+    if (bin_dir / tool).is_file():
+        return True
     return shutil.which(tool) is not None
 
 

@@ -62,7 +62,7 @@ atelier-opencode --task "Fix live state drift" --domain state.change
 - Workspace Atelier agent profile is installed at `.opencode/agents/atelier.md`
 - With `ATELIER_DEV_MODE=1`, opencode can actively use `context`, `route`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, and the `atelier_code_*` helpers
 - `trace` remains the stable observable recording surface
-- `atelier-opencode --task "..."` can emit live start-time optimizer guidance before handing off to opencode
+- `atelier-opencode --task "..."` prints an Atelier session summary after opencode exits
 
 ## Troubleshooting
 

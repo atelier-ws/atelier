@@ -988,6 +988,51 @@ def build_codex_post_tool_use_savings_output(
     return output
 
 
+def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    event = str(payload.get("hook_event_name") or payload.get("event") or "")
+    if event != "Stop":
+        return {"no_output": True}
+
+    session_id = str(payload.get("session_id") or "default")
+    update_session_stats(root, payload)
+    report = build_savings_report(root, session_id=session_id)
+    session = report.get("session") or {}
+    cost = report.get("cost") or {}
+
+    total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
+    calls_avoided = int(report.get("calls_avoided", 0) or 0)
+    tokens_saved = int(report.get("tokens_saved", 0) or 0)
+    saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
+    estimated_saved_usd = float(report.get("estimated_saved_usd", 0.0) or 0.0)
+    routing_saved_usd = float(cost.get("routing_saved_usd", 0.0) or 0.0)
+    compactions = int(session.get("compactions", 0) or 0)
+
+    if (
+        total_tool_calls <= 0
+        and calls_avoided <= 0
+        and tokens_saved <= 0
+        and saved_usd <= 0
+        and estimated_saved_usd <= 0
+    ):
+        return {"no_output": True}
+
+    savings_usd = saved_usd if saved_usd > 0 else estimated_saved_usd
+    savings_prefix = "$" if saved_usd > 0 else "~$"
+    lines = [
+        "Atelier session complete.",
+        (
+            f"savings: {savings_prefix}{savings_usd:.4f} "
+            f"· {calls_avoided} calls avoided · {tokens_saved:,} tokens saved"
+        ),
+        f"Atelier tool calls: {total_tool_calls}",
+    ]
+    if compactions > 0:
+        lines.append(f"compactions: {compactions}")
+    if routing_saved_usd > 0:
+        lines.append(f"routing savings: ${routing_saved_usd:.4f}")
+    return {"systemMessage": "\n".join(lines), "report": report}
+
+
 def equivalent_calls(tool_name: str, tool_input: dict[str, Any] | None = None) -> float:
     tool_input = tool_input or {}
     lowered = tool_name.lower()
