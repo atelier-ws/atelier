@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from atelier.core.capabilities.team import begin_google_oidc, finish_google_oidc
 
 
@@ -12,7 +14,8 @@ def test_google_oidc_stub_round_trip() -> None:
         hosted_domain="example.com",
     )
 
-    assert "accounts.google.com" in started["authorization_url"]
+    authorization_url = urlparse(started["authorization_url"])
+    assert authorization_url.hostname == "accounts.google.com"
     assert finished["user_id"] == "user@example.com"
     assert finished["provider"] == "google"
     assert finished["hosted_domain"] == "example.com"
