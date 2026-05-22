@@ -73,10 +73,14 @@ DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS = (
 
 CONTROLLER_UNIT = "atelier-controller.service"
 STACK_UNIT = "atelier-stack.service"
+LETTA_UNIT = "atelier-letta.service"
+OPENMEMORY_UNIT = "atelier-openmemory.service"
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 LAUNCHD_USER_DIR = Path.home() / "Library" / "LaunchAgents"
 CONTROLLER_LABEL = "com.atelier.controller"
 STACK_LABEL = "com.atelier.stack"
+LETTA_LABEL = "com.atelier.letta"
+OPENMEMORY_LABEL = "com.atelier.openmemory"
 DEFAULT_STACK_SERVICE_HOST = "0.0.0.0"
 DEFAULT_STACK_SERVICE_PORT = 8787
 DEFAULT_STACK_FRONTEND_HOST = "0.0.0.0"
@@ -355,6 +359,109 @@ def _project_root() -> Path:
             if recorded_path.exists():
                 return recorded_path
     return Path(__file__).resolve().parents[4]
+
+
+def _openmemory_dir(root: Path) -> Path:
+    return Path(root) / "openmemory"
+
+
+def _openmemory_checkout_dir(root: Path) -> Path:
+    return _openmemory_dir(root) / "mem0"
+
+
+def _openmemory_workdir(root: Path) -> Path:
+    return _openmemory_checkout_dir(root) / "openmemory"
+
+
+def _openmemory_service_env_path(root: Path) -> Path:
+    return _openmemory_dir(root) / "service.env"
+
+
+def _openmemory_api_env_path(root: Path) -> Path:
+    return _openmemory_workdir(root) / "api" / ".env"
+
+
+def _openmemory_ui_env_path(root: Path) -> Path:
+    return _openmemory_workdir(root) / "ui" / ".env"
+
+
+def _openmemory_log_path(root: Path) -> Path:
+    return _openmemory_dir(root) / "openmemory.log"
+
+
+def _ensure_openmemory_service_env(root: Path) -> Path:
+    env_path = _openmemory_service_env_path(root)
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    values = {
+        "OPENAI_API_KEY": os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")),
+        "USER": os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "")),
+        "ATELIER_OPENMEMORY_URL": os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765"),
+    }
+    lines = []
+    for key, value in values.items():
+        if not value:
+            continue
+        escaped = value.replace('"', '\\"')
+        lines.append(f'{key}="{escaped}"')
+    if lines:
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    elif not env_path.exists():
+        env_path.write_text("", encoding="utf-8")
+    return env_path
+
+
+def _ensure_openmemory_checkout(root: Path) -> Path:
+    repo_dir = _openmemory_checkout_dir(root)
+    repo_dir.parent.mkdir(parents=True, exist_ok=True)
+    repo_url = os.environ.get("ATELIER_OPENMEMORY_REPO_URL", "https://github.com/mem0ai/mem0.git")
+    repo_ref = os.environ.get("ATELIER_OPENMEMORY_REF", "main")
+    if (repo_dir / ".git").exists():
+        subprocess.run(["git", "-C", str(repo_dir), "fetch", "--depth=1", "origin", repo_ref], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "checkout", repo_ref], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", repo_ref], check=True)
+    else:
+        subprocess.run(["git", "clone", "--depth=1", "--branch", repo_ref, repo_url, str(repo_dir)], check=True)
+    workdir = _openmemory_workdir(root)
+    if not workdir.exists():
+        raise click.ClickException(f"OpenMemory checkout is missing {workdir}")
+    return workdir
+
+
+def _write_openmemory_env_files(root: Path) -> None:
+    api_env = _openmemory_api_env_path(root)
+    ui_env = _openmemory_ui_env_path(root)
+    user_id = (
+        os.environ.get("ATELIER_OPENMEMORY_USER_ID", "").strip()
+        or os.environ.get("USER", "").strip()
+        or "atelier"
+    )
+    api_url = os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765").strip() or "http://127.0.0.1:8765"
+    openai_api_key = os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")).strip()
+    api_env.parent.mkdir(parents=True, exist_ok=True)
+    api_lines = [
+        f"OPENAI_API_KEY={openai_api_key}",
+        f"USER={user_id}",
+    ]
+    api_env.write_text("\n".join(api_lines) + "\n", encoding="utf-8")
+    ui_env.parent.mkdir(parents=True, exist_ok=True)
+    ui_lines = [
+        f"NEXT_PUBLIC_API_URL={api_url}",
+        f"NEXT_PUBLIC_USER_ID={user_id}",
+    ]
+    ui_env.write_text("\n".join(ui_lines) + "\n", encoding="utf-8")
+
+
+def _run_openmemory_make(root: Path, *args: str) -> None:
+    workdir = _openmemory_workdir(root)
+    env = {**os.environ}
+    user_id = (
+        os.environ.get("ATELIER_OPENMEMORY_USER_ID", "").strip()
+        or os.environ.get("USER", "").strip()
+        or "atelier"
+    )
+    env["USER"] = user_id
+    env["NEXT_PUBLIC_API_URL"] = os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765")
+    subprocess.run(["make", *args], cwd=workdir, env=env, check=True)
 
 
 def _stack_dir(root: Path) -> Path:
@@ -3742,7 +3849,12 @@ def letta_group() -> None:
 
 @letta_group.command("up")
 def letta_up() -> None:
-    """Start the Letta Docker Compose stack."""
+    """Start the Letta Docker Compose stack.
+
+    For a Docker-free alternative, use:
+      atelier background install --with-letta
+    which registers 'letta server' as a systemd/launchd service.
+    """
     _run_compose(["up", "-d"])
 
 
@@ -3750,16 +3862,6 @@ def letta_up() -> None:
 def letta_down() -> None:
     """Stop the Letta Docker Compose stack while preserving volumes."""
     _run_compose(["down"])
-
-
-@letta_group.command("logs")
-@click.option("-f", "follow", is_flag=True)
-def letta_logs(follow: bool) -> None:
-    """Show Letta logs."""
-    args = ["logs"]
-    if follow:
-        args.append("-f")
-    _run_compose(args)
 
 
 @letta_group.command("status")
@@ -3781,6 +3883,69 @@ def letta_reset(yes: bool) -> None:
     if not yes:
         raise click.ClickException("refusing to reset Letta data without --yes")
     _run_compose(["down", "-v"])
+
+
+@cli.group("openmemory")
+def openmemory_group() -> None:
+    """Manage the self-hosted OpenMemory sidecar."""
+
+
+@openmemory_group.command("up")
+@click.pass_context
+def openmemory_up(ctx: click.Context) -> None:
+    """Clone/update OpenMemory and start its local MCP stack."""
+    root = ctx.obj["root"]
+    missing = [name for name in ("git", "docker", "make") if not shutil.which(name)]
+    if missing:
+        raise click.ClickException(f"OpenMemory requires: {', '.join(missing)}")
+    if not os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")).strip():
+        raise click.ClickException("OPENAI_API_KEY or ATELIER_OPENMEMORY_OPENAI_API_KEY must be set for OpenMemory")
+    _ensure_openmemory_checkout(root)
+    _ensure_openmemory_service_env(root)
+    _write_openmemory_env_files(root)
+    _run_openmemory_make(root, "build")
+    _run_openmemory_make(root, "up")
+    click.echo(f"OpenMemory started at {os.environ.get('ATELIER_OPENMEMORY_URL', 'http://127.0.0.1:8765')}")
+
+
+@openmemory_group.command("down")
+@click.pass_context
+def openmemory_down(ctx: click.Context) -> None:
+    """Stop the local OpenMemory stack while preserving the checkout."""
+    root = ctx.obj["root"]
+    workdir = _openmemory_workdir(root)
+    if not workdir.exists():
+        click.echo("OpenMemory checkout not found; nothing to stop.")
+        return
+    _run_openmemory_make(root, "down")
+    click.echo("OpenMemory stopped.")
+
+
+@openmemory_group.command("status")
+@click.pass_context
+def openmemory_status(ctx: click.Context) -> None:
+    """Show the local OpenMemory service status."""
+    root = ctx.obj["root"]
+    workdir = _openmemory_workdir(root)
+    if not workdir.exists():
+        click.echo("OpenMemory checkout not found.")
+        return
+    subprocess.run(["docker", "compose", "ps"], cwd=workdir, check=False)
+
+
+@openmemory_group.command("logs")
+@click.option("-f", "--follow", is_flag=True, help="Follow the logs.")
+@click.pass_context
+def openmemory_logs(ctx: click.Context, follow: bool) -> None:
+    """Show OpenMemory Docker Compose logs."""
+    root = ctx.obj["root"]
+    workdir = _openmemory_workdir(root)
+    if not workdir.exists():
+        raise click.ClickException("OpenMemory checkout not found")
+    cmd = ["docker", "compose", "logs"]
+    if follow:
+        cmd.append("-f")
+    subprocess.run(cmd, cwd=workdir, check=False)
 
 
 @cli.command("consolidate")
@@ -3947,34 +4112,6 @@ def stack_status(ctx: click.Context) -> None:
         click.echo(f"last_exit_reason: {payload['last_exit_reason']}")
 
 
-@stack_group.command("logs")
-@click.option("-f", "follow", is_flag=True)
-@click.option("--with-docs", is_flag=True, help="Deprecated; docs are no longer managed by atelier stack.")
-@click.pass_context
-def stack_logs(ctx: click.Context, follow: bool, with_docs: bool) -> None:
-    """Show visualization stack logs."""
-    root = ctx.obj["root"]
-    if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
-        click.echo(f"Notice: {STACK_UNIT} is installed. Prefer using 'atelier systemd logs stack'.")
-    if with_docs:
-        click.echo("Notice: docs are no longer part of the managed stack.")
-    log_path = _stack_log_path(root)
-    if not log_path.exists():
-        click.echo("(no stack logs)")
-        return
-    if follow:
-        try:
-            subprocess.run(["tail", "-n", "80", "-f", str(log_path)], check=True)
-        except FileNotFoundError as exc:
-            raise click.ClickException("tail is required for --follow log streaming") from exc
-        except subprocess.CalledProcessError as exc:
-            raise click.ClickException(f"tail exited with code {exc.returncode}") from exc
-        return
-    content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    for line in content[-80:]:
-        click.echo(line)
-
-
 @stack_group.command("run", hidden=True)
 @click.option("--service-host", default=DEFAULT_STACK_SERVICE_HOST, show_default=True)
 @click.option("--service-port", default=DEFAULT_STACK_SERVICE_PORT, show_default=True, type=int)
@@ -4127,7 +4264,7 @@ def bash_intercept(ctx: click.Context, command_text: str, history_path: Path | N
 
 
 @cli.command("search-read")
-@click.option("--query", required=True, help="Pattern to search for (grep -rn).")
+@click.option("--query", required=True, help="Pattern to search for (rg).")
 @click.option("--path", "search_path", default=".", show_default=True, help="Directory or file to search.")
 @click.option("--max-files", default=10, show_default=True, type=int, help="Max hit-files to return.")
 @click.option("--max-chars-per-file", default=2000, show_default=True, type=int)
@@ -4416,7 +4553,7 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
         return
     s = _load_smart_state(ctx.obj["root"])
     cache = s.setdefault("cache", {})
-    key = f"grep:{pattern}:{search_path}:{_path_content_fingerprint(search_path)}"
+    key = f"rg:{pattern}:{search_path}:{_path_content_fingerprint(search_path)}"
     if not _cache_disabled() and key in cache:
         s["savings"]["calls_avoided"] = int(s["savings"].get("calls_avoided", 0)) + 1
         _save_smart_state(ctx.obj["root"], s)
@@ -4426,7 +4563,21 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
 
     try:
         proc = subprocess.run(
-            ["grep", "-rn", "--", pattern, search_path],
+            [
+                "rg",
+                "-H",
+                "-n",
+                "--no-heading",
+                "--color",
+                "never",
+                "--hidden",
+                "--no-ignore",
+                "--glob",
+                "!.git",
+                "--",
+                pattern,
+                search_path,
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -4434,7 +4585,7 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
         )
         out = proc.stdout
     except (OSError, subprocess.SubprocessError) as exc:
-        out = f"(grep failed: {exc})"
+        out = f"(rg failed: {exc})"
     payload = {"cached": False, "output": out[:8000]}
     if not _cache_disabled():
         cache[key] = payload
@@ -6756,29 +6907,6 @@ def servicectl_status(ctx: click.Context, as_json: bool) -> None:
         click.echo("last_processed_jobs: " + ", ".join(payload["last_processed_jobs"]))
 
 
-@servicectl_group.command("logs")
-@click.option("-f", "follow", is_flag=True)
-@click.option("--lines", default=80, show_default=True, type=int)
-@click.pass_context
-def servicectl_logs(ctx: click.Context, follow: bool, lines: int) -> None:
-    """Show background controller logs."""
-    log_path = _servicectl_log_path(ctx.obj["root"])
-    if not log_path.exists():
-        click.echo("(no servicectl logs)")
-        return
-    if follow:
-        try:
-            subprocess.run(["tail", "-n", str(lines), "-f", str(log_path)], check=True)
-        except FileNotFoundError as exc:
-            raise click.ClickException("tail is required for --follow log streaming") from exc
-        except subprocess.CalledProcessError as exc:
-            raise click.ClickException(f"tail exited with code {exc.returncode}") from exc
-        return
-    content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    for line in content[-lines:]:
-        click.echo(line)
-
-
 @servicectl_group.command("run", hidden=True)
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
 @click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
@@ -6836,12 +6964,39 @@ def background_group() -> None:
 
 @background_group.command("install")
 @click.option("--with-stack", is_flag=True, help="Also install the visualization stack service.")
+@click.option("--with-letta", is_flag=True, help="Also install the native Letta memory server service.")
+@click.option("--with-openmemory", is_flag=True, help="Also install the OpenMemory MCP service.")
 @click.pass_context
-def background_install(ctx: click.Context, with_stack: bool) -> None:
+def background_install(ctx: click.Context, with_stack: bool, with_letta: bool, with_openmemory: bool) -> None:
     """Install Atelier services as background units."""
     root = ctx.obj["root"]
     project_root = _project_root()
     atelier_bin = shutil.which("atelier") or str(Path(sys.argv[0]).resolve())
+
+    if with_letta:
+        _letta_bin = shutil.which("letta")
+        if not _letta_bin:
+            click.echo(
+                "Warning: 'letta' CLI not found on PATH. "
+                "Install it with: uv sync --extra memory-server  (or pip install letta)\n"
+                "The Letta service unit will still be created but will fail until 'letta' is available."
+            )
+            _letta_bin = "letta"
+
+    if with_openmemory:
+        _ensure_openmemory_service_env(root)
+        missing = [name for name in ("git", "docker", "make") if not shutil.which(name)]
+        if missing:
+            click.echo(
+                "Warning: OpenMemory requires "
+                + ", ".join(missing)
+                + ". The service unit will be created but will fail until those commands are available."
+            )
+        if not os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")).strip():
+            click.echo(
+                "Warning: OPENAI_API_KEY not set. "
+                "The OpenMemory service unit will be created but startup will fail until the key is provided."
+            )
 
     if _is_linux():
         if not shutil.which("systemctl"):
@@ -6888,10 +7043,53 @@ WantedBy=default.target
             (SYSTEMD_USER_DIR / STACK_UNIT).write_text(stack_content, encoding="utf-8")
             click.echo(f"Installed {STACK_UNIT}")
 
+        if with_letta:
+            letta_content = f"""[Unit]
+Description=Atelier Letta Memory Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={_letta_bin} server
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
+"""
+            (SYSTEMD_USER_DIR / LETTA_UNIT).write_text(letta_content, encoding="utf-8")
+            click.echo(f"Installed {LETTA_UNIT}")
+
+        if with_openmemory:
+            openmemory_content = f"""[Unit]
+Description=Atelier OpenMemory MCP Server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-{_openmemory_service_env_path(root)}
+ExecStart={atelier_bin} --root {root} openmemory up
+ExecStop={atelier_bin} --root {root} openmemory down
+WorkingDirectory={project_root}
+StandardOutput=append:{_openmemory_log_path(root)}
+StandardError=append:{_openmemory_log_path(root)}
+
+[Install]
+WantedBy=default.target
+"""
+            (SYSTEMD_USER_DIR / OPENMEMORY_UNIT).write_text(openmemory_content, encoding="utf-8")
+            click.echo(f"Installed {OPENMEMORY_UNIT}")
+
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         subprocess.run(["systemctl", "--user", "enable", "--now", CONTROLLER_UNIT], check=True)
         if with_stack:
             subprocess.run(["systemctl", "--user", "enable", "--now", STACK_UNIT], check=True)
+        if with_letta:
+            subprocess.run(["systemctl", "--user", "enable", "--now", LETTA_UNIT], check=True)
+        if with_openmemory:
+            subprocess.run(["systemctl", "--user", "enable", "--now", OPENMEMORY_UNIT], check=True)
 
     elif _is_macos():
         LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
@@ -6970,9 +7168,80 @@ WantedBy=default.target
             (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").write_text(stack_plist, encoding="utf-8")
             click.echo(f"Installed {STACK_LABEL}.plist")
 
+        if with_letta:
+            letta_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{LETTA_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{_letta_bin}</string>
+        <string>server</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>
+"""
+            (LAUNCHD_USER_DIR / f"{LETTA_LABEL}.plist").write_text(letta_plist, encoding="utf-8")
+            click.echo(f"Installed {LETTA_LABEL}.plist")
+
+        if with_openmemory:
+            openmemory_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{OPENMEMORY_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{atelier_bin}</string>
+        <string>--root</string>
+        <string>{root}</string>
+        <string>openmemory</string>
+        <string>up</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>WorkingDirectory</key>
+    <string>{project_root}</string>
+    <key>StandardOutPath</key>
+    <string>{_openmemory_log_path(root)}</string>
+    <key>StandardErrorPath</key>
+    <string>{_openmemory_log_path(root)}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>OPENAI_API_KEY</key>
+        <string>{os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))}</string>
+        <key>ATELIER_OPENMEMORY_USER_ID</key>
+        <string>{os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "atelier"))}</string>
+        <key>ATELIER_OPENMEMORY_URL</key>
+        <string>{os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765")}</string>
+    </dict>
+</dict>
+</plist>
+"""
+            (LAUNCHD_USER_DIR / f"{OPENMEMORY_LABEL}.plist").write_text(openmemory_plist, encoding="utf-8")
+            click.echo(f"Installed {OPENMEMORY_LABEL}.plist")
+
         subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{CONTROLLER_LABEL}.plist")], check=False)
         if with_stack:
             subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist")], check=False)
+        if with_letta:
+            subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{LETTA_LABEL}.plist")], check=False)
+        if with_openmemory:
+            subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{OPENMEMORY_LABEL}.plist")], check=False)
 
     else:
         raise click.ClickException(f"Unsupported platform for background services: {sys.platform}")
@@ -6985,7 +7254,7 @@ WantedBy=default.target
 def background_uninstall(ctx: click.Context) -> None:
     """Stop and remove Atelier background units."""
     if _is_linux():
-        for unit in [CONTROLLER_UNIT, STACK_UNIT]:
+        for unit in [CONTROLLER_UNIT, STACK_UNIT, LETTA_UNIT, OPENMEMORY_UNIT]:
             path = SYSTEMD_USER_DIR / unit
             if path.exists():
                 subprocess.run(["systemctl", "--user", "disable", "--now", unit], check=False)
@@ -6994,7 +7263,7 @@ def background_uninstall(ctx: click.Context) -> None:
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
 
     elif _is_macos():
-        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL]:
             plist = LAUNCHD_USER_DIR / f"{label}.plist"
             if plist.exists():
                 subprocess.run(["launchctl", "unload", str(plist)], check=False)
@@ -7014,12 +7283,16 @@ def background_status(ctx: click.Context) -> None:
         units = [CONTROLLER_UNIT]
         if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
             units.append(STACK_UNIT)
+        if (SYSTEMD_USER_DIR / LETTA_UNIT).exists():
+            units.append(LETTA_UNIT)
+        if (SYSTEMD_USER_DIR / OPENMEMORY_UNIT).exists():
+            units.append(OPENMEMORY_UNIT)
         for unit in units:
             click.echo(f"--- {unit} ---")
             subprocess.run(["systemctl", "--user", "status", unit, "--no-pager"], check=False)
             click.echo("")
     elif _is_macos():
-        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL]:
             if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
                 click.echo(f"--- {label} ---")
                 subprocess.run(["launchctl", "list", label], check=False)
@@ -7036,44 +7309,21 @@ def background_restart(ctx: click.Context) -> None:
         units = [CONTROLLER_UNIT]
         if (SYSTEMD_USER_DIR / STACK_UNIT).exists():
             units.append(STACK_UNIT)
+        if (SYSTEMD_USER_DIR / LETTA_UNIT).exists():
+            units.append(LETTA_UNIT)
+        if (SYSTEMD_USER_DIR / OPENMEMORY_UNIT).exists():
+            units.append(OPENMEMORY_UNIT)
         for unit in units:
             subprocess.run(["systemctl", "--user", "restart", unit], check=True)
             click.echo(f"Restarted {unit}")
     elif _is_macos():
         uid = os.getuid()
-        for label in [CONTROLLER_LABEL, STACK_LABEL]:
+        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL]:
             if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
                 subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{label}"], check=False)
                 click.echo(f"Restarted {label}")
     else:
         click.echo(f"Background services not supported on {sys.platform}")
-
-
-@background_group.command("logs")
-@click.argument("service", type=click.Choice(["controller", "stack"]), default="controller")
-@click.option("-f", "--follow", is_flag=True, help="Follow the logs.")
-@click.option("-n", "--lines", default=50, type=int, help="Number of lines to show.")
-@click.pass_context
-def background_logs(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
-    """Show logs for Atelier background units."""
-    if _is_linux():
-        unit = CONTROLLER_UNIT if service == "controller" else STACK_UNIT
-        cmd = ["journalctl", "--user", "-u", unit, "-n", str(lines)]
-        if follow:
-            cmd.append("-f")
-        subprocess.run(cmd, check=False)
-    elif _is_macos():
-        click.echo("macOS logs are available via Console.app or 'log show'.")
-        click.echo(f"Checking recently recorded stdout for {service}...")
-        log_path = _servicectl_log_path(ctx.obj["root"]) if service == "controller" else _stack_log_path(ctx.obj["root"])
-        if log_path.exists():
-            cmd = ["tail", "-n", str(lines)]
-            if follow:
-                cmd.append("-f")
-            cmd.append(str(log_path))
-            subprocess.run(cmd, check=False)
-    else:
-        click.echo(f"Logs not supported on {sys.platform}")
 
 
 # --------------------------------------------------------------------------- #
@@ -7088,9 +7338,21 @@ def systemd_alias_group() -> None:
 
 @systemd_alias_group.command("install")
 @click.option("--with-stack", is_flag=True)
+@click.option("--with-letta", is_flag=True)
+@click.option("--with-openmemory", is_flag=True)
 @click.pass_context
-def systemd_install_alias(ctx: click.Context, with_stack: bool) -> None:
-    ctx.invoke(background_install, with_stack=with_stack)
+def systemd_install_alias(
+    ctx: click.Context,
+    with_stack: bool,
+    with_letta: bool,
+    with_openmemory: bool,
+) -> None:
+    ctx.invoke(
+        background_install,
+        with_stack=with_stack,
+        with_letta=with_letta,
+        with_openmemory=with_openmemory,
+    )
 
 
 @systemd_alias_group.command("uninstall")
@@ -7111,13 +7373,78 @@ def systemd_restart_alias(ctx: click.Context) -> None:
     ctx.invoke(background_restart)
 
 
-@systemd_alias_group.command("logs")
-@click.argument("service", default="controller")
-@click.option("-f", "--follow", is_flag=True)
-@click.option("-n", "--lines", default=50)
+# --------------------------------------------------------------------------- #
+# Unified logs command                                                        #
+# --------------------------------------------------------------------------- #
+
+
+@cli.command("logs")
+@click.argument("service", type=click.Choice(["stack", "controller", "letta", "openmemory"]))
+@click.option("-f", "--follow", is_flag=True, help="Follow log output.")
+@click.option("-n", "--lines", default=80, show_default=True, type=int, help="Number of lines to show.")
 @click.pass_context
-def systemd_logs_alias(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
-    ctx.invoke(background_logs, service=service, follow=follow, lines=lines)
+def logs_cmd(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
+    """Show logs for an Atelier service.
+
+    SERVICE is one of: stack, controller, letta, openmemory.
+
+    On Linux with systemd units installed, uses journalctl to read
+    the service unit logs (which contain everything the process wrote
+    to stdout/stderr). On macOS and when running natively without
+    systemd, tails the log file directly.
+    """
+    root = ctx.obj["root"]
+
+    unit_map: dict[str, str] = {
+        "stack": STACK_UNIT,
+        "controller": CONTROLLER_UNIT,
+        "letta": LETTA_UNIT,
+        "openmemory": OPENMEMORY_UNIT,
+    }
+    unit = unit_map[service]
+
+    # Linux with systemd unit installed -> journalctl
+    if _is_linux() and (SYSTEMD_USER_DIR / unit).exists():
+        cmd: list[str] = ["journalctl", "--user", "-u", unit, "-n", str(lines)]
+        if follow:
+            cmd.append("-f")
+        subprocess.run(cmd, check=False)
+        return
+
+    # Native / macOS -> tail the log file
+    if service == "stack":
+        log_path = _stack_log_path(root)
+    elif service == "controller":
+        log_path = _servicectl_log_path(root)
+    elif service == "letta":
+        # Letta runs under Docker Compose -> use compose logs
+        args = ["logs"]
+        if follow:
+            args.append("-f")
+        _run_compose(args)
+        return
+    elif service == "openmemory":
+        log_path = _openmemory_log_path(root)
+    else:
+        # unreachable given the Choice validator
+        raise click.ClickException(f"unknown service: {service}")
+
+    if not log_path.exists():
+        click.echo(f"(no {service} logs at {log_path})")
+        return
+
+    if follow:
+        try:
+            subprocess.run(["tail", "-n", str(lines), "-f", str(log_path)], check=True)
+        except FileNotFoundError as exc:
+            raise click.ClickException("tail is required for --follow log streaming") from exc
+        except subprocess.CalledProcessError as exc:
+            raise click.ClickException(f"tail exited with code {exc.returncode}") from exc
+        return
+
+    content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in content[-lines:]:
+        click.echo(line)
 
 
 # --------------------------------------------------------------------------- #
