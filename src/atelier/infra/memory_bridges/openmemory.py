@@ -126,10 +126,12 @@ class OpenMemoryAdapter:
         if payload in ({}, None):
             try:
                 rows = self._rest_list_memories(user_id=user_id, limit=limit, search_query=query)
-                if rows:
-                    return rows
                 broad_rows = self._rest_list_memories(user_id=user_id, limit=max(limit * 20, 200))
-                return self._rank_rows_by_query(broad_rows, query=query, limit=max(limit * 20, 200))
+                merged = rows + [row for row in broad_rows if row not in rows]
+                ranked = self._rank_rows_by_query(merged, query=query, limit=max(limit * 20, 200))
+                if ranked:
+                    return ranked
+                return rows
             except Exception as exc:
                 if last_error is not None:
                     raise _sidecar_error(last_error) from exc
@@ -424,7 +426,7 @@ class OpenMemoryMemoryStore:
     ) -> list[ArchivalPassage]:
         target_agent = agent_id or "default"
         rows = self._adapter.search_memories(query=query, user_id=self._user_id, limit=max(top_k * 4, 20))
-        passages = self._filter_passages(rows, agent_id=target_agent, tags=tags, since=since)
+        passages = self._filter_passages(rows, agent_id=target_agent, tags=tags, since=since, preserve_order=True)
         if len(passages) < top_k:
             rows = self._adapter.list_memories(user_id=self._user_id, limit=max(top_k * 8, 200))
             passages = self._filter_passages(rows, agent_id=target_agent, tags=tags, since=since, query=query)
@@ -462,6 +464,7 @@ class OpenMemoryMemoryStore:
         tags: list[str] | None,
         since: datetime | None,
         query: str | None = None,
+        preserve_order: bool = False,
     ) -> list[ArchivalPassage]:
         passages: list[ArchivalPassage] = []
         seen: set[str] = set()
@@ -484,7 +487,8 @@ class OpenMemoryMemoryStore:
                     continue
             seen.add(passage.id)
             passages.append(passage)
-        passages.sort(key=lambda item: item.created_at, reverse=True)
+        if not preserve_order:
+            passages.sort(key=lambda item: item.created_at, reverse=True)
         return passages
 
     @staticmethod

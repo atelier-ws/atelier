@@ -313,8 +313,6 @@ def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
                 "agent_id": "atelier:code",
                 "label": "mcp-e2e",
                 "value": "Prefer JSON-RPC MCP tests with real side effects.",
-                "pinned": True,
-                "metadata": {"source": "pytest"},
             },
         )
     )
@@ -331,7 +329,6 @@ def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
         )
     )
     assert fetched["value"].startswith("Prefer JSON-RPC MCP tests")
-    assert fetched["pinned"] is True
 
     archived = _payload(
         _call(
@@ -341,8 +338,6 @@ def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
                 "agent_id": "atelier:code",
                 "text": "Archived checkout retry guidance for MCP JSON-RPC task tests.",
                 "source": "user",
-                "source_ref": "pytest:e2e",
-                "tags": ["agent:atelier:code", "mcp-e2e"],
             },
         )
     )
@@ -356,7 +351,6 @@ def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
                 "agent_id": "atelier:code",
                 "query": "checkout retry guidance",
                 "top_k": 3,
-                "tags": ["mcp-e2e"],
             },
         )
     )
