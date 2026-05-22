@@ -53,6 +53,10 @@ with near-zero token overhead by default.
 - ✓ Phase 3 validated `code op="callers"` / `code op="callees"` with routed
   SCIP call-edge traversal, cheap defaults, and explicit unavailable behavior
 
+- ✓ Phase 6 validated first-context bootstrap warming — `tool_get_context` enqueues deduped `bootstrap_context` jobs; pinned `bootstrap/<repo_id>/...` blocks warm later sessions through the existing worker path
+- ✓ Phase 6 validated `scope="external"` routing — external dependency symbols carry origin metadata, and symbol-edit flows reject external targets before any file read with actionable errors
+- ✓ Phase 6 validated multi-repo workspace routing — repo-aware `code op="search"` and `code op="symbol"` results carry `repo_name` metadata; additive `repo` filter narrows results without changing storage identity
+
 ### Active
 
 - [ ] Extend the current tool surface with the remaining planned code-intel
