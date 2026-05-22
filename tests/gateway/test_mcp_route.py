@@ -77,7 +77,7 @@ def test_mcp_route_recommend_works_with_host_clis_without_vendor_api_keys(
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setattr(
         "shutil.which",
-        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "gemini"} else None,
+        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "agy"} else None,
     )
     save_route_config(root, RouteConfig(enabled_vendors=["anthropic", "openai", "google"]))
 
