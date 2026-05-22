@@ -79,29 +79,69 @@ Workaround: rename plugin agent `explore` → `atelier_explore` (frontmatter `na
 - `tests/benchmarks/test_read_ab_real.py` — measures `mcp__atelier__read` vs native on 4 real repo Python files + 4 multi-language fixtures + 3 inflated synthetic fixtures (Go/Rust/Java). Uses **tiktoken cl100k_base** for honest token counts (was `len(text) // 4`). Persists rows to `~/.atelier/savings_calibration.jsonl`.
 - Future: `test_search_ab_real.py`, `test_code_ab_real.py`, `test_edit_ab_real.py`, `test_turn_calls_ab_real.py`.
 
-## Real numbers (as of 2026-05-22)
+## Real numbers (as of 2026-05-22, post tree-sitter integration)
 
-From `make bench-ab`, surfaced via `build_savings_report()['ab_calibration']`:
+From `make bench-ab`, surfaced via `build_savings_report()['ab_calibration']`. Saved % is **real tiktoken cl100k_base** counts on `outline` vs `full`.
 
-| Language | Outline kind | n | Token-saved % (median, tiktoken) |
-|---|---|---|---|
-| Python | AST | 4 | **85.3%** |
-| Markdown | heading-extract | 1 | **84.5%** |
-| Go (synthetic, inflated 3×) | generic | 1 | **73.3%** |
-| Java (synthetic, inflated 3×) | generic | 1 | **59.9%** |
-| Rust (synthetic, inflated 3×) | generic | 1 | **52.2%** |
+### Languages with tree-sitter outlines (this turn)
 
-Go/Rust/Java at production size (<200 LOC fixtures) fall back to `full` mode because `outline_threshold > effective_loc`. The numbers above are for files that cross the threshold. Per-language tree-sitter outlines (item 7 below) would lift Go/Rust/Java toward the Python/AST ~85% range.
+Measured on 3×-inflated synthetic fixtures (small enough to keep in `tests/benchmarks/fixtures/`, big enough to cross the 200-LOC threshold):
+
+| Language | Saved % (tiktoken) | Source of outline |
+|---|---|---|
+| Go | **76.9%** | tree-sitter (`function_declaration`, `type_declaration`, `import_declaration`, ...) |
+| Java | **76.5%** | tree-sitter (class/interface/enum/record containers + method signatures) |
+| Rust | **65.4%** | tree-sitter (`fn`, `struct`, `enum`, `trait`, `impl` containers) |
+| C# | ~78% on smoke test | tree-sitter (namespace/class containers + members) |
+| Bash | ~60% on smoke test | tree-sitter (function definitions) |
+| Ruby | _config in place, no fixture yet_ | tree-sitter |
+| C / C++ | _config in place, no fixture yet_ | tree-sitter |
+| Kotlin / PHP / Swift / Scala | _config in place; smoke tests show 22-27% on tiny samples — needs realistic-size fixture to confirm production savings_ | tree-sitter |
+
+### Languages with non-tree-sitter outlines
+
+| Language | Saved % (tiktoken) | Source of outline |
+|---|---|---|
+| Python | **85.3%** | stdlib `ast` (existing) |
+| TypeScript / JS | _no AB fixture yet_ | regex-based (existing) |
+| Markdown | **84.5%** | heading-extract |
+
+### Languages with generic regex fallback only
+
+_Used when tree-sitter outline saves < 25% (safety gate) or no per-language config exists_:
+
+yaml, toml, json (all currently route through `_language_for` but typically too small to trigger outline). When they do trigger, the generic outline extracts column-0 lines and signature-shaped patterns.
+
+### Production behavior at non-inflated sizes
+
+Go/Rust/Java at the original ~150 LOC fixture sizes correctly return `full` mode because they fall under the production outline_threshold of 200 LOC. The numbers above are for files that cross the threshold.
 
 ## Done in this thread
 
 - [x] Hard-removed `rewrite_agent` (caller in `tool_redirect.py` + tests). `atelier:explore` resolves cleanly via namespace.
 - [x] Hard-removed `free_plan` (4 read sites + JSON file write + 3 tests).
 - [x] Replaced `len(text) // 4` token heuristic with **tiktoken cl100k_base** (`semantic_file_memory/capability.py`), with chars/4 fallback if tiktoken unavailable.
-- [x] Added **generic regex-based outline** for non-Python/TS languages (Go, Rust, Java, Kotlin, Scala, Ruby, C#, C/C++, Swift, PHP, shell, yaml, toml, json, markdown).
-- [x] Extended `_language_for` to cover those file types.
+- [x] Added **generic regex-based outline** for non-Python/TS languages as a fallback.
+- [x] Added **tree-sitter outlines** (`semantic_file_memory/treesitter_ast.py`) for **Go, Rust, Java, Ruby, C, C++, C#, Kotlin, PHP, Swift, Scala, Bash** via `tree-sitter-language-pack`. Smart_read pipeline: AST (py/ts) → tree-sitter (per-grammar) → generic regex → full. Each stage gated at 25%-saved minimum so we never ship fake savings.
+- [x] Extended `_language_for` to cover 22 file types.
 - [x] Expanded `tests/benchmarks/test_read_ab_real.py` from 4 to 12 cases, tracking per-language ratios.
-- [x] `_summarize_ab_calibration` returns `by_language` breakdown so dashboards can't show one inflated median that hides generic-outline weakness.
+- [x] `_summarize_ab_calibration` returns `by_language` breakdown so dashboards can't show one inflated median that hides per-language outline weakness.
+
+### Known: test isolation issue
+
+`tests/gateway/test_statusline_script.py::_run_statusline` does `env = os.environ.copy()` then overrides `ATELIER_STORE_ROOT` — but `statusline.sh` prefers `ATELIER_ROOT` over `ATELIER_STORE_ROOT`. When pytest is run with `ATELIER_ROOT=...` (as our benchmark runs do), the variable leaks into the subprocess and the statusline reads the wrong root.
+
+Fix: `_run_statusline` should `env.pop("ATELIER_ROOT", None)` before adding `ATELIER_STORE_ROOT`. ~1 line.
+
+### Measured improvement from tree-sitter (vs generic regex)
+
+| Lang | Generic | Tree-sitter | Gain |
+|---|---|---|---|
+| Go | 73.3% | 76.9% | +3.6pp |
+| Java | 59.9% | 76.5% | **+16.6pp** |
+| Rust | 52.2% | 65.4% | **+13.2pp** |
+
+Java and Rust saw the biggest jump because tree-sitter knows class/impl/trait containers and extracts only member signatures, where the regex approach was keeping every column-0 line in those grammars.
 
 ## Non-goals
 

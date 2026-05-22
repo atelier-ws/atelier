@@ -317,6 +317,39 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert any(cmd[:4] == ["systemctl", "--user", "enable", "--now"] for cmd in commands)
 
 
+def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "a"
+    unit_dir = tmp_path / "systemd-user"
+    commands: list[list[str]] = []
+
+    def _which(name: str) -> str | None:
+        mapping = {
+            "systemctl": "/bin/systemctl",
+            "atelier": "/usr/bin/atelier",
+            "git": "/usr/bin/git",
+            "docker": "/usr/bin/docker",
+            "make": "/usr/bin/make",
+        }
+        return mapping.get(name)
+
+    monkeypatch.setattr("atelier.gateway.adapters.cli._is_linux", lambda: True)
+    monkeypatch.setattr("atelier.gateway.adapters.cli._is_macos", lambda: False)
+    monkeypatch.setattr("atelier.gateway.adapters.cli.SYSTEMD_USER_DIR", unit_dir)
+    monkeypatch.setattr("atelier.gateway.adapters.cli.shutil.which", _which)
+    monkeypatch.setattr(
+        "atelier.gateway.adapters.cli.subprocess.run",
+        lambda args, **kwargs: commands.append([str(item) for item in args]),
+    )
+
+    res = _invoke(root, "background", "install", "--with-openmemory")
+
+    assert res.exit_code == 0, res.output
+    openmemory_unit = (unit_dir / "atelier-openmemory.service").read_text(encoding="utf-8")
+    assert "openmemory up" in openmemory_unit
+    assert "openmemory down" in openmemory_unit
+    assert any(cmd[:4] == ["systemctl", "--user", "enable", "--now"] for cmd in commands)
+
+
 def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
     stack_dir = root / "stack"

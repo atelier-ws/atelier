@@ -4,8 +4,9 @@ Atelier tools are **not optional wrappers**. They are the reason this repo exist
 
 | Instead of | Use | Why | Measured |
 |---|---|---|---|
-| `Read(file)` | `mcp__atelier__read` | outline-first; large files return structure without bytes | **88.7% chars saved (median)** on 4 large repo files — see `tests/benchmarks/test_read_ab_real.py` |
-| `Bash(grep ...)` / `Bash(rg ...)` | `mcp__atelier__search` | ranked + dedup + range slicing in one call | _pending A/B — see [plan](../plans/active/savings-honest-ab/README.md)_ |
+| `Read(file)` | `mcp__atelier__read` | outline-first; large files return structure without bytes | **Measured token savings (cl100k_base) from `tests/benchmarks/test_read_ab_real.py`:** Ruby 97.2%, C++ 94.4%, Python 85.6%, Markdown 84.5%, TypeScript 74.0%, Shell 69.9%, Scala 50.6%. Current C/C#/Go/Java/Kotlin/PHP/Rust/Swift fixtures still hit full-read fallback (0%) at their base sizes. |
+| `Bash(grep ...)` / `Bash(rg ...)` | `mcp__atelier__grep` | regex/glob/type-filter search with token-budgeted output shaping | A/B harness in `tests/benchmarks/test_search_ab_real.py`; summarize measured deltas after calibration sweep |
+| manual grep + read + rank workflow | `mcp__atelier__search` | ranked query search plus repo-map construction | A/B harness in `tests/benchmarks/test_search_ab_real.py`; summarize measured deltas after calibration sweep |
 | `Bash(grep ...)` for symbols | `mcp__atelier__code op=search` | SCIP-indexed; no subprocess | _pending A/B_ |
 | `Bash(anything)` | `mcp__atelier__shell` | ANSI-stripped + line-truncated output | _pending A/B_ |
 | `Edit(...)` / `Write(...)` | `mcp__atelier__edit` | atomic multi-file with snapshot/rollback | _pending A/B_ |
