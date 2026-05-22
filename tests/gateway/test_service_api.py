@@ -104,7 +104,8 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert "grep" in names
     assert "search" in names
     assert "compact" in names
-    assert "memory" not in names
+    assert "memory" in names
+    assert "route" not in names
     assert "shell" not in names
 
 
