@@ -296,3 +296,13 @@ Benchmarks, engineering internals, and repo structure live below the user journe
 | `docs/`         | user, integration, and engineering documentation           |
 | `integrations/` | host adapter configs and install/verify scripts            |
 | `frontend/`     | optional React + Vite visualization stack                  |
+
+## Star History
+
+<a href="https://star-history.com/#atelier-runtime/atelier&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=atelier-runtime/atelier&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=atelier-runtime/atelier&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=atelier-runtime/atelier&type=Date" />
+  </picture>
+</a>
