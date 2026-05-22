@@ -58,6 +58,8 @@ coverage.xml
 # Claude Code
 .codex/
 .claude/
+.antigravity/
+.antigravitycli/
 
 # Claude Desktop
 .claude/

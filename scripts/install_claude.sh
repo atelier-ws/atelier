@@ -73,6 +73,9 @@ if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
     warn "$ATELIER_INSTALL_PROFILE_WARNING"
 fi
 STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
+# Start fresh — stale symlinks from prior installs (hooks → source dir)
+# will cause `cp -r` to error with "same file".
+run "rm -rf '$STAGING_DIR'"
 run "mkdir -p '$STAGING_DIR/.claude-plugin'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"

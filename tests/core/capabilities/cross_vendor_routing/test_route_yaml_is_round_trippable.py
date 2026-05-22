@@ -35,7 +35,7 @@ def test_detect_configured_vendors_uses_supported_env_aliases() -> None:
 def test_detect_configured_vendors_uses_installed_host_clis(monkeypatch) -> None:
     monkeypatch.setattr(
         "shutil.which",
-        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "gemini"} else None,
+        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "agy"} else None,
     )
 
     assert detect_configured_vendors({}) == ("anthropic", "openai", "google")

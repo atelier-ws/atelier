@@ -168,7 +168,7 @@ def _detect_agent() -> str:
     Checks, in order:
     1. ATELIER_AGENT env var (explicit override - any host can set this)
     2. CLAUDE_SESSION_ID -> "claude"
-    3. GEMINI_SESSION_ID or GEMINI_CLI_VERSION -> "gemini"
+    3. ANTIGRAVITY_SESSION_ID or AGY_SESSION_ID -> "antigravity"
     4. CODEX_SESSION_ID -> "codex"
     5. OPENCODE_SESSION_ID -> "opencode"
     6. Falls back to "claude" (the MCP wrapper is shipped with the Claude plugin)
@@ -179,11 +179,12 @@ def _detect_agent() -> str:
     if os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("CLAUDE_CODE"):
         return "claude"
     if (
-        os.environ.get("GEMINI_SESSION_ID")
-        or os.environ.get("GEMINI_CLI_VERSION")
-        or os.environ.get("GEMINI_CLI")
+        os.environ.get("ANTIGRAVITY_SESSION_ID")
+        or os.environ.get("AGY_SESSION_ID")
+        or os.environ.get("ANTIGRAVITY_CLI")
+        or os.environ.get("AGY_CLI")
     ):
-        return "gemini"
+        return "antigravity"
     if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
         return "codex"
     if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
@@ -1140,8 +1141,8 @@ def tool_record_trace(
     # Derive host label from agent string and environment
     def _derive_host(a: str) -> str:
         al = a.lower()
-        if "gemini" in al or os.environ.get("GEMINI_CLI"):
-            return "gemini"
+        if "antigravity" in al or "agy" in al or os.environ.get("ANTIGRAVITY_CLI") or os.environ.get("AGY_CLI"):
+            return "antigravity"
         if "copilot" in al or os.environ.get("COPILOT_CLI"):
             return "copilot"
         if "codex" in al or os.environ.get("CODEX_CLI"):
