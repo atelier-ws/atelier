@@ -67,9 +67,11 @@ def ctx_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     SqliteMemoryStore(root)
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("ATELIER_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.delenv("ATELIER_SERVICE_URL", raising=False)
 
     import atelier.gateway.adapters.mcp_server as mcp
 
+    mcp._remote_client = None
     mcp._reset_runtime_cache_for_testing()
     return root
 
@@ -386,12 +388,13 @@ def test_worker_run_once_unknown_job_type_fails_gracefully(ctx_root: Path) -> No
 
     store = create_store(ctx_root)
     store.init()
-    job_id = store.enqueue_job("totally_unknown_type", {})
+    # max_attempts=1 so the job becomes 'dead' after one failure instead of staying retryable
+    job_id = store.enqueue_job("totally_unknown_type", {}, max_attempts=1)
     worker = Worker(store=store)
     result = worker.run_once()
     assert result == job_id
 
-    # Queue should now be empty (job consumed)
+    # Job is now dead (exhausted attempts), queue is empty
     assert worker.run_once() is None
 
 
@@ -411,11 +414,12 @@ def test_worker_run_once_known_unhandled_job_type_fails(ctx_root: Path) -> None:
     ]
     assert unhandled_types, "Expected at least one known-but-unhandled job type"
 
-    job_id = store.enqueue_job(unhandled_types[0], {})
+    # max_attempts=1 so the job becomes 'dead' after one failure instead of staying retryable
+    job_id = store.enqueue_job(unhandled_types[0], {}, max_attempts=1)
     worker = Worker(store=store)
     result = worker.run_once()
     assert result == job_id
-    # Worker should still work normally after a failed job
+    # Worker should still work normally after a dead job
     assert worker.run_once() is None
 
 
@@ -430,11 +434,12 @@ def test_worker_run_once_handler_exception_marks_failed(ctx_root: Path) -> None:
     def boom(_: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("boom!")
 
-    job_id = store.enqueue_job(JOB_CONSOLIDATE_BLOCKS, {})
+    # max_attempts=1 so the job becomes 'dead' after one failure instead of staying retryable
+    job_id = store.enqueue_job(JOB_CONSOLIDATE_BLOCKS, {}, max_attempts=1)
     worker = Worker(store=store, dispatch={JOB_CONSOLIDATE_BLOCKS: boom})
     result = worker.run_once()
     assert result == job_id
-    # Queue empty, loop continues
+    # Job is now dead (exhausted attempts), queue is empty
     assert worker.run_once() is None
 
 

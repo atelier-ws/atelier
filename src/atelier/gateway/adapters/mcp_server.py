@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -807,9 +808,6 @@ def tool_get_context(
         },
     )
 
-    if stub := _check_dev_mode("context"):
-        return {"context": stub}
-
     bootstrap = _bootstrap_context_status(_atelier_root())
     payload = rt.get_context(
         task=task,
@@ -927,6 +925,55 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
 
 
 
+def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
+    """Run a real agentic task via claude/codex CLI subprocess.
+
+    Returns a result dict on success/error, or None if no supported CLI is found.
+    The spawned process is a full agentic loop with tool access — not a single LLM call.
+    """
+    import subprocess as _sp
+
+    for cli_name in ("claude", "codex"):
+        cli = shutil.which(cli_name)
+        if not cli:
+            continue
+        # -p (print mode): full agentic loop, exits when done; json output for structured parsing
+        cmd = [cli, "-p", prompt, "--model", model, "--output-format", "json", "--no-session-persistence"]
+        try:
+            result = _sp.run(cmd, capture_output=True, text=True, timeout=300)
+        except _sp.TimeoutExpired:
+            return {"spawn_method": "cli_subprocess", "error": "timeout: subprocess exceeded 300s", "model_used": model}
+        except Exception as exc:
+            return {"spawn_method": "cli_subprocess", "error": str(exc), "model_used": model}
+
+        if result.returncode == 0:
+            try:
+                data = json.loads(result.stdout)
+                return {
+                    "spawn_method": "cli_subprocess",
+                    "model_used": data.get("model", model),
+                    "response": data.get("result", result.stdout),
+                    "stop_reason": data.get("stop_reason", "end_turn"),
+                    "cost_usd": data.get("cost_usd"),
+                    "num_turns": data.get("num_turns", 1),
+                }
+            except json.JSONDecodeError:
+                return {
+                    "spawn_method": "cli_subprocess",
+                    "model_used": model,
+                    "response": result.stdout.strip(),
+                    "stop_reason": "end_turn",
+                }
+        else:
+            return {
+                "spawn_method": "cli_subprocess",
+                "error": f"CLI exited {result.returncode}: {result.stderr[:500]}",
+                "model_used": model,
+            }
+
+    return None  # No supported CLI available
+
+
 @mcp_tool(
     name="route",
     input_schema={
@@ -937,8 +984,10 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
                 "enum": ["decide", "spawn"],
                 "description": (
                     "decide: pick the best model for an upcoming task — returns model ID, tier, "
-                    "available models, and whether the host supports spawning. "
-                    "spawn: run a task on a specific model via MCP sampling (requires host support)."
+                    "available models, and whether the host can spawn. "
+                    "spawn: delegate a task to a cheaper model subagent. Returns spawn_directive with "
+                    "exact native tool parameters. If handled=true the MCP server already ran it; "
+                    "if handled=false YOU must call your native Agent/task tool with spawn_directive immediately."
                 ),
             },
             "task": {
@@ -959,23 +1008,18 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
             },
             "prompt": {
                 "type": "string",
-                "description": "(spawn) full task prompt to run on the chosen model via MCP sampling.",
+                "description": "(spawn) full task prompt to run on the chosen model.",
             },
             "model": {
                 "type": "string",
                 "description": "(spawn) model ID to use (e.g. 'claude-haiku-4-5', from a prior decide call).",
-            },
-            "max_tokens": {
-                "type": "integer",
-                "default": 4096,
-                "description": "(spawn) maximum output tokens for the spawned model call.",
             },
         },
         "required": ["op"],
     },
 )
 def tool_route(
-    op: Literal["decide", "spawn", "verify", "recommend"] = "decide",
+    op: Literal["decide", "spawn"] = "decide",
     # --- decide params ---
     task: str = "",
     task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
@@ -983,60 +1027,16 @@ def tool_route(
     # --- spawn params ---
     prompt: str = "",
     model: str = "",
-    max_tokens: int = 4096,
-    # --- backward compat (hidden from agent schema) ---
-    user_goal: str = "",
-    repo_root: str = ".",
-    tool_name: str = "",
-    task_text: str = "",
-    session_state: dict[str, Any] | None = None,
-    actual_vendor: str | None = None,
-    risk_level: Literal["low", "medium", "high"] = "medium",
-    changed_files: list[str] | None = None,
-    domain: str | None = None,
-    step_type: Literal[
-        "classify",
-        "compress",
-        "retrieve",
-        "plan",
-        "edit",
-        "debug",
-        "verify",
-        "summarize",
-        "lesson_extract",
-    ] = "plan",
-    step_index: int = 0,
-    evidence_summary: dict[str, Any] | None = None,
-    route_decision_id: str | None = None,
-    validation_results: list[dict[str, Any]] | None = None,
-    rubric_status: Literal["not_run", "pass", "warn", "fail"] = "not_run",
-    required_verifiers: list[str] | None = None,
-    protected_file_match: bool = False,
-    repeated_failure_signatures: list[str] | None = None,
-    diff_line_count: int = 0,
-    human_accepted: bool | None = None,
-    benchmark_accepted: bool | None = None,
 ) -> dict[str, Any]:
     """Route op-dispatch: op=decide picks a model; op=spawn runs a task on that model."""
     led = _get_ledger()
 
-    if changed_files is None:
-        changed_files = []
-    if validation_results is None:
-        validation_results = []
-    if required_verifiers is None:
-        required_verifiers = []
-    if repeated_failure_signatures is None:
-        repeated_failure_signatures = []
-    if evidence_summary is None:
-        evidence_summary = {}
-
     # --- op=decide: pick the best model for an upcoming task ---
     if op == "decide":
-        effective_task = task or task_text or user_goal
         led.record_tool_call("route", {"op": op, "task_type": task_type, "budget": budget})
         available = _get_available_models()
         host_model = os.environ.get("ATELIER_MODEL", "")
+        can_spawn = bool(shutil.which("claude") or shutil.which("codex")) or _client_sampling_supported
 
         # Try cross-vendor advisor for a cost-and-quality-aware recommendation
         chosen_model = ""
@@ -1051,7 +1051,7 @@ def tool_route(
             advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
             rec = advisor.recommend(
                 tool_name=advisor_tool,
-                task_text=effective_task,
+                task_text=task,
                 session_state=_model_recommendation_state(led, {}),
             )
             chosen_model = rec.get("model", "")
@@ -1090,73 +1090,59 @@ def tool_route(
             "rationale": rationale,
             "available_models": available,
             "host_model": host_model,
-            "sampling_supported": _client_sampling_supported,
+            "can_spawn": can_spawn,
             "_summary": {
                 "recommended": chosen_model,
                 "budget": budget,
-                "can_spawn": _client_sampling_supported,
+                "can_spawn": can_spawn,
             },
         }
 
-    # --- op=spawn: run a task on a specific model via MCP sampling ---
+    # --- op=spawn: delegate a task to a cheaper model subagent ---
     if op == "spawn":
-        led.record_tool_call("route", {"op": op, "model": model, "max_tokens": max_tokens})
-        return _sampling_invoke(prompt=prompt, model_hint=model, max_tokens=max_tokens)
+        led.record_tool_call("route", {"op": op, "model": model})
+        effective_model = model or "claude-haiku-4-5"
 
-    # --- op=recommend: backward-compat cross-vendor advisor (hidden from schema) ---
-    if op == "recommend":
-        led.record_tool_call("route", {"op": op, "tool_name": tool_name, "actual_vendor": actual_vendor})
-        if session_state is None:
-            session_state = _model_recommendation_state(led, {})
-        from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
-
-        advisor = CrossVendorRouteAdvisor(_atelier_root())
-        return advisor.recommend(
-            tool_name=tool_name,
-            task_text=task_text or user_goal,
-            session_state=session_state,
-            actual_vendor=actual_vendor,
+        # Prepend Atelier context bootstrap so the subagent self-initialises
+        bootstrapped_prompt = (
+            f'Start by calling `mcp__atelier__context` with task="{prompt[:120]}" '
+            f"to load relevant Atelier context, then proceed.\n\n{prompt}"
         )
 
-    # --- op=verify: internal quality gate (hidden from schema) ---
-    if route_decision_id is None:
-        raise ValueError("route_decision_id is required when op='verify'")
-    rt = _runtime()
-    led.record_tool_call(
-        "route",
-        {
-            "op": op,
-            "route_decision_id": route_decision_id,
-            "rubric_status": rubric_status,
-            "diff_line_count": diff_line_count,
-        },
-    )
-    envelope = rt.core_runtime.quality_router.verify(
-        route_decision_id=route_decision_id,
-        session_id=led.session_id,
-        changed_files=changed_files,
-        validation_results=validation_results,
-        rubric_status=rubric_status,
-        required_verifiers=required_verifiers,
-        protected_file_match=protected_file_match,
-        repeated_failure_signatures=repeated_failure_signatures,
-        diff_line_count=diff_line_count,
-        human_accepted=human_accepted,
-        benchmark_accepted=benchmark_accepted,
-    )
-    verify_out = to_jsonable(envelope)
-    if isinstance(verify_out, dict):
-        verify_out.setdefault(
-            "_summary",
-            {
-                "outcome": verify_out.get("outcome") or "unknown",
-                "passed": verify_out.get("outcome") in {"pass", "warn"},
-                "blocking_checks": [
-                    r.get("name", "") for r in (verify_out.get("validation_results") or []) if not r.get("passed", True)
-                ],
-            },
-        )
-    return verify_out
+        # spawn_directive: canonical parameters for the host's native spawn tool.
+        # Claude Code → Agent(agent_type=..., model=..., prompt=...)
+        # Copilot CLI  → task(agent_type=..., model=..., prompt=...)
+        # Codex        → Task(prompt=..., model=...)
+        spawn_directive = {
+            "agent_type": "general-purpose",
+            "model": effective_model,
+            "prompt": bootstrapped_prompt,
+            "run_in_background": False,
+        }
+
+        # Fast-path: if a compatible CLI is available let the MCP server run it
+        # directly (useful in CI / non-interactive pipelines).
+        cli_result = _spawn_subprocess(prompt=prompt, model=effective_model)
+        if cli_result is not None and "error" not in cli_result:
+            cli_result["handled"] = True
+            cli_result["spawn_directive"] = spawn_directive
+            return cli_result
+
+        # Primary path: return spawn_directive for the host agent to execute natively.
+        # The calling agent MUST call its native Agent/Task/task tool with these params.
+        return {
+            "handled": False,
+            "spawn_directive": spawn_directive,
+            "model": effective_model,
+            "message": (
+                "SPAWN_REQUIRED: call your native spawn tool immediately with spawn_directive. "
+                "Claude Code → Agent(agent_type=..., model=..., prompt=...). "
+                "Copilot CLI → task(agent_type=..., prompt=...). "
+                "Do NOT inline the work — delegate it to a cheaper subagent."
+            ),
+        }
+
+    raise ValueError(f"unknown op: {op!r}; supported ops: decide, spawn")
 
 
 @mcp_tool(name="rescue")
@@ -3416,20 +3402,13 @@ def _get_remote_client() -> Any:
 def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if _remote_client is None and not os.environ.get("ATELIER_SERVICE_URL"):
         if name == "context":
-            result = _runtime().get_context(
-                task=str(args.get("task") or ""),
-                domain=cast(str | None, args.get("domain")),
-                files=cast(list[str], args.get("files") or []),
-                tools=cast(list[str], args.get("tools") or []),
-                errors=cast(list[str], args.get("errors") or []),
-                max_blocks=int(args.get("max_blocks") or 5),
-                token_budget=cast(int | None, args.get("token_budget")),
-                dedup=bool(args.get("dedup", True)),
-                include_telemetry=bool(args.get("include_telemetry", False)),
-                agent_id=cast(str | None, args.get("agent_id")),
-                recall=bool(args.get("recall", True)),
-            )
-            return result if isinstance(result, dict) else {"context": result}
+            # Route through the registered handler so bootstrap job queuing,
+            # worker spawn throttle, and session bookkeeping all execute.
+            spec = TOOLS.get("context")
+            if spec is None:
+                raise ValueError("context tool not registered")
+            handler = cast(Callable[[dict[str, Any]], dict[str, Any]], spec["handler"])
+            return handler(args)
         if name == "rescue":
             rescue_result = _runtime().rescue_failure(
                 task=str(args.get("task") or ""),
