@@ -6,7 +6,10 @@ from typing import Any
 
 import pytest
 
-from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfig, save_route_config
+from atelier.core.capabilities.cross_vendor_routing.configuration import (
+    RouteConfig,
+    save_route_config,
+)
 from atelier.gateway.adapters.mcp_server import _handle
 
 

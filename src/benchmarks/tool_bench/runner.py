@@ -98,7 +98,23 @@ def _mcp_call(tool: str, args: dict[str, Any], host: str, timeout: int = 30) -> 
 
 
 def _structured(d: dict[str, Any]) -> dict[str, Any]:
-    return d.get("result", {}).get("structuredContent", {}) or {}
+    result = d.get("result", {})
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict):
+        return structured
+    content = result.get("content")
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, dict):
+            text = first.get("text")
+            if isinstance(text, str):
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    return {}
+                if isinstance(parsed, dict):
+                    return parsed
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -266,20 +282,22 @@ def bench_shell(
             )
             continue
 
-        a_out = sc.get("stdout", "") or sc.get("output", "") or str(sc)
+        a_out = sc.get("stdout", "") or sc.get("stderr", "") or sc.get("output", "") or ""
         a_chars = len(a_out)
         a_lines = len(a_out.splitlines())
         first_token = b_out.strip().split("\n")[0].strip() if b_out.strip() else ""
         rewritten = bool(sc.get("rewritten", False))
         rewrite_target = str(sc.get("rewrite_target") or "")
-        policy_action = str(sc.get("policy_action") or "")
+        exit_code = int(sc.get("exit_code", 0)) if isinstance(sc.get("exit_code"), int | float) else 0
 
         if bench_expect:
-            expected_action = str(bench_expect.get("policy_action") or "")
+            expected_rewritten = bench_expect.get("rewritten")
             expected_target = str(bench_expect.get("rewrite_target") or "")
-            action_ok = not expected_action or policy_action == expected_action
+            expected_exit = bench_expect.get("exit_code")
+            rewritten_ok = expected_rewritten is None or bool(expected_rewritten) == rewritten
             target_ok = not expected_target or rewrite_target == expected_target
-            correct = action_ok and target_ok
+            exit_ok = expected_exit is None or int(expected_exit) == exit_code
+            correct = rewritten_ok and target_ok and exit_ok
         else:
             correct = bool(first_token) and first_token in a_out
 
@@ -302,7 +320,7 @@ def bench_shell(
                     "ansi_stripped": True,
                     "rewritten": rewritten,
                     "rewrite_target": rewrite_target,
-                    "policy_action": policy_action,
+                    "exit_code": exit_code,
                 },
             )
         )

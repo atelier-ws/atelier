@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
+from .path_safety import PROTECTED_PARTS
 from .symbol_edit import SymbolEditError, record_symbol_edit_memory, resolve_symbol_edit
 
 logger = logging.getLogger(__name__)
 
-_PROTECTED_PARTS = {".git", ".atelier", "node_modules", ".venv"}
 _SMART_QUOTES = str.maketrans(
     {"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u2013": "-", "\u2014": "-"}
 )
@@ -57,7 +57,7 @@ def _resolve(root: Path, raw_path: str) -> Path:
         resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError(f"path escape denied: {raw_path}") from exc
-    if any(part in _PROTECTED_PARTS for part in resolved.parts):
+    if any(part in PROTECTED_PARTS for part in resolved.parts):
         raise ValueError(f"protected path denied: {raw_path}")
     return resolved
 

@@ -88,7 +88,6 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
         rewrite_payload={
             "file_path": path,
             "content_regex": pattern,
-            "file_glob_patterns": ["**/*"],
             "ignore_case": ignore_case,
             "output_mode": "file_paths_with_content",
         },
@@ -209,8 +208,15 @@ def run_command(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
 
-    head = max(20, max_lines // 4)
-    tail = max_lines - head
+    if exit_code != 0:
+        # For failing commands maximise the tail — that's where tracebacks,
+        # test failure lines, and assertion messages live.  Keep a minimal
+        # head (20 lines) just for collection / invocation context.
+        head = 20
+        tail = max(max_lines - head, 50)
+    else:
+        head = max(20, max_lines // 4)
+        tail = max_lines - head
     stdout_compact, lines_omitted = _head_tail_lines(raw_stdout.splitlines(), head, tail)
     stderr_compact, _ = _head_tail_lines(raw_stderr.splitlines(), 100, 100)
 
