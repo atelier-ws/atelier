@@ -118,7 +118,18 @@ def _builtin_shell(command: str, cwd: str | None = None) -> tuple[str, float]:
 def _builtin_grep(pattern: str, path: str) -> tuple[str, float]:
     t0 = time.perf_counter()
     r = subprocess.run(
-        ["grep", "-rn", "--include=*.py", pattern, "src", "tests"],
+        [
+            "rg",
+            "-n",
+            "--no-heading",
+            "--color",
+            "never",
+            "--glob",
+            "*.py",
+            pattern,
+            "src",
+            "tests",
+        ],
         capture_output=True,
         text=True,
         cwd=path,

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, cast
 from atelier.core.capabilities.pricing import usage_cost_usd
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
 from atelier.core.foundation.store import ContextStore
+from atelier.core.service.auth import verify_api_key
 from atelier.core.service.config import cfg
 from atelier.core.service.schemas import (
     ContextRequest,
@@ -2652,29 +2653,8 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
 
 def create_app(store_root: str | Path | None = None, store: ContextStore | None = None) -> Any:
     """Construct the FastAPI instance."""
-    from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Security
+    from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-    security = HTTPBearer(auto_error=False)
-
-    def verify_api_key(
-        auth: HTTPAuthorizationCredentials | None = Security(security),  # noqa: B008
-    ) -> str:
-        if not cfg.require_auth:
-            return "anonymous"
-        if auth is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication required",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        if not cfg.api_key:
-            logger.warning("API key not configured; rejecting request")
-            raise HTTPException(status_code=401, detail="Authentication required but no key configured")
-        if auth.credentials != cfg.api_key:
-            raise HTTPException(status_code=403, detail="Invalid API key")
-        return "authenticated"
 
     app = FastAPI(
         title="Atelier",
@@ -2971,6 +2951,18 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def _normalize_trace_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         from atelier.core.foundation.redaction import redact, redact_list
 
+        def _normalize_trace_confidence(value: Any) -> str | None:
+            if value is None:
+                return None
+            normalized_value = redact(str(value)).strip().lower()
+            if not normalized_value or normalized_value in {"none", "null", "unknown"}:
+                return None
+            if normalized_value in {"full_live", "mcp_live", "wrapper_live", "imported", "manual"}:
+                return normalized_value
+            if normalized_value in {"high", "medium", "low"}:
+                return "manual"
+            return "manual"
+
         normalized = dict(payload)
         event_recorded = bool(normalized.pop("event_type", None))
         normalized.pop("event_payload", None)
@@ -2978,6 +2970,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         normalized.pop("response", None)
         normalized.pop("bash_outputs", None)
         normalized.pop("tool_outputs", None)
+        normalized.pop("capture_files", None)
+        normalized.pop("learnings", None)
 
         normalized["task"] = redact(str(normalized.get("task") or ""))
         _raw_files = normalized.get("files_touched") or []
@@ -2997,6 +2991,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         normalized["errors_seen"] = redact_list([str(item) for item in normalized.get("errors_seen") or []])
         normalized["diff_summary"] = redact(str(normalized.get("diff_summary") or ""))
         normalized["output_summary"] = redact(str(normalized.get("output_summary") or ""))
+        normalized["trace_confidence"] = _normalize_trace_confidence(
+            normalized.get("trace_confidence")
+        )
         normalized["tools_called"] = _normalize_trace_tool_calls(list(normalized.get("tools_called") or []))
         normalized["validation_results"] = _normalize_trace_validation_results(
             list(normalized.get("validation_results") or [])

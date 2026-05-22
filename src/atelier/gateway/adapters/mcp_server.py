@@ -19,9 +19,9 @@ from datetime import UTC, datetime
 from functools import wraps
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
-from pydantic import Field, create_model
+from pydantic import AliasChoices, Field, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
@@ -76,20 +76,19 @@ def _tool_description(spec: dict[str, Any]) -> str:
     return mcp_tool_description(
         str(spec.get("name", "") or ""),
         str(spec.get("description", "") or ""),
-        is_dev=bool(spec.get("is_dev")),
     )
 
 
 def _tool_visible_to_llm(tool_name: str, spec: dict[str, Any]) -> bool:
-    return mcp_tool_visible_to_llm(tool_name, is_dev=bool(spec.get("is_dev")))
+    return mcp_tool_visible_to_llm(tool_name)
 
 
 def _tool_mode(spec: dict[str, Any]) -> str:
-    return mcp_tool_mode(str(spec.get("name", "") or ""), is_dev=bool(spec.get("is_dev")))
+    return mcp_tool_mode(str(spec.get("name", "") or ""))
 
 
 def mcp_tool(
-    name: str | None = None, description: str | None = None, is_dev: bool = False
+    name: str | None = None, description: str | None = None
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema."""
 
@@ -138,7 +137,6 @@ def mcp_tool(
             "handler": handler_wrapper,
             "description": tool_description,
             "inputSchema": schema,
-            "is_dev": is_dev,
         }
         return handler_wrapper
 
@@ -722,7 +720,7 @@ def _bootstrap_context_status(root: Path) -> dict[str, Any]:
     }
 
 
-@mcp_tool(name="context", is_dev=True)
+@mcp_tool(name="context")
 def tool_get_context(
     task: str,
     domain: str | None = None,
@@ -942,7 +940,7 @@ def tool_route(
     return to_jsonable(envelope)
 
 
-@mcp_tool(name="rescue", is_dev=True)
+@mcp_tool(name="rescue")
 def tool_rescue_failure(
     task: str,
     error: str,
@@ -1138,10 +1136,29 @@ def tool_record_trace(
             normalized.append({"name": redact(str(item)), "args_hash": "", "count": 1})
         return normalized
 
+    def _normalize_trace_confidence(value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = redact(str(value)).strip().lower()
+        if not normalized or normalized in {"none", "null", "unknown"}:
+            return None
+        if normalized in {"full_live", "mcp_live", "wrapper_live", "imported", "manual"}:
+            return normalized
+        if normalized in {"high", "medium", "low"}:
+            # Legacy callers treated this field like a confidence strength rather
+            # than a capture provenance. Preserve the trace conservatively.
+            return "manual"
+        return "manual"
+
     # Derive host label from agent string and environment
     def _derive_host(a: str) -> str:
         al = a.lower()
-        if "antigravity" in al or "agy" in al or os.environ.get("ANTIGRAVITY_CLI") or os.environ.get("AGY_CLI"):
+        if (
+            "antigravity" in al
+            or "agy" in al
+            or os.environ.get("ANTIGRAVITY_CLI")
+            or os.environ.get("AGY_CLI")
+        ):
             return "antigravity"
         if "copilot" in al or os.environ.get("COPILOT_CLI"):
             return "copilot"
@@ -1156,7 +1173,7 @@ def tool_record_trace(
         return "atelier" if al.startswith("atelier:") else al
 
     normalized_capture_sources = [redact(str(source)) for source in capture_sources]
-    normalized_trace_confidence = redact(str(trace_confidence)) if trace_confidence else None
+    normalized_trace_confidence = _normalize_trace_confidence(trace_confidence)
     normalized_missing_surfaces = redact_list([str(value) for value in missing_surfaces])
     if normalized_trace_confidence == "full_live" and not any(
         source in {"hooks", "live_hooks", "plugin_hooks"} for source in normalized_capture_sources
@@ -1284,7 +1301,7 @@ def tool_record_trace(
     }
 
 
-@mcp_tool(name="verify", is_dev=True)
+@mcp_tool(name="verify")
 def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
     """[DEV] Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
     rt = _runtime()
@@ -1484,7 +1501,7 @@ def _memory_recall(
     }
 
 
-@mcp_tool(name="memory", is_dev=True)
+@mcp_tool(name="memory")
 def tool_memory(
     op: Literal[
         "block_upsert",
@@ -1576,18 +1593,44 @@ def tool_memory(
     return _memory_summary(require("session_id", session_id))
 
 
-@mcp_tool(name="read", is_dev=True)
+@mcp_tool(name="read")
 def tool_smart_read(
-    path: str | None = None,
-    file_path: str | None = None,
+    file_path: str,
     range: str | None = None,
     expand: bool = False,
     max_lines: int | None = None,
 ) -> dict[str, Any]:
-    """Smart file read with outline-first mode for large Python/TypeScript files."""
-    target_path = file_path or path
+    """Read a file with automatic outline mode for large files.
+
+    Returns less context than native `Read` / `cat` for files >200 LOC:
+      - outline mode: signatures, imports, structure -- no bodies.
+        Measured token savings (tiktoken cl100k_base, median):
+        Python 85%, Markdown 85%, Go 77%, Java 77%, Rust 65%.
+        Tree-sitter outlines for: python, typescript, javascript, go, rust,
+        java, ruby, c, c++, c#, kotlin, php, swift, scala, bash.
+        Generic structural skeleton (column-0 declarations + signature lines)
+        as a fallback for any other text-like language.
+      - range mode (when range="42-118" or range="L42-L118"): exact line slice,
+        cheaper than reading the whole file when you already know the range.
+      - full mode: identical to native Read (for tiny files or expand=True).
+
+    Prefer over native `Read` whenever you don't already know the file is small.
+    For files <200 LOC the cost is the same; for larger files outline mode
+    typically saves 50-90% of the tokens you'd consume with `Read` / `cat`.
+
+    Returns: {
+      mode: "outline" | "range" | "full",
+      cache_hit: bool,                   # served from in-memory cache (SHA-256 keyed)
+      tokens_saved: int,                 # tiktoken count vs reading the full file
+      outline: {kind, language, ...},    # only when mode == "outline"
+      content: str,                      # only when mode in {range, full}
+      path: str,
+      range: str,                        # only when mode == "range"
+    }
+    """
+    target_path = file_path
     if not target_path:
-        raise ValueError("provide path or file_path")
+        raise ValueError("provide file_path")
     if max_lines is not None and range is None and not expand:
         return cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
 
@@ -1675,7 +1718,7 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
-@mcp_tool(name="edit", is_dev=True)
+@mcp_tool(name="edit")
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
@@ -1776,7 +1819,7 @@ def tool_smart_edit(
     return result
 
 
-@mcp_tool(name="sql", is_dev=True)
+@mcp_tool(name="sql")
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
@@ -2137,7 +2180,7 @@ def _workspace_code_router(repo_root: str = ".") -> Any:
     )
 
 
-@mcp_tool(name="code", is_dev=True)
+@mcp_tool(name="code")
 def tool_code(
     op: Literal[
         "index",
@@ -2504,75 +2547,250 @@ def _run_shell_tool(
     }
 
 
-@mcp_tool(name="search", is_dev=True)
-def tool_smart_search(
-    query: str | None = None,
-    path: str = ".",
-    mode: Literal["chunks", "full", "map"] = "chunks",
-    max_files: int = 10,
-    max_chars_per_file: int = 2000,
-    include_outline: bool = True,
-    seed_files: list[str] | None = None,
-    budget_tokens: int = 2000,
-    content_regex: str | None = None,
-    file_glob_patterns: list[str] | None = None,
+def _run_native_grep(
+    *,
+    file_path: str,
+    content_regex: str | None,
+    file_glob_patterns: list[str] | None,
     output_mode: Literal[
         "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"
-    ] = "file_paths_with_content",
-    lines_before: int = 0,
-    lines_after: int = 0,
-    ignore_case: bool = False,
-    type: str | None = None,
-    file_limit: int | None = None,
-    lines_per_file: int | None = 500,
-    if_modified_since: str | None = None,
-    max_line_length: int | None = 1000,
-    multiline: bool = False,
-    summary: bool | None = None,
+    ],
+    lines_before: int,
+    lines_after: int,
+    ignore_case: bool,
+    type: str | None,
+    file_limit: int | None,
+    lines_per_file: int | None,
+    if_modified_since: str | None,
+    max_line_length: int | None,
+    multiline: bool,
+    summary: bool | None,
 ) -> dict[str, Any]:
-    """Smart search/read with ranking plus a native glob/regex media-aware mode.
+    from atelier.core.capabilities.tool_supervision.native_search import search_workspace
 
-    Pass ``query`` for query-driven search; pass ``seed_files`` with ``mode="map"``
-    for repo-map mode.
+    return search_workspace(
+        path=file_path,
+        content_regex=content_regex,
+        file_glob_patterns=file_glob_patterns,
+        output_mode=output_mode,
+        lines_before=lines_before,
+        lines_after=lines_after,
+        ignore_case=ignore_case,
+        type=type,
+        file_limit=file_limit,
+        lines_per_file=lines_per_file,
+        if_modified_since=if_modified_since,
+        max_line_length=max_line_length,
+        multiline=multiline,
+        summary=summary,
+        repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
+    )
+
+
+@mcp_tool(
+    name="grep",
+    description=(
+        "Search files with regex, glob, and type filters. Use this instead of `search` for "
+        "grep-style matching, path listing, context lines, summaries, or incremental reruns."
+    ),
+)
+def tool_grep(
+    file_path: Annotated[
+        str,
+        Field(
+            description=(
+                "Workspace-relative file or directory to search. This is the canonical "
+                "search root parameter; legacy callers may still send `path`."
+            ),
+            validation_alias=AliasChoices("file_path", "path"),
+        ),
+    ] = ".",
+    content_regex: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Regular expression to match file contents. Leave unset when you only want "
+                "globbed file paths or type-filtered file listings."
+            )
+        ),
+    ] = None,
+    file_glob_patterns: Annotated[
+        list[str] | None,
+        Field(description="Glob patterns that constrain candidate files, such as `src/**/*.py`."),
+    ] = None,
+    output_mode: Annotated[
+        Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+        Field(
+            description=(
+                "Return matched content, only file paths, or file paths annotated with "
+                "match counts."
+            )
+        ),
+    ] = "file_paths_with_content",
+    lines_before: Annotated[
+        int,
+        Field(description="Number of context lines to include before each content match."),
+    ] = 0,
+    lines_after: Annotated[
+        int,
+        Field(description="Number of context lines to include after each content match."),
+    ] = 0,
+    ignore_case: Annotated[
+        bool,
+        Field(description="Ignore case while matching `content_regex`."),
+    ] = False,
+    type: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Language or file-type filter, such as `python`, `markdown`, or another "
+                "supported type alias."
+            )
+        ),
+    ] = None,
+    file_limit: Annotated[
+        int | None,
+        Field(description="Maximum number of matching files to render."),
+    ] = None,
+    lines_per_file: Annotated[
+        int | None,
+        Field(description="Cap the rendered lines per matching file."),
+    ] = 500,
+    if_modified_since: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Timestamp from the previous result header. Files unchanged since that "
+                "moment are marked unchanged or skipped."
+            )
+        ),
+    ] = None,
+    max_line_length: Annotated[
+        int | None,
+        Field(description="Truncate long rendered lines to this many characters."),
+    ] = 1000,
+    multiline: Annotated[
+        bool,
+        Field(
+            description=(
+                "Enable multiline regex matching so `.` spans newlines and `^` / `$` work "
+                "per line."
+            )
+        ),
+    ] = False,
+    summary: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "Summarize file structure instead of returning full content when the file "
+                "type supports it."
+            )
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
+
+    Use this tool when you already know the pattern, file globs, or file types you want.
+    Prefer `search` for ranked natural-language lookup and repo-map construction.
     """
-    if (
-        content_regex is not None
-        or file_glob_patterns is not None
-        or type is not None
-        or if_modified_since is not None
-        or lines_before
-        or lines_after
-        or output_mode != "file_paths_with_content"
-        or summary is not None
-        or multiline
-    ):
-        from atelier.core.capabilities.tool_supervision.native_search import search_workspace
+    return _run_native_grep(
+        file_path=file_path,
+        content_regex=content_regex,
+        file_glob_patterns=file_glob_patterns,
+        output_mode=output_mode,
+        lines_before=lines_before,
+        lines_after=lines_after,
+        ignore_case=ignore_case,
+        type=type,
+        file_limit=file_limit,
+        lines_per_file=lines_per_file,
+        if_modified_since=if_modified_since,
+        max_line_length=max_line_length,
+        multiline=multiline,
+        summary=summary,
+    )
 
-        return search_workspace(
-            path=path,
-            content_regex=content_regex or query,
-            file_glob_patterns=file_glob_patterns,
-            output_mode=output_mode,
-            lines_before=lines_before,
-            lines_after=lines_after,
-            ignore_case=ignore_case,
-            type=type,
-            file_limit=file_limit or max_files,
-            lines_per_file=lines_per_file,
-            if_modified_since=if_modified_since,
-            max_line_length=max_line_length,
-            multiline=multiline,
-            summary=summary,
-            repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
-        )
 
-    if query is None:
-        raise ValueError("query is required unless native search selectors are provided")
+@mcp_tool(
+    name="search",
+    description=(
+        "Search code and docs by ranked query. Use this for relevance-ranked snippets, "
+        "full-file ranked reads, or repo maps seeded from known files. Use `grep` for "
+        "regex, glob, type-filter, or context-line search."
+    ),
+)
+def tool_smart_search(
+    query: Annotated[
+        str | None,
+        Field(description="Ranked search query. Required for `chunks` and `full` mode."),
+    ] = None,
+    file_path: Annotated[
+        str,
+        Field(
+            description=(
+                "Workspace-relative file or directory to search. This is the canonical "
+                "search root parameter; legacy callers may still send `path`."
+            ),
+            validation_alias=AliasChoices("file_path", "path"),
+        ),
+    ] = ".",
+    mode: Annotated[
+        Literal["chunks", "full", "map"],
+        Field(
+            description=(
+                "`chunks` returns ranked snippets per file, `full` returns fuller file "
+                "content up to limits, and `map` builds a repo map from `seed_files`."
+            )
+        ),
+    ] = "chunks",
+    max_files: Annotated[
+        int,
+        Field(description="Maximum number of ranked files to return."),
+    ] = 10,
+    max_chars_per_file: Annotated[
+        int,
+        Field(
+            description=(
+                "Cap the returned characters per ranked file before the overall token "
+                "budget is applied."
+            )
+        ),
+    ] = 2000,
+    include_outline: Annotated[
+        bool,
+        Field(description="Include outline metadata for ranked files when the backend can provide it."),
+    ] = True,
+    seed_files: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "Seed files that bias ranking. Required when `mode='map'` because repo-map "
+                "mode expands outward from these files."
+            )
+        ),
+    ] = None,
+    budget_tokens: Annotated[
+        int,
+        Field(description="Total token budget for ranked search output or repo-map output."),
+    ] = 2000,
+) -> dict[str, Any]:
+    """Search by ranked query or repo-map construction.
+
+    - Pass `query` for relevance-ranked search over code and docs.
+    - Use `mode='chunks'` for snippets, `mode='full'` for fuller file bodies.
+    - Use `mode='map'` with `seed_files` to build a repo map.
+    - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
+    """
+    if mode == "map":
+        if not seed_files:
+            raise ValueError("seed_files is required when mode='map'")
+    elif query is None:
+        raise ValueError("query is required for ranked search; use grep for regex/glob search")
     from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 
     return smart_search(
         query=query,
-        path=path,
+        path=file_path,
         mode=mode,
         max_files=max_files,
         max_chars_per_file=max_chars_per_file,
@@ -2686,7 +2904,7 @@ _READ_TOOLS = frozenset(
 )
 
 
-@mcp_tool(name="shell", is_dev=True)
+@mcp_tool(name="shell")
 def tool_shell(
     command: str,
     timeout: int = 30,
