@@ -99,8 +99,8 @@ def mcp_tool(
         func: Callable[..., Any],
     ) -> Callable[[dict[str, Any]], Any]:
         tool_name = name or func.__name__.removeprefix("tool_")
-        # Use the first line of the docstring as the description
-        tool_description = description or (func.__doc__ or "").strip().split("\n")[0]
+        # Use the full docstring as the description so agents see all op detail.
+        tool_description = description or (func.__doc__ or "").strip()
 
         sig = inspect.signature(func)
         fields = {}
