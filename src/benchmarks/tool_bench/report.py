@@ -64,6 +64,13 @@ def _extra_info(r: ToolResult) -> str:
             parts.append(f"budget={bt}")
         if ex.get("ranked"):
             parts.append("ranked✓")
+    elif r.tool == "grep":
+        fmc = ex.get("file_match_count", 0)
+        bl = ex.get("baseline_lines", 0)
+        if fmc:
+            parts.append(f"{fmc}files")
+        if bl:
+            parts.append(f"base={bl}ln")
     return "  ".join(parts)
 
 
