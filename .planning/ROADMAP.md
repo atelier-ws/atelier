@@ -186,7 +186,7 @@ Plans:
 
 Plans:
 
-- [ ] 07-01: Agent-OS playbooks, validation matrix updates, ADR acceptance, and scorecard metrics (M13)
+- [ ] 07-01-PLAN.md — Agent-OS playbooks, validation matrix updates, ADR acceptance, and scorecard metrics (M13)
 
 ## Progress
 
