@@ -23,6 +23,7 @@
 | Worktree bootstrap or runtime evidence scripts | `make docs-check && uv run pytest tests/gateway/test_generated_agent_contexts.py -q` |
 | Code review or change verification | `verify(rubric_id="rubric_code_review", checks={...})` — see [review-rubric.md](review-rubric.md). Block if any finding is unclassified or if any Blocker is missing `file:line` + fix snippet. Also run `verify(rubric_id="rubric_verification_ladder", checks={...})` to confirm the change is wired and substantive, not a stub. |
 | Packaged rubric seeding | `uv run pytest tests/core/test_rubric_gate.py -q` — verifies `load_packaged_rubrics()` returns all shipped rubrics and that `store.init()` seeds them before user rubrics are applied. |
+| M13 agent-OS playbooks and scorecard | `make docs-check && make check-agent-context` then `verify(rubric_id="rubric_source_of_truth_change", checks={"authoritative_source_identified": True, "upstream_source_changed": True, "derived_outputs_regenerated_or_intentionally_left_unchanged": True, "contradiction_resolved_at_source": True})` |
 
 ## Notes
 
