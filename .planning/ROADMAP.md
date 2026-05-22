@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Historical Code Intelligence** - Make deleted symbols, renames, blame, and churn first-class code-intel queries. (completed 2026-05-19)
 - [x] **Phase 5: Scale Decision & Extended Retrieval Reach** - Gate large-repo backend work, then ship validated scale routing and cross-language edges. (completed 2026-05-19)
 - [x] **Phase 6: Bootstrap, Dependency Scope & Multi-Repo Workspaces** - Warm code-intel state on first context and expand routing across external deps and repo boundaries. (completed 2026-05-23)
-- [ ] **Phase 7: Maintainer Playbooks & Scorecards** - Document symbol-first usage and publish the scorecard/validation guidance that preserves the token wins.
+- [x] **Phase 7: Maintainer Playbooks & Scorecards** - Document symbol-first usage and publish the scorecard/validation guidance that preserves the token wins. (completed 2026-05-23)
 
 ## Phase Details
 
