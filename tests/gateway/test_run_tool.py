@@ -67,7 +67,6 @@ def test_classify_rewrite_rg() -> None:
     assert decision.rewrite_payload == {
         "file_path": "src",
         "content_regex": "hello",
-        "file_glob_patterns": ["**/*"],
         "ignore_case": True,
         "output_mode": "file_paths_with_content",
     }
@@ -122,8 +121,6 @@ def test_run_via_mcp_rewrites_cat(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert resp is not None
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert payload["exit_code"] == 0
-    assert payload["rewritten"] is True
-    assert payload["rewrite_target"] == "read"
     assert "rewritten" in payload["stdout"]
 
 
@@ -145,6 +142,4 @@ def test_run_via_mcp_rewrites_rg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert resp is not None
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert payload["exit_code"] == 0
-    assert payload["rewritten"] is True
-    assert payload["rewrite_target"] == "grep"
     assert "needle" in payload["stdout"]

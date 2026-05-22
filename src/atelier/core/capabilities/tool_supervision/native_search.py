@@ -6,15 +6,25 @@ import ast
 import base64
 import json
 import mimetypes
+import os
 import re
+import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-SearchOutputMode = Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"]
+SearchOutputMode = Literal[
+    "ranked_file_map",
+    "file_paths_with_content",
+    "file_paths_only",
+    "file_paths_with_match_count",
+]
 
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
+DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
+INLINE_CHARS_PER_TOKEN = 2
 _SKIP_DIRS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
@@ -62,6 +72,16 @@ class PatternSpec:
     start_line: int | None = None
     end_line: int | None = None
     graph_mode: Literal["imports", "imported_by"] | None = None
+
+
+@dataclass(frozen=True)
+class RankedMatch:
+    file: str
+    score: float
+    match_count: int
+    ranges: list[tuple[int, int]]
+    symbols: list[str]
+    why: str
 
 
 def _repo_root(repo_root: str | Path | None = None) -> Path:
@@ -167,6 +187,22 @@ def _truncate_line(line: str, max_line_length: int | None) -> str:
     return line if len(line) <= max_line_length else line[:max_line_length] + "..."
 
 
+def _spill_dir() -> Path:
+    configured = os.environ.get("ATELIER_MCP_SPILL_DIR")
+    if configured:
+        path = Path(configured).expanduser().resolve()
+    else:
+        path = Path(tempfile.gettempdir()) / "atelier-mcp-spill"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _spill_response_payload(payload: dict[str, Any]) -> Path:
+    spill_path = _spill_dir() / f"search-{int(time.time() * 1000)}.json"
+    spill_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return spill_path
+
+
 def _python_summary(source: str) -> str:
     try:
         tree = ast.parse(source)
@@ -243,11 +279,171 @@ def _imports_for(path: Path, source: str) -> list[str]:
     return [item for item in imports if item]
 
 
+def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, PatternSpec]]) -> list[str]:
+    rel_target = str(target.relative_to(root)) if target.is_relative_to(root) else str(target)
+    stem = target.stem
+    module = rel_target.removesuffix(".py").replace("/", ".")
+    target_js = rel_target.removesuffix(".js")
+    imported_by: list[str] = []
+    for candidate, _spec in candidates:
+        if candidate == target or not candidate.is_file():
+            continue
+        try:
+            source = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        imports = _imports_for(candidate, source)
+        hit = False
+        for item in imports:
+            if item == module or item.endswith(f".{stem}") or item.endswith(f"/{stem}") or item.endswith(target_js):
+                hit = True
+                break
+        if not hit:
+            continue
+        rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+        imported_by.append(rel)
+    return sorted(imported_by)
+
+
+def _looks_plain_identifier_query(content_regex: str | None) -> bool:
+    if not content_regex:
+        return False
+    if re.search(r"[.^$*+?{}\[\]|()\\]", content_regex):
+        return False
+    return bool(re.search(r"[A-Za-z0-9]", content_regex))
+
+
+def _query_variants(content_regex: str | None) -> list[str]:
+    if not _looks_plain_identifier_query(content_regex):
+        return [content_regex] if content_regex else []
+    assert content_regex is not None
+    base = content_regex.strip()
+    tokens = re.split(r"[\s_-]+", base)
+    cleaned = [tok for tok in tokens if tok]
+    if not cleaned:
+        return [base]
+    snake = "_".join(tok.lower() for tok in cleaned)
+    kebab = "-".join(tok.lower() for tok in cleaned)
+    camel = cleaned[0].lower() + "".join(tok.capitalize() for tok in cleaned[1:])
+    pascal = "".join(tok.capitalize() for tok in cleaned)
+    variants = [base, snake, kebab, camel, pascal, base.replace(" ", "_"), base.replace(" ", "-")]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in variants:
+        if item and item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
+
+
+def _find_symbol_spans(path: Path, source: str) -> list[tuple[int, int, str]]:
+    suffix = path.suffix.lower()
+    spans: list[tuple[int, int, str]] = []
+    if suffix == ".py":
+        for match in re.finditer(r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M):
+            name = match.group(1)
+            start = source.count("\n", 0, match.start()) + 1
+            spans.append((start, start, name))
+    elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
+        for match in re.finditer(
+            r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)",
+            source,
+            flags=re.M,
+        ):
+            name = match.group(1)
+            start = source.count("\n", 0, match.start()) + 1
+            spans.append((start, start, name))
+
+    if not spans:
+        return spans
+    lines = source.splitlines()
+    finalized: list[tuple[int, int, str]] = []
+    starts = [line for line, _end, _name in spans]
+    for idx, (start, _end, name) in enumerate(spans):
+        next_start = starts[idx + 1] if idx + 1 < len(starts) else len(lines) + 1
+        end = max(start, next_start - 1)
+        finalized.append((start, end, name))
+    return finalized
+
+
+def _match_line_numbers(
+    lines: list[str],
+    regex: re.Pattern[str] | None,
+    content_regex: str | None,
+    *,
+    include_all_when_no_regex: bool,
+) -> list[int]:
+    if regex is not None:
+        return [idx for idx, line in enumerate(lines, start=1) if regex.search(line)]
+    if include_all_when_no_regex:
+        return list(range(1, len(lines) + 1))
+    variants = _query_variants(content_regex)
+    if not variants:
+        return []
+    compiled = [re.compile(re.escape(item), re.I) for item in variants]
+    out: list[int] = []
+    for idx, line in enumerate(lines, start=1):
+        if any(pat.search(line) for pat in compiled):
+            out.append(idx)
+    return out
+
+
+def _merge_ranges(ranges: list[tuple[int, int]], *, gap: int = 3) -> list[tuple[int, int]]:
+    if not ranges:
+        return []
+    sorted_ranges = sorted(ranges, key=lambda item: (item[0], item[1]))
+    merged: list[tuple[int, int]] = [sorted_ranges[0]]
+    for start, end in sorted_ranges[1:]:
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end + gap:
+            merged[-1] = (prev_start, max(prev_end, end))
+            continue
+        merged.append((start, end))
+    return merged
+
+
+def _symbol_windows(
+    path: Path,
+    lines: list[str],
+    source: str,
+    line_nos: list[int],
+    *,
+    lines_before: int,
+    lines_after: int,
+) -> tuple[list[tuple[int, int]], list[str]]:
+    symbols = _find_symbol_spans(path, source)
+    windows: list[tuple[int, int]] = []
+    symbol_hits: list[str] = []
+    for line_no in line_nos:
+        matched_symbol = None
+        for start, end, name in symbols:
+            if start <= line_no <= end:
+                matched_symbol = (start, end, name)
+                break
+        if matched_symbol is not None:
+            start, end, name = matched_symbol
+            windows.append((start, end))
+            symbol_hits.append(name)
+            continue
+        start = max(1, line_no - lines_before)
+        end = min(len(lines), line_no + lines_after)
+        windows.append((start, end))
+    dedup_symbols: list[str] = []
+    seen: set[str] = set()
+    for name in symbol_hits:
+        if name in seen:
+            continue
+        seen.add(name)
+        dedup_symbols.append(name)
+    return _merge_ranges(windows), dedup_symbols
+
+
 def _render_text_result(
     path: Path,
     root: Path,
     spec: PatternSpec,
     regex: re.Pattern[str] | None,
+    content_regex: str | None,
     *,
     output_mode: SearchOutputMode,
     lines_before: int,
@@ -275,10 +471,8 @@ def _render_text_result(
         imports = _imports_for(path, source)
         return f"{rel}\nimports:\n" + "\n".join(f"- {item}" for item in imports), len(imports)
     if spec.graph_mode == "imported_by":
-        return (
-            f'{rel}\nimported-by graph lookup is available through search mode=map with seed_files=["{rel}"]',
-            0,
-        )
+        # Handled in caller where we have full candidate list context.
+        return None, 0
 
     lines = source.splitlines()
     if spec.start_line is not None:
@@ -288,13 +482,10 @@ def _render_text_result(
         body = "\n".join(_truncate_line(line, max_line_length) for line in selected)
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
-    match_lines: list[int] = []
-    if regex:
-        for idx, line in enumerate(lines, start=1):
-            if regex.search(line):
-                match_lines.append(idx)
-    else:
-        match_lines = list(range(1, min(len(lines), lines_per_file or len(lines)) + 1))
+    include_all = regex is None and content_regex is None
+    match_lines = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=include_all)
+    if include_all and lines_per_file:
+        match_lines = match_lines[: max(0, lines_per_file)]
 
     if output_mode == "file_paths_only":
         return rel if match_lines or not regex else None, len(match_lines)
@@ -345,14 +536,11 @@ def search_workspace(
     summary: bool | None = None,
     repo_root: str | Path | None = None,
     cap_chars: int = MAX_STRUCTURED_OUTPUT_CHARS,
+    context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS,
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
     if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {
-            "isError": True,
-            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
-            "_meta": {"fileMatchCount": 0},
-        }
+        return {"isError": True, "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}]}
 
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
@@ -369,19 +557,137 @@ def search_workspace(
     candidates = _iter_files(root, base if base.is_dir() else root, specs, type)
     limit = file_limit or 100
     blocks: list[dict[str, str]] = []
-    file_match_count = 0
     total_chars = 0
+    effective_cap_chars = cap_chars
+    if output_mode == "file_paths_with_content":
+        effective_cap_chars = min(cap_chars, max(1000, context_budget_tokens) * 4)
+    if output_mode == "ranked_file_map":
+        ranked: list[RankedMatch] = []
+        total_budget = max(1000, context_budget_tokens)
+        for candidate, spec in candidates:
+            if len(ranked) >= limit:
+                break
+            if not _is_text_file(candidate) and candidate.suffix.lower() not in _PDF_SUFFIXES:
+                continue
+            source = (
+                _extract_pdf(candidate)
+                if candidate.suffix.lower() in _PDF_SUFFIXES
+                else candidate.read_text(encoding="utf-8", errors="replace")
+            )
+            lines = source.splitlines()
+            if spec.graph_mode == "imports":
+                imports = _imports_for(candidate, source)
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                ranked.append(
+                    RankedMatch(
+                        file=rel,
+                        score=1.0,
+                        match_count=len(imports),
+                        ranges=[],
+                        symbols=[],
+                        why="imports graph requested",
+                    )
+                )
+                continue
+            if spec.graph_mode == "imported_by":
+                imported = _imported_by_for(root, candidate, candidates)
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                ranked.append(
+                    RankedMatch(
+                        file=rel,
+                        score=1.0,
+                        match_count=len(imported),
+                        ranges=[],
+                        symbols=[],
+                        why=f"imported by {len(imported)} files",
+                    )
+                )
+                continue
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    blocks.append(
-        {
-            "type": "text",
-            "text": f"Results as of {timestamp}. Pass this value as if_modified_since on next search to skip unchanged files.",
+            line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
+            if regex and not line_nos:
+                continue
+            ranges, symbols = _symbol_windows(
+                candidate,
+                lines,
+                source,
+                line_nos,
+                lines_before=max(0, lines_before),
+                lines_after=max(0, lines_after),
+            )
+            match_count = len(line_nos)
+            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+            score = float(match_count) + (0.15 * len(symbols))
+            ranked.append(
+                RankedMatch(
+                    file=rel,
+                    score=score,
+                    match_count=match_count,
+                    ranges=ranges,
+                    symbols=symbols[:6],
+                    why="regex matched symbol-aware ranges" if symbols else "regex matched merged line ranges",
+                )
+            )
+
+        if not ranked:
+            return {
+                "isError": False,
+                "mode": "ranked_file_map",
+                "matches": [],
+                "next": [],
+                "_meta": {"fileMatchCount": 0, "capChars": cap_chars},
+            }
+
+        ranked.sort(key=lambda item: (-item.score, item.file))
+        top_score = max(item.score for item in ranked) or 1.0
+        normalized = [RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)}) for item in ranked]
+        selected: list[RankedMatch] = []
+        used_tokens = 0
+        for idx, item in enumerate(normalized):
+            max_ranges = 4 if idx == 0 else 3 if idx == 1 else 2
+            reduced_ranges = item.ranges[:max_ranges]
+            est = max(30, len(item.file) // 4 + (len(reduced_ranges) * 24) + (len(item.symbols) * 8))
+            if selected and used_tokens + est > total_budget:
+                break
+            used_tokens += est
+            selected.append(RankedMatch(**{**item.__dict__, "ranges": reduced_ranges}))
+
+        handles: dict[str, tuple[str, tuple[int, int] | None]] = {}
+        matches_payload: list[dict[str, Any]] = []
+        next_actions: list[str] = []
+        for idx, item in enumerate(selected, start=1):
+            range_text = [f"{start}-{end}" for start, end in item.ranges]
+            handle = f"m{idx}"
+            handles[handle] = (item.file, item.ranges[0] if item.ranges else None)
+            matches_payload.append(
+                {
+                    "handle": handle,
+                    "file": item.file,
+                    "score": item.score,
+                    "match_count": item.match_count,
+                    "ranges": range_text,
+                    "symbols": item.symbols,
+                    "why": item.why,
+                }
+            )
+            if item.ranges:
+                start, end = item.ranges[0]
+                next_actions.append(f"read {item.file}#{start}-{end}")
+            if item.symbols:
+                next_actions.append(f"read {item.file}#{item.symbols[0]}")
+        return {
+            "isError": False,
+            "mode": "ranked_file_map",
+            "matches": matches_payload,
+            "next": next_actions[: min(12, len(next_actions))],
+            "context_budget_tokens": total_budget,
+            "handles": {k: {"file": v[0], "range": f'{v[1][0]}-{v[1][1]}' if v[1] else None} for k, v in handles.items()},
+            "_meta": {"fileMatchCount": len(matches_payload), "capChars": cap_chars},
         }
-    )
 
+    file_match_count = 0
     for candidate, spec in candidates:
-        if len(blocks) - 1 >= limit:
+        if len(blocks) >= limit:
             break
         suffix = candidate.suffix.lower()
         if suffix in _IMAGE_SUFFIXES and output_mode == "file_paths_with_content" and regex is None:
@@ -392,11 +698,25 @@ def search_workspace(
             continue
         if not _is_text_file(candidate) and suffix not in _PDF_SUFFIXES:
             continue
+        if spec.graph_mode == "imported_by":
+            imported = _imported_by_for(root, candidate, candidates)
+            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+            rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
+            file_match_count += 1
+            remaining = effective_cap_chars - total_chars
+            if remaining <= 0:
+                blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
+                break
+            text = rendered[:remaining]
+            total_chars += len(text)
+            blocks.append({"type": "text", "text": text})
+            continue
         rendered, _count = _render_text_result(
             candidate,
             root,
             spec,
             regex,
+            content_regex,
             output_mode=output_mode,
             lines_before=max(0, lines_before),
             lines_after=max(0, lines_after),
@@ -408,7 +728,7 @@ def search_workspace(
         if rendered is None:
             continue
         file_match_count += 1
-        remaining = cap_chars - total_chars
+        remaining = effective_cap_chars - total_chars
         if remaining <= 0:
             blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
             break
@@ -416,11 +736,53 @@ def search_workspace(
         total_chars += len(text)
         blocks.append({"type": "text", "text": text})
 
-    return {
+    response: dict[str, Any] = {
         "isError": False,
         "content": blocks,
-        "_meta": {"fileMatchCount": file_match_count, "capChars": cap_chars},
+        "_meta": {"fileMatchCount": file_match_count, "capChars": effective_cap_chars},
     }
+    inline_chars_budget = max(1000, context_budget_tokens) * INLINE_CHARS_PER_TOKEN
+    if output_mode == "file_paths_with_content" and total_chars > inline_chars_budget:
+        spill_payload = {
+            "mode": output_mode,
+            "content": blocks,
+            "_meta": {
+                "fileMatchCount": file_match_count,
+                "capChars": effective_cap_chars,
+                "inlineChars": total_chars,
+                "inlineCharsBudget": inline_chars_budget,
+            },
+        }
+        spill_path = _spill_response_payload(spill_payload)
+        preview = ""
+        if blocks and isinstance(blocks[0], dict) and blocks[0].get("type") == "text":
+            preview = str(blocks[0].get("text", ""))[:240]
+        response = {
+            "isError": False,
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"[large response spilled] payload saved to {spill_path}. "
+                        "Use read on this file to inspect full results."
+                    ),
+                }
+            ],
+            "artifact": {
+                "path": str(spill_path),
+                "format": "json",
+                "bytes": spill_path.stat().st_size,
+                "preview": preview,
+            },
+            "_meta": {
+                "fileMatchCount": file_match_count,
+                "capChars": effective_cap_chars,
+                "inlineChars": total_chars,
+                "inlineCharsBudget": inline_chars_budget,
+                "spilled": True,
+            },
+        }
+    return response
 
 
 __all__ = ["MAX_STRUCTURED_OUTPUT_CHARS", "SearchOutputMode", "search_workspace"]

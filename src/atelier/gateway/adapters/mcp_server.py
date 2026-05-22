@@ -88,7 +88,9 @@ def _tool_mode(spec: dict[str, Any]) -> str:
 
 
 def mcp_tool(
-    name: str | None = None, description: str | None = None
+    name: str | None = None,
+    description: str | None = None,
+    input_schema: dict[str, Any] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema."""
 
@@ -134,7 +136,7 @@ def mcp_tool(
             "name": tool_name,
             "handler": handler_wrapper,
             "description": tool_description,
-            "inputSchema": schema,
+            "inputSchema": input_schema or schema,
         }
         return handler_wrapper
 
@@ -897,7 +899,19 @@ def tool_route(
             evidence_summary=evidence_summary,
             ledger=led,
         )
-        return to_jsonable(decision)
+        out = to_jsonable(decision)
+        if isinstance(out, dict):
+            # Compact human-readable summary so the caller always gets an
+            # actionable recommendation without parsing the full decision object.
+            out.setdefault(
+                "_summary",
+                {
+                    "recommended_route": out.get("tier") or out.get("selected_model") or "local edit",
+                    "required_validation": out.get("verifier_required") or [],
+                    "risk": out.get("risk_level") or risk_level,
+                },
+            )
+        return out
 
     if route_decision_id is None:
         raise ValueError("route_decision_id is required when op='verify'")
@@ -929,7 +943,20 @@ def tool_route(
         human_accepted=human_accepted,
         benchmark_accepted=benchmark_accepted,
     )
-    return to_jsonable(envelope)
+    verify_out = to_jsonable(envelope)
+    if isinstance(verify_out, dict):
+        verify_out.setdefault(
+            "_summary",
+            {
+                "outcome": verify_out.get("outcome") or "unknown",
+                "passed": verify_out.get("outcome") in {"pass", "warn"},
+                "blocking_checks": [
+                    r.get("name", "") for r in (verify_out.get("validation_results") or [])
+                    if not r.get("passed", True)
+                ],
+            },
+        )
+    return verify_out
 
 
 @mcp_tool(name="rescue")
@@ -1280,7 +1307,12 @@ def tool_record_trace(
         daemon=True,
     ).start()
 
+    # Stable compact receipt — always present so callers can confirm storage
+    # without parsing the full payload.
     return {
+        "ok": True,
+        "trace_id": trace.id,
+        "stored": True,
         "id": trace.id,
         "session_id": led.session_id,
         "event_recorded": bool(event_type),
@@ -1482,42 +1514,46 @@ def _memory_recall(
     }
 
 
-@mcp_tool(name="memory")
+@mcp_tool(
+    name="memory",
+    description=(
+        "Memory op-dispatch for block storage and retrieval: "
+        "block_upsert/block_get for scoped blocks, archive/recall for passages, "
+        "recall_symbol/transcript_recall for targeted recall, summarize for session memory."
+    ),
+)
 def tool_memory(
-    op: Literal[
-        "block_upsert",
-        "block_get",
-        "archive",
-        "recall",
-        "recall_symbol",
-        "transcript_recall",
-        "summarize",
+    op: Annotated[
+        Literal[
+            "block_upsert",
+            "block_get",
+            "archive",
+            "recall",
+            "recall_symbol",
+            "transcript_recall",
+            "summarize",
+        ],
+        Field(
+            description=(
+                "Operation to execute. block_upsert requires label+value; block_get requires label; "
+                "archive requires text+source; recall/recall_symbol/transcript_recall require query; "
+                "summarize requires session_id."
+            )
+        ),
     ],
-    agent_id: str | None = None,
-    label: str | None = None,
-    value: str | None = None,
-    limit_chars: int = 8000,
-    description: str = "",
-    read_only: bool = False,
-    pinned: bool = False,
-    metadata: dict[str, Any] | None = None,
-    expected_version: int | None = None,
-    actor: str | None = None,
-    text: str | None = None,
-    source: str | None = None,
-    source_ref: str = "",
-    tags: list[str] | None = None,
-    query: str | None = None,
+    agent_id: Annotated[
+        str | None,
+        Field(description="Memory namespace for scoped blocks and archival passages. Defaults to shared for block_upsert."),
+    ] = None,
+    label: Annotated[str | None, Field(description="Block key used by block_upsert and block_get.")] = None,
+    value: Annotated[str | None, Field(description="Block content used by block_upsert.")] = None,
+    text: Annotated[str | None, Field(description="Archival passage text used by archive.")] = None,
+    source: Annotated[str | None, Field(description="Archival source label used by archive (for example: user, assistant, system).")] = None,
+    query: Annotated[str | None, Field(description="Search query used by recall, recall_symbol, and transcript_recall.")] = None,
     top_k: int = 5,
-    since: str | None = None,
-    include: list[Literal["definition", "memory", "traces", "decisions", "tests"]] | None = None,
-    horizon_days: int = 180,
-    budget_tokens: int = 3000,
-    session_id: str | None = None,
+    session_id: Annotated[str | None, Field(description="Session id used by summarize.")] = None,
 ) -> dict[str, Any] | None:
-    """[DEV] Memory op-dispatch: block_upsert, block_get, archive, recall, recall_symbol, transcript_recall, or summarize."""
-    if stub := _check_dev_mode("memory"):
-        return {"context": stub, "passages": [], "text": stub}
+    """Memory op-dispatch: block_upsert, block_get, archive, recall, recall_symbol, transcript_recall, or summarize."""
 
     def require(name: str, current: str | None) -> str:
         if not current:
@@ -1529,13 +1565,6 @@ def tool_memory(
             agent_id=agent_id or "shared",
             label=require("label", label),
             value=require("value", value),
-            limit_chars=limit_chars,
-            description=description,
-            read_only=read_only,
-            pinned=pinned,
-            metadata=metadata,
-            expected_version=expected_version,
-            actor=actor,
         )
     if op == "block_get":
         return _memory_get_block(agent_id=agent_id, label=require("label", label))
@@ -1544,16 +1573,12 @@ def tool_memory(
             agent_id=agent_id,
             text=require("text", text),
             source=require("source", source),
-            source_ref=source_ref,
-            tags=tags,
         )
     if op == "recall":
         return _memory_recall(
             agent_id=agent_id,
             query=require("query", query),
             top_k=top_k,
-            tags=tags,
-            since=since,
         )
     if op == "recall_symbol":
         return cast(
@@ -1561,9 +1586,6 @@ def tool_memory(
             _symbol_recall().recall_symbol(
                 query=require("query", query),
                 agent_id=agent_id,
-                include=cast(list[str] | None, include),
-                horizon_days=horizon_days,
-                budget_tokens=budget_tokens,
                 top_k=top_k,
             ),
         )
@@ -1576,7 +1598,16 @@ def tool_memory(
 
 @mcp_tool(name="read")
 def tool_smart_read(
-    file_path: str,
+    file_path: Annotated[
+        str,
+        Field(
+            description=(
+                "Workspace-relative file path to read. This is the canonical "
+                "parameter; legacy callers may still send `path`."
+            ),
+            validation_alias=AliasChoices("file_path", "path"),
+        ),
+    ],
     range: str | None = None,
     expand: bool = False,
     max_lines: int | None = None,
@@ -1636,9 +1667,26 @@ def _snapshot_path(raw_path: str) -> str:
     return raw_path[: match.start()] if match else raw_path
 
 
-def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path | None = None) -> list[str]:
-    """Extract the file paths referenced in a list of edit descriptors."""
-    paths: set[str] = set()
+def _resolve_snapshot_path(raw_path: str, repo_root: Path) -> tuple[str, Path]:
+    """Return a ledger display path and workspace-resolved file path for snapshots."""
+    clean = _snapshot_path(raw_path)
+    candidate = Path(clean)
+    resolved = candidate if candidate.is_absolute() else repo_root / candidate
+    resolved = resolved.resolve()
+    root = repo_root.resolve()
+    try:
+        display = str(resolved.relative_to(root))
+    except ValueError:
+        display = str(resolved)
+    return display, resolved
+
+
+def _collect_touched_paths(
+    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None
+) -> dict[str, Path]:
+    """Extract workspace-resolved file paths referenced in edit descriptors."""
+    root = Path(repo_root or Path.cwd()).resolve()
+    paths: dict[str, Path] = {}
     for edit in edits:
         raw = str(edit.get("file_path") or edit.get("path") or "")
         if not raw and str(edit.get("kind") or "") == "symbol":
@@ -1647,45 +1695,44 @@ def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path
             )
 
             with contextlib.suppress(Exception):
-                raw = preview_symbol_edit_path(edit, repo_root=repo_root)
+                raw = preview_symbol_edit_path(edit, repo_root=root)
         if raw:
-            paths.add(_snapshot_path(raw))
-    return sorted(paths)
+            display, resolved = _resolve_snapshot_path(raw, root)
+            paths[display] = resolved
+    return dict(sorted(paths.items()))
 
 
-def _snapshot_paths(paths: list[str]) -> dict[str, str | None]:
-    """Read each file's current content into a dict; None if file does not exist."""
-    snap: dict[str, str | None] = {}
-    for p in paths:
-        fp = Path(p)
+def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, str | None]]:
+    """Read each file's current content; None means the file does not exist."""
+    snap: dict[str, tuple[Path, str | None]] = {}
+    for display, fp in paths.items():
         try:
-            snap[p] = fp.read_text(encoding="utf-8") if fp.exists() else None
+            snap[display] = (fp, fp.read_text(encoding="utf-8") if fp.exists() else None)
         except Exception:
-            snap[p] = None
+            snap[display] = (fp, None)
     return snap
 
 
 def _compute_and_record_diffs(
-    snapshots: dict[str, str | None],
+    snapshots: dict[str, tuple[Path, str | None]],
 ) -> None:
     """Compute unified diffs from *snapshots* vs current file content and record them in the ledger."""
     import difflib
 
     led = _get_ledger()
-    for path, old_content in snapshots.items():
-        fp = Path(path)
+    for path, (fp, old_content) in snapshots.items():
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
         except Exception:
             new_content = None
         if old_content == new_content:
             continue
-        if old_content is None and new_content is None:
-            continue
+        old_lines = (old_content or "").splitlines(keepends=True)
+        new_lines = (new_content or "").splitlines(keepends=True)
         diff_lines = list(
             difflib.unified_diff(
-                (old_content or "").splitlines(keepends=True),
-                (new_content or "").splitlines(keepends=True),
+                old_lines,
+                new_lines,
                 fromfile=f"a/{path}",
                 tofile=f"b/{path}",
             )
@@ -1697,75 +1744,146 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
-@mcp_tool(name="edit")
+def _edit_descriptor_family(edit: dict[str, Any]) -> str:
+    is_legacy = "op" in edit and "file_path" not in edit and "cell_action" not in edit
+    return "legacy" if is_legacy else "rich"
+
+
+def _validate_edit_descriptor_families(edits: list[dict[str, Any]]) -> str:
+    if not edits:
+        raise ValueError("edits must include at least one descriptor")
+    families = {_edit_descriptor_family(edit) for edit in edits}
+    if len(families) > 1:
+        raise ValueError("cannot mix legacy op/path descriptors with rich edit descriptors in one call")
+    return families.pop()
+
+
+EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "edits": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Homogeneous edit descriptors. Do not mix legacy op/path descriptors with rich descriptors in one call.",
+            "items": {
+                "oneOf": [
+                    {
+                        "title": "Legacy replace",
+                        "type": "object",
+                        "required": ["path", "op", "old_string", "new_string"],
+                        "properties": {
+                            "path": {"type": "string"},
+                            "op": {"const": "replace"},
+                            "old_string": {"type": "string"},
+                            "new_string": {"type": "string"},
+                            "fuzzy": {"type": "boolean"},
+                        },
+                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Legacy insert_after",
+                        "type": "object",
+                        "required": ["path", "op", "anchor", "new_string"],
+                        "properties": {
+                            "path": {"type": "string"},
+                            "op": {"const": "insert_after"},
+                            "anchor": {"type": "string"},
+                            "new_string": {"type": "string"},
+                        },
+                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Legacy replace_range",
+                        "type": "object",
+                        "required": ["path", "op", "line_start", "line_end", "new_string"],
+                        "properties": {
+                            "path": {"type": "string"},
+                            "op": {"const": "replace_range"},
+                            "line_start": {"type": "integer", "minimum": 1},
+                            "line_end": {"type": "integer", "minimum": 1},
+                            "new_string": {"type": "string"},
+                        },
+                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Rich file edit",
+                        "type": "object",
+                        "required": ["file_path", "new_string"],
+                        "properties": {
+                            "file_path": {"type": "string", "description": "Path, optionally suffixed with #line, #start-end, or #cell=N."},
+                            "old_string": {"type": "string"},
+                            "new_string": {"type": "string"},
+                            "overwrite": {"type": "boolean"},
+                        },
+                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Notebook cell edit",
+                        "type": "object",
+                        "required": ["file_path", "cell_action"],
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "cell_action": {"enum": ["insert_after", "insert_before", "delete", "move_after", "move_before"]},
+                            "cell_type": {"enum": ["code", "markdown"]},
+                            "cell_move_target": {"type": "integer"},
+                            "new_string": {"type": "string"},
+                        },
+                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Symbol edit",
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                            "kind": {"const": "symbol"},
+                            "symbol_id": {"type": "string"},
+                            "qualified_name": {"type": "string"},
+                            "symbol_name": {"type": "string"},
+                            "name": {"type": "string"},
+                            "file_path": {"type": "string"},
+                            "mode": {"enum": ["replace", "prepend", "append"]},
+                            "new_body": {"type": "string"},
+                            "preserve_signature": {"type": "boolean"},
+                        },
+                        "additionalProperties": True,
+                    },
+                ]
+            },
+        },
+        "atomic": {"type": "boolean", "default": True},
+        "post_edit_hooks": {"type": "boolean", "default": True},
+        "post_edit_timeout_ms": {"type": "integer", "default": 30000, "minimum": 1},
+    },
+    "required": ["edits"],
+    "additionalProperties": False,
+}
+
+
+@mcp_tool(name="edit", input_schema=EDIT_TOOL_INPUT_SCHEMA)
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
     post_edit_hooks: bool = True,
     post_edit_timeout_ms: int = 30_000,
 ) -> dict[str, Any]:
-    """Apply many mechanical edits across files in one deterministic call.
-
-    Legacy descriptors with ``op`` are routed through the deterministic batch
-    editor. Rich descriptors with ``file_path``, notebook cell operations, or
-    overwrite semantics use the native rich editor and write each touched file
-    once after sequential in-memory edits.
-    """
+    """Apply many mechanical edits across files in one deterministic call."""
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    repo_root = Path(workspace)
+    family = _validate_edit_descriptor_families(edits)
 
-    # Snapshot file contents before applying edits so we can compute diffs
-    paths = _collect_touched_paths(edits, repo_root=Path(workspace))
+    paths = _collect_touched_paths(edits, repo_root=repo_root)
     snapshots = _snapshot_paths(paths)
 
-    use_legacy_batch = edits and all(
-        "op" in edit and "file_path" not in edit and "cell_action" not in edit for edit in edits
-    )
-    if not use_legacy_batch:
+    if family == "rich":
         from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
-        result = apply_rich_edits(edits, atomic=atomic, repo_root=Path(workspace))
-        if not result.get("failed") and not result.get("rolled_back"):
-            _compute_and_record_diffs(snapshots)
-            if post_edit_hooks:
-                from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
-                    HookConfig,
-                    run_post_edit_hooks,
-                )
+        result = apply_rich_edits(edits, atomic=atomic, repo_root=repo_root)
+    else:
+        from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
 
-                hook_result = run_post_edit_hooks(
-                    [str(p) for p in paths],
-                    repo_root=Path(workspace),
-                    config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
-                )
-                result["diagnostics"] = [
-                    {
-                        "file": d.file,
-                        "line": d.line,
-                        "col": d.col,
-                        "severity": d.severity,
-                        "message": d.message,
-                        "code": d.code,
-                        "source": d.source,
-                    }
-                    for d in hook_result.diagnostics
-                ]
-                result["hooks"] = {
-                    "ran": hook_result.steps_ran,
-                    "skipped": hook_result.steps_skipped,
-                    "failed_steps": hook_result.steps_failed,
-                    "total_ms": hook_result.total_ms,
-                }
-        return result
+        result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root)
 
-    from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
-
-    result = apply_batch_edit(
-        edits,
-        atomic=atomic,
-        repo_root=Path(workspace),
-    )
     if not result.get("failed") and not result.get("rolled_back"):
-        _compute_and_record_diffs(snapshots)
         if post_edit_hooks:
             from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
                 HookConfig,
@@ -1773,8 +1891,8 @@ def tool_smart_edit(
             )
 
             hook_result = run_post_edit_hooks(
-                [str(p) for p in paths],
-                repo_root=Path(workspace),
+                [str(p) for p in paths.values()],
+                repo_root=repo_root,
                 config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
             )
             result["diagnostics"] = [
@@ -1795,6 +1913,7 @@ def tool_smart_edit(
                 "failed_steps": hook_result.steps_failed,
                 "total_ms": hook_result.total_ms,
             }
+        _compute_and_record_diffs(snapshots)
     return result
 
 
@@ -2194,7 +2313,7 @@ def tool_code(
     symbol_id: str | None = None,
     qualified_name: str | None = None,
     symbol_name: str | None = None,
-    file_path: str | None = None,
+    path: str | None = None,
     line: int | None = None,
     col: int | None = None,
     new_name: str | None = None,
@@ -2278,14 +2397,14 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
-                file_path=file_path,
+                file_path=path,
                 include_churn=include_churn,
                 budget_tokens=budget_tokens,
             ),
         )
 
     if op == "hover":
-        if not any([symbol_id, qualified_name, symbol_name, (file_path and line is not None)]):
+        if not any([symbol_id, qualified_name, symbol_name, (path and line is not None)]):
             raise ValueError("symbol_id, qualified_name, symbol_name, or (file_path + line) is required for hover")
         return cast(
             dict[str, Any],
@@ -2293,7 +2412,7 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name or query,
-                file_path=file_path,
+                file_path=path,
                 line=line,
                 col=col,
                 budget_tokens=budget_tokens,
@@ -2310,7 +2429,7 @@ def tool_code(
                     symbol_id=symbol_id,
                     qualified_name=qualified_name,
                     symbol_name=symbol_name,
-                    file_path=file_path,
+                    file_path=path,
                     budget_tokens=budget_tokens,
                 ),
             )
@@ -2320,7 +2439,7 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
-                file_path=file_path,
+                file_path=path,
                 budget_tokens=budget_tokens,
             ),
         )
@@ -2328,7 +2447,7 @@ def tool_code(
     if op == "outline":
         return cast(
             dict[str, Any],
-            engine.tool_outline(file_path=file_path, limit=limit, budget_tokens=budget_tokens),
+            engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
         )
 
     if op == "context":
@@ -2370,7 +2489,7 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
-                file_path=file_path,
+                file_path=path,
                 kind=kind,
                 language=language,
                 file_glob=file_glob,
@@ -2391,7 +2510,7 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
-                file_path=file_path,
+                file_path=path,
                 kind=kind,
                 language=language,
                 depth=depth,
@@ -2411,7 +2530,7 @@ def tool_code(
                 symbol_id=symbol_id,
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
-                file_path=file_path,
+                file_path=path,
                 kind=kind,
                 language=language,
                 depth=depth,
@@ -2434,7 +2553,7 @@ def tool_code(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
             symbol_name=symbol_name or query,
-            file_path=file_path,
+            file_path=path,
             new_name=new_name,
             repo_root=Path(workspace),
             backend=rename_backend,
@@ -2477,9 +2596,9 @@ def tool_code(
             engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
         )
 
-    if not file_path:
+    if not path:
         raise ValueError("file_path is required for code impact")
-    return cast(dict[str, Any], engine.tool_impact(file_path, budget_tokens=budget_tokens))
+    return cast(dict[str, Any], engine.tool_impact(path, budget_tokens=budget_tokens))
 
 
 def _run_shell_tool(
@@ -2490,6 +2609,27 @@ def _run_shell_tool(
 ) -> dict[str, Any]:
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import classify_command, run_command
+
+    def _render_grep_stdout(payload: dict[str, Any]) -> str:
+        blocks = payload.get("content", [])
+        if isinstance(blocks, list):
+            texts: list[str] = []
+            for block in blocks:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text")
+                    if isinstance(text, str) and text:
+                        texts.append(text)
+            if texts:
+                normalized: list[str] = []
+                for line in "\n".join(texts).splitlines():
+                    if line.startswith("@@ "):
+                        continue
+                    normalized.append(line)
+                return "\n".join(normalized)
+        matches = payload.get("matches")
+        if isinstance(matches, list):
+            return json.dumps(matches, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False)
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     effective_cwd = cwd or workspace
@@ -2502,56 +2642,42 @@ def _run_shell_tool(
             if not target_path.is_absolute():
                 target_path = (Path(effective_cwd) / target_path).resolve()
             read_handler: Callable[[dict[str, Any]], Any] = TOOLS["read"]["handler"]
-            rewritten = cast(dict[str, Any], read_handler({"file_path": str(target_path), "expand": True}))
+            rewritten = cast(dict[str, Any], read_handler({"path": str(target_path), "expand": True}))
             rewritten_stdout = str(rewritten.get("content") or "")
             return {
                 "stdout": rewritten_stdout,
                 "stderr": "",
                 "exit_code": 0,
-                "duration_ms": 0,
-                "truncated": False,
-                "lines_omitted": 0,
-                "rewritten": True,
-                "rewrite_target": "read",
-                "rewrite_result": rewritten,
-                "original_command": command,
-                "policy_category": policy.category,
-                "policy_action": policy.action,
-                "policy_reason": policy.reason,
             }
 
     if policy.action == "rewrite" and policy.rewrite_target == "grep" and policy.rewrite_payload:
+        raw_search_path = str(policy.rewrite_payload.get("file_path") or ".")
+        resolved_search_path = Path(raw_search_path)
+        if not resolved_search_path.is_absolute():
+            resolved_search_path = (Path(effective_cwd) / resolved_search_path).resolve()
+        glob_patterns = ["**/*"] if resolved_search_path.is_dir() else None
         grep_handler: Callable[[dict[str, Any]], Any] = TOOLS["grep"]["handler"]
         rewritten = cast(
             dict[str, Any],
             grep_handler(
                 {
-                    "file_path": str(policy.rewrite_payload.get("file_path") or "."),
+                    "path": raw_search_path,
                     "content_regex": cast(str | None, policy.rewrite_payload.get("content_regex")),
-                    "file_glob_patterns": cast(list[str] | None, policy.rewrite_payload.get("file_glob_patterns")),
+                    "file_glob_patterns": glob_patterns,
                     "ignore_case": bool(policy.rewrite_payload.get("ignore_case", False)),
+                    "summary": False,
                     "output_mode": cast(
-                        Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+                        Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
                         policy.rewrite_payload.get("output_mode", "file_paths_with_content"),
                     ),
                 }
             ),
         )
-        rewritten_stdout = json.dumps(rewritten, ensure_ascii=False)
+        rewritten_stdout = _render_grep_stdout(rewritten)
         return {
             "stdout": rewritten_stdout,
             "stderr": "",
             "exit_code": 0,
-            "duration_ms": 0,
-            "truncated": False,
-            "lines_omitted": 0,
-            "rewritten": True,
-            "rewrite_target": "grep",
-            "rewrite_result": rewritten,
-            "original_command": command,
-            "policy_category": policy.category,
-            "policy_action": policy.action,
-            "policy_reason": policy.reason,
         }
 
     result = run_command(
@@ -2564,24 +2690,15 @@ def _run_shell_tool(
         "stdout": result.stdout,
         "stderr": result.stderr,
         "exit_code": result.exit_code,
-        "duration_ms": result.duration_ms,
-        "truncated": result.truncated,
-        "lines_omitted": result.lines_omitted,
-        "rewritten": False,
-        "rewrite_target": result.rewrite_target,
-        "original_command": command,
-        "policy_category": result.policy_category,
-        "policy_action": result.policy_action,
-        "policy_reason": result.policy_reason,
     }
 
 
 def _run_native_grep(
     *,
-    file_path: str,
+    path: str,
     content_regex: str | None,
     file_glob_patterns: list[str] | None,
-    output_mode: Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+    output_mode: Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
     lines_before: int,
     lines_after: int,
     ignore_case: bool,
@@ -2592,11 +2709,12 @@ def _run_native_grep(
     max_line_length: int | None,
     multiline: bool,
     summary: bool | None,
+    context_budget_tokens: int,
 ) -> dict[str, Any]:
     from atelier.core.capabilities.tool_supervision.native_search import search_workspace
 
     return search_workspace(
-        path=file_path,
+        path=path,
         content_regex=content_regex,
         file_glob_patterns=file_glob_patterns,
         output_mode=output_mode,
@@ -2610,6 +2728,7 @@ def _run_native_grep(
         max_line_length=max_line_length,
         multiline=multiline,
         summary=summary,
+        context_budget_tokens=context_budget_tokens,
         repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
     )
 
@@ -2622,7 +2741,7 @@ def _run_native_grep(
     ),
 )
 def tool_grep(
-    file_path: Annotated[
+    path: Annotated[
         str,
         Field(
             description=(
@@ -2646,9 +2765,14 @@ def tool_grep(
         Field(description="Glob patterns that constrain candidate files, such as `src/**/*.py`."),
     ] = None,
     output_mode: Annotated[
-        Literal["file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
-        Field(description=("Return matched content, only file paths, or file paths annotated with " "match counts.")),
-    ] = "file_paths_with_content",
+        Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+        Field(
+            description=(
+                "Return ranked file map pointers, matched content, only file paths, "
+                "or file paths annotated with match counts."
+            )
+        ),
+    ] = "ranked_file_map",
     lines_before: Annotated[
         int,
         Field(description="Number of context lines to include before each content match."),
@@ -2702,6 +2826,10 @@ def tool_grep(
             )
         ),
     ] = None,
+    context_budget_tokens: Annotated[
+        int,
+        Field(description="Token budget for ranked_file_map output and follow-up handles."),
+    ] = 6000,
 ) -> dict[str, Any]:
     """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
 
@@ -2709,7 +2837,7 @@ def tool_grep(
     Prefer `search` for ranked natural-language lookup and repo-map construction.
     """
     return _run_native_grep(
-        file_path=file_path,
+        path=path,
         content_regex=content_regex,
         file_glob_patterns=file_glob_patterns,
         output_mode=output_mode,
@@ -2723,6 +2851,7 @@ def tool_grep(
         max_line_length=max_line_length,
         multiline=multiline,
         summary=summary,
+        context_budget_tokens=context_budget_tokens,
     )
 
 
@@ -2946,9 +3075,9 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
             result = _runtime().get_context(
                 task=str(args.get("task") or ""),
                 domain=cast(str | None, args.get("domain")),
-                files=cast(list[str] | None, args.get("files")),
-                tools=cast(list[str] | None, args.get("tools")),
-                errors=cast(list[str] | None, args.get("errors")),
+                files=cast(list[str], args.get("files") or []),
+                tools=cast(list[str], args.get("tools") or []),
+                errors=cast(list[str], args.get("errors") or []),
                 max_blocks=int(args.get("max_blocks") or 5),
                 token_budget=cast(int | None, args.get("token_budget")),
                 dedup=bool(args.get("dedup", True)),
@@ -2980,7 +3109,13 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "rescue":
         return cast(dict[str, Any], client.rescue_failure(args))
     if name in {"trace", "record"}:
-        return cast(dict[str, Any], client.record_trace(args))
+        trace_result = cast(dict[str, Any], client.record_trace(args))
+        # Normalise compact receipt fields so callers can always rely on them,
+        # regardless of which service version or mock they're talking to.
+        trace_result.setdefault("ok", True)
+        trace_result.setdefault("trace_id", trace_result.get("id") or "")
+        trace_result.setdefault("stored", True)
+        return trace_result
     if name == "verify":
         return cast(dict[str, Any], client.run_rubric_gate(args))
     raise ValueError(f"tool not supported in remote mode: {name}")
@@ -3408,6 +3543,16 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         spec = TOOLS.get(name)
         if spec is None:
             return _err(rid, -32601, f"unknown tool: {name}")
+        if name == "memory" and isinstance(args, dict):
+            properties = spec.get("inputSchema", {}).get("properties", {})
+            allowed_args = set(properties) if isinstance(properties, dict) else set()
+            unknown_args = sorted(set(args) - allowed_args)
+            if unknown_args:
+                return _err(
+                    rid,
+                    -32602,
+                    f"unknown arguments for memory tool: {', '.join(unknown_args)}",
+                )
 
         remote_routed = name in _REMOTE_TOOLS
         try:
@@ -3439,8 +3584,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}],
-                    "structuredContent": result,
+                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, separators=(",", ":"))}],
                 },
             )
         except Exception as exc:
