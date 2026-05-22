@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -790,8 +791,6 @@ def tool_get_context(
     )
     result: dict[str, Any] = payload if isinstance(payload, dict) else {"context": payload}
     if bootstrap["status"] != "warm":
-        import threading
-
         threading.Thread(
             target=_run_worker_tick_safe,
             args=(_atelier_root(),),
@@ -1299,8 +1298,6 @@ def tool_record_trace(
 
     # Kick off an immediate background consolidation tick so knowledge blocks
     # are extracted from this trace without waiting for the daemon's next cycle.
-    import threading
-
     threading.Thread(
         target=_run_worker_tick_safe,
         args=(_atelier_root(),),
@@ -1455,7 +1452,7 @@ def _memory_upsert_block(
     return {
         "id": stored.id,
         "version": stored.version,
-        "arbitration": decision.model_dump(mode="json"),
+        "arbitration": {"op": decision.op, "reason": decision.reason},
     }
 
 
@@ -1492,7 +1489,7 @@ def _memory_recall(
 ) -> dict[str, Any]:
     """Recall relevant archival memory passages."""
     since_dt = datetime.fromisoformat(since) if since else None
-    passages, recall = _archival_recall().recall(
+    passages, _ = _archival_recall().recall(
         agent_id=agent_id,
         query=query,
         top_k=top_k,
@@ -1506,11 +1503,9 @@ def _memory_recall(
                 "text": passage.text,
                 "source_ref": passage.source_ref,
                 "tags": passage.tags,
-                "legacy_stub": passage.embedding_provenance == "legacy_stub",
             }
             for passage in passages
         ],
-        "recall_id": recall.id,
     }
 
 
@@ -1543,14 +1538,14 @@ def tool_memory(
     ],
     agent_id: Annotated[
         str | None,
-        Field(description="Memory namespace for scoped blocks and archival passages. Defaults to shared for block_upsert."),
+        Field(description="Memory namespace for scoped blocks and archival passages. Defaults to shared namespace when not specified."),
     ] = None,
     label: Annotated[str | None, Field(description="Block key used by block_upsert and block_get.")] = None,
     value: Annotated[str | None, Field(description="Block content used by block_upsert.")] = None,
     text: Annotated[str | None, Field(description="Archival passage text used by archive.")] = None,
-    source: Annotated[str | None, Field(description="Archival source label used by archive (for example: user, assistant, system).")] = None,
+    source: Annotated[str | None, Field(description="Origin label for archive, identifying who created this memory (for example: user, assistant, system).")] = None,
     query: Annotated[str | None, Field(description="Search query used by recall, recall_symbol, and transcript_recall.")] = None,
-    top_k: int = 5,
+    top_k: Annotated[int, Field(description="Max results to return for recall and recall_symbol ops.")] = 5,
     session_id: Annotated[str | None, Field(description="Session id used by summarize.")] = None,
 ) -> dict[str, Any] | None:
     """Memory op-dispatch: block_upsert, block_get, archive, recall, recall_symbol, transcript_recall, or summarize."""
@@ -1634,6 +1629,7 @@ def tool_smart_read(
       mode: "outline" | "range" | "full",
       cache_hit: bool,                   # served from in-memory cache (SHA-256 keyed)
       tokens_saved: int,                 # tiktoken count vs reading the full file
+      language: str,                     # detected language (python, go, typescript, ...)
       outline: {kind, language, ...},    # only when mode == "outline"
       content: str,                      # only when mode in {range, full}
       path: str,
@@ -1657,6 +1653,7 @@ def tool_smart_read(
         "content": payload.get("content"),
         "path": payload.get("path", str(target)),
         "range": payload.get("range"),
+        "language": payload.get("language"),
     }
 
 
@@ -2212,8 +2209,7 @@ def _memory_summary(session_id: str) -> dict[str, Any]:
         session_id: The run identifier to summarize.
 
     Output:
-        tokens_pre, tokens_post, summary_md, evicted_event_ids,
-        archived_passage_ids, strategy
+        tokens_pre, tokens_post, summary_md, evicted_event_ids, strategy
     """
     try:
         from atelier.core.capabilities.context_compression.capability import (
@@ -2242,7 +2238,6 @@ def _memory_summary(session_id: str) -> dict[str, Any]:
             "tokens_post": result.chars_after // 4,
             "summary_md": "\n".join(summary_lines),
             "evicted_event_ids": [d.kind for d in result.dropped],
-            "archived_passage_ids": [],
             "strategy": "tfidf",
         }
     except Exception as exc:
@@ -2978,31 +2973,95 @@ def _compact_score(
     return {
         "complexity": complexity,
         "must_keep_count": len(must_keep),
-        "message": (f"Complexity {complexity:.2f} recorded with {len(must_keep)} must-keep hints."),
+        "message": (
+            f"Complexity {complexity:.2f} scored with {len(must_keep)} must-keep hints; "
+            "persisted to ledger for advise and session compaction."
+        ),
     }
 
 
 @mcp_tool(name="compact")
 def tool_compact(
-    op: Literal["output", "session", "advise", "score"],
-    content: str = "",
-    content_type: str = "unknown",
-    budget_tokens: int = 500,
-    recovery_hint: str | None = None,
-    session_id: str | None = None,
-    complexity: float = 0.5,
-    must_keep: list[str] | None = None,
+    op: Annotated[
+        Literal["output", "session", "advise", "score"],
+        Field(
+            description=(
+                "output: compress a single tool-output string; "
+                "session: compress the full run ledger into a compact state block; "
+                "advise: check context utilisation and return a compaction recommendation; "
+                "score: record model-assessed complexity and must-keep keywords into the ledger."
+            )
+        ),
+    ],
+    content: Annotated[
+        str,
+        Field(description="[output] The tool output string to compact."),
+    ] = "",
+    content_type: Annotated[
+        str,
+        Field(
+            description=(
+                "[output] Content type hint — one of: file, grep, bash, tool_output, unknown. "
+                "Controls which deterministic compaction strategy is used."
+            )
+        ),
+    ] = "unknown",
+    budget_tokens: Annotated[
+        int,
+        Field(description="[output] Target token budget for the compacted result."),
+    ] = 500,
+    recovery_hint: Annotated[
+        str | None,
+        Field(
+            description=(
+                "[output] How to recover the full output if needed. "
+                "Defaults to a generic re-run suggestion."
+            )
+        ),
+    ] = None,
+    session_id: Annotated[
+        str | None,
+        Field(description="[session|advise] Override the run-ledger session ID. Usually omit."),
+    ] = None,
+    complexity: Annotated[
+        float,
+        Field(
+            description=(
+                "[score] Model-assessed task complexity - float 0.0-1.0. "
+                "0 = trivial/read-only; 1.0 = deep debugging or large refactor."
+            )
+        ),
+    ] = 0.5,
+    must_keep: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "[score] Keywords or short phrases the model needs preserved verbatim across "
+                "compaction. Stored in the ledger and surfaced in subsequent advise calls."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Compact op-dispatch: output, session, advise, or score.
 
     ops:
-      output  - compress a single tool output string
-      session - compress the full run ledger into a compact state block
-      advise  - check context utilisation and advise whether to compact
-      score   - record model-assessed complexity + must-keep keywords
+      output  - Compress a single tool output string.
+                Required: content. Optional: content_type, budget_tokens, recovery_hint.
+      session - Compress the full run ledger into a compact state block.
+                Optional: session_id (override).
+      advise  - Check context utilisation and advise whether to compact now.
+                Optional: session_id (override).
+      score   - Record model-assessed complexity + must-keep keywords into the ledger.
+                Optional: complexity (default 0.5), must_keep.
     """
     if op == "score":
-        return _compact_score(complexity=complexity, must_keep=must_keep or [])
+        result = _compact_score(complexity=complexity, must_keep=must_keep or [])
+        # Persist to ledger so subsequent advise calls can surface these hints.
+        with contextlib.suppress(Exception):
+            led = _get_ledger()
+            led.agent_settings["compact_complexity"] = result["complexity"]
+            led.agent_settings["compact_must_keep"] = must_keep or []
+        return result
     if op == "output":
         return _compact_tool_output(
             content=content,
@@ -3645,8 +3704,6 @@ def serve() -> None:
 
 
 def main() -> None:
-    import threading
-
     # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
     os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
