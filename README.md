@@ -156,7 +156,7 @@ The installer already attempts host integration when the relevant CLI is present
 - Codex CLI: MCP + AGENTS.md — [docs/hosts/codex-install.md](docs/hosts/codex-install.md)
 - Copilot: MCP + instructions — [docs/hosts/copilot-install.md](docs/hosts/copilot-install.md)
 - opencode: MCP — [docs/hosts/opencode-install.md](docs/hosts/opencode-install.md)
-- Gemini CLI: MCP — [docs/hosts/gemini-cli-install.md](docs/hosts/gemini-cli-install.md)
+- Antigravity: MCP — [docs/hosts/antigravity-install.md](docs/hosts/antigravity-install.md)
 
 → Full host overview: [docs/hosts/all-agent-clis.md](docs/hosts/all-agent-clis.md)
 
@@ -224,7 +224,7 @@ rescue = client.rescue_failure(
 Atelier is a context runtime, not an agent framework and not a general-purpose vector database.
 
 ```text
-Agent Host (Claude Code / Codex / Copilot / opencode / Gemini CLI)
+Agent Host (Claude Code / Codex / Copilot / opencode / Antigravity)
         |
         |  MCP stdio  (or CLI / Python SDK)
         v

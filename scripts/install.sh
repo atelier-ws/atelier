@@ -58,7 +58,6 @@ ATELIER_SERVICECTL_INTERVAL_SECONDS="${ATELIER_SERVICECTL_INTERVAL_SECONDS:-60}"
 ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS="${ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS:-21600}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
-ATELIER_NO_IMPORT="${ATELIER_NO_IMPORT:-0}"
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 STACK_STARTED=0
@@ -223,7 +222,7 @@ prepare_repo() {
 }
 
 install_console_scripts() {
-    local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,telemetry"
+    local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
     local install_args=(tool install --force)
 
@@ -280,17 +279,6 @@ install_code_tools() {
     local os_type
     os_type="$(uname -s)"
 
-    # ruff (Python formatter + linter, cross-platform via uv)
-    if command -v uv >/dev/null 2>&1; then
-        info "Installing ruff (formatter/linter)..."
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] uv tool install ruff"
-        else
-            uv tool install ruff 2>/dev/null || warn "ruff install failed — post-edit Python hooks will be skipped"
-        fi
-    else
-        warn "uv not found — skipping ruff install"
-    fi
 
     # prettier + eslint + ts-morph (TypeScript/JavaScript tools, require npm)
     if command -v npm >/dev/null 2>&1; then
@@ -331,12 +319,6 @@ install_code_tools() {
         info "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
 
-    # rope (Python scope-correct rename backend — installed as an Atelier extra)
-    if python3 -c "import rope" 2>/dev/null; then
-        info "Found rope: scope-correct Python rename is available"
-    else
-        warn "rope not installed — run 'pip install atelier[rename]' to enable scope-correct Python symbol rename"
-    fi
 }
 
 main() {
@@ -496,23 +478,8 @@ main() {
     echo "    atelier stack start         - Start production API and frontend (requires npm)"
     echo "    atelier stack stop          - Stop the visualization stack"
     echo "    atelier stack logs          - View stack logs"
-    echo "    atelier-status              - Show one-line status of the active reasoning run"
-
-    if [[ "$ATELIER_DRY_RUN" != "1" ]] && [[ "$ATELIER_NO_IMPORT" != "1" ]]; then
-        echo ""
-        info "Importing agent sessions (all available history)..."
-        "$ATELIER_BIN_DIR/atelier" import \
-            && info "Session import complete." \
-            || degrade "Session import failed or no sessions found."
-
-        echo ""
-        info "Collecting and storing external reports (today, week, month)..."
-        for period in today week month; do
-            "$ATELIER_BIN_DIR/atelier" external-report --tool all --period "$period" --persist \
-                && info "external reports collected for $period." \
-                || degrade "external reports failed for $period."
-        done
-    fi
+    echo "    atelier status              - Show one-line status of the active reasoning run"
+    echo "    atelier import              - Import agent sessions from all available history sources (CLI, VS Code, etc.)"
 
     print_final_report
     if [[ ${#ERRORS[@]} -gt 0 ]]; then
