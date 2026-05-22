@@ -236,7 +236,7 @@ atelier init
 | ---------------------- | ----------- | ------------------------------------------- |
 | `ATELIER_SERVICE_HOST` | `127.0.0.1` | Service bind host                           |
 | `ATELIER_SERVICE_PORT` | `8787`      | Service port                                |
-| `ATELIER_REQUIRE_AUTH` | `true`      | Require Bearer auth                         |
+| `ATELIER_REQUIRE_AUTH` | `false`     | Require Bearer auth                         |
 | `ATELIER_API_KEY`      | `""`        | Bearer token for authenticated service mode |
 
 ### MCP

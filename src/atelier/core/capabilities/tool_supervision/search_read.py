@@ -151,7 +151,7 @@ def _file_outline(path: str, source: str, lang: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
-# Safe grep wrapper (mirrors cached_grep security checks)
+# Safe ripgrep wrapper (mirrors cached_grep security checks)
 # ---------------------------------------------------------------------------
 
 _SHELL_METACHARS_RE = re.compile(r"[;&|`$<>()\n\r]")
@@ -169,10 +169,24 @@ def _assert_safe_args(pattern: str, path: str) -> None:
 
 
 def _run_grep(pattern: str, search_path: str) -> str:
-    """Run grep -rn and return raw stdout (capped at 256 KB)."""
+    """Run rg and return raw stdout (capped at 256 KB)."""
     try:
         proc = subprocess.run(
-            ["grep", "-rn", "--", pattern, search_path],
+            [
+                "rg",
+                "-H",
+                "-n",
+                "--no-heading",
+                "--color",
+                "never",
+                "--hidden",
+                "--no-ignore",
+                "--glob",
+                "!.git",
+                "--",
+                pattern,
+                search_path,
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -180,7 +194,7 @@ def _run_grep(pattern: str, search_path: str) -> str:
         )
         return proc.stdout[:262144]  # 256 KB cap
     except (OSError, subprocess.SubprocessError) as exc:
-        return f"(grep failed: {exc})"
+        return f"(rg failed: {exc})"
 
 
 def _cache_state_path(repo_root: Path) -> Path:
@@ -320,7 +334,7 @@ def search_read(
     """Combined search + read.
 
     Args:
-        query: Pattern to search for (passed to grep -rn).
+        query: Pattern to search for (passed to rg).
         path: Directory or file to search in.
         max_files: Maximum number of files to return results for.
         max_chars_per_file: Cap on snippet text per file.

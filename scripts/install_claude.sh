@@ -96,37 +96,6 @@ run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
 PLUGIN_DIR="$STAGING_DIR"
 INSTALL_SOURCE_DIR="$STAGING_DIR"
 
-if $WORKSPACE_SET; then
-    NEW_MCP_ENTRY=$(cat <<JSON
-{
-  "mcpServers": {
-    "atelier": {
-      "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "claude"],
-      "env": {
-        "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
-      }
-    }
-  }
-}
-JSON
-)
-else
-    NEW_MCP_ENTRY=$(cat <<JSON
-{
-  "mcpServers": {
-    "atelier": {
-      "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "claude"]
-    }
-  }
-}
-JSON
-)
-fi
-
 if $PRINT_ONLY; then
     echo ""
     echo "=== Atelier Claude Code - Install Steps ==="
@@ -140,8 +109,8 @@ if $PRINT_ONLY; then
     echo "  claude plugin install ${PLUGIN_REF}"
     echo ""
     if $WORKSPACE_SET; then
-        echo "Step 3 - Create/merge ${MCP_JSON}:"
-        echo "$NEW_MCP_ENTRY"
+        echo "Step 3 - Ensure project-level MCP and agent rules (run once per project):"
+        echo "  bash scripts/install_agents.sh --workspace '${WORKSPACE}'"
         echo ""
         echo "Step 4 - Optional project setting:"
         echo "  set env.CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
@@ -278,37 +247,11 @@ else
 fi
 
 # ---- MCP config -------------------------------------------------------------
+# NOTE: Project-level .mcp.json is handled by scripts/install_agents.sh.
+# This installer only deals with Claude-specific global/user MCP and settings.
 if $WORKSPACE_SET; then
-    run "mkdir -p '$(dirname "$MCP_JSON")'"
-    if $DRY_RUN; then
-        echo "  [dry-run] merge atelier entry into ${MCP_JSON}"
-    elif [ ! -f "${MCP_JSON}" ]; then
-        info "Creating ${MCP_JSON} with atelier entry"
-        echo "${NEW_MCP_ENTRY}" > "${MCP_JSON}"
-    else
-        HAS=$(python3 -c "
-import json
-d = json.load(open('${MCP_JSON}'))
-servers = d.get('mcpServers', {})
-print('yes' if 'atelier' in servers else 'no')
-" 2>/dev/null || echo "error")
-        if [ "$HAS" = "yes" ]; then
-            info "atelier entry already in ${MCP_JSON}"
-        else
-            info "Merging atelier entry into ${MCP_JSON}"
-            python3 - <<PYEOF
-import json
-from pathlib import Path
-
-path = Path('${MCP_JSON}')
-existing = json.loads(path.read_text(encoding='utf-8') or '{}')
-new_entry = json.loads('''${NEW_MCP_ENTRY}''')
-existing.setdefault('mcpServers', {}).update(new_entry['mcpServers'])
-path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
-PYEOF
-            info "atelier entry merged into ${MCP_JSON}"
-        fi
-    fi
+    info "Project-level .mcp.json is managed by scripts/install_agents.sh — skipping"
+    info "  Run: scripts/install_agents.sh --workspace '${WORKSPACE}'"
 else
     if $DRY_RUN; then
         echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"

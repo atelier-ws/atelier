@@ -302,14 +302,16 @@ if $PRINT_ONLY; then
         echo "   cd '${CODEX_HOME}/.tmp/plugins' && git add -A && git commit -m 'add atelier plugin'"
         echo "   codex plugin add atelier@openai-curated"
         echo ""
-        echo "5. Install Codex instructions:"
-    echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${AGENTS_FILE}'"
-    echo ""
     if $WORKSPACE_SET; then
+        echo "5. Install universal project agents (run once per project):"
+        echo "   bash scripts/install_agents.sh --workspace '${WORKSPACE}'"
         echo ""
-                echo "6. Install task templates:"
+        echo "6. Install task templates:"
         echo "   mkdir -p '${TASKS_DEST_DIR}'"
         echo "   cp '${ATELIER_REPO}/integrations/codex/tasks/'*.md '${TASKS_DEST_DIR}/'"
+    else
+        echo "5. Install Codex instructions:"
+        echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${AGENTS_FILE}'"
     fi
     exit 0
 fi
@@ -322,7 +324,14 @@ ensure_codex_mcp
 install_codex_plugin
 
 # ---- AGENTS.md --------------------------------------------------------------
-merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
+# NOTE: Project-level AGENTS.md is handled by scripts/install_agents.sh.
+# Only write AGENTS.md in global mode (Codex user dir).
+if $WORKSPACE_SET; then
+    info "Project-level AGENTS.md is managed by scripts/install_agents.sh — skipping"
+    info "  Run: scripts/install_agents.sh --workspace '${WORKSPACE}'"
+else
+    merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
+fi
 
 # ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
@@ -441,6 +450,8 @@ fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"
+elif $WORKSPACE_SET; then
+    vwarn "AGENTS.md missing atelier:code persona — run: scripts/install_agents.sh --workspace '${WORKSPACE}'"
 else
     vfail "AGENTS.md missing or has no atelier:code persona: $AGENTS_FILE"
 fi

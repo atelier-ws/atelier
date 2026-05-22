@@ -16,6 +16,7 @@
 #   ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS Periodic maintenance interval (default: 21600)
 #   ATELIER_DRY_RUN    If set to 1, print planned actions and exit
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
+#   ATELIER_NO_OPENMEMORY If set to 1, skip installing the OpenMemory sidecar service
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #
@@ -58,6 +59,7 @@ ATELIER_SERVICECTL_INTERVAL_SECONDS="${ATELIER_SERVICECTL_INTERVAL_SECONDS:-60}"
 ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS="${ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS:-21600}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
+ATELIER_NO_OPENMEMORY="${ATELIER_NO_OPENMEMORY:-0}"
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 STACK_STARTED=0
@@ -224,7 +226,7 @@ prepare_repo() {
 install_console_scripts() {
     local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
-    local install_args=(tool install --force)
+    local install_args=(tool install --quiet --force)
 
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
         install_args+=(--editable)
@@ -343,6 +345,15 @@ main() {
         stack_expected=1
     fi
 
+    local openmemory_available=0
+    if [[ "$ATELIER_NO_OPENMEMORY" != "1" ]] \
+        && command -v git >/dev/null 2>&1 \
+        && command -v docker >/dev/null 2>&1 \
+        && command -v make >/dev/null 2>&1 \
+        && [[ -n "${ATELIER_OPENMEMORY_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}" ]]; then
+        openmemory_available=1
+    fi
+
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
         info "Local mode: using current directory as an editable install source"
         ATELIER_INSTALL_DIR="$(pwd)"
@@ -427,6 +438,9 @@ main() {
             local background_args=()
             if [[ "$stack_available" == "1" ]]; then
                 background_args+=("--with-stack")
+            fi
+            if [[ "$openmemory_available" == "1" ]]; then
+                background_args+=("--with-openmemory")
             fi
 
             if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
