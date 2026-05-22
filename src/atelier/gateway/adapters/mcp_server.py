@@ -1849,9 +1849,22 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 ]
             },
         },
-        "atomic": {"type": "boolean", "default": True},
-        "post_edit_hooks": {"type": "boolean", "default": True},
-        "post_edit_timeout_ms": {"type": "integer", "default": 30000, "minimum": 1},
+        "atomic": {
+            "type": "boolean",
+            "default": True,
+            "description": "Roll back all edits if any one descriptor fails. Set false only when partial success is acceptable.",
+        },
+        "post_edit_hooks": {
+            "type": "boolean",
+            "default": True,
+            "description": "Run post-edit hooks (formatter, linter, LSP diagnostics) on touched files. Diagnostics appear in the result.",
+        },
+        "post_edit_timeout_ms": {
+            "type": "integer",
+            "default": 30000,
+            "minimum": 1,
+            "description": "Total wall-clock budget for all post-edit hooks in milliseconds. Increase only for slow formatters.",
+        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -1865,7 +1878,24 @@ def tool_smart_edit(
     post_edit_hooks: bool = True,
     post_edit_timeout_ms: int = 30_000,
 ) -> dict[str, Any]:
-    """Apply many mechanical edits across files in one deterministic call."""
+    """Apply many mechanical edits across files in one deterministic call.
+
+    Choose the right descriptor family for each edit (all must be the same family):
+
+    Rich (preferred) — ``file_path`` required:
+      - Replace text:    {file_path, old_string, new_string}
+      - Create/overwrite:{file_path, new_string, overwrite: true}
+      - Line-scoped:     {file_path: "foo.py#10-20", old_string, new_string}
+      - Notebook cell:   {file_path, cell_action: insert_after|delete|..., new_string}
+      - Symbol:          {kind: "symbol", symbol_id|qualified_name|name, mode, new_body}
+
+    Legacy — ``path`` + ``op`` required:
+      - replace:       {path, op: "replace", old_string, new_string, fuzzy?}
+      - insert_after:  {path, op: "insert_after", anchor, new_string}
+      - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
+
+    Returns: {applied, failed, rolled_back, writes?, diagnostics?, hooks?}
+    """
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     repo_root = Path(workspace)
     family = _validate_edit_descriptor_families(edits)
@@ -1889,29 +1919,32 @@ def tool_smart_edit(
                 run_post_edit_hooks,
             )
 
-            hook_result = run_post_edit_hooks(
-                [str(p) for p in paths.values()],
-                repo_root=repo_root,
-                config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
-            )
-            result["diagnostics"] = [
-                {
-                    "file": d.file,
-                    "line": d.line,
-                    "col": d.col,
-                    "severity": d.severity,
-                    "message": d.message,
-                    "code": d.code,
-                    "source": d.source,
+            try:
+                hook_result = run_post_edit_hooks(
+                    [str(p) for p in paths.values()],
+                    repo_root=repo_root,
+                    config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
+                )
+                result["diagnostics"] = [
+                    {
+                        "file": d.file,
+                        "line": d.line,
+                        "col": d.col,
+                        "severity": d.severity,
+                        "message": d.message,
+                        "code": d.code,
+                        "source": d.source,
+                    }
+                    for d in hook_result.diagnostics
+                ]
+                result["hooks"] = {
+                    "ran": hook_result.steps_ran,
+                    "skipped": hook_result.steps_skipped,
+                    "failed_steps": hook_result.steps_failed,
+                    "total_ms": hook_result.total_ms,
                 }
-                for d in hook_result.diagnostics
-            ]
-            result["hooks"] = {
-                "ran": hook_result.steps_ran,
-                "skipped": hook_result.steps_skipped,
-                "failed_steps": hook_result.steps_failed,
-                "total_ms": hook_result.total_ms,
-            }
+            except Exception as hook_exc:
+                result["hooks"] = {"error": str(hook_exc)}
         _compute_and_record_diffs(snapshots)
     return result
 
@@ -2864,6 +2897,51 @@ def tool_grep(
         "full-file ranked reads, or repo maps seeded from known files. Use `grep` for "
         "regex, glob, type-filter, or context-line search."
     ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Ranked search query. Required for `chunks` and `full` mode.",
+            },
+            "file_path": {
+                "type": "string",
+                "default": ".",
+                "description": (
+                    "Workspace-relative file or directory to search. This is the canonical "
+                    "search root parameter; legacy callers may still send `path`."
+                ),
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["chunks", "full", "map"],
+                "default": "chunks",
+                "description": (
+                    "`chunks` returns ranked snippets per file, `full` returns fuller file "
+                    "content up to limits, and `map` builds a repo map from `seed_files`."
+                ),
+            },
+            "max_files": {
+                "type": "integer",
+                "default": 10,
+                "description": "Maximum number of ranked files to return.",
+            },
+            "seed_files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Seed files that bias ranking. Required when `mode='map'` because repo-map "
+                    "mode expands outward from these files."
+                ),
+            },
+            "budget_tokens": {
+                "type": "integer",
+                "default": 2000,
+                "description": "Total token budget for ranked search output or repo-map output.",
+            },
+        },
+        "required": [],
+    },
 )
 def tool_smart_search(
     query: Annotated[
@@ -2931,9 +3009,8 @@ def tool_smart_search(
         raise ValueError("query is required for ranked search; use grep for regex/glob search")
     from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 
-    assert query is not None
     return smart_search(
-        query=query,
+        query=query or "",
         path=file_path,
         mode=mode,
         max_files=max_files,
