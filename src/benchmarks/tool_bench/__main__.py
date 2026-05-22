@@ -41,9 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--tools",
         nargs="+",
-        default=["read", "shell", "search"],
+        default=["read", "shell", "search", "grep"],
         metavar="TOOL",
-        help="Tools to benchmark: read shell search (default: all three)",
+        help="Tools to benchmark: read shell search grep (default: all four)",
     )
     p.add_argument(
         "--out",
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     hosts: tuple[str, ...] = HOSTS if "all" in args.hosts else tuple(args.hosts)
 
     # Resolve tools
-    tools_all = ("read", "shell", "search")
+    tools_all = ("read", "shell", "search", "grep")
     if "all" in args.tools:
         tools: tuple[str, ...] = tools_all
     else:

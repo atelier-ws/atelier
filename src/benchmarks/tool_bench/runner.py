@@ -155,6 +155,41 @@ def _builtin_grep(pattern: str, path: str) -> tuple[str, float]:
     return r.stdout, time.perf_counter() - t0
 
 
+def _builtin_grep_direct(args: dict[str, Any]) -> tuple[str, float]:
+    """Run rg directly matching the atelier grep tool args."""
+    pattern = str(args.get("content_regex", ""))
+    path = str(args.get("file_path", "."))
+    globs: list[str] = args.get("file_glob_patterns") or []
+    output_mode = str(args.get("output_mode") or "file_paths_with_content")
+    ignore_case = bool(args.get("ignore_case"))
+    multiline = bool(args.get("multiline"))
+    lines_before = int(args.get("lines_before") or 0)
+    lines_after = int(args.get("lines_after") or 0)
+
+    cmd = ["rg", "--no-heading", "--color", "never"]
+    if output_mode == "file_paths_only":
+        cmd.append("--files-with-matches")
+    elif output_mode == "file_paths_with_match_count":
+        cmd.append("--count")
+    else:
+        cmd.append("-n")
+    if ignore_case:
+        cmd.append("-i")
+    if multiline:
+        cmd.append("--multiline")
+    if lines_before:
+        cmd += ["-B", str(lines_before)]
+    if lines_after:
+        cmd += ["-A", str(lines_after)]
+    for g in globs:
+        cmd += ["--glob", g]
+    cmd += [pattern, path]
+
+    t0 = time.perf_counter()
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    return r.stdout, time.perf_counter() - t0
+
+
 # ---------------------------------------------------------------------------
 # Per-tool benchmarkers
 # ---------------------------------------------------------------------------
@@ -409,6 +444,77 @@ def bench_search(
     return results
 
 
+def bench_grep(
+    label: str,
+    args: dict[str, Any],
+    hosts: tuple[str, ...],
+) -> list[ToolResult]:
+    results: list[ToolResult] = []
+
+    b_out, b_t = _builtin_grep_direct(args)
+    b_chars = len(b_out)
+    b_lines = len([line for line in b_out.splitlines() if line.strip()])
+    pattern = str(args.get("content_regex", ""))
+    results.append(
+        ToolResult(
+            label=label,
+            tool="grep",
+            variant="builtin",
+            correct=b_lines > 0,
+            chars_out=b_chars,
+            tokens_est=b_chars // 4,
+            elapsed_ms=b_t * 1000,
+            extra={"match_lines": b_lines},
+        )
+    )
+
+    for host in hosts:
+        d, a_t = _mcp_call("grep", args, host)
+        sc = _structured(d)
+        if "error" in d and "result" not in d:
+            results.append(
+                ToolResult(
+                    label=label,
+                    tool="grep",
+                    variant=host,
+                    correct=False,
+                    chars_out=0,
+                    tokens_est=0,
+                    elapsed_ms=a_t * 1000,
+                    error=str(d.get("error", "")),
+                )
+            )
+            continue
+
+        a_raw = json.dumps(sc, ensure_ascii=False)
+        a_chars = len(a_raw)
+        # Correctness: pattern or file match count present in output
+        meta = sc.get("_meta", {})
+        file_match_count = int(meta.get("fileMatchCount") or 0)
+        correct = (file_match_count > 0 or pattern.replace(r"^\s+", "").replace("^", "") in a_raw) and b_lines > 0
+
+        saving_chars = b_chars - a_chars
+        saving_pct = 100.0 * saving_chars / max(b_chars, 1)
+        results.append(
+            ToolResult(
+                label=label,
+                tool="grep",
+                variant=host,
+                correct=correct,
+                chars_out=a_chars,
+                tokens_est=a_chars // 4,
+                elapsed_ms=a_t * 1000,
+                extra={
+                    "file_match_count": file_match_count,
+                    "baseline_lines": b_lines,
+                    "saving_chars": saving_chars,
+                    "saving_pct": saving_pct,
+                },
+            )
+        )
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Top-level runner
 # ---------------------------------------------------------------------------
@@ -426,6 +532,7 @@ def run_benchmark(
         "read": bench_read,
         "shell": bench_shell,
         "search": bench_search,
+        "grep": bench_grep,
     }
 
     for tool in tools:

@@ -629,36 +629,15 @@ def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> Non
             "route",
             {
                 "op": "decide",
-                "user_goal": "Harden MCP gateway end-to-end tests",
-                "repo_root": str(mcp_env),
+                "task": "Harden MCP gateway end-to-end tests",
                 "task_type": "test",
-                "risk_level": "low",
-                "changed_files": ["tests/gateway/test_mcp_jsonrpc_e2e.py"],
-                "step_type": "verify",
-                "step_index": 1,
-                "evidence_summary": {"confidence": 0.9, "estimated_input_tokens": 200},
+                "budget": "cheap",
             },
         )
     )
-    assert decision["id"].startswith("rd-")
-    assert decision["tier"] in {"cheap", "mid", "premium", "deterministic"}
-
-    verified_route = _payload(
-        _call(
-            "route",
-            {
-                "op": "verify",
-                "route_decision_id": decision["id"],
-                "changed_files": ["tests/gateway/test_mcp_jsonrpc_e2e.py"],
-                "validation_results": [{"name": "pytest", "passed": True, "detail": "ok"}],
-                "rubric_status": "pass",
-                "required_verifiers": ["tests", "rubric"],
-                "human_accepted": True,
-            },
-        )
-    )
-    assert verified_route["route_decision_id"] == decision["id"]
-    assert verified_route["outcome"] in {"pass", "warn", "fail", "escalate"}
+    assert "model" in decision
+    assert "tier" in decision
+    assert "can_spawn" in decision
 
     rubric = _payload(
         _call(

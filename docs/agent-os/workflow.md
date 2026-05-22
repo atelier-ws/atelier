@@ -21,6 +21,22 @@ Use this default loop for coding work in Atelier:
    lessons, patterns, or surprises in the `learnings` parameter so they persist
    across sessions. See [learnings-flow.md](learnings-flow.md) for the protocol.
 
+## Delegation (cheaper-model subagents)
+
+For expensive or self-contained subtasks (write tests, refactor a module, generate docs,
+run a long search), delegate to a cheaper model instead of doing it inline:
+
+1. Call `route(op=decide, task=<description>, budget=cheap)` — get recommended model.
+2. If `can_spawn=true`, call `route(op=spawn, prompt=<full task prompt>, model=<from step 1>)`.
+3. Read the response:
+   - `handled=true` → the MCP server already ran it; result is in `response`. Done.
+   - `handled=false` → **call your native spawn tool immediately** with `spawn_directive`:
+     - **Claude Code**: `Agent(agent_type="general-purpose", model=..., prompt=...)`
+     - **Copilot CLI**: `task(agent_type="general-purpose", prompt=...)`
+     - **Codex / OpenCode**: `Task(prompt=..., model=...)`
+4. Never inline work you received `handled=false` for — delegate it.
+5. The subagent bootstraps its own Atelier context automatically via the prompt prefix.
+
 ## Budget guardrails
 
 - Name the deliverable before editing.
