@@ -48,64 +48,6 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
-# ── op=recommend (backward compat, hidden from schema) ─────────────────────
-
-def test_mcp_route_recommend_returns_cross_vendor_payload(mcp_env: Path) -> None:
-    resp = _call(
-        "route",
-        {
-            "op": "recommend",
-            "tool_name": "read",
-            "task_text": "find the failing test",
-            "session_state": {"expected_input_tokens": 1200, "expected_output_tokens": 200, "turn_number": 1},
-        },
-    )
-    payload = _result(resp)
-
-    assert payload["configured"] is True
-    assert payload["vendor"] == "google"
-    assert payload["model"] == "gemini-2.0-flash"
-    assert payload["alternatives"]
-    assert "actual_model" in payload
-    assert "recommendation_followed" in payload
-
-
-def test_mcp_route_recommend_works_with_host_clis_without_vendor_api_keys(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / ".atelier"
-    monkeypatch.setenv("ATELIER_ROOT", str(root))
-    monkeypatch.setenv("ATELIER_MODEL", "gpt-5.4")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "agy"} else None,
-    )
-    save_route_config(root, RouteConfig(enabled_vendors=["anthropic", "openai", "google"]))
-
-    import atelier.gateway.adapters.mcp_server as m
-
-    m._current_ledger = None
-
-    resp = _call(
-        "route",
-        {
-            "op": "recommend",
-            "tool_name": "read",
-            "task_text": "find the failing test",
-            "session_state": {"expected_input_tokens": 1200, "expected_output_tokens": 200, "turn_number": 1},
-        },
-    )
-    payload = _result(resp)
-
-    assert payload["configured"] is True
-    assert payload["vendor"] == "google"
-    assert payload["model"] == "gemini-2.0-flash"
-
-
 # ── op=decide ───────────────────────────────────────────────────────────────
 
 def test_mcp_route_decide_returns_model_and_metadata(mcp_env: Path) -> None:
@@ -120,7 +62,7 @@ def test_mcp_route_decide_returns_model_and_metadata(mcp_env: Path) -> None:
     assert "rationale" in payload
     assert "available_models" in payload
     assert isinstance(payload["available_models"], list)
-    assert "sampling_supported" in payload
+    assert "can_spawn" in payload
     assert "host_model" in payload
     assert "_summary" in payload
     assert payload["_summary"]["recommended"] == payload["model"]
@@ -171,21 +113,53 @@ def test_mcp_route_decide_no_route_config_falls_back(
 
 # ── op=spawn ────────────────────────────────────────────────────────────────
 
-def test_mcp_route_spawn_returns_unsupported_when_no_sampling(mcp_env: Path) -> None:
+def test_mcp_route_spawn_returns_directive_when_no_cli(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import atelier.gateway.adapters.mcp_server as m
 
     m._client_sampling_supported = False
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     resp = _call(
         "route",
-        {"op": "spawn", "prompt": "hello world", "model": "claude-haiku-4-5"},
+        {"op": "spawn", "prompt": "write tests for src/foo.py", "model": "claude-haiku-4-5"},
     )
     payload = _result(resp)
 
-    assert payload["sampling_supported"] is False
-    assert "error" in payload
-    assert "prompt" in payload
-    assert "model_hint" in payload
+    assert payload["handled"] is False
+    assert "spawn_directive" in payload
+    directive = payload["spawn_directive"]
+    assert directive["model"] == "claude-haiku-4-5"
+    assert directive["agent_type"] == "general-purpose"
+    assert "prompt" in directive
+    assert "SPAWN_REQUIRED" in payload["message"]
+
+
+def test_mcp_route_spawn_uses_cli_when_available(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    import subprocess
+
+    import atelier.gateway.adapters.mcp_server as m
+
+    m._client_sampling_supported = False
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
+    fake = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=json.dumps({"result": "done", "cost_usd": 0.001, "num_turns": 2}),
+        stderr="",
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake)
+
+    resp = _call(
+        "route",
+        {"op": "spawn", "prompt": "write a docstring for every function in src/foo.py", "model": "claude-haiku-4-5"},
+    )
+    payload = _result(resp)
+
+    assert payload["handled"] is True
+    assert payload["spawn_method"] == "cli_subprocess"
+    assert payload["response"] == "done"
+    assert "spawn_directive" in payload
 
 
 def test_mcp_route_schema_exposes_only_decide_and_spawn() -> None:
