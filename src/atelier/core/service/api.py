@@ -2233,19 +2233,19 @@ def _optimization_runtime_coverage() -> list[dict[str, Any]]:
             ),
         },
         {
-            "host": "gemini",
+            "host": "antigravity",
             "mode": "wrapper",
             "automatic_at_start": True,
             "automatic_mid_session": False,
             "advisory_only": False,
             "surfaces": [
-                "atelier-gemini wrapper",
-                "Gemini extension commands",
-                "Gemini extension instruction",
+                "agy companion CLI",
+                "Antigravity MCP config",
+                "Antigravity AGENTS surface",
             ],
             "notes": (
-                "Gemini can now launch through an Atelier wrapper that emits live start guidance before handing off to Gemini CLI. "
-                "Extension-only startup still falls back to installed instructions."
+                "Antigravity can now load Atelier through its MCP config while agy provides a terminal companion flow. "
+                "The host remains advisory because there is no first-class hook stream."
             ),
         },
         {
@@ -4593,7 +4593,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             ("codex", "Codex"),
             ("opencode", "OpenCode"),
             ("copilot", "VS Code Copilot"),
-            ("gemini", "Gemini CLI"),
+            ("antigravity", "Antigravity"),
         ]
         return [
             {

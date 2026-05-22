@@ -11,7 +11,7 @@ from typing import Any
 
 from .runner import BenchReport, ToolResult
 
-HOSTS_ORDERED = ("builtin", "claude", "codex", "gemini", "copilot", "opencode")
+HOSTS_ORDERED = ("builtin", "claude", "codex", "antigravity", "copilot", "opencode")
 
 
 def _tokens_est(chars: int) -> str:

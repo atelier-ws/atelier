@@ -51,11 +51,14 @@ if $WORKSPACE_SET; then
     INSTALL_SCOPE="workspace"
     OC_FILE="${WORKSPACE}/opencode.json"
     AGENT_DEST_DIR="${WORKSPACE}/.opencode/agents"
+    WRAPPER_DEST_DIR="${WORKSPACE}/bin"
 else
     INSTALL_SCOPE="global"
     OC_FILE="${OPENCODE_CONFIG_HOME}/opencode.json"
     AGENT_DEST_DIR="${OPENCODE_CONFIG_HOME}/agents"
+    WRAPPER_DEST_DIR="${HOME}/.local/bin"
 fi
+WRAPPER_PATH="${WRAPPER_DEST_DIR}/atelier-opencode"
 
 info()  { echo "[atelier:opencode] $*"; }
 warn()  { echo "[atelier:opencode] WARN: $*" >&2; }
@@ -187,6 +190,17 @@ else
     warn "agent source missing: $AGENT_SRC"
 fi
 
+# ---- install opencode wrapper ----------------------------------------------
+WRAPPER_SRC="${ATELIER_REPO}/bin/atelier-opencode"
+if [ -f "$WRAPPER_SRC" ]; then
+    run "mkdir -p '$WRAPPER_DEST_DIR'"
+    run "cp '$WRAPPER_SRC' '$WRAPPER_PATH'"
+    run "chmod +x '$WRAPPER_PATH'"
+    info "atelier wrapper installed -> $WRAPPER_PATH"
+else
+    warn "wrapper source missing: $WRAPPER_SRC"
+fi
+
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."
@@ -252,6 +266,12 @@ else
     vfail "opencode atelier agent missing: $AGENT_FILE"
 fi
 
+if [ -x "$WRAPPER_PATH" ]; then
+    vpass "opencode wrapper installed: $WRAPPER_PATH"
+else
+    vfail "opencode wrapper missing: $WRAPPER_PATH"
+fi
+
 if command -v atelier-mcp &>/dev/null; then
     vpass "atelier-mcp is available on PATH"
 else
@@ -271,4 +291,5 @@ fi
 info "All post-install checks passed"
 
 info "Done. Restart opencode - Atelier agent and MCP are available."
+info "Tip: launch with 'atelier-opencode --task \"...\"' to print a session summary on exit."
 info "Tip: run 'atelier-status' in any shell to see current run state."

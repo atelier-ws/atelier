@@ -137,13 +137,13 @@ check_copilot() {
     fi
 }
 
-check_gemini() {
-    if ! has_cmd gemini; then
+check_antigravity() {
+    if ! has_cmd antigravity && ! has_cmd agy; then
         echo "CLI not found"
         return
     fi
 
-    if has_atelier "${WORKSPACE}/.gemini/settings.json" || has_atelier "${HOME}/.gemini/settings.json"; then
+    if has_atelier "${WORKSPACE}/.vscode/mcp.json" || has_atelier "${VSCODE_USER_DIR}/mcp.json" || has_atelier "${XDG_CONFIG_HOME:-${HOME}/.config}/Antigravity/User/mcp.json"; then
         echo "installed"
     else
         echo "CLI found but MCP not configured"
@@ -180,7 +180,7 @@ CLAUDE_STATUS="$(check_claude)"
 CODEX_STATUS="$(check_codex)"
 OPENCODE_STATUS="$(check_opencode)"
 COPILOT_STATUS="$(check_copilot)"
-GEMINI_STATUS="$(check_gemini)"
+ANTIGRAVITY_STATUS="$(check_antigravity)"
 CODEBURN_STATUS="$(check_codeburn)"
 TOKSCALE_STATUS="$(check_tokscale)"
 
@@ -193,7 +193,7 @@ elif [ "$JSON" = true ]; then
     CODEX_STATUS="$CODEX_STATUS" \
     OPENCODE_STATUS="$OPENCODE_STATUS" \
     COPILOT_STATUS="$COPILOT_STATUS" \
-    GEMINI_STATUS="$GEMINI_STATUS" \
+    ANTIGRAVITY_STATUS="$ANTIGRAVITY_STATUS" \
     CODEBURN_STATUS="$CODEBURN_STATUS" \
     TOKSCALE_STATUS="$TOKSCALE_STATUS" \
     python3 - <<'PYEOF'
@@ -207,7 +207,7 @@ print(json.dumps({
     "codex": os.environ["CODEX_STATUS"],
     "opencode": os.environ["OPENCODE_STATUS"],
     "copilot": os.environ["COPILOT_STATUS"],
-    "gemini": os.environ["GEMINI_STATUS"],
+    "antigravity": os.environ["ANTIGRAVITY_STATUS"],
     "codeburn": os.environ["CODEBURN_STATUS"],
     "tokscale": os.environ["TOKSCALE_STATUS"],
 }))
@@ -229,7 +229,7 @@ else
     echo "  Codex           $CODEX_STATUS"
     echo "  opencode        $OPENCODE_STATUS"
     echo "  Copilot         $COPILOT_STATUS"
-    echo "  Gemini          $GEMINI_STATUS"
+    echo "  Antigravity     $ANTIGRAVITY_STATUS"
     echo ""
     echo "External Reporting:"
     echo "  codeburn        $CODEBURN_STATUS"
@@ -248,7 +248,7 @@ if [ "$WRITE" = true ]; then
     CODEX_STATUS="$CODEX_STATUS" \
     OPENCODE_STATUS="$OPENCODE_STATUS" \
     COPILOT_STATUS="$COPILOT_STATUS" \
-    GEMINI_STATUS="$GEMINI_STATUS" \
+    ANTIGRAVITY_STATUS="$ANTIGRAVITY_STATUS" \
     CODEBURN_STATUS="$CODEBURN_STATUS" \
     TOKSCALE_STATUS="$TOKSCALE_STATUS" \
     python3 - <<'PYEOF'
@@ -263,7 +263,7 @@ status = {
     "codex": installed(os.environ["CODEX_STATUS"]),
     "opencode": installed(os.environ["OPENCODE_STATUS"]),
     "copilot": installed(os.environ["COPILOT_STATUS"]),
-    "gemini": installed(os.environ["GEMINI_STATUS"]),
+    "antigravity": installed(os.environ["ANTIGRAVITY_STATUS"]),
     "codeburn": installed(os.environ["CODEBURN_STATUS"]),
     "tokscale": installed(os.environ["TOKSCALE_STATUS"]),
 }

@@ -123,15 +123,15 @@ atelier background status
 atelier worker list
 ```
 
-## Gemini CLI MCP Tool Not Available
+## Antigravity MCP Tool Not Available
 
-**Symptom:** Atelier tools do not appear in Gemini CLI.
+**Symptom:** Atelier tools do not appear in Antigravity or are unavailable from `agy`.
 
 **Cause:** Gemini requires absolute paths in its MCP configuration.
 
 Use the install guide here:
 
-- [hosts/gemini-cli-install.md](hosts/gemini-cli-install.md)
+- [hosts/antigravity-install.md](hosts/antigravity-install.md)
 
 ## pgvector Extension Not Available
 

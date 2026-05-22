@@ -7,9 +7,9 @@ from atelier.core.capabilities.cross_vendor_routing.router import CrossVendorRou
 
 def test_advisor_skips_unconfigured_vendor(tmp_path) -> None:
     # Isolate env-key detection from host-CLI detection so that installed CLIs
-    # (e.g. gemini on this machine) don't accidentally mark google as configured.
+    # (e.g. agy on this machine) don't accidentally mark google as configured.
     def _which_no_google(command: str) -> str | None:
-        return None if command in ("gemini", "atelier-gemini", "codex") else f"/fake/{command}"
+        return None if command in ("agy", "antigravity", "codex") else f"/fake/{command}"
 
     with patch("atelier.core.capabilities.cross_vendor_routing.configuration.shutil.which", side_effect=_which_no_google):
         router = CrossVendorRouter(

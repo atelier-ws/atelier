@@ -23,7 +23,7 @@ _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
 _VENDOR_HOST_COMMANDS: dict[str, tuple[str, ...]] = {
     "anthropic": ("claude",),
     "openai": ("codex",),
-    "google": ("gemini", "atelier-gemini"),
+    "google": ("agy", "antigravity"),
 }
 
 EditMode = Literal["pin-actual-vendor", "allow-cross-vendor"]
