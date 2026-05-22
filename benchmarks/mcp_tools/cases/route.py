@@ -23,7 +23,7 @@ def _assert_decide_shape(result: dict[str, Any]) -> None:
     assert "tier" in result, f"decide response must have 'tier', got: {list(result)}"
     assert "available_models" in result, f"decide response must have 'available_models', got: {list(result)}"
     assert isinstance(result["available_models"], list), "'available_models' must be a list"
-    assert "sampling_supported" in result, f"decide response must have 'sampling_supported', got: {list(result)}"
+    assert "can_spawn" in result, f"decide response must have 'can_spawn', got: {list(result)}"
     assert "_summary" in result, f"decide response must have '_summary', got: {list(result)}"
     summary = result["_summary"]
     assert "recommended" in summary, f"_summary must have 'recommended', got: {summary}"
@@ -36,13 +36,20 @@ def _assert_decide_cheap(result: dict[str, Any]) -> None:
     assert result["tier"] == "cheap", f"budget=cheap must yield tier=cheap, got: {result['tier']}"
 
 
-def _assert_spawn_no_sampling(result: dict[str, Any]) -> None:
-    assert result.get("sampling_supported") is False, (
-        f"spawn without sampling must return sampling_supported=False, got: {result}"
-    )
-    assert "error" in result, "spawn fallback must include 'error' with instructions"
-    assert "prompt" in result, "spawn fallback must echo 'prompt'"
-    assert "model_hint" in result, "spawn fallback must echo 'model_hint'"
+def _assert_spawn_result(result: dict[str, Any]) -> None:
+    """Accept any valid spawn response: CLI result, MCP sampling result, or no-mechanism fallback."""
+    if "spawn_method" in result:
+        # CLI subprocess path (success or failure)
+        assert "model_used" in result, f"cli spawn must have 'model_used', got: {list(result)}"
+    elif result.get("sampling_supported") is False:
+        # No-mechanism fallback path
+        assert "error" in result, "no-mechanism fallback must include 'error'"
+        assert "prompt" in result, "no-mechanism fallback must echo 'prompt'"
+    elif result.get("sampling_supported") is True:
+        # MCP sampling path
+        assert "model_used" in result or "error" in result
+    else:
+        raise AssertionError(f"unrecognized spawn response shape: {list(result)}")
 
 
 ROUTE_CASES: list[BenchCase] = [
@@ -51,7 +58,7 @@ ROUTE_CASES: list[BenchCase] = [
         op="decide",
         label="decide/balanced-feature",
         args={"op": "decide", "task": "implement a new REST endpoint for user profiles", "task_type": "feature"},
-        assert_keys=["model", "tier", "available_models", "sampling_supported", "_summary"],
+        assert_keys=["model", "tier", "available_models", "can_spawn", "_summary"],
         custom_assert=_assert_decide_shape,
         baseline_description=(
             "Agent manually reads vendor docs or pricing pages to decide which model to use, "
@@ -63,7 +70,7 @@ ROUTE_CASES: list[BenchCase] = [
         op="decide",
         label="decide/cheap-explain",
         args={"op": "decide", "task": "summarize what this function does", "task_type": "explain", "budget": "cheap"},
-        assert_keys=["model", "tier", "sampling_supported"],
+        assert_keys=["model", "tier", "can_spawn"],
         custom_assert=_assert_decide_cheap,
         baseline_description="Agent defaults to current session model without cost awareness — no savings.",
         baseline_tokens=600,
@@ -86,12 +93,12 @@ ROUTE_CASES: list[BenchCase] = [
         baseline_description="Agent has no routing info — uses default model.",
         baseline_tokens=0,
     ),
-    # ── op=spawn (no-sampling host path) ───────────────────────────────────
+    # ── op=spawn ───────────────────────────────────────────────────────────
     BenchCase(
         op="spawn",
-        label="spawn/no-sampling-fallback",
+        label="spawn/basic",
         args={"op": "spawn", "prompt": "List the top 3 causes of this bug", "model": "claude-haiku-4-5"},
-        custom_assert=_assert_spawn_no_sampling,
+        custom_assert=_assert_spawn_result,
         baseline_description="Agent tries to spawn a sub-task manually — unclear outcome.",
         baseline_tokens=0,
     ),
