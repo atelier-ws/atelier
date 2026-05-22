@@ -152,8 +152,70 @@ for label, query in _SEARCH_BASE_QUERIES:
                 )
             )
 
+# ---------------------------------------------------------------------------
+# grep cases: (label, atelier args)
+# Content-returning modes only — file_paths_only/files_with_matches are trivial
+# and produce the same output as rg --files-with-matches.
+# ---------------------------------------------------------------------------
+_GREP_BASE: list[tuple[str, dict[str, Any]]] = [
+    # Single large file — high match count
+    (
+        "mcp_server def lines",
+        {
+            "file_path": f"{REPO}/src/atelier/gateway/adapters/mcp_server.py",
+            "content_regex": r"^def ",
+            "output_mode": "file_paths_with_content",
+        },
+    ),
+    (
+        "mcp_server return lines",
+        {
+            "file_path": f"{REPO}/src/atelier/gateway/adapters/mcp_server.py",
+            "content_regex": r"return ",
+            "output_mode": "file_paths_with_content",
+        },
+    ),
+    # Multi-file directory scan
+    (
+        "capabilities class declarations",
+        {
+            "file_path": f"{REPO}/src/atelier/core/capabilities",
+            "content_regex": r"^class ",
+            "output_mode": "file_paths_with_content",
+            "file_glob_patterns": ["**/*.py"],
+        },
+    ),
+    (
+        "tests assert statements",
+        {
+            "file_path": f"{REPO}/tests/gateway",
+            "content_regex": r"^\s+assert ",
+            "output_mode": "file_paths_with_content",
+            "file_glob_patterns": ["*.py"],
+            "context_budget_tokens": 3000,
+        },
+    ),
+    # Context-heavy content in valid grep output mode.
+    (
+        "native_search def+context",
+        {
+            "file_path": f"{REPO}/src/atelier/core/capabilities/tool_supervision/native_search.py",
+            "content_regex": r"^def ",
+            "output_mode": "file_paths_with_content",
+            "lines_before": 0,
+            "lines_after": 3,
+        },
+    ),
+]
+
+GREP_CASES: list[tuple[str, dict[str, Any]]] = []
+for idx in range(5):
+    for label, args in _GREP_BASE:
+        GREP_CASES.append((f"{label} [{idx + 1}]", args))
+
 ALL_CASES: dict[str, list[tuple[str, dict[str, Any]]]] = {
     "read": READ_CASES,
     "shell": SHELL_CASES,
     "search": SEARCH_CASES,
+    "grep": GREP_CASES,
 }
