@@ -291,7 +291,39 @@ def test_tools_list_only_product_tools_without_dev_mode(
     assert names == NON_DEV_LLM_TOOLS
     assert names == STABLE_LLM_TOOLS
     assert not (names & DEV_LLM_TOOLS)
+    assert "route" not in names
     assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
+
+
+def test_memory_tool_call_works_without_dev_mode(store_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+    monkeypatch.delenv("ATELIER_SERVICE_URL", raising=False)
+    mcp_server._remote_client = None
+    resp = _call(
+        "memory",
+        {
+            "op": "block_upsert",
+            "agent_id": "atelier:non-dev",
+            "label": "visible-memory",
+            "value": "Memory should be active in non-dev mode.",
+            "metadata": {"source": "pytest"},
+        },
+    )
+    payload = _result(resp)
+    assert payload["version"] == 1
+
+    fetched = _result(
+        _call(
+            "memory",
+            {
+                "op": "block_get",
+                "agent_id": "atelier:non-dev",
+                "label": "visible-memory",
+            },
+        )
+    )
+    assert fetched["value"] == "Memory should be active in non-dev mode."
 
 
 def test_cli_tools_list_respects_stable_and_dev_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -362,6 +394,43 @@ def test_tools_list_grep_schema_covers_native_mode() -> None:
     assert "path" not in properties
     assert "content_regex" in properties
     assert "summary" in properties
+
+
+
+
+def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
+    edit_tool = TOOLS["edit"]
+    schema = edit_tool["inputSchema"]
+    edits_schema = schema["properties"]["edits"]
+    variants = edits_schema["items"]["oneOf"]
+
+    assert schema["required"] == ["edits"]
+    assert len(variants) >= 6
+    assert {variant["title"] for variant in variants} >= {
+        "Legacy replace",
+        "Legacy insert_after",
+        "Legacy replace_range",
+        "Rich file edit",
+        "Notebook cell edit",
+        "Symbol edit",
+    }
+    assert "Do not mix" in edits_schema["description"]
+
+def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
+    memory_tool = TOOLS["memory"]
+    properties = memory_tool["inputSchema"]["properties"]
+
+    assert "block_upsert" in memory_tool["description"]
+    assert "archive" in memory_tool["description"]
+    assert "summarize" in memory_tool["description"]
+    assert "block_upsert requires label+value" in properties["op"]["description"]
+    assert "block_upsert and block_get" in properties["label"]["description"]
+    assert "recall, recall_symbol, and transcript_recall" in properties["query"]["description"]
+    assert "session id used by summarize" in properties["session_id"]["description"].lower()
+    assert "metadata" not in properties
+    assert "expected_version" not in properties
+    assert "include" not in properties
+    assert "budget_tokens" not in properties
 
 
 def test_unknown_method_returns_error() -> None:
@@ -699,6 +768,106 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
     assert len(payload["applied"]) == 1
     assert target.read_text(encoding="utf-8") == "hello atelier"
 
+
+
+def test_smart_edit_rejects_mixed_descriptor_families(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    target = tmp_path / "mixed.txt"
+    target.write_text("hello world", encoding="utf-8")
+
+    resp = _call(
+        "edit",
+        {
+            "edits": [
+                {"path": str(target), "op": "replace", "old_string": "world", "new_string": "legacy"},
+                {"file_path": str(target), "old_string": "hello", "new_string": "rich"},
+            ]
+        },
+    )
+
+    assert "error" in resp
+    assert "cannot mix legacy" in resp["error"]["message"]
+    assert target.read_text(encoding="utf-8") == "hello world"
+
+
+def test_smart_edit_legacy_rejects_protected_paths(store_root: Path, tmp_path: Path) -> None:
+    _ = store_root
+    protected = tmp_path / ".atelier" / "state.txt"
+    protected.write_text("hello world", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "path": str(protected),
+                        "op": "replace",
+                        "old_string": "world",
+                        "new_string": "atelier",
+                    }
+                ]
+            },
+        )
+    )
+
+    assert payload["rolled_back"] is True
+    assert "Protected path denied" in payload["failed"][0]["error"]
+    assert protected.read_text(encoding="utf-8") == "hello world"
+
+
+def test_smart_edit_records_workspace_relative_diff_after_hooks(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    other_cwd = tmp_path / "cwd"
+    other_cwd.mkdir()
+    target = workspace / "edit.txt"
+    target.write_text("hello world", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.chdir(other_cwd)
+
+    def fake_hooks(files: list[str], *, repo_root: Path, config: object) -> object:
+        target.write_text("hello hooks", encoding="utf-8")
+
+        class HookResult:
+            diagnostics: list[object] = []
+            steps_ran = ["fake-format"]
+            steps_skipped: list[str] = []
+            steps_failed: list[str] = []
+            total_ms = 1
+
+        return HookResult()
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.tool_supervision.post_edit_hooks.run_post_edit_hooks",
+        fake_hooks,
+    )
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "post_edit_hooks": True,
+                "edits": [
+                    {
+                        "file_path": "edit.txt",
+                        "old_string": "world",
+                        "new_string": "atelier",
+                    }
+                ],
+            },
+        )
+    )
+
+    assert payload["failed"] == []
+    assert target.read_text(encoding="utf-8") == "hello hooks"
+    file_events = [event for event in mcp_server._get_ledger().events if event.kind == "file_edit"]
+    assert file_events[-1].payload["path"] == "edit.txt"
+    assert "hello hooks" in file_events[-1].payload["diff"]
+    assert "hello atelier" not in file_events[-1].payload["diff"]
 
 def test_code_context_external_scope_surface_returns_external_hits_only(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
@@ -1393,3 +1562,107 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
 
     assert result["error"] == "tool_unavailable"
     assert result["expected_binary"] == "ast-grep"
+
+
+# ---------------------------------------------------------------------------
+# Remaining-gap regression tests (Issues 4, 13, 14 and shell failure fix)
+# ---------------------------------------------------------------------------
+
+
+def test_path_safety_module_is_importable_and_has_protected_parts() -> None:
+    """Centralised PROTECTED_PARTS frozenset must exist and cover the canonical dirs."""
+    from atelier.core.capabilities.tool_supervision.path_safety import PROTECTED_PARTS
+
+    required = {".git", ".atelier", "node_modules", ".venv"}
+    assert required <= set(PROTECTED_PARTS), f"Missing entries: {required - set(PROTECTED_PARTS)}"
+
+
+def test_batch_edit_and_rich_edit_share_path_safety_constant() -> None:
+    """Both edit modules must reference the same PROTECTED_PARTS set (no local forks)."""
+    from atelier.core.capabilities.tool_supervision import batch_edit, rich_edit
+    from atelier.core.capabilities.tool_supervision.path_safety import PROTECTED_PARTS
+
+    # Neither module should define its own _PROTECTED_PARTS
+    assert not hasattr(batch_edit, "_PROTECTED_PARTS"), "batch_edit still has local _PROTECTED_PARTS"
+    assert not hasattr(rich_edit, "_PROTECTED_PARTS"), "rich_edit still has local _PROTECTED_PARTS"
+
+    # Both modules imported PROTECTED_PARTS from path_safety
+    assert batch_edit.PROTECTED_PARTS is PROTECTED_PARTS
+    assert rich_edit.PROTECTED_PARTS is PROTECTED_PARTS
+
+
+def test_trace_compact_receipt_always_present(store_root: Path) -> None:
+    """tool_record_trace must always return ok, trace_id, stored — the compact receipt."""
+    _ = store_root
+    payload = _result(
+        _call(
+            "trace",
+            {
+                "agent": "atelier:code",
+                "domain": "mcp-server",
+                "task": "Verify compact receipt",
+                "status": "success",
+            },
+        )
+    )
+    assert payload.get("ok") is True, f"'ok' missing or False in trace receipt: {payload}"
+    assert payload.get("stored") is True, f"'stored' missing or False in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
+
+
+def test_route_decide_summary_is_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tool_route op=decide must return a _summary dict with required fields."""
+    root = tmp_path / ".atelier"
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    import atelier.gateway.adapters.mcp_server as m
+
+    m._current_ledger = None
+
+    payload = _result(
+        _call(
+            "route",
+            {
+                "op": "decide",
+                "user_goal": "Fix a bug in the parser",
+                "repo_root": ".",
+                "task_type": "debug",
+                "risk_level": "medium",
+                "step_type": "edit",
+                "step_index": 1,
+            },
+        )
+    )
+
+    assert "_summary" in payload, f"'_summary' key missing from route decide response: {list(payload)}"
+    summary = payload["_summary"]
+    assert "recommended_route" in summary, f"_summary missing 'recommended_route': {summary}"
+    assert "required_validation" in summary, f"_summary missing 'required_validation': {summary}"
+    assert "risk" in summary, f"_summary missing 'risk': {summary}"
+
+
+def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """For failing commands, the tail of stdout must be preserved even when output is long."""
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Generate 300 numbered lines then exit 1 — only tail should survive truncation
+    result = _run_shell_tool(
+        "python3 -c \""
+        "import sys; "
+        "[print(f'line-{i}') for i in range(300)]; "
+        "sys.exit(1)"
+        "\"",
+        max_lines=60,
+    )
+
+    assert result["exit_code"] == 1
+    stdout = result["stdout"]
+    # The last line must be visible (line-299)
+    assert "line-299" in stdout, (
+        f"tail not preserved for failing command; stdout tail:\n{stdout[-500:]}"
+    )

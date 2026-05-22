@@ -14,6 +14,8 @@ Use this default loop for coding work in Atelier:
 5. **Verify** - before concluding, apply the appropriate rubric with `verify`.
    Use `rubric_code_change` for coding work, `rubric_code_review` for reviews,
    `rubric_verification_ladder` to confirm a change is wired and substantive.
+   For code changes, always run formatting, linting, type checks, and relevant
+   tests from [validation-matrix.md](validation-matrix.md) before concluding.
    See [review-rubric.md](review-rubric.md) for the full adversarial discipline.
 6. **Record** - record observable outcomes with `record`. Include decisions,
    lessons, patterns, or surprises in the `learnings` parameter so they persist
