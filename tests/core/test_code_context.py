@@ -886,7 +886,7 @@ def test_tool_callers_and_callees_traverse_depth_and_handle_cycles(tmp_path: Pat
     assert all(edge["depth"] in {1, 2} for edge in callees["edges"])
 
 
-def test_tool_callers_returns_structured_unavailable_when_call_graph_data_is_missing(tmp_path: Path) -> None:
+def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(tmp_path: Path) -> None:
     _write_call_graph_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -895,9 +895,10 @@ def test_tool_callers_returns_structured_unavailable_when_call_graph_data_is_mis
     payload = engine.tool_callers(query="alpha", budget_tokens=4000)
 
     assert payload["target"]["qualified_name"] == "alpha"
-    assert payload["data_status"] == "unavailable"
-    assert payload["related"] == []
-    assert payload["edges"] == []
+    assert payload["data_status"] == "available"
+    assert payload["edge_count"] >= 1
+    assert payload["related_count"] >= 1
+    assert "fallback" in str(payload.get("message", "")).lower()
     assert payload["provenance"] == "scip"
 
 

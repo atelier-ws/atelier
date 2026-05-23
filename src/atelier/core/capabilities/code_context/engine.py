@@ -26,7 +26,9 @@ from atelier.core.capabilities.code_context.budget import (
 from atelier.core.capabilities.code_context.cache import RetrievalCache
 from atelier.core.capabilities.code_context.call_graph import (
     CallGraphDirection,
+    CallGraphEdge,
     CallGraphNode,
+    CallGraphTraversalResult,
     build_call_graph_payload,
     traverse_call_graph,
 )
@@ -1282,7 +1284,7 @@ class CodeContextEngine:
                     else self._semantic_ranker.reciprocal_rank_fuse(lexical_hits, semantic_hits, limit=limit)
                 )
         if file_glob:
-            hits = [hit for hit in hits if Path(hit.file_path).match(file_glob)]
+            hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
         return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
 
     def _search_symbols_local(
@@ -1633,7 +1635,7 @@ class CodeContextEngine:
         ]
         items = [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
         if file_glob:
-            items = [item for item in items if Path(str(item["file_path"])).match(file_glob)]
+            items = [item for item in items if fnmatch.fnmatch(str(item["file_path"]), file_glob)]
         full_payload = self._build_usages_payload(
             target=target,
             items=items,
@@ -1751,6 +1753,13 @@ class CodeContextEngine:
             snapshot=snapshot,
             lookup_neighbors=lambda current_symbol_id: lookup(symbol_id=current_symbol_id),
         )
+        if traversal.data_status == "unavailable" and direction == "callers":
+            fallback = self._fallback_callers_from_references(
+                target=target,
+                limit=limit,
+            )
+            if fallback.data_status == "available":
+                traversal = fallback
         payload = build_call_graph_payload(
             target,
             direction=direction,
@@ -2446,6 +2455,117 @@ class CodeContextEngine:
     ) -> list[CallGraphNode] | None:
         del symbol_id, qualified_name, file_path, symbol_name
         return None
+
+    def _fallback_callers_from_references(
+        self,
+        *,
+        target: dict[str, Any],
+        limit: int,
+    ) -> CallGraphTraversalResult:
+        target_symbol_id = str(target["symbol_id"])
+        target_file = str(target["file_path"])
+        target_start = int(target["start_line"])
+        target_end = int(target["end_line"])
+        references = self.intel_store.find_references(
+            symbol_id=target_symbol_id,
+            qualified_name=str(target["qualified_name"]),
+            file_path=target_file,
+            symbol_name=str(target["symbol_name"]),
+        )
+        references = sorted(
+            [*references, *self._cross_lang_usage_references(target)],
+            key=lambda item: (item.file_path, item.line, item.column, item.provenance),
+        )
+        nodes_by_id: dict[str, CallGraphNode] = {}
+        edges: list[CallGraphEdge] = []
+        seen_edges: set[tuple[str, str, int]] = set()
+        truncated = False
+        for reference in references:
+            if reference.file_path == target_file and target_start <= reference.line <= target_end:
+                continue
+            node = self._caller_node_from_reference(reference, target_symbol_id=target_symbol_id)
+            if node is None:
+                continue
+            if node.symbol_id not in nodes_by_id:
+                if len(nodes_by_id) >= limit:
+                    truncated = True
+                    continue
+                nodes_by_id[node.symbol_id] = node
+            edge_key = (node.symbol_id, target_symbol_id, 1)
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                edges.append(
+                    CallGraphEdge(
+                        caller_symbol_id=node.symbol_id,
+                        callee_symbol_id=target_symbol_id,
+                        depth=1,
+                    )
+                )
+        ordered_nodes = sorted(nodes_by_id.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id))
+        ordered_edges = sorted(edges, key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id))
+        if not ordered_edges:
+            return CallGraphTraversalResult(
+                nodes=[],
+                edges=[],
+                truncated=False,
+                data_status="unavailable",
+                message="routed call edge data is unavailable",
+                snapshot=None,
+            )
+        return CallGraphTraversalResult(
+            nodes=ordered_nodes,
+            edges=ordered_edges,
+            truncated=truncated,
+            data_status="available",
+            message="fallback caller graph derived from symbol references",
+            snapshot=None,
+        )
+
+    def _caller_node_from_reference(
+        self,
+        reference: UsageReference,
+        *,
+        target_symbol_id: str,
+    ) -> CallGraphNode | None:
+        normalized_file = self._normalize_file_arg(reference.file_path)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            row = conn.execute(
+                """
+                SELECT *, NULL AS score FROM symbols
+                WHERE repo_id = ? AND file_path = ? AND start_line <= ? AND end_line >= ?
+                ORDER BY (end_line - start_line) ASC, start_line DESC
+                LIMIT 1
+                """,
+                (self.repo_id, normalized_file, reference.line, reference.line),
+            ).fetchone()
+        if row is not None:
+            symbol = _row_to_symbol(row)
+            if symbol.symbol_id == target_symbol_id:
+                return None
+            return CallGraphNode(
+                symbol_id=symbol.symbol_id,
+                symbol_name=symbol.symbol_name,
+                qualified_name=symbol.qualified_name,
+                file_path=symbol.file_path,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                end_line=symbol.end_line,
+                provenance=reference.provenance or symbol.provenance,
+            )
+        synthetic_seed = f"{normalized_file}:{reference.line}:{reference.column}:{reference.caller or ''}"
+        synthetic_id = f"ref::{hashlib.sha1(synthetic_seed.encode('utf-8')).hexdigest()[:16]}"
+        fallback_name = reference.caller or f"{Path(normalized_file).name}:{reference.line}"
+        return CallGraphNode(
+            symbol_id=synthetic_id,
+            symbol_name=fallback_name,
+            qualified_name=fallback_name,
+            file_path=normalized_file,
+            kind="reference",
+            start_line=reference.line,
+            end_line=reference.end_line,
+            provenance=reference.provenance or "treesitter",
+        )
 
     def _find_callees_local(
         self,
