@@ -375,6 +375,32 @@ export default function Sessions() {
                         )}
                       </div>
                  <div className="flex items-center gap-2">
+                   <div className="flex items-center gap-2">
+                     <span
+                       className="shrink-0 text-[9px] font-mono text-neutral-500"
+                       title={t.created_at}
+                     >
+                       {fmtDate(t.created_at)}
+                     </span>
+                     <span
+                       className="shrink-0 text-[9px] font-mono text-neutral-400"
+                       title={
+                         summary
+                           ? String(
+                               summary.active_duration_seconds ||
+                                 summary.duration_seconds
+                             )
+                           : undefined
+                       }
+                     >
+                       {summary
+                         ? fmtDuration(
+                             summary.active_duration_seconds ||
+                               summary.duration_seconds
+                           )
+                         : "—"}
+                     </span>
+                   </div>
                    <button
                      type="button"
                      onClick={refresh}
