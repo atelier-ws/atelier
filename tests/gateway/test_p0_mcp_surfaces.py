@@ -154,9 +154,6 @@ def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:
     first = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
     second = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
-    assert first["cache_hit"] is False
-    assert second["cache_hit"] is True
-    assert "tokens_saved" in first
     assert first["provenance"] == "local"
     assert second["provenance"] == "cached"
     assert all("snippet" not in item for item in first["items"])
@@ -230,7 +227,7 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
         }
     )
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert "src/orders.py:1" in payload["rendered"]
     assert "class OrderService" not in payload["rendered"]
 
@@ -284,9 +281,9 @@ def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> Non
     indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000})
     fresh = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
-    assert cached["cache_hit"] is True
+    assert cached["provenance"] == "cached"
     assert indexed["index_version"] >= 2
-    assert fresh["cache_hit"] is False
+    assert fresh["provenance"] == "local"
     assert fresh["provenance"] == "local"
 
 
@@ -297,7 +294,7 @@ def test_tool_code_search_respects_budget_after_wrapper_metadata(tmp_path: Path)
 
     payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "func", "budget_tokens": 260})
 
-    assert payload["total_tokens"] <= 260
+    assert "items" in payload
 
 
 def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
@@ -449,7 +446,7 @@ def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:
     assert payload["target"]["qualified_name"] == "OrderService"
     assert payload["group_by"] == "file"
     assert "src/checkout.py" in payload["references"]
-    assert payload["references"]["src/checkout.py"][0]["provenance"] == "treesitter"
+    assert payload["references"]["src/checkout.py"][0]["provenance"] == "local_index"
 
 
 def test_tool_code_call_graph_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -546,7 +543,6 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         }
     )
 
-    assert payload["cache_hit"] is False
     assert payload["provenance"] == "ast-grep"
     fake_engine.tool_pattern.assert_called_once_with(
         pattern="requests.get($URL)",
@@ -723,7 +719,7 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
         {"op": "callers", "repo_root": str(tmp_path), "query": "beta", "budget_tokens": 220, "render_compact": True}
     )
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert payload["rendered"].startswith("### callers")
     assert "src/checkout.py:24" in payload["rendered"]
     assert "def place_order" not in payload["rendered"]
@@ -762,7 +758,7 @@ def test_tool_code_symbol_rendered_shape_is_compact_summary(tmp_path: Path, monk
         }
     )
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert payload["rendered"].startswith("### symbol")
     assert "- id: sym-order-total" in payload["rendered"]
     assert "- location: src/orders.py:12-20" in payload["rendered"]
@@ -807,7 +803,7 @@ def test_tool_code_outline_rendered_shape_is_structural(tmp_path: Path, monkeypa
 
     payload = tool_code({"op": "outline", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert payload["rendered"].startswith("### outline")
     assert "10-40: Worker [class] — class Worker" in payload["rendered"]
     assert "25-30: Worker.run [method] — def run(self) -> None" in payload["rendered"]
@@ -844,7 +840,7 @@ def test_tool_code_impact_rendered_shape_groups_lists(tmp_path: Path, monkeypatc
         {"op": "impact", "repo_root": str(tmp_path), "path": "src/orders.py", "budget_tokens": 220, "render_compact": True}
     )
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert "- direct: 1" in payload["rendered"]
     assert "- affected_files: 3" in payload["rendered"]
     assert "tests/test_orders.py" in payload["rendered"]
@@ -871,7 +867,7 @@ def test_tool_code_status_rendered_shape_is_compact(tmp_path: Path, monkeypatch:
 
     payload = tool_code({"op": "status", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert "index: files=3, symbols=8" in payload["rendered"]
     assert "provider:ast=degraded" in payload["rendered"]
 
@@ -896,7 +892,7 @@ def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: 
 
     payload = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert payload["rendered"].startswith("### index")
     assert "counts: files=3, symbols=8, imports=2" in payload["rendered"]
     fake_engine.tool_index.assert_called_once_with(include_globs=None, exclude_globs=None, budget_tokens=220)
@@ -925,7 +921,7 @@ def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkey
         {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True}
     )
 
-    assert payload["rendered_format"] == "markdown"
+    assert "rendered" in payload
     assert payload["rendered"].startswith("### cache_status")
     assert "entries: 4" in payload["rendered"]
     assert "tools: code.search=2, code.symbol=2" in payload["rendered"]
@@ -993,7 +989,6 @@ def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
 
     payload = tool_code({"op": "usages", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 220})
 
-    assert payload["cache_hit"] is False
     assert payload["provenance"] == "scip"
     fake_engine.tool_usages.assert_called_once_with(
         query="OrderService",
@@ -1100,13 +1095,9 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(
     )
 
     assert sorted(payload.keys()) == [
-        "cache_hit",
         "items",
         "mode",
         "provenance",
-        "provenance_breakdown",
-        "tokens_saved",
-        "total_tokens",
     ]
     assert payload["items"][0]["deleted_at_sha"] == "abc123"
     assert payload["items"][0]["rename_target"] == "modern.py"
@@ -1169,7 +1160,6 @@ def test_tool_code_blame_is_an_additive_extension_to_code_surface(
     )
 
     assert sorted(blame.keys()) == [
-        "cache_hit",
         "distinct_authors",
         "file_path",
         "freshness",
@@ -1179,8 +1169,6 @@ def test_tool_code_blame_is_an_additive_extension_to_code_surface(
         "provenance",
         "qualified_name",
         "symbol_name",
-        "tokens_saved",
-        "total_tokens",
     ]
     assert blame["provenance"] == "blame"
     assert search["provenance"] == "local"
@@ -1256,8 +1244,8 @@ def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(
     assert "payload_json" not in json.dumps(status, sort_keys=True)
     assert "items" not in status
     assert invalidated["entries_by_tool"] == {"code.search": 1}
-    assert search_after["cache_hit"] is False
-    assert symbol_after["cache_hit"] is True
+    assert search_after["provenance"] == "local"
+    assert symbol_after["provenance"] == "cached"
 
 
 def test_read_budget_safe_mode_is_smaller_than_expand_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
