@@ -518,6 +518,22 @@ main() {
         "$ATELIER_BIN_DIR/atelier" init >/dev/null
     fi
 
+    # Persist the selected memory backend so uninstall knows what to clean up.
+    local memory_record="${HOME}/.atelier/memory_backend"
+    if [[ -n "$selected_memory" ]]; then
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] printf '%s\\n' '$selected_memory' > '$memory_record'"
+        else
+            mkdir -p "${HOME}/.atelier"
+            printf '%s\n' "$selected_memory" > "$memory_record"
+            info "Persisted memory backend: $selected_memory"
+        fi
+    elif [[ -f "$memory_record" && "$ATELIER_DRY_RUN" != "1" ]]; then
+        # No sidecar selected on this run — clear any previous selection so
+        # uninstall does not try to tear down a sidecar that is no longer managed.
+        : > "$memory_record"
+    fi
+
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
         info "Installing Atelier host integrations (skip if host CLI is missing)..."
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
@@ -615,6 +631,16 @@ main() {
     echo "    atelier stack logs          - View stack logs"
     echo "    atelier status              - Show one-line status of the active reasoning run"
     echo "    atelier import              - Import agent sessions from all available history sources (CLI, VS Code, etc.)"
+    echo ""
+    echo "  Docker sidecars (available with --advanced, require Docker):"
+    echo "    atelier letta up/down       - Start/stop the Letta memory server container"
+    echo "    atelier openmemory up/down  - Start/stop the OpenMemory MCP container"
+    echo "    atelier letta status        - Check Letta health"
+    echo "    atelier openmemory status   - Check OpenMemory container status"
+    if [[ "$ATELIER_ADVANCED" != "1" ]]; then
+        echo ""
+        echo "  Tip: re-run with --advanced to install Letta + OpenMemory Docker sidecars."
+    fi
     echo ""
     echo "  Memory sidecar (Docker, opt-in via --advanced --memory <backend>):"
     case "$selected_memory" in
