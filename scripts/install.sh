@@ -38,6 +38,7 @@ set -euo pipefail
 if [[ -t 1 ]]; then
     C_RESET="$(printf '\033[0m')"
     C_BOLD="$(printf '\033[1m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
@@ -46,6 +47,7 @@ if [[ -t 1 ]]; then
 else
     C_RESET=""
     C_BOLD=""
+    C_DIM=""
     C_GREEN=""
     C_RED=""
     C_YELLOW=""
@@ -55,6 +57,7 @@ fi
 if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_RESET="$(printf '\033[0m')"
     C_BOLD="$(printf '\033[1m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
@@ -282,11 +285,11 @@ _prompt_line() {
 }
 
 _menu_save_cursor() {
-    tput sc 2>/dev/null || printf "\033[s"
+    : # no-op — replaced by line-count redraw
 }
 
 _menu_restore_cursor() {
-    tput rc 2>/dev/null || printf "\033[u"
+    : # no-op — replaced by line-count redraw
 }
 
 _read_menu_byte() {
@@ -360,20 +363,39 @@ _menu_key_kind() {
     esac
 }
 
+_MENU_RENDER_LINES=0
+
+_menu_line() {
+    # Print one framed line and track it for redraw erase.
+    printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$1"
+    _MENU_RENDER_LINES=$((_MENU_RENDER_LINES + 1))
+}
+
+_menu_erase() {
+    # Move cursor up by the number of lines rendered, then clear to end of screen.
+    if [[ $_MENU_RENDER_LINES -gt 0 ]]; then
+        printf "\033[%dA\033[J" "$_MENU_RENDER_LINES"
+    fi
+    _MENU_RENDER_LINES=0
+}
+
 render_single_select() {
     local selected_index="$1"
     shift 1
     local options=("$@")
     local i
 
+    _MENU_RENDER_LINES=0
+    _menu_line ""
     for i in "${!options[@]}"; do
         if [[ "$i" -eq "$selected_index" ]]; then
-            _frame_line "  ${C_PURPLE}●${C_RESET} ${options[$i]}"
+            _menu_line "  ${C_PURPLE}❯ ●${C_RESET}  ${options[$i]}"
         else
-            _frame_line "  ○ ${options[$i]}"
+            _menu_line "    ○  ${options[$i]}"
         fi
     done
-    _frame_line "  ${C_PURPLE}↑/↓${C_RESET} move · ${C_PURPLE}Enter${C_RESET} select"
+    _menu_line ""
+    _menu_line "  ${C_DIM}↑↓ navigate  ·  enter select${C_RESET}"
 }
 
 interactive_single_select() {
@@ -386,32 +408,26 @@ interactive_single_select() {
     local selected_index="$default_index"
     local first_render=1
 
-    _prompt_line "◆" "$prompt"
-    _menu_save_cursor
+    printf "%b◆%b  %s\n" "$C_PURPLE" "$C_RESET" "$prompt"
 
     while true; do
-        if [[ "$first_render" == "0" ]]; then
-            _menu_restore_cursor
-        fi
+        [[ "$first_render" == "0" ]] && _menu_erase
         render_single_select "$selected_index" "${options[@]}"
         first_render=0
         local key kind
         key="$(_read_menu_key)"
         kind="$(_menu_key_kind "$key")"
         case "$kind" in
-            up)
-                selected_index=$(( (selected_index - 1 + option_count) % option_count ))
-                ;;
-            down)
-                selected_index=$(( (selected_index + 1) % option_count ))
-                ;;
-            enter)
-                break
-                ;;
+            up)   selected_index=$(( (selected_index - 1 + option_count) % option_count )) ;;
+            down) selected_index=$(( (selected_index + 1) % option_count )) ;;
+            enter) break ;;
             *) ;;
         esac
     done
-    echo ""
+    _menu_erase
+    # Print final confirmed selection
+    local label="${options[$selected_index]}"
+    printf "%b│%b  %b●%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$label"
     printf -v "$out_var" '%s' "$selected_index"
 }
 
@@ -419,20 +435,55 @@ render_multi_select() {
     local selected_cursor="$1"
     shift 1
     local options=("$@")
-    local i marker
+    local i marker prefix selected_count=0
 
     for i in "${!options[@]}"; do
-        marker="◻"
-        if [[ "${SELECTED_ITEMS[$i]:-0}" == "1" ]]; then
-            marker="${C_PURPLE}◼${C_RESET}"
-        fi
-        if [[ "$i" -eq "$selected_cursor" ]]; then
-            _frame_line "  ${C_PURPLE}${marker} ${options[$i]}${C_RESET}"
-        else
-            _frame_line "  ${marker} ${options[$i]}"
-        fi
+        [[ "${SELECTED_ITEMS[$i]:-0}" == "1" ]] && selected_count=$((selected_count + 1))
     done
-    _frame_line "  ${C_PURPLE}↑/↓${C_RESET} move · ${C_PURPLE}Space${C_RESET} toggle · ${C_PURPLE}a${C_RESET} all · ${C_PURPLE}Enter${C_RESET} done"
+
+    _MENU_RENDER_LINES=0
+    _menu_line ""
+    for i in "${!options[@]}"; do
+        local is_selected="${SELECTED_ITEMS[$i]:-0}"
+        local is_cursor=0
+        [[ "$i" -eq "$selected_cursor" ]] && is_cursor=1
+
+        local label="${options[$i]}"
+        # Split "Name|status" if present (set by detect_hosts)
+        local name="$label" badge=""
+        if [[ "$label" == *"|"* ]]; then
+            name="${label%%|*}"
+            local raw_status="${label##*|}"
+            if [[ "$raw_status" == "detected" ]]; then
+                badge="  ${C_DIM}✓${C_RESET}"
+            else
+                badge="  ${C_DIM}—${C_RESET}"
+                # Dim undetected options slightly
+                name="${C_DIM}${name}${C_RESET}"
+            fi
+        fi
+
+        if [[ "$is_cursor" == "1" ]]; then
+            if [[ "$is_selected" == "1" ]]; then
+                marker="${C_PURPLE}◼${C_RESET}"
+                prefix="${C_PURPLE}❯${C_RESET}"
+            else
+                marker="${C_DIM}◻${C_RESET}"
+                prefix="${C_PURPLE}❯${C_RESET}"
+            fi
+        else
+            if [[ "$is_selected" == "1" ]]; then
+                marker="${C_PURPLE}◼${C_RESET}"
+            else
+                marker="${C_DIM}◻${C_RESET}"
+            fi
+            prefix=" "
+        fi
+        _menu_line "  ${prefix} ${marker}  ${name}${badge}"
+    done
+    _menu_line ""
+    local count_badge="${C_DIM}(${selected_count}/${#options[@]})${C_RESET}"
+    _menu_line "  ${C_DIM}space toggle  ·  a all  ·  enter confirm${C_RESET}  ${count_badge}"
 }
 
 interactive_multi_select() {
@@ -457,24 +508,17 @@ interactive_multi_select() {
         done
     fi
 
-    _prompt_line "◇" "$prompt"
-    _menu_save_cursor
+    printf "%b◆%b  %s\n" "$C_PURPLE" "$C_RESET" "$prompt"
     while true; do
-        if [[ "$first_render" == "0" ]]; then
-            _menu_restore_cursor
-        fi
+        [[ "$first_render" == "0" ]] && _menu_erase
         render_multi_select "$cursor" "${options[@]}"
         first_render=0
         local key kind
         key="$(_read_menu_key)"
         kind="$(_menu_key_kind "$key")"
         case "$kind" in
-            up)
-                cursor=$(( (cursor - 1 + option_count) % option_count ))
-                ;;
-            down)
-                cursor=$(( (cursor + 1) % option_count ))
-                ;;
+            up)    cursor=$(( (cursor - 1 + option_count) % option_count )) ;;
+            down)  cursor=$(( (cursor + 1) % option_count )) ;;
             space)
                 if [[ "${SELECTED_ITEMS[$cursor]:-0}" == "1" ]]; then
                     SELECTED_ITEMS[$cursor]=0
@@ -487,13 +531,19 @@ interactive_multi_select() {
                     SELECTED_ITEMS[$i]=1
                 done
                 ;;
-            enter)
-                break
-                ;;
+            enter) break ;;
             *) ;;
         esac
     done
-    echo ""
+    _menu_erase
+
+    # Print confirmed selections
+    for i in "${!options[@]}"; do
+        if [[ "${SELECTED_ITEMS[$i]:-0}" == "1" ]]; then
+            local label="${options[$i]%%|*}"
+            printf "%b│%b  %b◼%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$label"
+        fi
+    done
 
     local chosen_indices=()
     for i in "${!options[@]}"; do
@@ -568,51 +618,51 @@ detect_hosts() {
 
     if command -v claude >/dev/null 2>&1; then
         HOST_SUMMARY+=("Claude Code (detected)")
-        HOST_CHOICES+=("Claude Code (detected)")
+        HOST_CHOICES+=("Claude Code|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
         HOST_SUMMARY+=("Claude Code (not found)")
-        HOST_CHOICES+=("Claude Code (not found)")
+        HOST_CHOICES+=("Claude Code|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
     if command -v codex >/dev/null 2>&1; then
         HOST_SUMMARY+=("Codex CLI (detected)")
-        HOST_CHOICES+=("Codex CLI (detected)")
+        HOST_CHOICES+=("Codex CLI|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
         HOST_SUMMARY+=("Codex CLI (not found)")
-        HOST_CHOICES+=("Codex CLI (not found)")
+        HOST_CHOICES+=("Codex CLI|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
     if command -v opencode >/dev/null 2>&1; then
         HOST_SUMMARY+=("opencode (detected)")
-        HOST_CHOICES+=("opencode (detected)")
+        HOST_CHOICES+=("opencode|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
         HOST_SUMMARY+=("opencode (not found)")
-        HOST_CHOICES+=("opencode (not found)")
+        HOST_CHOICES+=("opencode|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
     if command -v code >/dev/null 2>&1; then
         HOST_SUMMARY+=("Copilot/VS Code (detected)")
-        HOST_CHOICES+=("Copilot/VS Code (detected)")
+        HOST_CHOICES+=("Copilot/VS Code|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
         HOST_SUMMARY+=("Copilot/VS Code (not found)")
-        HOST_CHOICES+=("Copilot/VS Code (not found)")
+        HOST_CHOICES+=("Copilot/VS Code|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
     if command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1; then
         HOST_SUMMARY+=("Antigravity (detected)")
-        HOST_CHOICES+=("Antigravity (detected)")
+        HOST_CHOICES+=("Antigravity|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
         HOST_SUMMARY+=("Antigravity (not found)")
-        HOST_CHOICES+=("Antigravity (not found)")
+        HOST_CHOICES+=("Antigravity|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 }
