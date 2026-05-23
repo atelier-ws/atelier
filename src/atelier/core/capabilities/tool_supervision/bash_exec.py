@@ -63,34 +63,49 @@ def _rewrite_cat(tokens: list[str]) -> CommandPolicyDecision:
 
 def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecision:
     ignore_case = False
+    file_type: str | None = None
     cleaned: list[str] = []
     seen_double_dash = False
-    for tok in tokens[1:]:
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
         if tok == "--":
             seen_double_dash = True
+            i += 1
             continue
         if tok.startswith("-") and not seen_double_dash:
-            if "i" in tok and tok != "-":
+            # Handle --type=python or --type python or -t python
+            if tok.startswith("--type="):
+                file_type = tok.split("=", 1)[1]
+            elif tok in {"--type", "-t"} and i + 1 < len(tokens):
+                i += 1
+                file_type = tokens[i]
+            elif "i" in tok and tok != "-":
                 ignore_case = True
+            i += 1
             continue
         cleaned.append(tok)
+        i += 1
 
     if not cleaned:
         return CommandPolicyDecision(category="search", action="allow")
 
     pattern = cleaned[0]
     path = cleaned[1] if len(cleaned) > 1 else "."
+    payload: dict[str, Any] = {
+        "file_path": path,
+        "content_regex": pattern,
+        "ignore_case": ignore_case,
+        "output_mode": "file_paths_with_content",
+    }
+    if file_type:
+        payload["type"] = file_type
     return CommandPolicyDecision(
         category="search",
         action="rewrite",
         reason=f"Use Atelier grep for {command_name} pattern search",
         rewrite_target="grep",
-        rewrite_payload={
-            "file_path": path,
-            "content_regex": pattern,
-            "ignore_case": ignore_case,
-            "output_mode": "file_paths_with_content",
-        },
+        rewrite_payload=payload,
     )
 
 
@@ -120,11 +135,11 @@ def classify_command(command: str) -> CommandPolicyDecision:
         return CommandPolicyDecision(category="generic", action="allow")
 
     head = tokens[0].lower()
-    if head in {"bash", "sh"}:
+    if head in {"bash", "sh", "zsh", "fish"}:
         return CommandPolicyDecision(
             category="shell-interpreter",
             action="block",
-            reason="Direct bash/sh execution is blocked; use Atelier tools instead",
+            reason=f"Direct {head} execution is blocked; use Atelier tools instead",
         )
 
     if _is_rm_family(tokens):
