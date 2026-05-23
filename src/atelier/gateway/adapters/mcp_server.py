@@ -2596,6 +2596,8 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "Use this before globbing the filesystem."
                 "\n• `explore` — One-call grouped source and relationships for a query. "
                 "Use it instead of chaining search → symbol → callers/callees for multi-file understanding."
+                "\n• `routes` — Framework route inventory (FastAPI/Flask/Django/Express) with method/path/handler. "
+                "Use it to discover app endpoints before tracing handlers."
                 "\n• `usages` — Every site where a symbol is referenced across the repo. "
                 "Use before refactoring to see blast radius. Grouped by file."
                 "\n• `callers` — Who calls this function (call graph, inbound edges). "
@@ -2619,7 +2621,7 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "Use before heavy code-intel operations if results look stale."
             ),
             "enum": [
-                "index", "search", "blame", "hover", "symbol", "outline", "files", "explore", "status",
+                "index", "search", "blame", "hover", "symbol", "outline", "files", "explore", "routes", "status",
                 "context", "impact", "usages", "callers", "callees",
                 "pattern", "rename", "cache_status", "cache_invalidate",
             ],
@@ -2780,7 +2782,7 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         },
         "file_glob": {
             "type": "string",
-            "description": "Glob to restrict search/pattern/usages to a subtree, e.g. 'src/api/**/*.py'.",
+            "description": "Glob to restrict search/pattern/usages/routes to a subtree, e.g. 'src/api/**/*.py'.",
         },
         "group_by": {
             "type": "string",
@@ -2869,6 +2871,7 @@ def tool_code(
         "outline",
         "files",
         "explore",
+        "routes",
         "status",
         "context",
         "impact",
@@ -2935,6 +2938,7 @@ def tool_code(
             "pattern",
             "hover",
             "explore",
+            "routes",
             "status",
         ]
         | None
@@ -3077,6 +3081,17 @@ def tool_code(
                 include_relationships=include_relationships,
                 line_numbers=line_numbers,
                 depth=depth,
+                budget_tokens=budget_tokens,
+            ),
+        )
+
+    if op == "routes":
+        return cast(
+            dict[str, Any],
+            engine.tool_routes(
+                file_glob=file_glob,
+                language=language,
+                limit=limit,
                 budget_tokens=budget_tokens,
             ),
         )

@@ -220,6 +220,13 @@ def test_tool_code_schema_exposes_status_operation() -> None:
     assert "status" in exposed_ops
 
 
+def test_tool_code_schema_exposes_routes_operation() -> None:
+    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
+    exposed_ops = op_schema["enum"]
+
+    assert "routes" in exposed_ops
+
+
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
@@ -636,6 +643,47 @@ def test_tool_code_status_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
 
     assert payload["freshness"]["status"] == "fresh"
     fake_engine.tool_status.assert_called_once_with(budget_tokens=220)
+
+
+def test_tool_code_routes_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_routes.return_value = {
+        "repo_id": "repo",
+        "repo_root": str(tmp_path),
+        "route_count": 2,
+        "routes": [
+            {"framework": "fastapi", "method": "GET", "route": "/health", "file_path": "src/api.py", "line": 4},
+            {"framework": "express", "method": "GET", "route": "/ping", "file_path": "src/server.ts", "line": 6},
+        ],
+        "truncated": False,
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 0,
+        "total_tokens": 110,
+    }
+    monkeypatch.setattr(
+        "atelier.gateway.adapters.mcp_server._code_context_engine",
+        lambda repo_root=".": fake_engine,
+    )
+
+    payload = tool_code(
+        {
+            "op": "routes",
+            "repo_root": str(tmp_path),
+            "file_glob": "src/**/*.py",
+            "language": "python",
+            "limit": 10,
+            "budget_tokens": 220,
+        }
+    )
+
+    assert payload["route_count"] == 2
+    fake_engine.tool_routes.assert_called_once_with(
+        file_glob="src/**/*.py",
+        language="python",
+        limit=10,
+        budget_tokens=220,
+    )
 
 
 def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
