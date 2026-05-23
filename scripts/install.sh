@@ -25,7 +25,7 @@
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
 #   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
-#   ATELIER_ZOEKT_AUTO_INSTALL If set to 1, run `atelier zoekt install --auto` when local zoekt binaries are missing (default: 1)
+#   ATELIER_ZOEKT_AUTO_INSTALL If set to 1, non-interactive runs install local zoekt binaries when missing (default: 1)
 #
 # Notes:
 #   Exactly one memory sidecar can be active at a time; the selection is
@@ -600,6 +600,80 @@ prompt_memory_selection() {
     esac
 }
 
+prompt_local_zoekt_selection() {
+    local zoekt_all_present=1
+    local _z
+    for _z in zoekt-git-index zoekt-index zoekt zoekt-webserver; do
+        command -v "$_z" >/dev/null 2>&1 || zoekt_all_present=0
+    done
+
+    # In non-interactive mode, preserve the existing env-driven default.
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        if [[ "$zoekt_all_present" == "0" && "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]]; then
+            INSTALL_ZOEKT_LOCAL=1
+        else
+            INSTALL_ZOEKT_LOCAL=0
+        fi
+        return 0
+    fi
+
+    local choice_index=1
+    local prompt="Install local Zoekt full-text search binaries? (Go will be installed if needed)"
+    if [[ "$zoekt_all_present" == "1" ]]; then
+        choice_index=1
+        prompt="Reinstall local Zoekt full-text search binaries?"
+    else
+        choice_index=0
+    fi
+
+    local yes_label="Yes"
+    local no_label="No"
+    if [[ "$choice_index" == "0" ]]; then
+        yes_label="Yes (default)"
+    else
+        no_label="No (default)"
+    fi
+
+    if supports_interactive_selector; then
+        interactive_single_select \
+            "$prompt" \
+            choice_index \
+            "$choice_index" \
+            "$yes_label" \
+            "$no_label"
+    else
+        printf "│\n"
+        printf "│  %s\n" "$prompt"
+        printf "│  1) Yes\n"
+        printf "│  2) No\n"
+        if [[ "$choice_index" == "0" ]]; then
+            printf "Choice [1/2, default: 1]: "
+        else
+            printf "Choice [1/2, default: 2]: "
+        fi
+        local choice
+        read -r choice </dev/tty || choice=""
+        echo ""
+        case "$choice" in
+            1) choice_index=0 ;;
+            2) choice_index=1 ;;
+            *)
+                if [[ "$choice_index" == "0" ]]; then
+                    choice_index=0
+                else
+                    choice_index=1
+                fi
+                ;;
+        esac
+    fi
+
+    if [[ "$choice_index" == "0" ]]; then
+        INSTALL_ZOEKT_LOCAL=1
+    else
+        INSTALL_ZOEKT_LOCAL=0
+    fi
+}
+
 has_flag() {
     local needle="$1"
     local item
@@ -675,18 +749,6 @@ detect_hosts() {
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
-    # Zoekt local binary option
-    local zoekt_all_present=1
-    local _z; for _z in zoekt-git-index zoekt-index zoekt zoekt-webserver; do
-        command -v "$_z" >/dev/null 2>&1 || zoekt_all_present=0
-    done
-    if [[ "$zoekt_all_present" == "1" ]]; then
-        HOST_CHOICES+=("Zoekt full-text search|installed")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_CHOICES+=("Zoekt full-text search|not installed")
-        HOST_DEFAULT_SELECTION+=(1)
-    fi
 }
 
 join_with_comma_space() {
@@ -733,7 +795,6 @@ host_wizard() {
                     2) HOST_FLAGS+=(--opencode) ;;
                     3) HOST_FLAGS+=(--copilot) ;;
                     4) HOST_FLAGS+=(--antigravity) ;;
-                    5) INSTALL_ZOEKT_LOCAL=1 ;;
                 esac
             done
             [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -744,7 +805,6 @@ host_wizard() {
         printf "│  3) %s\n" "${HOST_CHOICES[2]}"
         printf "│  4) %s\n" "${HOST_CHOICES[3]}"
         printf "│  5) %s\n" "${HOST_CHOICES[4]}"
-        printf "│  6) %s\n" "${HOST_CHOICES[5]}"
         printf "│  a) All (default)\n"
         printf "│\n"
         printf "Choice [a]: "
@@ -769,7 +829,6 @@ host_wizard() {
                         3) HOST_FLAGS+=(--opencode) ;;
                         4) HOST_FLAGS+=(--copilot) ;;
                         5) HOST_FLAGS+=(--antigravity) ;;
-                        6) INSTALL_ZOEKT_LOCAL=1 ;;
                     esac
                 done
                 [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1075,6 +1134,7 @@ main() {
     print_installer_header
     host_wizard
     prompt_memory_selection
+    prompt_local_zoekt_selection
 
     if supports_interactive_selector; then
         print_installer_footer
