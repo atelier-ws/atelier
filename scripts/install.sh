@@ -207,6 +207,63 @@ spin() {
     _SPINNER_ACTIVE=0; return $_ret
 }
 
+spin_progress() {
+    # spin_progress "message" cmd [args...] — runs cmd with a progress bar line.
+    local _msg="$1"; shift
+    local _ret=0
+    local _out_file
+    _out_file="$(mktemp "${TMPDIR:-/tmp}/atelier-progress.XXXXXX")"
+
+    if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]]; then
+        "$@" >"$_out_file" 2>&1 &
+        local _pid=$!
+        local _pct=0
+        local _width=20
+
+        while kill -0 "$_pid" 2>/dev/null; do
+            if [[ "$_pct" -lt 95 ]]; then
+                _pct=$((_pct + 1))
+            fi
+            local _filled=$((_pct * _width / 100))
+            local _empty=$((_width - _filled))
+            local _bar_fill _bar_empty
+            _bar_fill="$(printf '%*s' "$_filled" '' | tr ' ' '#')"
+            _bar_empty="$(printf '%*s' "$_empty" '' | tr ' ' '-')"
+            printf "\r%b│%b  %b▸%b  %s [%s%s] %3d%%" \
+                "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$C_RESET" "$_msg" "$_bar_fill" "$_bar_empty" "$_pct"
+            sleep 0.12
+        done
+
+        wait "$_pid" || _ret=$?
+        printf "\r\033[2K"
+        if [[ $_ret -eq 0 ]]; then
+            printf "%b│%b  %b✓%b  %s [%s] 100%%\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg" "####################"
+        else
+            printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+        fi
+    else
+        "$@" >"$_out_file" 2>&1 || _ret=$?
+        if [[ $_ret -eq 0 ]]; then
+            printf "%b│%b  %b✓%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg"
+        else
+            printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+        fi
+    fi
+
+    local _out=""
+    _out="$(cat "$_out_file" 2>/dev/null || true)"
+    rm -f "$_out_file"
+
+    if [[ $_ret -eq 0 ]]; then
+        if [[ "$ATELIER_VERBOSE" == "1" && -n "$_out" ]]; then
+            printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+        fi
+    else
+        [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+    fi
+    return $_ret
+}
+
 print_installer_header() {
     local script_root
     local display_version="0.1.0"
@@ -1278,18 +1335,6 @@ main() {
         step_done
     fi
 
-    step_start "Initializing"
-    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] $atelier_cli init"
-        echo "[dry-run] $atelier_cli code index --repo-root $ATELIER_INSTALL_DIR"
-    else
-        spin "Initializing runtime store" "$atelier_cli" init
-        if ! spin "Bootstrapping code index" "$atelier_cli" code index --repo-root "$ATELIER_INSTALL_DIR"; then
-            degrade "Initial code indexing failed; Atelier will continue and autosync will retry."
-        fi
-    fi
-    step_done
-
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
         verbose "Installing Atelier host integrations (skip if host CLI is missing)..."
         local host_install_args=()
@@ -1365,6 +1410,18 @@ main() {
                 || degrade "Failed to persist host detection status"
         fi
     fi
+
+    step_start "Initializing"
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        echo "[dry-run] $atelier_cli init"
+        echo "[dry-run] $atelier_cli code index --repo-root $ATELIER_INSTALL_DIR"
+    else
+        spin "Initializing runtime store" "$atelier_cli" init
+        if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$ATELIER_INSTALL_DIR"; then
+            degrade "Initial code indexing failed; Atelier will continue and autosync will retry."
+        fi
+    fi
+    step_done
 
     if [[ "$ATELIER_NO_SERVICECTL" != "1" ]]; then
         if command -v systemctl >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; then
