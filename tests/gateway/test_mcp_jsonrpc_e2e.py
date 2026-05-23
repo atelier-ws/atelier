@@ -629,7 +629,6 @@ def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> Non
         _call(
             "route",
             {
-                "op": "decide",
                 "task": "Harden MCP gateway end-to-end tests",
                 "task_type": "test",
                 "budget": "cheap",
