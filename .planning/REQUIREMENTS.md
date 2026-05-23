@@ -55,9 +55,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| OUT-01 | Phase 1 | Pending |
-| OUT-02 | Phase 1 | Pending |
-| OUT-03 | Phase 1 | Pending |
+| OUT-01 | Phase 1 | Complete |
+| OUT-02 | Phase 1 | Complete |
+| OUT-03 | Phase 1 | Complete |
 | SRCH-01 | Phase 2 | Pending |
 | SRCH-02 | Phase 2 | Pending |
 | SRCH-03 | Phase 2 | Pending |
