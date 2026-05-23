@@ -2046,6 +2046,12 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": True,
             "description": "Run post-edit hooks (formatter, linter, LSP diagnostics) on touched files. Diagnostics appear in the result.",
         },
+        "post_edit_timeout_ms": {
+            "type": "integer",
+            "default": 30000,
+            "minimum": 0,
+            "description": "Maximum total timeout for post-edit hooks in milliseconds.",
+        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -2130,33 +2136,94 @@ def tool_smart_edit(
     return result
 
 
-@mcp_tool(name="sql")
+SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["connect", "tables", "table", "lint", "query"],
+            "description": "connect: discover DB and show schema overview. tables: list all tables. table: inspect one table (needs name). lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
+        },
+        "name": {
+            "type": "string",
+            "description": "Table name for action=table.",
+        },
+        "sql": {
+            "type": "string",
+            "description": "SQL string for action=lint or action=query.",
+        },
+        "queries": {
+            "type": "array",
+            "description": "Batch of named queries for action=query: [{name, sql}, ...]. Prefer over repeated query calls.",
+            "items": {
+                "type": "object",
+                "required": ["sql"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "sql": {"type": "string"},
+                },
+            },
+        },
+        "connection_string": {
+            "type": "string",
+            "description": "Explicit DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL env or .env if omitted.",
+        },
+        "max_rows": {
+            "type": "integer",
+            "default": 500,
+            "description": "Row cap for query results.",
+        },
+        "allow_writes": {
+            "type": "boolean",
+            "default": True,
+            "description": "Set false to reject INSERT/UPDATE/DELETE/DROP.",
+        },
+        "auto_limit": {
+            "type": "boolean",
+            "default": True,
+            "description": "Automatically append LIMIT max_rows when missing.",
+        },
+    },
+    "required": ["action"],
+    "additionalProperties": False,
+}
+
+
+@mcp_tool(name="sql", input_schema=SQL_TOOL_INPUT_SCHEMA)
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
-    prefix: str | None = None,
     sql: str | None = None,
     queries: list[dict[str, str]] | None = None,
-    schema_name: str | None = None,
     connection_string: str | None = None,
-    dialect: str | None = None,
     max_rows: int = 500,
     timeout_ms: int = 30_000,
     auto_limit: bool = True,
     allow_writes: bool = True,
 ) -> dict[str, Any]:
-    """SQL op-dispatch for connect, schema, table, lint, and bounded query batching."""
+    """SQL op-dispatch for connect, schema, table, lint, and bounded query batching.
+
+    Actions:
+      connect  — discover database and show schema overview
+      tables   — list all tables
+      table    — inspect columns and foreign keys for one table (needs name)
+      lint     — validate SQL syntax without executing (needs sql)
+      query    — execute SQL (needs sql or queries[{name,sql},...])
+
+    Connection is auto-discovered from DATABASE_URL env or .env file.
+    Pass connection_string explicitly to override.
+    """
     from atelier.core.capabilities.tool_supervision.sql_tool import sql_tool
+
+    if action == "query" and not sql and not queries:
+        return {"isError": True, "message": "action='query' requires sql or queries parameter"}
 
     return sql_tool(
         action=action,
         name=name,
-        prefix=prefix,
         sql=sql,
         queries=queries,
-        schema_name=schema_name,
         connection_string=connection_string,
-        dialect=dialect,
         max_rows=max_rows,
         timeout_ms=timeout_ms,
         auto_limit=auto_limit,
@@ -2481,7 +2548,260 @@ def _workspace_code_router(repo_root: str = ".") -> Any:
     )
 
 
-@mcp_tool(name="code")
+CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["op"],
+    "properties": {
+        "op": {
+            "type": "string",
+            "description": (
+                "Operation to perform. "
+                "**PREFER this tool over `grep` and `search` for all symbol-level tasks** — "
+                "results come from a SCIP index (exact, not textual) and are token-budgeted. "
+                "Use `grep` only for free-form regex on non-symbol text. "
+                "Use `search` only when you have a natural-language description and no symbol name. "
+                "\n\n**Recommended workflow (funnel strategy):**\n"
+                "1. `search` or `outline` → discover symbol names/IDs\n"
+                "2. `symbol` or `hover` → inspect a specific hit\n"
+                "3. `usages`/`callers`/`callees` → understand relationships\n"
+                "4. `pattern`/`rename` → structural changes\n"
+                "Read file content (via `read`) only as a last step — most tasks complete without it."
+                "\n\nOp reference:"
+                "\n• `search` — Find symbols by name or natural-language description. "
+                "Indexed, up to 100x faster than grep. mode='semantic' for intent-based ('parse JSON config'), "
+                "'lexical' for exact identifier match. Requires: query."
+                "\n• `symbol` — Full definition for one symbol: signature, docstring, source, file+line, "
+                "cross-language references. Use after search to inspect a hit. "
+                "Requires one of: symbol_name, qualified_name, symbol_id, path+line."
+                "\n• `hover` — Minimal type+signature at a file position. Like IDE hover. "
+                "Token-optimal when you already have path+line. Requires: path + line OR symbol name."
+                "\n• `outline` — All symbols in a file (functions, classes, methods with line ranges). "
+                "Replaces grepping for 'def ' or 'class '. path=file for one file, omit for repo summary."
+                "\n• `usages` — Every site where a symbol is referenced across the repo. "
+                "Use before refactoring to see blast radius. Grouped by file."
+                "\n• `callers` — Who calls this function (call graph, inbound edges). "
+                "depth=1 for direct callers, depth=2 for transitive. Use to trace invocation paths."
+                "\n• `callees` — What this function calls (call graph, outbound edges). "
+                "Use to understand dependencies before editing."
+                "\n• `pattern` — Structural (AST-level) find using ast-grep. Unlike regex, matches "
+                "code structure: '$F($$$ARGS)' matches any call. Add rewrite= for safe codemod. "
+                "Requires: pattern."
+                "\n• `impact` — What files break if this file changes: direct + transitive importers. "
+                "Use before large refactors. Requires: path."
+                "\n• `blame` — Who last changed this symbol and when (git blame at symbol granularity). "
+                "Requires symbol identifier."
+                "\n• `context` — Task-based context builder: given a task description, surfaces the most "
+                "relevant symbols + files. Replaces reading many files manually. Requires: task."
+                "\n• `rename` — Safe, index-backed rename across all files (rope/ts-morph/ast-grep). "
+                "More reliable than search-and-replace. Requires: new_name + symbol identifier."
+                "\n• `index` — Build/rebuild the SCIP symbol index. Call if search returns 'not indexed'. "
+                "Auto-triggered on first use normally; only call manually after large merges."
+            ),
+            "enum": [
+                "index", "search", "blame", "hover", "symbol", "outline",
+                "context", "impact", "usages", "callers", "callees",
+                "pattern", "rename",
+            ],
+        },
+        "query": {
+            "type": "string",
+            "description": (
+                "Symbol name or natural-language description. "
+                "For search: can be identifier ('MyClass'), qualified ('module.MyClass.method'), "
+                "or intent ('function that handles HTTP errors'). "
+                "For usages/callers/callees/blame: identifier to resolve."
+            ),
+        },
+        "symbol_name": {
+            "type": "string",
+            "description": (
+                "Short unqualified name, e.g. 'run_command'. "
+                "When multiple symbols share a name, returns a disambiguation list. "
+                "Use qualified_name for precision."
+            ),
+        },
+        "qualified_name": {
+            "type": "string",
+            "description": (
+                "Fully qualified name, e.g. 'atelier.core.bash_exec.run_command'. "
+                "Most precise identifier when you know the module path."
+            ),
+        },
+        "symbol_id": {
+            "type": "string",
+            "description": (
+                "Stable SCIP symbol ID from a previous search/symbol result (e.g. 'scip-python … run_command'). "
+                "Most precise — use it when available from a prior tool call."
+            ),
+        },
+        "path": {
+            "type": "string",
+            "description": (
+                "Workspace-relative file path. "
+                "Required for: outline (one file), impact, hover (positional lookup). "
+                "Optional filter for: usages, callers, callees (restrict to file)."
+            ),
+        },
+        "line": {
+            "type": "integer",
+            "description": "1-based line number. Required for positional hover (path + line).",
+        },
+        "col": {
+            "type": "integer",
+            "description": "1-based column number. Optional precision for positional hover.",
+        },
+        "task": {
+            "type": "string",
+            "description": "Natural-language task description for op='context'. E.g. 'add retry logic to HTTP client'.",
+        },
+        "pattern": {
+            "type": "string",
+            "description": (
+                "ast-grep structural pattern. Use $VAR for single-node capture, $$$VARS for "
+                "multi-node (variadics). Example: 'console.log($MSG)' matches all console.log calls."
+            ),
+        },
+        "rewrite": {
+            "type": "string",
+            "description": (
+                "ast-grep rewrite template. Use captured variables from pattern. "
+                "Combined with dry_run=false to apply codemod. Example: 'logger.info($MSG)'."
+            ),
+        },
+        "new_name": {
+            "type": "string",
+            "description": "New identifier name for op='rename'.",
+        },
+        "mode": {
+            "type": "string",
+            "description": (
+                "Search mode for op='search'. "
+                "'auto' (default): picks best mode for the query. "
+                "'lexical': exact identifier match — use for known symbol names. "
+                "'semantic': embedding-based intent match — use for descriptions. "
+                "'hybrid': both, merged results."
+            ),
+            "enum": ["auto", "lexical", "semantic", "hybrid"],
+            "default": "auto",
+        },
+        "kind": {
+            "type": "string",
+            "description": (
+                "Filter by symbol kind: 'function', 'method', 'class', 'variable', 'interface', "
+                "'type', 'module', etc. Omit to search all kinds."
+            ),
+        },
+        "language": {
+            "type": "string",
+            "description": "Filter by language: 'python', 'typescript', 'javascript', 'go', 'rust', etc.",
+        },
+        "depth": {
+            "type": "integer",
+            "description": "Call graph traversal depth for callers/callees. 1=direct only, 2=transitive. Default 1.",
+            "default": 1,
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Maximum results to return. Default 20.",
+            "default": 20,
+        },
+        "snippet": {
+            "type": "string",
+            "description": (
+                "Source snippet verbosity for search results. "
+                "'none' (default): no source — smallest tokens. "
+                "'head': first N lines of body. "
+                "'full': complete source."
+            ),
+            "enum": ["none", "head", "full"],
+            "default": "none",
+        },
+        "snippet_lines": {
+            "type": "integer",
+            "description": "Lines of source to include when snippet='head'. Default 8.",
+            "default": 8,
+        },
+        "file_glob": {
+            "type": "string",
+            "description": "Glob to restrict search/pattern/usages to a subtree, e.g. 'src/api/**/*.py'.",
+        },
+        "group_by": {
+            "type": "string",
+            "description": "Group usages results by 'file' (default), 'caller', or 'none' (flat list).",
+            "enum": ["file", "caller", "none"],
+            "default": "file",
+        },
+        "scope": {
+            "type": "string",
+            "description": (
+                "Symbol scope for search. "
+                "'repo' (default): live symbols in the codebase. "
+                "'external': third-party dependencies. "
+                "'deleted': symbols removed in git history (graveyard search)."
+            ),
+            "enum": ["repo", "external", "deleted"],
+            "default": "repo",
+        },
+        "since": {
+            "type": "string",
+            "description": "ISO date or relative string ('7d', '2w') to filter search to recently changed symbols.",
+        },
+        "touched_by": {
+            "type": "string",
+            "description": "Git author name/email to filter search to symbols touched by that author.",
+        },
+        "dry_run": {
+            "type": "boolean",
+            "description": "For pattern with rewrite= : true (default) previews changes, false applies them.",
+            "default": True,
+        },
+        "rename_backend": {
+            "type": "string",
+            "description": (
+                "Rename engine. 'auto' (default) picks by language: rope (Python), "
+                "ts-morph (JS/TS), ast-grep (others), naive (fallback text replace)."
+            ),
+            "enum": ["auto", "rope", "ts-morph", "ast-grep", "naive"],
+            "default": "auto",
+        },
+        "seed_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Starting files for op='context'. Engine expands outward to find related symbols.",
+        },
+        "max_symbols": {
+            "type": "integer",
+            "description": "Max symbols to include in context op output. Default 8.",
+            "default": 8,
+        },
+        "budget_tokens": {
+            "type": "integer",
+            "description": (
+                "Output token cap. Results are packed to fit within this budget — "
+                "optional fields dropped first, then items trimmed. "
+                "Increase if results are truncated. Default 4000."
+            ),
+            "default": 4000,
+        },
+        "include_globs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Glob patterns to include during index. Omit to index everything.",
+        },
+        "exclude_globs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Glob patterns to exclude during index. E.g. ['tests/**', '*.generated.py'].",
+        },
+        "repo": {
+            "type": "string",
+            "description": "Repo name filter for multi-repo workspaces (requires .atelier/workspace.toml). ops: search, symbol.",
+        },
+    },
+}
+
+
+@mcp_tool(name="code", input_schema=CODE_TOOL_INPUT_SCHEMA)
 def tool_code(
     op: Literal[
         "index",
@@ -2615,8 +2935,8 @@ def tool_code(
         )
 
     if op == "hover":
-        if not any([symbol_id, qualified_name, symbol_name, (path and line is not None)]):
-            raise ValueError("symbol_id, qualified_name, symbol_name, or (file_path + line) is required for hover")
+        if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
+            raise ValueError("symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover")
         return cast(
             dict[str, Any],
             engine.tool_hover(
@@ -2807,9 +3127,12 @@ def tool_code(
             engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
         )
 
-    if not path:
-        raise ValueError("file_path is required for code impact")
-    return cast(dict[str, Any], engine.tool_impact(path, budget_tokens=budget_tokens))
+    if op == "impact":
+        if not path:
+            raise ValueError("path is required for code impact")
+        return cast(dict[str, Any], engine.tool_impact(path, budget_tokens=budget_tokens))
+
+    raise ValueError(f"unknown op: {op!r}")
 
 
 def _run_shell_tool(
@@ -2859,36 +3182,72 @@ def _run_shell_tool(
                 "stdout": rewritten_stdout,
                 "stderr": "",
                 "exit_code": 0,
+                "truncated": False,
+                "lines_omitted": 0,
+                "duration_ms": 0,
+                "rewrite_info": {"used_tool": "read", "reason": policy.reason},
             }
 
     if policy.action == "rewrite" and policy.rewrite_target == "grep" and policy.rewrite_payload:
+        import shlex
+
+        from atelier.core.capabilities.tool_supervision.native_search import SKIP_DIRS
+
         raw_search_path = str(policy.rewrite_payload.get("file_path") or ".")
+        content_regex = cast(str | None, policy.rewrite_payload.get("content_regex"))
+        ignore_case = bool(policy.rewrite_payload.get("ignore_case", False))
+        file_type = cast(str | None, policy.rewrite_payload.get("type"))
+
+        if shutil.which("rg") and content_regex:
+            # Prefer rg: respects .gitignore, faster, adds hard-coded exclusions
+            rg_flags: list[str] = ["--no-heading", "--with-filename", "--line-number", "--color=never"]
+            if ignore_case:
+                rg_flags.append("-i")
+            if file_type:
+                rg_flags += ["--type", file_type]
+            for d in sorted(SKIP_DIRS):
+                rg_flags += ["--glob", f"!{d}"]
+            rg_cmd = shlex.join(["rg", *rg_flags, "--", content_regex, raw_search_path])
+            rg_result = run_command(rg_cmd, cwd=effective_cwd, timeout=timeout, max_lines=max_lines)
+            return {
+                "stdout": rg_result.stdout,
+                "stderr": rg_result.stderr,
+                "exit_code": rg_result.exit_code,
+                "truncated": rg_result.truncated,
+                "lines_omitted": rg_result.lines_omitted,
+                "duration_ms": rg_result.duration_ms,
+                "rewrite_info": {"used_tool": "rg", "reason": policy.reason},
+            }
+
+        # Fallback: Python native_search (no rg or no pattern — file listing)
         resolved_search_path = Path(raw_search_path)
         if not resolved_search_path.is_absolute():
             resolved_search_path = (Path(effective_cwd) / resolved_search_path).resolve()
         glob_patterns = ["**/*"] if resolved_search_path.is_dir() else None
-        grep_handler: Callable[[dict[str, Any]], Any] = TOOLS["grep"]["handler"]
-        rewritten = cast(
-            dict[str, Any],
-            grep_handler(
-                {
-                    "path": raw_search_path,
-                    "content_regex": cast(str | None, policy.rewrite_payload.get("content_regex")),
-                    "file_glob_patterns": glob_patterns,
-                    "ignore_case": bool(policy.rewrite_payload.get("ignore_case", False)),
-                    "summary": False,
-                    "output_mode": cast(
-                        Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
-                        policy.rewrite_payload.get("output_mode", "file_paths_with_content"),
-                    ),
-                }
+        grep_args: dict[str, Any] = {
+            "path": raw_search_path,
+            "content_regex": content_regex,
+            "file_glob_patterns": glob_patterns,
+            "ignore_case": ignore_case,
+            "summary": False,
+            "output_mode": cast(
+                Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+                policy.rewrite_payload.get("output_mode", "file_paths_with_content"),
             ),
-        )
+        }
+        if file_type:
+            grep_args["type"] = file_type
+        grep_handler: Callable[[dict[str, Any]], Any] = TOOLS["grep"]["handler"]
+        rewritten = cast(dict[str, Any], grep_handler(grep_args))
         rewritten_stdout = _render_grep_stdout(rewritten)
         return {
             "stdout": rewritten_stdout,
             "stderr": "",
             "exit_code": 0,
+            "truncated": False,
+            "lines_omitted": 0,
+            "duration_ms": 0,
+            "rewrite_info": {"used_tool": "grep", "reason": policy.reason},
         }
 
     result = run_command(
@@ -2897,11 +3256,18 @@ def _run_shell_tool(
         timeout=timeout,
         max_lines=max_lines,
     )
-    return {
+    response: dict[str, Any] = {
         "stdout": result.stdout,
         "stderr": result.stderr,
         "exit_code": result.exit_code,
+        "truncated": result.truncated,
+        "lines_omitted": result.lines_omitted,
+        "duration_ms": result.duration_ms,
     }
+    if result.policy_action == "block":
+        response["blocked"] = True
+        response["blocked_reason"] = result.policy_reason
+    return response
 
 
 def _run_native_grep(
@@ -3370,14 +3736,49 @@ _READ_TOOLS = frozenset(
 )
 
 
-@mcp_tool(name="shell")
+SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "command": {
+            "type": "string",
+            "description": "Shell command to execute. Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
+        },
+        "cwd": {
+            "type": "string",
+            "description": "Working directory. Defaults to CLAUDE_WORKSPACE_ROOT.",
+        },
+        "timeout": {
+            "type": "integer",
+            "default": 30,
+            "description": "Seconds before the command is killed. Increase for slow builds.",
+        },
+        "max_lines": {
+            "type": "integer",
+            "default": 200,
+            "description": "Max output lines. Excess lines are head+tail truncated; check truncated=true in response.",
+        },
+    },
+    "required": ["command"],
+    "additionalProperties": False,
+}
+
+
+@mcp_tool(name="shell", input_schema=SHELL_TOOL_INPUT_SCHEMA)
 def tool_shell(
     command: str,
     timeout: int = 30,
     cwd: str | None = None,
     max_lines: int = 200,
 ) -> dict[str, Any]:
-    """Execute a shell command. Output is ANSI-stripped and line-truncated for token efficiency."""
+    """Execute a shell command. Output is ANSI-stripped and line-truncated for token efficiency.
+
+    Response fields: stdout, stderr, exit_code, truncated, lines_omitted, duration_ms.
+    If blocked: exit_code=-1, blocked=true, blocked_reason describes why.
+    If rewritten (cat→read, rg/grep→grep): exit_code=0, rewrite_info tells which tool ran.
+
+    Prefer Atelier read/grep/search tools directly — they are faster and cheaper.
+    Use shell only for commands that have no Atelier equivalent (git, make, uv, npm, etc.).
+    """
     return _run_shell_tool(command, timeout=timeout, cwd=cwd, max_lines=max_lines)
 
 

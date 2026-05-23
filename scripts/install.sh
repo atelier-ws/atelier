@@ -4,6 +4,9 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
 #
+# By default only the core service and frontend are installed natively.
+# Pass --advanced --memory letta|openmemory to install one Docker sidecar.
+#
 # Optional environment variables:
 #   ATELIER_REPO_URL   Git URL (default: https://github.com/pankaj4u4m/atelier.git)
 #   ATELIER_REF        Git ref to install (default: main)
@@ -16,11 +19,16 @@
 #   ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS Periodic maintenance interval (default: 21600)
 #   ATELIER_DRY_RUN    If set to 1, print planned actions and exit
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
-#   ATELIER_NO_OPENMEMORY If set to 1, skip installing the OpenMemory sidecar service
+#   ATELIER_ADVANCED   If set to 1, enable Docker sidecar install (requires --memory)
+#   ATELIER_MEMORY_BACKEND  Memory sidecar to install: letta | openmemory (default: none)
+#   ATELIER_ZOEKT      If set to 1, install the persistent Zoekt code-search sidecar (Docker)
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #
 # Notes:
+#   Exactly one memory sidecar can be active at a time; the selection is
+#   persisted to ~/.atelier/memory_backend for uninstall cleanup.
+#
 #   Codex host install manages its Atelier AGENTS block with explicit START/END
 #   sentinels so re-install can replace that block without overwriting user content.
 
@@ -59,7 +67,9 @@ ATELIER_SERVICECTL_INTERVAL_SECONDS="${ATELIER_SERVICECTL_INTERVAL_SECONDS:-60}"
 ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS="${ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS:-21600}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
-ATELIER_NO_OPENMEMORY="${ATELIER_NO_OPENMEMORY:-0}"
+ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
+ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
+ATELIER_ZOEKT="${ATELIER_ZOEKT:-}"                     # 1 = install persistent Zoekt sidecar
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 STACK_STARTED=0
@@ -76,6 +86,12 @@ while [[ $# -gt 0 ]]; do
         --dry-run) ATELIER_DRY_RUN=1; PASSTHROUGH+=("$1") ;;
         --no-hosts) ATELIER_NO_HOSTS=1; PASSTHROUGH+=("$1") ;;
         --no-stack) ATELIER_NO_STACK=1; PASSTHROUGH+=("$1") ;;
+        --advanced) ATELIER_ADVANCED=1 ;;
+        --memory)
+            if [[ $# -lt 2 ]]; then fail "--memory requires a value: letta or openmemory"; fi
+            shift; ATELIER_MEMORY_BACKEND="$1" ;;
+        --memory=*) ATELIER_MEMORY_BACKEND="${1#--memory=}" ;;
+        --zoekt) ATELIER_ZOEKT=1; ATELIER_ADVANCED=1 ;;
         --strict) ATELIER_STRICT=1; PASSTHROUGH+=("$1") ;;
         *) PASSTHROUGH+=("$1") ;;
     esac
@@ -154,6 +170,46 @@ print_final_report() {
     fi
     print_issue_group "Errors" "$C_RED" "${ERRORS[@]+"${ERRORS[@]}"}"
     print_issue_group "Warnings" "$C_YELLOW" "${WARNINGS[@]+"${WARNINGS[@]}"}"
+}
+
+prompt_memory_selection() {
+    [[ -t 0 ]] || return 0
+    [[ -n "$ATELIER_MEMORY_BACKEND" || "$ATELIER_ADVANCED" == "1" ]] && return 0
+
+    echo ""
+    printf "%b[atelier-install]%b Choose a memory backend:\n" "$C_BOLD" "$C_RESET"
+    printf "  0) SQLite      - local, no Docker needed (default)\n"
+    printf "  1) letta       - Letta memory server (Docker)\n"
+    printf "  2) openmemory  - OpenMemory MCP server (Docker + OpenAI key or ollama)\n"
+    printf "Choice [0/1/2, default: 0]: "
+    local choice
+    read -r choice </dev/tty
+    echo ""
+
+    case "$choice" in
+        1) ATELIER_MEMORY_BACKEND="letta"; ATELIER_ADVANCED=1 ;;
+        2) ATELIER_MEMORY_BACKEND="openmemory"; ATELIER_ADVANCED=1 ;;
+        *) ATELIER_MEMORY_BACKEND="" ;;
+    esac
+}
+
+prompt_zoekt_selection() {
+    [[ -t 0 ]] || return 0
+    [[ -n "$ATELIER_ZOEKT" ]] && return 0
+
+    echo ""
+    printf "%b[atelier-install]%b Enable persistent Zoekt code-search sidecar?\n" "$C_BOLD" "$C_RESET"
+    printf "  0) No (default)\n"
+    printf "  1) Yes (Docker)\n"
+    printf "Choice [0/1, default: 0]: "
+    local choice
+    read -r choice </dev/tty
+    echo ""
+
+    case "$choice" in
+        1) ATELIER_ZOEKT=1; ATELIER_ADVANCED=1 ;;
+        *) ATELIER_ZOEKT="" ;;
+    esac
 }
 
 run() {
@@ -331,6 +387,18 @@ main() {
 
     need_cmd git
     need_cmd bash
+
+    prompt_memory_selection
+    prompt_zoekt_selection
+
+    case "$ATELIER_MEMORY_BACKEND" in
+        letta|openmemory|"") ;;
+        *) fail "--memory must be 'letta' or 'openmemory', got: '$ATELIER_MEMORY_BACKEND'" ;;
+    esac
+    if [[ -n "$ATELIER_MEMORY_BACKEND" ]]; then
+        ATELIER_ADVANCED=1
+    fi
+
     install_uv_if_needed
 
     local stack_available=0
@@ -343,15 +411,6 @@ main() {
     local stack_expected=0
     if [[ "$ATELIER_NO_SERVICECTL" != "1" && "$stack_available" == "1" ]] && { command -v systemctl >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; }; then
         stack_expected=1
-    fi
-
-    local openmemory_available=0
-    if [[ "$ATELIER_NO_OPENMEMORY" != "1" ]] \
-        && command -v git >/dev/null 2>&1 \
-        && command -v docker >/dev/null 2>&1 \
-        && command -v make >/dev/null 2>&1 \
-        && [[ -n "${ATELIER_OPENMEMORY_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}" ]]; then
-        openmemory_available=1
     fi
 
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
@@ -376,6 +435,70 @@ main() {
         run npm install -g tokscale
     else
         warn "npm not found — skipping codeburn and tokscale (install Node.js 20+ to enable)"
+    fi
+
+    local selected_memory=""
+    if [[ "$ATELIER_ADVANCED" == "1" ]]; then
+        if [[ -z "$ATELIER_MEMORY_BACKEND" ]]; then
+            warn "--advanced set but no --memory selected; no memory sidecar will be installed"
+        elif [[ "$ATELIER_MEMORY_BACKEND" == "letta" ]]; then
+            if command -v docker >/dev/null 2>&1; then
+                selected_memory="letta"
+                info "Memory sidecar: Letta (Docker)"
+            else
+                warn "--memory letta requires Docker - skipping Letta sidecar"
+            fi
+        elif [[ "$ATELIER_MEMORY_BACKEND" == "openmemory" ]]; then
+            local _om_missing=()
+            command -v docker >/dev/null 2>&1 || _om_missing+=("docker")
+            command -v git >/dev/null 2>&1 || _om_missing+=("git")
+            command -v make >/dev/null 2>&1 || _om_missing+=("make")
+            local _has_llm=0
+            [[ -n "${ATELIER_OPENMEMORY_OPENAI_API_KEY:-}${OPENAI_API_KEY:-}" ]] && _has_llm=1
+            command -v ollama >/dev/null 2>&1 && _has_llm=1
+            [[ -n "${OLLAMA_HOST:-}" ]] && _has_llm=1
+            [[ "$_has_llm" == "1" ]] || _om_missing+=("OPENAI_API_KEY or ollama")
+            if [[ ${#_om_missing[@]} -gt 0 ]]; then
+                warn "OpenMemory prerequisites missing (${_om_missing[*]}) - skipping memory sidecar"
+            else
+                selected_memory="openmemory"
+                info "Memory sidecar: OpenMemory (Docker)"
+            fi
+        fi
+    fi
+
+    local selected_zoekt=""
+    if [[ "$ATELIER_ZOEKT" == "1" ]]; then
+        if command -v docker >/dev/null 2>&1; then
+            selected_zoekt="1"
+            info "Zoekt sidecar: enabled (Docker)"
+        else
+            warn "--zoekt requires Docker - skipping Zoekt sidecar"
+        fi
+    fi
+
+    local memory_record="${HOME}/.atelier/memory_backend"
+    if [[ -n "$selected_memory" ]]; then
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] printf '%s\\n' '$selected_memory' > '$memory_record'"
+        else
+            mkdir -p "${HOME}/.atelier"
+            printf '%s\n' "$selected_memory" > "$memory_record"
+        fi
+    elif [[ -f "$memory_record" && "$ATELIER_DRY_RUN" != "1" ]]; then
+        : >"$memory_record"
+    fi
+
+    local zoekt_record="${HOME}/.atelier/zoekt_enabled"
+    if [[ "$selected_zoekt" == "1" ]]; then
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] printf '1\\n' > '$zoekt_record'"
+        else
+            mkdir -p "${HOME}/.atelier"
+            printf '1\n' > "$zoekt_record"
+        fi
+    elif [[ -f "$zoekt_record" && "$ATELIER_DRY_RUN" != "1" ]]; then
+        : >"$zoekt_record"
     fi
 
     # atelier-status was folded into `atelier status` — no separate binary needed
@@ -439,8 +562,12 @@ main() {
             if [[ "$stack_available" == "1" ]]; then
                 background_args+=("--with-stack")
             fi
-            if [[ "$openmemory_available" == "1" ]]; then
-                background_args+=("--with-openmemory")
+            case "$selected_memory" in
+                letta) background_args+=("--with-letta") ;;
+                openmemory) background_args+=("--with-openmemory") ;;
+            esac
+            if [[ "$selected_zoekt" == "1" ]]; then
+                background_args+=("--with-zoekt")
             fi
 
             if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
@@ -488,6 +615,24 @@ main() {
     echo "    atelier stack logs          - View stack logs"
     echo "    atelier status              - Show one-line status of the active reasoning run"
     echo "    atelier import              - Import agent sessions from all available history sources (CLI, VS Code, etc.)"
+    echo ""
+    echo "  Memory sidecar (Docker, opt-in via --advanced --memory <backend>):"
+    case "$selected_memory" in
+        letta) echo "    ACTIVE: Letta - atelier letta up/down/status/reset" ;;
+        openmemory) echo "    ACTIVE: OpenMemory - atelier openmemory up/down/status/logs" ;;
+        *)
+            echo "    None selected."
+            echo "      --advanced --memory letta"
+            echo "      --advanced --memory openmemory"
+            ;;
+    esac
+    echo ""
+    echo "  Zoekt code-search sidecar (Docker, opt-in via --zoekt):"
+    if [[ "$selected_zoekt" == "1" ]]; then
+        echo "    ACTIVE - atelier zoekt up/down/status/reindex/reset"
+    else
+        echo "    Not enabled. Re-run with --zoekt."
+    fi
 
     print_final_report
     if [[ ${#ERRORS[@]} -gt 0 ]]; then

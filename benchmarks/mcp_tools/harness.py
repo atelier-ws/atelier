@@ -29,8 +29,14 @@ class BenchCase:
     assert_values: dict[str, Any] = field(default_factory=dict)
     # Human-readable description of what agent would do without Atelier
     baseline_description: str = ""
-    # Estimated token cost without Atelier (what agent would read/write)
+    # Fixed baseline token cost without Atelier (what agent would read/write).
+    # Use baseline_builder for measured dynamic baselines.
     baseline_tokens: int = 0
+    # Optional callable to construct a measured baseline payload.
+    # Signature: fn(case) -> BaselineMeasurement | serializable payload/string
+    baseline_builder: Callable[["BenchCase"], Any] | None = field(default=None, repr=False)
+    # Optional quality gate for measured baseline hardness.
+    min_baseline_tokens: int = 0
     # Optional callable for custom assertions: fn(result) -> None (raise on fail)
     custom_assert: Callable[[dict[str, Any]], None] | None = field(default=None, repr=False)
     label: str = ""
@@ -45,19 +51,22 @@ class CaseResult:
     case: BenchCase
     response: dict[str, Any]
     atelier_tokens: int
+    baseline_tokens: int
+    input_file_tokens: int
+    baseline_commands: list[str]
     elapsed_ms: float
     passed: bool
     failure: str = ""
 
     @property
     def tokens_saved(self) -> int:
-        return max(0, self.case.baseline_tokens - self.atelier_tokens)
+        return max(0, self.baseline_tokens - self.atelier_tokens)
 
     @property
     def savings_pct(self) -> float:
-        if self.case.baseline_tokens == 0:
+        if self.baseline_tokens == 0:
             return 0.0
-        return self.tokens_saved / self.case.baseline_tokens * 100
+        return self.tokens_saved / self.baseline_tokens * 100
 
 
 @dataclass
@@ -83,10 +92,17 @@ class ToolReport:
 
     @property
     def avg_savings_pct(self) -> float:
-        with_baseline = [r for r in self.results if r.case.baseline_tokens > 0]
+        with_baseline = [r for r in self.results if r.baseline_tokens > 0]
         if not with_baseline:
             return 0.0
         return sum(r.savings_pct for r in with_baseline) / len(with_baseline)
+
+
+@dataclass
+class BaselineMeasurement:
+    payload: Any
+    input_file_tokens: int = 0
+    commands: list[str] = field(default_factory=list)
 
 
 def run_case(
@@ -103,18 +119,40 @@ def run_case(
             case=case,
             response={},
             atelier_tokens=0,
+            baseline_tokens=case.baseline_tokens,
+            input_file_tokens=0,
+            baseline_commands=[],
             elapsed_ms=elapsed_ms,
             passed=False,
             failure=f"exception: {exc}",
         )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     atelier_tokens = _tokens(response) if response is not None else 4  # "null" is 4 chars
+    baseline_tokens = case.baseline_tokens
+    input_file_tokens = 0
+    baseline_commands: list[str] = []
+    if case.baseline_builder is not None:
+        measurement = case.baseline_builder(case)
+        if isinstance(measurement, BaselineMeasurement):
+            baseline_tokens = _tokens(measurement.payload)
+            input_file_tokens = int(measurement.input_file_tokens)
+            baseline_commands = list(measurement.commands)
+        else:
+            baseline_tokens = _tokens(measurement)
 
     failure = _check(case, response)
+    if failure == "" and case.min_baseline_tokens > 0 and baseline_tokens < case.min_baseline_tokens:
+        failure = (
+            f"measured baseline too small: baseline_tokens={baseline_tokens} "
+            f"< min_baseline_tokens={case.min_baseline_tokens}"
+        )
     return CaseResult(
         case=case,
         response=response or {},
         atelier_tokens=atelier_tokens,
+        baseline_tokens=baseline_tokens,
+        input_file_tokens=input_file_tokens,
+        baseline_commands=baseline_commands,
         elapsed_ms=elapsed_ms,
         passed=failure == "",
         failure=failure,

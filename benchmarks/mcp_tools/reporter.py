@@ -39,22 +39,25 @@ def render_tool_report(report: ToolReport) -> str:
     col_w = 36
     lines.append(
         f"  {'op':<{col_w}} {'status':<8} {'atelier':>8} {'baseline':>9} "
-        f"{'saved':>7} {'saving%':>8}  {'ms':>5}"
+        f"{'input':>9} {'saved':>7} {'saving%':>8}  {'ms':>5}"
     )
-    lines.append(f"  {'-' * col_w} {'-' * 7} {'-' * 8} {'-' * 9} {'-' * 7} {'-' * 8}  {'-' * 5}")
+    lines.append(f"  {'-' * col_w} {'-' * 7} {'-' * 8} {'-' * 9} {'-' * 9} {'-' * 7} {'-' * 8}  {'-' * 5}")
 
     for r in report.results:
         status = _pass_fail(r.passed)
-        saved_str = f"{r.tokens_saved:,}" if r.case.baseline_tokens > 0 else "—"
-        pct_str = f"{r.savings_pct:.0f}%" if r.case.baseline_tokens > 0 else "—"
-        baseline_str = f"{r.case.baseline_tokens:,}" if r.case.baseline_tokens > 0 else "—"
+        saved_str = f"{r.tokens_saved:,}" if r.baseline_tokens > 0 else "—"
+        pct_str = f"{r.savings_pct:.0f}%" if r.baseline_tokens > 0 else "—"
+        baseline_str = f"{r.baseline_tokens:,}" if r.baseline_tokens > 0 else "—"
+        input_str = f"{r.input_file_tokens:,}" if r.input_file_tokens > 0 else "—"
         label = r.case.label[:col_w]
         lines.append(
-            f"  {label:<{col_w}} {status}{'  ':<6} {r.atelier_tokens:>8,} {baseline_str:>9} "
+            f"  {label:<{col_w}} {status}{'  ':<6} {r.atelier_tokens:>8,} {baseline_str:>9} {input_str:>9} "
             f"{saved_str:>7} {pct_str:>8}  {r.elapsed_ms:>5.0f}"
         )
         if not r.passed:
             lines.append(f"  {_RED}    └ {r.failure}{_RESET}")
+        if r.baseline_commands:
+            lines.append(f"  {_DIM}    cmds: {len(r.baseline_commands)} fallback commands{_RESET}")
 
     return "\n".join(lines)
 
