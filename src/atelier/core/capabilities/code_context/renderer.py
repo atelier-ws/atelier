@@ -325,18 +325,14 @@ def _render_context(payload: Mapping[str, Any]) -> str:
     lines.append("#### entry_points")
     if entry_points:
         for row in entry_points[:_CONTEXT_ENTRY_CAP]:
-            lines.append(
-                f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]"
-            )
+            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
     else:
         lines.append("- none")
 
     lines.append("#### related_symbols")
     if related_symbols:
         for row in related_symbols[:_CONTEXT_RELATED_CAP]:
-            lines.append(
-                f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]"
-            )
+            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
     elif isinstance(import_neighbors, list) and import_neighbors:
         for item in sorted(str(value) for value in import_neighbors[:_CONTEXT_RELATED_CAP]):
             lines.append(f"- {item}")

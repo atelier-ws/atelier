@@ -22,7 +22,9 @@ TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 INSTALL_PROFILES = frozenset({"stable", "dev"})
 MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
-STABLE_LLM_TOOLS = frozenset({"compact", "context", "trace", "memory", "read", "grep", "search", "route", "edit", "sql", "shell"})
+STABLE_LLM_TOOLS = frozenset(
+    {"compact", "context", "trace", "memory", "read", "grep", "search", "route", "edit", "sql", "shell"}
+)
 DEV_LLM_TOOLS = frozenset(
     {
         "code",

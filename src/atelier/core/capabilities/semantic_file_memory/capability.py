@@ -169,17 +169,30 @@ class SemanticFileMemoryCapability:
 
     @staticmethod
     def _parse_range_spec(range_spec: str, total_lines: int) -> tuple[int, int]:
-        """Parse line range forms like 42-118 or L42-L118."""
+        """Parse ranges like 42-118/L42-L118, plus tolerant open-ended forms."""
         s = range_spec.strip()
-        m = re.fullmatch(r"L?(\d+)\s*-\s*L?(\d+)", s, flags=re.IGNORECASE)
-        if m is None:
-            raise ValueError("range must be in form 'start-end' or 'Lstart-Lend'")
-        start = int(m.group(1))
-        end = int(m.group(2))
-        if start < 1 or end < 1:
+        start_match = re.match(r"L?(\d+)", s, flags=re.IGNORECASE)
+        if start_match is None:
+            raise ValueError("range must start with a line number")
+
+        start = int(start_match.group(1))
+        if start < 1:
             raise ValueError("range lines must be >= 1")
-        if start > end:
-            raise ValueError("range start must be <= end")
+
+        end_match = re.search(r"-\s*L?(\d+)", s, flags=re.IGNORECASE)
+        if end_match is not None:
+            end = int(end_match.group(1))
+            if end < 1:
+                raise ValueError("range lines must be >= 1")
+        elif "-" in s:
+            # Open-ended or malformed end (e.g., "L259-" / "259-foo") -> EOF.
+            end = total_lines
+        else:
+            # Single-line form (e.g., "L42") -> read one line.
+            end = start
+
+        if end < start:
+            end = start
         return min(start, total_lines), min(end, total_lines)
 
     @staticmethod

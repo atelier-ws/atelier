@@ -33,7 +33,7 @@ import tiktoken
 from datasketch import MinHash, MinHashLSH
 
 from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
-from atelier.core.foundation.memory_models import ArchivalPassage
+from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.store import ContextStore
@@ -136,6 +136,48 @@ def summarize_recalled_passages(passages: Sequence[ArchivalPassage], *, query: s
         }
         for passage in passages
     ]
+
+
+def render_memory_facts_for_agent(blocks: Sequence[MemoryBlock]) -> str:
+    """Render stored memory facts for context injection."""
+    if not blocks:
+        return ""
+    out = ["<memory_facts>"]
+    for block in blocks:
+        metadata = block.metadata or {}
+        scope = str(metadata.get("scope", ""))
+        subject = str(metadata.get("subject", ""))
+        citations = str(metadata.get("citations", ""))
+        votes = metadata.get("votes", {})
+        up = int((votes or {}).get("upvote", 0) or 0)
+        down = int((votes or {}).get("downvote", 0) or 0)
+        out.append("")
+        out.append(
+            f"Fact: {block.id}  [scope={scope or 'repository'} subject={subject or 'general'} votes={up}/{down}]"
+        )
+        out.append(block.value.strip())
+        if citations:
+            out.append(f"Citations: {citations}")
+    out.append("</memory_facts>")
+    return "\n".join(out) + "\n"
+
+
+def summarize_memory_facts(blocks: Sequence[MemoryBlock]) -> list[dict[str, str | float]]:
+    """Return compact metadata for stored memory facts injected into context."""
+    summaries: list[dict[str, str | float]] = []
+    for block in blocks:
+        metadata = block.metadata or {}
+        votes = metadata.get("votes", {})
+        up = int((votes or {}).get("upvote", 0) or 0)
+        down = int((votes or {}).get("downvote", 0) or 0)
+        summaries.append(
+            {
+                "id": block.id,
+                "source": "memory_fact",
+                "score": float(max(0, up - down)),
+            }
+        )
+    return summaries
 
 
 def _dedup_text(block: ReasonBlock) -> str:
