@@ -409,6 +409,8 @@ class CodeContextEngine:
         self._autosync_last_sync_ms = 0
         self._autosync_last_event_at: str | None = None
         self._autosync_pending_events = 0
+        self._autosync_reindex_count = 0
+        self._autosync_history: list[dict[str, Any]] = []
         self._register_symbol_intel_providers()
 
     def index_repo(
@@ -2477,6 +2479,7 @@ class CodeContextEngine:
                 self._autosync_last_sync_ms = int(time.time() * 1000)
                 self._autosync_state = "idle"
                 self._autosync_pending_events = 0
+                self._record_autosync_event(event="initial_index", reason="empty_index_bootstrap", reindexed=True)
             return
         if self._autosync_enabled:
             self._maybe_autosync_reindex()
@@ -4119,6 +4122,8 @@ class CodeContextEngine:
             "debounce_ms": self._autosync_debounce_ms,
             "pending_events": self._autosync_pending_events,
             "last_event_at": self._autosync_last_event_at,
+            "reindex_count": self._autosync_reindex_count,
+            "history": list(self._autosync_history),
         }
 
     def _source_tree_signature(self) -> str:
@@ -4137,6 +4142,7 @@ class CodeContextEngine:
             self._autosync_signature = current_signature
             self._autosync_last_sync_ms = int(time.time() * 1000)
             self._autosync_state = "idle"
+            self._record_autosync_event(event="bootstrap", reason="seed_signature", reindexed=False)
             return
         if current_signature == self._autosync_signature:
             self._autosync_state = "idle"
@@ -4147,6 +4153,7 @@ class CodeContextEngine:
         self._autosync_pending_events = max(1, self._autosync_pending_events + 1)
         if now_ms - self._autosync_last_sync_ms < self._autosync_debounce_ms:
             self._autosync_state = "debouncing"
+            self._record_autosync_event(event="change_detected", reason="within_debounce_window", reindexed=False)
             return
         self._autosync_state = "syncing"
         self.index_repo()
@@ -4154,6 +4161,19 @@ class CodeContextEngine:
         self._autosync_last_sync_ms = int(time.time() * 1000)
         self._autosync_pending_events = 0
         self._autosync_state = "idle"
+        self._autosync_reindex_count += 1
+        self._record_autosync_event(event="reindex", reason="source_signature_changed", reindexed=True)
+
+    def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
+        entry = {
+            "at": datetime.now(UTC).isoformat(),
+            "event": event,
+            "reason": reason,
+            "reindexed": reindexed,
+        }
+        self._autosync_history.append(entry)
+        if len(self._autosync_history) > 20:
+            self._autosync_history = self._autosync_history[-20:]
 
     def _current_head_sha(self) -> str:
         from atelier.infra.code_intel.git_history import require_pygit2
