@@ -930,6 +930,7 @@ install_local_zoekt_if_selected() {
     [[ "$INSTALL_ZOEKT_LOCAL" != "1" ]] && return 0
     local atelier_cli="$1"
     local go_user_bin="${HOME}/.local/go/bin"
+    local go_path_bin=""
 
     # Check/install Go first
     if ! command -v go >/dev/null 2>&1; then
@@ -955,6 +956,10 @@ install_local_zoekt_if_selected() {
     if ! command -v go >/dev/null 2>&1; then
         warn "Go is still not on PATH — skipping Zoekt binary install"
         return 0
+    fi
+    go_path_bin="$(go env GOPATH 2>/dev/null)/bin"
+    if [[ -n "$go_path_bin" && ":$PATH:" != *":${go_path_bin}:"* ]]; then
+        export PATH="${go_path_bin}:${PATH}"
     fi
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
