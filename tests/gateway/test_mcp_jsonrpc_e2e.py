@@ -305,30 +305,34 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
 
 
 def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:
-    block = _payload(
+    stored = _payload(
         _call(
             "memory",
             {
-                "op": "block_upsert",
+                "op": "store_fact",
                 "agent_id": "atelier:code",
-                "label": "mcp-e2e",
-                "value": "Prefer JSON-RPC MCP tests with real side effects.",
+                "subject": "mcp-e2e",
+                "fact": "Prefer JSON-RPC MCP tests with real side effects.",
+                "citations": "tests/gateway/test_mcp_jsonrpc_e2e.py",
+                "reason": "e2e test fixture fact",
+                "scope": "repository",
             },
         )
     )
-    assert block["version"] == 1
+    assert stored["fact"]
 
-    fetched = _payload(
+    recalled_fact = _payload(
         _call(
             "memory",
             {
-                "op": "block_get",
+                "op": "recall",
                 "agent_id": "atelier:code",
-                "label": "mcp-e2e",
+                "query": "JSON-RPC MCP tests",
+                "top_k": 3,
             },
         )
     )
-    assert fetched["value"].startswith("Prefer JSON-RPC MCP tests")
+    assert recalled_fact["passages"] or recalled_fact.get("facts")
 
     archived = _payload(
         _call(
