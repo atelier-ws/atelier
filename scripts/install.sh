@@ -40,12 +40,14 @@ if [[ -t 1 ]]; then
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
+    C_CYAN="$(printf '\033[36m')"
 else
     C_RESET=""
     C_BOLD=""
     C_GREEN=""
     C_RED=""
     C_YELLOW=""
+    C_CYAN=""
 fi
 if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_RESET="$(printf '\033[0m')"
@@ -53,6 +55,7 @@ if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
+    C_CYAN="$(printf '\033[36m')"
 fi
 
 ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}"
@@ -77,6 +80,10 @@ PASSTHROUGH=()
 WARNINGS=()
 ERRORS=()
 FINAL_EXIT_CODE=0
+HOST_FLAGS=()
+HOST_SCOPE_ARGS=()
+HOST_EXTRA_ARGS=()
+SKIP_CLI_INSTALL=0
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -190,6 +197,186 @@ prompt_memory_selection() {
         1) ATELIER_MEMORY_BACKEND="letta"; ATELIER_ADVANCED=1 ;;
         2) ATELIER_MEMORY_BACKEND="openmemory"; ATELIER_ADVANCED=1 ;;
         *) ATELIER_MEMORY_BACKEND="" ;;
+    esac
+}
+
+has_flag() {
+    local needle="$1"
+    local item
+    for item in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+contains_any_host_flag() {
+    has_flag "--all" && return 0
+    has_flag "--claude" && return 0
+    has_flag "--codex" && return 0
+    has_flag "--opencode" && return 0
+    has_flag "--copilot" && return 0
+    has_flag "--antigravity" && return 0
+    return 1
+}
+
+detect_hosts() {
+    HOST_FLAGS=()
+    HOST_SUMMARY=()
+
+    if command -v claude >/dev/null 2>&1; then
+        HOST_SUMMARY+=("Claude Code (detected)")
+    else
+        HOST_SUMMARY+=("Claude Code")
+    fi
+
+    if command -v codex >/dev/null 2>&1; then
+        HOST_SUMMARY+=("Codex CLI (detected)")
+    else
+        HOST_SUMMARY+=("Codex CLI")
+    fi
+
+    if command -v opencode >/dev/null 2>&1; then
+        HOST_SUMMARY+=("opencode (detected)")
+    else
+        HOST_SUMMARY+=("opencode")
+    fi
+
+    if command -v code >/dev/null 2>&1; then
+        HOST_SUMMARY+=("Copilot/VS Code (detected)")
+    else
+        HOST_SUMMARY+=("Copilot/VS Code")
+    fi
+
+    if command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1; then
+        HOST_SUMMARY+=("Antigravity (detected)")
+    else
+        HOST_SUMMARY+=("Antigravity")
+    fi
+}
+
+join_with_comma_space() {
+    local joined=""
+    local item
+    for item in "$@"; do
+        if [[ -z "$joined" ]]; then
+            joined="$item"
+        else
+            joined="$joined, $item"
+        fi
+    done
+    printf "%s" "$joined"
+}
+
+host_wizard() {
+    [[ -t 0 && -t 1 ]] || return 0
+    [[ "$ATELIER_NO_HOSTS" == "1" ]] && return 0
+    contains_any_host_flag && return 0
+    has_flag "--workspace" && return 0
+
+    detect_hosts
+
+    echo ""
+    printf "%b┌  Atelier installer%b\n" "$C_CYAN" "$C_RESET"
+    echo "│"
+    printf "◇  Which agents should Atelier configure?\n"
+    printf "│  %s\n" "$(join_with_comma_space "${HOST_SUMMARY[@]}")"
+    echo "│"
+    printf "│  1) Claude Code\n"
+    printf "│  2) Codex CLI\n"
+    printf "│  3) opencode\n"
+    printf "│  4) Copilot/VS Code\n"
+    printf "│  5) Antigravity\n"
+    printf "│  a) All (default)\n"
+    printf "│  n) None (skip host integrations)\n"
+    printf "│\n"
+    printf "Choice [a]: "
+
+    local selection
+    read -r selection </dev/tty || selection="a"
+    selection="${selection:-a}"
+    echo ""
+
+    case "$selection" in
+        a|A|all|ALL)
+            HOST_FLAGS=(--all)
+            ;;
+        n|N|none|NONE|skip|SKIP|0)
+            ATELIER_NO_HOSTS=1
+            ;;
+        *)
+            local token
+            IFS=',' read -ra _choices <<<"$selection"
+            for token in "${_choices[@]}"; do
+                token="$(echo "$token" | xargs)"
+                case "$token" in
+                    1) HOST_FLAGS+=(--claude) ;;
+                    2) HOST_FLAGS+=(--codex) ;;
+                    3) HOST_FLAGS+=(--opencode) ;;
+                    4) HOST_FLAGS+=(--copilot) ;;
+                    5) HOST_FLAGS+=(--antigravity) ;;
+                esac
+            done
+            [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
+            ;;
+    esac
+
+    [[ "$ATELIER_NO_HOSTS" == "1" ]] && return 0
+
+    echo "◇  Apply agent configs to all your projects, or just this one?"
+    echo "│  1) All projects (global)"
+    echo "│  2) Just this project"
+    printf "Choice [1]: "
+
+    local scope_choice
+    read -r scope_choice </dev/tty || scope_choice="1"
+    scope_choice="${scope_choice:-1}"
+    echo ""
+
+    local scope="global"
+    if [[ "$scope_choice" == "2" ]]; then
+        HOST_SCOPE_ARGS=(--workspace .)
+        scope="local"
+    fi
+
+    local wants_claude=0
+    local flag
+    for flag in "${HOST_FLAGS[@]+"${HOST_FLAGS[@]}"}"; do
+        if [[ "$flag" == "--all" || "$flag" == "--claude" ]]; then
+            wants_claude=1
+            break
+        fi
+    done
+
+    if [[ "$wants_claude" == "1" && "$scope" == "global" ]]; then
+        echo "◇  Auto-allow Atelier commands? (Skips permission prompts in Claude Code)"
+        printf "Choice [Y/n]: "
+        local auto_allow
+        read -r auto_allow </dev/tty || auto_allow="y"
+        auto_allow="${auto_allow:-y}"
+        echo ""
+        case "$auto_allow" in
+            [Nn]*) ;;
+            *)
+                HOST_EXTRA_ARGS=(--claude-project "$(pwd)")
+                ;;
+        esac
+    fi
+}
+
+prompt_cli_install_choice() {
+    [[ -t 0 && -t 1 ]] || return 0
+    [[ "$ATELIER_DRY_RUN" == "1" ]] && return 0
+
+    echo "◇  Install/update Atelier CLI on your PATH? (Required so agents can launch the MCP server)"
+    printf "Choice [Y/n]: "
+    local answer
+    read -r answer </dev/tty || answer="y"
+    answer="${answer:-y}"
+    echo ""
+
+    case "$answer" in
+        [Nn]*) SKIP_CLI_INSTALL=1 ;;
+        *) SKIP_CLI_INSTALL=0 ;;
     esac
 }
 
@@ -388,6 +575,8 @@ main() {
     need_cmd git
     need_cmd bash
 
+    host_wizard
+    prompt_cli_install_choice
     prompt_memory_selection
     prompt_zoekt_selection
 
@@ -421,9 +610,13 @@ main() {
     fi
     export ATELIER_INSTALL_DIR
 
-    info "Installing Atelier console commands..."
-    install_console_scripts
-    persist_install_record
+    if [[ "$SKIP_CLI_INSTALL" == "1" ]]; then
+        warn "Skipped CLI install; installer will use existing 'atelier'/'atelier-mcp' on PATH."
+    else
+        info "Installing Atelier console commands..."
+        install_console_scripts
+        persist_install_record
+    fi
 
     info "Installing optional code-quality tools (format, lint, rename)..."
     install_code_tools
@@ -511,11 +704,17 @@ main() {
         echo ""
     fi
 
+    local atelier_cli="$ATELIER_BIN_DIR/atelier"
+    if [[ "$SKIP_CLI_INSTALL" == "1" && ! -x "$atelier_cli" ]]; then
+        atelier_cli="$(command -v atelier || true)"
+        [[ -n "$atelier_cli" ]] || fail "'atelier' CLI is required but was not found on PATH."
+    fi
+
     info "Initializing Atelier runtime store..."
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] $ATELIER_BIN_DIR/atelier init"
+        echo "[dry-run] $atelier_cli init"
     else
-        "$ATELIER_BIN_DIR/atelier" init >/dev/null
+        "$atelier_cli" init >/dev/null
     fi
 
     # Persist the selected memory backend so uninstall knows what to clean up.
@@ -536,16 +735,34 @@ main() {
 
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
         info "Installing Atelier host integrations (skip if host CLI is missing)..."
+        local host_install_args=()
+        local passthrough
+        for passthrough in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
+            case "$passthrough" in
+                --dry-run|--print-only|--strict)
+                    host_install_args+=("$passthrough")
+                    ;;
+            esac
+        done
+        if [[ ${#HOST_FLAGS[@]} -gt 0 ]]; then
+            host_install_args+=("${HOST_FLAGS[@]}")
+        fi
+        if [[ ${#HOST_SCOPE_ARGS[@]} -gt 0 ]]; then
+            host_install_args+=("${HOST_SCOPE_ARGS[@]}")
+        fi
+        if [[ ${#HOST_EXTRA_ARGS[@]} -gt 0 ]]; then
+            host_install_args+=("${HOST_EXTRA_ARGS[@]}")
+        fi
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
+            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${host_install_args[*]}"
         else
             local host_output host_output_file host_ret
             host_output_file="$(mktemp "${TMPDIR:-/tmp}/atelier-hosts.XXXXXX")"
             set +e
             if [[ -n "$C_RESET" ]]; then
-                FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} 2>&1 | tee "$host_output_file"
+                FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | tee "$host_output_file"
             else
-                bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} 2>&1 | tee "$host_output_file"
+                bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | tee "$host_output_file"
             fi
             host_ret=$?
             set -e
