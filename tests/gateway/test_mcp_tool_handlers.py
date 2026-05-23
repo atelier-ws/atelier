@@ -420,16 +420,18 @@ def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
     memory_tool = TOOLS["memory"]
     properties = memory_tool["inputSchema"]["properties"]
 
-    assert "block_upsert" in memory_tool["description"]
-    assert "archive" in memory_tool["description"]
-    assert "summarize" in memory_tool["description"]
-    assert "block_upsert requires label+value" in properties["op"]["description"]
-    assert "block_upsert and block_get" in properties["label"]["description"]
-    assert "recall, recall_symbol, and transcript_recall" in properties["query"]["description"]
-    assert "session id used by summarize" in properties["session_id"]["description"].lower()
+    assert "fact storage/voting and recall" in memory_tool["description"]
+    assert "store_fact" in properties["op"]["description"]
+    assert "vote_fact" in properties["op"]["description"]
+    assert "recall requires query" in properties["op"]["description"]
+    assert "query used by recall" in properties["query"]["description"].lower()
+    assert "subject" in properties
+    assert "fact" in properties
+    assert "citations" in properties
+    assert "direction" in properties
+    assert "label" not in properties
+    assert "session_id" not in properties
     assert "expected_version" not in properties
-    assert "include" not in properties
-    assert "budget_tokens" not in properties
 
 
 def test_unknown_method_returns_error() -> None:
@@ -743,10 +745,10 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert search_payload["matches"]
 
     grep_payload = _result(_call("grep", {"file_path": str(target), "content_regex": "needle"}))
-    assert grep_payload["isError"] is False
-    assert grep_payload["_meta"]["fileMatchCount"] == 1
+    assert grep_payload["matches"]
+    assert "_meta" not in grep_payload
 
-    legacy_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle"}))
+    legacy_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle", "include_meta": True}))
     assert legacy_payload["_meta"]["fileMatchCount"] == 1
 
 

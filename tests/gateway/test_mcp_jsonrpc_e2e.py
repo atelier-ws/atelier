@@ -422,7 +422,8 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert native_search["_meta"]["fileMatchCount"] == 1
+    assert native_search["content"]
+    assert "_meta" not in native_search
 
     rich_edit = _payload(
         _call(

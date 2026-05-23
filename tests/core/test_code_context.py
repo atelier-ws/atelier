@@ -12,7 +12,7 @@ import pytest
 
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.code_context.budget import BudgetPacker
-from atelier.core.capabilities.code_context.models import SymbolRecord
+from atelier.core.capabilities.code_context.models import SymbolRecord, TextMatch
 from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
 from atelier.infra.code_intel.cross_lang.runner import CrossLangRunner
 
@@ -1108,6 +1108,24 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp
     assert all("content_hash" not in item for item in payload["items"])
 
 
+def test_tool_search_high_limit_forces_location_only_compaction(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_search(
+        "OrderService",
+        mode="lexical",
+        limit=120,
+        snippet="head",
+        snippet_lines=30,
+        budget_tokens=12000,
+    )
+
+    assert payload["snippet"] == "none"
+    assert payload["items"]
+    assert all("snippet" not in item for item in payload["items"])
+
+
 def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1532,17 +1550,15 @@ def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkey
         encoding="utf-8",
     )
 
-    found: list[SymbolRecord] = []
-    for _ in range(160):
-        hits = engine.search_symbols("BackgroundSyncedService", limit=5, auto_index=False)
-        if hits:
-            found = hits
+    for _ in range(200):
+        if engine._current_index_version() > version_before:
             break
         time.sleep(0.05)
+    assert engine._current_index_version() > version_before
 
+    found = engine.search_symbols("BackgroundSyncedService", mode="lexical", limit=5, auto_index=False)
     assert found
     assert found[0].symbol_name == "BackgroundSyncedService"
-    assert engine._current_index_version() > version_before
 
 
 def test_incremental_index_noop_does_not_bump_version(tmp_path: Path) -> None:
@@ -1589,6 +1605,70 @@ def test_incremental_index_updates_changed_and_removed_files(tmp_path: Path) -> 
         ).fetchone()
     assert row is not None
     assert int(row["n"]) == 0
+
+
+def test_search_symbols_filters_with_zoekt_candidate_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    (tmp_path / "src" / "other.py").write_text(
+        "class OrderFactory:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    monkeypatch.setattr(engine, "_zoekt_candidate_files", lambda *args, **kwargs: {"src/orders.py"})
+    hits = engine.search_symbols("Order", mode="lexical", limit=20, auto_index=False)
+
+    assert hits
+    assert all(hit.file_path == "src/orders.py" for hit in hits)
+
+
+def test_context_pack_uses_zoekt_anchor_files_as_seeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    captured_seed_files: list[str] = []
+
+    def fake_symbols_for_files(files: list[str], *, limit: int) -> list[SymbolRecord]:
+        del limit
+        captured_seed_files.extend(files)
+        return []
+
+    monkeypatch.setattr(engine, "_zoekt_candidate_files", lambda *args, **kwargs: {"src/orders.py"})
+    monkeypatch.setattr(engine, "_symbols_for_files", fake_symbols_for_files)
+    monkeypatch.setattr(engine, "search_symbols", lambda *args, **kwargs: [])
+    monkeypatch.setattr(engine, "_import_neighbors", lambda *args, **kwargs: [])
+
+    _ = engine.context_pack(task="Order service changes", seed_files=[], budget_tokens=2000, max_symbols=4)
+
+    assert "src/orders.py" in captured_seed_files
+
+
+def test_usages_prefers_zoekt_fallback_before_text_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    monkeypatch.setattr(
+        engine,
+        "_zoekt_text_matches",
+        lambda *args, **kwargs: [TextMatch(file_path="src/orders.py", line=1, column=1, text="def helper() -> OrderService:")],
+    )
+
+    def fail_search_text(*args: object, **kwargs: object) -> list[TextMatch]:
+        raise AssertionError("search_text should not be called when Zoekt fallback returned hits")
+
+    monkeypatch.setattr(engine, "search_text", fail_search_text)
+
+    payload = engine.tool_usages(symbol_name="helper", limit=5, budget_tokens=4000)
+    refs = payload.get("references", {})
+    if isinstance(refs, dict):
+        flat = [item for group in refs.values() for item in group]
+    else:
+        flat = refs
+    assert flat
+    assert any(str(item.get("provenance")) == "zoekt_text" for item in flat if isinstance(item, dict))
 
 
 def test_low_token_defaults_stay_lighter_for_search_and_pattern(
