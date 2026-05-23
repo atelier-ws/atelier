@@ -2291,12 +2291,8 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["connect", "tables", "table", "lint", "query"],
-            "description": "connect: discover DB and show schema overview. tables: list all tables. table: inspect one table (needs name). lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
-        },
-        "name": {
-            "type": "string",
-            "description": "Table name for action=table.",
+            "enum": ["connect", "lint", "query"],
+            "description": "connect: discover DB and show schema overview. lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
         },
         "sql": {
             "type": "string",
@@ -2351,12 +2347,10 @@ def tool_sql(
     auto_limit: bool = True,
     allow_writes: bool = True,
 ) -> dict[str, Any]:
-    """SQL op-dispatch for connect, schema, table, lint, and bounded query batching.
+    """SQL op-dispatch for connect, lint, and bounded query batching.
 
     Actions:
       connect  — discover database and show schema overview
-      tables   — list all tables
-      table    — inspect columns and foreign keys for one table (needs name)
       lint     — validate SQL syntax without executing (needs sql)
       query    — execute SQL (needs sql or queries[{name,sql},...])
 
@@ -2365,6 +2359,8 @@ def tool_sql(
     """
     from atelier.core.capabilities.tool_supervision.sql_tool import sql_tool
 
+    if action not in {"connect", "lint", "query"}:
+        return {"isError": True, "message": "unsupported action: use connect, lint, or query"}
     if action == "query" and not sql and not queries:
         return {"isError": True, "message": "action='query' requires sql or queries parameter"}
 
