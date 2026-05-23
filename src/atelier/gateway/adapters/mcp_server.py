@@ -3600,6 +3600,22 @@ def tool_code(
     raise ValueError(f"unknown op: {op!r}")
 
 
+# Normalize "code:callers" → "callers" etc. so external benchmarks using the
+# "code:" prefix alias convention still route correctly.
+_raw_tool_code_handler = TOOLS["code"]["handler"]
+
+
+def _tool_code_alias_handler(args: dict[str, Any]) -> Any:
+    op = args.get("op")
+    if isinstance(op, str) and op.startswith("code:"):
+        args = {**args, "op": op[5:]}
+    return _raw_tool_code_handler(args)
+
+
+TOOLS["code"]["handler"] = _tool_code_alias_handler
+tool_code = _tool_code_alias_handler  # type: ignore[assignment]
+
+
 def _run_shell_tool(
     command: str,
     timeout: int = 30,
@@ -3937,11 +3953,11 @@ def tool_grep(
             },
             "mode": {
                 "type": "string",
-                "enum": ["chunks", "full", "map"],
+                "enum": ["chunks", "map"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, `full` returns fuller file "
-                    "content up to limits, and `map` builds a repo map from `seed_files`."
+                    "`chunks` returns ranked snippets per file, and `map` builds a repo map "
+                    "from `seed_files`."
                 ),
             },
             "max_files": {
@@ -3974,7 +3990,7 @@ def tool_grep(
 def tool_smart_search(
     query: Annotated[
         str | None,
-        Field(description="Ranked search query. Required for `chunks` and `full` mode."),
+        Field(description="Ranked search query. Required for `chunks` mode."),
     ] = None,
     file_path: Annotated[
         str,
@@ -3987,11 +4003,11 @@ def tool_smart_search(
         ),
     ] = ".",
     mode: Annotated[
-        Literal["chunks", "full", "map"],
+        Literal["chunks", "map"],
         Field(
             description=(
-                "`chunks` returns ranked snippets per file, `full` returns fuller file "
-                "content up to limits, and `map` builds a repo map from `seed_files`."
+                "`chunks` returns ranked snippets per file, and `map` builds a repo map "
+                "from `seed_files`."
             )
         ),
     ] = "chunks",
@@ -4030,7 +4046,7 @@ def tool_smart_search(
     """Search by ranked query or repo-map construction.
 
     - Pass `query` for relevance-ranked search over code and docs.
-    - Use `mode='chunks'` for snippets, `mode='full'` for fuller file bodies.
+    - Use `mode='chunks'` for snippets.
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     """
