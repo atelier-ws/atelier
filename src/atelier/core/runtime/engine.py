@@ -28,7 +28,9 @@ from atelier.core.foundation.renderer import render_context_for_agent
 from atelier.core.foundation.retriever import (
     count_tokens,
     filter_scoped_passages,
+    render_memory_facts_for_agent,
     render_memory_for_agent,
+    summarize_memory_facts,
     summarize_recalled_passages,
 )
 from atelier.core.foundation.routing_models import RouteDecision, StepType, TaskType
@@ -133,13 +135,30 @@ class AtelierRuntimeCore:
             bootstrap_blocks = []
             bootstrap_repo_id = None
 
-        if recall and agent_id:
+        if recall:
             from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
             from atelier.core.foundation.redaction import redact
             from atelier.infra.embeddings.factory import make_embedder
             from atelier.infra.storage.factory import make_memory_store
 
             memory_store = make_memory_store(self.root)
+            fact_agent_ids = [agent_id] if agent_id else ["shared"]
+            fact_blocks = []
+            for fact_agent_id in fact_agent_ids:
+                for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
+                    metadata = block.metadata or {}
+                    if metadata.get("kind") != "memory_fact":
+                        continue
+                    fact_blocks.append(block)
+            fact_blocks.sort(
+                key=lambda block: (
+                    -int(((block.metadata or {}).get("votes") or {}).get("upvote", 0) or 0)
+                    + int(((block.metadata or {}).get("votes") or {}).get("downvote", 0) or 0),
+                    -int(block.version),
+                )
+            )
+            fact_blocks = fact_blocks[:5]
+
             capability = ArchivalRecallCapability(memory_store, make_embedder(), redactor=redact)
             passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
             scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
@@ -148,8 +167,10 @@ class AtelierRuntimeCore:
                     memory_store.list_passages(agent_id, limit=3),
                     requested_agent_id=agent_id,
                 )[:3]
-            memory_context = render_memory_for_agent(scoped_passages)
-            recalled_passages = summarize_recalled_passages(scoped_passages, query=task)
+            memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
+            recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
+                scoped_passages, query=task
+            )
 
         context = reasonblock_context + bootstrap_context + memory_context
         reasonblock_tokens = count_tokens(reasonblock_context)

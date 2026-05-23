@@ -58,17 +58,50 @@ class FSMState(Enum):
 
 _HEDGE_WORDS = frozenset(
     {
-        "maybe", "perhaps", "might", "could", "should", "probably", "possibly",
-        "unclear", "unsure", "uncertain", "seems", "appears", "like", "think",
-        "believe", "guess", "assume", "not sure", "not certain",
+        "maybe",
+        "perhaps",
+        "might",
+        "could",
+        "should",
+        "probably",
+        "possibly",
+        "unclear",
+        "unsure",
+        "uncertain",
+        "seems",
+        "appears",
+        "like",
+        "think",
+        "believe",
+        "guess",
+        "assume",
+        "not sure",
+        "not certain",
     }
 )
 
 _ERROR_WORDS = frozenset(
     {
-        "error", "exception", "fail", "failed", "failure", "crash", "broken",
-        "bug", "issue", "problem", "traceback", "stderr", "panic", "abort",
-        "undefined", "null", "none", "nan", "invalid", "wrong",
+        "error",
+        "exception",
+        "fail",
+        "failed",
+        "failure",
+        "crash",
+        "broken",
+        "bug",
+        "issue",
+        "problem",
+        "traceback",
+        "stderr",
+        "panic",
+        "abort",
+        "undefined",
+        "null",
+        "none",
+        "nan",
+        "invalid",
+        "wrong",
     }
 )
 
@@ -174,9 +207,7 @@ class DifficultyFSM:
         elif s in (FSMState.SLOW, FSMState.SKIP):
             if score < self.slow_threshold - self.hysteresis_margin:
                 self.current_state = FSMState.NORMAL
-            elif s == FSMState.SLOW and self._all_recent_above(
-                self.skip_window, self.skip_threshold
-            ):
+            elif s == FSMState.SLOW and self._all_recent_above(self.skip_window, self.skip_threshold):
                 self.current_state = FSMState.SKIP
 
         return self.current_state
@@ -292,11 +323,7 @@ def make_signals_fn(
 
         last4 = list(steps[-4:])
         bigrams = [_bigram_set(s) for s in last4]
-        pairs = [
-            _jaccard(bigrams[i], bigrams[j])
-            for i in range(len(bigrams))
-            for j in range(i + 1, len(bigrams))
-        ]
+        pairs = [_jaccard(bigrams[i], bigrams[j]) for i in range(len(bigrams)) for j in range(i + 1, len(bigrams))]
         diversity = 1.0 - (sum(pairs) / max(1, len(pairs)))
 
         return {
