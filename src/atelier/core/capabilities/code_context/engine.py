@@ -52,6 +52,7 @@ from atelier.core.capabilities.code_context.models import (
     TextMatch,
     UsageReference,
 )
+from atelier.core.capabilities.code_context.output_policy import resolve_output_policy
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.core.capabilities.repo_map.graph import iter_source_files
@@ -527,6 +528,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("search", budget_tokens)
         if auto_index and scope != "deleted":
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -547,7 +549,7 @@ class CodeContextEngine:
             "scope": scope,
             "since_ts": parsed_since,
             "touched_by": normalized_touched_by,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
             "semantic_candidate_limit": semantic_candidate_limit(limit),
         }
         hit, cached = self._cache_get("code.search", cache_args)
@@ -596,7 +598,7 @@ class CodeContextEngine:
         optional_keys = _DELETED_SEARCH_OPTIONAL_KEYS if scope == "deleted" else _SEARCH_OPTIONAL_KEYS
         payload = self._pack_items_payload(
             items,
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=essential_keys,
             optional_keys_in_drop_order=optional_keys,
             extra_payload={"mode": resolved_mode},
@@ -808,6 +810,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("node", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -817,7 +820,7 @@ class CodeContextEngine:
             "qualified_name": qualified_name,
             "symbol_name": symbol_name,
             "file_path": normalized_file_path,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
         }
         hit, cached = self._cache_get("code.symbol", cache_args)
         if hit and cached is not None:
@@ -833,7 +836,7 @@ class CodeContextEngine:
                     auto_index=False,
                 )
             ),
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=_SYMBOL_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_SYMBOL_OPTIONAL_KEYS,
         )
@@ -919,6 +922,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("outline", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -926,7 +930,7 @@ class CodeContextEngine:
         cache_args = {
             "file_path": normalized_file_path,
             "limit": limit,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
             "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
         }
         hit, cached = self._cache_get("code.outline", cache_args)
@@ -957,7 +961,7 @@ class CodeContextEngine:
 
         payload = self._fit_items_to_budget(
             flat_items,
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=_OUTLINE_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=[],
             build_payload=build_payload,
@@ -1299,6 +1303,7 @@ class CodeContextEngine:
         max_symbols: int = 8,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("context", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -1306,7 +1311,7 @@ class CodeContextEngine:
         cache_args = {
             "task": task,
             "seed_files": normalized_seeds,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
             "max_symbols": max_symbols,
         }
         hit, cached = self._cache_get("code.context", cache_args)
@@ -1316,13 +1321,13 @@ class CodeContextEngine:
         raw = self.context_pack(
             task=task,
             seed_files=normalized_seeds,
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             max_symbols=max_symbols,
             auto_index=False,
         )
         payload = self._pack_single_payload(
             raw.model_dump(mode="json"),
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=_CONTEXT_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=["telemetry", "import_neighbors", "repo_map"],
             base_tokens_saved=raw.tokens_saved_vs_full_files,
@@ -1376,6 +1381,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("relation", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -1392,7 +1398,7 @@ class CodeContextEngine:
             "group_by": group_by,
             "snippet_lines": snippet_lines,
             "limit": limit,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
         }
         hit, cached = self._cache_get("code.usages", cache_args)
         if hit and cached is not None:
@@ -1410,7 +1416,7 @@ class CodeContextEngine:
             snippet_lines=snippet_lines,
             limit=limit,
             auto_index=False,
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
         )
         if "error" not in payload:
             self._cache_set("code.usages", cache_args, payload)
@@ -2139,6 +2145,7 @@ class CodeContextEngine:
         auto_index: bool = True,
         budget_tokens: int = 4000,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("relation", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         target = self._resolve_symbol_target(
@@ -2155,7 +2162,7 @@ class CodeContextEngine:
         if target.get("error"):
             return self._pack_single_payload(
                 target,
-                budget_tokens=budget_tokens,
+                budget_tokens=effective_budget_tokens,
                 essential_keys=["error", "message", "matches", "cache_hit", "provenance"],
                 optional_keys_in_drop_order=["provenance_breakdown"],
             )
@@ -2194,7 +2201,7 @@ class CodeContextEngine:
 
         return self._fit_items_to_budget(
             items[:limit],
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=_USAGES_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_USAGES_OPTIONAL_KEYS,
             build_payload=build_payload,
@@ -2241,6 +2248,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        effective_budget_tokens = self._effective_budget_tokens("relation", budget_tokens)
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
@@ -2258,7 +2266,7 @@ class CodeContextEngine:
             "depth": bounded_depth,
             "limit": limit,
             "snapshot": snapshot,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": effective_budget_tokens,
         }
         hit, cached = self._cache_get(f"code.{direction}", cache_args)
         if hit and cached is not None:
@@ -2277,7 +2285,7 @@ class CodeContextEngine:
         if target.get("error"):
             return self._pack_single_payload(
                 target,
-                budget_tokens=budget_tokens,
+                budget_tokens=effective_budget_tokens,
                 essential_keys=["error", "message", "matches", "cache_hit", "provenance"],
                 optional_keys_in_drop_order=["provenance_breakdown"],
             )
@@ -2306,7 +2314,7 @@ class CodeContextEngine:
         payload["provenance"] = str(target.get("provenance") or _LOCAL_PROVENANCE)
         packed = self._pack_single_payload(
             payload,
-            budget_tokens=budget_tokens,
+            budget_tokens=effective_budget_tokens,
             essential_keys=_CALL_GRAPH_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_CALL_GRAPH_OPTIONAL_KEYS,
         )
@@ -3312,6 +3320,11 @@ class CodeContextEngine:
             if measured == total_tokens:
                 return measured
             total_tokens = measured
+
+    def _effective_budget_tokens(self, operation: str, requested_budget_tokens: int) -> int:
+        requested = max(1, int(requested_budget_tokens))
+        safety_max = resolve_output_policy(operation).max_total_tokens
+        return min(requested, safety_max)
 
     def _items_provenance(self, items: list[dict[str, Any]]) -> str:
         provenances = [str(item.get("provenance")) for item in items if item.get("provenance")]
