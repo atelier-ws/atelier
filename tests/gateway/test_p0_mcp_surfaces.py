@@ -24,8 +24,8 @@ def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     (tmp_path / "a.py").write_text("needle\n", encoding="utf-8")
 
     result = tool_grep({"content_regex": "needle", "file_glob_patterns": ["*.py"]})
-
-    assert result["_meta"]["fileMatchCount"] == 1
+    assert result["matches"]
+    assert "_meta" not in result
 
 
 def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,7 +58,9 @@ def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeyp
     )
     monkeypatch.setattr(smart_search_mod, "get_zoekt_supervisor", lambda _root: fake_supervisor)
 
-    result = tool_smart_search({"query": "needle token", "file_path": str(tmp_path), "budget_tokens": 4000})
+    result = tool_smart_search(
+        {"query": "needle token", "file_path": str(tmp_path), "budget_tokens": 4000, "include_meta": True}
+    )
 
     assert result["backend"] == "zoekt"
     assert isinstance(result["index_age_seconds"], int)
@@ -98,7 +100,7 @@ def test_grep_tool_accepts_legacy_path_alias(tmp_path: Path, monkeypatch: pytest
     target = tmp_path / "sample.py"
     target.write_text("needle\\n", encoding="utf-8")
 
-    result = tool_grep({"path": str(target), "content_regex": "needle"})
+    result = tool_grep({"path": str(target), "content_regex": "needle", "include_meta": True})
 
     assert result["_meta"]["fileMatchCount"] == 1
 
