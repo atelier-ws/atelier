@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -1188,6 +1189,37 @@ def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
     assert payload["autosync"]["mode"] == "scaffold_only"
     assert "entry_count" in payload["cache"]
     assert cached["cache_hit"] is True
+
+
+def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    monkeypatch.setenv("ATELIER_CODE_AUTOSYNC", "1")
+    monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    version_before = engine._current_index_version()
+    assert first["items"]
+
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n"
+        "\n"
+        "class NewService:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    engine._autosync_last_sync_ms = int(time.time() * 1000) - 500
+
+    second = engine.tool_search("NewService", limit=5, budget_tokens=4000)
+    status = engine.tool_status(budget_tokens=4000)
+
+    assert second["items"]
+    assert second["items"][0]["symbol_name"] == "NewService"
+    assert engine._current_index_version() > version_before
+    assert status["autosync"]["enabled"] is True
+    assert status["autosync"]["mode"] == "incremental"
 
 
 def test_low_token_defaults_stay_lighter_for_search_and_pattern(
