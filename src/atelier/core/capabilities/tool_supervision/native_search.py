@@ -25,7 +25,22 @@ SearchOutputMode = Literal[
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
 DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
-_SKIP_DIRS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
+SKIP_DIRS: frozenset[str] = frozenset({
+    # VCS
+    ".git",
+    # Atelier internals
+    ".atelier",
+    # Python
+    ".venv", "venv", ".tox", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    ".eggs",
+    # JS/TS
+    "node_modules", ".next", ".nuxt", ".turbo", ".svelte-kit",
+    # Build outputs
+    "dist", "build", "out", "target",
+    # Coverage
+    "coverage", ".nyc_output",
+})
+_SKIP_DIRS = SKIP_DIRS  # backwards-compat alias
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
 _TEXT_SUFFIXES = {

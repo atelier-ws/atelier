@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type Trace, type SessionSummary } from "../api";
 import { MetricCard, SectionHeader, cx } from "../components/WorkbenchUI";
