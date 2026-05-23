@@ -404,6 +404,9 @@ class CodeContextEngine:
         self._deleted_history_search_adapter: DeletedHistorySearchAdapter | None = None
         self._autosync_enabled = os.getenv("ATELIER_CODE_AUTOSYNC", "").strip().lower() in {"1", "true", "yes", "on"}
         self._autosync_debounce_ms = self._parse_autosync_debounce(os.getenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS"))
+        self._autosync_state = "idle"
+        self._autosync_signature: str | None = None
+        self._autosync_last_sync_ms = 0
         self._autosync_last_event_at: str | None = None
         self._autosync_pending_events = 0
         self._register_symbol_intel_providers()
@@ -1578,7 +1581,7 @@ class CodeContextEngine:
                 entry["status"] = health.status
                 entry["ok"] = health.ok
                 if health.reason:
-                    entry["reason"] = health.reason
+                    entry["reason"] = str(health.reason)
             else:
                 ok = bool(health)
                 entry["status"] = "ok" if ok else "unhealthy"
@@ -2469,6 +2472,14 @@ class CodeContextEngine:
             count = int(row["n"]) if row is not None else 0
         if count == 0:
             self.index_repo()
+            if self._autosync_enabled:
+                self._autosync_signature = self._source_tree_signature()
+                self._autosync_last_sync_ms = int(time.time() * 1000)
+                self._autosync_state = "idle"
+                self._autosync_pending_events = 0
+            return
+        if self._autosync_enabled:
+            self._maybe_autosync_reindex()
 
     def _excluded(self, path: Path, patterns: list[str]) -> bool:
         rel = _safe_relpath(self.repo_root, path)
@@ -4103,12 +4114,46 @@ class CodeContextEngine:
     def _autosync_status(self) -> dict[str, Any]:
         return {
             "enabled": self._autosync_enabled,
-            "state": "idle",
-            "mode": "scaffold_only",
+            "state": self._autosync_state,
+            "mode": "incremental" if self._autosync_enabled else "scaffold_only",
             "debounce_ms": self._autosync_debounce_ms,
             "pending_events": self._autosync_pending_events,
             "last_event_at": self._autosync_last_event_at,
         }
+
+    def _source_tree_signature(self) -> str:
+        parts: list[str] = []
+        for path in iter_source_files(self.repo_root):
+            with contextlib.suppress(OSError):
+                stat = path.stat()
+                rel = _safe_relpath(self.repo_root, path)
+                parts.append(f"{rel}|{stat.st_mtime_ns}|{stat.st_size}")
+        digest_input = "\n".join(sorted(parts)).encode("utf-8")
+        return hashlib.sha256(digest_input).hexdigest()
+
+    def _maybe_autosync_reindex(self) -> None:
+        current_signature = self._source_tree_signature()
+        if self._autosync_signature is None:
+            self._autosync_signature = current_signature
+            self._autosync_last_sync_ms = int(time.time() * 1000)
+            self._autosync_state = "idle"
+            return
+        if current_signature == self._autosync_signature:
+            self._autosync_state = "idle"
+            self._autosync_pending_events = 0
+            return
+        now_ms = int(time.time() * 1000)
+        self._autosync_last_event_at = datetime.now(UTC).isoformat()
+        self._autosync_pending_events = max(1, self._autosync_pending_events + 1)
+        if now_ms - self._autosync_last_sync_ms < self._autosync_debounce_ms:
+            self._autosync_state = "debouncing"
+            return
+        self._autosync_state = "syncing"
+        self.index_repo()
+        self._autosync_signature = self._source_tree_signature()
+        self._autosync_last_sync_ms = int(time.time() * 1000)
+        self._autosync_pending_events = 0
+        self._autosync_state = "idle"
 
     def _current_head_sha(self) -> str:
         from atelier.infra.code_intel.git_history import require_pygit2
@@ -4119,7 +4164,10 @@ class CodeContextEngine:
 
     def _safe_current_head_sha(self) -> str | None:
         with contextlib.suppress(Exception):
-            return self._current_head_sha()
+            value = self._current_head_sha()
+            if value is None:
+                return None
+            return str(value)
         return None
 
     def _deleted_history_adapter(self) -> DeletedHistorySearchAdapter:
