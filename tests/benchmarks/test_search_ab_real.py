@@ -389,6 +389,7 @@ def test_search_ab_native_regex_mode(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "path": "docs",
         "content_regex": "NEEDLE_TOKEN",
         "file_glob_patterns": ["**/*.md"],
+        "output_mode": "file_paths_with_content",
     }
 
     t0 = time.perf_counter()
@@ -463,6 +464,7 @@ def test_search_ab_native_context_mode(tmp_path: Path, monkeypatch: pytest.Monke
         "path": "docs",
         "content_regex": "NEEDLE_TOKEN",
         "file_glob_patterns": ["**/*.md"],
+        "output_mode": "file_paths_with_content",
         "lines_before": 1,
         "lines_after": 1,
     }
@@ -554,6 +556,7 @@ def test_search_ab_summary_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         "path": ".",
         "file_glob_patterns": globs,
         "summary": True,
+        "output_mode": "file_paths_with_content",
     }
 
     t0 = time.perf_counter()
