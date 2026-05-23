@@ -128,6 +128,38 @@ class TestClaudeImporterTokens:
         assert report.total_cost_usd > 0
         assert report.started_model == "claude-sonnet-4-6"
 
+    def test_claude_prefers_embedded_session_id_over_filename(self, store: ContextStore, tmp_path: Path) -> None:
+        logical_session_id = "logical-session-claude-1"
+        filename_session_id = "filename-session-uuid"
+        fixture_events = [
+            {"type": "meta", "sessionId": logical_session_id},
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-1",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [{"type": "text", "text": "done"}],
+                },
+            },
+        ]
+
+        jsonl_path = tmp_path / f"{filename_session_id}.jsonl"
+        jsonl_path.write_text("\n".join(json.dumps(e, ensure_ascii=False) for e in fixture_events))
+
+        importer = ClaudeImporter(store)
+        result = importer.import_session("test-slug", jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "claude")
+        assert trace.session_id == logical_session_id
+        assert trace.id == f"claude-test-slug-{filename_session_id}"
+
+        artifacts = store.list_raw_artifacts(source="claude", source_session_id=logical_session_id, limit=10)
+        assert len(artifacts) == 1
+        assert artifacts[0].relative_path == f"{filename_session_id}.jsonl"
+        assert artifacts[0].source_path == str(jsonl_path)
+
 
 # =========================================================================
 # Codex (event_msg format)

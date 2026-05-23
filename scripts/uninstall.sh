@@ -25,6 +25,20 @@ PASSTHROUGH=()
 WORKSPACE_EXPLICIT=0
 PURGE=0
 
+# Read the memory sidecar that was selected at install time (if any).
+_MEMORY_BACKEND_FILE="${HOME}/.atelier/memory_backend"
+ATELIER_MEMORY_BACKEND=""
+if [[ -f "$_MEMORY_BACKEND_FILE" ]]; then
+    ATELIER_MEMORY_BACKEND="$(head -n 1 "$_MEMORY_BACKEND_FILE" 2>/dev/null | tr -d '[:space:]')"
+fi
+
+# Read persisted Zoekt sidecar selection (if any).
+_ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
+ATELIER_ZOEKT=""
+if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
+    ATELIER_ZOEKT="$(head -n 1 "$_ZOEKT_ENABLED_FILE" 2>/dev/null | tr -d '[:space:]')"
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)  ATELIER_DRY_RUN=1; PASSTHROUGH+=("$1") ;;
@@ -123,6 +137,29 @@ purge_leftovers() {
     fi
 }
 
+# ---- stop memory sidecar (before background controller) --------------------
+if command -v atelier &>/dev/null && [[ -n "$ATELIER_MEMORY_BACKEND" ]]; then
+    case "$ATELIER_MEMORY_BACKEND" in
+        letta)
+            info "Stopping Letta memory sidecar..."
+            run "atelier letta down 2>/dev/null || true"
+            ;;
+        openmemory)
+            info "Stopping OpenMemory memory sidecar..."
+            run "atelier openmemory down 2>/dev/null || true"
+            ;;
+        *)
+            warn "Unknown memory backend '$ATELIER_MEMORY_BACKEND' in $_MEMORY_BACKEND_FILE - skipping sidecar teardown"
+            ;;
+    esac
+fi
+
+# ---- stop Zoekt sidecar (before background controller) ---------------------
+if command -v atelier &>/dev/null && [[ "$ATELIER_ZOEKT" == "1" ]]; then
+    info "Stopping Zoekt code-search sidecar..."
+    run "atelier zoekt down 2>/dev/null || true"
+fi
+
 # ---- stop running services --------------------------------------------------
 if command -v atelier &>/dev/null; then
     info "Stopping Atelier background service controller..."
@@ -166,6 +203,44 @@ for cmd in atelier atelier-mc; do
 done
 
 if [[ "$PURGE" == "1" ]]; then
+    local_install_dir="${ATELIER_INSTALL_DIR:-$(install_dir_from_record)}"
+    local_install_dir="${local_install_dir:-$ATELIER_DEFAULT_INSTALL_DIR}"
+
+    # ---- memory sidecar Docker cleanup --------------------------------------
+    case "$ATELIER_MEMORY_BACKEND" in
+        letta)
+            info "Removing Letta Docker container and volumes..."
+            letta_compose="${local_install_dir}/deploy/letta/docker-compose.yml"
+            if [[ -f "$letta_compose" ]] && command -v docker >/dev/null 2>&1; then
+                run "docker compose -f '$letta_compose' down -v --remove-orphans 2>/dev/null || true"
+            else
+                warn "Letta compose file not found or docker unavailable - Docker volumes may need manual removal"
+            fi
+            ;;
+        openmemory)
+            info "Removing OpenMemory Docker state and checkout..."
+            om_workdir="${HOME}/.atelier/openmemory/mem0/openmemory"
+            if [[ -d "$om_workdir" ]] && command -v docker >/dev/null 2>&1; then
+                run "docker compose --project-directory '$om_workdir' down -v --remove-orphans 2>/dev/null || true"
+            fi
+            remove_path "${HOME}/.atelier/openmemory"
+            ;;
+    esac
+
+    # ---- Zoekt code-search Docker cleanup -----------------------------------
+    if [[ "$ATELIER_ZOEKT" == "1" ]] && command -v docker >/dev/null 2>&1; then
+        info "Removing Zoekt Docker containers and volumes..."
+        zoekt_containers="$(docker ps -aq --filter "name=atelier-zoekt-" 2>/dev/null || true)"
+        if [[ -n "$zoekt_containers" ]]; then
+            run "docker stop $zoekt_containers 2>/dev/null || true"
+            run "docker rm $zoekt_containers 2>/dev/null || true"
+        fi
+        zoekt_volumes="$(docker volume ls -q --filter "name=atelier-zoekt-" 2>/dev/null || true)"
+        if [[ -n "$zoekt_volumes" ]]; then
+            run "docker volume rm $zoekt_volumes 2>/dev/null || true"
+        fi
+    fi
+
     purge_leftovers
 fi
 
