@@ -32,6 +32,13 @@ if [[ -f "$_MEMORY_BACKEND_FILE" ]]; then
     ATELIER_MEMORY_BACKEND="$(head -n 1 "$_MEMORY_BACKEND_FILE" 2>/dev/null | tr -d '[:space:]')"
 fi
 
+# Read the Zoekt selection that was persisted at install time (if any).
+_ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
+ATELIER_ZOEKT=""
+if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
+    ATELIER_ZOEKT="$(head -n 1 "$_ZOEKT_ENABLED_FILE" 2>/dev/null | tr -d '[:space:]')"
+fi
+
 # Read persisted Zoekt sidecar selection (if any).
 _ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
 ATELIER_ZOEKT=""
@@ -120,6 +127,28 @@ purge_leftovers() {
     remove_glob "${HOME}/.copilot/instructions/*atelier*"
     remove_glob "${HOME}/.config/Code/User/*.atelier-backup.*"
 
+    # ---- memory sidecar Docker cleanup --------------------------------------
+    case "$ATELIER_MEMORY_BACKEND" in
+        letta)
+            info "Removing Letta Docker container and volumes..."
+            local letta_compose="${install_dir}/deploy/letta/docker-compose.yml"
+            if [[ -f "$letta_compose" ]] && command -v docker >/dev/null 2>&1; then
+                run "docker compose -f '$letta_compose' down -v --remove-orphans 2>/dev/null || true"
+            else
+                warn "Letta compose file not found or docker unavailable — Docker volumes may need manual removal"
+                warn "  docker volume ls | grep letta"
+            fi
+            ;;
+        openmemory)
+            info "Removing OpenMemory Docker state and checkout..."
+            local om_workdir="${HOME}/.atelier/openmemory/mem0/openmemory"
+            if [[ -d "$om_workdir" ]] && command -v docker >/dev/null 2>&1; then
+                run "docker compose -C '$om_workdir' down -v --remove-orphans 2>/dev/null || true"
+            fi
+            remove_path "${HOME}/.atelier/openmemory"
+            ;;
+    esac
+
     remove_path "${HOME}/.atelier"
 
     if [ -n "$install_dir" ]; then
@@ -162,6 +191,22 @@ fi
 
 # ---- stop running services --------------------------------------------------
 if command -v atelier &>/dev/null; then
+    case "$ATELIER_MEMORY_BACKEND" in
+        letta)
+            info "Stopping Letta memory sidecar..."
+            run "atelier letta down 2>/dev/null || true"
+            ;;
+        openmemory)
+            info "Stopping OpenMemory memory sidecar..."
+            run "atelier openmemory down 2>/dev/null || true"
+            ;;
+        "")
+            ;;
+        *)
+            warn "Unknown memory backend '$ATELIER_MEMORY_BACKEND' in $_MEMORY_BACKEND_FILE — skipping sidecar teardown"
+            ;;
+    esac
+
     info "Stopping Atelier background service controller..."
     run "atelier servicectl stop 2>/dev/null || true"
     info "Stopping Atelier visualization stack..."
