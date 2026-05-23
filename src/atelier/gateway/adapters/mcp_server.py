@@ -4105,95 +4105,13 @@ def _compact_score(
 
 @mcp_tool(name="compact")
 def tool_compact(
-    op: Annotated[
-        Literal["output", "session", "advise", "score"],
-        Field(
-            description=(
-                "output: compress a single tool-output string; "
-                "session: compress the full run ledger into a compact state block; "
-                "advise: check context utilisation and return a compaction recommendation; "
-                "score: record model-assessed complexity and must-keep keywords into the ledger."
-            )
-        ),
-    ],
-    content: Annotated[
-        str,
-        Field(description="[output] The tool output string to compact."),
-    ] = "",
-    content_type: Annotated[
-        str,
-        Field(
-            description=(
-                "[output] Content type hint — one of: file, grep, bash, tool_output, unknown. "
-                "Controls which deterministic compaction strategy is used."
-            )
-        ),
-    ] = "unknown",
-    budget_tokens: Annotated[
-        int,
-        Field(description="[output] Target token budget for the compacted result."),
-    ] = 500,
-    recovery_hint: Annotated[
-        str | None,
-        Field(
-            description=(
-                "[output] How to recover the full output if needed. " "Defaults to a generic re-run suggestion."
-            )
-        ),
-    ] = None,
     session_id: Annotated[
         str | None,
-        Field(description="[session|advise] Override the run-ledger session ID. Usually omit."),
-    ] = None,
-    complexity: Annotated[
-        float,
-        Field(
-            description=(
-                "[score] Model-assessed task complexity - float 0.0-1.0. "
-                "0 = trivial/read-only; 1.0 = deep debugging or large refactor."
-            )
-        ),
-    ] = 0.5,
-    must_keep: Annotated[
-        list[str] | None,
-        Field(
-            description=(
-                "[score] Keywords or short phrases the model needs preserved verbatim across "
-                "compaction. Stored in the ledger and surfaced in subsequent advise calls."
-            )
-        ),
+        Field(description="Optional run-ledger session ID override. Usually omit."),
     ] = None,
 ) -> dict[str, Any]:
-    """Compact op-dispatch: output, session, advise, or score.
-
-    ops:
-      output  - Compress a single tool output string.
-                Required: content. Optional: content_type, budget_tokens, recovery_hint.
-      session - Compress the full run ledger into a compact state block.
-                Optional: session_id (override).
-      advise  - Check context utilisation and advise whether to compact now.
-                Optional: session_id (override).
-      score   - Record model-assessed complexity + must-keep keywords into the ledger.
-                Optional: complexity (default 0.5), must_keep.
-    """
-    if op == "score":
-        result = _compact_score(complexity=complexity, must_keep=must_keep or [])
-        # Persist to ledger so subsequent advise calls can surface these hints.
-        with contextlib.suppress(Exception):
-            led = _get_ledger()
-            led.agent_settings["compact_complexity"] = result["complexity"]
-            led.agent_settings["compact_must_keep"] = must_keep or []
-        return result
-    if op == "output":
-        return _compact_tool_output(
-            content=content,
-            content_type=content_type,
-            budget_tokens=budget_tokens,
-            recovery_hint=recovery_hint,
-        )
-    if op == "session":
-        return cast(dict[str, Any], _compress_context(session_id=session_id))
-    return _compact_advise(session_id=session_id)
+    """Compress the full run ledger into a compact session state block."""
+    return cast(dict[str, Any], _compress_context(session_id=session_id))
 
 
 # --------------------------------------------------------------------------- #
