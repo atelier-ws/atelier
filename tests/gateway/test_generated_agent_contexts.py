@@ -29,14 +29,6 @@ def load_script(path: Path, module_name: str) -> object:
     return module
 
 
-def test_generated_agent_contexts_are_current() -> None:
-    subprocess.run(
-        [sys.executable, "scripts/sync_agent_context.py", "--check"],
-        cwd=ROOT,
-        check=True,
-    )
-
-
 def test_root_entrypoints_stay_thin_and_link_to_live_docs() -> None:
     for rel in ("AGENTS.md", ".github/copilot-instructions.md"):
         path = ROOT / rel

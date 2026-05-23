@@ -839,11 +839,11 @@ def test_smart_edit_records_workspace_relative_diff_after_hooks(
         target.write_text("hello hooks", encoding="utf-8")
 
         class HookResult:
-            diagnostics: list[object] = []
-            steps_ran = ["fake-format"]
-            steps_skipped: list[str] = []
-            steps_failed: list[str] = []
-            total_ms = 1
+            diagnostics: tuple[object, ...] = ()
+            steps_ran: tuple[str, ...] = ("fake-format",)
+            steps_skipped: tuple[str, ...] = ()
+            steps_failed: tuple[str, ...] = ()
+            total_ms: int = 1
 
         return HookResult()
 

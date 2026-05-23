@@ -160,6 +160,50 @@ class TestClaudeImporterTokens:
         assert artifacts[0].relative_path == f"{filename_session_id}.jsonl"
         assert artifacts[0].source_path == str(jsonl_path)
 
+    def test_claude_ignores_synthetic_usage_tokens(self, store: ContextStore, tmp_path: Path) -> None:
+        fixture_events = [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-real",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 40,
+                        "cache_read_input_tokens": 20,
+                        "cache_creation_input_tokens": 5,
+                    },
+                    "content": [{"type": "text", "text": "real response"}],
+                },
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-synth",
+                    "model": "<synthetic>",
+                    "usage": {
+                        "input_tokens": 999,
+                        "output_tokens": 777,
+                        "cache_read_input_tokens": 333,
+                        "cache_creation_input_tokens": 111,
+                    },
+                    "content": [{"type": "text", "text": "synthetic follow-up"}],
+                },
+            },
+        ]
+        jsonl_path = tmp_path / "test-session-synthetic.jsonl"
+        jsonl_path.write_text("\n".join(json.dumps(e, ensure_ascii=False) for e in fixture_events))
+
+        importer = ClaudeImporter(store)
+        result = importer.import_session("test-slug", jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "claude")
+        assert trace.input_tokens == 100
+        assert trace.output_tokens == 40
+        assert trace.cached_input_tokens == 20
+        assert trace.cache_creation_input_tokens == 5
+
 
 # =========================================================================
 # Codex (event_msg format)
