@@ -1833,9 +1833,7 @@ def _memory_vote_fact(
 
 @mcp_tool(
     name="memory",
-    description=(
-        "Memory op-dispatch for fact storage/voting and recall."
-    ),
+    description=("Memory op-dispatch for fact storage/voting and recall."),
 )
 def tool_memory(
     op: Annotated[
@@ -3097,28 +3095,7 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 
 @mcp_tool(name="code", input_schema=CODE_TOOL_INPUT_SCHEMA)
 def tool_code(
-    op: Literal[
-        "index",
-        "search",
-        "node",
-        "blame",
-        "hover",
-        "symbol",
-        "outline",
-        "files",
-        "explore",
-        "routes",
-        "status",
-        "context",
-        "impact",
-        "usages",
-        "callers",
-        "callees",
-        "pattern",
-        "rename",
-        "cache_status",
-        "cache_invalidate",
-    ],
+    op: str,
     repo_root: str = ".",
     repo: str | None = None,
     include_globs: list[str] | None = None,
@@ -3182,6 +3159,9 @@ def tool_code(
     render_compact: bool = False,
 ) -> dict[str, Any]:
     """Index, search, inspect, outline, pack, or analyze code context."""
+    allowed_ops = {"context", "search", "node", "explore", "files", "callers", "callees", "impact", "status", "routes"}
+    if op not in allowed_ops:
+        raise ValueError("unsupported code op: " f"{op!r}. supported ops: {', '.join(sorted(allowed_ops))}")
     if op == "node":
         op = "symbol"
     workspace_router = _workspace_code_router(repo_root)
@@ -3613,7 +3593,7 @@ def _tool_code_alias_handler(args: dict[str, Any]) -> Any:
 
 
 TOOLS["code"]["handler"] = _tool_code_alias_handler
-tool_code = _tool_code_alias_handler  # type: ignore[assignment]
+tool_code = _tool_code_alias_handler  # noqa: F811
 
 
 def _run_shell_tool(
@@ -3956,8 +3936,7 @@ def tool_grep(
                 "enum": ["chunks", "map"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, and `map` builds a repo map "
-                    "from `seed_files`."
+                    "`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`."
                 ),
             },
             "max_files": {
@@ -4005,10 +3984,7 @@ def tool_smart_search(
     mode: Annotated[
         Literal["chunks", "map"],
         Field(
-            description=(
-                "`chunks` returns ranked snippets per file, and `map` builds a repo map "
-                "from `seed_files`."
-            )
+            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`.")
         ),
     ] = "chunks",
     max_files: Annotated[
