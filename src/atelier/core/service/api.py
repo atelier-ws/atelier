@@ -4674,7 +4674,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         fm = yaml.safe_load(text[3:end]) or {}
                     except Exception:
                         fm = {}
-                    body = text[end + 3:].strip()
+                    body = text[end + 3 :].strip()
             # Strip generator comment from body
             body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL).strip()
             tools_raw = fm.get("tools", [])
@@ -5496,6 +5496,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             seen_session_ids.add(sid)
             if len(results) >= limit:
                 break
+
         def _session_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
             def _ts(value: Any) -> float:
                 if not value:

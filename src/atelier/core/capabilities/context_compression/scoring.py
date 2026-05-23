@@ -83,20 +83,23 @@ _REPEAT_PENALTY = 0.5
 # concept).  Any event whose text matches gets a multiplicative boost so the
 # greedy budget pass never silently drops it.
 
-_KEYSTONE_PATTERNS: list[re.Pattern[str]] = [p for p in (
-    # Conditional constraints: "only on weekdays", "only for admins", "only if flag set"
-    re.compile(r"\bonly\b.{0,40}?\b(if|when|on|for|with|after|before|during|while|in|applies|works)\b", re.I),
-    re.compile(r"\b(unless|except\s+when|except\s+if|except\s+for)\b", re.I),
-    re.compile(r"\b(does\s+not\s+apply|not\s+applicable|disabled\s+for|skipped\s+for)\b", re.I),
-    re.compile(r"\b(never|always\s+except|must\s+not|should\s+not|cannot|do\s+not)\b", re.I),
-    re.compile(r"\b(however|but\s+(not|only|if|when)|instead\s+of|rather\s+than)\b", re.I),
-    re.compile(r"\b(actually|in\s+fact|contrary\s+to|reverted|rolled\s+back|undone)\b", re.I),
-    re.compile(r"\b(before\s+this\s+works|requires\s+first|depends\s+on|blocked\s+by)\b", re.I),
-    re.compile(r"\b(at\s+most|at\s+least|exactly\s+\d|no\s+more\s+than|no\s+less\s+than)\b", re.I),
-    re.compile(r"\b(fixed\s+(by|in|with)|introduced\s+(by|in)|caused\s+by|root\s+cause)\b", re.I),
-    re.compile(r"\b(temporary|temporary\s+fix|workaround|fallback|regression)\b", re.I),
-    re.compile(r"\b(not\s+applicable|disabled\s+when|enabled\s+only|restricted\s+to)\b", re.I),
-)]
+_KEYSTONE_PATTERNS: list[re.Pattern[str]] = [
+    p
+    for p in (
+        # Conditional constraints: "only on weekdays", "only for admins", "only if flag set"
+        re.compile(r"\bonly\b.{0,40}?\b(if|when|on|for|with|after|before|during|while|in|applies|works)\b", re.I),
+        re.compile(r"\b(unless|except\s+when|except\s+if|except\s+for)\b", re.I),
+        re.compile(r"\b(does\s+not\s+apply|not\s+applicable|disabled\s+for|skipped\s+for)\b", re.I),
+        re.compile(r"\b(never|always\s+except|must\s+not|should\s+not|cannot|do\s+not)\b", re.I),
+        re.compile(r"\b(however|but\s+(not|only|if|when)|instead\s+of|rather\s+than)\b", re.I),
+        re.compile(r"\b(actually|in\s+fact|contrary\s+to|reverted|rolled\s+back|undone)\b", re.I),
+        re.compile(r"\b(before\s+this\s+works|requires\s+first|depends\s+on|blocked\s+by)\b", re.I),
+        re.compile(r"\b(at\s+most|at\s+least|exactly\s+\d|no\s+more\s+than|no\s+less\s+than)\b", re.I),
+        re.compile(r"\b(fixed\s+(by|in|with)|introduced\s+(by|in)|caused\s+by|root\s+cause)\b", re.I),
+        re.compile(r"\b(temporary|temporary\s+fix|workaround|fallback|regression)\b", re.I),
+        re.compile(r"\b(not\s+applicable|disabled\s+when|enabled\s+only|restricted\s+to)\b", re.I),
+    )
+]
 
 # Keystone boost tiers: each matching pattern adds a fixed increment
 _KEYSTONE_BOOST_PER_MATCH = 0.5

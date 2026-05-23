@@ -189,8 +189,17 @@ _EXPLORE_ESSENTIAL_KEYS = [
 ]
 _EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
 _IMPACT_ESSENTIAL_KEYS = [
+    "target",
+    "target_type",
     "file_path",
+    "affected_files",
+    "direct_importers",
+    "transitive_importers",
+    "affected_tests",
+    "risk_level",
+    "provenance",
 ]
+_IMPACT_OPTIONAL_KEYS = ["dead_code_candidates"]
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "provenance"]
 _USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
 _PATTERN_ESSENTIAL_KEYS = ["snippet"]
@@ -279,6 +288,7 @@ _OPERATION_TOKEN_CAPS = {
     "hover": 190,
     "cache_invalidate": 35,
 }
+_SEARCH_SNIPPET_FORCE_COMPACT_LIMIT = 50
 
 
 def _canonical_json(value: Any) -> str:
@@ -559,8 +569,7 @@ class CodeContextEngine:
                     (self.repo_id,),
                 ).fetchall()
                 existing = {
-                    str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"]))
-                    for row in existing_rows
+                    str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
                 }
                 current_paths: set[str] = set()
                 for path in files:
@@ -753,6 +762,9 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
+        force_compact_snippet = self._should_force_search_compaction(scope=scope, snippet=snippet, limit=limit)
+        effective_snippet: Literal["none", "head", "full"] = "none" if force_compact_snippet else snippet
+        effective_snippet_lines = 0 if effective_snippet == "none" else max(1, int(snippet_lines))
         apply_search_cap = scope == "repo" and snippet == "none"
         effective_budget_tokens = (
             self._effective_budget_tokens("search", budget_tokens) if apply_search_cap else max(1, int(budget_tokens))
@@ -772,7 +784,8 @@ class CodeContextEngine:
             "kind": kind,
             "language": language,
             "snippet": snippet,
-            "snippet_lines": snippet_lines,
+            "effective_snippet": effective_snippet,
+            "snippet_lines": effective_snippet_lines,
             "file_glob": file_glob,
             "scope": scope,
             "since_ts": parsed_since,
@@ -791,8 +804,8 @@ class CodeContextEngine:
                 mode=resolved_mode,
                 kind=kind,
                 language=language,
-                snippet=snippet,
-                snippet_lines=snippet_lines,
+                snippet=effective_snippet,
+                snippet_lines=effective_snippet_lines,
                 file_glob=file_glob,
                 scope="deleted",
                 since=since,
@@ -807,8 +820,8 @@ class CodeContextEngine:
                 mode=resolved_mode,
                 kind=kind,
                 language=language,
-                snippet=snippet,
-                snippet_lines=snippet_lines,
+                snippet=effective_snippet,
+                snippet_lines=effective_snippet_lines,
                 file_glob=file_glob,
                 scope=scope,
                 since=since,
@@ -823,7 +836,7 @@ class CodeContextEngine:
             )
             items = [item for item in items if str(item.get("file_path") or "") in changed_files]
         items = self._dedupe_search_items(items)
-        if snippet == "none":
+        if effective_snippet == "none":
             items = self._compact_search_items(items, scope=scope)
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
         optional_keys = _DELETED_SEARCH_OPTIONAL_KEYS if scope == "deleted" else _SEARCH_OPTIONAL_KEYS
@@ -832,7 +845,7 @@ class CodeContextEngine:
             budget_tokens=effective_budget_tokens,
             essential_keys=essential_keys,
             optional_keys_in_drop_order=optional_keys,
-            extra_payload={"mode": resolved_mode},
+            extra_payload={"mode": resolved_mode, "snippet": effective_snippet},
         )
         self._cache_set("code.search", cache_args, payload)
         return payload
@@ -1174,6 +1187,7 @@ class CodeContextEngine:
         raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
         flat_items = self._flatten_outline(raw["files"])
         if normalized_file_path:
+
             def _outline_rank(item: dict[str, Any]) -> tuple[int, int, int, str]:
                 kind = str(item.get("kind") or "").lower()
                 name = str(item.get("name") or "")
@@ -1394,10 +1408,7 @@ class CodeContextEngine:
                 ],
             }
             if include_source:
-                sections = [
-                    self._source_section_for_symbol(symbol, line_numbers=line_numbers)
-                    for symbol in symbols
-                ]
+                sections = [self._source_section_for_symbol(symbol, line_numbers=line_numbers) for symbol in symbols]
                 merged_sections = self._merge_nearby_source_sections(sections)
                 file_entry["source_sections"] = merged_sections
             files_payload.append(file_entry)
@@ -1457,9 +1468,7 @@ class CodeContextEngine:
                         )
 
         additional_relevant_files = [
-            symbol.file_path
-            for symbol in ranked_symbols
-            if symbol.file_path not in set(selected_files)
+            symbol.file_path for symbol in ranked_symbols if symbol.file_path not in set(selected_files)
         ][:20]
         full_payload = {
             "query": query,
@@ -1617,7 +1626,9 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         candidate_file_path = file_path if file_path is not None else target
-        normalized_file_path = self._normalize_file_arg(candidate_file_path) if candidate_file_path is not None else None
+        normalized_file_path = (
+            self._normalize_file_arg(candidate_file_path) if candidate_file_path is not None else None
+        )
         cache_args = {
             "target": target,
             "query": query,
@@ -1648,18 +1659,19 @@ class CodeContextEngine:
             auto_index=False,
         ).model_dump(mode="json")
         compact_payload = self._compact_impact_payload(raw_payload, budget_tokens=effective_budget_tokens)
-        payload = {"file_path": Path(str(compact_payload.get("file_path") or "")).name}
+        payload = self._pack_single_payload(
+            compact_payload,
+            budget_tokens=effective_budget_tokens,
+            essential_keys=_IMPACT_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_IMPACT_OPTIONAL_KEYS,
+        )
         self._cache_set("code.impact", cache_args, payload)
         return payload
 
     def _compact_impact_payload(self, payload: dict[str, Any], *, budget_tokens: int) -> dict[str, Any]:
         compact = dict(payload)
         compact["affected_files"] = [
-            {
-                key: value
-                for key, value in dict(item).items()
-                if key != "symbols"
-            }
+            {key: value for key, value in dict(item).items() if key != "symbols"}
             for item in cast(list[dict[str, Any]], compact.get("affected_files", []))
             if isinstance(item, dict)
         ]
@@ -2012,7 +2024,9 @@ class CodeContextEngine:
                             name = decorator.id
                         if not names_match(name):
                             continue
-                        matches.append(build_match(rel, lines, decorator, captures={"decorator": name or target_name or ""}))
+                        matches.append(
+                            build_match(rel, lines, decorator, captures={"decorator": name or target_name or ""})
+                        )
             elif mode in {"call", "call_any"}:
                 for node in ast.walk(tree):
                     if not isinstance(node, ast.Call):
@@ -2294,8 +2308,21 @@ class CodeContextEngine:
                 language=language,
             )
         resolved_mode = resolve_search_mode(query, mode)
+        candidate_files: set[str] | None = None
+        if scope == "repo" and resolved_mode != "semantic":
+            candidate_files = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
+            if scope == "repo" and candidate_files:
+                hits = [hit for hit in hits if hit.file_path in candidate_files]
+            if scope == "repo" and not hits:
+                hits = self._search_symbols_local(
+                    query,
+                    limit=limit,
+                    kind=kind,
+                    language=language,
+                    candidate_files=candidate_files,
+                )
         else:
             candidate_limit = semantic_candidate_limit(limit)
             if scope == "external":
@@ -2314,6 +2341,16 @@ class CodeContextEngine:
                     language=language,
                     scope="repo",
                 )
+                if candidate_files:
+                    lexical_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
+                if not lexical_hits:
+                    lexical_hits = self._search_symbols_local(
+                        query,
+                        limit=candidate_limit,
+                        kind=kind,
+                        language=language,
+                        candidate_files=candidate_files,
+                    )
                 semantic_hits = self._search_symbols_semantic_local(
                     query,
                     limit=candidate_limit,
@@ -2336,6 +2373,7 @@ class CodeContextEngine:
         limit: int = 20,
         kind: str | None = None,
         language: str | None = None,
+        candidate_files: set[str] | None = None,
     ) -> list[SymbolRecord]:
         normalized_query = query.strip()
         if not normalized_query:
@@ -2369,6 +2407,11 @@ class CodeContextEngine:
         if language:
             filters.append("language = ?")
             params.append(language)
+        if candidate_files:
+            normalized_candidates = sorted({self._normalize_file_arg(path) for path in candidate_files if path})
+            if normalized_candidates:
+                filters.append(f"file_path IN ({','.join('?' for _ in normalized_candidates)})")
+                params.extend(normalized_candidates)
         where_sql = " AND ".join(filters)
 
         scored: dict[str, tuple[float, int, SymbolRecord]] = {}
@@ -2397,7 +2440,9 @@ class CodeContextEngine:
                 score -= 90.0
             return score
 
-        def consider_rows(rows: list[sqlite3.Row], *, channel_rank: int, base: float, use_row_score: bool = False) -> None:
+        def consider_rows(
+            rows: list[sqlite3.Row], *, channel_rank: int, base: float, use_row_score: bool = False
+        ) -> None:
             for row in rows:
                 symbol = _row_to_symbol(row)
                 channel_score = float(row["score"]) * 100.0 if use_row_score and row["score"] is not None else 0.0
@@ -2563,7 +2608,7 @@ class CodeContextEngine:
                         str(item[1]["qualified_name"]),
                     )
                 )
-                consider_rows([row for _, row in fuzzy_scored[: strong_fetch_limit]], channel_rank=7, base=640.0)
+                consider_rows([row for _, row in fuzzy_scored[:strong_fetch_limit]], channel_rank=7, base=640.0)
 
         ranked = sorted(
             scored.values(),
@@ -2751,11 +2796,13 @@ class CodeContextEngine:
             self._ensure_indexed()
         context_policy = resolve_output_policy("context")
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
-        repo_map_payload = self.repo_map(seed_files=normalized_seeds, budget_tokens=max(200, budget_tokens // 4))
+        lexical_anchor_files = sorted(self._zoekt_candidate_files(task, max_files=max(max_symbols * 4, 24)))
+        context_seed_files = list(dict.fromkeys([*normalized_seeds, *lexical_anchor_files]))
+        repo_map_payload = self.repo_map(seed_files=context_seed_files, budget_tokens=max(200, budget_tokens // 4))
         bounded_max_symbols = max(1, min(max_symbols, context_policy.max_related_symbols))
         symbol_hits = self.search_symbols(task, limit=bounded_max_symbols, auto_index=False)
         seed_symbols = self._symbols_for_files(
-            normalized_seeds,
+            context_seed_files,
             limit=max(bounded_max_symbols * max(1, context_policy.max_symbols_per_file), bounded_max_symbols),
         )
         selected = self._dedupe_symbols([*seed_symbols, *symbol_hits])
@@ -2764,7 +2811,7 @@ class CodeContextEngine:
         selected = self._cap_symbols_per_file(selected, max_per_file=max(1, context_policy.max_symbols_per_file))
         selected = selected[:bounded_max_symbols]
 
-        neighbors = self._import_neighbors(normalized_seeds)
+        neighbors = self._import_neighbors(context_seed_files)
         neighbor_files = self._context_neighbor_files(neighbors)[: context_policy.max_related_symbols]
         neighbor_symbols = self._symbols_for_files(
             neighbor_files,
@@ -2777,7 +2824,9 @@ class CodeContextEngine:
             if not self._is_noise_symbol_kind(symbol.kind) and symbol.symbol_id not in selected_ids
         ]
         related_symbols = self._prioritize_context_symbols(task, related_seed)
-        related_symbols = self._cap_symbols_per_file(related_symbols, max_per_file=max(1, context_policy.max_symbols_per_file))
+        related_symbols = self._cap_symbols_per_file(
+            related_symbols, max_per_file=max(1, context_policy.max_symbols_per_file)
+        )
         related_symbols = related_symbols[: context_policy.max_related_symbols]
         entry_points = [self._context_symbol_summary(symbol) for symbol in selected]
         related_summaries = [self._context_symbol_summary(symbol) for symbol in related_symbols]
@@ -2787,14 +2836,22 @@ class CodeContextEngine:
             lines.extend(["## repo_map", str(repo_map_payload["outline"]), ""])
         lines.append("## entry_points")
         if entry_points:
-            lines.extend([f"- {item['file_path']}:{item['start_line']} — {item['qualified_name']} [{item['kind']}]" for item in entry_points])
+            lines.extend(
+                [
+                    f"- {item['file_path']}:{item['start_line']} — {item['qualified_name']} [{item['kind']}]"
+                    for item in entry_points
+                ]
+            )
         else:
             lines.append("- none")
         lines.append("")
         lines.append("## related_symbols")
         if related_summaries:
             lines.extend(
-                [f"- {item['file_path']}:{item['start_line']} — {item['qualified_name']} [{item['kind']}]" for item in related_summaries]
+                [
+                    f"- {item['file_path']}:{item['start_line']} — {item['qualified_name']} [{item['kind']}]"
+                    for item in related_summaries
+                ]
             )
         elif context_policy.include_edges and neighbor_files:
             lines.extend([f"- {item}" for item in neighbor_files])
@@ -2896,6 +2953,71 @@ class CodeContextEngine:
             return self._parse_rg_output(proc.stdout, limit=limit)
         return self._python_text_search(query, search_path, limit=limit, ignore_case=ignore_case)
 
+    def _zoekt_candidate_files(
+        self,
+        query: str,
+        *,
+        path: str = ".",
+        max_files: int = 40,
+    ) -> set[str]:
+        normalized_query = query.strip()
+        if not normalized_query:
+            return set()
+        try:
+            from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
+        except Exception:
+            return set()
+        with contextlib.suppress(Exception):
+            search_path = self._resolve_inside_repo(path)
+            supervisor = get_zoekt_supervisor(self.repo_root)
+            if not supervisor.should_route(search_path):
+                return set()
+            if not supervisor.health().ok:
+                return set()
+            result = supervisor.search(
+                query=normalized_query,
+                search_path=search_path,
+                max_files=max(1, min(max_files, 200)),
+                max_chars_per_file=800,
+                include_outline=False,
+            )
+            files: set[str] = set()
+            for match in result.matches:
+                raw_path = Path(match.path)
+                resolved = raw_path if raw_path.is_absolute() else (self.repo_root / raw_path)
+                with contextlib.suppress(ValueError):
+                    rel = _safe_relpath(self.repo_root, resolved.resolve())
+                    files.add(rel)
+            return files
+        return set()
+
+    def _zoekt_text_matches(
+        self,
+        query: str,
+        *,
+        limit: int,
+        file_glob: str | None = None,
+        path: str = ".",
+    ) -> list[TextMatch]:
+        candidate_files = self._zoekt_candidate_files(query, path=path, max_files=max(1, min(limit, 200)))
+        if not candidate_files:
+            return []
+        matches: list[TextMatch] = []
+        lower_query = query.lower()
+        for rel in sorted(candidate_files):
+            if file_glob and not fnmatch.fnmatch(rel, file_glob):
+                continue
+            with contextlib.suppress(OSError):
+                lines = (self.repo_root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+                for line_no, text in enumerate(lines, start=1):
+                    column = text.lower().find(lower_query)
+                    if column < 0:
+                        continue
+                    matches.append(TextMatch(file_path=rel, line=line_no, column=column + 1, text=text))
+                    if len(matches) >= limit:
+                        return matches
+        return matches
+
     def find_references(
         self,
         query: str | None = None,
@@ -2951,11 +3073,21 @@ class CodeContextEngine:
             references,
             key=lambda item: (item.file_path, item.line, item.column, item.end_line, item.end_column, item.provenance),
         )
-        items = self._dedupe_usage_items([self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references])
+        items = self._dedupe_usage_items(
+            [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
+        )
         if not items:
             fallback_query = symbol_name or query or qualified_name
             if fallback_query:
-                text_hits = self.search_text(fallback_query, path=".", limit=max(limit * 4, 100), ignore_case=False)
+                fallback_provenance = "zoekt_text"
+                text_hits = self._zoekt_text_matches(
+                    fallback_query,
+                    limit=max(limit * 4, 100),
+                    file_glob=file_glob,
+                )
+                if not text_hits:
+                    fallback_provenance = "text"
+                    text_hits = self.search_text(fallback_query, path=".", limit=max(limit * 4, 100), ignore_case=False)
                 items = [
                     {
                         "file_path": match.file_path,
@@ -2967,7 +3099,7 @@ class CodeContextEngine:
                         "caller": None,
                         "edge_kind": "text_match",
                         "confidence": 0.25,
-                        "provenance": "text",
+                        "provenance": fallback_provenance,
                     }
                     for match in text_hits
                 ]
@@ -3133,16 +3265,18 @@ class CodeContextEngine:
                 for edge in current.edges:
                     key = (edge.caller_symbol_id, edge.callee_symbol_id, edge.depth)
                     edges_by_key[key] = edge
-            merged_nodes = sorted(nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id))
-            merged_edges = sorted(edges_by_key.values(), key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id))
+            merged_nodes = sorted(
+                nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id)
+            )
+            merged_edges = sorted(
+                edges_by_key.values(), key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id)
+            )
             if merged_edges:
                 merged_status = "available"
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -3180,7 +3314,9 @@ class CodeContextEngine:
             payload["edges"] = cast(list[dict[str, Any]], payload.get("edges", []))[:max_related]
             payload["related_count"] = len(cast(list[dict[str, Any]], payload.get("related", [])))
             payload["edge_count"] = len(cast(list[dict[str, Any]], payload.get("edges", [])))
-            payload["truncated"] = bool(payload.get("truncated", False)) or related_before > max_related or edges_before > max_related
+            payload["truncated"] = (
+                bool(payload.get("truncated", False)) or related_before > max_related or edges_before > max_related
+            )
         if not relation_policy.include_edges:
             payload["edges"] = []
             payload["edge_count"] = 0
@@ -3234,7 +3370,9 @@ class CodeContextEngine:
                 self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
             file_symbols = self._symbols_for_files([normalized_path], limit=20)
             for target_symbol in file_symbols:
-                symbol_display = str(target_symbol.qualified_name or target_symbol.symbol_name or target_symbol.symbol_id or "?")
+                symbol_display = str(
+                    target_symbol.qualified_name or target_symbol.symbol_name or target_symbol.symbol_id or "?"
+                )
                 refs = self.intel_store.find_references(
                     symbol_id=target_symbol.symbol_id,
                     qualified_name=target_symbol.qualified_name,
@@ -3248,12 +3386,15 @@ class CodeContextEngine:
                         reason="reference",
                         symbol=str(ref.caller or symbol_display),
                     )
-                callers = self.intel_store.find_callers(
-                    symbol_id=target_symbol.symbol_id,
-                    qualified_name=target_symbol.qualified_name,
-                    file_path=target_symbol.file_path,
-                    symbol_name=target_symbol.symbol_name,
-                ) or []
+                callers = (
+                    self.intel_store.find_callers(
+                        symbol_id=target_symbol.symbol_id,
+                        qualified_name=target_symbol.qualified_name,
+                        file_path=target_symbol.file_path,
+                        symbol_name=target_symbol.symbol_name,
+                    )
+                    or []
+                )
                 for caller in callers:
                     self._record_affected_file_reason(
                         reasons_by_file,
@@ -3261,12 +3402,15 @@ class CodeContextEngine:
                         reason="caller",
                         symbol=str(caller.qualified_name or caller.symbol_name),
                     )
-                callees = self.intel_store.find_callees(
-                    symbol_id=target_symbol.symbol_id,
-                    qualified_name=target_symbol.qualified_name,
-                    file_path=target_symbol.file_path,
-                    symbol_name=target_symbol.symbol_name,
-                ) or []
+                callees = (
+                    self.intel_store.find_callees(
+                        symbol_id=target_symbol.symbol_id,
+                        qualified_name=target_symbol.qualified_name,
+                        file_path=target_symbol.file_path,
+                        symbol_name=target_symbol.symbol_name,
+                    )
+                    or []
+                )
                 for callee in callees:
                     self._record_affected_file_reason(
                         reasons_by_file,
@@ -3320,10 +3464,16 @@ class CodeContextEngine:
         affected_tests: set[str] = set()
         dead_code_candidates: set[str] = set()
         reasons_by_file: dict[str, dict[str, set[str]]] = {}
-        file_targets = sorted({str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")})
-        for target in sorted(targets, key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0))):
+        file_targets = sorted(
+            {str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")}
+        )
+        for target in sorted(
+            targets, key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0))
+        ):
             target_file = str(target["file_path"])
-            symbol_display = str(target.get("qualified_name") or target.get("symbol_name") or target.get("symbol_id") or "?")
+            symbol_display = str(
+                target.get("qualified_name") or target.get("symbol_name") or target.get("symbol_id") or "?"
+            )
             self._record_affected_file_reason(
                 reasons_by_file,
                 file_path=target_file,
@@ -3348,12 +3498,15 @@ class CodeContextEngine:
                     symbol=str(ref.caller or symbol_display),
                 )
 
-            callers = self.intel_store.find_callers(
-                symbol_id=cast(str | None, target.get("symbol_id")),
-                qualified_name=cast(str | None, target.get("qualified_name")),
-                file_path=target_file,
-                symbol_name=cast(str | None, target.get("symbol_name")),
-            ) or []
+            callers = (
+                self.intel_store.find_callers(
+                    symbol_id=cast(str | None, target.get("symbol_id")),
+                    qualified_name=cast(str | None, target.get("qualified_name")),
+                    file_path=target_file,
+                    symbol_name=cast(str | None, target.get("symbol_name")),
+                )
+                or []
+            )
             for caller in callers:
                 self._record_affected_file_reason(
                     reasons_by_file,
@@ -3362,12 +3515,15 @@ class CodeContextEngine:
                     symbol=str(caller.qualified_name or caller.symbol_name),
                 )
 
-            callees = self.intel_store.find_callees(
-                symbol_id=cast(str | None, target.get("symbol_id")),
-                qualified_name=cast(str | None, target.get("qualified_name")),
-                file_path=target_file,
-                symbol_name=cast(str | None, target.get("symbol_name")),
-            ) or []
+            callees = (
+                self.intel_store.find_callees(
+                    symbol_id=cast(str | None, target.get("symbol_id")),
+                    qualified_name=cast(str | None, target.get("qualified_name")),
+                    file_path=target_file,
+                    symbol_name=cast(str | None, target.get("symbol_name")),
+                )
+                or []
+            )
             for callee in callees:
                 self._record_affected_file_reason(
                     reasons_by_file,
@@ -3388,7 +3544,9 @@ class CodeContextEngine:
 
         grouped = self._serialize_affected_files(reasons_by_file)
         primary_file = file_targets[0] if len(file_targets) == 1 else "<multiple>"
-        impacted_file_count = len([item for item in grouped if "definition" not in item["reasons"] or len(item["reasons"]) > 1])
+        impacted_file_count = len(
+            [item for item in grouped if "definition" not in item["reasons"] or len(item["reasons"]) > 1]
+        )
         return ImpactResult(
             target={
                 "type": "symbol",
@@ -3954,7 +4112,9 @@ class CodeContextEngine:
         matched = sum(1 for term in query_terms if term and term in lexical)
         return matched >= min(len(query_terms), 3)
 
-    def _context_symbol_rank(self, query: str, symbol: SymbolRecord) -> tuple[int, int, int, int, int, float, str, int, str]:
+    def _context_symbol_rank(
+        self, query: str, symbol: SymbolRecord
+    ) -> tuple[int, int, int, int, int, float, str, int, str]:
         normalized_query = query.strip().lower()
         symbol_name = symbol.symbol_name.lower()
         qualified_name = symbol.qualified_name.lower()
@@ -3966,9 +4126,7 @@ class CodeContextEngine:
         )
         compound = int(self._symbol_matches_compound_query(query_terms[:8], symbol))
         term_prefix_hits = sum(
-            1
-            for term in query_terms[:8]
-            if term and (symbol_name.startswith(term) or qualified_name.startswith(term))
+            1 for term in query_terms[:8] if term and (symbol_name.startswith(term) or qualified_name.startswith(term))
         )
         tool_query = any(term in {"mcp", "tool"} for term in query_terms)
         tool_boost = 0
@@ -4212,7 +4370,9 @@ class CodeContextEngine:
     ) -> list[dict[str, Any]]:
         if not sections:
             return []
-        ordered = sorted(sections, key=lambda item: (str(item["file_path"]), int(item["start_line"]), int(item["end_line"])))
+        ordered = sorted(
+            sections, key=lambda item: (str(item["file_path"]), int(item["start_line"]), int(item["end_line"]))
+        )
         merged: list[dict[str, Any]] = [dict(ordered[0])]
         for section in ordered[1:]:
             current = merged[-1]
@@ -4880,11 +5040,7 @@ class CodeContextEngine:
         ranked = sorted(
             symbols,
             key=lambda symbol: (
-                0
-                if symbol.qualified_name == call_name
-                else 1
-                if symbol.qualified_name.endswith(short_suffix)
-                else 2,
+                0 if symbol.qualified_name == call_name else 1 if symbol.qualified_name.endswith(short_suffix) else 2,
                 symbol.file_path,
                 symbol.start_line,
                 symbol.end_line,
@@ -4909,26 +5065,28 @@ class CodeContextEngine:
         with self._connect() as conn:
             self._init_schema(conn)
             row = conn.execute(
-                    """
+                """
                     SELECT *, NULL AS score FROM symbols
                     WHERE repo_id = ? AND file_path = ? AND start_line = ? AND symbol_name = ?
                     LIMIT 1
                     """,
-                    (self.repo_id, file_path, start_line, symbol_name),
+                (self.repo_id, file_path, start_line, symbol_name),
             ).fetchone()
         if row is not None:
             symbol = _row_to_symbol(row)
             return CallGraphNode(
-                    symbol_id=symbol.symbol_id,
-                    symbol_name=symbol.symbol_name,
-                    qualified_name=symbol.qualified_name,
-                    file_path=symbol.file_path,
-                    kind=symbol.kind,
-                    start_line=symbol.start_line,
-                    end_line=symbol.end_line,
-                    provenance="local_index",
+                symbol_id=symbol.symbol_id,
+                symbol_name=symbol.symbol_name,
+                qualified_name=symbol.qualified_name,
+                file_path=symbol.file_path,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                end_line=symbol.end_line,
+                provenance="local_index",
             )
-        synthetic_id = f"local-call::{hashlib.sha1(f'{file_path}:{start_line}:{qualified_name}'.encode()).hexdigest()[:16]}"
+        synthetic_id = (
+            f"local-call::{hashlib.sha1(f'{file_path}:{start_line}:{qualified_name}'.encode()).hexdigest()[:16]}"
+        )
         return CallGraphNode(
             symbol_id=synthetic_id,
             symbol_name=symbol_name,
@@ -4996,7 +5154,9 @@ class CodeContextEngine:
     def _index_snapshot(self) -> dict[str, Any]:
         with self._connect() as conn:
             self._init_schema(conn)
-            file_count_row = conn.execute("SELECT COUNT(*) AS count FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()
+            file_count_row = conn.execute(
+                "SELECT COUNT(*) AS count FROM files WHERE repo_id = ?", (self.repo_id,)
+            ).fetchone()
             symbol_count_row = conn.execute(
                 "SELECT COUNT(*) AS count FROM symbols WHERE repo_id = ?",
                 (self.repo_id,),
@@ -5078,6 +5238,15 @@ class CodeContextEngine:
     ) -> list[dict[str, Any]]:
         allowed_keys = _DELETED_SEARCH_COMPACT_DEFAULT_KEYS if scope == "deleted" else _SEARCH_COMPACT_DEFAULT_KEYS
         return [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
+
+    def _should_force_search_compaction(
+        self,
+        *,
+        scope: Literal["repo", "external", "deleted"],
+        snippet: Literal["none", "head", "full"],
+        limit: int,
+    ) -> bool:
+        return scope == "repo" and snippet == "head" and limit >= _SEARCH_SNIPPET_FORCE_COMPACT_LIMIT
 
     def _effective_budget_tokens(self, operation: str, requested_budget_tokens: int) -> int:
         requested = max(1, int(requested_budget_tokens))
@@ -5385,7 +5554,9 @@ class CodeContextEngine:
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
         filename = f"{self.repo_id}-{int(time.time() * 1000)}-{digest}.json"
         artifact_path = artifact_root / filename
-        artifact_path.write_text(json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        artifact_path.write_text(
+            json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+        )
         return {
             "spilled": True,
             "artifact_path": str(artifact_path),

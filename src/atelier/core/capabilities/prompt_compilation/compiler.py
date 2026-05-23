@@ -65,10 +65,7 @@ def _prefix_end_index(blocks: tuple[PromptBlock, ...]) -> int:
 
 def _prefix_hash(blocks: tuple[PromptBlock, ...], prefix_end_index: int) -> str:
     stable_prefix = blocks[: prefix_end_index + 1] if prefix_end_index >= 0 else ()
-    payload = b"\n--BLOCK--\n".join(
-        f"{block.kind}:{block.id}:{block.version_hash}".encode()
-        for block in stable_prefix
-    )
+    payload = b"\n--BLOCK--\n".join(f"{block.kind}:{block.id}:{block.version_hash}".encode() for block in stable_prefix)
     return sha256(payload).hexdigest()
 
 
@@ -106,9 +103,7 @@ def _pack_tail(
 
     user_task_blocks = [block for block in tail_blocks if block.kind is BlockKind.USER_TASK]
     if any(block.token_estimate > token_budget for block in user_task_blocks):
-        raise BudgetTooSmall(
-            "tail_budget_tokens is smaller than at least one USER_TASK block token estimate"
-        )
+        raise BudgetTooSmall("tail_budget_tokens is smaller than at least one USER_TASK block token estimate")
 
     candidates = [
         ContextBlock(
@@ -126,9 +121,7 @@ def _pack_tail(
     selected_tail = tuple(block for block in tail_blocks if block.id in selected_ids)
 
     if user_task_blocks and not any(block.kind is BlockKind.USER_TASK for block in selected_tail):
-        raise BudgetTooSmall(
-            "tail_budget_tokens dropped all USER_TASK blocks; increase budget"
-        )
+        raise BudgetTooSmall("tail_budget_tokens dropped all USER_TASK blocks; increase budget")
     return selected_tail
 
 
