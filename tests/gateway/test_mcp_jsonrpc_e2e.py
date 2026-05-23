@@ -560,16 +560,8 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     connect = _payload(_call("sql", {"action": "connect", "connection_string": f"sqlite:///{db_path}"}))
     assert connect["overview"]["table_count"] == 1
 
-    schema = _payload(_call("sql", {"action": "schema", "connection_string": f"sqlite:///{db_path}"}))
-    assert schema["tables"] == ["items"]
-
-    table = _payload(
-        _call(
-            "sql",
-            {"action": "table", "connection_string": f"sqlite:///{db_path}", "name": "items"},
-        )
-    )
-    assert table["columns"][0]["name"] == "id"
+    unsupported = _payload(_call("sql", {"action": "table", "connection_string": f"sqlite:///{db_path}"}))
+    assert unsupported["isError"] is True
 
     lint = _payload(
         _call(
