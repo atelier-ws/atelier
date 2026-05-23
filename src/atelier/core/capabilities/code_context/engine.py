@@ -52,7 +52,7 @@ from atelier.core.capabilities.code_context.models import (
     TextMatch,
     UsageReference,
 )
-from atelier.core.capabilities.code_context.output_policy import resolve_output_policy
+from atelier.core.capabilities.code_context.output_policy import hard_cap_chars, resolve_output_policy
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.core.capabilities.repo_map.graph import iter_source_files
@@ -2049,28 +2049,35 @@ class CodeContextEngine:
         """Build a task-specific context bundle from BM25 symbols, repo map, imports, and exact source."""
         if auto_index:
             self._ensure_indexed()
+        context_policy = resolve_output_policy("context")
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
         repo_map_payload = self.repo_map(seed_files=normalized_seeds, budget_tokens=max(200, budget_tokens // 4))
-        symbol_hits = self.search_symbols(task, limit=max_symbols, auto_index=False)
-        seed_symbols = self._symbols_for_files(normalized_seeds, limit=max_symbols)
-        selected = self._dedupe_symbols([*seed_symbols, *symbol_hits])[:max_symbols]
-        neighbors = self._import_neighbors(normalized_seeds)
+        bounded_max_symbols = max(1, min(max_symbols, context_policy.max_related_symbols))
+        symbol_hits = self.search_symbols(task, limit=bounded_max_symbols, auto_index=False)
+        seed_symbols = self._symbols_for_files(normalized_seeds, limit=bounded_max_symbols)
+        selected = self._dedupe_symbols([*seed_symbols, *symbol_hits])
+        selected = [symbol for symbol in selected if symbol.kind not in {"import", "export"}]
+        selected = self._cap_symbols_per_file(selected, max_per_file=max(1, context_policy.max_symbols_per_file))
+        selected = selected[:bounded_max_symbols]
+        neighbors = self._import_neighbors(normalized_seeds)[: context_policy.max_related_symbols]
 
         lines = ["# Atelier code context", f"task: {task}", ""]
         if repo_map_payload.get("outline"):
             lines.extend(["## repo_map", str(repo_map_payload["outline"]), ""])
-        if neighbors:
+        if neighbors and context_policy.include_edges:
             lines.extend(["## import_neighbors", *[f"- {item}" for item in neighbors[:20]], ""])
 
         packed_symbols: list[SymbolRecord] = []
         naive_tokens = 0
-        for symbol in selected:
+        max_code_blocks = max(1, context_policy.max_code_blocks)
+        for symbol in selected[:max_code_blocks]:
             full_file = self._read_file(symbol.file_path)
             naive_tokens += count_tokens(full_file)
             symbol_payload = self.get_symbol(symbol_id=symbol.symbol_id, auto_index=False)
+            source_block = hard_cap_chars(str(symbol_payload["source"]), context_policy.max_code_block_chars)
             block = (
                 f"## symbol {symbol.qualified_name} ({symbol.file_path}:{symbol.start_line}-{symbol.end_line})\n"
-                f"```{symbol.language}\n{symbol_payload['source']}\n```"
+                f"```{symbol.language}\n{source_block}\n```"
             )
             candidate = "\n".join([*lines, block])
             if count_tokens(candidate) > budget_tokens and packed_symbols:
@@ -2751,6 +2758,19 @@ class CodeContextEngine:
             if symbol.symbol_id in seen:
                 continue
             seen.add(symbol.symbol_id)
+            output.append(symbol)
+        return output
+
+    def _cap_symbols_per_file(self, symbols: list[SymbolRecord], *, max_per_file: int) -> list[SymbolRecord]:
+        if max_per_file <= 0:
+            return symbols
+        counts: dict[str, int] = {}
+        output: list[SymbolRecord] = []
+        for symbol in symbols:
+            seen = counts.get(symbol.file_path, 0)
+            if seen >= max_per_file:
+                continue
+            counts[symbol.file_path] = seen + 1
             output.append(symbol)
         return output
 
