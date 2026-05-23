@@ -1107,6 +1107,46 @@ def test_tool_explore_returns_grouped_sources_and_entry_points(tmp_path: Path) -
     assert payload["relationships"]["usages"] is not None
 
 
+def test_tool_routes_extracts_framework_endpoints(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "api.py").write_text(
+        "from fastapi import FastAPI, APIRouter\n\n"
+        "app = FastAPI()\n"
+        "router = APIRouter()\n\n"
+        "@app.get('/health')\n"
+        "def health() -> dict[str, bool]:\n"
+        "    return {'ok': True}\n\n"
+        "@router.post('/orders')\n"
+        "def create_order() -> dict[str, str]:\n"
+        "    return {'status': 'created'}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "urls.py").write_text(
+        "from django.urls import path\n"
+        "from . import views\n\n"
+        "urlpatterns = [\n"
+        "    path('admin/', views.admin),\n"
+        "]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "server.ts").write_text(
+        "import express from 'express';\n"
+        "const app = express();\n"
+        "function pingHandler() { return 'pong'; }\n"
+        "app.get('/ping', pingHandler);\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_routes(limit=20, budget_tokens=4000)
+
+    assert payload["route_count"] >= 3
+    routes = payload["routes"]
+    assert any(route["framework"] == "fastapi" and route["method"] == "GET" and route["route"] == "/health" for route in routes)
+    assert any(route["framework"] == "express" and route["route"] == "/ping" for route in routes)
+    assert any(route["framework"] == "django" and route["route"] == "admin/" for route in routes)
+
+
 def test_tool_explore_respects_budget_and_keeps_identity_fields(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")

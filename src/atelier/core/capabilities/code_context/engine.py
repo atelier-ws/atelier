@@ -46,6 +46,7 @@ from atelier.core.capabilities.code_context.models import (
     ImpactResult,
     IndexedFileRecord,
     IndexStats,
+    RouteRecord,
     SymbolRecord,
     TextMatch,
     UsageReference,
@@ -75,6 +76,22 @@ _JS_IMPORT_RE = re.compile(
 )
 _RUST_MOD_RE = re.compile(r"^\s*(?:pub\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.M)
 _GO_IMPORT_RE = re.compile(r"^\s*import\s+(?:\((.*?)\)|\"([^\"]+)\")", re.M | re.S)
+_FASTAPI_DECORATOR_RE = re.compile(
+    r"^\s*@(?P<router>[A-Za-z_][A-Za-z0-9_]*)\.(?P<verb>get|post|put|patch|delete|options|head|trace|websocket)\(\s*['\"](?P<route>[^'\"]+)['\"]"
+)
+_FASTAPI_API_ROUTE_RE = re.compile(
+    r"^\s*@(?P<router>[A-Za-z_][A-Za-z0-9_]*)\.api_route\(\s*['\"](?P<route>[^'\"]+)['\"](?P<rest>.*)\)\s*$"
+)
+_FLASK_ROUTE_RE = re.compile(
+    r"^\s*@(?P<router>[A-Za-z_][A-Za-z0-9_]*)\.route\(\s*['\"](?P<route>[^'\"]+)['\"](?P<rest>.*)\)\s*$"
+)
+_DJANGO_PATH_RE = re.compile(
+    r"^\s*(?:re_)?path\(\s*['\"](?P<route>[^'\"]+)['\"]\s*,\s*(?P<handler>[A-Za-z_][A-Za-z0-9_\.]*)"
+)
+_EXPRESS_ROUTE_RE = re.compile(
+    r"(?P<router>app|router)\.(?P<verb>get|post|put|patch|delete|options|head|all|use)\(\s*[`'\"](?P<route>[^`'\"]+)[`'\"]\s*(?:,\s*(?P<handler>[A-Za-z_$][A-Za-z0-9_$.]*))?"
+)
+_METHOD_LITERAL_RE = re.compile(r"['\"](?P<method>GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|TRACE|CONNECT)['\"]", re.I)
 _LOCAL_PROVENANCE = "local"
 _SEARCH_ESSENTIAL_KEYS = [
     "symbol_id",
@@ -114,6 +131,8 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
 _OUTLINE_ESSENTIAL_KEYS = ["file_path", "name", "qualified_name", "kind", "signature", "line_start", "line_end"]
 _FILES_ESSENTIAL_KEYS = ["file_path"]
 _FILES_OPTIONAL_KEYS = ["top_symbols", "symbol_count", "language"]
+_ROUTES_ESSENTIAL_KEYS = ["framework", "method", "route", "file_path", "line", "provenance"]
+_ROUTES_OPTIONAL_KEYS = ["handler", "router", "language"]
 _SYMBOL_ESSENTIAL_KEYS = [
     "symbol_id",
     "symbol_name",
@@ -217,6 +236,7 @@ _CACHE_TOOL_ALIASES = {
     "explore": "code.explore",
     "files": "code.files",
     "status": "code.status",
+    "routes": "code.routes",
     "search": "code.search",
     "symbol": "code.symbol",
     "outline": "code.outline",
@@ -1185,6 +1205,69 @@ class CodeContextEngine:
         )
         self._cache_set("code.explore", cache_args, packed)
         return packed
+
+    def tool_routes(
+        self,
+        *,
+        file_glob: str | None = None,
+        language: str | None = None,
+        limit: int = 200,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        if auto_index:
+            self._ensure_indexed()
+        self._sync_symbol_intel()
+        normalized_language = language.lower().strip() if isinstance(language, str) and language.strip() else None
+        cache_args = {
+            "file_glob": file_glob,
+            "language": normalized_language,
+            "limit": limit,
+            "budget_tokens": budget_tokens,
+        }
+        hit, cached = self._cache_get("code.routes", cache_args)
+        if hit and cached is not None:
+            return self._mark_cache_hit(cached)
+
+        routes, source_truncated = self._indexed_route_records(
+            file_glob=file_glob,
+            language=normalized_language,
+            limit=max(1, limit),
+        )
+        full_payload = self._build_routes_payload(
+            routes,
+            file_glob=file_glob,
+            language=normalized_language,
+            truncated=source_truncated,
+        )
+        full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
+
+        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._finalize_packed_payload(
+                self._build_routes_payload(
+                    packed_items,
+                    file_glob=file_glob,
+                    language=normalized_language,
+                    truncated=source_truncated or len(packed_items) < len(routes),
+                ),
+                full_total_tokens=full_total_tokens,
+            )
+
+        packed = self._fit_items_to_budget(
+            routes,
+            budget_tokens=budget_tokens,
+            essential_keys=_ROUTES_ESSENTIAL_KEYS,
+            optional_keys_in_drop_order=_ROUTES_OPTIONAL_KEYS,
+            build_payload=build_payload,
+        )
+        payload = self._maybe_attach_overflow_metadata(
+            packed_payload=packed,
+            full_payload=full_payload,
+            full_total_tokens=full_total_tokens,
+            budget_tokens=budget_tokens,
+        )
+        self._cache_set("code.routes", cache_args, payload)
+        return payload
 
     def tool_context(
         self,
@@ -3615,6 +3698,171 @@ class CodeContextEngine:
             records.append(record.model_dump(mode="json", exclude_none=True))
         return records
 
+    def _indexed_route_records(
+        self,
+        *,
+        file_glob: str | None,
+        language: str | None,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        candidates = self._indexed_file_records(path=None, pattern=file_glob, max_depth=None)
+        allowed_languages = {"python", "javascript", "typescript"}
+        if language is not None and language not in allowed_languages:
+            return [], False
+        routes: list[dict[str, Any]] = []
+        truncated = False
+        for candidate in candidates:
+            file_path = str(candidate.get("file_path") or "")
+            file_language = str(candidate.get("language") or "unknown").lower()
+            if file_language not in allowed_languages:
+                continue
+            if language is not None and file_language != language:
+                continue
+            for route in self._extract_routes_from_file(file_path=file_path, language=file_language):
+                routes.append(route)
+                if len(routes) >= limit:
+                    truncated = True
+                    break
+            if truncated:
+                break
+        routes.sort(key=lambda item: (str(item.get("file_path")), int(item.get("line", 0)), str(item.get("route"))))
+        return routes[:limit], truncated
+
+    def _extract_routes_from_file(
+        self,
+        *,
+        file_path: str,
+        language: str,
+    ) -> list[dict[str, Any]]:
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            source = self._resolve_inside_repo(file_path).read_text(encoding="utf-8", errors="replace")
+            lines = source.splitlines()
+            records: list[RouteRecord] = []
+            if language == "python":
+                records.extend(self._extract_python_routes(file_path=file_path, lines=lines))
+            elif language in {"javascript", "typescript"}:
+                records.extend(self._extract_js_routes(file_path=file_path, lines=lines, language=language))
+            return [record.model_dump(mode="json", exclude_none=True) for record in records]
+        return []
+
+    def _extract_python_routes(self, *, file_path: str, lines: list[str]) -> list[RouteRecord]:
+        records: list[RouteRecord] = []
+        for index, line in enumerate(lines, start=1):
+            fastapi_match = _FASTAPI_DECORATOR_RE.search(line)
+            if fastapi_match:
+                method = fastapi_match.group("verb").upper()
+                if method == "WEBSOCKET":
+                    method = "WS"
+                records.append(
+                    RouteRecord(
+                        framework="fastapi",
+                        method=method,
+                        route=fastapi_match.group("route"),
+                        file_path=file_path,
+                        line=index,
+                        language="python",
+                        handler=self._next_python_def_name(lines, index),
+                        router=fastapi_match.group("router"),
+                        provenance=_LOCAL_PROVENANCE,
+                    )
+                )
+                continue
+            fastapi_api_route_match = _FASTAPI_API_ROUTE_RE.search(line)
+            if fastapi_api_route_match:
+                route = fastapi_api_route_match.group("route")
+                methods = self._parse_methods(fastapi_api_route_match.group("rest"))
+                for method in methods:
+                    records.append(
+                        RouteRecord(
+                            framework="fastapi",
+                            method=method,
+                            route=route,
+                            file_path=file_path,
+                            line=index,
+                            language="python",
+                            handler=self._next_python_def_name(lines, index),
+                            router=fastapi_api_route_match.group("router"),
+                            provenance=_LOCAL_PROVENANCE,
+                        )
+                    )
+                continue
+            flask_match = _FLASK_ROUTE_RE.search(line)
+            if flask_match:
+                route = flask_match.group("route")
+                methods = self._parse_methods(flask_match.group("rest"))
+                for method in methods:
+                    records.append(
+                        RouteRecord(
+                            framework="flask",
+                            method=method,
+                            route=route,
+                            file_path=file_path,
+                            line=index,
+                            language="python",
+                            handler=self._next_python_def_name(lines, index),
+                            router=flask_match.group("router"),
+                            provenance=_LOCAL_PROVENANCE,
+                        )
+                    )
+                continue
+            django_match = _DJANGO_PATH_RE.search(line)
+            if django_match:
+                records.append(
+                    RouteRecord(
+                        framework="django",
+                        method="ANY",
+                        route=django_match.group("route"),
+                        file_path=file_path,
+                        line=index,
+                        language="python",
+                        handler=django_match.group("handler"),
+                        provenance=_LOCAL_PROVENANCE,
+                    )
+                )
+        return records
+
+    def _extract_js_routes(self, *, file_path: str, lines: list[str], language: str) -> list[RouteRecord]:
+        records: list[RouteRecord] = []
+        for index, line in enumerate(lines, start=1):
+            match = _EXPRESS_ROUTE_RE.search(line)
+            if not match:
+                continue
+            verb = match.group("verb").upper()
+            method = "ANY" if verb in {"ALL", "USE"} else verb
+            records.append(
+                RouteRecord(
+                    framework="express",
+                    method=method,
+                    route=match.group("route"),
+                    file_path=file_path,
+                    line=index,
+                    language=language,
+                    handler=match.group("handler"),
+                    router=match.group("router"),
+                    provenance=_LOCAL_PROVENANCE,
+                )
+            )
+        return records
+
+    def _next_python_def_name(self, lines: list[str], decorator_line: int) -> str | None:
+        for line in lines[decorator_line:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("@"):
+                continue
+            match = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", stripped)
+            if match:
+                return match.group(1)
+            break
+        return None
+
+    def _parse_methods(self, value: str | None) -> list[str]:
+        if not value:
+            return ["GET"]
+        methods = [match.group("method").upper() for match in _METHOD_LITERAL_RE.finditer(value)]
+        return methods or ["GET"]
+
     def _files_flat(
         self,
         items: list[dict[str, Any]],
@@ -3705,6 +3953,26 @@ class CodeContextEngine:
             "format": format,
             "file_count": len(items),
             "files": self._format_files_payload(items, format=format, include_metadata=include_metadata),
+            "truncated": truncated,
+            "cache_hit": False,
+            "provenance": _LOCAL_PROVENANCE,
+        }
+
+    def _build_routes_payload(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        file_glob: str | None,
+        language: str | None,
+        truncated: bool,
+    ) -> dict[str, Any]:
+        return {
+            "repo_id": self.repo_id,
+            "repo_root": str(self.repo_root),
+            "file_glob": file_glob,
+            "language": language,
+            "route_count": len(items),
+            "routes": items,
             "truncated": truncated,
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
