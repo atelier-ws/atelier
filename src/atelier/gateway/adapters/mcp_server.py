@@ -56,6 +56,9 @@ COMPACT_ADVISORY_THRESHOLD = 60.0
 AUTO_COMPACT_THRESHOLD = 80.0
 HANDOVER_THRESHOLD = 95.0
 AUTO_COMPACT_MIN_TURNS = 15
+# Bypass the min-turns gate when utilisation already exceeds this level —
+# a few very large turns can fill the window just as fast as many small ones.
+AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
 # Bypass the min-turns gate when utilisation already exceeds this level -
 # a few very large turns can fill the window just as fast as many small ones.
 AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
@@ -1093,7 +1096,10 @@ def tool_route(
             "can_spawn": can_spawn,
             "_summary": {
                 "recommended": chosen_model,
+                "recommended_route": tier or chosen_model or "local edit",
                 "budget": budget,
+                "required_validation": [],
+                "risk": "unknown",
                 "can_spawn": can_spawn,
             },
         }
@@ -3808,8 +3814,8 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
             rescue_result = _runtime().rescue_failure(
                 task=str(args.get("task") or ""),
                 error=str(args.get("error") or ""),
-                files=cast(list[str] | None, args.get("files")),
-                recent_actions=cast(list[str] | None, args.get("recent_actions")),
+                files=cast(list[str], args.get("files") or []),
+                recent_actions=cast(list[str], args.get("recent_actions") or []),
                 domain=cast(str | None, args.get("domain")),
             )
             return rescue_result.model_dump()
@@ -3821,7 +3827,11 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
     client = _get_remote_client()
 
     if name == "context":
-        return cast(dict[str, Any], client.get_context(args))
+        context_args = dict(args)
+        context_args["files"] = cast(list[str], args.get("files") or [])
+        context_args["tools"] = cast(list[str], args.get("tools") or [])
+        context_args["errors"] = cast(list[str], args.get("errors") or [])
+        return cast(dict[str, Any], client.get_context(context_args))
     if name == "memory":
         return cast(dict[str, Any], client.memory(args))
     if name == "rescue":
