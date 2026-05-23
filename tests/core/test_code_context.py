@@ -12,6 +12,7 @@ import pytest
 
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.code_context.budget import BudgetPacker
+from atelier.core.capabilities.code_context.models import SymbolRecord
 from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
 from atelier.infra.code_intel.cross_lang.runner import CrossLangRunner
 
@@ -820,6 +821,8 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
     assert payload["reference_count"] >= 1
     assert payload["provenance_breakdown"]["treesitter"] >= 1
     assert payload["cache_hit"] is False
+    flattened = [item for refs in payload["references"].values() for item in refs]
+    assert all("snippet" not in item for item in flattened)
 
 
 def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(tmp_path: Path) -> None:
@@ -936,6 +939,32 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp
 
     assert payload["items"][0]["symbol_name"] == "OrderService"
     assert all("snippet" not in item for item in payload["items"])
+    assert all("content_hash" not in item for item in payload["items"])
+
+
+def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    symbol = SymbolRecord(
+        symbol_id="sym-1",
+        repo_id=engine.repo_id,
+        file_path="src/orders.py",
+        language="python",
+        symbol_name="OrderService",
+        qualified_name="OrderService",
+        kind="class",
+        signature="class OrderService",
+        start_byte=0,
+        end_byte=50,
+        start_line=1,
+        end_line=3,
+        content_hash="h1",
+    )
+    monkeypatch.setattr(engine, "search_symbols", lambda *args, **kwargs: [symbol, symbol])  # type: ignore[assignment]
+
+    payload = engine.tool_search("OrderService", snippet="none", budget_tokens=4000)
+
+    assert len(payload["items"]) == 1
 
 
 def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(tmp_path: Path) -> None:

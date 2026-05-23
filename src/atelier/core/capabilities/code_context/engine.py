@@ -142,6 +142,10 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
     "last_commit_msg",
     "matched_on",
 ]
+_SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score"])
+_DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
+    [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
+)
 _OUTLINE_ESSENTIAL_KEYS = ["file_path", "name", "qualified_name", "kind", "signature", "line_start", "line_end"]
 _FILES_ESSENTIAL_KEYS = ["file_path"]
 _FILES_OPTIONAL_KEYS = ["top_symbols", "symbol_count", "language"]
@@ -594,6 +598,9 @@ class CodeContextEngine:
                 touched_by=normalized_touched_by,
             )
             items = [item for item in items if str(item.get("file_path") or "") in changed_files]
+        items = self._dedupe_search_items(items)
+        if snippet == "none":
+            items = self._compact_search_items(items, scope=scope)
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
         optional_keys = _DELETED_SEARCH_OPTIONAL_KEYS if scope == "deleted" else _SEARCH_OPTIONAL_KEYS
         payload = self._pack_items_payload(
@@ -2180,11 +2187,19 @@ class CodeContextEngine:
         items = [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
         if file_glob:
             items = [item for item in items if fnmatch.fnmatch(str(item["file_path"]), file_glob)]
+        relation_policy = resolve_output_policy("relation")
+        if not relation_policy.include_snippet:
+            for item in items:
+                item.pop("snippet", None)
+        truncated_by_policy = False
+        if relation_policy.max_related_symbols > 0 and len(items) > relation_policy.max_related_symbols:
+            items = items[: relation_policy.max_related_symbols]
+            truncated_by_policy = True
         full_payload = self._build_usages_payload(
             target=target,
             items=items,
             group_by=group_by,
-            truncated=False,
+            truncated=truncated_by_policy,
         )
         full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
 
@@ -2194,7 +2209,7 @@ class CodeContextEngine:
                     target=target,
                     items=packed_items,
                     group_by=group_by,
-                    truncated=len(packed_items) < len(items),
+                    truncated=truncated_by_policy or len(packed_items) < len(items),
                 ),
                 full_total_tokens=full_total_tokens,
             )
@@ -2311,6 +2326,19 @@ class CodeContextEngine:
             depth=bounded_depth,
             result=traversal,
         )
+        relation_policy = resolve_output_policy("relation")
+        if relation_policy.max_related_symbols > 0:
+            max_related = relation_policy.max_related_symbols
+            related_before = len(cast(list[dict[str, Any]], payload.get("related", [])))
+            edges_before = len(cast(list[dict[str, Any]], payload.get("edges", [])))
+            payload["related"] = cast(list[dict[str, Any]], payload.get("related", []))[:max_related]
+            payload["edges"] = cast(list[dict[str, Any]], payload.get("edges", []))[:max_related]
+            payload["related_count"] = len(cast(list[dict[str, Any]], payload.get("related", [])))
+            payload["edge_count"] = len(cast(list[dict[str, Any]], payload.get("edges", [])))
+            payload["truncated"] = bool(payload.get("truncated", False)) or related_before > max_related or edges_before > max_related
+        if not relation_policy.include_edges:
+            payload["edges"] = []
+            payload["edge_count"] = 0
         payload["provenance"] = str(target.get("provenance") or _LOCAL_PROVENANCE)
         packed = self._pack_single_payload(
             payload,
@@ -3320,6 +3348,32 @@ class CodeContextEngine:
             if measured == total_tokens:
                 return measured
             total_tokens = measured
+
+    def _dedupe_search_items(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, int, int, str]] = set()
+        for item in items:
+            key = (
+                str(item.get("symbol_id") or ""),
+                str(item.get("file_path") or ""),
+                int(item.get("start_line") or 0),
+                int(item.get("end_line") or 0),
+                str(item.get("qualified_name") or item.get("symbol_name") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    def _compact_search_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        scope: Literal["repo", "external", "deleted"],
+    ) -> list[dict[str, Any]]:
+        allowed_keys = _DELETED_SEARCH_COMPACT_DEFAULT_KEYS if scope == "deleted" else _SEARCH_COMPACT_DEFAULT_KEYS
+        return [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
 
     def _effective_budget_tokens(self, operation: str, requested_budget_tokens: int) -> int:
         requested = max(1, int(requested_budget_tokens))
