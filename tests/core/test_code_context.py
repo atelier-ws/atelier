@@ -487,6 +487,57 @@ def test_code_context_outline_context_pack_and_impact(tmp_path: Path) -> None:
     assert impact.risk_level in {"medium", "high", "critical"}
 
 
+def test_context_pack_caps_symbols_and_filters_import_noise(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("def a0():\n    return 0\n", encoding="utf-8")
+    (tmp_path / "src" / "b.py").write_text("def b0():\n    return 0\n", encoding="utf-8")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    def symbol(file_path: str, name: str, kind: str, line: int) -> SymbolRecord:
+        return SymbolRecord(
+            symbol_id=f"{file_path}:{name}",
+            repo_id=engine.repo_id,
+            file_path=file_path,
+            language="python",
+            symbol_name=name,
+            qualified_name=name,
+            kind=kind,
+            signature=f"{name}()",
+            start_byte=0,
+            end_byte=10,
+            start_line=line,
+            end_line=line + 1,
+            content_hash=f"hash-{file_path}-{name}",
+            score=1.0,
+        )
+
+    symbols = [
+        symbol("src/a.py", "a_import", "import", 1),
+        symbol("src/a.py", "a_export", "export", 2),
+        symbol("src/a.py", "a1", "function", 3),
+        symbol("src/a.py", "a2", "function", 4),
+        symbol("src/a.py", "a3", "function", 5),
+        symbol("src/a.py", "a4", "function", 6),
+        symbol("src/a.py", "a5", "function", 7),
+        symbol("src/b.py", "b1", "function", 1),
+        symbol("src/b.py", "b2", "function", 2),
+    ]
+
+    monkeypatch.setattr(engine, "repo_map", lambda **kwargs: {"outline": "repo map outline"})
+    monkeypatch.setattr(engine, "search_symbols", lambda *args, **kwargs: symbols)
+    monkeypatch.setattr(engine, "_symbols_for_files", lambda *args, **kwargs: symbols)
+    monkeypatch.setattr(engine, "_import_neighbors", lambda *args, **kwargs: ["src/a.py", "src/b.py", "src/c.py"])
+    monkeypatch.setattr(engine, "get_symbol", lambda **kwargs: {"source": "def x():\n    return 1"})
+
+    pack = engine.context_pack(task="compact context", seed_files=["src/a.py"], budget_tokens=5000, max_symbols=20)
+
+    assert len(pack.symbols) == 3
+    assert {symbol.kind for symbol in pack.symbols} == {"function"}
+    assert sum(1 for symbol in pack.symbols if symbol.file_path == "src/a.py") == 3
+    assert pack.content.count("## symbol ") == 3
+    assert pack.telemetry["token_budget_fit"] is True
+
+
 def test_code_context_search_text_uses_literal_matches(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
