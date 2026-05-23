@@ -416,35 +416,37 @@ class ClaudeImporter:
 
                     usage = msg.get("usage", {}) or {}
                     m = msg.get("model") or ev.get("model")
+                    is_synthetic_model = bool(m and is_placeholder_model(m))
                     # Claude Code emits "<synthetic>" for cached/injected replies that
                     # don't trigger a billable Anthropic request. Don't let that
                     # placeholder overwrite the last real model id we saw.
                     if m and not is_placeholder_model(m):
                         model_seen = str(m)
                     resolved_model = str(m) if (m and not is_placeholder_model(m)) else model_seen
-                    usage_entry = make_llm_usage_entry(
-                        model=resolved_model,
-                        input_tokens=int(usage.get("input_tokens", 0) or 0),
-                        output_tokens=int(usage.get("output_tokens", 0) or 0),
-                        cached_input_tokens=int(usage.get("cache_read_input_tokens", 0) or 0),
-                        cache_creation_input_tokens=int(usage.get("cache_creation_input_tokens", 0) or 0),
-                        thinking_tokens=int(usage.get("thinking_tokens", 0) or 0),
-                        source_type="claude.assistant",
-                        source_id=msg_id,
-                        created_at=_parse_ts(ev.get("timestamp")) if ev.get("timestamp") else None,
-                    )
-                    if usage_entry is not None:
-                        if msg_id:
-                            assistant_usage_entries[msg_id] = usage_entry
-                        else:
-                            orphan_usage_entries.append(usage_entry)
+                    if not is_synthetic_model:
+                        usage_entry = make_llm_usage_entry(
+                            model=resolved_model,
+                            input_tokens=int(usage.get("input_tokens", 0) or 0),
+                            output_tokens=int(usage.get("output_tokens", 0) or 0),
+                            cached_input_tokens=int(usage.get("cache_read_input_tokens", 0) or 0),
+                            cache_creation_input_tokens=int(usage.get("cache_creation_input_tokens", 0) or 0),
+                            thinking_tokens=int(usage.get("thinking_tokens", 0) or 0),
+                            source_type="claude.assistant",
+                            source_id=msg_id,
+                            created_at=_parse_ts(ev.get("timestamp")) if ev.get("timestamp") else None,
+                        )
+                        if usage_entry is not None:
+                            if msg_id:
+                                assistant_usage_entries[msg_id] = usage_entry
+                            else:
+                                orphan_usage_entries.append(usage_entry)
                     content = msg.get("content") or []
                     calls = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                     if calls:
-                        in_t = int(usage.get("input_tokens", 0) or 0)
-                        out_t = int(usage.get("output_tokens", 0) or 0)
-                        cr = int(usage.get("cache_read_input_tokens", 0) or 0)
-                        cw = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                        in_t = 0 if is_synthetic_model else int(usage.get("input_tokens", 0) or 0)
+                        out_t = 0 if is_synthetic_model else int(usage.get("output_tokens", 0) or 0)
+                        cr = 0 if is_synthetic_model else int(usage.get("cache_read_input_tokens", 0) or 0)
+                        cw = 0 if is_synthetic_model else int(usage.get("cache_creation_input_tokens", 0) or 0)
                         eff_in = in_t + cr + cw
                         dist_in = eff_in // len(calls)
                         dist_out = out_t // len(calls)

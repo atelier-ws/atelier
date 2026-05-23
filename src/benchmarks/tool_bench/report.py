@@ -289,15 +289,6 @@ def print_enforcement_gap(settings_path: Path | None = None) -> None:
             except Exception:
                 pass
 
-    # PostToolUse missed-savings hooks
-    post_hooks: set[str] = set()
-    for hook in (global_cfg.get("hooks") or {}).get("PostToolUse") or []:
-        m = hook.get("matcher", "")
-        cmds = [h.get("command", "") for h in (hook.get("hooks") or [])]
-        if any("record_missed_saving" in c for c in cmds):
-            for tool in m.split("|"):
-                post_hooks.add(tool.strip())
-
     src_label = f"{settings_path}" + (f"\n  project: {project_settings_path}" if project_settings_path.exists() else "")
     print(f"  \033[2mReading: global: {src_label}\033[0m\n")
 
