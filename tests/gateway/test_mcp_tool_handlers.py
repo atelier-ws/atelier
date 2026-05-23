@@ -354,15 +354,14 @@ def test_cli_tools_call_invokes_stable_tool(tmp_path: Path, monkeypatch: pytest.
             "call",
             "compact",
             "--args",
-            '{"op":"output","content":"hello world","budget_tokens":10}',
+            "{}",
             "--json",
         ],
     )
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["method"] == "passthrough"
-    assert payload["compacted"] == "hello world"
+    assert "tokens_freed" in payload
 
 
 def test_tools_list_each_entry_has_schema() -> None:
@@ -602,20 +601,11 @@ def test_run_rubric_gate_pass(store_root: Path) -> None:
     assert payload["status"] == "pass"
 
 
-def test_compact_output_op_passthrough(store_root: Path) -> None:
+def test_compact_session_call_returns_summary(store_root: Path) -> None:
     _ = store_root
-    payload = _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
-    assert payload["compacted"] == "short output"
-    assert payload["method"] == "passthrough"
-
-
-def test_compact_advise_op(store_root: Path) -> None:
-    _ = store_root
-    payload = _result(_call("compact", {"op": "advise"}))
-    assert "should_compact" in payload
-    assert "should_advise" in payload
-    assert "should_handover" in payload
-    assert "suggested_prompt" in payload
+    payload = _result(_call("compact", {}))
+    assert "tokens_freed" in payload
+    assert "preserved" in payload
 
 
 def test_compact_auto_gate_requires_boundary_and_turns(store_root: Path) -> None:
@@ -673,7 +663,7 @@ def test_compact_handover_writes_markdown(store_root: Path) -> None:
 
 def test_model_recommendation_emitted_before_tool_dispatch(store_root: Path) -> None:
     _ = store_root
-    _result(_call("compact", {"op": "output", "content": "short output", "content_type": "bash"}))
+    _result(_call("compact", {}))
 
     led = mcp_server._get_ledger()
     recommendations = [event for event in led.events if event.kind == "model_recommendation"]
