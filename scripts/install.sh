@@ -23,6 +23,7 @@
 #   ATELIER_MEMORY_BACKEND  Memory sidecar to install: letta | openmemory (default: none)
 #   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (Docker) (default: 1)
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
+#   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #   ATELIER_ZOEKT_AUTO_INSTALL If set to 1, run `atelier zoekt install --auto` when local zoekt binaries are missing (default: 1)
 #
@@ -82,6 +83,7 @@ ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (e
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # 1 = install persistent Zoekt sidecar
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
+ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_ZOEKT_AUTO_INSTALL="${ATELIER_ZOEKT_AUTO_INSTALL:-1}"
 STACK_STARTED=0
 PASSTHROUGH=()
@@ -113,6 +115,7 @@ while [[ $# -gt 0 ]]; do
         --memory=*) ATELIER_MEMORY_BACKEND="${1#--memory=}" ;;
         --zoekt) ATELIER_ZOEKT=1; ATELIER_ADVANCED=1 ;;
         --strict) ATELIER_STRICT=1; PASSTHROUGH+=("$1") ;;
+        --verbose) ATELIER_VERBOSE=1 ;;
         *) PASSTHROUGH+=("$1") ;;
     esac
     shift
@@ -120,7 +123,8 @@ done
 
 trap '[[ -n "${_SPINNER_PID:-}" ]] && { kill "${_SPINNER_PID}" 2>/dev/null; printf "\n"; } || true' EXIT INT TERM
 
-info()  { _spinner_pause; printf "%b│%b  ◇  %s\n" "$C_PURPLE" "$C_RESET" "$*"; _spinner_resume; }
+info()    { _spinner_pause; printf "%b│%b  ◇  %s\n" "$C_PURPLE" "$C_RESET" "$*"; _spinner_resume; }
+verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && info "$@" || true; }
 warn()  {
     WARNINGS+=("$*")
     _spinner_pause
@@ -191,6 +195,9 @@ spin() {
     _out="$("$@" 2>&1)" || _ret=$?
     if [[ $_ret -eq 0 ]]; then
         _spinner_stop ok
+        if [[ "$ATELIER_VERBOSE" == "1" && -n "$_out" ]]; then
+            printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+        fi
     else
         _spinner_stop err
         [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
@@ -263,7 +270,7 @@ print_final_report() {
     if [[ ${#ERRORS[@]} -eq 0 && ${#WARNINGS[@]} -eq 0 ]]; then
         return
     fi
-    info ""
+    verbose ""
     print_issue_group "Errors"   "$C_RED"    "${ERRORS[@]+"${ERRORS[@]}"}"
     print_issue_group "Warnings" "$C_YELLOW" "${WARNINGS[@]+"${WARNINGS[@]}"}"
 }
@@ -807,7 +814,7 @@ ensure_local_zoekt_runtime() {
     done
 
     if [[ ${#missing[@]} -eq 0 ]]; then
-        info "Local Zoekt runtime detected (${missing[*]:-ok})"
+        verbose "Local Zoekt runtime detected (${missing[*]:-ok})"
         return
     fi
 
@@ -844,12 +851,12 @@ need_cmd() {
 
 install_uv_if_needed() {
     if command -v uv >/dev/null 2>&1; then
-        info "Found uv: $(uv --version 2>/dev/null || echo unknown)"
+        verbose "Found uv: $(uv --version 2>/dev/null || echo unknown)"
         return
     fi
 
     need_cmd curl
-    info "Installing uv (official installer)..."
+    verbose "Installing uv (official installer)..."
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         echo "[dry-run] curl -LsSf https://astral.sh/uv/install.sh | sh"
     else
@@ -862,7 +869,7 @@ install_uv_if_needed() {
     fi
 
     command -v uv >/dev/null 2>&1 || fail "uv install completed but uv is still not on PATH"
-    info "Installed uv: $(uv --version 2>/dev/null || echo unknown)"
+    verbose "Installed uv: $(uv --version 2>/dev/null || echo unknown)"
 }
 
 prepare_repo() {
@@ -871,7 +878,7 @@ prepare_repo() {
     run mkdir -p "$dir"
 
     if [[ -d "$ATELIER_INSTALL_DIR/.git" ]]; then
-        info "Updating existing repository in $ATELIER_INSTALL_DIR (force-overwrite local changes)"
+        verbose "Updating existing repository in $ATELIER_INSTALL_DIR (force-overwrite local changes)"
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
             echo "[dry-run] git -C $ATELIER_INSTALL_DIR fetch --tags --prune origin"
             echo "[dry-run] git -C $ATELIER_INSTALL_DIR checkout -f $ATELIER_REF"
@@ -888,7 +895,7 @@ prepare_repo() {
             git -C "$ATELIER_INSTALL_DIR" clean -fd
         fi
     else
-        info "Cloning $ATELIER_REPO_URL into $ATELIER_INSTALL_DIR"
+        verbose "Cloning $ATELIER_REPO_URL into $ATELIER_INSTALL_DIR"
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
             echo "[dry-run] git clone --depth=1 --branch $ATELIER_REF $ATELIER_REPO_URL $ATELIER_INSTALL_DIR"
         else
@@ -958,9 +965,9 @@ install_code_tools() {
 
     # prettier + eslint + ts-morph (TypeScript/JavaScript tools, require npm)
     if command -v npm >/dev/null 2>&1; then
-        info "Installing prettier (JS/TS formatter)..."
+        verbose "Installing prettier (JS/TS formatter)..."
         run npm install -g prettier
-        info "Installing eslint, ts-morph, and typescript (JS/TS linter and rename backend)..."
+        verbose "Installing eslint, ts-morph, and typescript (JS/TS linter and rename backend)..."
         run npm install -g eslint ts-morph typescript
     else
         warn "npm not found — skipping prettier, eslint, and ts-morph (install Node.js 20+ to enable)"
@@ -968,7 +975,7 @@ install_code_tools() {
 
     # rustfmt + cargo (Rust formatter and lint-fix backend, via rustup)
     if ! command -v cargo >/dev/null 2>&1; then
-        info "cargo not found — installing Rust toolchain via rustup..."
+        verbose "cargo not found — installing Rust toolchain via rustup..."
         if [[ "$os_type" == "Darwin" ]]; then
             if command -v brew >/dev/null 2>&1; then
                 run brew install rustup
@@ -992,7 +999,7 @@ install_code_tools() {
             fi
         fi
     else
-        info "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
+        verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
 
 }
@@ -1038,7 +1045,7 @@ main() {
 
     step_start "Preparing environment"
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
-        info "Local mode: using current directory as an editable install source"
+        verbose "Local mode: using current directory as an editable install source"
         ATELIER_INSTALL_DIR="$(pwd)"
     else
         prepare_repo
@@ -1066,7 +1073,7 @@ main() {
         elif [[ "$ATELIER_MEMORY_BACKEND" == "letta" ]]; then
             if command -v docker >/dev/null 2>&1; then
                 selected_memory="letta"
-                info "Memory sidecar: Letta (Docker)"
+                verbose "Memory sidecar: Letta (Docker)"
             else
                 warn "--memory letta requires Docker - skipping Letta sidecar"
             fi
@@ -1084,7 +1091,7 @@ main() {
                 warn "OpenMemory prerequisites missing (${_om_missing[*]}) - skipping memory sidecar"
             else
                 selected_memory="openmemory"
-                info "Memory sidecar: OpenMemory (Docker)"
+                verbose "Memory sidecar: OpenMemory (Docker)"
             fi
         fi
     fi
@@ -1093,7 +1100,7 @@ main() {
     if [[ "$ATELIER_ZOEKT" == "1" ]]; then
         if command -v docker >/dev/null 2>&1; then
             selected_zoekt="1"
-            info "Zoekt sidecar: enabled by default (Docker)"
+            verbose "Zoekt sidecar: enabled by default (Docker)"
         else
             warn "Docker not found — skipping Zoekt sidecar service setup"
         fi
@@ -1145,7 +1152,7 @@ main() {
     step_done
 
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
-        info "Installing Atelier host integrations (skip if host CLI is missing)..."
+        verbose "Installing Atelier host integrations (skip if host CLI is missing)..."
         local host_install_args=()
         local passthrough
         for passthrough in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
@@ -1191,7 +1198,7 @@ main() {
                 || degrade "Failed to persist host detection status"
         fi
     else
-        info "Skipping host integrations because ATELIER_NO_HOSTS=1"
+        verbose "Skipping host integrations because ATELIER_NO_HOSTS=1"
         # Still persist current detection state even when skipping install
         if [[ "$ATELIER_DRY_RUN" != "1" && -f "$ATELIER_INSTALL_DIR/scripts/status.sh" ]]; then
             bash "$ATELIER_INSTALL_DIR/scripts/status.sh" --write 2>/dev/null \
@@ -1201,7 +1208,7 @@ main() {
 
     if [[ "$ATELIER_NO_SERVICECTL" != "1" ]]; then
         if command -v systemctl >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; then
-            info "Registering Atelier services with background manager..."
+            verbose "Registering Atelier services with background manager..."
             local background_args=()
             if [[ "$stack_available" == "1" ]]; then
                 background_args+=("--with-stack")
@@ -1220,7 +1227,7 @@ main() {
                 "$ATELIER_BIN_DIR/atelier" background install "${background_args[@]}" >/dev/null
             fi
         else
-            info "Starting Atelier background service controller (loose process)..."
+            verbose "Starting Atelier background service controller (loose process)..."
             if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
                 echo "[dry-run] $ATELIER_BIN_DIR/atelier servicectl start --interval-seconds $ATELIER_SERVICECTL_INTERVAL_SECONDS --maintenance-interval-seconds $ATELIER_SERVICECTL_MAINTENANCE_INTERVAL_SECONDS"
             else
@@ -1230,7 +1237,7 @@ main() {
             fi
 
             if [[ "$stack_available" == "1" ]]; then
-                info "Starting Atelier visualization stack (service + frontend)..."
+                verbose "Starting Atelier visualization stack (service + frontend)..."
                 if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
                     echo "[dry-run] $ATELIER_BIN_DIR/atelier stack start"
                 else
@@ -1241,7 +1248,7 @@ main() {
             fi
         fi
     else
-        info "Skipping background services because ATELIER_NO_SERVICECTL=1"
+        verbose "Skipping background services because ATELIER_NO_SERVICECTL=1"
     fi
 
     if [[ "$STACK_STARTED" == "1" || "$stack_expected" == "1" ]]; then
