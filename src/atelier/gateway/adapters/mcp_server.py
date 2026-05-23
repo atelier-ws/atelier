@@ -59,9 +59,6 @@ AUTO_COMPACT_MIN_TURNS = 15
 # Bypass the min-turns gate when utilisation already exceeds this level —
 # a few very large turns can fill the window just as fast as many small ones.
 AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
-# Bypass the min-turns gate when utilisation already exceeds this level -
-# a few very large turns can fill the window just as fast as many small ones.
-AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
 
 
 def _check_dev_mode(tool_name: str) -> str | None:
@@ -812,18 +809,30 @@ def tool_get_context(
     )
 
     bootstrap = _bootstrap_context_status(_atelier_root())
-    payload = rt.get_context(
-        task=task,
-        domain=domain,
-        files=files,
-        tools=tools,
-        errors=errors,
-        max_blocks=max_blocks,
-        token_budget=token_budget,
-        dedup=dedup,
-        agent_id=agent_id,
-        recall=recall,
-    )
+    # Keep workspace resolution consistent between this MCP adapter and the
+    # core runtime path resolver so bootstrap status and injected bootstrap
+    # context are derived from the same repository.
+    workspace_root = str(_workspace_root().resolve())
+    previous_workspace_root = os.environ.get("ATELIER_WORKSPACE_ROOT")
+    os.environ["ATELIER_WORKSPACE_ROOT"] = workspace_root
+    try:
+        payload = rt.get_context(
+            task=task,
+            domain=domain,
+            files=files,
+            tools=tools,
+            errors=errors,
+            max_blocks=max_blocks,
+            token_budget=token_budget,
+            dedup=dedup,
+            agent_id=agent_id,
+            recall=recall,
+        )
+    finally:
+        if previous_workspace_root is None:
+            os.environ.pop("ATELIER_WORKSPACE_ROOT", None)
+        else:
+            os.environ["ATELIER_WORKSPACE_ROOT"] = previous_workspace_root
     result: dict[str, Any] = payload if isinstance(payload, dict) else {"context": payload}
     if bootstrap["status"] != "warm":
         _spawn_worker_if_idle(_atelier_root())
@@ -2583,6 +2592,8 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "Token-optimal when you already have path+line. Requires: path + line OR symbol name."
                 "\n• `outline` — All symbols in a file (functions, classes, methods with line ranges). "
                 "Replaces grepping for 'def ' or 'class '. path=file for one file, omit for repo summary."
+                "\n• `files` — Indexed file tree/list view with optional path/pattern filters and grouped output. "
+                "Use this before globbing the filesystem."
                 "\n• `usages` — Every site where a symbol is referenced across the repo. "
                 "Use before refactoring to see blast radius. Grouped by file."
                 "\n• `callers` — Who calls this function (call graph, inbound edges). "
@@ -2604,9 +2615,9 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "Auto-triggered on first use normally; only call manually after large merges."
             ),
             "enum": [
-                "index", "search", "blame", "hover", "symbol", "outline",
+                "index", "search", "blame", "hover", "symbol", "outline", "files",
                 "context", "impact", "usages", "callers", "callees",
-                "pattern", "rename",
+                "pattern", "rename", "cache_status", "cache_invalidate",
             ],
         },
         "query": {
@@ -2645,8 +2656,23 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "description": (
                 "Workspace-relative file path. "
                 "Required for: outline (one file), impact, hover (positional lookup). "
-                "Optional filter for: usages, callers, callees (restrict to file)."
+                "Optional filter for: usages, callers, callees (restrict to file), files (subtree or file)."
             ),
+        },
+        "format": {
+            "type": "string",
+            "description": "Output shape for op='files': tree (default), flat list, or grouped by language.",
+            "enum": ["tree", "flat", "grouped"],
+            "default": "tree",
+        },
+        "include_metadata": {
+            "type": "boolean",
+            "description": "For op='files': include language and symbol stats in file entries.",
+            "default": True,
+        },
+        "max_depth": {
+            "type": "integer",
+            "description": "For op='files': maximum directory depth relative to path filter.",
         },
         "line": {
             "type": "integer",
@@ -2663,8 +2689,9 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "pattern": {
             "type": "string",
             "description": (
-                "ast-grep structural pattern. Use $VAR for single-node capture, $$$VARS for "
-                "multi-node (variadics). Example: 'console.log($MSG)' matches all console.log calls."
+                "For op='pattern': ast-grep structural pattern. Use $VAR for single-node capture, $$$VARS for "
+                "multi-node (variadics). Example: 'console.log($MSG)' matches all console.log calls. "
+                "For op='files': optional glob filter over indexed file paths (e.g. 'src/**/*.py')."
             ),
         },
         "rewrite": {
@@ -2816,6 +2843,7 @@ def tool_code(
         "hover",
         "symbol",
         "outline",
+        "files",
         "context",
         "impact",
         "usages",
@@ -2851,6 +2879,9 @@ def tool_code(
     qualified_name: str | None = None,
     symbol_name: str | None = None,
     path: str | None = None,
+    format: Literal["tree", "flat", "grouped"] = "tree",
+    include_metadata: bool = True,
+    max_depth: int | None = None,
     line: int | None = None,
     col: int | None = None,
     new_name: str | None = None,
@@ -2985,6 +3016,19 @@ def tool_code(
         return cast(
             dict[str, Any],
             engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
+        )
+
+    if op == "files":
+        return cast(
+            dict[str, Any],
+            engine.tool_files(
+                path=path,
+                pattern=pattern,
+                format=format,
+                include_metadata=include_metadata,
+                max_depth=max_depth,
+                budget_tokens=budget_tokens,
+            ),
         )
 
     if op == "context":
@@ -4078,7 +4122,7 @@ def _session_compaction_savings_payload(
 
     tokens_after_estimate = _estimate_compacted_state_tokens(state)
     tokens_freed = max(0, int(tokens_before) - tokens_after_estimate)
-    model = _latest_cache_affinity_model(led) or str(getattr(led, "model", "") or "").strip() or "claude-opus-4-7"
+    model = _latest_cache_affinity_model(led) or str(getattr(led, "model", "") or "").strip() or "auto"
     cost_saved_usd = round(get_model_pricing(model).cost_usd(input_tokens=tokens_freed), 6)
     utilisation = (
         round(float(utilisation_pct), 1)
@@ -4119,7 +4163,7 @@ def _emit_model_recommendation(tool_name: str, args: dict[str, Any], led: RunLed
             task_text=_task_text_from_args(args),
             session_state=session_state,
         )
-        vs_model = recommendation["actual_model"] or "claude-opus-4-7"
+        vs_model = recommendation["actual_model"] or "auto"
         cost_saved_usd = 0.0
         if recommendation["model"] != vs_model:
             expensive_pricing = get_model_pricing(vs_model)
@@ -4144,7 +4188,7 @@ def _emit_model_recommendation(tool_name: str, args: dict[str, Any], led: RunLed
         }
     except (RouteConfigError, NoFeasibleRouteError) as exc:
         legacy = ModelRouter().score(tool_name, _task_text_from_args(args), session_state)
-        vs_model = "claude-opus-4-7"
+        vs_model = "auto"
         cost_saved_usd = 0.0
         if legacy.model != vs_model:
             expensive_pricing = get_model_pricing(vs_model)

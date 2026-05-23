@@ -1020,6 +1020,67 @@ def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(
     assert cached_symbol["cache_hit"] is True
 
 
+def test_tool_files_supports_tree_flat_grouped_filters(tmp_path: Path) -> None:
+    _write_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    flat = engine.tool_files(
+        path="src",
+        pattern="src/*.py",
+        format="flat",
+        include_metadata=True,
+        budget_tokens=4000,
+    )
+    grouped = engine.tool_files(path="src", format="grouped", max_depth=0, budget_tokens=4000)
+    grouped_no_metadata = engine.tool_files(
+        path="src",
+        format="grouped",
+        include_metadata=False,
+        max_depth=0,
+        budget_tokens=4000,
+    )
+    tree = engine.tool_files(path="src", format="tree", include_metadata=False, budget_tokens=4000)
+
+    assert flat["path"] == "src"
+    assert flat["pattern"] == "src/*.py"
+    assert flat["format"] == "flat"
+    assert flat["file_count"] == 3
+    assert flat["truncated"] is False
+    assert isinstance(flat["files"], list)
+    assert flat["files"][0]["file_path"].startswith("src/")
+    assert "language" in flat["files"][0]
+    assert "symbol_count" in flat["files"][0]
+    assert "top_symbols" in flat["files"][0]
+
+    assert grouped["format"] == "grouped"
+    assert "python" in grouped["files"]
+    assert len(grouped["files"]["python"]) == 3
+    assert "python" in grouped_no_metadata["files"]
+    assert "language" not in grouped_no_metadata["files"]["python"][0]
+
+    assert tree["format"] == "tree"
+    assert "src" in tree["files"]
+    assert tree["files"]["src"]["orders.py"] == {}
+
+
+def test_tool_files_respects_budget_and_sets_truncated(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    for index in range(40):
+        (src / f"mod_{index}.py").write_text(
+            f"def fn_{index}() -> int:\n    return {index}\n",
+            encoding="utf-8",
+        )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_files(format="flat", include_metadata=True, budget_tokens=360)
+
+    assert payload["total_tokens"] <= 360
+    assert payload["truncated"] is True
+    assert payload["file_count"] < 40
+    assert payload["files"]
+
+
 def test_low_token_defaults_stay_lighter_for_search_and_pattern(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1075,3 +1136,25 @@ def test_low_token_defaults_stay_lighter_for_search_and_pattern(
     pattern_heavy = engine.tool_pattern(pattern="requests.get($URL)", limit=100, budget_tokens=4000)
 
     assert pattern_default["total_tokens"] < pattern_heavy["total_tokens"]
+
+
+def test_tiny_budget_overflow_does_not_attach_spill_metadata(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "orders.py").write_text(
+        "class OrderService:\n"
+        "    def calculate_total(self, items: list[int]) -> int:\n"
+        "        return sum(items)\n"
+        "\n"
+        "class OrderServiceFactory:\n"
+        "    def build(self) -> OrderService:\n"
+        "        return OrderService()\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    full_payload = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=4000)
+    near_budget = max(1, int(full_payload["total_tokens"]) - 1)
+    near_payload = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=near_budget)
+
+    assert near_payload["total_tokens"] <= near_budget
+    assert "overflow" not in near_payload
