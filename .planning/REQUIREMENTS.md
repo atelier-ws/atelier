@@ -5,78 +5,67 @@
 
 ## v1 Requirements
 
-### Output Policy
+### Indexed File Discovery
 
-- [ ] **OUT-01**: Every public search/code/context renderer applies a shared output policy profile instead of ad hoc field emission
-- [ ] **OUT-02**: Every public renderer enforces hard truncation with operation-specific max char caps
-- [ ] **OUT-03**: Default response mode is compact (metadata-first) unless explicit flags request richer payloads
+- [ ] **FILES-01**: `code op="files"` returns indexed repository files with `tree`, `flat`, and `grouped` output formats
+- [ ] **FILES-02**: `code op="files"` supports `path`, `pattern`, `include_metadata`, and `max_depth` filters without filesystem scans
+- [ ] **FILES-03**: `code op="files"` response includes deterministic metadata (`repo_id`, `file_count`, `truncated`, `cache_hit`, `tokens_saved`, `provenance`)
 
-### Search and Relation Rendering
+### Explore Context Pack
 
-- [ ] **SRCH-01**: Search-facing operations return compact symbol pointers by default (name, kind, location, signature when available)
-- [ ] **SRCH-02**: `op-callers`, `op-usages`, and `op-callees` share compact relation rendering with bounded related symbol counts
-- [ ] **SRCH-03**: Search/relation outputs dedupe repeated hits before rendering
+- [ ] **EXPL-01**: `code op="explore"` returns grouped source snippets for related symbols in one response
+- [ ] **EXPL-02**: `code op="explore"` includes relationship context (callers/callees/usages or equivalent links) with bounded counts
+- [ ] **EXPL-03**: `code op="explore"` remains budget-safe under `budget_tokens` with deterministic truncation behavior
 
-### Context Rendering
+### Index Health and Freshness
 
-- [ ] **CTX-01**: Context output caps entry points, related symbols, and code blocks with deterministic limits
-- [ ] **CTX-02**: Context hides import/export noise by default and caps symbols per file
-- [ ] **CTX-03**: Context includes at most bounded, truncated code blocks in compact mode
+- [ ] **STAT-01**: `code op="status"` reports index health, file/node/edge counts, and backend metadata
+- [ ] **STAT-02**: `code op="status"` exposes cache and freshness hints suitable for agent routing decisions
+- [ ] **STAT-03**: `code op="status"` response stays compact and host-neutral for MCP consumers
 
-### Outline and Node Behavior
+### Benchmarks and Documentation
 
-- [ ] **OUTL-01**: `op-outline` performs exact match, case-insensitive fallback, and file/module fallback to recover expected symbols
-- [ ] **OUTL-02**: `op-outline` returns member outlines (names, kinds, lines, signatures) without full source bodies by default
-- [ ] **OUTL-03**: Container symbols (class/module/interface/etc.) render structural outlines by default unless explicit code inclusion is requested
-
-### Benchmark and Regression Gates
-
-- [ ] **BMRK-01**: Benchmark scoring uses effective tokens (`tokens / max(recall, 0.1)`) as the token efficiency basis
-- [ ] **BMRK-02**: CI regression checks fail when recall regresses versus current Atelier baseline
-- [ ] **BMRK-03**: CI regression checks fail when effective-token caps are exceeded for benchmarked operations
-- [ ] **BMRK-04**: CI regression checks fail when search/context latency exceeds benchmark thresholds
+- [ ] **DOCS-01**: `docs/sdk/mcp.md` documents all active `code` ops including `files`, `explore`, and `status` when shipped
+- [ ] **BMRK-01**: Benchmarks report comparable token and latency outcomes for Atelier versus Serena and CodeGraph-style alternatives
+- [ ] **BMRK-02**: Benchmark reporting keeps effective-token accounting visible for quality-adjusted comparisons
 
 ## v2 Requirements
 
-### Future Enhancements
+### Deferred Enhancements
 
-- **FUTR-01**: Add richer verbosity tiers and operation-specific explainability payloads once compact defaults are stable
-- **FUTR-02**: Revisit advanced index/watcher behavior after token-discipline milestone goals are met
+- **ROUT-01**: Add `code op="routes"` for framework route-node extraction
+- **SYNC-01**: Add watcher/autosync for index freshness updates between manual indexing operations
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Full retrieval-engine rewrite | Not required to solve current token inefficiency issue |
-| Disabling retrieval depth to force token drops | Risks recall regression and violates milestone goal |
-| New unrelated MCP surfaces | Keep milestone focused on output contract quality |
+| New top-level MCP tools | v2 parity is explicitly scoped to extending `mcp__atelier__code` |
+| SCIP expansion work | Not required for files/explore/status milestone outcomes |
+| Broad retrieval architecture rewrite | Incremental extension is lower-risk and reviewable in one PR |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| OUT-01 | Phase 1 | Complete |
-| OUT-02 | Phase 1 | Complete |
-| OUT-03 | Phase 1 | Complete |
-| SRCH-01 | Phase 2 | Complete |
-| SRCH-02 | Phase 2 | Complete |
-| SRCH-03 | Phase 2 | Complete |
-| CTX-01 | Phase 3 | Pending |
-| CTX-02 | Phase 3 | Pending |
-| CTX-03 | Phase 3 | Pending |
-| OUTL-01 | Phase 4 | Pending |
-| OUTL-02 | Phase 4 | Pending |
-| OUTL-03 | Phase 4 | Pending |
-| BMRK-01 | Phase 5 | Pending |
-| BMRK-02 | Phase 5 | Pending |
-| BMRK-03 | Phase 5 | Pending |
-| BMRK-04 | Phase 5 | Pending |
+| FILES-01 | Phase 6 | Pending |
+| FILES-02 | Phase 6 | Pending |
+| FILES-03 | Phase 6 | Pending |
+| EXPL-01 | Phase 7 | Pending |
+| EXPL-02 | Phase 7 | Pending |
+| EXPL-03 | Phase 7 | Pending |
+| STAT-01 | Phase 8 | Pending |
+| STAT-02 | Phase 8 | Pending |
+| STAT-03 | Phase 8 | Pending |
+| DOCS-01 | Phase 9 | Pending |
+| BMRK-01 | Phase 9 | Pending |
+| BMRK-02 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 16 total
-- Mapped to phases: 16
+- v1 requirements: 12 total
+- Mapped to phases: 12
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-23*
-*Last updated: 2026-05-23 after milestone requirement definition*
+*Last updated: 2026-05-23 after milestone v1.1 requirement definition*
