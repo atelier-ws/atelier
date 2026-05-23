@@ -1187,6 +1187,8 @@ def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
     assert isinstance(payload["warnings"], list)
     assert payload["autosync"]["state"] == "idle"
     assert payload["autosync"]["mode"] == "scaffold_only"
+    assert payload["autosync"]["reindex_count"] == 0
+    assert isinstance(payload["autosync"]["history"], list)
     assert "entry_count" in payload["cache"]
     assert cached["cache_hit"] is True
 
@@ -1220,6 +1222,8 @@ def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, m
     assert engine._current_index_version() > version_before
     assert status["autosync"]["enabled"] is True
     assert status["autosync"]["mode"] == "incremental"
+    assert status["autosync"]["reindex_count"] >= 1
+    assert any(event["event"] == "reindex" for event in status["autosync"]["history"])
 
 
 def test_low_token_defaults_stay_lighter_for_search_and_pattern(
