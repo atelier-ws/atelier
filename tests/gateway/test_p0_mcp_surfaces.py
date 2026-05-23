@@ -199,6 +199,13 @@ def test_tool_code_schema_exposes_additive_repo_filter() -> None:
     assert "repo" in properties
 
 
+def test_tool_code_schema_exposes_files_operation() -> None:
+    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
+    exposed_ops = op_schema["enum"]
+
+    assert "files" in exposed_ops
+
+
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
@@ -485,6 +492,52 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         file_glob=None,
         dry_run=True,
         limit=20,
+        budget_tokens=220,
+    )
+
+
+def test_tool_code_files_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_files.return_value = {
+        "repo_id": "repo",
+        "repo_root": str(tmp_path),
+        "path": "src",
+        "pattern": "*.py",
+        "format": "flat",
+        "file_count": 1,
+        "files": [{"file_path": "src/orders.py", "language": "python", "symbol_count": 2, "top_symbols": ["Order"]}],
+        "truncated": False,
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 0,
+        "total_tokens": 80,
+    }
+    monkeypatch.setattr(
+        "atelier.gateway.adapters.mcp_server._code_context_engine",
+        lambda repo_root=".": fake_engine,
+    )
+
+    payload = tool_code(
+        {
+            "op": "files",
+            "repo_root": str(tmp_path),
+            "path": "src",
+            "pattern": "*.py",
+            "format": "flat",
+            "include_metadata": True,
+            "max_depth": 2,
+            "budget_tokens": 220,
+        }
+    )
+
+    assert payload["format"] == "flat"
+    assert payload["file_count"] == 1
+    fake_engine.tool_files.assert_called_once_with(
+        path="src",
+        pattern="*.py",
+        format="flat",
+        include_metadata=True,
+        max_depth=2,
         budget_tokens=220,
     )
 

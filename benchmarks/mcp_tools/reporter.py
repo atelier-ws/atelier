@@ -58,6 +58,10 @@ def render_tool_report(report: ToolReport) -> str:
             lines.append(f"  {_RED}    └ {r.failure}{_RESET}")
         if r.baseline_commands:
             lines.append(f"  {_DIM}    cmds: {len(r.baseline_commands)} fallback commands{_RESET}")
+        if r.spill_probe_hits > 0:
+            lines.append(
+                f"  {_DIM}    spill-probe: hits={r.spill_probe_hits} tokens={r.spill_probe_tokens:,}{_RESET}"
+            )
 
     return "\n".join(lines)
 
