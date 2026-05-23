@@ -649,22 +649,9 @@ def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> Non
     )
     assert rubric["status"] == "pass"
 
-    compact_output = _payload(
-        _call(
-            "compact",
-            {
-                "op": "output",
-                "content": "short MCP output",
-                "content_type": "bash",
-                "budget_tokens": 100,
-            },
-        )
-    )
-    assert compact_output["method"] == "passthrough"
-
-    compact_advise = _payload(_call("compact", {"op": "advise"}))
-    assert "should_compact" in compact_advise
-    assert "suggested_prompt" in compact_advise
+    compact_session = _payload(_call("compact", {}))
+    assert "tokens_freed" in compact_session
+    assert "preserved" in compact_session
 
     trace = _payload(
         _call(
