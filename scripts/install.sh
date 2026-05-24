@@ -511,7 +511,7 @@ interactive_single_select() {
     _menu_erase
     # Print final confirmed selection
     local label="${options[$selected_index]}"
-    printf "%b│%b  %b●%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$label"
+    printf "%b│%b  %b●%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
     printf -v "$out_var" '%s' "$selected_index"
 }
 
@@ -625,7 +625,7 @@ interactive_multi_select() {
     for i in "${!options[@]}"; do
         if [[ "${SELECTED_ITEMS[$i]:-0}" == "1" ]]; then
             local label="${options[$i]%%|*}"
-            printf "%b│%b  %b◼%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$label"
+            printf "%b│%b  %b◼%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
         fi
     done
 
