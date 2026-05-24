@@ -2427,6 +2427,139 @@ def compress_context_cmd(ctx: click.Context, session_id: str | None, as_json: bo
     click.echo(state.to_prompt_block())
 
 
+# ----- checkpoint --------------------------------------------------------- #
+
+
+@cli.group()
+def checkpoint() -> None:
+    """Manage idempotent agent checkpoints for resumable execution."""
+
+
+@checkpoint.command("create")
+@click.option("--session-id", default=None, help="Session ID (defaults to latest ledger).")
+@click.option("--tool", "tool_name", default="manual", show_default=True)
+@click.option("--model-route", default="cheap_llm", show_default=True)
+@click.option("--note", default="", help="Optional note stored as compact_state.")
+@click.pass_context
+def checkpoint_create(
+    ctx: click.Context,
+    session_id: str | None,
+    tool_name: str,
+    model_route: str,
+    note: str,
+) -> None:
+    """Create a checkpoint at the current ledger step."""
+    from atelier.infra.runtime.checkpoint import Checkpoint, CheckpointStore
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    root = ctx.obj["root"]
+    path = _ledger_path(root, session_id)
+    led = RunLedger.load(path)
+    store = CheckpointStore(root)
+    step_id = len(store.list_checkpoints(led.session_id))
+    ckpt = Checkpoint.create(
+        session_id=led.session_id,
+        step_id=step_id,
+        tool_name=tool_name,
+        model_route=model_route,
+        input_data=note,
+        output_data=led.status,
+        compact_state=note,
+        cost_so_far_usd=led.cost_tracker.snapshot().get("total_cost_usd", 0.0) if led.cost_tracker else 0.0,
+    )
+    saved_path = store.save(ckpt)
+    click.echo(f"checkpoint created: session={ckpt.session_id} step={ckpt.step_id} txn={ckpt.transaction_id}")
+    click.echo(f"  saved to: {saved_path}")
+
+
+@checkpoint.command("list")
+@click.option("--session-id", default=None, help="Filter to a specific session.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def checkpoint_list(ctx: click.Context, session_id: str | None, as_json: bool) -> None:
+    """List available checkpoints."""
+    from atelier.infra.runtime.checkpoint import CheckpointStore
+
+    root = ctx.obj["root"]
+    store = CheckpointStore(root)
+    sessions = [session_id] if session_id else store.list_sessions()
+    if not sessions:
+        click.echo("no checkpoints found.")
+        return
+    rows = []
+    for sid in sessions:
+        for ckpt in store.list_checkpoints(sid):
+            rows.append(ckpt.to_dict())
+    if as_json:
+        _emit(rows, as_json=True)
+        return
+    for row in rows:
+        click.echo(
+            f"  {row['session_id'][:12]}  step={row['step_id']:3d}"
+            f"  tool={row['tool_name']:<18s}  route={row['model_route']:<14s}"
+            f"  cost=${row['cost_so_far_usd']:.4f}  txn={row['transaction_id']}"
+        )
+
+
+@checkpoint.command("resume")
+@click.argument("session_id")
+@click.option("--from-step", "from_step", type=int, default=None, help="Resume from this step (default: last).")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def checkpoint_resume(
+    ctx: click.Context,
+    session_id: str,
+    from_step: int | None,
+    as_json: bool,
+) -> None:
+    """Resume execution context from a saved checkpoint.
+
+    Prints the compact_state from the checkpoint so the agent can restore
+    context and continue from step N instead of restarting the full loop.
+    """
+    from atelier.infra.runtime.checkpoint import CheckpointStore
+
+    root = ctx.obj["root"]
+    store = CheckpointStore(root)
+
+    if from_step is not None:
+        ckpt = store.load(session_id, from_step)
+        if ckpt is None:
+            raise click.ClickException(f"no checkpoint found for session={session_id} step={from_step}")
+    else:
+        ckpt = store.latest_checkpoint(session_id)
+        if ckpt is None:
+            raise click.ClickException(f"no checkpoints found for session={session_id}")
+
+    if as_json:
+        _emit(ckpt.to_dict(), as_json=True)
+        return
+
+    click.echo(f"resuming from: session={ckpt.session_id}  step={ckpt.step_id}  txn={ckpt.transaction_id}")
+    click.echo(f"  tool_name:    {ckpt.tool_name}")
+    click.echo(f"  model_route:  {ckpt.model_route}")
+    click.echo(f"  cost_so_far:  ${ckpt.cost_so_far_usd:.4f}")
+    click.echo(f"  input_hash:   {ckpt.input_hash}")
+    click.echo(f"  output_hash:  {ckpt.output_hash}")
+    if ckpt.compact_state:
+        click.echo("\ncompact_state:")
+        click.echo(ckpt.compact_state)
+
+
+@checkpoint.command("delete")
+@click.argument("session_id")
+@click.confirmation_option(prompt="Delete all checkpoints for this session?")
+@click.pass_context
+def checkpoint_delete(ctx: click.Context, session_id: str) -> None:
+    """Delete all checkpoints for a session."""
+    from atelier.infra.runtime.checkpoint import CheckpointStore
+
+    root = ctx.obj["root"]
+    store = CheckpointStore(root)
+    count = store.delete_session(session_id)
+    click.echo(f"deleted {count} checkpoint(s) for session={session_id}")
+
+
 # ----- failure ------------------------------------------------------------ #
 
 
@@ -3945,11 +4078,135 @@ def openmemory_logs(ctx: click.Context, follow: bool) -> None:
 
 @cli.group("zoekt")
 def zoekt_group() -> None:
-    """Manage the persistent Zoekt code-search sidecar (Docker)."""
+    """Manage Zoekt local binaries and optional Docker sidecar."""
 
 
 def _zoekt_workspace_prefix(repo_root: Path) -> str:
     return f"atelier-zoekt-{sha256(str(repo_root.resolve()).encode('utf-8')).hexdigest()[:12]}-"
+
+
+def _zoekt_default_index_dir() -> Path:
+    return Path.home() / ".zoekt"
+
+
+def _zoekt_missing_local_binaries() -> list[str]:
+    required = ("zoekt-git-index", "zoekt-index", "zoekt", "zoekt-webserver")
+    return [name for name in required if shutil.which(name) is None]
+
+
+def _zoekt_install_commands() -> tuple[str, ...]:
+    return (
+        "go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest",
+        "go install github.com/sourcegraph/zoekt/cmd/zoekt-index@latest",
+        "go install github.com/sourcegraph/zoekt/cmd/zoekt@latest",
+        "go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest",
+    )
+
+
+@zoekt_group.command("install")
+@click.option("--auto", is_flag=True, help="Run go install commands automatically.")
+@click.option("--print-only", is_flag=True, help="Only print the install commands.")
+def zoekt_install(auto: bool, print_only: bool) -> None:
+    """Install/check local Zoekt binaries (native, no Docker)."""
+    missing = _zoekt_missing_local_binaries()
+    commands = _zoekt_install_commands()
+
+    if not missing:
+        click.echo("Zoekt local binaries are already installed.")
+        return
+
+    click.echo("Missing Zoekt binaries: " + ", ".join(missing))
+    click.echo("Install with:")
+    for command in commands:
+        click.echo(f"  {command}")
+
+    if print_only:
+        return
+    if not auto:
+        raise click.ClickException("Install the commands above, or run: atelier zoekt install --auto")
+    if shutil.which("go") is None:
+        raise click.ClickException("Go is required for --auto install (go command not found on PATH)")
+
+    for command in commands:
+        subprocess.run(command.split(), check=True)
+
+    missing_after = _zoekt_missing_local_binaries()
+    if missing_after:
+        raise click.ClickException("Zoekt install incomplete; still missing: " + ", ".join(missing_after))
+    click.echo("Zoekt local binaries installed.")
+
+
+@zoekt_group.command("index")
+@click.argument("target", type=click.Path(path_type=Path, exists=True, file_okay=False), default=".", required=False)
+@click.option(
+    "--index",
+    "index_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=str(_zoekt_default_index_dir()),
+    show_default=True,
+)
+def zoekt_index(target: Path, index_dir: Path) -> None:
+    """Index a repository/directory into a local Zoekt index."""
+    target = target.resolve()
+    index_dir = index_dir.resolve()
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    git_index = shutil.which("zoekt-git-index")
+    plain_index = shutil.which("zoekt-index")
+    if git_index and (target / ".git").exists():
+        cmd = [git_index, "-index", str(index_dir), str(target)]
+    elif plain_index:
+        cmd = [plain_index, "-index", str(index_dir), str(target)]
+    elif git_index:
+        cmd = [git_index, "-index", str(index_dir), str(target)]
+    else:
+        raise click.ClickException("Zoekt index binaries not found. Run: atelier zoekt install")
+
+    subprocess.run(cmd, check=True)
+    click.echo(f"Zoekt index updated at {index_dir}")
+
+
+@zoekt_group.command("search")
+@click.argument("query", nargs=-1, required=True)
+@click.option(
+    "--index",
+    "index_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=str(_zoekt_default_index_dir()),
+    show_default=True,
+)
+def zoekt_search(query: tuple[str, ...], index_dir: Path) -> None:
+    """Search the local Zoekt index from CLI."""
+    zoekt_bin = shutil.which("zoekt")
+    if zoekt_bin is None:
+        raise click.ClickException("zoekt binary not found. Run: atelier zoekt install")
+    q = " ".join(query).strip()
+    if not q:
+        raise click.ClickException("query cannot be empty")
+    result = subprocess.run([zoekt_bin, "-index", str(index_dir.resolve()), q], check=False)
+    if result.returncode not in (0, 1):
+        raise click.ClickException(f"zoekt search failed (exit {result.returncode})")
+
+
+@zoekt_group.command("serve")
+@click.option(
+    "--index",
+    "index_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=str(_zoekt_default_index_dir()),
+    show_default=True,
+)
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=6070, show_default=True, type=int)
+def zoekt_serve(index_dir: Path, host: str, port: int) -> None:
+    """Run local Zoekt web/API server against the local index."""
+    webserver_bin = shutil.which("zoekt-webserver")
+    if webserver_bin is None:
+        raise click.ClickException("zoekt-webserver binary not found. Run: atelier zoekt install")
+    subprocess.run(
+        [webserver_bin, "-index", str(index_dir.resolve()), "-listen", f"{host}:{port}"],
+        check=True,
+    )
 
 
 @zoekt_group.command("up")
@@ -3981,35 +4238,47 @@ def zoekt_down(ctx: click.Context) -> None:
 
 
 @zoekt_group.command("status")
+@click.option(
+    "--index",
+    "index_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=str(_zoekt_default_index_dir()),
+    show_default=True,
+)
 @click.pass_context
-def zoekt_status(ctx: click.Context) -> None:
-    """Show Zoekt container status for this repo."""
+def zoekt_status(ctx: click.Context, index_dir: Path) -> None:
+    """Show local Zoekt status (and Docker sidecar status if present)."""
+    missing = _zoekt_missing_local_binaries()
+    if missing:
+        click.echo("Local Zoekt binaries: missing -> " + ", ".join(missing))
+        click.echo("Install with: atelier zoekt install")
+    else:
+        click.echo("Local Zoekt binaries: installed")
+    resolved_index = index_dir.resolve()
+    click.echo(f"Local index dir: {resolved_index} ({'exists' if resolved_index.exists() else 'missing'})")
+
     repo_root = Path(_project_root())
     prefix = _zoekt_workspace_prefix(repo_root)
+    if shutil.which("docker") is None:
+        return
+    click.echo("")
+    click.echo("Docker sidecar containers (optional):")
     subprocess.run(["docker", "ps", "-a", "--filter", f"name={prefix}"], check=False)
 
 
 @zoekt_group.command("reindex")
+@click.option(
+    "--index",
+    "index_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=str(_zoekt_default_index_dir()),
+    show_default=True,
+)
 @click.pass_context
-def zoekt_reindex(ctx: click.Context) -> None:
-    """Trigger a fresh index run inside the running Zoekt container."""
-    repo_root = Path(_project_root())
-    prefix = _zoekt_workspace_prefix(repo_root)
-    result = subprocess.run(
-        ["docker", "ps", "--filter", f"name={prefix}", "--format", "{{.Names}}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if not names:
-        raise click.ClickException("Zoekt is not running. Start it with: atelier zoekt up")
-    for name in names:
-        subprocess.run(
-            ["docker", "exec", name, "sh", "-lc", "zoekt-index -index /data/index /input >/dev/null || true"],
-            check=False,
-        )
-    click.echo("Zoekt reindex completed.")
+def zoekt_reindex(ctx: click.Context, index_dir: Path) -> None:
+    """Reindex current repository into local Zoekt index."""
+    target = Path(_project_root())
+    ctx.invoke(zoekt_index, target=target, index_dir=index_dir)
 
 
 @zoekt_group.command("reset")
@@ -5367,8 +5636,8 @@ _BOLD = "\033[1m"
 _GREEN = "\033[38;2;80;200;120m"
 _RED = "\033[38;2;255;80;80m"
 _YELLOW = "\033[38;2;255;200;60m"
-_BRAND = "\033[1;38;2;255;96;65m"
-_BADGE = "\033[1;48;2;255;96;65;38;2;255;255;255m atelier:code \033[0m"
+_BRAND = "\033[1;38;2;155;117;217m"
+_BADGE = "\033[1;48;2;155;117;217;38;2;255;255;255m atelier:code \033[0m"
 _SEP = "\033[2;38;2;180;180;180m │\033[0m"
 _W = 72
 

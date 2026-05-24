@@ -47,7 +47,6 @@ def test_mcp_route_decide_returns_decision(mcp_env: Path) -> None:
     resp = _call(
         "route",
         {
-            "op": "decide",
             "task": "Summarize docs updates",
             "task_type": "docs",
             "budget": "cheap",

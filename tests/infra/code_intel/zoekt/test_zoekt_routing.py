@@ -58,15 +58,19 @@ def test_zoekt_health_resolves_managed_runtime_and_serves_health(
     resolution = discover_zoekt_binary(repo_root)
 
     assert resolution.available is True
-    assert resolution.runtime == "docker"
-    assert resolution.image_ref
+    assert resolution.runtime in {"binary", "docker"}
+    if resolution.runtime == "docker":
+        assert resolution.image_ref
+    else:
+        assert resolution.path is not None
 
     server = get_zoekt_server(repo_root, resolution=resolution)
     health = server.health()
 
     assert health.ok is True
     assert health.backend == "zoekt"
-    assert health.binary_path == resolution.image_ref
+    expected_runtime_ref = resolution.image_ref or (str(resolution.path) if resolution.path is not None else None)
+    assert health.binary_path == expected_runtime_ref
 
 
 def test_zoekt_managed_bootstrap_provisions_manifest_when_env_is_absent(
@@ -81,14 +85,18 @@ def test_zoekt_managed_bootstrap_provisions_manifest_when_env_is_absent(
     resolution = discover_zoekt_binary(repo_root)
 
     assert resolution.available is True
-    assert resolution.source == "managed"
-    assert resolution.path is not None
-    assert resolution.runtime == "docker"
-    assert resolution.image_ref
-    manifest = repo_root / ".atelier" / "bin" / "MANIFEST.json"
-    assert manifest.exists()
-    payload = manifest.read_text(encoding="utf-8")
-    assert "ghcr.io/sourcegraph/zoekt" in payload
+    if resolution.source == "managed":
+        assert resolution.path is not None
+        assert resolution.runtime == "docker"
+        assert resolution.image_ref
+        manifest = repo_root / ".atelier" / "bin" / "MANIFEST.json"
+        assert manifest.exists()
+        payload = manifest.read_text(encoding="utf-8")
+        assert "ghcr.io/sourcegraph/zoekt" in payload
+    else:
+        assert resolution.source == "system-local"
+        assert resolution.runtime == "binary"
+        assert resolution.path is not None
 
 
 @skip_docker

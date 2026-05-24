@@ -14,6 +14,7 @@ from typing import Any, cast
 _ENV_VAR = "ATELIER_ZOEKT_BIN"
 _SHA_ENV_VAR = "ATELIER_ZOEKT_BIN_SHA256"
 _DOCKER_BINARY = "docker"
+_LOCAL_REQUIRED = ("zoekt", "zoekt-index", "zoekt-git-index", "zoekt-webserver")
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ def _validate(path: Path, expected_sha256: str | None) -> bool:
 
 
 def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
-    """Resolve a pinned Zoekt runtime via env override or managed manifest."""
+    """Resolve Zoekt runtime with local-native priority, then managed Docker fallback."""
 
     root = Path(repo_root).resolve()
     checked: list[str] = []
@@ -135,6 +136,21 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
             available=False,
             checked=tuple(checked),
             reason=f"{_ENV_VAR} did not resolve to an executable with a matching {_SHA_ENV_VAR}",
+        )
+
+    local_paths: dict[str, str] = {}
+    for name in _LOCAL_REQUIRED:
+        found = shutil.which(name)
+        if found:
+            checked.append(found)
+            local_paths[name] = found
+    if all(name in local_paths for name in _LOCAL_REQUIRED):
+        return ZoektBinaryResolution(
+            available=True,
+            path=Path(local_paths["zoekt"]).resolve(),
+            source="system-local",
+            checked=tuple(checked),
+            runtime="binary",
         )
 
     docker_binary = shutil.which(_DOCKER_BINARY)

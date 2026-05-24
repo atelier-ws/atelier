@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import pytest
 
-from atelier.core.foundation.memory_models import ArchivalPassage
+from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.service.jobs import (
     JOB_ANALYZE_FAILURES,
     JOB_BOOTSTRAP_CONTEXT,
@@ -195,6 +195,30 @@ def test_context_with_agent_id_returns_recalled_passages(ctx_root: Path) -> None
     payload = _call_context({"task": "validate user inputs", "agent_id": "test-agent"})
     assert "recalled_passages" in payload
     assert isinstance(payload["recalled_passages"], list)
+
+
+def test_context_with_agent_id_includes_memory_facts(ctx_root: Path) -> None:
+    mem = SqliteMemoryStore(ctx_root)
+    block = MemoryBlock(
+        agent_id="test-agent",
+        label="memory-fact/user/workflow/abc123",
+        value="Prefer Atelier memory as the primary durable memory source.",
+        pinned=True,
+        metadata={
+            "kind": "memory_fact",
+            "subject": "workflow",
+            "fact": "Prefer Atelier memory as the primary durable memory source.",
+            "citations": 'User input: "prefer atelier"',
+            "reason": "Keeps memory local and deterministic.",
+            "scope": "user",
+            "votes": {"upvote": 2, "downvote": 0},
+        },
+    )
+    mem.upsert_block(block, actor="pytest")
+
+    payload = _call_context({"task": "load preferences", "agent_id": "test-agent"})
+    assert "<memory_facts>" in payload["context"]
+    assert any(item["source"] == "memory_fact" for item in payload["recalled_passages"])
 
 
 def test_context_no_agent_id_returns_empty_recalled_passages(ctx_root: Path) -> None:

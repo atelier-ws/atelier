@@ -10,6 +10,7 @@ Invariants:
 - cacheable is forced False for TURN and VOLATILE regardless of caller intent.
 - Stability override requires stability_override_reason.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,40 +27,42 @@ class Stability(StrEnum):
     The sort key for cache-prefix planning is STABILITY_ORDER[stability],
     defined in P1 (compiler.py). This enum defines the taxonomy only.
     """
-    STATIC   = "static"    # tool schemas, system prompt, coding policy
-    SESSION  = "session"   # repo summary, project conventions
-    BRANCH   = "branch"    # ReasonBlocks, file summaries for this task
-    TURN     = "turn"      # user task, current diff, last tool result
+
+    STATIC = "static"  # tool schemas, system prompt, coding policy
+    SESSION = "session"  # repo summary, project conventions
+    BRANCH = "branch"  # ReasonBlocks, file summaries for this task
+    TURN = "turn"  # user task, current diff, last tool result
     VOLATILE = "volatile"  # timestamps, request IDs, raw logs
 
 
 class BlockKind(StrEnum):
     """Semantic type of a prompt block."""
-    TOOL_SCHEMA   = "tool_schema"
-    SYSTEM        = "system"
+
+    TOOL_SCHEMA = "tool_schema"
+    SYSTEM = "system"
     CODING_POLICY = "coding_policy"
-    REPO_SUMMARY  = "repo_summary"
-    REASONBLOCK   = "reasonblock"
-    FILE_SUMMARY  = "file_summary"
-    USER_TASK     = "user_task"
-    GIT_DIFF      = "git_diff"
-    TOOL_RESULT   = "tool_result"
-    SCRATCHPAD    = "scratchpad"
+    REPO_SUMMARY = "repo_summary"
+    REASONBLOCK = "reasonblock"
+    FILE_SUMMARY = "file_summary"
+    USER_TASK = "user_task"
+    GIT_DIFF = "git_diff"
+    TOOL_RESULT = "tool_result"
+    SCRATCHPAD = "scratchpad"
 
 
 # Canonical stability for each block kind.
 # A PromptBlock may override this with stability_override_reason.
 DEFAULT_STABILITY: dict[BlockKind, Stability] = {
-    BlockKind.TOOL_SCHEMA:   Stability.STATIC,
-    BlockKind.SYSTEM:        Stability.STATIC,
+    BlockKind.TOOL_SCHEMA: Stability.STATIC,
+    BlockKind.SYSTEM: Stability.STATIC,
     BlockKind.CODING_POLICY: Stability.STATIC,
-    BlockKind.REPO_SUMMARY:  Stability.SESSION,
-    BlockKind.REASONBLOCK:   Stability.BRANCH,
-    BlockKind.FILE_SUMMARY:  Stability.BRANCH,
-    BlockKind.USER_TASK:     Stability.TURN,
-    BlockKind.GIT_DIFF:      Stability.TURN,
-    BlockKind.TOOL_RESULT:   Stability.TURN,
-    BlockKind.SCRATCHPAD:    Stability.VOLATILE,
+    BlockKind.REPO_SUMMARY: Stability.SESSION,
+    BlockKind.REASONBLOCK: Stability.BRANCH,
+    BlockKind.FILE_SUMMARY: Stability.BRANCH,
+    BlockKind.USER_TASK: Stability.TURN,
+    BlockKind.GIT_DIFF: Stability.TURN,
+    BlockKind.TOOL_RESULT: Stability.TURN,
+    BlockKind.SCRATCHPAD: Stability.VOLATILE,
 }
 
 _NON_CACHEABLE_STABILITY = {Stability.TURN, Stability.VOLATILE}
@@ -94,9 +97,7 @@ class PromptBlock:
         if not self.content:
             raise ValueError("PromptBlock.content must not be empty")
         if not _ID_RE.match(self.id):
-            raise ValueError(
-                f"PromptBlock.id {self.id!r} is invalid; must match ^[a-z0-9_./:-]+$"
-            )
+            raise ValueError(f"PromptBlock.id {self.id!r} is invalid; must match ^[a-z0-9_./:-]+$")
         default_stab = DEFAULT_STABILITY[self.kind]
         if self.stability != default_stab and not self.stability_override_reason:
             raise ValueError(
@@ -117,4 +118,5 @@ class PromptBlock:
     def token_estimate(self) -> int:
         """Estimated token count. Uses tiktoken when available, char/4 fallback otherwise."""
         from .tokens import estimate_tokens
+
         return estimate_tokens(self.content)

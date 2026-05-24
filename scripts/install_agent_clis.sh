@@ -24,31 +24,87 @@ set -euo pipefail
 
 if [[ -t 1 ]]; then
     C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
-    C_CYAN="$(printf '\033[36m')"
+    C_CYAN="$(printf '\033[38;2;155;117;217m')"
+    C_PURPLE="$(printf '\033[38;2;155;117;217m')"
 else
     C_RESET=""
+    C_DIM=""
     C_GREEN=""
     C_RED=""
     C_YELLOW=""
     C_CYAN=""
+    C_PURPLE=""
 fi
 if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
-    C_CYAN="$(printf '\033[36m')"
+    C_CYAN="$(printf '\033[38;2;155;117;217m')"
+    C_PURPLE="$(printf '\033[38;2;155;117;217m')"
+fi
+ACTIVE_BAR="┃"
+if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* ]]; then
+    ACTIVE_BAR="|"
 fi
 
+ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 print_message() {
     local color="$1"
     shift
     printf "%b%s%b\n" "$color" "$*" "$C_RESET"
+}
+
+verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && printf "%s\n" "$*" || true; }
+
+print_active_line() {
+    printf "%b%s%b  %b%s%b\n" "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "$1" "$C_RESET"
+}
+
+print_frame_line() {
+    printf "%b│%b  %s\n" "$C_DIM" "$C_RESET" "$1"
+}
+
+_SPINNER_PID=""
+spinner_start() {
+    local msg="$1"
+    [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]] || return 0
+    [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] || return 0
+    [[ "${ATELIER_VERBOSE:-0}" != "1" ]] || return 0
+    local _frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    (
+        local _i=0
+        while true; do
+            printf "\r%b%s%b  %b%s%b  %s " \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$msg"
+            sleep 0.08
+            _i=$((_i + 1))
+        done
+    ) &
+    _SPINNER_PID=$!
+}
+
+spinner_finish() {
+    local state="$1"
+    local msg="$2"
+    [[ -n "${_SPINNER_PID:-}" ]] || return 0
+    kill "$_SPINNER_PID" 2>/dev/null || true
+    wait "$_SPINNER_PID" 2>/dev/null || true
+    _SPINNER_PID=""
+    printf "\r\033[2K"
+    case "$state" in
+        ok)   printf "%b│%b  %b✓%b  %s\n" "$C_DIM" "$C_RESET" "$C_GREEN" "$C_RESET" "$msg" ;;
+        warn) printf "%b│%b  %b⚠%b  %s\n" "$C_DIM" "$C_RESET" "$C_YELLOW" "$C_RESET" "$msg" ;;
+        skip) printf "%b│%b  %b—%b  %s\n" "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET" "$msg" ;;
+        err)  printf "%b│%b  %b✗%b  %s\n" "$C_DIM" "$C_RESET" "$C_RED" "$C_RESET" "$msg" ;;
+    esac
 }
 
 DO_CLAUDE=false
@@ -93,21 +149,21 @@ done
 # ── Interactive prompts (when no flags and TTY) ──────────────────────────────
 if ! $EXPLICIT && [[ -t 0 ]] && [[ -t 1 ]]; then
     echo ""
-    print_message "$C_CYAN" "══════════════════════════════════════════════"
-    print_message "$C_CYAN" " Atelier — Agent Installation"
-    print_message "$C_CYAN" "══════════════════════════════════════════════"
+    print_message "$C_PURPLE" "══════════════════════════════════════════════"
+    print_message "$C_PURPLE" " Atelier — Agent Installation"
+    print_message "$C_PURPLE" "══════════════════════════════════════════════"
     echo ""
 
     # ── Runtime selection ──────────────────────────────────────────────────
     echo "  Which AI coding agents would you like to install Atelier for?"
     echo ""
-    echo "  ${C_CYAN}1${C_RESET}) Claude Code"
-    echo "  ${C_CYAN}2${C_RESET}) OpenCode"
-    echo "  ${C_CYAN}3${C_RESET}) Codex CLI"
-    echo "  ${C_CYAN}4${C_RESET}) GitHub Copilot"
-    echo "  ${C_CYAN}5${C_RESET}) Antigravity / agy"
-    echo "  ${C_CYAN}a${C_RESET}) All"
-    echo "  ${C_CYAN}n${C_RESET}) None (skip agent installs)"
+    echo "  ${C_PURPLE}1${C_RESET}) Claude Code"
+    echo "  ${C_PURPLE}2${C_RESET}) OpenCode"
+    echo "  ${C_PURPLE}3${C_RESET}) Codex CLI"
+    echo "  ${C_PURPLE}4${C_RESET}) GitHub Copilot"
+    echo "  ${C_PURPLE}5${C_RESET}) Antigravity / agy"
+    echo "  ${C_PURPLE}a${C_RESET}) All"
+    echo "  ${C_PURPLE}n${C_RESET}) None (skip agent installs)"
     echo ""
 
     read -r -p "  Choice [a]: " runtime_answer
@@ -154,8 +210,8 @@ if ! $EXPLICIT && [[ -t 0 ]] && [[ -t 1 ]]; then
     if $DO_CLAUDE || $DO_CODEX || $DO_OPENCODE || $DO_COPILOT || $DO_ANTIGRAVITY; then
         echo "  ${C_YELLOW}Install scope:${C_RESET}"
         echo ""
-        echo "  ${C_CYAN}1${C_RESET}) Global — available in all projects"
-        echo "  ${C_CYAN}2${C_RESET}) Project — this directory only (via .mcp.json + AGENTS.md)"
+        echo "  ${C_PURPLE}1${C_RESET}) Global — available in all projects"
+        echo "  ${C_PURPLE}2${C_RESET}) Project — this directory only (via .mcp.json + AGENTS.md)"
         echo ""
         read -r -p "  Choice [1]: " scope_answer
         scope_answer="${scope_answer:-1}"
@@ -238,8 +294,15 @@ stream_colored_output() {
     local line
     while IFS= read -r line; do
         printf "%s\n" "$line" >>"$output_file"
-        print_colored_line "$line"
+        if [[ "${ATELIER_VERBOSE:-0}" == "1" ]]; then
+            print_colored_line "$line"
+        fi
     done
+}
+
+emit_host_status() {
+    [[ "${ATELIER_HOST_STATUS_STREAM:-0}" == "1" ]] || return 0
+    printf "@@ATELIER_HOST_STATUS@@ %s %s\n" "$1" "$2"
 }
 
 print_issue_group() {
@@ -271,6 +334,7 @@ run_installer() {
     local host="$1"
     local script
     local output_file output ret
+    local spinner_started=0
 
     case "$host" in
         claude) script="${SCRIPT_DIR}/install_claude.sh" ;;
@@ -278,9 +342,13 @@ run_installer() {
     esac
 
     echo ""
-    print_message "$C_CYAN" "──────────────────────────────────────────"
-    print_message "$C_CYAN" " Installing Atelier -> ${host}"
-    print_message "$C_CYAN" "──────────────────────────────────────────"
+    emit_host_status "START" "$host"
+    spinner_start "Installing on ${host}"
+    if [[ -n "${_SPINNER_PID:-}" ]]; then
+        spinner_started=1
+    elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+        print_active_line "Installing on ${host}"
+    fi
     output_file="$(mktemp "${TMPDIR:-/tmp}/atelier-${host}.XXXXXX")"
     set +e
     if [[ "$host" == "claude" ]]; then
@@ -296,21 +364,50 @@ run_installer() {
 
     if echo "$output" | grep -q "=== SKIPPED"; then
         SKIP+=("$host")
+        emit_host_status "SKIPPED" "$host (CLI not found)"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish skip "Skipped ${host} (CLI not found)"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Skipped ${host} (CLI not found)"
+        fi
     elif [ $ret -ne 0 ]; then
         FAIL+=("$host")
+        emit_host_status "FAILED" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish err "Failed ${host}"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Failed ${host}"
+        fi
     elif echo "$output" | grep -q "] WARN:"; then
         WARN+=("$host")
+        emit_host_status "WARN" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish warn "Completed ${host} with warnings"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed ${host} with warnings"
+        fi
     else
         PASS+=("$host")
+        emit_host_status "OK" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish ok "Completed ${host}"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed ${host}"
+        fi
     fi
 }
 
 # ── Universal agents (always run first when using --workspace) ──────────────
 if [[ " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
+    spinner_started=0
     echo ""
-    print_message "$C_CYAN" "──────────────────────────────────────────"
-    print_message "$C_CYAN" " Installing universal agents (.mcp.json + AGENTS.md)"
-    print_message "$C_CYAN" "──────────────────────────────────────────"
+    emit_host_status "START" "agents"
+    spinner_start "Installing universal agents (.mcp.json + AGENTS.md)"
+    if [[ -n "${_SPINNER_PID:-}" ]]; then
+        spinner_started=1
+    elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+        print_active_line "Installing universal agents (.mcp.json + AGENTS.md)"
+    fi
     UNIVERSAL_OUTPUT_FILE="$(mktemp "${TMPDIR:-/tmp}/atelier-agents.XXXXXX")"
     set +e
     bash "${SCRIPT_DIR}/install_agents.sh" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" 2>&1 | stream_colored_output "$UNIVERSAL_OUTPUT_FILE"
@@ -321,10 +418,28 @@ if [[ " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
     collect_issues_from_output "$UNIVERSAL_OUTPUT"
     if echo "$UNIVERSAL_OUTPUT" | grep -q "] WARN:"; then
         WARN+=("agents")
+        emit_host_status "WARN" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish warn "Completed universal agents with warnings"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed universal agents with warnings"
+        fi
     elif [ $UNIVERSAL_RET -ne 0 ]; then
         FAIL+=("agents")
+        emit_host_status "FAILED" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish err "Failed universal agents"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Failed universal agents"
+        fi
     else
         PASS+=("agents")
+        emit_host_status "OK" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish ok "Completed universal agents"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed universal agents"
+        fi
     fi
 fi
 
@@ -335,9 +450,9 @@ $DO_COPILOT   && run_installer copilot
 $DO_ANTIGRAVITY && run_installer antigravity
 
 echo ""
-print_message "$C_CYAN" "══════════════════════════════════════════════"
-print_message "$C_CYAN" " Atelier Install Summary"
-print_message "$C_CYAN" "══════════════════════════════════════════════"
+print_message "$C_PURPLE" "══════════════════════════════════════════════"
+print_message "$C_PURPLE" " Atelier Install Summary"
+print_message "$C_PURPLE" "══════════════════════════════════════════════"
 for h in "${PASS[@]+"${PASS[@]}"}"; do printf "  %bOK%b       %s\n" "$C_GREEN" "$C_RESET" "$h"; done
 for h in "${WARN[@]+"${WARN[@]}"}"; do printf "  %bWARN%b     %s\n" "$C_YELLOW" "$C_RESET" "$h"; done
 for h in "${SKIP[@]+"${SKIP[@]}"}"; do printf "  %bSKIPPED%b  %s (CLI not found)\n" "$C_YELLOW" "$C_RESET" "$h"; done
@@ -348,18 +463,15 @@ print_issue_group "Host install warnings" "$C_YELLOW" "${WARNINGS[@]+"${WARNINGS
 
 if [ ${#FAIL[@]} -gt 0 ]; then
     print_message "$C_RED" "Some installs failed. Scroll up for the error output from each failed host."
-    print_message "$C_CYAN" "Next: fix the errors above, then re-run: make install"
+    print_message "$C_PURPLE" "Next: fix the errors above, then re-run: make install"
 elif [ ${#WARN[@]} -gt 0 ]; then
     print_message "$C_YELLOW" "Host installs completed with warnings. Review the warnings above before continuing."
-    print_message "$C_CYAN" "Next: make verify"
-else
-    print_message "$C_GREEN" "Next: make verify"
 fi
 
 # Persist host detection results for the Docker service (write-only, no terminal output)
 STATUS_SCRIPT="${SCRIPT_DIR}/status.sh"
 if [ -f "$STATUS_SCRIPT" ]; then
-    bash "$STATUS_SCRIPT" --write 2>/dev/null || true
+    bash "$STATUS_SCRIPT" --write >/dev/null 2>&1 || true
 fi
 
 if [ ${#FAIL[@]} -gt 0 ]; then

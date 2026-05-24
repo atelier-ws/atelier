@@ -25,21 +25,37 @@ SearchOutputMode = Literal[
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
 DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
-SKIP_DIRS: frozenset[str] = frozenset({
-    # VCS
-    ".git",
-    # Atelier internals
-    ".atelier",
-    # Python
-    ".venv", "venv", ".tox", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    ".eggs",
-    # JS/TS
-    "node_modules", ".next", ".nuxt", ".turbo", ".svelte-kit",
-    # Build outputs
-    "dist", "build", "out", "target",
-    # Coverage
-    "coverage", ".nyc_output",
-})
+SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        # VCS
+        ".git",
+        # Atelier internals
+        ".atelier",
+        # Python
+        ".venv",
+        "venv",
+        ".tox",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".eggs",
+        # JS/TS
+        "node_modules",
+        ".next",
+        ".nuxt",
+        ".turbo",
+        ".svelte-kit",
+        # Build outputs
+        "dist",
+        "build",
+        "out",
+        "target",
+        # Coverage
+        "coverage",
+        ".nyc_output",
+    }
+)
 _SKIP_DIRS = SKIP_DIRS  # backwards-compat alias
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
@@ -160,9 +176,7 @@ def _iter_files(
 ) -> list[tuple[Path, PatternSpec]]:
     expanded = list(patterns)
     if type_alias:
-        expanded.extend(
-            PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), [])
-        )
+        expanded.extend(PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), []))
     if not expanded and base.is_file():
         expanded.append(PatternSpec(pattern=str(base.relative_to(root))))
     elif not expanded and base.is_dir():
@@ -178,9 +192,7 @@ def _iter_files(
     for spec in expanded:
         raw = spec.pattern or "."
         if _has_glob(raw):
-            matches = (
-                base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
-            )
+            matches = base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
             for match in matches:
                 if match.is_file() and not any(part in _SKIP_DIRS for part in match.parts):
                     candidates.setdefault(match.resolve(), spec)
@@ -199,15 +211,10 @@ def _iter_files(
 
 
 def _is_text_file(path: Path) -> bool:
-    return (
-        path.suffix.lower() in _TEXT_SUFFIXES
-        or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
-    )
+    return path.suffix.lower() in _TEXT_SUFFIXES or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
 
 
-def _line_window(
-    lines: list[str], line_no: int, before: int, after: int
-) -> tuple[int, int, list[str]]:
+def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
     start = max(1, line_no - before)
     end = min(len(lines), line_no + after)
     return start, end, lines[start - 1 : end]
@@ -300,9 +307,7 @@ def _extract_pdf(path: Path) -> str:
 def _imports_for(path: Path, source: str) -> list[str]:
     imports: list[str] = []
     if path.suffix.lower() == ".py":
-        for match in re.finditer(
-            r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", source, flags=re.M
-        ):
+        for match in re.finditer(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", source, flags=re.M):
             imports.append(match.group(1) or match.group(2) or "")
     else:
         for match in re.finditer(
@@ -313,9 +318,7 @@ def _imports_for(path: Path, source: str) -> list[str]:
     return [item for item in imports if item]
 
 
-def _imported_by_for(
-    root: Path, target: Path, candidates: list[tuple[Path, PatternSpec]]
-) -> list[str]:
+def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, PatternSpec]]) -> list[str]:
     rel_target = str(target.relative_to(root)) if target.is_relative_to(root) else str(target)
     stem = target.stem
     module = rel_target.removesuffix(".py").replace("/", ".")
@@ -331,12 +334,7 @@ def _imported_by_for(
         imports = _imports_for(candidate, source)
         hit = False
         for item in imports:
-            if (
-                item == module
-                or item.endswith(f".{stem}")
-                or item.endswith(f"/{stem}")
-                or item.endswith(target_js)
-            ):
+            if item == module or item.endswith(f".{stem}") or item.endswith(f"/{stem}") or item.endswith(target_js):
                 hit = True
                 break
         if not hit:
@@ -381,9 +379,7 @@ def _find_symbol_spans(path: Path, source: str) -> list[tuple[int, int, str]]:
     suffix = path.suffix.lower()
     spans: list[tuple[int, int, str]] = []
     if suffix == ".py":
-        for match in re.finditer(
-            r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M
-        ):
+        for match in re.finditer(r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M):
             name = match.group(1)
             start = source.count("\n", 0, match.start()) + 1
             spans.append((start, start, name))
@@ -526,9 +522,7 @@ def _render_text_result(
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
-    match_lines = _match_line_numbers(
-        lines, regex, content_regex, include_all_when_no_regex=include_all
-    )
+    match_lines = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=include_all)
     if include_all and lines_per_file:
         match_lines = match_lines[: max(0, lines_per_file)]
 
@@ -540,11 +534,7 @@ def _render_text_result(
         return None, 0
 
     use_summary = bool(summary)
-    if (
-        summary is None
-        and path.suffix.lower() in {".py", ".ts", ".tsx", ".js", ".jsx"}
-        and len(lines) > 500
-    ):
+    if summary is None and path.suffix.lower() in {".py", ".ts", ".tsx", ".js", ".jsx"} and len(lines) > 500:
         use_summary = True
     if use_summary:
         outline = _summarize(path, source)
@@ -586,14 +576,13 @@ def search_workspace(
     repo_root: str | Path | None = None,
     cap_chars: int = MAX_STRUCTURED_OUTPUT_CHARS,
     context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS,
+    include_metadata: bool = True,
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
     if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
         return {
             "isError": True,
-            "content": [
-                {"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}
-            ],
+            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
         }
 
     root = _repo_root(repo_root)
@@ -631,11 +620,7 @@ def search_workspace(
             lines = source.splitlines()
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
-                rel = (
-                    str(candidate.relative_to(root))
-                    if candidate.is_relative_to(root)
-                    else str(candidate)
-                )
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -649,11 +634,7 @@ def search_workspace(
                 continue
             if spec.graph_mode == "imported_by":
                 imported = _imported_by_for(root, candidate, candidates)
-                rel = (
-                    str(candidate.relative_to(root))
-                    if candidate.is_relative_to(root)
-                    else str(candidate)
-                )
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -666,9 +647,7 @@ def search_workspace(
                 )
                 continue
 
-            line_nos = _match_line_numbers(
-                lines, regex, content_regex, include_all_when_no_regex=regex is None
-            )
+            line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
             if regex and not line_nos:
                 continue
             ranges, symbols = _symbol_windows(
@@ -680,11 +659,7 @@ def search_workspace(
                 lines_after=max(0, lines_after),
             )
             match_count = len(line_nos)
-            rel = (
-                str(candidate.relative_to(root))
-                if candidate.is_relative_to(root)
-                else str(candidate)
-            )
+            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             score = float(match_count) + (0.15 * len(symbols))
             ranked.append(
                 RankedMatch(
@@ -693,35 +668,29 @@ def search_workspace(
                     match_count=match_count,
                     ranges=ranges,
                     symbols=symbols[:6],
-                    why="regex matched symbol-aware ranges"
-                    if symbols
-                    else "regex matched merged line ranges",
+                    why="regex matched symbol-aware ranges" if symbols else "regex matched merged line ranges",
                 )
             )
 
         if not ranked:
-            return {
-                "isError": False,
+            payload: dict[str, Any] = {
                 "mode": "ranked_file_map",
                 "matches": [],
                 "next": [],
-                "_meta": {"fileMatchCount": 0, "capChars": cap_chars},
             }
+            if include_metadata:
+                payload["_meta"] = {"fileMatchCount": 0, "capChars": cap_chars}
+            return payload
 
         ranked.sort(key=lambda item: (-item.score, item.file))
         top_score = max(item.score for item in ranked) or 1.0
-        normalized = [
-            RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)})
-            for item in ranked
-        ]
+        normalized = [RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)}) for item in ranked]
         selected: list[RankedMatch] = []
         used_tokens = 0
         for idx, item in enumerate(normalized):
             max_ranges = 4 if idx == 0 else 3 if idx == 1 else 2
             reduced_ranges = item.ranges[:max_ranges]
-            est = max(
-                30, len(item.file) // 4 + (len(reduced_ranges) * 24) + (len(item.symbols) * 8)
-            )
+            est = max(30, len(item.file) // 4 + (len(reduced_ranges) * 24) + (len(item.symbols) * 8))
             if selected and used_tokens + est > total_budget:
                 break
             used_tokens += est
@@ -750,18 +719,18 @@ def search_workspace(
                 next_actions.append(f"read {item.file}#{start}-{end}")
             if item.symbols:
                 next_actions.append(f"read {item.file}#{item.symbols[0]}")
-        return {
-            "isError": False,
+        payload = {
             "mode": "ranked_file_map",
             "matches": matches_payload,
             "next": next_actions[: min(12, len(next_actions))],
             "context_budget_tokens": total_budget,
             "handles": {
-                k: {"file": v[0], "range": f"{v[1][0]}-{v[1][1]}" if v[1] else None}
-                for k, v in handles.items()
+                k: {"file": v[0], "range": f"{v[1][0]}-{v[1][1]}" if v[1] else None} for k, v in handles.items()
             },
-            "_meta": {"fileMatchCount": len(matches_payload), "capChars": cap_chars},
         }
+        if include_metadata:
+            payload["_meta"] = {"fileMatchCount": len(matches_payload), "capChars": cap_chars}
+        return payload
 
     file_match_count = 0
     for candidate, spec in candidates:
@@ -778,18 +747,12 @@ def search_workspace(
             continue
         if spec.graph_mode == "imported_by":
             imported = _imported_by_for(root, candidate, candidates)
-            rel = (
-                str(candidate.relative_to(root))
-                if candidate.is_relative_to(root)
-                else str(candidate)
-            )
+            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:
-                blocks.append(
-                    {"type": "text", "text": "[truncated: structured output cap reached]"}
-                )
+                blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
                 break
             text = rendered[:remaining]
             total_chars += len(text)
@@ -821,11 +784,9 @@ def search_workspace(
         total_chars += len(text)
         blocks.append({"type": "text", "text": text})
 
-    response: dict[str, Any] = {
-        "isError": False,
-        "content": blocks,
-        "_meta": {"fileMatchCount": file_match_count, "capChars": effective_cap_chars},
-    }
+    response: dict[str, Any] = {"content": blocks}
+    if include_metadata:
+        response["_meta"] = {"fileMatchCount": file_match_count, "capChars": effective_cap_chars}
     inline_chars_budget = max(1000, context_budget_tokens) * INLINE_CHARS_PER_TOKEN
     if output_mode == "file_paths_with_content" and total_chars > inline_chars_budget:
         spill_payload = {
@@ -843,7 +804,6 @@ def search_workspace(
         if blocks and isinstance(blocks[0], dict) and blocks[0].get("type") == "text":
             preview = str(blocks[0].get("text", ""))[:240]
         response = {
-            "isError": False,
             "content": [
                 {
                     "type": "text",
@@ -859,14 +819,15 @@ def search_workspace(
                 "bytes": spill_path.stat().st_size,
                 "preview": preview,
             },
-            "_meta": {
+        }
+        if include_metadata:
+            response["_meta"] = {
                 "fileMatchCount": file_match_count,
                 "capChars": effective_cap_chars,
                 "inlineChars": total_chars,
                 "inlineCharsBudget": inline_chars_budget,
                 "spilled": True,
-            },
-        }
+            }
     return response
 
 

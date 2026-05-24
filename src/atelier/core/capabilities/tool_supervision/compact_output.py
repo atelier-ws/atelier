@@ -29,8 +29,8 @@ ContentType = Literal["file", "grep", "bash", "tool_output", "unknown"]
 
 # Validated threshold from ReasonBlocks SWE-bench benchmark
 DEFAULT_COMPRESS_THRESHOLD_CHARS = 1800
-DEFAULT_HEAD_KEEP_CHARS = 900   # ~56% of budget — head has more signal
-DEFAULT_TAIL_KEEP_CHARS = 700   # ~44% of budget — tail has final result/status
+DEFAULT_HEAD_KEEP_CHARS = 900  # ~56% of budget — head has more signal
+DEFAULT_TAIL_KEEP_CHARS = 700  # ~44% of budget — tail has final result/status
 
 
 # --------------------------------------------------------------------------- #
@@ -65,11 +65,8 @@ class TokenSavingStats:
         """Fraction of chars removed (0 = no savings, 1 = all removed)."""
         if not self.messages_compressed:
             return 0.0
-        total_original = self.chars_saved + sum(
-            DEFAULT_COMPRESS_THRESHOLD_CHARS for _ in self.messages_compressed
-        )
+        total_original = self.chars_saved + sum(DEFAULT_COMPRESS_THRESHOLD_CHARS for _ in self.messages_compressed)
         return self.chars_saved / max(1, total_original + self.chars_saved)
-
 
 
 class CompactResult(BaseModel):
@@ -160,7 +157,9 @@ def _compact_bash(content: str, budget_chars: int = 8000) -> str:
 
     head_chars = int(budget_chars * 0.6)
     tail_chars = budget_chars - head_chars
-    compacted = compress_tool_output(content, threshold_chars=budget_chars, head_chars=head_chars, tail_chars=tail_chars)
+    compacted = compress_tool_output(
+        content, threshold_chars=budget_chars, head_chars=head_chars, tail_chars=tail_chars
+    )
     if stderr and stderr not in compacted:
         return f"{compacted}\n\nFull stderr:\n{stderr}"
     return compacted

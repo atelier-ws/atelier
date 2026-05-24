@@ -66,6 +66,7 @@ coverage.xml
 
 # OpenCode
 .opencode/
+.serena/
 
 # Gemini CLI
 .gemini/
@@ -76,6 +77,7 @@ coverage.xml
 # Github Copilot instructions (locally managed)
 copilot-instructions.md
 .github/copilot-instructions.md
+cost_history.json
 
 # VSCode test
 .vscode-test/
@@ -141,6 +143,8 @@ eval_results/
 # Scripts output
 outputs/
 results/
+/*.py
+/*.sh
 
 # Database dumps (ignore at root, but allow migrations)
 *.sql
