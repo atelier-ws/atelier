@@ -1,116 +1,242 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-05-18
+**Analysis Date:** 2025-01-31
+
+## Code Style
+
+**Formatter:** Black (`line-length = 120`, `target-version = ["py311"]`)
+
+**Linter:** Ruff (`line-length = 100`, `target-version = "py311"`)
+- Active rule sets: `E`, `F`, `I`, `B`, `UP`, `SIM`, `RUF`
+- `E501` (line-too-long) is ignored — black handles wrapping
+
+**Run formatting:**
+```bash
+uv run ruff check --fix src/         # auto-fix lint issues
+uv run black src/                    # format
+uv run black --check src tests       # CI format check
+uv run ruff check src/               # lint check only
+```
+
+**Section Dividers:** Source files use dashed comment banners to visually separate sections:
+```python
+# --------------------------------------------------------------------------- #
+# Section Name                                                                #
+# --------------------------------------------------------------------------- #
+```
+This pattern is prominent in `src/atelier/core/foundation/models.py`, `store.py`, and capability files.
+
+## Type Annotations
+
+**Python version:** 3.11+ syntax throughout.
+
+**Future annotations import:** Every source file opens with `from __future__ import annotations` (342 of 387 source files). This is mandatory — add it to every new file.
+
+**Union syntax:** Use `X | Y` and `X | None`, never `Optional[X]` or `Union[X, Y]`. The codebase has 0 uses of `Optional[]` or `Union[]`.
+
+**Return types:** All public and private functions must have explicit return type annotations.
+
+**TYPE_CHECKING guard:** Used for 26 forward-reference imports to avoid circular imports at runtime:
+```python
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from atelier.gateway.adapters.runtime import ContextRuntime
+```
+
+**mypy:** Strict mode enforced. Run with `make typecheck` / `uv run mypy --strict src/`.
+
+**Overrides in `pyproject.toml`:**
+- `atelier.core.service.api` and `atelier.gateway.adapters.http_api`: `disable_error_code = ["untyped-decorator"]` (FastAPI route decorators)
+- `atelier.gateway.adapters.cli`: `ignore_errors = true` (Click CLI boilerplate)
+
+**Sample annotation style:**
+```python
+def load_policy(root: Path | str) -> GovernancePolicy:
+    ...
+
+def recommend(
+    self,
+    *,
+    tool_name: str,
+    task_text: str,
+    session_state: Mapping[str, Any] | None = None,
+    actual_vendor: str | None = None,
+) -> dict[str, Any]:
+    ...
+```
+
+## Pydantic Models
+
+All data models extend `pydantic.BaseModel`. Key conventions:
+
+**`extra="forbid"` on every model:**
+```python
+class ReasonBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+```
+This makes schema drift a hard error, not silent data loss.
+
+**Mutable defaults use `Field(default_factory=...)`:**
+```python
+triggers: list[str] = Field(default_factory=list)
+task_types: list[str] = Field(default_factory=list)
+```
+
+**Validators use `@field_validator` / `@model_validator` (Pydantic v2):**
+```python
+@field_validator("procedure")
+@classmethod
+def _procedure_non_empty(cls, v: list[str]) -> list[str]:
+    if not v:
+        raise ValueError("procedure must contain at least one step")
+    return v
+```
+
+**Serialization:** Use `model.model_dump(mode="python")` for YAML/dict round-trips; `model_validate(data)` for deserialization.
+
+**Frozen dataclasses for value objects:** Internal recommendation/result objects use `@dataclass(frozen=True)` instead of Pydantic for immutable value objects:
+```python
+@dataclass(frozen=True)
+class RankedCandidate:
+    vendor: str
+    model: str
+    tier: str
+    estimated_cost_usd: float
+    reasons: tuple[str, ...] = ()
+```
+Location: `src/atelier/core/capabilities/cross_vendor_routing/router.py`
+
+## Error Handling
+
+**Domain-specific exception classes:** Raise custom exceptions subclassed from the most appropriate built-in:
+```python
+class NoFeasibleRouteError(ValueError):
+    """Raised when no configured vendor can satisfy the requested turn safely."""
+
+class RouteConfigError(ValueError):
+    ...
+```
+
+**Chained exceptions:** Use `raise NewError(...) from exc` when wrapping:
+```python
+except RoutePolicyError as exc:
+    raise NoFeasibleRouteError(str(exc)) from exc
+```
+
+**No bare `except:`** — Always catch specific exception types.
+
+**Validation errors:** Let Pydantic `ValidationError` surface unmodified — tests assert on it directly.
+
+**HTTP errors:** FastAPI `HTTPException` is raised in API adapters (`src/atelier/core/service/api.py`); core/capabilities never import HTTPException.
 
 ## Naming Patterns
 
 **Files:**
-- Use `snake_case.py` for Python modules under `src/atelier/**` and `tests/**`, for example `src/atelier/core/environment.py` and `tests/gateway/test_service_api.py`.
-- Use `PascalCase.tsx` for React components and pages under `frontend/src/**`, for example `frontend/src/App.tsx`, `frontend/src/pages/Reports.tsx`, and `frontend/src/components/WorkbenchUI.tsx`.
-- Use `camelCase.ts` for frontend utility/API modules, for example `frontend/src/lib/insightsApi.ts` and `frontend/src/lib/utils.ts`.
-- Name Python tests `test_*.py` in tiered folders such as `tests/core/`, `tests/gateway/`, `tests/infra/`, and `tests/docs/`. Name frontend tests `*.test.ts` or `*.test.tsx` beside the implementation, such as `frontend/src/pages/Sessions.test.tsx`.
+- `snake_case.py` everywhere
+- Capability modules follow a fixed layout: `models.py`, `capability.py`, `store.py` per domain
 
-**Functions:**
-- Use `snake_case` for Python functions and private helpers, with leading underscores for module-private helpers such as `_canonical_json` in `src/atelier/core/capabilities/code_context/engine.py` and `_bool_env` in `src/atelier/core/service/config.py`.
-- Use `camelCase` for TypeScript functions such as `getTelemetryConfig`, `markLocalTelemetryAcknowledged`, and `renderReports` in `frontend/src/lib/insightsApi.ts` and `frontend/src/pages/Reports.test.tsx`.
-- Use `PascalCase` for React components and Python classes, for example `CodeContextEngine` in `src/atelier/core/capabilities/code_context/engine.py`, `ServiceConfig` in `src/atelier/core/service/config.py`, and `Reports` in `frontend/src/pages/Reports.tsx`.
+**Functions and variables:** `snake_case`
 
-**Variables:**
-- Use `snake_case` for Python locals, parameters, and fixtures such as `seeded_runtime`, `tmp_path`, and `app_no_auth` in `tests/conftest.py` and `tests/gateway/test_service_api.py`.
-- Use `camelCase` for frontend state and locals such as `contentErr`, `selected`, and `sampleSessions` in `frontend/src/pages/Reports.tsx` and `frontend/src/pages/Sessions.test.tsx`.
-- Use `UPPER_SNAKE_CASE` for constants in both languages, for example `TRACE_FTS_COLUMNS` in `src/atelier/core/foundation/store.py`, `DEV_MODE_ENV_VAR` in `src/atelier/core/environment.py`, and `NAV_ITEMS` in `frontend/src/App.tsx`.
+**Classes:** `PascalCase`
 
-**Types:**
-- Use `PascalCase` for Pydantic models, interfaces, and aliases such as `ReasonBlock` in `src/atelier/core/foundation/models.py`, `ContextRequest` in `src/atelier/core/service/schemas.py`, and `TelemetryConfig` in `frontend/src/lib/insightsApi.ts`.
-- Use explicit literal/type aliases for constrained domains, for example `BlockStatus`, `TraceStatus`, and `Severity` in `src/atelier/core/foundation/models.py`.
+**Private methods/functions:** `_leading_underscore`
 
-## Code Style
+**Module-level loggers:**
+- Gateway adapters: `logger = logging.getLogger(__name__)`
+- Core capabilities and infra: `_log = logging.getLogger(__name__)` (prefixed underscore signals non-public)
 
-**Formatting:**
-- Python uses Ruff and Black from `pyproject.toml`.
-- Ruff is configured at `pyproject.toml` with `line-length = 100`, `target-version = "py311"`, and lint families `E`, `F`, `I`, `B`, `UP`, `SIM`, and `RUF`.
-- Black is configured at `pyproject.toml` with `line-length = 120`.
-- Frontend formatting uses Prettier from `frontend/.prettierrc.json` with 2-space indentation, semicolons, double quotes, trailing commas `es5`, and `printWidth = 80`.
-- `Makefile` routes formatting through `make format`, which runs `ruff --fix`, `black`, and `npx prettier --write` for `frontend/src/**/*.{ts,tsx,js,jsx,json,css,md}`.
+**Type aliases (Literal unions):**
+```python
+BlockStatus = Literal["active", "deprecated", "quarantined"]
+TraceStatus = Literal["success", "failed", "partial"]
+BlockTier = Literal["e1", "e2", "e3"]
+```
+Defined in `src/atelier/core/foundation/models.py` and used as field types.
 
-**Linting:**
-- Python linting is enforced with Ruff via `make lint` in `Makefile`.
-- Python type-checking is enforced with strict mypy via `make typecheck` and `[tool.mypy] strict = true` in `pyproject.toml`.
-- Per-module mypy exceptions are explicit and localized, for example `src/atelier/gateway/adapters/cli.py` is listed under `ignore_errors = true` and API decorator-heavy modules are listed under `disable_error_code = ["untyped-decorator"]` in `pyproject.toml`.
-- No standalone frontend ESLint or Biome configuration is detected. Frontend quality gates rely on `frontend/tsconfig.json` strict compiler options plus Vitest tests.
+**Keyword-only arguments:** Public methods that accept more than 2 parameters use `*` to enforce keyword-only calling:
+```python
+def recommend(self, *, tool_name: str, task_text: str, session_state: ...) -> ...:
+```
 
 ## Import Organization
 
-**Order:**
-1. `from __future__ import annotations` first in Python modules, for example `src/atelier/core/foundation/models.py`, `src/atelier/core/environment.py`, and `tests/gateway/test_cli.py`
-2. Standard library imports
-3. Third-party imports
-4. Local `atelier.*` imports or relative frontend imports
+Managed by ruff's `I` rule (isort-compatible). Order:
 
-**Path Aliases:**
-- No TypeScript path aliases are detected in `frontend/tsconfig.json`.
-- Frontend code uses relative imports such as `../lib/TimeRangeContext` in `frontend/src/pages/Sessions.test.tsx` and `./pages/Reports` in `frontend/src/App.tsx`.
-- Python code imports by package path from `atelier.*`, for example `from atelier.core.foundation.models import ReasonBlock` in `src/atelier/gateway/adapters/cli.py`.
+1. `from __future__ import annotations` (always first)
+2. Standard library (`collections`, `dataclasses`, `datetime`, `pathlib`, `typing`, ...)
+3. Third-party (`pydantic`, `yaml`, `click`, `fastapi`, ...)
+4. Internal absolute imports (`from atelier.core...`, `from atelier.infra...`)
+5. Relative imports (`from .configuration import ...`, `from . import ...`)
 
-## Error Handling
+**Example:**
+```python
+from __future__ import annotations
 
-**Patterns:**
-- Raise specific Python exceptions for invalid inputs and unsupported runtime states, for example `raise ValueError("ATELIER_PROFILE must be 'stable' or 'dev'")` in `src/atelier/core/environment.py` and validator errors in `src/atelier/core/foundation/models.py`.
-- Use `try/except` around optional dependencies and environment-sensitive behavior, returning safe fallbacks instead of crashing, for example `_git_repo_class()` in `src/atelier/core/capabilities/code_context/engine.py` and `_atelier_version()` in `src/atelier/gateway/adapters/cli.py`.
-- Keep frontend API failure behavior centralized: `request<T>()` in `frontend/src/lib/insightsApi.ts` throws on non-OK responses, while pages decide whether to surface or suppress the error.
-- Swallow non-critical UI failures only when loss is acceptable, for example telemetry acknowledgement and config reads in `frontend/src/App.tsx` use `.catch(() => undefined)`.
-- Surface user-visible frontend failures through component state instead of logging, for example `setErr(String(e))` and `setContentErr(String(e))` in `frontend/src/pages/Reports.tsx`.
+from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from atelier.core.capabilities.lesson_promotion.store import TypedLessonStore
+from atelier.core.capabilities.model_routing.router import ModelRouter
+
+from .configuration import RouteConfig, detect_configured_vendors
+from .policy import RoutePolicyError, allowed_vendors
+```
+
+## Module Structure
+
+**File header pattern:**
+```python
+"""One-line module description.
+
+Extended explanation if needed. This is the contract between layers,
+design decisions, etc.
+"""
+
+from __future__ import annotations
+
+# ... imports ...
+
+# --------------------------------------------------------------------------- #
+# Helpers / constants                                                          #
+# --------------------------------------------------------------------------- #
+
+# ... private helpers ...
+
+# --------------------------------------------------------------------------- #
+# Public classes / functions                                                   #
+# --------------------------------------------------------------------------- #
+
+# ... public API ...
+```
+
+**`__all__`:** Used selectively in `gateway/` layer (`__init__.py`, `registry.py`, `session_parsers/__init__.py`, `sdk/__init__.py`). Core capabilities do not define `__all__`.
 
 ## Logging
 
-**Framework:** Python `logging`; frontend generally avoids runtime logging in the application code sampled.
+**Setup per module:**
+```python
+import logging
+logger = logging.getLogger(__name__)   # gateway adapters
+_log = logging.getLogger(__name__)     # core capabilities / infra
+```
 
-**Patterns:**
-- Define module-scoped loggers with `logging.getLogger(__name__)`, for example in `src/atelier/gateway/adapters/cli.py` and `src/atelier/core/foundation/store.py`.
-- Prefer structured return values, stored traces, or HTTP responses over ad-hoc logs for normal control flow.
-- Avoid `console.log` in frontend modules reviewed under `frontend/src/**`; UI state and rendered alerts are preferred.
+**No structured logging library** — standard `logging` module only. No `structlog`, no `loguru`.
 
-## Comments
+**When to log:** Log at the adapter/gateway layer for external calls and errors. Core logic uses `_log.warning(...)` / `_log.debug(...)` sparingly. Never log secrets or API keys.
 
-**When to Comment:**
-- Use module docstrings to declare responsibility and constraints, for example `src/atelier/core/environment.py`, `src/atelier/core/foundation/models.py`, and `src/atelier/gateway/adapters/cli.py`.
-- Use section dividers in long Python modules and tests to separate concerns, such as `# --------------------------------------------------------------------------- #` blocks in `src/atelier/gateway/adapters/cli.py`, `src/atelier/core/foundation/store.py`, and `tests/gateway/test_service_api.py`.
-- Keep inline comments sparse and purpose-driven. Frontend comments mostly explain UX or edge-case intent, such as the storage fallback note in `frontend/src/lib/insightsApi.ts` and section labels in `frontend/src/pages/Reports.tsx`.
+## Docstrings
 
-**JSDoc/TSDoc:**
-- Python docstrings are common at module, class, and selected method level.
-- JSDoc/TSDoc usage is minimal in `frontend/src/**`; TypeScript relies more on interfaces and explicit prop typing than comment blocks.
+**Module docstrings:** Present on all files in `core/` and `infra/`. Explain purpose and key design decisions. Multi-paragraph is fine when documenting schema or backend choices.
 
-## Function Design
+**Class docstrings:** Short one-liners. Describe what the class *is*, not how it works.
 
-**Size:** Favor small helpers around a typed core, but allow large command/router modules when grouping related surfaces. `src/atelier/gateway/adapters/cli.py` is the main exception; most other modules, such as `src/atelier/core/service/config.py` and `frontend/src/lib/utils.ts`, keep functions narrow.
+**Function docstrings:** Sparse — private helpers generally undocumented. Public API methods get a docstring only if the signature doesn't self-document.
 
-**Parameters:**
-- Annotate Python parameters and returns consistently, including helpers and tests, as seen in `tests/gateway/test_cli.py`, `tests/core/service/test_api_week2_routes.py`, and `src/atelier/core/capabilities/code_context/engine.py`.
-- Use keyword-only parameters in Python when optional behavior matters, for example `index_repo(..., include_globs=..., exclude_globs=..., force=True)` in `src/atelier/core/capabilities/code_context/engine.py`.
-- Use typed props objects and generics in TypeScript, for example `request<T>()` in `frontend/src/lib/insightsApi.ts` and prop signatures in `frontend/src/components/WorkbenchUI.tsx`.
-
-**Return Values:**
-- Prefer Pydantic models for domain contracts in Python core code, for example `ReasonBlock` and `Trace` in `src/atelier/core/foundation/models.py`.
-- Use plain dictionaries only for boundary layers or lightweight config/report payloads, for example `ServiceConfig.as_dict()` in `src/atelier/core/service/config.py`.
-- Return typed `Promise<T>` values from frontend API helpers and keep the parsing step centralized in the helper module, as in `frontend/src/lib/insightsApi.ts`.
-
-## Module Design
-
-**Exports:** 
-- Python modules export concrete classes/functions directly; consumers import from the owning module instead of broad barrel modules, for example `src/atelier/core/foundation/models.py` and `src/atelier/core/service/config.py`.
-- Frontend pages default-export the page component, for example `frontend/src/pages/Reports.tsx` and `frontend/src/pages/Insights.tsx`.
-- Shared frontend primitives use named exports, for example `frontend/src/components/WorkbenchUI.tsx` exports `Alert`, `Button`, `Card`, `Select`, and `ToggleGroup`.
-
-**Barrel Files:** 
-- Frontend uses a selective barrel-style module in `frontend/src/components/WorkbenchUI.tsx` to re-export UI primitives and helper components.
-- Python `__init__.py` files mostly mark packages rather than acting as large re-export layers, as seen across `src/atelier/**/__init__.py`.
-
-**Architecture conventions:**
-- Preserve the package split between `src/atelier/core/**` for domain models/policies, `src/atelier/gateway/**` for adapters and host-facing surfaces, and `src/atelier/infra/**` for persistence/runtime integrations.
-- Keep API schemas separate from core models: `src/atelier/core/service/schemas.py` wraps service boundary shapes while `src/atelier/core/foundation/models.py` holds runtime contracts.
-- Keep tests aligned to the same tier split: `tests/core/**`, `tests/gateway/**`, `tests/infra/**`, and `tests/docs/**`.
+**No NumPy/Google/Sphinx style** — plain imperative English prose.
 
 ---
 
-*Convention analysis: 2026-05-18*
+*Convention analysis: 2025-01-31*

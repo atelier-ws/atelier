@@ -1,95 +1,143 @@
 # Technology Stack
 
-**Analysis Date:** 2026-05-18
+**Analysis Date:** 2025-01-27
 
-## Languages
+## Languages & Runtimes
 
 **Primary:**
-- Python 3.11+ - core runtime, CLI, MCP server, storage, telemetry, and benchmarks in `pyproject.toml`, `src/atelier/`, `src/benchmarks/`, and `scripts/`
+- Python 3.11+ (required minimum), tested on 3.12/3.13 — all backend/runtime/agent code in `src/atelier/`
+- TypeScript 5.5 — frontend dashboard in `frontend/src/`
 
 **Secondary:**
-- TypeScript 5.5 - React dashboard and browser-side API client in `frontend/package.json`, `frontend/tsconfig.json`, and `frontend/src/`
-- Bash - install, verification, and host-integration automation in `Makefile` and `scripts/install.sh`, `scripts/install_*.sh`, `scripts/verify_*.sh`
-- YAML/TOML/JSON config - packaging, Docker, workflows, and host config surfaces in `pyproject.toml`, `docker-compose.yml`, `deploy/otel-collector.yaml`, `.github/workflows/tests.yml`, and `integrations/`
+- YAML — configuration files, rubric definitions, OTel collector config in `deploy/`
+- TOML — project config (`pyproject.toml`), telemetry config (`~/.atelier/telemetry.toml`)
 
 ## Runtime
 
-**Environment:**
-- Python 3.11 minimum from `pyproject.toml`; CI runs Python 3.11 and 3.13 in `.github/workflows/tests.yml`
-- API container uses Python 3.12 slim in `Dockerfile.api`
-- Browser runtime for the dashboard, with Vite dev server on port 3125 in `frontend/vite.config.ts`
+**Backend Environment:**
+- Python 3.11+ (CPython)
+- Package manager: **uv** (Astral) — `uv.lock` lockfile committed; `uv run` used for all commands
+
+**Frontend Environment:**
+- Node.js (npm/bun) — Bun 1.x used in Docker compose dev mode (`oven/bun:1` image)
+- Runtime port: 3125
 
 **Package Manager:**
-- `uv` - primary Python dependency manager and task runner in `uv.lock`, `Makefile`, `.github/workflows/tests.yml`, and `scripts/install.sh`
-- Frontend package management is Bun-first in `Dockerfile.frontend` and `docker-compose.yml`, with npm-compatible metadata still committed in `frontend/package-lock.json`
-- Lockfile: present (`uv.lock`, `frontend/bun.lock`, `frontend/package-lock.json`)
+- Backend: `uv` — `uv.lock` present and committed
+- Frontend: bun (dev/Docker) / npm (CI) — `frontend/package.json`
 
 ## Frameworks
 
-**Core:**
-- FastAPI 0.136.1+ - HTTP service app in `pyproject.toml` and `src/atelier/core/service/api.py`
-- Click 8.1+ - CLI entrypoint for `atelier` in `pyproject.toml` and `src/atelier/gateway/adapters/cli.py`
-- MCP stdio server - host-neutral tool transport in `src/atelier/gateway/adapters/mcp_server.py`
-- React 18.3 + React Router 6 - dashboard UI bootstrapped in `frontend/package.json` and `frontend/src/main.tsx`
+**Core Backend:**
+- **FastAPI** `>=0.136.1` — HTTP service API (`src/atelier/core/service/api.py`)
+- **Uvicorn** `>=0.46.0` (with `[standard]` extras) — ASGI server
+- **Pydantic v2** `>=2.6` — data validation/models throughout `src/atelier/core/foundation/`
+- **Pydantic-settings** `>=2.14.0` — environment-based configuration
+- **Click** `>=8.1` — CLI framework (`src/atelier/gateway/adapters/cli.py`)
+- **Rich** `>=13.7` — terminal formatting / CLI output
+
+**Frontend:**
+- **React 18** — UI components in `frontend/src/`
+- **Vite 5** — build tool and dev server
+- **React Router 6** — client-side routing
+- **TailwindCSS 3** — utility-first CSS framework
+- **react-markdown** `^10.1.0` — markdown rendering in UI
 
 **Testing:**
-- pytest 8/9 - Python test runner configured in `pyproject.toml` and used by `Makefile`
-- Vitest 2 - frontend unit test runner in `frontend/package.json` and `frontend/vite.config.ts`
-- Testing Library - browser/component assertions in `frontend/package.json`
-
-**Build/Dev:**
-- Hatchling - Python build backend in `pyproject.toml`
-- Vite 5 - frontend dev server and production bundler in `frontend/package.json` and `frontend/vite.config.ts`
-- TypeScript 5.5 - strict frontend typechecking in `frontend/package.json` and `frontend/tsconfig.json`
-- Tailwind CSS + PostCSS + Autoprefixer - dashboard styling pipeline in `frontend/package.json`, `frontend/tailwind.config.ts`, and `frontend/postcss.config.js`
-- Docker Compose - local service/frontend stack orchestration in `docker-compose.yml`
-- Nginx - static frontend serving in `Dockerfile.frontend` and `frontend/nginx.conf`
+- Backend: **pytest** `>=9.0.3` with `pytest-cov`, `pytest-xdist` (parallel test runs)
+- Frontend: **Vitest** `^2.1.5` with `@testing-library/react`
 
 ## Key Dependencies
 
-**Critical:**
-- `pydantic` 2.6+ - data models and schema validation across runtime and SDK code in `pyproject.toml`, `src/atelier/core/foundation/`, and `src/atelier/gateway/sdk/`
-- `fastapi` + `uvicorn[standard]` - service transport for the dashboard, remote SDK, and remote MCP mode in `pyproject.toml`, `src/atelier/core/service/api.py`, and `Dockerfile.api`
-- `click` - command surface for install, service, memory, stack, and host-management workflows in `src/atelier/gateway/adapters/cli.py`
-- `react`, `react-dom`, `react-router-dom` - dashboard shell and routing in `frontend/package.json` and `frontend/src/`
-- `posthog-js` - frontend telemetry bootstrap in `frontend/package.json` and `frontend/src/lib/telemetry.ts`
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `litellm` | `>=1.83.14` | LLM gateway — unified API across all LLM providers |
+| `ollama` | `>=0.6.2` | Local Ollama LLM client for internal background processing |
+| `openai` | `>=1.0` (optional `[cloud]`) | OpenAI-compatible LLM access (OpenAI, OpenRouter, vllm) |
+| `pydantic` | `>=2.6` | Data models, validation throughout |
+| `sqlalchemy` | `>=2.0.49` | ORM for SQLite and Postgres storage |
+| `fastapi` | `>=0.136.1` | HTTP REST API service |
+| `tiktoken` | `>=0.9` | Token counting for context budget management |
+| `tree-sitter` | `>=0.23` | Code parsing/AST analysis in `src/atelier/infra/tree_sitter/` |
+| `tree-sitter-language-pack` | `>=1.8.1` | Language grammars bundle |
+| `GitPython` | `>=3.1.50` | Git repository interaction |
+| `pygit2` | `==1.19.2` | Low-level libgit2 bindings (pinned exact version) |
+| `networkx` | `>=3.4` | Graph-based repo dependency analysis |
+| `datasketch` | `>=1.6` | MinHash/LSH for similarity hashing |
+| `blake3` | `>=0.4.1` | Fast cryptographic hashing for content IDs |
+| `prometheus-client` | `>=0.21` | Metrics exposition endpoint |
+| `opentelemetry-api/sdk` | `>=1.27` | Distributed tracing instrumentation |
+| `opentelemetry-exporter-otlp-proto-http` | `>=1.27` | OTLP HTTP export to collector |
+| `tenacity` | `>=9.0` | Retry logic |
+| `pybreaker` | `>=1.2` | Circuit breaker pattern |
+| `river` | `>=0.22` | Online machine learning (adaptive token budgeting) |
+| `ortools` | `>=9.10` | Operations Research / optimization (context packing) |
+| `mcp` | `>=1.0` (optional `[mcp]`) | Model Context Protocol SDK (MCP server) |
+| `letta-client` | `>=1.7.12` (optional `[memory]`) | Letta/MemGPT memory sidecar client |
+| `letta` | `>=0.16.7` (optional `[memory-server]`) | Self-hosted Letta server |
+| `psycopg` | `>=3.1` (optional `[postgres]`) | PostgreSQL driver (psycopg v3) |
+| `pgvector` | `>=0.2` (optional `[vector]`) | pgvector extension client |
+| `numpy` | `>=1.26` (optional `[vector]`) | Numerical arrays for vector operations |
+| `rope` | `>=0.23` (optional `[rename]`) | Python refactoring/rename support |
+| `diff-match-patch` | `>=2.1` | Diff/patch operations for code edits |
+| `mypy` | `>=1.20.2` | Static type checking (in core deps, not just dev) |
+| `posthog-js` | `^1.150.0` (frontend) | Product analytics in browser |
 
-**Infrastructure:**
-- `psycopg[binary]` - optional PostgreSQL backend in `pyproject.toml` and `src/atelier/infra/storage/postgres_store.py`
-- `pgvector` - optional vector column support for the Postgres backend in `pyproject.toml` and `src/atelier/infra/storage/postgres_store.py`
-- `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` - backend telemetry export in `pyproject.toml` and `src/atelier/core/service/telemetry/`
-- `prometheus-client` - optional in-process metrics counters/histograms in `pyproject.toml`, `src/atelier/core/capabilities/tool_supervision/capability.py`, and `src/atelier/core/capabilities/telemetry/context_budget.py`
-- `tenacity` and `pybreaker` - retry/circuit-breaker controls for tool supervision in `pyproject.toml` and `src/atelier/core/capabilities/tool_supervision/capability.py`
-- `openai`, `ollama`, `letta-client` - optional LLM, embedding, and memory sidecar integrations declared as extras in `pyproject.toml` and implemented under `src/atelier/infra/internal_llm/`, `src/atelier/infra/embeddings/`, and `src/atelier/infra/memory_bridges/`
+## Build & Tooling
 
-## Configuration
+**Python Build System:**
+- **Hatchling** — `[build-system]` backend in `pyproject.toml`
+- `hatch.build.targets.wheel` configured to bundle `seed_blocks`, `rubrics`, `frustration_lexicon.yaml`, and `templates/reasonblocks` as package data
 
-**Environment:**
-- Service runtime config is environment-driven through `src/atelier/core/service/config.py` (`ATELIER_SERVICE_HOST`, `ATELIER_SERVICE_PORT`, `ATELIER_REQUIRE_AUTH`, `ATELIER_API_KEY`, `ATELIER_STORAGE_BACKEND`, `ATELIER_DATABASE_URL`, `ATELIER_ROOT`)
-- Runtime policy and dev-mode gating come from `src/atelier/core/environment.py` (`ATELIER_DEV_MODE`, `ATELIER_PROFILE`)
-- Telemetry opt-in/out state is stored under the user config directory by `src/atelier/core/service/telemetry/config.py`; repo docs for env knobs live in `docs/installation.md`
-- Worktree-specific local stack values are generated by `scripts/worktree_env.py` (`ATELIER_SERVICE_PORT`, `ATELIER_FRONTEND_PORT`, `ATELIER_STACK_ROOT`, `VITE_API_URL`)
-- Frontend API routing is configured in `frontend/vite.config.ts` and `frontend/nginx.conf`
+**Linting / Formatting:**
+- **Ruff** `>=0.5` — linting (`E`, `F`, `I`, `B`, `UP`, `SIM`, `RUF` rules), line-length 100
+- **Black** `>=24.4` — code formatting, line-length 120, target `py311`
+- **mypy** `>=1.10` — strict type checking
 
-**Build:**
-- Python packaging and tool config live in `pyproject.toml`
-- Frontend build config lives in `frontend/package.json`, `frontend/tsconfig.json`, `frontend/vite.config.ts`, `frontend/tailwind.config.ts`, and `frontend/postcss.config.js`
-- Local container/runtime wiring lives in `Dockerfile.api`, `Dockerfile.frontend`, `docker-compose.yml`, and `deploy/otel-collector.yaml`
-- CI automation is GitHub Actions in `.github/workflows/tests.yml` and `.github/workflows/docs-governance.yml`
+**Frontend Build:**
+- **Vite** with `@vitejs/plugin-react`
+- **TypeScript** `^5.5.3` with strict compilation
+- **PostCSS** + **autoprefixer** for CSS processing
+- **Prettier** for formatting (invoked via `npx prettier` in `make format`)
+
+**Container / Deployment:**
+- **Docker** — `Dockerfile.api` (Python 3.12-slim + uv) on port 8787; `Dockerfile.frontend` (Bun)
+- **Docker Compose** — `docker-compose.yml` orchestrates `service` (8787) + `frontend` (3125) + optional `otel-collector` (4318)
+
+**Task Runner:**
+- **GNU Make** — `Makefile` at repo root; primary developer interface
+
+## Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `pyproject.toml` | Python project manifest, dependencies, tool config (ruff, black, pytest, mypy) |
+| `uv.lock` | Locked dependency graph for uv |
+| `frontend/package.json` | Frontend JS dependencies and scripts |
+| `docker-compose.yml` | Multi-service Docker orchestration |
+| `Dockerfile.api` | Python API service container (python:3.12-slim + uv) |
+| `Dockerfile.frontend` | Frontend container |
+| `deploy/otel-collector.yaml` | Production OTel collector (OTLP→PostHog + GCP) |
+| `deploy/otel-collector-dev.yaml` | Dev OTel collector config |
+| `~/.atelier/telemetry.toml` | User-level telemetry opt-out config (runtime, not committed) |
+| `.env.worktree` | Per-worktree local env overrides (runtime, not committed) |
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.11+ with `uv` is required for backend tasks in `pyproject.toml`, `Makefile`, and `.github/workflows/tests.yml`
-- Bun or npm is required only when working directly in `frontend/`, as shown in `frontend/README.md`
-- Docker is optional but expected for the local service/frontend stack in `docker-compose.yml` and for Letta sidecar management in `deploy/letta/docker-compose.yml`
-- systemd (Linux) or launchd (macOS) is expected when using the installed background-service mode described in `README.md`, `docs/installation.md`, and `src/atelier/gateway/adapters/cli.py`
+- Python 3.11+ (3.12 or 3.13 recommended)
+- `uv` package manager
+- Node.js / bun (for frontend only)
+- Optional: Docker + Docker Compose for containerized dev
 
-**Production:**
-- The installed product runs primarily as local CLI + MCP + OS-managed background services, without requiring HTTP by default, as documented in `README.md` and `docs/installation.md`
-- The optional service deployment target is a FastAPI container on port 8787 plus a static React/Nginx frontend on port 3125 in `Dockerfile.api`, `Dockerfile.frontend`, and `docker-compose.yml`
-- No cloud-specific IaC or managed deployment target is detected; the repository is optimized for local/self-hosted operation
+**Production (Containerized):**
+- Docker (python:3.12-slim base for API, oven/bun:1 for frontend)
+- Exposed: port 8787 (API), port 3125 (frontend)
+- Optional: OpenTelemetry collector on port 4318
+
+**OS-level Services:**
+- systemd (Linux) or launchd (macOS) — Atelier registers itself as a boot-time background service (`atelier background ...`)
 
 ---
 
-*Stack analysis: 2026-05-18*
+*Stack analysis: 2025-01-27*
