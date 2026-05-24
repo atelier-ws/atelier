@@ -1205,28 +1205,26 @@ prepare_repo() {
     run mkdir -p "$dir"
 
     if [[ -d "$ATELIER_INSTALL_DIR/.git" ]]; then
-        verbose "Updating existing repository in $ATELIER_INSTALL_DIR (force-overwrite local changes)"
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR fetch --tags --prune origin"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR checkout -f $ATELIER_REF"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR reset --hard origin/$ATELIER_REF"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR clean -fd"
+            echo "[dry-run] git -C $ATELIER_INSTALL_DIR fetch -q --tags --prune origin"
+            echo "[dry-run] git -C $ATELIER_INSTALL_DIR checkout -f -q $ATELIER_REF"
+            echo "[dry-run] git -C $ATELIER_INSTALL_DIR reset --hard -q origin/$ATELIER_REF"
+            echo "[dry-run] git -C $ATELIER_INSTALL_DIR clean -fd >/dev/null"
         else
-            git -C "$ATELIER_INSTALL_DIR" fetch --tags --prune origin
-            git -C "$ATELIER_INSTALL_DIR" checkout -f "$ATELIER_REF"
+            git -C "$ATELIER_INSTALL_DIR" fetch -q --tags --prune origin
+            git -C "$ATELIER_INSTALL_DIR" checkout -f -q "$ATELIER_REF"
             if git -C "$ATELIER_INSTALL_DIR" rev-parse --verify "origin/$ATELIER_REF" >/dev/null 2>&1; then
-                git -C "$ATELIER_INSTALL_DIR" reset --hard "origin/$ATELIER_REF"
+                git -C "$ATELIER_INSTALL_DIR" reset --hard -q "origin/$ATELIER_REF"
             else
-                git -C "$ATELIER_INSTALL_DIR" reset --hard "$ATELIER_REF"
+                git -C "$ATELIER_INSTALL_DIR" reset --hard -q "$ATELIER_REF"
             fi
-            git -C "$ATELIER_INSTALL_DIR" clean -fd
+            git -C "$ATELIER_INSTALL_DIR" clean -fd >/dev/null
         fi
     else
-        verbose "Cloning $ATELIER_REPO_URL into $ATELIER_INSTALL_DIR"
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] git clone --depth=1 --branch $ATELIER_REF $ATELIER_REPO_URL $ATELIER_INSTALL_DIR"
+            echo "[dry-run] git clone -q --depth=1 --branch $ATELIER_REF $ATELIER_REPO_URL $ATELIER_INSTALL_DIR"
         else
-            git clone --depth=1 --branch "$ATELIER_REF" "$ATELIER_REPO_URL" "$ATELIER_INSTALL_DIR"
+            git clone -q --depth=1 --branch "$ATELIER_REF" "$ATELIER_REPO_URL" "$ATELIER_INSTALL_DIR"
         fi
     fi
 }
@@ -1375,7 +1373,7 @@ main() {
         verbose "Local mode: using current directory as an editable install source"
         ATELIER_INSTALL_DIR="$(pwd)"
     else
-        prepare_repo
+        spin "Preparing repository" prepare_repo
     fi
     export ATELIER_INSTALL_DIR
 

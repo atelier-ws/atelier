@@ -15,6 +15,24 @@
 
 set -euo pipefail
 
+# ANSI Colors
+if [[ -t 1 ]]; then
+    C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
+    C_GREEN="$(printf '\033[32m')"
+    C_RED="$(printf '\033[31m')"
+    C_YELLOW="$(printf '\033[33m')"
+    C_PURPLE="$(printf '\033[38;2;155;117;217m')"
+else
+    C_RESET=""
+    C_DIM=""
+    C_GREEN=""
+    C_RED=""
+    C_YELLOW=""
+    C_PURPLE=""
+fi
+C_FRAME="$C_DIM"
+
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
 ATELIER_TOOL_DIR="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
@@ -39,13 +57,6 @@ if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
     ATELIER_ZOEKT="$(head -n 1 "$_ZOEKT_ENABLED_FILE" 2>/dev/null | tr -d '[:space:]')"
 fi
 
-# Read persisted Zoekt sidecar selection (if any).
-_ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
-ATELIER_ZOEKT=""
-if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
-    ATELIER_ZOEKT="$(head -n 1 "$_ZOEKT_ENABLED_FILE" 2>/dev/null | tr -d '[:space:]')"
-fi
-
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)  ATELIER_DRY_RUN=1; PASSTHROUGH+=("$1") ;;
@@ -61,8 +72,8 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-info() { echo "[atelier-uninstall] $*"; }
-warn() { echo "[atelier-uninstall] WARN: $*" >&2; }
+info() { printf "%b│%b  ◇  %s\n" "$C_FRAME" "$C_RESET" "$*"; }
+warn() { printf "%b│%b  %b⚠%b  %s\n" "$C_FRAME" "$C_RESET" "$C_YELLOW" "$C_RESET" "$*"; }
 run()  { [[ "$ATELIER_DRY_RUN" == "1" ]] && echo "[dry-run] $*" || eval "$*"; }
 
 remove_path() {
@@ -108,7 +119,7 @@ purge_leftovers() {
     install_dir="${ATELIER_INSTALL_DIR:-$(install_dir_from_record)}"
     install_dir="${install_dir:-$ATELIER_DEFAULT_INSTALL_DIR}"
 
-    echo ""
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
     info "Purging Atelier runtime state, install environments, and known host residue..."
 
     remove_path "${ATELIER_TOOL_DIR}/atelier"
@@ -220,10 +231,9 @@ if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
     for host in claude codex opencode copilot antigravity; do
         script="${SCRIPT_DIR}/uninstall_${host}.sh"
         [ -f "$script" ] || continue
-        echo ""
-        echo "──────────────────────────────────────────"
-        echo " Uninstalling Atelier ← ${host}"
-        echo "──────────────────────────────────────────"
+        printf "%b│%b\n" "$C_FRAME" "$C_RESET"
+        printf "%b┌%b  Uninstalling Atelier ← %s\n" "$C_FRAME" "$C_RESET" "$host"
+        printf "%b│%b\n" "$C_FRAME" "$C_RESET"
         bash "$script" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} || true
         # Also clean workspace-local configs in CWD when no explicit --workspace given
         if [[ "$WORKSPACE_EXPLICIT" == "0" && "$PWD" != "$HOME" ]]; then
@@ -232,7 +242,7 @@ if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
             bash "$script" "${local_args[@]}" 2>/dev/null || true
         fi
     done
-    echo ""
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 else
     info "Skipping host integrations because ATELIER_NO_HOSTS=1"
 fi
@@ -289,4 +299,5 @@ if [[ "$PURGE" == "1" ]]; then
     purge_leftovers
 fi
 
+printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 info "Uninstall complete."
