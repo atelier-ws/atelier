@@ -3,6 +3,7 @@
 Uses tiktoken (cl100k_base) when available, with a char/4 fallback.
 Pattern is consistent with core/capabilities/repo_map/budget.py.
 """
+
 from __future__ import annotations
 
 from typing import Protocol

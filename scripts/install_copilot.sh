@@ -68,11 +68,14 @@ else
     TASKS_DEST="${VSCODE_USER_DIR}/tasks.json"
 fi
 
-info()  { echo "[atelier:copilot] $*"; }
+info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:copilot] $*" || true; }
 warn()  { echo "[atelier:copilot] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 backup_file() {
     local f="$1"
+    if $WORKSPACE_SET; then
+        return
+    fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
         run "cp '$f' '$bk'"

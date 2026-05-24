@@ -105,6 +105,8 @@ class RemoteClient:
         return self._post("/v1/traces", args)
 
     def memory(self, args: dict[str, Any]) -> dict[str, Any]:
+        import hashlib
+
         op = str(args.get("op") or "")
         if op == "block_upsert":
             return self._post("/v1/memory/blocks", args)
@@ -118,6 +120,81 @@ class RemoteClient:
             return self._post("/v1/memory/archive", args)
         if op == "recall":
             return self._post("/v1/memory/recall", args)
+        if op == "store_fact":
+            scope = str(args.get("scope") or "").strip().lower()
+            if scope not in {"repository", "user"}:
+                raise ValueError("scope must be one of: repository, user")
+            subject = str(args.get("subject") or "").strip()
+            fact = str(args.get("fact") or "").strip()
+            citations = str(args.get("citations") or "").strip()
+            reason = str(args.get("reason") or "").strip()
+            if not subject or not fact or not citations or not reason:
+                raise ValueError("store_fact requires subject, fact, citations, and reason")
+            digest = hashlib.sha256(f"{scope}:{subject}:{fact}".encode()).hexdigest()[:12]
+            subject_slug = "".join(ch if ch.isalnum() else "-" for ch in subject.lower()).strip("-") or "memory"
+            payload = {
+                "agent_id": str(args.get("agent_id") or "shared"),
+                "label": f"memory-fact/{scope}/{subject_slug}/{digest}",
+                "value": fact,
+                "pinned": True,
+                "metadata": {
+                    "kind": "memory_fact",
+                    "subject": subject,
+                    "fact": fact,
+                    "citations": citations,
+                    "reason": reason,
+                    "scope": scope,
+                    "votes": {"upvote": 0, "downvote": 0},
+                    "vote_history": [],
+                },
+            }
+            return self._post("/v1/memory/blocks", payload)
+        if op == "vote_fact":
+            agent_id = str(args.get("agent_id") or "shared")
+            fact = str(args.get("fact") or "").strip()
+            direction = str(args.get("direction") or "").strip().lower()
+            vote_reason = str(args.get("reason") or "").strip()
+            scope = str(args.get("scope") or "").strip().lower()
+            if not fact or not vote_reason:
+                raise ValueError("vote_fact requires fact and reason")
+            if direction not in {"upvote", "downvote"}:
+                raise ValueError("direction must be one of: upvote, downvote")
+            blocks = self._get(f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&limit=500")
+            if not isinstance(blocks, list):
+                raise ValueError("unable to list memory blocks for vote_fact")
+            target = None
+            for block in blocks:
+                metadata = block.get("metadata") or {}
+                if metadata.get("kind") != "memory_fact":
+                    continue
+                if str(metadata.get("fact", "")) != fact:
+                    continue
+                if scope and str(metadata.get("scope", "")) != scope:
+                    continue
+                target = block
+                break
+            if target is None:
+                raise ValueError("no matching stored fact found for vote_fact")
+            metadata = dict(target.get("metadata") or {})
+            votes = dict(metadata.get("votes") or {})
+            up = int(votes.get("upvote", 0) or 0)
+            down = int(votes.get("downvote", 0) or 0)
+            if direction == "upvote":
+                up += 1
+            else:
+                down += 1
+            history = list(metadata.get("vote_history") or [])
+            history.append({"direction": direction, "reason": vote_reason})
+            metadata["votes"] = {"upvote": up, "downvote": down}
+            metadata["vote_history"] = history[-20:]
+            payload = {
+                "agent_id": agent_id,
+                "label": str(target.get("label") or ""),
+                "value": str(target.get("value") or ""),
+                "metadata": metadata,
+                "expected_version": int(target.get("version") or 1),
+            }
+            return self._post("/v1/memory/blocks", payload)
         raise ValueError(f"memory op not supported in remote mode: {op}")
 
     def lesson_inbox(self, args: dict[str, Any]) -> dict[str, Any]:
