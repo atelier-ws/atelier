@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  NavLink,
-  Navigate,
-  Route,
-  Routes,
-} from "react-router-dom";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import Overview from "./pages/Overview";
 import Sessions from "./pages/Sessions";
 import Learnings from "./pages/Learnings";
@@ -64,7 +59,7 @@ function TelemetryDisclosure() {
   if (!config || config.acknowledged || dismissed) return null;
 
   return (
-    <div className="border-b border-amber-900/60 bg-amber-950/30 px-6 py-3 text-sm text-amber-100">
+    <div className="border-b border-purple-900/60 bg-purple-950/30 px-6 py-3 text-sm text-purple-100">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           Atelier collects anonymous usage telemetry to improve the product.
@@ -73,7 +68,7 @@ function TelemetryDisclosure() {
           <code className="ml-1 bg-black/30 px-1">ATELIER_TELEMETRY=0</code>.
         </div>
         <Button
-          variant="amber"
+          variant="purple"
           size="sm"
           onClick={() => {
             setDismissed(true);
@@ -102,14 +97,10 @@ export default function App() {
       <header className="border-b border-neutral-800 bg-neutral-950/95 px-6 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-4">
-            <h1 className="text-lg font-bold tracking-wide text-purple-500">
+            <h1 className="text-lg font-bold tracking-wide text-brand">
               ❯ ATELIER - The Agents Runtime
             </h1>
-            {config?.dev_mode && (
-              <Chip tone="amber">
-                DEV MODE
-              </Chip>
-            )}
+            {config?.dev_mode && <Chip tone="purple">DEV MODE</Chip>}
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 border border-neutral-800 bg-neutral-900/40 px-3 py-1.5">
