@@ -191,6 +191,10 @@ def _detect_agent() -> str:
         return "codex"
     if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
         return "opencode"
+    if os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
+        return "cursor"
+    if os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or os.environ.get("HERMES_CLI"):
+        return "hermes"
     if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
         return "copilot"
     # Default: the plugin lives in the Claude Code plugin system
@@ -848,7 +852,9 @@ def tool_get_context(
         )
 
         context_text = result.get("context", "")
-        bootstrap_text = result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
+        bootstrap_text = (
+            result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
+        )
         _recall_count = len(result.get("recalled_passages", []))
 
         # Build synthetic PromptBlocks from the assembled context pieces
@@ -930,9 +936,7 @@ def _compute_route_tier_for_response(tier: str, led: Any) -> str:
     """Map raw tier string to semantic RouteTier string for the route response."""
     from atelier.core.capabilities.model_routing.router import _detect_local_slm
 
-    escalating = any(
-        e.payload.get("escalate") for e in led.events if e.kind == "watchdog_alert"
-    )
+    escalating = any(e.payload.get("escalate") for e in led.events if e.kind == "watchdog_alert")
     if escalating:
         return "human_review"
     if tier == "expensive":
@@ -1019,7 +1023,11 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
         try:
             msg = json.loads(raw_line)
         except json.JSONDecodeError:
-            return {"sampling_supported": True, "error": "invalid sampling response from host", "model_used": None}
+            return {
+                "sampling_supported": True,
+                "error": "invalid sampling response from host",
+                "model_used": None,
+            }
         if msg.get("id") != req_id:
             # Unexpected message — process inline and keep waiting
             inline_resp = _handle(msg)
@@ -1042,7 +1050,11 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
             "response": text,
             "stop_reason": result.get("stopReason", "end_turn"),
         }
-    return {"sampling_supported": True, "error": "stdin closed before sampling response", "model_used": None}
+    return {
+        "sampling_supported": True,
+        "error": "stdin closed before sampling response",
+        "model_used": None,
+    }
 
 
 def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
@@ -1058,11 +1070,24 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
         if not cli:
             continue
         # -p (print mode): full agentic loop, exits when done; json output for structured parsing
-        cmd = [cli, "-p", prompt, "--model", model, "--output-format", "json", "--no-session-persistence"]
+        cmd = [
+            cli,
+            "-p",
+            prompt,
+            "--model",
+            model,
+            "--output-format",
+            "json",
+            "--no-session-persistence",
+        ]
         try:
             result = _sp.run(cmd, capture_output=True, text=True, timeout=300)
         except _sp.TimeoutExpired:
-            return {"spawn_method": "cli_subprocess", "error": "timeout: subprocess exceeded 300s", "model_used": model}
+            return {
+                "spawn_method": "cli_subprocess",
+                "error": "timeout: subprocess exceeded 300s",
+                "model_used": model,
+            }
         except Exception as exc:
             return {"spawn_method": "cli_subprocess", "error": str(exc), "model_used": model}
 
@@ -1105,7 +1130,16 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
             },
             "task_type": {
                 "type": "string",
-                "enum": ["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"],
+                "enum": [
+                    "debug",
+                    "feature",
+                    "refactor",
+                    "test",
+                    "explain",
+                    "review",
+                    "docs",
+                    "ops",
+                ],
                 "default": "feature",
                 "description": "Task category — used to calibrate expected model complexity.",
             },
@@ -1419,6 +1453,15 @@ def tool_record_trace(
         al = a.lower()
         if "antigravity" in al or "agy" in al or os.environ.get("ANTIGRAVITY_CLI") or os.environ.get("AGY_CLI"):
             return "antigravity"
+        if "cursor" in al or os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
+            return "cursor"
+        if (
+            "hermes" in al
+            or os.environ.get("HERMES_HOME")
+            or os.environ.get("HERMES_SESSION_ID")
+            or os.environ.get("HERMES_CLI")
+        ):
+            return "hermes"
         if "copilot" in al or os.environ.get("COPILOT_CLI"):
             return "copilot"
         if "codex" in al or os.environ.get("CODEX_CLI"):
@@ -2092,8 +2135,29 @@ def tool_smart_read(
         payload.pop("tokens_saved", None)
         return payload
 
-    cap = SemanticFileMemoryCapability(_atelier_root())
     target = _workspace_path(target_path)
+
+    # Detect directory input early — return a helpful listing instead of a cryptic error.
+    if target.is_dir():
+        try:
+            entries = sorted(
+                os.listdir(target),
+                key=lambda x: (not (target / x).is_dir(), x.lower()),
+            )
+        except OSError:
+            entries = []
+        return {
+            "mode": "directory",
+            "path": str(target),
+            "entries": [(e + "/" if (target / e).is_dir() else e) for e in entries],
+            "directive": (
+                "This is a directory, not a file. "
+                "Use `atelier_code op=files` to list indexed code files, "
+                "or `atelier_grep` with `file_glob_patterns` to list non-code files."
+            ),
+        }
+
+    cap = SemanticFileMemoryCapability(_atelier_root())
     payload = cap.smart_read(target, range_spec=range, expand=expand)
     response: dict[str, Any] = {
         "mode": payload["mode"],
@@ -2274,7 +2338,13 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "properties": {
                             "file_path": {"type": "string"},
                             "cell_action": {
-                                "enum": ["insert_after", "insert_before", "delete", "move_after", "move_before"]
+                                "enum": [
+                                    "insert_after",
+                                    "insert_before",
+                                    "delete",
+                                    "move_after",
+                                    "move_before",
+                                ]
                             },
                             "cell_type": {"enum": ["code", "markdown"]},
                             "cell_move_target": {"type": "integer"},
@@ -3423,19 +3493,44 @@ def tool_code(
         )
 
     if op == "files":
+        result = cast(
+            dict[str, Any],
+            engine.tool_files(
+                path=path,
+                pattern=pattern,
+                format=format,
+                include_metadata=include_metadata,
+                max_depth=max_depth,
+                budget_tokens=budget_tokens,
+            ),
+        )
+        # Auto-fallback: the index only tracks code files with parseable symbols.
+        # When 0 files are returned but the path exists on disk, the directory
+        # likely contains non-code files (YAML, Markdown, JSON, configs, etc.).
+        if result.get("file_count", 0) == 0 and path:
+            target = _workspace_path(path)
+            if target.is_dir():
+                try:
+                    entries = sorted(
+                        os.listdir(target),
+                        key=lambda x: (not (target / x).is_dir(), x.lower()),
+                    )
+                    files_list = []
+                    for entry in entries:
+                        full = target / entry
+                        files_list.append(
+                            {
+                                "file_path": entry + "/" if full.is_dir() else entry,
+                            }
+                        )
+                    result["file_count"] = len(files_list)
+                    result["files"] = files_list
+                    result["non_code_fallback"] = True
+                except OSError:
+                    pass
         return _maybe_attach_code_rendered(
             op,
-            cast(
-                dict[str, Any],
-                engine.tool_files(
-                    path=path,
-                    pattern=pattern,
-                    format=format,
-                    include_metadata=include_metadata,
-                    max_depth=max_depth,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
+            result,
             render_compact=render_compact,
         )
 
@@ -3776,7 +3871,12 @@ def _run_shell_tool(
 
         if shutil.which("rg") and content_regex:
             # Prefer rg: respects .gitignore, faster, adds hard-coded exclusions
-            rg_flags: list[str] = ["--no-heading", "--with-filename", "--line-number", "--color=never"]
+            rg_flags: list[str] = [
+                "--no-heading",
+                "--with-filename",
+                "--line-number",
+                "--color=never",
+            ]
             if ignore_case:
                 rg_flags.append("-i")
             if file_type:
@@ -3807,7 +3907,12 @@ def _run_shell_tool(
             "ignore_case": ignore_case,
             "summary": False,
             "output_mode": cast(
-                Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+                Literal[
+                    "ranked_file_map",
+                    "file_paths_with_content",
+                    "file_paths_only",
+                    "file_paths_with_match_count",
+                ],
                 policy.rewrite_payload.get("output_mode", "file_paths_with_content"),
             ),
         }
@@ -3852,7 +3957,10 @@ def _run_native_grep(
     content_regex: str | None,
     file_glob_patterns: list[str] | None,
     output_mode: Literal[
-        "ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"
+        "ranked_file_map",
+        "file_paths_with_content",
+        "file_paths_only",
+        "file_paths_with_match_count",
     ],
     lines_before: int,
     lines_after: int,
@@ -3921,7 +4029,12 @@ def tool_grep(
         Field(description="Glob patterns that constrain candidate files, such as `src/**/*.py`."),
     ] = None,
     output_mode: Annotated[
-        Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+        Literal[
+            "ranked_file_map",
+            "file_paths_with_content",
+            "file_paths_only",
+            "file_paths_with_match_count",
+        ],
         Field(
             description=(
                 "`ranked_file_map` (default): token-budgeted pointers with line ranges and symbols — best for navigation. "
@@ -4825,7 +4938,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 rid,
                 {
                     "content": [
-                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, separators=(",", ":"))}
+                        {
+                            "type": "text",
+                            "text": json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                        }
                     ],
                 },
             )
@@ -4886,6 +5002,29 @@ def serve() -> None:
         shutdown_otel()
 
 
+def _setup_file_logging(root: str | Path) -> None:
+    """Configure the atelier.mcp logger to write to a file.
+
+    This ensures logs survive process termination and can be inspected
+    via ``atelier logs mcp``.
+    """
+    log_dir = Path(root) / "mcp"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "mcp.log"
+
+    handler = logging.FileHandler(str(log_path), encoding="utf-8")
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+
+    mcp_logger = logging.getLogger("atelier.mcp")
+    mcp_logger.addHandler(handler)
+    mcp_logger.setLevel(logging.DEBUG)
+
+
 def main() -> None:
     # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
@@ -4904,6 +5043,11 @@ def main() -> None:
         i = argv.index("--host")
         if i + 1 < len(argv):
             os.environ["ATELIER_AGENT"] = argv[i + 1]
+
+    # Set up file-based logging so logs survive process termination.
+    atelier_root = os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier"))
+    _setup_file_logging(atelier_root)
+
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
 

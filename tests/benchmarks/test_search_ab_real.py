@@ -266,21 +266,6 @@ def _baseline_smart_chunks(repo_root: Path, query: str, max_files: int) -> str:
     return "\n".join(parts)
 
 
-def _baseline_smart_full(repo_root: Path, query: str, max_files: int) -> str:
-    parts: list[str] = []
-    needle = query.lower()
-    files_seen = 0
-    for file_path in _text_candidates(repo_root / "src"):
-        content = file_path.read_text(encoding="utf-8", errors="replace")
-        if needle not in content.lower():
-            continue
-        parts.append(str(file_path.relative_to(repo_root)))
-        parts.append(content)
-        files_seen += 1
-        if files_seen >= max_files:
-            break
-    return "\n".join(parts)
-
 
 def _baseline_repo_map(repo_root: Path) -> str:
     parts: list[str] = []
@@ -321,7 +306,6 @@ def _baseline_full_glob_read(repo_root: Path, path: str, globs: list[str]) -> st
     ("tool_name", "mode", "native_tool", "baseline_builder"),
     [
         ("search.smart_chunks", "chunks", "grep_plus_snippets", _baseline_smart_chunks),
-        ("search.smart_full", "full", "grep_plus_full_read", _baseline_smart_full),
         (
             "search.smart_map",
             "map",

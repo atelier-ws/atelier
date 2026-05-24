@@ -45,20 +45,24 @@ def _inject_cache_control(messages: list[dict[str, Any]]) -> list[dict[str, Any]
 
         if role == "system":
             if isinstance(content, str):
-                out.append({
-                    **msg,
-                    "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
-                })
+                out.append(
+                    {
+                        **msg,
+                        "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
+                    }
+                )
             else:
                 out.append(msg)
             continue
 
         # Pin the last tool-schema-bearing human turn (index 0 in most agents)
         if role == "human" and i == 0 and isinstance(content, str):
-            out.append({
-                **msg,
-                "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
-            })
+            out.append(
+                {
+                    **msg,
+                    "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
+                }
+            )
             continue
 
         out.append(msg)
@@ -141,10 +145,7 @@ class LangChainMiddleware:
                 # Anthropic-style usage (via langchain_anthropic)
                 usage_meta = usage.get("usage", {}) or usage.get("token_count", {}) or {}
                 input_tokens = (
-                    usage_meta.get("input_tokens")
-                    or usage_meta.get("prompt_tokens")
-                    or usage.get("input_tokens")
-                    or 0
+                    usage_meta.get("input_tokens") or usage_meta.get("prompt_tokens") or usage.get("input_tokens") or 0
                 )
                 output_tokens = (
                     usage_meta.get("output_tokens")
@@ -153,9 +154,7 @@ class LangChainMiddleware:
                     or 0
                 )
                 cache_read_tokens = (
-                    usage_meta.get("cache_read_input_tokens")
-                    or usage.get("cache_read_input_tokens")
-                    or 0
+                    usage_meta.get("cache_read_input_tokens") or usage.get("cache_read_input_tokens") or 0
                 )
                 model = usage.get("model") or ""
 
@@ -227,7 +226,7 @@ class LangChainMiddleware:
         **kwargs: Any,
     ) -> None:
         """Detect repeated tool calls (loop detection)."""
-        tool_name = (serialized.get("name") or serialized.get("id", ["unknown"])[-1])
+        tool_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1]
         self._tool_call_counts[tool_name] = self._tool_call_counts.get(tool_name, 0) + 1
 
         if self._tool_call_counts.get(tool_name, 0) >= 3:

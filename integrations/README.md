@@ -11,6 +11,8 @@ Canonical adapter configs and install/verify scripts for every supported agent C
 | opencode    | `opencode/` | MCP config         | `scripts/install_opencode.sh` |
 | Copilot     | `copilot/`  | MCP + instructions | `scripts/install_copilot.sh`  |
 | Antigravity | `antigravity/` | MCP config      | `scripts/install_antigravity.sh` |
+| Cursor      | `cursor/`  | MCP config         | `scripts/install_cursor.sh`   |
+| Hermes      | `hermes/`  | MCP config         | `scripts/install_hermes.sh`   |
 
 ## Quick Install
 

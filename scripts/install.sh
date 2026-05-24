@@ -480,7 +480,7 @@ _read_menu_key() {
     _read_menu_byte key || key=""
     if [[ "$key" == $'\e' ]]; then
         for i in {1..16}; do
-            if ! _read_menu_byte ch 0.6; then
+            if ! _read_menu_byte ch 1; then
                 break
             fi
             key+="$ch"
@@ -489,7 +489,7 @@ _read_menu_key() {
                 *) ;;
             esac
         done
-        while _read_menu_byte ch 0.01; do
+        while _read_menu_byte ch 0; do
             key+="$ch"
             case "$ch" in
                 [A-Za-z~]) break ;;
@@ -765,67 +765,8 @@ prompt_local_zoekt_selection() {
         command -v "$_z" >/dev/null 2>&1 || zoekt_all_present=0
     done
 
-    # In non-interactive mode, preserve the existing env-driven default.
-    if [[ ! -t 0 || ! -t 1 ]]; then
-        if [[ "$zoekt_all_present" == "0" && "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]]; then
-            INSTALL_ZOEKT_LOCAL=1
-        else
-            INSTALL_ZOEKT_LOCAL=0
-        fi
-        return 0
-    fi
-
-    local choice_index=1
-    local prompt="Install local Zoekt full-text search binaries? (Go will be installed if needed)"
-    if [[ "$zoekt_all_present" == "1" ]]; then
-        choice_index=1
-        prompt="Reinstall local Zoekt full-text search binaries?"
-    else
-        choice_index=0
-    fi
-
-    local yes_label="Yes"
-    local no_label="No"
-    if [[ "$choice_index" == "0" ]]; then
-        yes_label="Yes (default)"
-    else
-        no_label="No (default)"
-    fi
-
-    if supports_interactive_selector; then
-        interactive_single_select \
-            "$prompt" \
-            choice_index \
-            "$choice_index" \
-            "$yes_label" \
-            "$no_label"
-    else
-        printf "│\n"
-        printf "│  %s\n" "$prompt"
-        printf "│  1) Yes\n"
-        printf "│  2) No\n"
-        if [[ "$choice_index" == "0" ]]; then
-            printf "Choice [1/2, default: 1]: "
-        else
-            printf "Choice [1/2, default: 2]: "
-        fi
-        local choice
-        read -r choice </dev/tty || choice=""
-        echo ""
-        case "$choice" in
-            1) choice_index=0 ;;
-            2) choice_index=1 ;;
-            *)
-                if [[ "$choice_index" == "0" ]]; then
-                    choice_index=0
-                else
-                    choice_index=1
-                fi
-                ;;
-        esac
-    fi
-
-    if [[ "$choice_index" == "0" ]]; then
+    # Auto-install if missing and ATELIER_ZOEKT_AUTO_INSTALL is on (default).
+    if [[ "$zoekt_all_present" == "0" && "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]]; then
         INSTALL_ZOEKT_LOCAL=1
     else
         INSTALL_ZOEKT_LOCAL=0
@@ -907,6 +848,26 @@ detect_hosts() {
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
+    if [[ -d "${HOME}/.cursor" ]]; then
+        HOST_SUMMARY+=("Cursor IDE (detected)")
+        HOST_CHOICES+=("Cursor IDE|detected")
+        HOST_DEFAULT_SELECTION+=(1)
+    else
+        HOST_SUMMARY+=("Cursor IDE (not found — ~/.cursor/ missing)")
+        HOST_CHOICES+=("Cursor IDE|not found")
+        HOST_DEFAULT_SELECTION+=(0)
+    fi
+
+    if [[ -n "${HERMES_HOME:-}" ]] || [[ -n "${HERMES_SESSION_ID:-}" ]] || command -v hermes >/dev/null 2>&1; then
+        HOST_SUMMARY+=("Hermes Agent (global-only, detected)")
+        HOST_CHOICES+=("Hermes Agent (global-only)|detected")
+        HOST_DEFAULT_SELECTION+=(1)
+    else
+        HOST_SUMMARY+=("Hermes Agent (global-only, not found)")
+        HOST_CHOICES+=("Hermes Agent (global-only)|not found")
+        HOST_DEFAULT_SELECTION+=(0)
+    fi
+
 }
 
 join_with_comma_space() {
@@ -953,6 +914,8 @@ host_wizard() {
                     2) HOST_FLAGS+=(--opencode) ;;
                     3) HOST_FLAGS+=(--copilot) ;;
                     4) HOST_FLAGS+=(--antigravity) ;;
+                    5) HOST_FLAGS+=(--cursor) ;;
+                    6) HOST_FLAGS+=(--hermes) ;;
                 esac
             done
             [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -963,6 +926,8 @@ host_wizard() {
         printf "│  3) %s\n" "${HOST_CHOICES[2]}"
         printf "│  4) %s\n" "${HOST_CHOICES[3]}"
         printf "│  5) %s\n" "${HOST_CHOICES[4]}"
+        printf "│  6) %s\n" "${HOST_CHOICES[5]}"
+        printf "│  7) %s\n" "${HOST_CHOICES[6]}"
         printf "│  a) All (default)\n"
         printf "│\n"
         printf "Choice [a]: "
@@ -987,6 +952,8 @@ host_wizard() {
                         3) HOST_FLAGS+=(--opencode) ;;
                         4) HOST_FLAGS+=(--copilot) ;;
                         5) HOST_FLAGS+=(--antigravity) ;;
+                        6) HOST_FLAGS+=(--cursor) ;;
+                        7) HOST_FLAGS+=(--hermes) ;;
                     esac
                 done
                 [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1058,9 +1025,14 @@ host_target_for_name() {
     fi
 
     case "$host_name" in
-        claude) printf "%s" "~/.claude" ;;
-        codex) printf "%s" "~/.codex" ;;
-        *) printf "%s" "~/.config" ;;
+        claude)      printf "%s" "~/.claude" ;;
+        codex)       printf "%s" "~/.codex" ;;
+        cursor)      printf "%s" "~/.cursor" ;;
+        opencode)    printf "%s" "~/.config/opencode" ;;
+        copilot)     printf "%s" "~/.config/Code" ;;
+        hermes)      printf "%s" "~/.hermes" ;;
+        antigravity) printf "%s" "~/.config/Antigravity" ;;
+        *)           printf "%s" "~/.config" ;;
     esac
 }
 
@@ -1088,22 +1060,8 @@ ensure_local_zoekt_runtime() {    # Kept for legacy --zoekt-auto-install flag pa
     warn "Local Zoekt binaries missing — run: atelier zoekt install"
 }
 
-# Install Go via package manager or official tarball to ~/.local/go
+# Install Go to ~/.local/go via official tarball (self-contained, no sudo)
 _install_go() {
-    local os_type; os_type="$(uname -s)"
-    if [[ "$os_type" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
-        brew install go
-        return $?
-    fi
-    # Try package managers with passwordless sudo
-    if command -v apt-get >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        sudo apt-get install -y golang-go && return 0
-    elif command -v dnf >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        sudo dnf install -y golang && return 0
-    elif command -v pacman >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        sudo pacman -S --noconfirm go && return 0
-    fi
-    # Fallback: official tarball to ~/.local/go (no sudo required)
     local go_ver arch os_low tarball
     go_ver="$(curl -sSL 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)" || return 1
     [[ -z "$go_ver" ]] && return 1
@@ -1667,27 +1625,6 @@ main() {
         verbose "Skipping background services because ATELIER_NO_SERVICECTL=1"
     fi
 
-    if [[ "$STACK_STARTED" == "1" || "$stack_expected" == "1" ]]; then
-        info "Visualization stack is running:"
-        info "  frontend: ${C_PURPLE}http://localhost:3125${C_RESET}"
-        info "  service:  ${C_PURPLE}http://localhost:8787${C_RESET}"
-    fi
-
-    step_start "What's next"
-    info "atelier status              — view active reasoning run"
-    info "atelier import              — import past agent sessions"
-    if [[ "$index_skipped" == "1" ]]; then
-        info "cd /path/to/repo && atelier code index --repo-root .  — index a git repository"
-    fi
-    case "$selected_memory" in
-        letta)      info "atelier letta status        — Letta memory sidecar" ;;
-        openmemory) info "atelier openmemory status   — OpenMemory sidecar" ;;
-    esac
-    if ! command -v zoekt >/dev/null 2>&1; then
-        info "atelier zoekt install       — install Zoekt full-text search"
-    fi
-    step_done
-
     print_final_report
     local completion_title_line="✓ Installation Complete!                              "
     if [[ ${#ERRORS[@]} -gt 0 ]]; then
@@ -1704,6 +1641,12 @@ main() {
         info "Installation complete."
     fi
     printf "%b└%b\n\n" "$C_FRAME" "$C_RESET"
+
+    if [[ "$STACK_STARTED" == "1" || "$stack_expected" == "1" ]]; then
+        info "Visualization stack is running:"
+        info "  frontend: ${C_PURPLE}http://localhost:3125${C_RESET}"
+        info "  service:  ${C_PURPLE}http://localhost:8787${C_RESET}"
+    fi
 
     printf "  %b┌─────────────────────────────────────────────────────────┐%b\n" "$C_PURPLE" "$C_RESET"
     printf "  %b│  %s │%b\n" "$C_PURPLE" "$completion_title_line" "$C_RESET"
