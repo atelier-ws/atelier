@@ -125,6 +125,30 @@ atelier runs list
 atelier tools call search --dev --args '{"query":"read after write verification"}' --json
 ```
 
+## Pre-Launch Gate
+
+Use the launch-gate policy before first release and on release branches:
+
+```bash
+export ATELIER_LAUNCH_SEED="release-seed"
+export ATELIER_LAUNCH_FROZEN_TIME="2025-01-01T00:00:00Z"
+export ATELIER_LAUNCH_ISOLATED_ROOT="/tmp/atelier-launch"
+export ATELIER_LAUNCH_ISOLATED_DB="/tmp/atelier-launch/atelier.db"
+make launch-gate
+```
+
+Modes:
+
+- `LAUNCH_GATE_MODE=enforce` (default) blocks on policy violations.
+- `LAUNCH_GATE_MODE=shadow` reports violations without failing.
+- `LAUNCH_GATE_MODE=suggest` reports advisory guidance.
+
+Break-glass is allowed only with explicit TTL:
+
+```bash
+BREAK_GLASS=1 BREAK_GLASS_TTL_HOURS=4 make launch-gate
+```
+
 → Installed quickstart: [docs/quickstart.md](docs/quickstart.md)
 
 ## Optional UI Stack

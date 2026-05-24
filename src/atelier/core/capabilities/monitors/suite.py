@@ -149,14 +149,22 @@ def _verification_skip(steps: Sequence[str], window: int = 3) -> float:
 
 # Pairs of contradictory phrases (first seen → second seen = contradiction)
 _CONTRADICTION_PAIRS: list[tuple[re.Pattern[str], re.Pattern[str]]] = [
-    (re.compile(r"\b(it works|working correctly|no error)\b", re.IGNORECASE),
-     re.compile(r"\b(error|fail|broken|doesn.t work)\b", re.IGNORECASE)),
-    (re.compile(r"\b(does not exist|missing|not found)\b", re.IGNORECASE),
-     re.compile(r"\b(exists|found|present)\b", re.IGNORECASE)),
-    (re.compile(r"\bI (will|would|should|can)\b", re.IGNORECASE),
-     re.compile(r"\bI (cannot|can.t|won.t|shouldn.t|must not)\b", re.IGNORECASE)),
-    (re.compile(r"\b(always|never|all|none)\b", re.IGNORECASE),
-     re.compile(r"\b(sometimes|occasionally|some|few)\b", re.IGNORECASE)),
+    (
+        re.compile(r"\b(it works|working correctly|no error)\b", re.IGNORECASE),
+        re.compile(r"\b(error|fail|broken|doesn.t work)\b", re.IGNORECASE),
+    ),
+    (
+        re.compile(r"\b(does not exist|missing|not found)\b", re.IGNORECASE),
+        re.compile(r"\b(exists|found|present)\b", re.IGNORECASE),
+    ),
+    (
+        re.compile(r"\bI (will|would|should|can)\b", re.IGNORECASE),
+        re.compile(r"\bI (cannot|can.t|won.t|shouldn.t|must not)\b", re.IGNORECASE),
+    ),
+    (
+        re.compile(r"\b(always|never|all|none)\b", re.IGNORECASE),
+        re.compile(r"\b(sometimes|occasionally|some|few)\b", re.IGNORECASE),
+    ),
 ]
 
 

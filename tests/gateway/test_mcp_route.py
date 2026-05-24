@@ -53,7 +53,7 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_mcp_route_decide_returns_model_and_metadata(mcp_env: Path) -> None:
     resp = _call(
         "route",
-        {"op": "decide", "task": "implement a new REST endpoint", "task_type": "feature"},
+        {"task": "implement a new REST endpoint", "task_type": "feature"},
     )
     payload = _result(resp)
 
@@ -71,7 +71,7 @@ def test_mcp_route_decide_returns_model_and_metadata(mcp_env: Path) -> None:
 def test_mcp_route_decide_budget_cheap_picks_cheapest(mcp_env: Path) -> None:
     resp = _call(
         "route",
-        {"op": "decide", "task": "summarize a file", "task_type": "explain", "budget": "cheap"},
+        {"task": "summarize a file", "task_type": "explain", "budget": "cheap"},
     )
     payload = _result(resp)
 
@@ -83,7 +83,7 @@ def test_mcp_route_decide_budget_cheap_picks_cheapest(mcp_env: Path) -> None:
 def test_mcp_route_decide_budget_best_picks_powerful(mcp_env: Path) -> None:
     resp = _call(
         "route",
-        {"op": "decide", "task": "design a new architecture", "task_type": "feature", "budget": "best"},
+        {"task": "design a new architecture", "task_type": "feature", "budget": "best"},
     )
     payload = _result(resp)
 
@@ -104,74 +104,24 @@ def test_mcp_route_decide_no_route_config_falls_back(
 
     m._current_ledger = None
 
-    resp = _call("route", {"op": "decide", "task": "refactor this function"})
+    resp = _call("route", {"task": "refactor this function"})
     payload = _result(resp)
 
     assert "model" in payload
     assert "available_models" in payload
 
 
-# ── op=spawn ────────────────────────────────────────────────────────────────
-
-def test_mcp_route_spawn_returns_directive_when_no_cli(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import atelier.gateway.adapters.mcp_server as m
-
-    m._client_sampling_supported = False
-    monkeypatch.setattr("shutil.which", lambda cmd: None)
-
-    resp = _call(
-        "route",
-        {"op": "spawn", "prompt": "write tests for src/foo.py", "model": "claude-haiku-4-5"},
-    )
-    payload = _result(resp)
-
-    assert payload["handled"] is False
-    assert "spawn_directive" in payload
-    directive = payload["spawn_directive"]
-    assert directive["model"] == "claude-haiku-4-5"
-    assert directive["agent_type"] == "general-purpose"
-    assert "prompt" in directive
-    assert "SPAWN_REQUIRED" in payload["message"]
-
-
-def test_mcp_route_spawn_uses_cli_when_available(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import json
-    import subprocess
-
-    import atelier.gateway.adapters.mcp_server as m
-
-    m._client_sampling_supported = False
-    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/claude" if cmd == "claude" else None)
-    fake = subprocess.CompletedProcess(
-        args=[],
-        returncode=0,
-        stdout=json.dumps({"result": "done", "cost_usd": 0.001, "num_turns": 2}),
-        stderr="",
-    )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake)
-
-    resp = _call(
-        "route",
-        {"op": "spawn", "prompt": "write a docstring for every function in src/foo.py", "model": "claude-haiku-4-5"},
-    )
-    payload = _result(resp)
-
-    assert payload["handled"] is True
-    assert payload["spawn_method"] == "cli_subprocess"
-    assert payload["response"] == "done"
-    assert "spawn_directive" in payload
-
-
-def test_mcp_route_schema_exposes_only_decide_and_spawn() -> None:
+def test_mcp_route_schema_exposes_only_decide() -> None:
     from atelier.gateway.adapters.mcp_server import TOOLS
 
     schema = TOOLS["route"].get("inputSchema", {})
     props = schema.get("properties", {})
-    exposed_ops = props.get("op", {}).get("enum", [])
-
-    assert "decide" in exposed_ops
-    assert "spawn" in exposed_ops
+    assert "op" not in props
+    assert "task" in props
+    assert "task_type" in props
+    assert "budget" in props
+    assert schema.get("required", []) == []
     # Internal ops must not appear in the schema
-    assert "verify" not in exposed_ops
-    assert "recommend" not in exposed_ops
-
+    schema_text = json.dumps(schema)
+    assert "verify" not in schema_text
+    assert "recommend" not in schema_text
