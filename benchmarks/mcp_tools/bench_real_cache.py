@@ -2,19 +2,21 @@
 
 Runs a simulated multi-turn agent loop using the Atelier SDK middleware
 and measures ACTUAL token counts (from mock provider responses or real
-API when ANTHROPIC_API_KEY is set).
+provider API calls).
 
 Modes:
   - **mock mode** (default, no API key needed): uses deterministic token
     responses that mimic Anthropic cache behaviour (cache hit on turns ≥ 2).
-  - **real mode** (ANTHROPIC_API_KEY env var): calls real Anthropic API and
-    reads actual `cache_read_input_tokens` from response metadata.
+  - **real mode / anthropic** (ANTHROPIC_API_KEY env var): calls Anthropic API
+    and reads actual `cache_read_input_tokens` from response metadata.
+  - **real mode / ollama_openai** (Ollama OpenAI-compatible endpoint): calls
+    Ollama via OpenAI client (`base_url=http://127.0.0.1:11434/v1` by default).
 
 Output: comparison table showing naive loop vs Atelier middleware.
 
 Run:
     uv run pytest benchmarks/mcp_tools/bench_real_cache.py -v -s
-    # real mode:
+    # real mode (Anthropic):
     ANTHROPIC_API_KEY=sk-... uv run pytest benchmarks/mcp_tools/bench_real_cache.py -v -s
 """
 
@@ -76,6 +78,12 @@ class MockResponse:
             self.content = []
 
 
+def _openai_client(base_url: str, api_key: str) -> Any:
+    from openai import OpenAI
+
+    return OpenAI(base_url=base_url, api_key=api_key)
+
+
 # ---------------------------------------------------------------------------
 # Simulated agent loop
 # ---------------------------------------------------------------------------
@@ -101,12 +109,21 @@ def _naive_loop_turn(
     turn_idx: int,
     real_api: bool = False,
     anthropic_key: str | None = None,
+    provider: str = "anthropic",
+    ollama_base_url: str = "",
+    ollama_frontier_model: str = "",
 ) -> dict[str, int | float | str]:
     """Simulate a naive agent loop turn (no cache_control, no Atelier)."""
     base_input, output = _TURN_TOKENS[turn_idx]
     # Naive loop: no cache_control headers — no cache hits
-    if real_api and anthropic_key:
+    if real_api and provider == "anthropic" and anthropic_key:
         return _real_naive_turn(turn_idx, anthropic_key)
+    if real_api and provider == "ollama_openai":
+        return _real_naive_turn_ollama_openai(
+            turn_idx=turn_idx,
+            base_url=ollama_base_url,
+            model=ollama_frontier_model,
+        )
 
     return {
         "turn": turn_idx,
@@ -124,12 +141,24 @@ def _atelier_loop_turn(
     dispatch: Any,
     real_api: bool = False,
     anthropic_key: str | None = None,
+    provider: str = "anthropic",
+    ollama_base_url: str = "",
+    ollama_frontier_model: str = "",
+    ollama_cheap_model: str = "",
 ) -> dict[str, int | float | str]:
     """Simulate an Atelier-middleware agent loop turn (with cache_control)."""
     base_input, output = _TURN_TOKENS[turn_idx]
 
-    if real_api and anthropic_key:
+    if real_api and provider == "anthropic" and anthropic_key:
         return _real_atelier_turn(turn_idx, dispatch, anthropic_key)
+    if real_api and provider == "ollama_openai":
+        return _real_atelier_turn_ollama_openai(
+            turn_idx=turn_idx,
+            dispatch=dispatch,
+            base_url=ollama_base_url,
+            frontier_model=ollama_frontier_model,
+            cheap_model=ollama_cheap_model,
+        )
 
     # Mock: Atelier injects cache_control; from turn 1 onwards, cache hits fire
     cache_read = int(_STATIC_PREFIX_TOKENS * _CACHE_HIT_RATIO) if turn_idx > 0 else 0
@@ -217,22 +246,116 @@ def _real_atelier_turn(turn_idx: int, dispatch: Any, api_key: str) -> dict[str, 
         return {"turn": turn_idx, "error": str(e), "input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "mode": "real", "model_tier": "frontier"}
 
 
+def _real_naive_turn_ollama_openai(
+    turn_idx: int,
+    base_url: str,
+    model: str,
+) -> dict[str, int | float | str]:
+    """Run real Ollama call through OpenAI-compatible API (naive path)."""
+    try:
+        base_input, _ = _TURN_TOKENS[turn_idx]
+        system_prompt = "You are a coding assistant. " * (base_input // 10)
+        client = _openai_client(base_url=base_url, api_key="ollama")
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=50,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Turn {turn_idx}: hello"},
+            ],
+        )
+        usage = getattr(resp, "usage", None)
+        input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        cache_read = int(getattr(prompt_details, "cached_tokens", 0) or 0)
+        return {
+            "turn": turn_idx,
+            "input_tokens": input_tokens,
+            "cache_read_tokens": cache_read,
+            "output_tokens": output_tokens,
+            "model_tier": "frontier",
+            "cost_usd": _cost("frontier", input_tokens, cache_read, output_tokens),
+            "mode": "real",
+        }
+    except Exception as e:
+        return {"turn": turn_idx, "error": str(e), "input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "mode": "real", "model_tier": "frontier"}
+
+
+def _real_atelier_turn_ollama_openai(
+    turn_idx: int,
+    dispatch: Any,
+    base_url: str,
+    frontier_model: str,
+    cheap_model: str,
+) -> dict[str, int | float | str]:
+    """Run real Ollama call through OpenAI-compatible API (Atelier path)."""
+    try:
+        base_input, _ = _TURN_TOKENS[turn_idx]
+        system_prompt = "You are a coding assistant. " * (base_input // 10)
+        model = frontier_model if turn_idx == 0 else cheap_model
+        client = _openai_client(base_url=base_url, api_key="ollama")
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=50,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Turn {turn_idx}: hello"},
+            ],
+        )
+        usage = getattr(resp, "usage", None)
+        input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        cache_read = int(getattr(prompt_details, "cached_tokens", 0) or 0)
+
+        # Normalize OpenAI usage payload into the Anthropic-style dispatch shape
+        dispatch(
+            MockResponse(
+                model=str(getattr(resp, "model", model)),
+                usage=MockUsage(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cache_read_input_tokens=cache_read,
+                ),
+            )
+        )
+        model_tier = "frontier" if turn_idx == 0 else "cheap_llm"
+        return {
+            "turn": turn_idx,
+            "input_tokens": input_tokens,
+            "cache_read_tokens": cache_read,
+            "output_tokens": output_tokens,
+            "model_tier": model_tier,
+            "cost_usd": _cost(model_tier, input_tokens, cache_read, output_tokens),
+            "mode": "real",
+        }
+    except Exception as e:
+        return {"turn": turn_idx, "error": str(e), "input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "mode": "real", "model_tier": "frontier"}
+
+
 # ---------------------------------------------------------------------------
 # Benchmark runner
 # ---------------------------------------------------------------------------
 
-def run_benchmark(real_api: bool = False) -> dict[str, Any]:
+def run_benchmark(real_api: bool = False, provider: str = "anthropic") -> dict[str, Any]:
     """Run the full naive vs Atelier benchmark.
 
     Args:
-        real_api: If True and ANTHROPIC_API_KEY is set, makes real API calls.
+        real_api: If True, makes real API calls for the selected provider.
+        provider: ``"anthropic"`` or ``"ollama_openai"``.
 
     Returns:
         Result dict with per-turn data and summary comparison table.
     """
     from atelier.sdk import AtelierMiddleware
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY") if real_api else None
+    api_key = os.environ.get("ANTHROPIC_API_KEY") if (real_api and provider == "anthropic") else None
+    ollama_base_url = os.environ.get("OLLAMA_OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+    ollama_frontier_model = os.environ.get("OLLAMA_FRONTIER_MODEL", "llama3.1:latest")
+    ollama_cheap_model = os.environ.get("OLLAMA_CHEAP_MODEL", ollama_frontier_model)
 
     mw = AtelierMiddleware(agent_name="bench_agent", task="Benchmark task: 6-turn coding loop")
     _, dispatch = mw.anthropic_tools(include_telemetry_tool=False)
@@ -241,8 +364,28 @@ def run_benchmark(real_api: bool = False) -> dict[str, Any]:
     atelier_turns = []
 
     for i in range(len(_TURN_TOKENS)):
-        naive_turns.append(_naive_loop_turn(i, real_api=real_api, anthropic_key=api_key))
-        atelier_turns.append(_atelier_loop_turn(i, dispatch, real_api=real_api, anthropic_key=api_key))
+        naive_turns.append(
+            _naive_loop_turn(
+                i,
+                real_api=real_api,
+                anthropic_key=api_key,
+                provider=provider,
+                ollama_base_url=ollama_base_url,
+                ollama_frontier_model=ollama_frontier_model,
+            )
+        )
+        atelier_turns.append(
+            _atelier_loop_turn(
+                i,
+                dispatch,
+                real_api=real_api,
+                anthropic_key=api_key,
+                provider=provider,
+                ollama_base_url=ollama_base_url,
+                ollama_frontier_model=ollama_frontier_model,
+                ollama_cheap_model=ollama_cheap_model,
+            )
+        )
 
     # Aggregate
     def _agg(turns: list[dict]) -> dict[str, Any]:
@@ -270,7 +413,8 @@ def run_benchmark(real_api: bool = False) -> dict[str, Any]:
     ) if naive_agg["total_input_tokens"] > 0 else 0.0
 
     return {
-        "mode": "real" if (real_api and api_key) else "mock",
+        "mode": "real" if (real_api and (provider == "ollama_openai" or bool(api_key))) else "mock",
+        "provider": provider,
         "turns": len(_TURN_TOKENS),
         "naive": naive_agg,
         "atelier": atelier_agg,
@@ -344,10 +488,54 @@ def test_benchmark_mock(capsys: Any) -> None:
 )
 def test_benchmark_real(capsys: Any) -> None:
     """Benchmark in real mode — requires ANTHROPIC_API_KEY."""
-    result = run_benchmark(real_api=True)
+    result = run_benchmark(real_api=True, provider="anthropic")
     _print_table(result)
 
     assert result["mode"] == "real"
     assert result["atelier"]["total_cost_usd"] <= result["naive"]["total_cost_usd"] * 1.1, (
         "Atelier should not be more than 10% more expensive in real mode (turn 0 creates cache)"
     )
+
+
+@pytest.mark.benchmark
+def test_benchmark_real_ollama_openai_mocked(monkeypatch: Any, capsys: Any) -> None:
+    """Benchmark in real mode via OpenAI-compatible Ollama client (mocked)."""
+
+    class _Usage:
+        def __init__(self, prompt_tokens: int, completion_tokens: int) -> None:
+            self.prompt_tokens = prompt_tokens
+            self.completion_tokens = completion_tokens
+            self.prompt_tokens_details = type("Details", (), {"cached_tokens": 0})()
+
+    class _Resp:
+        def __init__(self, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+            self.model = model
+            self.usage = _Usage(prompt_tokens, completion_tokens)
+
+    class _Completions:
+        def create(self, *, model: str, max_tokens: int, temperature: int, messages: list[dict[str, str]]) -> Any:
+            base = 1500 if "frontier" in model else 1200
+            return _Resp(model=model, prompt_tokens=base, completion_tokens=120)
+
+    class _Chat:
+        def __init__(self) -> None:
+            self.completions = _Completions()
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.chat = _Chat()
+
+    monkeypatch.setenv("OLLAMA_FRONTIER_MODEL", "frontier-model")
+    monkeypatch.setenv("OLLAMA_CHEAP_MODEL", "cheap-model")
+    monkeypatch.setattr(
+        "benchmarks.mcp_tools.bench_real_cache._openai_client",
+        lambda base_url, api_key: _FakeClient(),
+    )
+
+    result = run_benchmark(real_api=True, provider="ollama_openai")
+    _print_table(result)
+
+    assert result["mode"] == "real"
+    assert result["provider"] == "ollama_openai"
+    assert result["atelier"]["frontier_calls"] < result["naive"]["frontier_calls"]
+    assert result["atelier"]["cheap_calls"] > 0

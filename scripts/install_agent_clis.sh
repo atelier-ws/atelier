@@ -24,6 +24,7 @@ set -euo pipefail
 
 if [[ -t 1 ]]; then
     C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
@@ -31,6 +32,7 @@ if [[ -t 1 ]]; then
     C_PURPLE="$(printf '\033[38;2;155;117;217m')"
 else
     C_RESET=""
+    C_DIM=""
     C_GREEN=""
     C_RED=""
     C_YELLOW=""
@@ -39,11 +41,16 @@ else
 fi
 if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
     C_GREEN="$(printf '\033[32m')"
     C_RED="$(printf '\033[31m')"
     C_YELLOW="$(printf '\033[33m')"
     C_CYAN="$(printf '\033[38;2;155;117;217m')"
     C_PURPLE="$(printf '\033[38;2;155;117;217m')"
+fi
+ACTIVE_BAR="┃"
+if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* ]]; then
+    ACTIVE_BAR="|"
 fi
 
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
@@ -56,6 +63,49 @@ print_message() {
 }
 
 verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && printf "%s\n" "$*" || true; }
+
+print_active_line() {
+    printf "%b%s%b  %b%s%b\n" "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "$1" "$C_RESET"
+}
+
+print_frame_line() {
+    printf "%b│%b  %s\n" "$C_DIM" "$C_RESET" "$1"
+}
+
+_SPINNER_PID=""
+spinner_start() {
+    local msg="$1"
+    [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]] || return 0
+    [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] || return 0
+    [[ "${ATELIER_VERBOSE:-0}" != "1" ]] || return 0
+    local _frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    (
+        local _i=0
+        while true; do
+            printf "\r%b%s%b  %b%s%b  %s " \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$msg"
+            sleep 0.08
+            _i=$((_i + 1))
+        done
+    ) &
+    _SPINNER_PID=$!
+}
+
+spinner_finish() {
+    local state="$1"
+    local msg="$2"
+    [[ -n "${_SPINNER_PID:-}" ]] || return 0
+    kill "$_SPINNER_PID" 2>/dev/null || true
+    wait "$_SPINNER_PID" 2>/dev/null || true
+    _SPINNER_PID=""
+    printf "\r\033[2K"
+    case "$state" in
+        ok)   printf "%b│%b  %b✓%b  %s\n" "$C_DIM" "$C_RESET" "$C_GREEN" "$C_RESET" "$msg" ;;
+        warn) printf "%b│%b  %b⚠%b  %s\n" "$C_DIM" "$C_RESET" "$C_YELLOW" "$C_RESET" "$msg" ;;
+        skip) printf "%b│%b  %b—%b  %s\n" "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET" "$msg" ;;
+        err)  printf "%b│%b  %b✗%b  %s\n" "$C_DIM" "$C_RESET" "$C_RED" "$C_RESET" "$msg" ;;
+    esac
+}
 
 DO_CLAUDE=false
 DO_CODEX=false
@@ -284,6 +334,7 @@ run_installer() {
     local host="$1"
     local script
     local output_file output ret
+    local spinner_started=0
 
     case "$host" in
         claude) script="${SCRIPT_DIR}/install_claude.sh" ;;
@@ -291,10 +342,12 @@ run_installer() {
     esac
 
     echo ""
-    if [[ "$ATELIER_VERBOSE" == "1" ]]; then
-        print_message "$C_PURPLE" "──────────────────────────────────────────"
-        print_message "$C_PURPLE" " Installing Atelier -> ${host}"
-        print_message "$C_PURPLE" "──────────────────────────────────────────"
+    emit_host_status "START" "$host"
+    spinner_start "Installing on ${host}"
+    if [[ -n "${_SPINNER_PID:-}" ]]; then
+        spinner_started=1
+    elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+        print_active_line "Installing on ${host}"
     fi
     output_file="$(mktemp "${TMPDIR:-/tmp}/atelier-${host}.XXXXXX")"
     set +e
@@ -312,25 +365,48 @@ run_installer() {
     if echo "$output" | grep -q "=== SKIPPED"; then
         SKIP+=("$host")
         emit_host_status "SKIPPED" "$host (CLI not found)"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish skip "Skipped ${host} (CLI not found)"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Skipped ${host} (CLI not found)"
+        fi
     elif [ $ret -ne 0 ]; then
         FAIL+=("$host")
         emit_host_status "FAILED" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish err "Failed ${host}"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Failed ${host}"
+        fi
     elif echo "$output" | grep -q "] WARN:"; then
         WARN+=("$host")
         emit_host_status "WARN" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish warn "Completed ${host} with warnings"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed ${host} with warnings"
+        fi
     else
         PASS+=("$host")
         emit_host_status "OK" "$host"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish ok "Completed ${host}"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed ${host}"
+        fi
     fi
 }
 
 # ── Universal agents (always run first when using --workspace) ──────────────
 if [[ " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
+    spinner_started=0
     echo ""
-    if [[ "$ATELIER_VERBOSE" == "1" ]]; then
-        print_message "$C_PURPLE" "──────────────────────────────────────────"
-        print_message "$C_PURPLE" " Installing universal agents (.mcp.json + AGENTS.md)"
-        print_message "$C_PURPLE" "──────────────────────────────────────────"
+    emit_host_status "START" "agents"
+    spinner_start "Installing universal agents (.mcp.json + AGENTS.md)"
+    if [[ -n "${_SPINNER_PID:-}" ]]; then
+        spinner_started=1
+    elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+        print_active_line "Installing universal agents (.mcp.json + AGENTS.md)"
     fi
     UNIVERSAL_OUTPUT_FILE="$(mktemp "${TMPDIR:-/tmp}/atelier-agents.XXXXXX")"
     set +e
@@ -343,12 +419,27 @@ if [[ " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
     if echo "$UNIVERSAL_OUTPUT" | grep -q "] WARN:"; then
         WARN+=("agents")
         emit_host_status "WARN" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish warn "Completed universal agents with warnings"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed universal agents with warnings"
+        fi
     elif [ $UNIVERSAL_RET -ne 0 ]; then
         FAIL+=("agents")
         emit_host_status "FAILED" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish err "Failed universal agents"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Failed universal agents"
+        fi
     else
         PASS+=("agents")
         emit_host_status "OK" "agents"
+        if [[ "$spinner_started" == "1" ]]; then
+            spinner_finish ok "Completed universal agents"
+        elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
+            print_frame_line "Completed universal agents"
+        fi
     fi
 fi
 
