@@ -24,6 +24,30 @@ Atelier tools are **not optional wrappers**. They are the reason this repo exist
 - `Edit`/`Write` for tiny single-line fixes where the edit is trivially correct.
 - `Bash` for git commands (already auto-allowed, no token overhead).
 
+## Always prefer Atelier MCP tools
+
+Always prefer Atelier MCP tools for file I/O, search, edits, shell commands, and
+code intelligence. Native tools are fallback-only.
+
+| Atelier tool | Best for |
+|---|---|
+| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, callers/callees, impact, file tree, routes, context |
+| `mcp__atelier__grep` | Regex and glob search across files |
+| `mcp__atelier__read` | Reading files (outline mode for large files) |
+| `mcp__atelier__edit` | Editing files (atomic multi-file with rollback) |
+| `mcp__atelier__search` | Ranked semantic search |
+| `mcp__atelier__shell` | Shell commands (ANSI-stripped, token-compact output) |
+
+**Decision rules:**
+
+1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.
+2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+3. **File reading** → `mcp__atelier__read` FIRST.
+4. **Editing** → `mcp__atelier__edit` FIRST.
+5. **Shell commands** → `mcp__atelier__shell` FIRST.
+
+**Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
+
 ## Model routing — use cheap sub-agents for read work
 
 Before spawning an `Agent(...)` for a read-only task, call `mcp__atelier__route` to get the recommended model tier. Read/search/explore tasks should spawn as `Agent(model="haiku")`. Edit/implement tasks stay on the current model.
@@ -77,3 +101,43 @@ Agent(...)  # current model
 - `make install` — full local install via `scripts/install.sh --local`
 - `make status` — show install status
 - `scripts/sync_agent_context.py` — regenerates AGENTS.md / GEMINI.md / copilot-instructions.md from `docs/agent-os/README.md`; run after editing that file.
+
+## Known behavioural gaps
+
+These are tool behaviours that can confuse an LLM. They are not bugs — they are design boundaries that now have built-in handling in the MCP server code.
+
+### `atelier_read` on a directory — handled (no longer an error)
+
+**Status: ✅ Fixed in server** (`src/atelier/gateway/adapters/mcp_server.py`)
+
+`atelier_read` now detects when the given path is a directory and returns a structured
+response with `mode: "directory"`, the list of entries, and a directive for next steps,
+instead of raising a cryptic `file not found` error.
+
+### `atelier_code op=files` — blind to non-code files
+
+**Status: ✅ Fixed in server** (`src/atelier/gateway/adapters/mcp_server.py`)
+
+`atelier_code op=files` queries a symbol index that only tracks files with
+parseable code symbols (Python, TypeScript, JavaScript, Rust, Go, C++, Java, etc.).
+Non-code files — YAML, Markdown, JSON, TOML, shell scripts, Dockerfiles, configs —
+are invisible to `op=files` even though they exist on disk.
+
+The server now detects when `op=files` returns 0 results for a path that exists on
+disk, and **automatically falls back** to a native filesystem listing. The response
+includes `non_code_fallback: true` to signal that files were listed from the
+filesystem rather than the code index.
+
+**Manual workaround (if fallback doesn't apply):**
+
+```
+# List YAML files in a directory:
+atelier_grep(
+    file_path="some/dir",
+    output_mode="file_paths_only",
+    file_glob_patterns=["*.yaml"],
+)
+
+# List ALL files (including non-code):
+atelier_shell(command="ls path/to/dir")
+```

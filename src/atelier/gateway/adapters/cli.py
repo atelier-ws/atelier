@@ -76,6 +76,7 @@ STACK_UNIT = "atelier-stack.service"
 LETTA_UNIT = "atelier-letta.service"
 OPENMEMORY_UNIT = "atelier-openmemory.service"
 ZOEKT_UNIT = "atelier-zoekt.service"
+MCP_UNIT = "atelier-mcp.service"
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 LAUNCHD_USER_DIR = Path.home() / "Library" / "LaunchAgents"
 CONTROLLER_LABEL = "com.atelier.controller"
@@ -83,6 +84,7 @@ STACK_LABEL = "com.atelier.stack"
 LETTA_LABEL = "com.atelier.letta"
 OPENMEMORY_LABEL = "com.atelier.openmemory"
 ZOEKT_LABEL = "com.atelier.zoekt"
+MCP_LABEL = "com.atelier.mcp"
 DEFAULT_STACK_SERVICE_HOST = "0.0.0.0"
 DEFAULT_STACK_SERVICE_PORT = 8787
 DEFAULT_STACK_FRONTEND_HOST = "0.0.0.0"
@@ -389,6 +391,14 @@ def _openmemory_ui_env_path(root: Path) -> Path:
 
 def _openmemory_log_path(root: Path) -> Path:
     return _openmemory_dir(root) / "openmemory.log"
+
+
+def _mcp_dir(root: Path) -> Path:
+    return Path(root) / "mcp"
+
+
+def _mcp_log_path(root: Path) -> Path:
+    return _mcp_dir(root) / "mcp.log"
 
 
 def _ensure_openmemory_service_env(root: Path) -> Path:
@@ -2503,7 +2513,13 @@ def checkpoint_list(ctx: click.Context, session_id: str | None, as_json: bool) -
 
 @checkpoint.command("resume")
 @click.argument("session_id")
-@click.option("--from-step", "from_step", type=int, default=None, help="Resume from this step (default: last).")
+@click.option(
+    "--from-step",
+    "from_step",
+    type=int,
+    default=None,
+    help="Resume from this step (default: last).",
+)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def checkpoint_resume(
@@ -4137,7 +4153,12 @@ def zoekt_install(auto: bool, print_only: bool) -> None:
 
 
 @zoekt_group.command("index")
-@click.argument("target", type=click.Path(path_type=Path, exists=True, file_okay=False), default=".", required=False)
+@click.argument(
+    "target",
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    default=".",
+    required=False,
+)
 @click.option(
     "--index",
     "index_dir",
@@ -6509,7 +6530,13 @@ def benchmark_quality_compact(
     type=click.Path(file_okay=False, path_type=Path),
     help="Directory containing claude/*.jsonl session exports.",
 )
-@click.option("--max-sessions", default=10, show_default=True, type=int, help="Max sessions to replay (cost control).")
+@click.option(
+    "--max-sessions",
+    default=10,
+    show_default=True,
+    type=int,
+    help="Max sessions to replay (cost control).",
+)
 @click.option(
     "--max-turns",
     default=5,
@@ -6518,12 +6545,25 @@ def benchmark_quality_compact(
     help="Max haiku calls per session (cost control). 0 = unlimited.",
 )
 @click.option(
-    "--context-lines", default=30, show_default=True, type=int, help="Recent context lines sent to haiku per call."
+    "--context-lines",
+    default=30,
+    show_default=True,
+    type=int,
+    help="Recent context lines sent to haiku per call.",
 )
 @click.option(
-    "--haiku-model", default="claude-haiku-4-5", show_default=True, help="Haiku model alias for --model flag."
+    "--haiku-model",
+    default="claude-haiku-4-5",
+    show_default=True,
+    help="Haiku model alias for --model flag.",
 )
-@click.option("--delay", default=0.5, show_default=True, type=float, help="Seconds between CLI calls (rate limiting).")
+@click.option(
+    "--delay",
+    default=0.5,
+    show_default=True,
+    type=float,
+    help="Seconds between CLI calls (rate limiting).",
+)
 @click.option("--verbose", is_flag=True, default=False, help="Print each turn result as it completes.")
 @click.pass_context
 def benchmark_replay_routing(
@@ -7330,8 +7370,16 @@ def background_group() -> None:
 
 @background_group.command("install")
 @click.option("--with-stack", is_flag=True, help="Also install the visualization stack service.")
-@click.option("--with-letta", is_flag=True, help="Also install the Letta memory server (Docker-based) service.")
-@click.option("--with-openmemory", is_flag=True, help="Also install the OpenMemory MCP (Docker-based) service.")
+@click.option(
+    "--with-letta",
+    is_flag=True,
+    help="Also install the Letta memory server (Docker-based) service.",
+)
+@click.option(
+    "--with-openmemory",
+    is_flag=True,
+    help="Also install the OpenMemory MCP (Docker-based) service.",
+)
 @click.option("--with-zoekt", is_flag=True, help="Also install the Zoekt code-search (Docker-based) service.")
 @click.pass_context
 def background_install(
@@ -7476,7 +7524,24 @@ StandardError=append:{_openmemory_log_path(root)}
 WantedBy=default.target
 """
             (SYSTEMD_USER_DIR / OPENMEMORY_UNIT).write_text(openmemory_content, encoding="utf-8")
-            click.echo(f"Installed {OPENMEMORY_UNIT}")
+        # Clean up stale units for features no longer requested
+        # (makes `background install` idempotent across re-installs)
+        for flag, unit in [
+            (with_stack, STACK_UNIT),
+            (with_letta, LETTA_UNIT),
+            (with_openmemory, OPENMEMORY_UNIT),
+            (with_zoekt, ZOEKT_UNIT),
+        ]:
+            if not flag:
+                unit_path = SYSTEMD_USER_DIR / unit
+                if unit_path.exists():
+                    subprocess.run(
+                        ["systemctl", "--user", "disable", "--now", unit],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    unit_path.unlink()
 
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         subprocess.run(["systemctl", "--user", "enable", "--now", CONTROLLER_UNIT], check=True)
@@ -7496,9 +7561,27 @@ WantedBy=default.target
                 )
 
     elif _is_macos():
+        # Clean up stale plists for features no longer requested
+        for flag, label in [
+            (with_stack, STACK_LABEL),
+            (with_letta, LETTA_LABEL),
+            (with_openmemory, OPENMEMORY_LABEL),
+            (with_zoekt, ZOEKT_LABEL),
+        ]:
+            if not flag:
+                plist = LAUNCHD_USER_DIR / f"{label}.plist"
+                if plist.exists():
+                    subprocess.run(
+                        ["launchctl", "unload", str(plist)],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    plist.unlink()
+
         LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
-        controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+        controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -7690,7 +7773,10 @@ WantedBy=default.target
         if with_letta:
             subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{LETTA_LABEL}.plist")], check=False)
         if with_openmemory:
-            subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{OPENMEMORY_LABEL}.plist")], check=False)
+            subprocess.run(
+                ["launchctl", "load", str(LAUNCHD_USER_DIR / f"{OPENMEMORY_LABEL}.plist")],
+                check=False,
+            )
         if with_zoekt:
             subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{ZOEKT_LABEL}.plist")], check=False)
 
@@ -7837,14 +7923,14 @@ def systemd_restart_alias(ctx: click.Context) -> None:
 
 
 @cli.command("logs")
-@click.argument("service", type=click.Choice(["stack", "controller", "letta", "openmemory", "zoekt"]))
+@click.argument("service", type=click.Choice(["stack", "controller", "letta", "openmemory", "zoekt", "mcp"]))
 @click.option("-f", "--follow", is_flag=True, help="Follow log output.")
 @click.option("-n", "--lines", default=80, show_default=True, type=int, help="Number of lines to show.")
 @click.pass_context
 def logs_cmd(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
     """Show logs for an Atelier service.
 
-    SERVICE is one of: stack, controller, letta, openmemory, zoekt.
+    SERVICE is one of: stack, controller, letta, openmemory, zoekt, mcp.
 
     On Linux with systemd units installed, uses journalctl to read
     the service unit logs (which contain everything the process wrote
@@ -7859,6 +7945,7 @@ def logs_cmd(ctx: click.Context, service: str, follow: bool, lines: int) -> None
         "letta": LETTA_UNIT,
         "openmemory": OPENMEMORY_UNIT,
         "zoekt": ZOEKT_UNIT,
+        "mcp": MCP_UNIT,
     }
     unit = unit_map[service]
 
@@ -7886,6 +7973,8 @@ def logs_cmd(ctx: click.Context, service: str, follow: bool, lines: int) -> None
         log_path = _openmemory_log_path(root)
     elif service == "zoekt":
         log_path = Path(root) / "zoekt" / "zoekt.log"
+    elif service == "mcp":
+        log_path = _mcp_log_path(root)
     else:
         # unreachable given the Choice validator
         raise click.ClickException(f"unknown service: {service}")
@@ -8469,7 +8558,11 @@ def memory_list_cmd(ctx: click.Context, vendor: str | None, as_json: bool) -> No
     click.echo(f"Memory facts ({total} total, {n_vendors} vendor{'s' if n_vendors != 1 else ''})")
     click.echo("")
 
-    vendor_labels = {"claude": "Anthropic - Claude Code", "codex": "OpenAI - Codex", "gemini": "Google - Gemini CLI"}
+    vendor_labels = {
+        "claude": "Anthropic - Claude Code",
+        "codex": "OpenAI - Codex",
+        "gemini": "Google - Gemini CLI",
+    }
     for v, vfacts in sorted(by_vendor.items()):
         label = vendor_labels.get(v, v.capitalize())
         click.echo(f"{label} ({len(vfacts)} fact{'s' if len(vfacts) != 1 else ''})")
@@ -8758,7 +8851,12 @@ def governance_show_cmd(ctx: click.Context, as_json: bool) -> None:
 
 
 @governance_group.command("apply")
-@click.option("--file", "file_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
 @click.option("--json", "as_json", is_flag=True, default=False)
 @click.pass_context
 def governance_apply_cmd(ctx: click.Context, file_path: Path, as_json: bool) -> None:

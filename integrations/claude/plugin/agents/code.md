@@ -28,6 +28,30 @@ Use this file as a thin entrypoint and follow the live docs tree:
 2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work (see [Tool substitution](../../../../docs/agent-os/tool-substitution.md)). Use Claude-native tools only when Atelier returns `noop`, is hidden, or is unavailable.
 3. **Record**: Call `record` at completion with `agent: "atelier:code"`.
 
+## Always prefer Atelier MCP tools
+
+Always prefer Atelier MCP tools for file I/O, search, edits, shell commands, and
+code intelligence. Native tools are fallback-only.
+
+| Atelier tool | Best for |
+|---|---|
+| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, callers/callees, impact, file tree, routes, context |
+| `mcp__atelier__grep` | Regex and glob search across files |
+| `mcp__atelier__read` | Reading files (outline mode for large files) |
+| `mcp__atelier__edit` | Editing files (atomic multi-file with rollback) |
+| `mcp__atelier__search` | Ranked semantic search |
+| `mcp__atelier__shell` | Shell commands (ANSI-stripped, token-compact output) |
+
+**Decision rules:**
+
+1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.
+2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+3. **File reading** → `mcp__atelier__read` FIRST.
+4. **Editing** → `mcp__atelier__edit` FIRST.
+5. **Shell commands** → `mcp__atelier__shell` FIRST.
+
+**Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
+
 ## Budget optimizer
 
 - Before changing files, name the deliverable and summarize the smallest viable plan.
