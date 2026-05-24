@@ -275,8 +275,8 @@ _CACHE_TOOL_ALIASES = {
 _OPERATION_TOKEN_CAPS = {
     "cache_status": 50,
     "index": 80,
-    "search": 300,
-    "symbol": 300,
+    "search": 800,
+    "symbol": 800,
     "outline": 150,
     "pattern": 800,
     "callers": 700,
@@ -5306,11 +5306,9 @@ class CodeContextEngine:
         protected_items = minimal_items[: min(PROTECTED_TOP_RANK, len(minimal_items))]
         protected_payload = build_payload(protected_items)
         if enforce_protected_top_rank and protected_items and protected_payload["total_tokens"] > budget_tokens:
-            return self._budget_error_payload(
-                budget_tokens=budget_tokens,
-                minimum_required_tokens=int(protected_payload["total_tokens"]),
-                provenance=str(protected_payload.get("provenance") or _LOCAL_PROVENANCE),
-            )
+            # Degrade gracefully: return the top-ranked item(s) even if over budget.
+            # A slightly over-budget result is strictly better than a hard error with 0 items.
+            return protected_payload
 
         best_payload = build_payload(minimal_items)
         if best_payload["total_tokens"] > budget_tokens:
