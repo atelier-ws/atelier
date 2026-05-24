@@ -32,9 +32,9 @@ A Python code change is ready for validation.
 - CI formatting check changes files after the agent reports done.
 - A broad noqa or per-file ignore hides unrelated issues.
 
+## When not to apply
+Documentation-only changes with no Python source edits.
+
 ## Scope
 - file_patterns: **/*.py, pyproject.toml
 - tool_patterns: ruff, black
-
-## When not to apply
-Documentation-only changes with no Python source edits.

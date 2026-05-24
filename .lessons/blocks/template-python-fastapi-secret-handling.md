@@ -33,8 +33,8 @@ A change reads, stores, logs, tests, or passes credentials or sensitive tokens.
 - A token-like string appears in committed files or test output.
 - Errors reveal full credentials or connection strings.
 
-## Scope
-- file_patterns: **/*.py, **/.env*
-
 ## When not to apply
 Changes that do not touch configuration, auth, logging, or external clients.
+
+## Scope
+- file_patterns: **/*.py, **/.env*

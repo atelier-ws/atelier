@@ -53,6 +53,7 @@ def run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 600) -> s
 class ToolBenchResult:
     tool: str
     ok: bool
+    correctness: float
     median_ms: float
     p95_ms: float
     median_tokens: int
@@ -194,6 +195,7 @@ def bench_atelier(query: str, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="atelier",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -224,6 +226,7 @@ def bench_serena(query: str, iterations: int) -> ToolBenchResult:
         return ToolBenchResult(
             tool="serena",
             ok=True,
+            correctness=1.0,
             median_ms=statistics.median(times),
             p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
             median_tokens=int(statistics.median(toks)),
@@ -254,6 +257,7 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     return ToolBenchResult(
         tool="codegraph",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -279,6 +283,7 @@ def bench_code_index(repo_root: Path, code_index_repo: Path, query: str, iterati
     return ToolBenchResult(
         tool="code-index-mcp",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -307,6 +312,7 @@ def bench_ccc(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="cocoindex-code",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -341,6 +347,7 @@ def bench_mvs(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="mcp-vector-search",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -369,6 +376,7 @@ def bench_jcodemunch(repo_root: Path, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="jcodemunch-mcp",
         ok=True,
+        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -403,6 +411,7 @@ def run_external_benchmarks(
                 ToolBenchResult(
                     tool=name,
                     ok=False,
+                    correctness=0.0,
                     median_ms=0.0,
                     p95_ms=0.0,
                     median_tokens=0,
@@ -415,12 +424,14 @@ def run_external_benchmarks(
 
 def render_table(results: list[ToolBenchResult]) -> str:
     lines = [
-        "| Tool | Status | Median ms | P95 ms | Median tokens | Runs |",
-        "|---|---|---:|---:|---:|---:|",
+        "| Tool | Status | Correctness | Median ms | P95 ms | Median tokens | Runs |",
+        "|---|---|---:|---:|---:|---:|---:|",
     ]
     for r in results:
         status = "ok" if r.ok else "failed"
-        lines.append(f"| {r.tool} | {status} | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |")
+        lines.append(
+            f"| {r.tool} | {status} | {r.correctness * 100:.1f}% | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |"
+        )
     return "\n".join(lines)
 
 

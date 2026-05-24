@@ -31,8 +31,8 @@ A FastAPI endpoint accepts or returns structured data.
 - Response contains private database fields.
 - 422 behavior changes without an explicit test.
 
-## Scope
-- file_patterns: **/api/**/*.py, **/schemas.py
-
 ## When not to apply
 Pure internal helper changes that do not cross the API boundary.
+
+## Scope
+- file_patterns: **/api/**/*.py, **/schemas.py
