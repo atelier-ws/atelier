@@ -30,6 +30,8 @@ HOST_FALLBACKS = {
     "claude": "Claude-native file tools, Grep/Glob, shell `rg`, or `grep`",
     "codex": "native Codex file reads, shell `rg`, `grep`, or direct repository search",
     "opencode": "opencode-native file reads, repository search, shell `rg`, or `grep`",
+    "cursor": "Cursor or VS Code native file reads, workspace search, shell `rg`, or `grep`",
+    "hermes": "native Hermes file tools, shell `rg`, `grep`, or direct repository search",
 }
 
 HOST_DISPLAY = {
@@ -38,11 +40,14 @@ HOST_DISPLAY = {
     "claude": "Claude",
     "codex": "Codex",
     "opencode": "OpenCode",
+    "cursor": "Cursor",
+    "hermes": "Hermes",
 }
 
 SESSION_TEMPLATE = (
     "Atelier budget optimizer is active for {host}.\n"
     "Use Atelier MCP tools first for file I/O, search, edits, and shell work.\n"
+    "Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel work.\n"
     "Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.\n"
     "Before changing files, name the deliverable and summarize the smallest viable plan.\n"
     "Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.\n"
@@ -97,22 +102,55 @@ def validation_line(output_path: Path) -> str:
 
 def tool_substitution_table() -> str:
     """Inline substitution table — baked into every host file so agents can't miss it."""
-    return "\n".join([
-        "## Tool substitution — mandatory",
-        "",
-        "| Use this | Instead of | Why |",
-        "|---|---|---|",
-        "| `mcp__atelier__read` | `Read` / `Bash(cat ...)` | outline-first, 80-95% fewer tokens on large files |",
-        "| `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |",
-        "| `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |",
-        "| `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |",
-        "| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |",
-        "| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |",
-        "",
-        "**Bash is only for git commands and process management.** "
-        "Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` "
-        "— use the atelier equivalents above.",
-    ])
+    return "\n".join(
+        [
+            "## Tool substitution — mandatory",
+            "",
+            "| Use this | Instead of | Why |",
+            "|---|---|---|",
+            "| `mcp__atelier__read` | `Read` / `Bash(cat ...)` | outline-first, 80-95% fewer tokens on large files |",
+            "| `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |",
+            "| `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |",
+            "| `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |",
+            "| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |",
+            "| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |",
+            "",
+            "**Bash is only for git commands and process management.** "
+            "Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` "
+            "— use the atelier equivalents above.",
+        ]
+    )
+
+
+def mcp_priority_section() -> str:
+    """Always prefer Atelier MCP tools — positive framing, no comparisons."""
+    return "\n".join(
+        [
+            "## Always prefer Atelier MCP tools",
+            "",
+            "Always prefer Atelier MCP tools for file I/O, search, edits, shell commands, and",
+            "code intelligence. Native tools are fallback-only.",
+            "",
+            "| Atelier tool | Best for |",
+            "|---|---|",
+            "| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, callers/callees, impact, file tree, routes, context |",
+            "| `mcp__atelier__grep` | Regex and glob search across files |",
+            "| `mcp__atelier__read` | Reading files (outline mode for large files) |",
+            "| `mcp__atelier__edit` | Editing files (atomic multi-file with rollback) |",
+            "| `mcp__atelier__search` | Ranked semantic search |",
+            "| `mcp__atelier__shell` | Shell commands (ANSI-stripped, token-compact output) |",
+            "",
+            "**Decision rules:**",
+            "",
+            "1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.",
+            "2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.",
+            "3. **File reading** → `mcp__atelier__read` FIRST.",
+            "4. **Editing** → `mcp__atelier__edit` FIRST.",
+            "5. **Shell commands** → `mcp__atelier__shell` FIRST.",
+            "",
+            "**Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
+        ]
+    )
 
 
 def implement_line(output_path: Path) -> str:
@@ -146,6 +184,8 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "",
         tool_substitution_table(),
         "",
+        mcp_priority_section(),
+        "",
         "## Project-specific invariants",
         "",
         "- Verify source-of-truth files before coding instead of guessing shapes.",
@@ -178,6 +218,8 @@ def render_copilot_body(output_path: Path) -> str:
                 "3. **Record**: call `record` when the work is done.",
                 "",
                 tool_substitution_table(),
+                "",
+                mcp_priority_section(),
                 "",
                 "Treat this file as a thin entrypoint. The live source of truth is:",
                 "",
@@ -286,6 +328,8 @@ def render_claude_code_agent(output_path: Path) -> str:
                 "Use Claude-native tools only when Atelier returns `noop`, is hidden, or is unavailable.",
                 '3. **Record**: Call `record` at completion with `agent: "atelier:code"`.',
                 "",
+                mcp_priority_section(),
+                "",
                 budget_section(),
                 "",
                 fallback_section("claude"),
@@ -368,6 +412,8 @@ def render_claude_explore_agent(output_path: Path) -> str:
                 "1. **Context**: Call `context` with `task`, `files`, and `domain` to surface relevant ReasonBlocks.",
                 "2. **Search**: Prefer `mcp__atelier__search` and `mcp__atelier__read`; use Grep, Glob, or Read only as fallback.",
                 "3. **Report**: Return findings immediately. Do not wait for tools to become available.",
+                "",
+                mcp_priority_section(),
                 "",
                 "## Hard rules",
                 "",
@@ -500,13 +546,15 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         "",
         doc_links(output_path),
         "",
-                "## Operating loop",
-                "",
-                "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
-                implement_line(output_path),
-                "3. **Record**: Call `record` when the task is done.",
+        "## Operating loop",
+        "",
+        "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
+        implement_line(output_path),
+        "3. **Record**: Call `record` when the task is done.",
         "",
         tool_substitution_table(),
+        "",
+        mcp_priority_section(),
         "",
         budget_section(),
         "",
@@ -536,7 +584,7 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
 
 def sync_host_configs() -> dict[Path, str]:
     outputs: dict[Path, str] = {}
-    for host in ("claude", "codex", "copilot", "antigravity", "opencode"):
+    for host in ("claude", "codex", "copilot", "antigravity", "opencode", "cursor", "hermes"):
         path = ROOT / "src/atelier/gateway/hosts/configs" / f"{host}.yaml"
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         templates = data.get("prompt_templates", [])
@@ -603,6 +651,18 @@ def build_outputs() -> dict[Path, str]:
             ROOT / "integrations/opencode/agents/atelier.md",
             title="atelier:code",
             host="opencode",
+        ),
+        ROOT
+        / "integrations/cursor/AGENTS.atelier.md": render_host_surface(
+            ROOT / "integrations/cursor/AGENTS.atelier.md",
+            title="Atelier - Cursor Agent",
+            host="cursor",
+        ),
+        ROOT
+        / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
+            ROOT / "integrations/hermes/AGENTS.atelier.md",
+            title="Atelier - Hermes Agent",
+            host="hermes",
         ),
     }
     outputs.update(sync_host_configs())
