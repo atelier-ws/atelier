@@ -1598,24 +1598,22 @@ main() {
     local index_skipped=0
     if repo_root="$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null)"; then
         index_target="$repo_root"
-    elif [[ "$ATELIER_LOCAL" == "1" ]]; then
-        index_target="$ATELIER_INSTALL_DIR"
     fi
 
     step_start "Initializing"
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         echo "[dry-run] $atelier_cli init"
         if [[ -n "$index_target" ]]; then
-            info "Index target: $index_target"
+            info "Detected project repo: $index_target"
             echo "[dry-run] $atelier_cli code index --repo-root $index_target"
         else
-            info "Index target: not detected (no git repository in current directory)"
+            info "Detected project root: not found (no git repository in current directory)"
             echo "[dry-run] skip code index (run inside a git repo)"
         fi
     else
         spin "Initializing runtime store" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
-            info "Index target: $index_target"
+            info "Detected project root: $index_target"
             if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$index_target"; then
                 degrade "Initial code indexing failed; Atelier will continue and autosync will retry."
             fi
@@ -1693,6 +1691,13 @@ main() {
     step_done
 
     print_final_report
+    local completion_title_line="✓ Installation Complete!                              "
+    if [[ ${#ERRORS[@]} -gt 0 ]]; then
+        completion_title_line="✗ Installation Completed with Errors                  "
+    elif [[ ${#WARNINGS[@]} -gt 0 ]]; then
+        completion_title_line="⚠ Installation Completed with Warnings                "
+    fi
+
     if [[ ${#ERRORS[@]} -gt 0 ]]; then
         info "${C_BOLD}${C_RED}Completed with errors.${C_RESET}"
     elif [[ ${#WARNINGS[@]} -gt 0 ]]; then
@@ -1701,6 +1706,26 @@ main() {
         info "Installation complete."
     fi
     printf "%b└%b\n\n" "$C_FRAME" "$C_RESET"
+
+    printf "  %b┌─────────────────────────────────────────────────────────┐%b\n" "$C_PURPLE" "$C_RESET"
+    printf "  %b│  %s │%b\n" "$C_PURPLE" "$completion_title_line" "$C_RESET"
+    printf "  %b└─────────────────────────────────────────────────────────┘%b\n\n" "$C_PURPLE" "$C_RESET"
+    local code_display="$ATELIER_INSTALL_DIR"
+    code_display="${code_display/#$HOME/~}"
+    printf "%b📁 Your files:%b\n\n" "$C_PURPLE" "$C_RESET"
+    printf "   Atelier dir:   %s\n" "~/.atelier"
+    printf "   Code:          %s\n\n" "$code_display"    
+    printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
+    printf "%b🚀 Commands:%b\n\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b status              View active reasoning run\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b import              Import past agent sessions\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b memory recall       Search memory\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b code index          Index current repository\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b stack status        Check frontend/service status\n\n" "$C_PURPLE" "$C_RESET"
+    printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
+    if [[ ":$PATH:" != *":$ATELIER_BIN_DIR:"* ]]; then
+        printf "⚡ Reload your shell to use 'atelier' command.\n"
+    fi
 
     return "$FINAL_EXIT_CODE"
 }
