@@ -43,6 +43,7 @@ dependencies = [
     "ollama>=0.6.2",
     "diff-match-patch>=2.1",
     "tree-sitter-language-pack>=1.8.1",
+    "pexpect>=4.9.0",
 ]
 
 [project.optional-dependencies]

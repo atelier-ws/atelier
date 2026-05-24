@@ -837,8 +837,64 @@ def tool_get_context(
     if bootstrap["status"] != "warm":
         _spawn_worker_if_idle(_atelier_root())
     result["bootstrap"] = bootstrap
-    return result
 
+    # Wire PrefixCachePlanner: compute static/dynamic split for this turn
+    try:
+        from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlanner
+        from atelier.core.capabilities.prompt_compilation.models import (
+            BlockKind,
+            PromptBlock,
+            Stability,
+        )
+
+        context_text = result.get("context", "")
+        bootstrap_text = result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
+        _recall_count = len(result.get("recalled_passages", []))
+
+        # Build synthetic PromptBlocks from the assembled context pieces
+        blocks: list[PromptBlock] = []
+        if context_text:
+            blocks.append(
+                PromptBlock(
+                    id="context",
+                    kind=BlockKind.REASONBLOCK,
+                    stability=Stability.BRANCH,
+                    content=context_text,
+                )
+            )
+        if bootstrap_text:
+            blocks.append(
+                PromptBlock(
+                    id="bootstrap",
+                    kind=BlockKind.REPO_SUMMARY,
+                    stability=Stability.SESSION,
+                    content=bootstrap_text,
+                )
+            )
+        if task:
+            blocks.append(
+                PromptBlock(
+                    id="task",
+                    kind=BlockKind.USER_TASK,
+                    stability=Stability.TURN,
+                    content=task,
+                )
+            )
+
+        if blocks:
+            # Compare with prior hash from last llm_call event in ledger
+            prior_hash = ""
+            call_events = [e for e in led.events if e.payload.get("kind") == "llm_call"]
+            if call_events:
+                prior_hash = call_events[-1].payload.get("stable_prefix_hash", "")
+
+            planner = PrefixCachePlanner()
+            plan = planner.plan_with_history(blocks, prior_hash or None)
+            result["prefix_plan"] = plan.to_dict()
+    except Exception:
+        pass  # Never break tool_context due to prefix planning errors
+
+    return result
 
 
 _TASK_TYPE_TO_ADVISOR_TOOL: dict[str, str] = {
@@ -868,6 +924,59 @@ def _get_available_models() -> list[dict[str, Any]]:
         for c in _DEFAULT_CANDIDATES
         if c.vendor in configured
     ]
+
+
+def _compute_route_tier_for_response(tier: str, led: Any) -> str:
+    """Map raw tier string to semantic RouteTier string for the route response."""
+    from atelier.core.capabilities.model_routing.router import _detect_local_slm
+
+    escalating = any(
+        e.payload.get("escalate") for e in led.events if e.kind == "watchdog_alert"
+    )
+    if escalating:
+        return "human_review"
+    if tier == "expensive":
+        return "frontier_llm"
+    if tier == "cheap" and _detect_local_slm():
+        return "local_slm"
+    return "cheap_llm"
+
+
+def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
+    """Extract prefix cache metrics from recorded llm_call events in the ledger."""
+    call_events = [e for e in led.events if e.payload.get("kind") == "llm_call"]
+    if not call_events:
+        return {
+            "turn_count": 0,
+            "cache_hit_ratio": 0.0,
+            "cache_read_tokens_saved": 0,
+            "avg_prefix_tokens": 0,
+            "avg_dynamic_tokens": 0,
+            "current_prefix_hash": "",
+            "prefix_invalidated_reason": "",
+        }
+
+    cache_read_totals = [int(e.payload.get("cache_read_tokens", 0)) for e in call_events]
+    input_totals = [int(e.payload.get("input_tokens", 0)) for e in call_events]
+    prefix_hashes = [e.payload.get("stable_prefix_hash", "") for e in call_events]
+
+    # A turn is a cache "hit" when cache_read_tokens > 0
+    eligible = call_events[1:]
+    hits = sum(1 for e in eligible if int(e.payload.get("cache_read_tokens", 0)) > 0)
+    hit_ratio = round(hits / len(eligible), 4) if eligible else 0.0
+    cache_read_saved = sum(cache_read_totals)
+    avg_input = int(sum(input_totals) / len(input_totals)) if input_totals else 0
+
+    last = call_events[-1]
+    return {
+        "turn_count": len(call_events),
+        "cache_hit_ratio": hit_ratio,
+        "cache_read_tokens_saved": cache_read_saved,
+        "avg_prefix_tokens": avg_input,
+        "avg_dynamic_tokens": 0,
+        "current_prefix_hash": prefix_hashes[-1] if prefix_hashes else "",
+        "prefix_invalidated_reason": last.payload.get("prefix_invalidated_reason", ""),
+    }
 
 
 def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str, Any]:
@@ -936,7 +1045,6 @@ def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str,
     return {"sampling_supported": True, "error": "stdin closed before sampling response", "model_used": None}
 
 
-
 def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
     """Run a real agentic task via claude/codex CLI subprocess.
 
@@ -991,173 +1099,109 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
     input_schema={
         "type": "object",
         "properties": {
-            "op": {
-                "type": "string",
-                "enum": ["decide", "spawn"],
-                "description": (
-                    "decide: pick the best model for an upcoming task — returns model ID, tier, "
-                    "available models, and whether the host can spawn. "
-                    "spawn: delegate a task to a cheaper model subagent. Returns spawn_directive with "
-                    "exact native tool parameters. If handled=true the MCP server already ran it; "
-                    "if handled=false YOU must call your native Agent/task tool with spawn_directive immediately."
-                ),
-            },
             "task": {
                 "type": "string",
-                "description": "(decide) describe what you are about to do so the router can pick the right model.",
+                "description": "Describe what you are about to do so the router can pick the right model.",
             },
             "task_type": {
                 "type": "string",
                 "enum": ["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"],
                 "default": "feature",
-                "description": "(decide) task category — used to calibrate expected model complexity.",
+                "description": "Task category — used to calibrate expected model complexity.",
             },
             "budget": {
                 "type": "string",
                 "enum": ["cheap", "balanced", "best"],
                 "default": "balanced",
-                "description": "(decide) cost preference: cheap=lowest cost, balanced=smart default, best=highest quality.",
-            },
-            "prompt": {
-                "type": "string",
-                "description": "(spawn) full task prompt to run on the chosen model.",
-            },
-            "model": {
-                "type": "string",
-                "description": "(spawn) model ID to use (e.g. 'claude-haiku-4-5', from a prior decide call).",
+                "description": "Cost preference: cheap=lowest cost, balanced=smart default, best=highest quality.",
             },
         },
-        "required": ["op"],
+        "required": [],
     },
 )
 def tool_route(
-    op: Literal["decide", "spawn"] = "decide",
-    # --- decide params ---
     task: str = "",
     task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
     budget: Literal["cheap", "balanced", "best"] = "balanced",
-    # --- spawn params ---
-    prompt: str = "",
-    model: str = "",
 ) -> dict[str, Any]:
-    """Route op-dispatch: op=decide picks a model; op=spawn runs a task on that model."""
+    """Pick the best model for an upcoming task."""
     led = _get_ledger()
 
-    # --- op=decide: pick the best model for an upcoming task ---
-    if op == "decide":
-        led.record_tool_call("route", {"op": op, "task_type": task_type, "budget": budget})
-        available = _get_available_models()
-        host_model = os.environ.get("ATELIER_MODEL", "")
-        can_spawn = bool(shutil.which("claude") or shutil.which("codex")) or _client_sampling_supported
+    led.record_tool_call("route", {"task_type": task_type, "budget": budget})
+    available = _get_available_models()
+    host_model = os.environ.get("ATELIER_MODEL", "")
+    can_spawn = bool(shutil.which("claude") or shutil.which("codex")) or _client_sampling_supported
 
-        # Try cross-vendor advisor for a cost-and-quality-aware recommendation
-        chosen_model = ""
-        tier = ""
-        rationale = ""
-        try:
-            from atelier.core.capabilities.cross_vendor_routing.advisor import (
-                CrossVendorRouteAdvisor,
-            )
-
-            advisor = CrossVendorRouteAdvisor(_atelier_root())
-            advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
-            rec = advisor.recommend(
-                tool_name=advisor_tool,
-                task_text=task,
-                session_state=_model_recommendation_state(led, {}),
-            )
-            chosen_model = rec.get("model", "")
-            tier = rec.get("tier", "")
-            rationale = rec.get("reason", "")
-        except Exception:
-            pass
-
-        # Apply budget override on top of advisor recommendation
-        if budget == "cheap" and available:
-            cheap_models = [m for m in available if m["tier"] == "cheap"]
-            if cheap_models:
-                chosen_model = cheap_models[0]["model_id"]
-                tier = "cheap"
-                rationale = "cheapest available model selected per budget=cheap"
-        elif budget == "best" and available:
-            expensive_models = sorted(
-                available,
-                key=lambda m: _TIER_PRIORITY.get(m["tier"], 0),
-                reverse=True,
-            )
-            if expensive_models:
-                chosen_model = expensive_models[0]["model_id"]
-                tier = expensive_models[0]["tier"]
-                rationale = "highest-capability available model selected per budget=best"
-
-        # Final fallback: pick cheapest available model
-        if not chosen_model and available:
-            chosen_model = available[0]["model_id"]
-            tier = available[0]["tier"]
-            rationale = "fallback: cheapest configured model"
-
-        return {
-            "model": chosen_model,
-            "tier": tier,
-            "rationale": rationale,
-            "available_models": available,
-            "host_model": host_model,
-            "can_spawn": can_spawn,
-            "_summary": {
-                "recommended": chosen_model,
-                "recommended_route": tier or chosen_model or "local edit",
-                "budget": budget,
-                "required_validation": [],
-                "risk": "unknown",
-                "can_spawn": can_spawn,
-            },
-        }
-
-    # --- op=spawn: delegate a task to a cheaper model subagent ---
-    if op == "spawn":
-        led.record_tool_call("route", {"op": op, "model": model})
-        effective_model = model or "claude-haiku-4-5"
-
-        # Prepend Atelier context bootstrap so the subagent self-initialises
-        bootstrapped_prompt = (
-            f'Start by calling `mcp__atelier__context` with task="{prompt[:120]}" '
-            f"to load relevant Atelier context, then proceed.\n\n{prompt}"
+    # Try cross-vendor advisor for a cost-and-quality-aware recommendation
+    chosen_model = ""
+    tier = ""
+    rationale = ""
+    try:
+        from atelier.core.capabilities.cross_vendor_routing.advisor import (
+            CrossVendorRouteAdvisor,
         )
 
-        # spawn_directive: canonical parameters for the host's native spawn tool.
-        # Claude Code → Agent(agent_type=..., model=..., prompt=...)
-        # Copilot CLI  → task(agent_type=..., model=..., prompt=...)
-        # Codex        → Task(prompt=..., model=...)
-        spawn_directive = {
-            "agent_type": "general-purpose",
-            "model": effective_model,
-            "prompt": bootstrapped_prompt,
-            "run_in_background": False,
-        }
+        advisor = CrossVendorRouteAdvisor(_atelier_root())
+        advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
+        rec = advisor.recommend(
+            tool_name=advisor_tool,
+            task_text=task,
+            session_state=_model_recommendation_state(led, {}),
+        )
+        chosen_model = rec.get("model", "")
+        tier = rec.get("tier", "")
+        rationale = rec.get("reason", "")
+    except Exception:
+        pass
 
-        # Fast-path: if a compatible CLI is available let the MCP server run it
-        # directly (useful in CI / non-interactive pipelines).
-        cli_result = _spawn_subprocess(prompt=prompt, model=effective_model)
-        if cli_result is not None and "error" not in cli_result:
-            cli_result["handled"] = True
-            cli_result["spawn_directive"] = spawn_directive
-            return cli_result
+    # Apply budget override on top of advisor recommendation
+    if budget == "cheap" and available:
+        cheap_models = [m for m in available if m["tier"] == "cheap"]
+        if cheap_models:
+            chosen_model = cheap_models[0]["model_id"]
+            tier = "cheap"
+            rationale = "cheapest available model selected per budget=cheap"
+    elif budget == "best" and available:
+        expensive_models = sorted(
+            available,
+            key=lambda m: _TIER_PRIORITY.get(m["tier"], 0),
+            reverse=True,
+        )
+        if expensive_models:
+            chosen_model = expensive_models[0]["model_id"]
+            tier = expensive_models[0]["tier"]
+            rationale = "highest-capability available model selected per budget=best"
 
-        # Primary path: return spawn_directive for the host agent to execute natively.
-        # The calling agent MUST call its native Agent/Task/task tool with these params.
-        return {
-            "handled": False,
-            "spawn_directive": spawn_directive,
-            "model": effective_model,
-            "message": (
-                "SPAWN_REQUIRED: call your native spawn tool immediately with spawn_directive. "
-                "Claude Code → Agent(agent_type=..., model=..., prompt=...). "
-                "Copilot CLI → task(agent_type=..., prompt=...). "
-                "Do NOT inline the work — delegate it to a cheaper subagent."
-            ),
-        }
+    # Final fallback: pick cheapest available model
+    if not chosen_model and available:
+        chosen_model = available[0]["model_id"]
+        tier = available[0]["tier"]
+        rationale = "fallback: cheapest configured model"
 
-    raise ValueError(f"unknown op: {op!r}; supported ops: decide, spawn")
+    # Emit route_tier using the semantic 5-tier model
+    route_tier = _compute_route_tier_for_response(tier, led)
+
+    # Prefix cache diagnostics from session ledger
+    prefix_cache = _prefix_cache_diagnostics_from_ledger(led)
+
+    return {
+        "model": chosen_model,
+        "tier": tier,
+        "route_tier": route_tier,
+        "rationale": rationale,
+        "available_models": available,
+        "host_model": host_model,
+        "can_spawn": can_spawn,
+        "prefix_cache": prefix_cache,
+        "_summary": {
+            "recommended": chosen_model,
+            "recommended_route": route_tier or tier or chosen_model or "local edit",
+            "budget": budget,
+            "required_validation": [],
+            "risk": "unknown",
+            "can_spawn": can_spawn,
+        },
+    }
 
 
 @mcp_tool(name="rescue")
@@ -1711,88 +1755,283 @@ def _memory_recall(
     }
 
 
+def _memory_store_fact(
+    *,
+    agent_id: str | None,
+    subject: str,
+    fact: str,
+    citations: str,
+    reason: str,
+    scope: str,
+) -> dict[str, Any]:
+    """Store a durable fact with Copilot-memory-like fields in Atelier memory."""
+    clean_subject = _redact_memory_input(subject, "subject").strip()
+    clean_fact = _redact_memory_input(fact, "fact").strip()
+    clean_citations = _redact_memory_input(citations, "citations").strip()
+    clean_reason = _redact_memory_input(reason, "reason").strip()
+    clean_scope = scope.strip().lower()
+    if clean_scope not in {"repository", "user"}:
+        raise ValueError("scope must be one of: repository, user")
+    if not clean_subject:
+        raise ValueError("subject is required for memory op=store_fact")
+    if not clean_fact:
+        raise ValueError("fact is required for memory op=store_fact")
+    if not clean_citations:
+        raise ValueError("citations is required for memory op=store_fact")
+    if not clean_reason:
+        raise ValueError("reason is required for memory op=store_fact")
+
+    target_agent = agent_id or "shared"
+    store = _memory_store()
+    existing_blocks = store.list_blocks(target_agent, include_tombstoned=False, limit=500)
+    existing: MemoryBlock | None = None
+    for block in existing_blocks:
+        block_metadata = block.metadata or {}
+        if (
+            block_metadata.get("kind") == "memory_fact"
+            and str(block_metadata.get("fact", "")) == clean_fact
+            and str(block_metadata.get("scope", "")) == clean_scope
+        ):
+            existing = block
+            break
+
+    if existing is None:
+        subject_slug = re.sub(r"[^a-z0-9]+", "-", clean_subject.lower()).strip("-") or "memory"
+        digest = sha256(f"{clean_scope}:{clean_subject}:{clean_fact}".encode()).hexdigest()[:12]
+        label = f"memory-fact/{clean_scope}/{subject_slug}/{digest}"
+        fact_metadata: dict[str, Any] = {
+            "kind": "memory_fact",
+            "subject": clean_subject,
+            "fact": clean_fact,
+            "citations": clean_citations,
+            "reason": clean_reason,
+            "scope": clean_scope,
+            "votes": {"upvote": 0, "downvote": 0},
+            "vote_history": [],
+        }
+        upsert = _memory_upsert_block(
+            agent_id=target_agent,
+            label=label,
+            value=clean_fact,
+            metadata=fact_metadata,
+            pinned=True,
+        )
+        return {
+            "id": upsert["id"],
+            "label": label,
+            "agent_id": target_agent,
+            "subject": clean_subject,
+            "fact": clean_fact,
+            "scope": clean_scope,
+            "citations": clean_citations,
+            "reason": clean_reason,
+            "votes": {"upvote": 0, "downvote": 0},
+        }
+
+    metadata = dict(existing.metadata or {})
+    votes = dict(metadata.get("votes") or {})
+    metadata.update(
+        {
+            "kind": "memory_fact",
+            "subject": clean_subject,
+            "fact": clean_fact,
+            "citations": clean_citations,
+            "reason": clean_reason,
+            "scope": clean_scope,
+            "votes": {
+                "upvote": int(votes.get("upvote", 0) or 0),
+                "downvote": int(votes.get("downvote", 0) or 0),
+            },
+            "vote_history": list(metadata.get("vote_history") or []),
+        }
+    )
+    updated = _memory_upsert_block(
+        agent_id=existing.agent_id,
+        label=existing.label,
+        value=clean_fact,
+        metadata=metadata,
+        expected_version=existing.version,
+        pinned=True,
+    )
+    return {
+        "id": updated["id"],
+        "label": existing.label,
+        "agent_id": existing.agent_id,
+        "subject": clean_subject,
+        "fact": clean_fact,
+        "scope": clean_scope,
+        "citations": clean_citations,
+        "reason": clean_reason,
+        "votes": metadata["votes"],
+    }
+
+
+def _memory_vote_fact(
+    *,
+    agent_id: str | None,
+    fact: str,
+    direction: str,
+    reason: str,
+    scope: str | None,
+) -> dict[str, Any]:
+    """Vote on an existing stored fact by exact fact text."""
+    clean_fact = _redact_memory_input(fact, "fact").strip()
+    clean_reason = _redact_memory_input(reason, "reason").strip()
+    clean_direction = direction.strip().lower()
+    clean_scope = (scope or "").strip().lower()
+    if clean_direction not in {"upvote", "downvote"}:
+        raise ValueError("direction must be one of: upvote, downvote")
+    if not clean_fact:
+        raise ValueError("fact is required for memory op=vote_fact")
+    if not clean_reason:
+        raise ValueError("reason is required for memory op=vote_fact")
+    if clean_scope and clean_scope not in {"repository", "user"}:
+        raise ValueError("scope must be one of: repository, user")
+
+    target_agent = agent_id or "shared"
+    store = _memory_store()
+    blocks = store.list_blocks(target_agent, include_tombstoned=False, limit=500)
+    match: MemoryBlock | None = None
+    for block in blocks:
+        metadata = block.metadata or {}
+        if metadata.get("kind") != "memory_fact":
+            continue
+        if str(metadata.get("fact", "")) != clean_fact:
+            continue
+        if clean_scope and str(metadata.get("scope", "")) != clean_scope:
+            continue
+        match = block
+        break
+
+    if match is None:
+        raise ValueError("no matching stored fact found for vote_fact")
+
+    metadata = dict(match.metadata or {})
+    votes = dict(metadata.get("votes") or {})
+    up = int(votes.get("upvote", 0) or 0)
+    down = int(votes.get("downvote", 0) or 0)
+    if clean_direction == "upvote":
+        up += 1
+    else:
+        down += 1
+    history = list(metadata.get("vote_history") or [])
+    history.append(
+        {
+            "direction": clean_direction,
+            "reason": clean_reason,
+            "at": datetime.now(UTC).isoformat(),
+        }
+    )
+    metadata["votes"] = {"upvote": up, "downvote": down}
+    metadata["vote_history"] = history[-20:]
+    metadata["last_vote"] = {
+        "direction": clean_direction,
+        "reason": clean_reason,
+        "at": datetime.now(UTC).isoformat(),
+    }
+
+    updated = _memory_upsert_block(
+        agent_id=match.agent_id,
+        label=match.label,
+        value=match.value,
+        metadata=metadata,
+        expected_version=match.version,
+    )
+    return {
+        "id": updated["id"],
+        "label": match.label,
+        "agent_id": match.agent_id,
+        "fact": clean_fact,
+        "scope": metadata.get("scope", ""),
+        "direction": clean_direction,
+        "reason": clean_reason,
+        "votes": metadata["votes"],
+    }
+
+
 @mcp_tool(
     name="memory",
-    description=(
-        "Memory op-dispatch for block storage and retrieval: "
-        "block_upsert/block_get for scoped blocks, archive/recall for passages, "
-        "recall_symbol/transcript_recall for targeted recall, summarize for session memory."
-    ),
+    description=("Memory op-dispatch for fact storage/voting and recall."),
 )
 def tool_memory(
     op: Annotated[
         Literal[
-            "block_upsert",
-            "block_get",
-            "archive",
             "recall",
-            "recall_symbol",
-            "transcript_recall",
-            "summarize",
+            "store_fact",
+            "vote_fact",
         ],
         Field(
             description=(
-                "Operation to execute. block_upsert requires label+value; block_get requires label; "
-                "archive requires text+source; recall/recall_symbol/transcript_recall require query; "
-                "summarize requires session_id."
+                "Operation to execute. recall requires query; "
+                "store_fact requires subject+fact+citations+reason+scope; "
+                "vote_fact requires fact+direction+reason."
             )
         ),
     ],
     agent_id: Annotated[
         str | None,
-        Field(description="Memory namespace for scoped blocks and archival passages. Defaults to shared namespace when not specified."),
+        Field(
+            description="Memory namespace for scoped blocks and archival passages. Defaults to shared namespace when not specified."
+        ),
     ] = None,
-    label: Annotated[str | None, Field(description="Block key used by block_upsert and block_get.")] = None,
-    value: Annotated[str | None, Field(description="Block content used by block_upsert.")] = None,
-    text: Annotated[str | None, Field(description="Archival passage text used by archive.")] = None,
-    source: Annotated[str | None, Field(description="Origin label for archive, identifying who created this memory (for example: user, assistant, system).")] = None,
-    query: Annotated[str | None, Field(description="Search query used by recall, recall_symbol, and transcript_recall.")] = None,
-    top_k: Annotated[int, Field(description="Max results to return for recall and recall_symbol ops.")] = 5,
-    session_id: Annotated[str | None, Field(description="Session id used by summarize.")] = None,
-    metadata: Annotated[dict[str, Any] | None, Field(description="Optional metadata dict attached to block_upsert.")] = None,
+    query: Annotated[str | None, Field(description="Search query used by recall.")] = None,
+    top_k: Annotated[int, Field(description="Max results to return for recall.")] = 5,
+    subject: Annotated[
+        str | None,
+        Field(description="Fact subject for store_fact (for example: testing, workflow preference)."),
+    ] = None,
+    fact: Annotated[
+        str | None,
+        Field(description="Exact fact text for store_fact and vote_fact."),
+    ] = None,
+    citations: Annotated[
+        str | None,
+        Field(description="Source citations for store_fact."),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        Field(description="Detailed rationale for store_fact and vote_fact."),
+    ] = None,
+    scope: Annotated[
+        str | None,
+        Field(description="Scope for store_fact/vote_fact: repository or user."),
+    ] = None,
+    direction: Annotated[
+        str | None,
+        Field(description="Vote direction for vote_fact: upvote or downvote."),
+    ] = None,
 ) -> dict[str, Any] | None:
-    """Memory op-dispatch: block_upsert, block_get, archive, recall, recall_symbol, transcript_recall, or summarize."""
+    """Memory op-dispatch: recall, store_fact, or vote_fact."""
 
     def require(name: str, current: str | None) -> str:
         if not current:
             raise ValueError(f"{name} is required for memory op={op}")
         return current
 
-    if op == "block_upsert":
-        return _memory_upsert_block(
-            agent_id=agent_id or "shared",
-            label=require("label", label),
-            value=require("value", value),
-            metadata=metadata,
-        )
-    if op == "block_get":
-        return _memory_get_block(agent_id=agent_id, label=require("label", label))
-    if op == "archive":
-        return _memory_archive(
-            agent_id=agent_id,
-            text=require("text", text),
-            source=require("source", source),
-        )
     if op == "recall":
         return _memory_recall(
             agent_id=agent_id,
             query=require("query", query),
             top_k=top_k,
         )
-    if op == "recall_symbol":
-        return cast(
-            dict[str, Any],
-            _symbol_recall().recall_symbol(
-                query=require("query", query),
-                agent_id=agent_id,
-                top_k=top_k,
-            ),
+    if op == "store_fact":
+        return _memory_store_fact(
+            agent_id=agent_id,
+            subject=require("subject", subject),
+            fact=require("fact", fact),
+            citations=require("citations", citations),
+            reason=require("reason", reason),
+            scope=require("scope", scope),
         )
-    if op == "transcript_recall":
-        from atelier.core.capabilities.local_recall import recall_transcripts
-
-        return recall_transcripts(query=require("query", query), top_k=top_k)
-    return _memory_summary(require("session_id", session_id))
+    if op == "vote_fact":
+        return _memory_vote_fact(
+            agent_id=agent_id,
+            fact=require("fact", fact),
+            direction=require("direction", direction),
+            reason=require("reason", reason),
+            scope=scope,
+        )
+    raise ValueError(f"unsupported memory op: {op}")
 
 
 @mcp_tool(name="read")
@@ -1810,6 +2049,10 @@ def tool_smart_read(
     range: str | None = None,
     expand: bool = False,
     max_lines: int | None = None,
+    include_meta: Annotated[
+        bool,
+        Field(description="Include tool metadata fields (cache and token counters)."),
+    ] = False,
 ) -> dict[str, Any]:
     """Read a file with automatic outline mode for large files.
 
@@ -1821,7 +2064,7 @@ def tool_smart_read(
         java, ruby, c, c++, c#, kotlin, php, swift, scala, bash.
         Generic structural skeleton (column-0 declarations + signature lines)
         as a fallback for any other text-like language.
-      - range mode (when range="42-118" or range="L42-L118"): exact line slice,
+      - range mode (when range="42-118", range="L42-L118", or open-ended like "L42-"): exact line slice,
         cheaper than reading the whole file when you already know the range.
       - full mode: identical to native Read (for tiny files or expand=True).
 
@@ -1831,8 +2074,6 @@ def tool_smart_read(
 
     Returns: {
       mode: "outline" | "range" | "full",
-      cache_hit: bool,                   # served from in-memory cache (SHA-256 keyed)
-      tokens_saved: int,                 # tiktoken count vs reading the full file
       language: str,                     # detected language (python, go, typescript, ...)
       outline: {kind, language, ...},    # only when mode == "outline"
       content: str,                      # only when mode in {range, full}
@@ -1844,21 +2085,28 @@ def tool_smart_read(
     if not target_path:
         raise ValueError("provide file_path")
     if max_lines is not None and range is None and not expand:
-        return cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
+        payload = cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
+        if include_meta:
+            return payload
+        payload.pop("cache_hit", None)
+        payload.pop("tokens_saved", None)
+        return payload
 
     cap = SemanticFileMemoryCapability(_atelier_root())
     target = _workspace_path(target_path)
     payload = cap.smart_read(target, range_spec=range, expand=expand)
-    return {
+    response: dict[str, Any] = {
         "mode": payload["mode"],
-        "cache_hit": bool(payload.get("cache_hit", False)),
-        "tokens_saved": int(payload.get("tokens_saved", 0)),
         "outline": payload.get("outline"),
         "content": payload.get("content"),
         "path": payload.get("path", str(target)),
         "range": payload.get("range"),
         "language": payload.get("language"),
     }
+    if include_meta:
+        response["cache_hit"] = bool(payload.get("cache_hit", False))
+        response["tokens_saved"] = int(payload.get("tokens_saved", 0))
+    return response
 
 
 def _snapshot_path(raw_path: str) -> str:
@@ -1882,9 +2130,7 @@ def _resolve_snapshot_path(raw_path: str, repo_root: Path) -> tuple[str, Path]:
     return display, resolved
 
 
-def _collect_touched_paths(
-    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None
-) -> dict[str, Path]:
+def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path | None = None) -> dict[str, Path]:
     """Extract workspace-resolved file paths referenced in edit descriptors."""
     root = Path(repo_root or Path.cwd()).resolve()
     paths: dict[str, Path] = {}
@@ -2011,7 +2257,10 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "type": "object",
                         "required": ["file_path", "new_string"],
                         "properties": {
-                            "file_path": {"type": "string", "description": "Path, optionally suffixed with #line, #start-end, or #cell=N."},
+                            "file_path": {
+                                "type": "string",
+                                "description": "Path, optionally suffixed with #line, #start-end, or #cell=N.",
+                            },
                             "old_string": {"type": "string"},
                             "new_string": {"type": "string"},
                             "overwrite": {"type": "boolean"},
@@ -2024,7 +2273,9 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "required": ["file_path", "cell_action"],
                         "properties": {
                             "file_path": {"type": "string"},
-                            "cell_action": {"enum": ["insert_after", "insert_before", "delete", "move_after", "move_before"]},
+                            "cell_action": {
+                                "enum": ["insert_after", "insert_before", "delete", "move_after", "move_before"]
+                            },
                             "cell_type": {"enum": ["code", "markdown"]},
                             "cell_move_target": {"type": "integer"},
                             "new_string": {"type": "string"},
@@ -2156,12 +2407,8 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["connect", "tables", "table", "lint", "query"],
-            "description": "connect: discover DB and show schema overview. tables: list all tables. table: inspect one table (needs name). lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
-        },
-        "name": {
-            "type": "string",
-            "description": "Table name for action=table.",
+            "enum": ["connect", "lint", "query"],
+            "description": "connect: discover DB and show schema overview. lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
         },
         "sql": {
             "type": "string",
@@ -2216,12 +2463,10 @@ def tool_sql(
     auto_limit: bool = True,
     allow_writes: bool = True,
 ) -> dict[str, Any]:
-    """SQL op-dispatch for connect, schema, table, lint, and bounded query batching.
+    """SQL op-dispatch for connect, lint, and bounded query batching.
 
     Actions:
       connect  — discover database and show schema overview
-      tables   — list all tables
-      table    — inspect columns and foreign keys for one table (needs name)
       lint     — validate SQL syntax without executing (needs sql)
       query    — execute SQL (needs sql or queries[{name,sql},...])
 
@@ -2230,6 +2475,8 @@ def tool_sql(
     """
     from atelier.core.capabilities.tool_supervision.sql_tool import sql_tool
 
+    if action not in {"connect", "lint", "query"}:
+        return {"isError": True, "message": "unsupported action: use connect, lint, or query"}
     if action == "query" and not sql and not queries:
         return {"isError": True, "message": "action='query' requires sql or queries parameter"}
 
@@ -2563,6 +2810,113 @@ def _workspace_code_router(repo_root: str = ".") -> Any:
     )
 
 
+# Fields that are purely internal Atelier bookkeeping — never useful to an LLM.
+# Keep: provenance (data quality/source), repo_name (multi-repo), origin (external vs internal scope).
+_CODE_OP_TOP_STRIP: frozenset[str] = frozenset(
+    {
+        "symbol_id",
+        "cache_hit",
+        "rendered_format",
+        "repo_id",
+        "total_tokens",
+        "tokens_saved",
+        "provenance_breakdown",
+    }
+)
+
+# Fields to strip from nested item dicts (search results, callers/related lists, etc.).
+# Keep: provenance (data quality), origin (external/internal scope), repo_name (multi-repo workspace).
+_CODE_OP_ITEM_STRIP: frozenset[str] = frozenset(
+    {
+        "symbol_id",
+        "start_byte",
+        "end_byte",
+        "content_hash",
+        "repo_id",
+        "score",
+    }
+)
+
+# Extra top-level keys to drop per-op (in addition to _CODE_OP_TOP_STRIP).
+_CODE_OP_EXTRA_STRIP: dict[str, frozenset[str]] = {
+    # edges contain only SCIP hash IDs — no names or paths; `related` has the useful data
+    "callers": frozenset({"edges"}),
+    "callees": frozenset({"edges"}),
+    # symbol op: byte offsets and hashes are useless to LLMs
+    "symbol": frozenset({"start_byte", "end_byte", "content_hash", "score"}),
+    # search: `snippet` at top level is just the mode string ("none"/"head"/"full"), not actual code
+    "search": frozenset({"snippet"}),
+    # context: `symbols` duplicates entry_points with heavy metadata; telemetry/import_neighbors are internal
+    "context": frozenset({"telemetry", "import_neighbors", "symbols"}),
+    # status: db_path exposes internal filesystem paths
+    "status": frozenset({"db_path"}),
+}
+
+# List-valued fields whose items should be stripped of internal keys.
+_CODE_OP_ITEM_LIST_FIELDS: tuple[str, ...] = (
+    "items",
+    "related",
+    "related_symbols",
+    "entry_points",
+    "references",
+    "symbols",
+)
+
+
+def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove internal/telemetry fields that waste LLM context."""
+    drop = _CODE_OP_TOP_STRIP | _CODE_OP_EXTRA_STRIP.get(op, frozenset())
+    result: dict[str, Any] = {k: v for k, v in payload.items() if k not in drop}
+
+    # Strip internal keys from the target object
+    if isinstance(result.get("target"), dict):
+        result["target"] = {k: v for k, v in result["target"].items() if k not in _CODE_OP_ITEM_STRIP}
+
+    # Strip internal keys from list fields
+    for field in _CODE_OP_ITEM_LIST_FIELDS:
+        lst = result.get(field)
+        if isinstance(lst, list):
+            result[field] = [
+                {k: v for k, v in item.items() if k not in _CODE_OP_ITEM_STRIP} if isinstance(item, dict) else item
+                for item in lst
+            ]
+
+    return result
+
+
+def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_compact: bool) -> dict[str, Any]:
+    # Render first so the markdown uses all original fields (e.g. repo_id for cache_status heading).
+    if render_compact:
+        from atelier.core.capabilities.code_context.renderer import render_code_payload
+
+        rendered = render_code_payload(op, payload)
+    else:
+        rendered = None
+
+    # Strip internal fields after rendering — LLMs get clean JSON without duplicating
+    # internal bookkeeping that only Atelier needs.
+    result = _strip_code_op_response(op, payload)
+
+    if rendered:
+        result["rendered"] = rendered
+
+    return result
+
+
+_CODE_CORE_SURFACE_OPS = {
+    "context",
+    "search",
+    "node",
+    "symbol",
+    "explore",
+    "files",
+    "callers",
+    "callees",
+    "impact",
+    "status",
+}
+
+
 CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["op"],
@@ -2576,54 +2930,43 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "Use `grep` only for free-form regex on non-symbol text. "
                 "Use `search` only when you have a natural-language description and no symbol name. "
                 "\n\n**Recommended workflow (funnel strategy):**\n"
-                "1. `search` or `outline` → discover symbol names/IDs\n"
-                "2. `symbol` or `hover` → inspect a specific hit\n"
-                "3. `usages`/`callers`/`callees` → understand relationships\n"
-                "4. `pattern`/`rename` → structural changes\n"
+                "1. `search` or `files` → discover symbol names/locations\n"
+                "2. `node` → inspect a specific symbol\n"
+                "3. `callers`/`callees`/`impact` → understand relationships\n"
+                "4. `context`/`explore` → task-level synthesis\n"
                 "Read file content (via `read`) only as a last step — most tasks complete without it."
                 "\n\nOp reference:"
                 "\n• `search` — Find symbols by name or natural-language description. "
                 "Indexed, up to 100x faster than grep. mode='semantic' for intent-based ('parse JSON config'), "
                 "'lexical' for exact identifier match. Requires: query."
-                "\n• `symbol` — Full definition for one symbol: signature, docstring, source, file+line, "
-                "cross-language references. Use after search to inspect a hit. "
+                "\n• `node` — Full definition for one symbol (symbol-level inspect). "
                 "Requires one of: symbol_name, qualified_name, symbol_id, path+line."
-                "\n• `hover` — Minimal type+signature at a file position. Like IDE hover. "
-                "Token-optimal when you already have path+line. Requires: path + line OR symbol name."
-                "\n• `outline` — All symbols in a file (functions, classes, methods with line ranges). "
-                "Replaces grepping for 'def ' or 'class '. path=file for one file, omit for repo summary."
                 "\n• `files` — Indexed file tree/list view with optional path/pattern filters and grouped output. "
                 "Use this before globbing the filesystem."
                 "\n• `explore` — One-call grouped source and relationships for a query. "
                 "Use it instead of chaining search → symbol → callers/callees for multi-file understanding."
-                "\n• `routes` — Framework route inventory (FastAPI/Flask/Django/Express) with method/path/handler. "
-                "Use it to discover app endpoints before tracing handlers."
-                "\n• `usages` — Every site where a symbol is referenced across the repo. "
-                "Use before refactoring to see blast radius. Grouped by file."
                 "\n• `callers` — Who calls this function (call graph, inbound edges). "
                 "depth=1 for direct callers, depth=2 for transitive. Use to trace invocation paths."
                 "\n• `callees` — What this function calls (call graph, outbound edges). "
                 "Use to understand dependencies before editing."
-                "\n• `pattern` — Structural (AST-level) find using ast-grep. Unlike regex, matches "
-                "code structure: '$F($$$ARGS)' matches any call. Add rewrite= for safe codemod. "
-                "Requires: pattern."
-                "\n• `impact` — What files break if this file changes: direct + transitive importers. "
-                "Use before large refactors. Requires: path."
-                "\n• `blame` — Who last changed this symbol and when (git blame at symbol granularity). "
-                "Requires symbol identifier."
+                "\n• `impact` — Blast radius for a file path or symbol (query, symbol_id, qualified_name). "
+                "Includes grouped affected files and deterministic reason labels."
                 "\n• `context` — Task-based context builder: given a task description, surfaces the most "
                 "relevant symbols + files. Replaces reading many files manually. Requires: task."
-                "\n• `rename` — Safe, index-backed rename across all files (rope/ts-morph/ast-grep). "
-                "More reliable than search-and-replace. Requires: new_name + symbol identifier."
-                "\n• `index` — Build/rebuild the SCIP symbol index. Call if search returns 'not indexed'. "
-                "Auto-triggered on first use normally; only call manually after large merges."
                 "\n• `status` — Quick index/cache/freshness/autosync diagnostics for this repo. "
                 "Use before heavy code-intel operations if results look stale."
             ),
             "enum": [
-                "index", "search", "blame", "hover", "symbol", "outline", "files", "explore", "routes", "status",
-                "context", "impact", "usages", "callers", "callees",
-                "pattern", "rename", "cache_status", "cache_invalidate",
+                "context",
+                "search",
+                "node",
+                "explore",
+                "files",
+                "callers",
+                "callees",
+                "impact",
+                "status",
+                "routes",
             ],
         },
         "query": {
@@ -2661,7 +3004,7 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": (
                 "Workspace-relative file path. "
-                "Required for: outline (one file), impact, hover (positional lookup). "
+                "Required for: outline (one file), hover (positional lookup). "
                 "Optional filter for: usages, callers, callees (restrict to file), files (subtree or file)."
             ),
         },
@@ -2856,33 +3199,21 @@ CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Repo name filter for multi-repo workspaces (requires .atelier/workspace.toml). ops: search, symbol.",
         },
+        "render_compact": {
+            "type": "boolean",
+            "description": (
+                "When true, include a compact benchmark-facing markdown summary in response field `rendered` "
+                "without changing the structured payload."
+            ),
+            "default": False,
+        },
     },
 }
 
 
 @mcp_tool(name="code", input_schema=CODE_TOOL_INPUT_SCHEMA)
 def tool_code(
-    op: Literal[
-        "index",
-        "search",
-        "blame",
-        "hover",
-        "symbol",
-        "outline",
-        "files",
-        "explore",
-        "routes",
-        "status",
-        "context",
-        "impact",
-        "usages",
-        "callers",
-        "callees",
-        "pattern",
-        "rename",
-        "cache_status",
-        "cache_invalidate",
-    ],
+    op: str,
     repo_root: str = ".",
     repo: str | None = None,
     include_globs: list[str] | None = None,
@@ -2922,7 +3253,7 @@ def tool_code(
     task: str | None = None,
     seed_files: list[str] | None = None,
     budget_tokens: int = 4000,
-    max_symbols: int = 8,
+    max_symbols: int = 4,
     dry_run: bool = True,
     cache_tool: (
         Literal[
@@ -2943,8 +3274,11 @@ def tool_code(
         ]
         | None
     ) = None,
+    render_compact: bool = False,
 ) -> dict[str, Any]:
     """Index, search, inspect, outline, pack, or analyze code context."""
+    if op == "node":
+        op = "symbol"
     workspace_router = _workspace_code_router(repo_root)
     if repo is not None and not workspace_router.is_configured:
         raise ValueError("repo filter requires .atelier/workspace.toml")
@@ -2954,13 +3288,17 @@ def tool_code(
     engine = _code_context_engine(repo_root)
 
     if op == "index":
-        return cast(
-            dict[str, Any],
-            engine.tool_index(
-                include_globs=include_globs,
-                exclude_globs=exclude_globs,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_index(
+                    include_globs=include_globs,
+                    exclude_globs=exclude_globs,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "search":
@@ -2982,211 +3320,277 @@ def tool_code(
         if touched_by is not None:
             search_kwargs["touched_by"] = touched_by
         if workspace_router.is_configured:
-            return cast(
-                dict[str, Any],
-                workspace_router.route("search", repo=repo, query=query, **search_kwargs),
+            return _maybe_attach_code_rendered(
+                op,
+                cast(
+                    dict[str, Any],
+                    workspace_router.route("search", repo=repo, query=query, **search_kwargs),
+                ),
+                render_compact=render_compact,
             )
-        return cast(
-            dict[str, Any],
-            engine.tool_search(query, **search_kwargs),
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_search(query, **search_kwargs),
+            ),
+            render_compact=render_compact,
         )
 
     if op == "blame":
         if not (query or symbol_id or qualified_name or symbol_name):
             raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code blame")
-        return cast(
-            dict[str, Any],
-            engine.tool_blame(
-                query=query,
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                include_churn=include_churn,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_blame(
+                    query=query,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=path,
+                    include_churn=include_churn,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "hover":
         if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
-            raise ValueError("symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover")
-        return cast(
-            dict[str, Any],
-            engine.tool_hover(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name or query,
-                file_path=path,
-                line=line,
-                col=col,
-                budget_tokens=budget_tokens,
+            raise ValueError(
+                "symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover"
+            )
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_hover(
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name or query,
+                    file_path=path,
+                    line=line,
+                    col=col,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "symbol":
         if workspace_router.is_configured:
-            return cast(
+            return _maybe_attach_code_rendered(
+                op,
+                cast(
+                    dict[str, Any],
+                    workspace_router.route(
+                        "symbol",
+                        repo=repo,
+                        symbol_id=symbol_id,
+                        qualified_name=qualified_name,
+                        symbol_name=symbol_name,
+                        file_path=path,
+                        budget_tokens=budget_tokens,
+                    ),
+                ),
+                render_compact=render_compact,
+            )
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
                 dict[str, Any],
-                workspace_router.route(
-                    "symbol",
-                    repo=repo,
+                engine.tool_symbol(
                     symbol_id=symbol_id,
                     qualified_name=qualified_name,
                     symbol_name=symbol_name,
                     file_path=path,
                     budget_tokens=budget_tokens,
                 ),
-            )
-        return cast(
-            dict[str, Any],
-            engine.tool_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                budget_tokens=budget_tokens,
             ),
+            render_compact=render_compact,
         )
 
     if op == "outline":
-        return cast(
-            dict[str, Any],
-            engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
+            ),
+            render_compact=render_compact,
         )
 
     if op == "files":
-        return cast(
-            dict[str, Any],
-            engine.tool_files(
-                path=path,
-                pattern=pattern,
-                format=format,
-                include_metadata=include_metadata,
-                max_depth=max_depth,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_files(
+                    path=path,
+                    pattern=pattern,
+                    format=format,
+                    include_metadata=include_metadata,
+                    max_depth=max_depth,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "explore":
         if not query:
             raise ValueError("query is required for code explore")
-        return cast(
-            dict[str, Any],
-            engine.tool_explore(
-                query=query,
-                seed_files=seed_files,
-                max_files=max_files,
-                max_symbols=max_symbols,
-                include_source=include_source,
-                include_relationships=include_relationships,
-                line_numbers=line_numbers,
-                depth=depth,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_explore(
+                    query=query,
+                    seed_files=seed_files,
+                    max_files=max_files,
+                    max_symbols=max_symbols,
+                    include_source=include_source,
+                    include_relationships=include_relationships,
+                    line_numbers=line_numbers,
+                    depth=depth,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "routes":
-        return cast(
-            dict[str, Any],
-            engine.tool_routes(
-                file_glob=file_glob,
-                language=language,
-                limit=limit,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_routes(
+                    file_glob=file_glob,
+                    language=language,
+                    limit=limit,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "status":
-        return cast(dict[str, Any], engine.tool_status(budget_tokens=budget_tokens))
+        return _maybe_attach_code_rendered(
+            op,
+            cast(dict[str, Any], engine.tool_status(budget_tokens=budget_tokens)),
+            render_compact=render_compact,
+        )
 
     if op == "context":
         if not task:
             raise ValueError("task is required for code context")
-        return cast(
-            dict[str, Any],
-            engine.tool_context(
-                task=task,
-                seed_files=seed_files,
-                budget_tokens=budget_tokens,
-                max_symbols=max_symbols,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_context(
+                    task=task,
+                    seed_files=seed_files,
+                    budget_tokens=budget_tokens,
+                    max_symbols=max_symbols,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "pattern":
         if not pattern:
             raise ValueError("pattern is required for code pattern")
-        return cast(
-            dict[str, Any],
-            engine.tool_pattern(
-                pattern=pattern,
-                rewrite=rewrite,
-                language=language,
-                file_glob=file_glob,
-                dry_run=dry_run,
-                limit=limit,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_pattern(
+                    pattern=pattern,
+                    rewrite=rewrite,
+                    language=language,
+                    file_glob=file_glob,
+                    dry_run=dry_run,
+                    limit=limit,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "usages":
         if not any([query, symbol_id, qualified_name, symbol_name]):
             raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
-        return cast(
-            dict[str, Any],
-            engine.tool_usages(
-                query=query,
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                kind=kind,
-                language=language,
-                file_glob=file_glob,
-                group_by=group_by,
-                snippet_lines=3 if snippet_lines == 8 else snippet_lines,
-                limit=limit,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_usages(
+                    query=query,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=path,
+                    kind=kind,
+                    language=language,
+                    file_glob=file_glob,
+                    group_by=group_by,
+                    snippet_lines=3 if snippet_lines == 8 else snippet_lines,
+                    limit=limit,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "callers":
         if not any([query, symbol_id, qualified_name, symbol_name]):
             raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callers")
-        return cast(
-            dict[str, Any],
-            engine.tool_callers(
-                query=query,
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                kind=kind,
-                language=language,
-                depth=depth,
-                limit=limit,
-                snapshot=snapshot,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_callers(
+                    query=query,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=path,
+                    kind=kind,
+                    language=language,
+                    depth=depth,
+                    limit=limit,
+                    snapshot=snapshot,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "callees":
         if not any([query, symbol_id, qualified_name, symbol_name]):
             raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callees")
-        return cast(
-            dict[str, Any],
-            engine.tool_callees(
-                query=query,
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                kind=kind,
-                language=language,
-                depth=depth,
-                limit=limit,
-                snapshot=snapshot,
-                budget_tokens=budget_tokens,
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_callees(
+                    query=query,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=path,
+                    kind=kind,
+                    language=language,
+                    depth=depth,
+                    limit=limit,
+                    snapshot=snapshot,
+                    budget_tokens=budget_tokens,
+                ),
             ),
+            render_compact=render_compact,
         )
 
     if op == "rename":
@@ -3211,12 +3615,16 @@ def tool_code(
         rich_edits = [e for e in edits if not e.get("_astgrep_applied")]
         if not rich_edits and edits:
             # ast-grep applied everything directly; return summary
-            return {
-                "op": "rename",
-                "files_changed": len(edits),
-                "backend": "ast-grep",
-                "new_name": new_name,
-            }
+            return _maybe_attach_code_rendered(
+                op,
+                {
+                    "op": "rename",
+                    "files_changed": len(edits),
+                    "backend": "ast-grep",
+                    "new_name": new_name,
+                },
+                render_compact=render_compact,
+            )
         from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
         touched = _collect_touched_paths(rich_edits, repo_root=Path(workspace))
@@ -3227,30 +3635,80 @@ def tool_code(
         result["op"] = "rename"
         result["new_name"] = new_name
         result["backend"] = rename_backend
-        return result
+        return _maybe_attach_code_rendered(op, result, render_compact=render_compact)
 
     if op == "cache_status":
         if cache_tool is None:
-            return cast(dict[str, Any], engine.tool_cache_status(budget_tokens=budget_tokens))
-        return cast(
-            dict[str, Any],
-            engine.tool_cache_status(cache_tool=cache_tool, budget_tokens=budget_tokens),
+            return _maybe_attach_code_rendered(
+                op,
+                cast(dict[str, Any], engine.tool_cache_status(budget_tokens=budget_tokens)),
+                render_compact=render_compact,
+            )
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_cache_status(cache_tool=cache_tool, budget_tokens=budget_tokens),
+            ),
+            render_compact=render_compact,
         )
 
     if op == "cache_invalidate":
         if cache_tool is None:
-            return cast(dict[str, Any], engine.tool_cache_invalidate(budget_tokens=budget_tokens))
-        return cast(
-            dict[str, Any],
-            engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
+            return _maybe_attach_code_rendered(
+                op,
+                cast(dict[str, Any], engine.tool_cache_invalidate(budget_tokens=budget_tokens)),
+                render_compact=render_compact,
+            )
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
+            ),
+            render_compact=render_compact,
         )
 
     if op == "impact":
-        if not path:
-            raise ValueError("path is required for code impact")
-        return cast(dict[str, Any], engine.tool_impact(path, budget_tokens=budget_tokens))
+        if not any([path, query, symbol_id, qualified_name, symbol_name]):
+            raise ValueError("path or symbol identifier is required for code impact")
+        return _maybe_attach_code_rendered(
+            op,
+            cast(
+                dict[str, Any],
+                engine.tool_impact(
+                    path,
+                    query=query,
+                    symbol_id=symbol_id,
+                    qualified_name=qualified_name,
+                    symbol_name=symbol_name,
+                    file_path=path,
+                    kind=kind,
+                    language=language,
+                    file_glob=file_glob,
+                    budget_tokens=budget_tokens,
+                ),
+            ),
+            render_compact=render_compact,
+        )
 
     raise ValueError(f"unknown op: {op!r}")
+
+
+# Normalize "code:callers" → "callers" etc. so external benchmarks using the
+# "code:" prefix alias convention still route correctly.
+_raw_tool_code_handler = TOOLS["code"]["handler"]
+
+
+def _tool_code_alias_handler(args: dict[str, Any]) -> Any:
+    op = args.get("op")
+    if isinstance(op, str) and op.startswith("code:"):
+        args = {**args, "op": op[5:]}
+    return _raw_tool_code_handler(args)
+
+
+TOOLS["code"]["handler"] = _tool_code_alias_handler
+tool_code = _tool_code_alias_handler  # noqa: F811
 
 
 def _run_shell_tool(
@@ -3393,7 +3851,9 @@ def _run_native_grep(
     path: str,
     content_regex: str | None,
     file_glob_patterns: list[str] | None,
-    output_mode: Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+    output_mode: Literal[
+        "ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"
+    ],
     lines_before: int,
     lines_after: int,
     ignore_case: bool,
@@ -3404,6 +3864,7 @@ def _run_native_grep(
     multiline: bool,
     summary: bool | None,
     context_budget_tokens: int,
+    include_meta: bool,
 ) -> dict[str, Any]:
     from atelier.core.capabilities.tool_supervision.native_search import search_workspace
 
@@ -3423,6 +3884,7 @@ def _run_native_grep(
         multiline=multiline,
         summary=summary,
         context_budget_tokens=context_budget_tokens,
+        include_metadata=include_meta,
         repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
     )
 
@@ -3495,7 +3957,9 @@ def tool_grep(
     ] = None,
     lines_per_file: Annotated[
         int | None,
-        Field(description="Cap the number of matched lines rendered per file (applies to `file_paths_with_content` mode)."),
+        Field(
+            description="Cap the number of matched lines rendered per file (applies to `file_paths_with_content` mode)."
+        ),
     ] = 500,
     if_modified_since: Annotated[
         str | None,
@@ -3531,6 +3995,10 @@ def tool_grep(
             )
         ),
     ] = 6000,
+    include_meta: Annotated[
+        bool,
+        Field(description="Include response metadata such as file counts and caps."),
+    ] = False,
 ) -> dict[str, Any]:
     """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
 
@@ -3552,6 +4020,7 @@ def tool_grep(
         multiline=multiline,
         summary=summary,
         context_budget_tokens=context_budget_tokens,
+        include_meta=include_meta,
     )
 
 
@@ -3579,11 +4048,10 @@ def tool_grep(
             },
             "mode": {
                 "type": "string",
-                "enum": ["chunks", "full", "map"],
+                "enum": ["chunks", "map"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, `full` returns fuller file "
-                    "content up to limits, and `map` builds a repo map from `seed_files`."
+                    "`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`."
                 ),
             },
             "max_files": {
@@ -3604,6 +4072,11 @@ def tool_grep(
                 "default": 2000,
                 "description": "Total token budget for ranked search output or repo-map output.",
             },
+            "include_meta": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include backend/cache metadata fields in the response.",
+            },
         },
         "required": [],
     },
@@ -3611,7 +4084,7 @@ def tool_grep(
 def tool_smart_search(
     query: Annotated[
         str | None,
-        Field(description="Ranked search query. Required for `chunks` and `full` mode."),
+        Field(description="Ranked search query. Required for `chunks` mode."),
     ] = None,
     file_path: Annotated[
         str,
@@ -3624,12 +4097,9 @@ def tool_smart_search(
         ),
     ] = ".",
     mode: Annotated[
-        Literal["chunks", "full", "map"],
+        Literal["chunks", "map"],
         Field(
-            description=(
-                "`chunks` returns ranked snippets per file, `full` returns fuller file "
-                "content up to limits, and `map` builds a repo map from `seed_files`."
-            )
+            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`.")
         ),
     ] = "chunks",
     max_files: Annotated[
@@ -3659,11 +4129,15 @@ def tool_smart_search(
         int,
         Field(description="Total token budget for ranked search output or repo-map output."),
     ] = 2000,
+    include_meta: Annotated[
+        bool,
+        Field(description="Include backend/cache metadata fields in the response."),
+    ] = False,
 ) -> dict[str, Any]:
     """Search by ranked query or repo-map construction.
 
     - Pass `query` for relevance-ranked search over code and docs.
-    - Use `mode='chunks'` for snippets, `mode='full'` for fuller file bodies.
+    - Use `mode='chunks'` for snippets.
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     """
@@ -3674,7 +4148,7 @@ def tool_smart_search(
         raise ValueError("query is required for ranked search; use grep for regex/glob search")
     from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 
-    return smart_search(
+    payload = smart_search(
         query=query or "",
         path=file_path,
         mode=mode,
@@ -3684,6 +4158,13 @@ def tool_smart_search(
         seed_files=seed_files,
         budget_tokens=budget_tokens,
     )
+    if include_meta:
+        return payload
+    payload.pop("cache_hit", None)
+    payload.pop("backend", None)
+    payload.pop("index_age_seconds", None)
+    payload.pop("total_tokens", None)
+    return payload
 
 
 def _compact_tool_output(
@@ -3731,96 +4212,13 @@ def _compact_score(
 
 @mcp_tool(name="compact")
 def tool_compact(
-    op: Annotated[
-        Literal["output", "session", "advise", "score"],
-        Field(
-            description=(
-                "output: compress a single tool-output string; "
-                "session: compress the full run ledger into a compact state block; "
-                "advise: check context utilisation and return a compaction recommendation; "
-                "score: record model-assessed complexity and must-keep keywords into the ledger."
-            )
-        ),
-    ],
-    content: Annotated[
-        str,
-        Field(description="[output] The tool output string to compact."),
-    ] = "",
-    content_type: Annotated[
-        str,
-        Field(
-            description=(
-                "[output] Content type hint — one of: file, grep, bash, tool_output, unknown. "
-                "Controls which deterministic compaction strategy is used."
-            )
-        ),
-    ] = "unknown",
-    budget_tokens: Annotated[
-        int,
-        Field(description="[output] Target token budget for the compacted result."),
-    ] = 500,
-    recovery_hint: Annotated[
-        str | None,
-        Field(
-            description=(
-                "[output] How to recover the full output if needed. "
-                "Defaults to a generic re-run suggestion."
-            )
-        ),
-    ] = None,
     session_id: Annotated[
         str | None,
-        Field(description="[session|advise] Override the run-ledger session ID. Usually omit."),
-    ] = None,
-    complexity: Annotated[
-        float,
-        Field(
-            description=(
-                "[score] Model-assessed task complexity - float 0.0-1.0. "
-                "0 = trivial/read-only; 1.0 = deep debugging or large refactor."
-            )
-        ),
-    ] = 0.5,
-    must_keep: Annotated[
-        list[str] | None,
-        Field(
-            description=(
-                "[score] Keywords or short phrases the model needs preserved verbatim across "
-                "compaction. Stored in the ledger and surfaced in subsequent advise calls."
-            )
-        ),
+        Field(description="Optional run-ledger session ID override. Usually omit."),
     ] = None,
 ) -> dict[str, Any]:
-    """Compact op-dispatch: output, session, advise, or score.
-
-    ops:
-      output  - Compress a single tool output string.
-                Required: content. Optional: content_type, budget_tokens, recovery_hint.
-      session - Compress the full run ledger into a compact state block.
-                Optional: session_id (override).
-      advise  - Check context utilisation and advise whether to compact now.
-                Optional: session_id (override).
-      score   - Record model-assessed complexity + must-keep keywords into the ledger.
-                Optional: complexity (default 0.5), must_keep.
-    """
-    if op == "score":
-        result = _compact_score(complexity=complexity, must_keep=must_keep or [])
-        # Persist to ledger so subsequent advise calls can surface these hints.
-        with contextlib.suppress(Exception):
-            led = _get_ledger()
-            led.agent_settings["compact_complexity"] = result["complexity"]
-            led.agent_settings["compact_must_keep"] = must_keep or []
-        return result
-    if op == "output":
-        return _compact_tool_output(
-            content=content,
-            content_type=content_type,
-            budget_tokens=budget_tokens,
-            recovery_hint=recovery_hint,
-        )
-    if op == "session":
-        return cast(dict[str, Any], _compress_context(session_id=session_id))
-    return _compact_advise(session_id=session_id)
+    """Compress the full run ledger into a compact session state block."""
+    return cast(dict[str, Any], _compress_context(session_id=session_id))
 
 
 # --------------------------------------------------------------------------- #
@@ -4426,7 +4824,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(
                 rid,
                 {
-                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, separators=(",", ":"))}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(result, ensure_ascii=False, separators=(",", ":"))}
+                    ],
                 },
             )
         except Exception as exc:
