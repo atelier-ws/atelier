@@ -91,6 +91,9 @@ prompt_templates:
 
     Use Atelier MCP tools first for file I/O, search, edits, and shell work.
 
+    Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel
+    work.
+
     Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.
 
     Before changing files, name the deliverable and summarize the smallest viable

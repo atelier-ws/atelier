@@ -22,8 +22,10 @@ bash scripts/install_agent_clis.sh --workspace /path/to/workspace
 | ----------- | ------------------------------------------ | ----------------------------- |
 | Claude Code | Full plugin (skills, commands, hooks, MCP) | `scripts/install_claude.sh`   |
 | Codex CLI   | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`    |
+| Cursor      | MCP server config + rules                  | `scripts/install_cursor.sh`   |
 | opencode    | MCP + workspace agent profile              | `scripts/install_opencode.sh` |
 | Copilot     | MCP + instructions + chat mode + tasks     | `scripts/install_copilot.sh`  |
+| Hermes Agent| MCP server config + toolset                | `scripts/install_hermes.sh`   |
 | Antigravity | MCP + generated AGENTS surface             | `scripts/install_antigravity.sh` |
 
 ---
@@ -66,8 +68,10 @@ All install scripts:
 
 - [claude-code-install.md](claude-code-install.md)
 - [codex-install.md](codex-install.md)
+- [cursor-install.md](cursor-install.md)
 - [opencode-install.md](opencode-install.md)
 - [copilot-install.md](copilot-install.md)
+- [hermes-install.md](hermes-install.md)
 - [antigravity-install.md](antigravity-install.md)
 
 Archived capability-contract detail now lives under `docs-archive/hosts/host-capability-matrix.md`.
