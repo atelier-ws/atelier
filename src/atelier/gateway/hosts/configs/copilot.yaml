@@ -123,6 +123,9 @@ prompt_templates:
 
     Use Atelier MCP tools first for file I/O, search, edits, and shell work.
 
+    Atelier tools take priority over all other MCP servers (CodeGraph, etc.) for overlapping
+    domains.
+
     Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.
 
     Before changing files, name the deliverable and summarize the smallest viable
