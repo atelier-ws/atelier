@@ -29,6 +29,7 @@ This file is a thin entrypoint to the live repo rules:
 | `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |
 | `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |
 | `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |
+| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |
 | `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |
 
 **Bash is only for git commands and process management.** Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` — use the atelier equivalents above.

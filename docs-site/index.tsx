@@ -21,7 +21,7 @@ function HomepageHeader() {
           fill="none"
           style={{ width: "64px", height: "64px", marginBottom: "16px" }}
         >
-          <rect width="32" height="32" rx="6" fill="#ff6041" />
+          <rect width="32" height="32" rx="6" fill="#9B75D9" />
           <text
             x="16"
             y="22"
@@ -67,7 +67,7 @@ function HomepageHeader() {
           <Link
             className="button button--primary button--lg"
             to="/docs/quickstart"
-            style={{ backgroundColor: "#ff6041", borderColor: "#ff6041" }}
+            style={{ backgroundColor: "#9B75D9", borderColor: "#9B75D9" }}
           >
             Quickstart →
           </Link>
@@ -80,7 +80,7 @@ function HomepageHeader() {
           <Link
             className="button button--outline button--lg"
             href="https://github.com/pankaj4u4m/atelier"
-            style={{ borderColor: "#ff6041", color: "#ff6041" }}
+            style={{ borderColor: "#9B75D9", color: "#9B75D9" }}
           >
             GitHub
           </Link>

@@ -230,7 +230,7 @@ def test_remote_memory_routes_to_service(service_mode: None) -> None:
 
     resp = _call_tool(
         "memory",
-        {"op": "block_upsert", "agent_id": "codex", "label": "note", "value": "remember"},
+        {"op": "recall", "agent_id": "codex", "query": "remember"},
     )
 
     assert "result" in resp

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from .common import FindingData, RuleSpec
 from ..compiler import CompiledPrompt
 from ..models import Stability
+from .common import FindingData, RuleSpec
 
 
-def _volatile_before_stable(
-    compiled: CompiledPrompt, _previous: CompiledPrompt | None
-) -> list[FindingData]:
+def _volatile_before_stable(compiled: CompiledPrompt, _previous: CompiledPrompt | None) -> list[FindingData]:
     findings: list[FindingData] = []
     if compiled.prefix_end_index < 0:
         return findings
@@ -34,9 +32,7 @@ def _volatile_before_stable(
     return findings
 
 
-def _session_before_static(
-    compiled: CompiledPrompt, _previous: CompiledPrompt | None
-) -> list[FindingData]:
+def _session_before_static(compiled: CompiledPrompt, _previous: CompiledPrompt | None) -> list[FindingData]:
     findings: list[FindingData] = []
     seen_session = False
     for block in compiled.blocks:
@@ -55,9 +51,7 @@ def _session_before_static(
     return findings
 
 
-def _stability_override(
-    compiled: CompiledPrompt, _previous: CompiledPrompt | None
-) -> list[FindingData]:
+def _stability_override(compiled: CompiledPrompt, _previous: CompiledPrompt | None) -> list[FindingData]:
     findings: list[FindingData] = []
     for block in compiled.blocks:
         if block.stability_override_reason:

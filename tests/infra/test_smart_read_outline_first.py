@@ -58,6 +58,23 @@ def test_smart_read_outline_first_for_large_python_file(tmp_path: Path, monkeypa
     assert len(content_lines) == 77
 
 
+def test_smart_read_tolerates_open_ended_and_malformed_end_ranges(tmp_path: Path, monkeypatch: Any) -> None:
+    _seed_store(tmp_path, monkeypatch)
+
+    target = tmp_path / "range_target.py"
+    target.write_text("\n".join(f"line_{i}" for i in range(1, 11)) + "\n", encoding="utf-8")
+
+    open_ended = _smart_read({"file_path": str(target), "range": "L6-"})
+    assert open_ended["mode"] == "range"
+    assert open_ended["range"] == "6-10"
+    assert open_ended["content"].splitlines() == [f"line_{i}" for i in range(6, 11)]
+
+    malformed_end = _smart_read({"file_path": str(target), "range": "L6-foo"})
+    assert malformed_end["mode"] == "range"
+    assert malformed_end["range"] == "6-10"
+    assert malformed_end["content"].splitlines() == [f"line_{i}" for i in range(6, 11)]
+
+
 def test_smart_read_small_file_defaults_to_full(tmp_path: Path, monkeypatch: Any) -> None:
     _seed_store(tmp_path, monkeypatch)
 
