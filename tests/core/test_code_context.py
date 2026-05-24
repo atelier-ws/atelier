@@ -911,7 +911,9 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     cached_search = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
 
     assert search_payload["provenance"] == "local"
-    assert all(item["provenance"] == "local" for item in search_payload["items"])
+    assert all(
+        "provenance" not in item for item in search_payload["items"]
+    )  # per-item provenance stripped; top-level covers it
     assert symbol_payload["provenance"] == "local"
     assert context_payload["provenance"] == "local"
     assert cached_search["provenance"] == "cached"
