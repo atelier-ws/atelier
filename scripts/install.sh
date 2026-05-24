@@ -65,6 +65,11 @@ if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_CYAN="$(printf '\033[38;2;155;117;217m')"
     C_PURPLE="$(printf '\033[38;2;155;117;217m')"
 fi
+C_FRAME="$C_DIM"
+ACTIVE_BAR="┃"
+if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* ]]; then
+    ACTIVE_BAR="|"
+fi
 
 ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}"
 ATELIER_REF="${ATELIER_REF:-main}"
@@ -125,18 +130,18 @@ done
 
 trap '[[ -n "${_SPINNER_PID:-}" ]] && { kill "${_SPINNER_PID}" 2>/dev/null; printf "\n"; } || true' EXIT INT TERM
 
-info()    { _spinner_pause; printf "%b│%b  ◇  %s\n" "$C_PURPLE" "$C_RESET" "$*"; _spinner_resume; }
+info()    { _spinner_pause; printf "%b│%b  ◇  %s\n" "$C_FRAME" "$C_RESET" "$*"; _spinner_resume; }
 verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && info "$@" || true; }
 warn()  {
     WARNINGS+=("$*")
     _spinner_pause
-    printf "%b│%b  %b⚠%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_YELLOW" "$C_RESET" "$*"
+    printf "%b│%b  %b⚠%b  %s\n" "$C_FRAME" "$C_RESET" "$C_YELLOW" "$C_RESET" "$*"
     _spinner_resume
 }
 error() {
     ERRORS+=("$*")
     _spinner_pause
-    printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$*" >&2
+    printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$*" >&2
     _spinner_resume
 }
 fail()  { error "$*"; exit 1; }
@@ -145,7 +150,7 @@ degrade() {
         ERRORS+=("$*")
         FINAL_EXIT_CODE=1
         _spinner_pause
-        printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$*" >&2
+        printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$*" >&2
         _spinner_resume
     else
         warn "$*"
@@ -158,8 +163,8 @@ _spinner_run() {
     (
         local _i=0
         while true; do
-            printf "\r%b│%b  %b%s%b  %s " \
-                "$C_PURPLE" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$_SPINNER_MSG"
+            printf "\r%b%s%b  %b%s%b  %b%s%b " \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$C_PURPLE" "$_SPINNER_MSG" "$C_RESET"
             sleep 0.08
             _i=$((_i + 1))
         done
@@ -178,17 +183,17 @@ _spinner_stop() {
     local _st="${1:-ok}"
     _spinner_pause; _SPINNER_ACTIVE=0
     case "$_st" in
-        ok)   printf "%b│%b  %b✓%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN"  "$C_RESET" "$_SPINNER_MSG" ;;
-        warn) printf "%b│%b  %b⚠%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_YELLOW" "$C_RESET" "$_SPINNER_MSG" ;;
-        skip) printf "%b│%b  ○  %s\n"     "$C_PURPLE" "$C_RESET"                             "$_SPINNER_MSG" ;;
-        err)  printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED"    "$C_RESET"  "$_SPINNER_MSG" >&2 ;;
+        ok)   printf "%b│%b  %b✓%b  %s\n" "$C_FRAME" "$C_RESET" "$C_GREEN"  "$C_RESET" "$_SPINNER_MSG" ;;
+        warn) printf "%b│%b  %b⚠%b  %s\n" "$C_FRAME" "$C_RESET" "$C_YELLOW" "$C_RESET" "$_SPINNER_MSG" ;;
+        skip) printf "%b│%b  ○  %s\n"     "$C_FRAME" "$C_RESET"                            "$_SPINNER_MSG" ;;
+        err)  printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED"    "$C_RESET" "$_SPINNER_MSG" >&2 ;;
     esac
 }
 step_start() {
     _SPINNER_ACTIVE=0; _SPINNER_MSG="$*"
-    printf "%b│%b\n%b◆%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$C_RESET" "$*"
+    printf "%b│%b\n%b◆%b  %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_FRAME" "$C_RESET" "$C_PURPLE" "$*" "$C_RESET"
 }
-step_done() { printf "%b│%b\n" "$C_PURPLE" "$C_RESET"; }
+step_done() { printf "%b│%b\n" "$C_FRAME" "$C_RESET"; }
 spin() {
     # spin "message" cmd [args...]  — runs cmd with animated spinner; ✓ or ✗ on finish
     _SPINNER_MSG="$1"; shift; _SPINNER_ACTIVE=1; _spinner_run
@@ -198,13 +203,88 @@ spin() {
     if [[ $_ret -eq 0 ]]; then
         _spinner_stop ok
         if [[ "$ATELIER_VERBOSE" == "1" && -n "$_out" ]]; then
-            printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+            printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_out"
         fi
     else
         _spinner_stop err
-        [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+        [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_out"
     fi
     _SPINNER_ACTIVE=0; return $_ret
+}
+
+spin_tail() {
+    # spin_tail "message" cmd [args...] — runs cmd and renders transient tail lines.
+    local _msg="$1"; shift
+    local _ret=0
+    local _out_file
+    _out_file="$(mktemp "${TMPDIR:-/tmp}/atelier-spin-tail.XXXXXX")"
+
+    "$@" >"$_out_file" 2>&1 &
+    local _pid=$!
+
+    if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]]; then
+        local _frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+        local _fi=0
+        local _printed_lines=0
+        while kill -0 "$_pid" 2>/dev/null; do
+            if [[ $_printed_lines -gt 0 ]]; then
+                local _j
+                for ((_j = 0; _j < _printed_lines; _j++)); do
+                    printf "\033[1A\033[2K"
+                done
+                printf "\r"
+            fi
+
+            printf "%b%s%b  %b%s%b  %b%s%b\n" \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_fi % 10))]}" "$C_RESET" "$C_PURPLE" "$_msg" "$C_RESET"
+            _printed_lines=1
+            _fi=$((_fi + 1))
+
+            local _tail_line
+            while IFS= read -r _tail_line; do
+                [[ -z "${_tail_line// }" ]] && continue
+                _tail_line="$(printf "%s" "$_tail_line" | sed $'s/\x1b\\[[0-9;]*m//g')"
+                if ((${#_tail_line} > 140)); then
+                    _tail_line="${_tail_line:0:137}..."
+                fi
+                printf "%b│%b    %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_PURPLE" "$_tail_line" "$C_RESET"
+                _printed_lines=$((_printed_lines + 1))
+            done < <(tail -n 2 "$_out_file")
+
+            sleep 0.12
+        done
+
+        wait "$_pid" || _ret=$?
+
+        if [[ $_printed_lines -gt 0 ]]; then
+            local _j
+            for ((_j = 0; _j < _printed_lines; _j++)); do
+                printf "\033[1A\033[2K"
+            done
+            printf "\r"
+        fi
+
+        if [[ $_ret -eq 0 ]]; then
+            printf "%b│%b  %b✓%b  %s\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg"
+        else
+            printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+        fi
+    else
+        wait "$_pid" || _ret=$?
+        if [[ $_ret -eq 0 ]]; then
+            printf "%b│%b  %b✓%b  %s\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg"
+        else
+            printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+        fi
+    fi
+
+    local _out=""
+    _out="$(cat "$_out_file" 2>/dev/null || true)"
+    rm -f "$_out_file"
+    if [[ $_ret -ne 0 && -n "$_out" ]]; then
+        printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_out"
+    fi
+    return $_ret
 }
 
 spin_progress() {
@@ -219,9 +299,12 @@ spin_progress() {
         local _pid=$!
         local _pct=0
         local _width=24
+        local _frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+        local _fi=0
         local _fill_char="█"
         local _empty_char="░"
         if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* ]]; then
+            _frames=(/ - \\ \|)
             _fill_char="="
             _empty_char="-"
         fi
@@ -235,11 +318,13 @@ spin_progress() {
             local _bar_fill _bar_empty
             _bar_fill=""
             _bar_empty=""
+            local _spin="${_frames[$((_fi % ${#_frames[@]}))]}"
+            _fi=$((_fi + 1))
             local _i
             for ((_i = 0; _i < _filled; _i++)); do _bar_fill+="${_fill_char}"; done
             for ((_i = 0; _i < _empty; _i++)); do _bar_empty+="${_empty_char}"; done
-            printf "\r%b│%b  %b▸%b  %s  %b▕%b%b%b%b%b▏%b  %b%3d%%%b" \
-                "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$C_RESET" "$_msg" \
+            printf "\r%b%s%b  %b%s%b  %s  %b▕%b%b%b%b%b▏%b  %b%3d%%%b" \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "$_spin" "$C_RESET" "$_msg" \
                 "$C_DIM" "$C_RESET" "$C_CYAN" "$_bar_fill" "$C_DIM" "$_bar_empty" "$C_RESET" \
                 "$C_CYAN" "$_pct" "$C_RESET"
             sleep 0.12
@@ -253,18 +338,18 @@ spin_progress() {
             local _i
             for ((_i = 0; _i < _width; _i++)); do _bar_done+="${_fill_char}"; done
             printf "%b│%b  %b✓%b  %s  %b▕%b%b%b%b▏%b  %b100%%%b\n" \
-                "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg" \
+                "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg" \
                 "$C_DIM" "$C_RESET" "$C_GREEN" "$_bar_done" "$C_DIM" "$C_RESET" \
                 "$C_GREEN" "$C_RESET"
         else
-            printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+            printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
         fi
     else
         "$@" >"$_out_file" 2>&1 || _ret=$?
         if [[ $_ret -eq 0 ]]; then
-            printf "%b│%b  %b✓%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg"
+            printf "%b│%b  %b✓%b  %s\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET" "$_msg"
         else
-            printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
+            printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$_msg" >&2
         fi
     fi
 
@@ -274,10 +359,10 @@ spin_progress() {
 
     if [[ $_ret -eq 0 ]]; then
         if [[ "$ATELIER_VERBOSE" == "1" && -n "$_out" ]]; then
-            printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+            printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_out"
         fi
     else
-        [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$_out"
+        [[ -n "$_out" ]] && printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_out"
     fi
     return $_ret
 }
@@ -294,12 +379,12 @@ print_installer_header() {
         fi
     fi
     echo ""
-    printf "%b┌%b  Atelier v%s\n" "$C_PURPLE" "$C_RESET" "$display_version"
-    printf "%b│%b\n" "$C_PURPLE" "$C_RESET"
+    printf "%b┌%b  Atelier v%s\n" "$C_FRAME" "$C_RESET" "$display_version"
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 }
 
 print_installer_footer() {
-    printf "%b│%b\n" "$C_PURPLE" "$C_RESET"
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 }
 
 collect_issues_from_output() {
@@ -335,11 +420,11 @@ print_issue_group() {
     done
 
     [[ $count -gt 0 ]] || return 0
-    printf "%b│%b  %b%s (%d)%b\n" "$C_PURPLE" "$C_RESET" "$color" "$title" "$count" "$C_RESET"
+    printf "%b│%b  %b%s (%d)%b\n" "$C_FRAME" "$C_RESET" "$color" "$title" "$count" "$C_RESET"
     for entry in "${entries[@]+"${entries[@]}"}"; do
         [[ -n "$entry" && -z "${printed[$entry]+x}" ]] || continue
         printed["$entry"]=1
-        printf "%b│%b    %b-%b %s\n" "$C_PURPLE" "$C_RESET" "$color" "$C_RESET" "$entry"
+        printf "%b│%b    %b-%b %s\n" "$C_FRAME" "$C_RESET" "$color" "$C_RESET" "$entry"
     done
 }
 
@@ -359,13 +444,13 @@ supports_interactive_selector() {
 }
 
 _frame_line() {
-    printf "\033[2K\r%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$1"
+    printf "\033[2K\r%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$1"
 }
 
 _prompt_line() {
     local glyph="$1"
     local text="$2"
-    printf "\033[2K\r%b%s%b  %s\n" "$C_PURPLE" "$glyph" "$C_RESET" "$text"
+    printf "\033[2K\r%b%s%b  %b%s%b\n" "$C_PURPLE" "$glyph" "$C_RESET" "$C_PURPLE" "$text" "$C_RESET"
 }
 
 _menu_save_cursor() {
@@ -451,7 +536,7 @@ _MENU_RENDER_LINES=0
 
 _menu_line() {
     # Print one framed line and track it for redraw erase.
-    printf "%b│%b  %s\n" "$C_PURPLE" "$C_RESET" "$1"
+    printf "%b%s%b  %s\n" "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$1"
     _MENU_RENDER_LINES=$((_MENU_RENDER_LINES + 1))
 }
 
@@ -470,7 +555,6 @@ render_single_select() {
     local i
 
     _MENU_RENDER_LINES=0
-    _menu_line ""
     for i in "${!options[@]}"; do
         if [[ "$i" -eq "$selected_index" ]]; then
             _menu_line "  ${C_PURPLE}❯ ●${C_RESET}  ${options[$i]}"
@@ -492,7 +576,7 @@ interactive_single_select() {
     local selected_index="$default_index"
     local first_render=1
 
-    printf "%b◆%b  %s\n" "$C_PURPLE" "$C_RESET" "$prompt"
+    printf "%b◆%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$prompt" "$C_RESET"
 
     while true; do
         [[ "$first_render" == "0" ]] && _menu_erase
@@ -511,7 +595,7 @@ interactive_single_select() {
     _menu_erase
     # Print final confirmed selection
     local label="${options[$selected_index]}"
-    printf "%b│%b  %b●%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
+    printf "%b│%b  %b●%b  %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
     printf -v "$out_var" '%s' "$selected_index"
 }
 
@@ -526,7 +610,6 @@ render_multi_select() {
     done
 
     _MENU_RENDER_LINES=0
-    _menu_line ""
     for i in "${!options[@]}"; do
         local is_selected="${SELECTED_ITEMS[$i]:-0}"
         local is_cursor=0
@@ -592,7 +675,7 @@ interactive_multi_select() {
         done
     fi
 
-    printf "%b◆%b  %s\n" "$C_PURPLE" "$C_RESET" "$prompt"
+    printf "%b◆%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$prompt" "$C_RESET"
     while true; do
         [[ "$first_render" == "0" ]] && _menu_erase
         render_multi_select "$cursor" "${options[@]}"
@@ -625,7 +708,7 @@ interactive_multi_select() {
     for i in "${!options[@]}"; do
         if [[ "${SELECTED_ITEMS[$i]:-0}" == "1" ]]; then
             local label="${options[$i]%%|*}"
-            printf "%b│%b  %b◼%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
+            printf "%b│%b  %b◼%b  %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
         fi
     done
 
@@ -648,9 +731,9 @@ prompt_memory_selection() {
             "Choose memory backend:" \
             choice_index \
             0 \
-            "SQLite      - local, no Docker needed (default)" \
-            "letta       - Letta memory server (Docker)" \
-            "openmemory  - OpenMemory MCP server (Docker + OpenAI key or ollama)"
+            "SQLite (default, local)" \
+            "letta (Docker)" \
+            "openmemory (Docker)"
     else
         echo ""
         printf "%b[atelier-install]%b Choose a memory backend:\n" "$C_BOLD" "$C_RESET"
@@ -965,83 +1048,34 @@ host_scope_is_workspace() {
     return 1
 }
 
-print_host_install_targets() {
-    local scope_label workspace_root
-    workspace_root="$(pwd)"
+host_target_for_name() {
+    local raw_name="$1"
+    local host_name="${raw_name%% *}"
+
     if host_scope_is_workspace; then
-        scope_label="local (project)"
-    else
-        scope_label="global (user)"
-    fi
-    info "Scope: ${scope_label}"
-    if host_scope_is_workspace; then
-        info "Project root: ${workspace_root}"
+        printf "%s" "."
+        return 0
     fi
 
-    local include_claude=0 include_codex=0 include_opencode=0 include_copilot=0 include_antigravity=0
-    if [[ ${#HOST_FLAGS[@]} -eq 0 ]]; then
-        include_claude=1
-        include_codex=1
-        include_opencode=1
-        include_copilot=1
-        include_antigravity=1
-    else
-        local flag
-        for flag in "${HOST_FLAGS[@]}"; do
-            case "$flag" in
-                --all)
-                    include_claude=1; include_codex=1; include_opencode=1; include_copilot=1; include_antigravity=1
-                    ;;
-                --claude) include_claude=1 ;;
-                --codex) include_codex=1 ;;
-                --opencode) include_opencode=1 ;;
-                --copilot) include_copilot=1 ;;
-                --antigravity) include_antigravity=1 ;;
-            esac
-        done
-    fi
+    case "$host_name" in
+        claude) printf "%s" "~/.claude" ;;
+        codex) printf "%s" "~/.codex" ;;
+        *) printf "%s" "~/.config" ;;
+    esac
+}
 
-    local xdg_config_home
-    xdg_config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
-    if [[ "$include_claude" == "1" ]]; then
-        if host_scope_is_workspace; then
-            info "claude       → ${workspace_root}/.mcp.json, ${workspace_root}/.claude/settings.json"
-        else
-            info "claude       → ${HOME}/.claude.json, ${HOME}/.claude/settings.json"
-        fi
-    fi
-    if [[ "$include_codex" == "1" ]]; then
-        if host_scope_is_workspace; then
-            info "codex        → ${workspace_root}/.codex/"
-        else
-            info "codex        → ${HOME}/.codex/"
-        fi
-    fi
-    if [[ "$include_opencode" == "1" ]]; then
-        if host_scope_is_workspace; then
-            info "opencode     → ${workspace_root}/opencode.json"
-        else
-            info "opencode     → ${xdg_config_home}/opencode/opencode.json"
-        fi
-    fi
-    if [[ "$include_copilot" == "1" ]]; then
-        if host_scope_is_workspace; then
-            info "copilot      → ${workspace_root}/.vscode/mcp.json"
-        else
-            info "copilot      → ${xdg_config_home}/Code/User/mcp.json"
-        fi
-    fi
-    if [[ "$include_antigravity" == "1" ]]; then
-        if host_scope_is_workspace; then
-            info "antigravity  → ${workspace_root}/.vscode/mcp.json"
-        else
-            info "antigravity  → ${xdg_config_home}/Antigravity/User/mcp.json"
-        fi
+format_host_status_label() {
+    local raw_name="$1"
+    local target
+    target="$(host_target_for_name "$raw_name")"
+    if [[ -n "$target" ]]; then
+        printf "%s -> %s" "$raw_name" "$target"
+    else
+        printf "%s" "$raw_name"
     fi
 }
 
-ensure_local_zoekt_runtime() {
-    # Kept for legacy --zoekt-auto-install flag path; prefer install_local_zoekt_if_selected
+ensure_local_zoekt_runtime() {    # Kept for legacy --zoekt-auto-install flag path; prefer install_local_zoekt_if_selected
     local atelier_cli="$1"
     local missing=()
     local name
@@ -1200,7 +1234,7 @@ prepare_repo() {
 install_console_scripts() {
     local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
-    local install_args=(tool install --quiet --force)
+    local install_args=(tool install --force)
 
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
         install_args+=(--editable)
@@ -1226,7 +1260,7 @@ install_console_scripts() {
         mv "$mcp_path" "$wrapped_path"
         cat >"$mcp_path" <<EOF
 #!/usr/bin/env bash
-export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-1}"
+export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"
@@ -1337,7 +1371,6 @@ main() {
         stack_expected=1
     fi
 
-    step_start "Preparing environment"
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
         verbose "Local mode: using current directory as an editable install source"
         ATELIER_INSTALL_DIR="$(pwd)"
@@ -1345,13 +1378,12 @@ main() {
         prepare_repo
     fi
     export ATELIER_INSTALL_DIR
-    step_done
 
     step_start "Installing Atelier"
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         install_console_scripts
     else
-        spin "Installing packages" install_console_scripts
+        spin_tail "Installing packages" install_console_scripts
     fi
     persist_install_record
     step_done
@@ -1440,7 +1472,6 @@ main() {
 
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
         step_start "Installing host integrations"
-        print_host_install_targets
         local host_install_args=()
         local passthrough
         for passthrough in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
@@ -1471,28 +1502,77 @@ main() {
                 else
                     bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | tee "$host_output_file"
                 fi
+                host_ret=${PIPESTATUS[0]}
             else
+                local had_lastpipe=0
+                if shopt -q lastpipe; then
+                    had_lastpipe=1
+                else
+                    shopt -s lastpipe
+                fi
+                _SPINNER_MSG="Installing host integrations"                _SPINNER_ACTIVE=1
+                _spinner_run
                 ATELIER_HOST_STATUS_STREAM=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | while IFS= read -r line; do
                     printf "%s\n" "$line" >>"$host_output_file"
                     if [[ "$line" =~ ^@@ATELIER_HOST_STATUS@@[[:space:]]+([A-Z]+)[[:space:]]+(.+)$ ]]; then
                         local status="${BASH_REMATCH[1]}"
                         local hname="${BASH_REMATCH[2]}"
                         case "$status" in
-                            OK)      printf "%b│%b  %b✓%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_GREEN" "$C_RESET" "$hname" ;;
-                            WARN)    printf "%b│%b  %b⚠%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_YELLOW" "$C_RESET" "$hname" ;;
-                            FAILED)  printf "%b│%b  %b✗%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_RED" "$C_RESET" "$hname" ;;
-                            SKIPPED) printf "%b│%b  %b—%b  %s\n" "$C_PURPLE" "$C_RESET" "$C_DIM" "$C_RESET" "$hname" ;;
+                            START)
+                                local status_label
+                                status_label="$(format_host_status_label "$hname")"
+                                _spinner_pause
+                                _SPINNER_MSG="Installing on ${status_label}"
+                                _spinner_resume
+                                ;;
+                            OK)
+                                local status_label
+                                status_label="$(format_host_status_label "$hname")"
+                                _spinner_pause
+                                printf "%b│%b  %b✓%b  %s\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET" "$status_label"
+                                _SPINNER_MSG="Installing host integrations"
+                                _spinner_resume
+                                ;;
+                            WARN)
+                                local status_label
+                                status_label="$(format_host_status_label "$hname")"
+                                _spinner_pause
+                                printf "%b│%b  %b⚠%b  %s\n" "$C_FRAME" "$C_RESET" "$C_YELLOW" "$C_RESET" "$status_label"
+                                _SPINNER_MSG="Installing host integrations"
+                                _spinner_resume
+                                ;;
+                            FAILED)
+                                local status_label
+                                status_label="$(format_host_status_label "$hname")"
+                                _spinner_pause
+                                printf "%b│%b  %b✗%b  %s\n" "$C_FRAME" "$C_RESET" "$C_RED" "$C_RESET" "$status_label"
+                                _SPINNER_MSG="Installing host integrations"
+                                _spinner_resume
+                                ;;
+                            SKIPPED)
+                                local status_label
+                                status_label="$(format_host_status_label "$hname")"
+                                _spinner_pause
+                                printf "%b│%b  %b—%b  %s\n" "$C_FRAME" "$C_RESET" "$C_DIM" "$C_RESET" "$status_label"
+                                _SPINNER_MSG="Installing host integrations"
+                                _spinner_resume
+                                ;;
                         esac
                     fi
                 done
+                host_ret=${PIPESTATUS[0]}
+                if [[ "$had_lastpipe" -eq 0 ]]; then
+                    shopt -u lastpipe
+                fi
+                _SPINNER_MSG="Installing host integrations"
+                _spinner_pause
+                _SPINNER_ACTIVE=0
             fi
-            host_ret=${PIPESTATUS[0]}
             set -e
             host_output="$(cat "$host_output_file")"
             rm -f "$host_output_file"
             collect_issues_from_output "$host_output"
-            if [[ $host_ret -ne 0 ]]; then
-                ERRORS+=("One or more host integrations failed")
+            if [[ $host_ret -ne 0 ]]; then                ERRORS+=("One or more host integrations failed")
                 FINAL_EXIT_CODE=1
             fi
         fi
@@ -1523,26 +1603,25 @@ main() {
     fi
 
     step_start "Initializing"
-    if [[ -n "$index_target" ]]; then
-        info "Index target: $index_target"
-    else
-        info "Index target: not detected (no git repository in current directory)"
-    fi
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         echo "[dry-run] $atelier_cli init"
         if [[ -n "$index_target" ]]; then
+            info "Index target: $index_target"
             echo "[dry-run] $atelier_cli code index --repo-root $index_target"
         else
+            info "Index target: not detected (no git repository in current directory)"
             echo "[dry-run] skip code index (run inside a git repo)"
         fi
     else
         spin "Initializing runtime store" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
+            info "Index target: $index_target"
             if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$index_target"; then
                 degrade "Initial code indexing failed; Atelier will continue and autosync will retry."
             fi
         else
             index_skipped=1
+            info "Index target: not detected (no git repository in current directory)"
             info "Skipped code indexing (no git repository detected)."
         fi
     fi
@@ -1594,8 +1673,8 @@ main() {
 
     if [[ "$STACK_STARTED" == "1" || "$stack_expected" == "1" ]]; then
         info "Visualization stack is running:"
-        info "  frontend: http://localhost:3125"
-        info "  service:  http://localhost:8787"
+        info "  frontend: ${C_PURPLE}http://localhost:3125${C_RESET}"
+        info "  service:  ${C_PURPLE}http://localhost:8787${C_RESET}"
     fi
 
     step_start "What's next"
@@ -1607,7 +1686,6 @@ main() {
     case "$selected_memory" in
         letta)      info "atelier letta status        — Letta memory sidecar" ;;
         openmemory) info "atelier openmemory status   — OpenMemory sidecar" ;;
-        *)          if [[ "$ATELIER_ADVANCED" != "1" ]]; then info "re-run with --advanced --memory letta|openmemory  — add memory sidecars"; fi ;;
     esac
     if ! command -v zoekt >/dev/null 2>&1; then
         info "atelier zoekt install       — install Zoekt full-text search"
@@ -1622,7 +1700,7 @@ main() {
     else
         info "Installation complete."
     fi
-    printf "%b└%b\n\n" "$C_PURPLE" "$C_RESET"
+    printf "%b└%b\n\n" "$C_FRAME" "$C_RESET"
 
     return "$FINAL_EXIT_CODE"
 }

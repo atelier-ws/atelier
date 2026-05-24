@@ -68,6 +68,13 @@ class TestAtelierMiddleware:
         assert isinstance(tool_specs, list)
         assert callable(dispatch)
 
+    def test_gemini_adk_returns_hooks(self) -> None:
+        from atelier.sdk.gemini_adk import GeminiADKMiddleware
+
+        mw = AtelierMiddleware(agent_name="test", task="test")
+        hooks = mw.gemini_adk()
+        assert isinstance(hooks, GeminiADKMiddleware)
+
 
 # ---------------------------------------------------------------------------
 # LangChainMiddleware
@@ -291,6 +298,54 @@ class TestRunLedgerPrefixHash:
 
 
 # ---------------------------------------------------------------------------
+# GeminiADKMiddleware
+# ---------------------------------------------------------------------------
+
+class TestGeminiADKMiddleware:
+    def _make(self) -> Any:
+        from atelier.infra.runtime.run_ledger import RunLedger
+        from atelier.sdk.gemini_adk import GeminiADKMiddleware
+
+        ledger = RunLedger(agent="test", task="gemini task")
+        return GeminiADKMiddleware(ledger), ledger
+
+    def test_on_model_end_records_token_usage(self) -> None:
+        hooks, ledger = self._make()
+        hooks.on_model_start(run_id="r1")
+        response = MagicMock()
+        response.usage_metadata = {
+            "prompt_token_count": 420,
+            "candidates_token_count": 84,
+            "cached_content_token_count": 120,
+            "model": "gemini-2.5-pro",
+        }
+        hooks.on_model_end(response, run_id="r1")
+
+        call_events = [e for e in ledger.events if e.payload.get("kind") == "llm_call"]
+        assert len(call_events) == 1
+        assert call_events[0].payload["input_tokens"] == 420
+        assert call_events[0].payload["output_tokens"] == 84
+        assert call_events[0].payload["cache_read_tokens"] == 120
+
+    def test_on_tool_start_loop_detection(self) -> None:
+        hooks, ledger = self._make()
+        for _ in range(3):
+            hooks.on_tool_start("search")
+        alerts = [e for e in ledger.events if e.kind == "watchdog_alert"]
+        assert any(a.payload.get("event_type") == "REPEATED_TOOL_CALL" for a in alerts)
+
+    def test_context_manager(self) -> None:
+        from atelier.infra.runtime.run_ledger import RunLedger
+        from atelier.sdk.gemini_adk import GeminiADKMiddleware
+
+        ledger = RunLedger(agent="test", task="test")
+        with GeminiADKMiddleware(ledger) as hooks:
+            hooks.on_agent_start(agent_name="gemini-agent")
+            assert hooks._ledger.status == "running"
+        assert ledger.status == "complete"
+
+
+# ---------------------------------------------------------------------------
 # adapters/__init__.py exports
 # ---------------------------------------------------------------------------
 
@@ -301,6 +356,7 @@ class TestAdaptersExports:
             AdapterMode,
             AgentAdapter,
             AtelierMiddleware,
+            GeminiADKMiddleware,
             LangChainMiddleware,
             LangGraphAdapter,
             LangGraphConfig,
@@ -309,6 +365,7 @@ class TestAdaptersExports:
         )
         # All imports must resolve
         assert AtelierMiddleware is not None
+        assert GeminiADKMiddleware is not None
         assert LangChainMiddleware is not None
         assert OpenAIAgentsHooks is not None
         assert callable(make_atelier_tools)
