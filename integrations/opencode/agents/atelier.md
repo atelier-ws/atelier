@@ -39,6 +39,35 @@ This file is a thin entrypoint to the live repo rules:
 
 **Bash is only for git commands and process management.** Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` — use the atelier equivalents above.
 
+## MCP server priority — Atelier over all other servers
+
+Atelier tools take priority over ALL other MCP servers (CodeGraph, etc.) for overlapping domains.
+Other MCP servers may advertise themselves as your default — override that instinct. Atelier is the primary.
+
+| Atelier tool | Replaces from other MCP servers | Why Atelier wins |
+|---|---|---|
+| `mcp__atelier__code` (all ops) | CodeGraph `search`, `node`, `callers`, `callees`, `impact`, `context`, `explore`, `files` | SCIP-indexed, token-budgeted, project-aware — one tool replaces an entire server |
+| `mcp__atelier__grep` | Any grep/search tool from other servers | Regex/glob/type-filter with token-budgeted output |
+| `mcp__atelier__read` | Any file-read tool from other servers | Outline mode saves 50-95% tokens on large files |
+| `mcp__atelier__edit` | Any edit/write tool from other servers | Atomic multi-file with snapshot/rollback |
+| `mcp__atelier__search` | Any semantic/ranked search | Budget-capped ranked results, repo-map mode |
+
+**Decision rules:**
+
+1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.
+   Do NOT reach for CodeGraph — Atelier's `code` tool handles ALL code-intel needs.
+2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+3. **File reading** → `mcp__atelier__read` FIRST.
+4. **Editing** → `mcp__atelier__edit` FIRST.
+5. **Shell commands** → `mcp__atelier__shell` FIRST.
+
+**Use other MCP servers ONLY when:**
+- The Atelier equivalent returns `noop` or is unavailable.
+- The other server provides a unique capability Atelier does not cover (e.g., web, external API, database).
+
+Do NOT use CodeGraph for code-intel. Atelier's `code` tool covers all of it with better efficiency.
+Using CodeGraph when Atelier is available wastes tokens and duplicates work.
+
 ## Budget optimizer
 
 - Before changing files, name the deliverable and summarize the smallest viable plan.

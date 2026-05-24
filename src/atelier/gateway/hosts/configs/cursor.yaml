@@ -1,93 +1,74 @@
-host_id: antigravity
-name: Antigravity
+host_id: cursor
+name: Cursor IDE
 version: 1.0.0
-description: Integration with Antigravity and the agy companion CLI for MCP-backed
-  coding workflows
+description: Integration with Cursor IDE for AI-native code development
 platforms:
 - macos
 - linux
 - windows
 detection:
-  command: antigravity --version
-  config_path: ~/.config/Antigravity/User/settings.json
-  env_var: ANTIGRAVITY_HOME
+  command: cursor --version
+  config_path: ~/.cursor/mcp.json
 recommended_packs:
-- atelier-pack-vscode-extensions
 - atelier-pack-coding-general
-- atelier-pack-audit-service
 mcp:
   servers:
   - name: atelier
     command: atelier-mcp
     args:
     - --host
-    - antigravity
+    - cursor
     env:
       ATELIER_ROOT: ~/.atelier
 installation:
-  macos: '# Install Antigravity
-
-    brew install --cask antigravity
-
-
-    # Install Atelier
+  macos: '# Install Atelier
 
     brew install atelier
 
 
-    # Setup Antigravity integration
+    # Setup Cursor integration
 
-    atelier host setup antigravity
-
-
-    # Verify installation
-
-    atelier host info antigravity
-
-    '
-  linux: '# Install Antigravity
-
-    antigravity --version
-
-
-    # Install Atelier
-
-    sudo apt-get install atelier  # or your distro''s package manager
-
-
-    # Setup Antigravity integration
-
-    atelier host setup antigravity
+    atelier host setup cursor
 
 
     # Verify installation
 
-    atelier host info antigravity
+    atelier host info cursor
 
     '
-  windows: '# Install Antigravity
+  linux: '# Install Atelier
 
-    winget install Antigravity.Antigravity
+    sudo apt-get install atelier
 
 
-    # Install Atelier
+    # Setup Cursor integration
+
+    atelier host setup cursor
+
+
+    # Verify installation
+
+    atelier host info cursor
+
+    '
+  windows: '# Install Atelier
 
     choco install atelier
 
 
-    # Setup Antigravity integration
+    # Setup Cursor integration
 
-    atelier host setup antigravity
+    atelier host setup cursor
 
 
     # Verify installation
 
-    atelier host info antigravity
+    atelier host info cursor
 
     '
 prompt_templates:
 - name: session-optimization
-  template: 'Atelier budget optimizer is active for Antigravity.
+  template: 'Atelier budget optimizer is active for Cursor.
 
     Use Atelier MCP tools first for file I/O, search, edits, and shell work.
 
