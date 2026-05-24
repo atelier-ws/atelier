@@ -52,6 +52,13 @@ if [ -z "$WORKSPACE" ]; then
 fi
 WORKSPACE="$(cd "$WORKSPACE" && pwd)"
 
+AGENTS_SOURCE_PRIMARY="${ATELIER_REPO}/AGENTS.md"
+AGENTS_SOURCE_FALLBACK="${ATELIER_REPO}/integrations/AGENTS.atelier.md"
+AGENTS_SOURCE="$AGENTS_SOURCE_PRIMARY"
+if [ ! -f "$AGENTS_SOURCE" ]; then
+    AGENTS_SOURCE="$AGENTS_SOURCE_FALLBACK"
+fi
+
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:agents] $*" || true; }
 warn()  { echo "[atelier:agents] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
@@ -83,7 +90,7 @@ if $PRINT_ONLY; then
     echo "${NEW_MCP_ENTRY}"
     echo ""
     echo "2. Ensure ${WORKSPACE}/AGENTS.md has atelier:code persona"
-    echo "   Source: ${ATELIER_REPO}/AGENTS.md"
+    echo "   Source: ${AGENTS_SOURCE}"
     echo ""
     echo "After install, any MCP-compatible host will pick up:"
     echo "  - atelier MCP server (from .mcp.json)"
@@ -124,7 +131,6 @@ fi
 # sentinel markers so re-install updates in place without destroying user content.
 
 AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-AGENTS_SOURCE="${ATELIER_REPO}/AGENTS.md"
 
 if [ -f "$AGENTS_SOURCE" ]; then
     if [ -f "$AGENTS_FILE" ]; then

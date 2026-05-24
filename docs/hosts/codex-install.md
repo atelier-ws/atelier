@@ -61,7 +61,7 @@ Or run the Atelier preflight wrapper:
 
 - Codex has a real MCP server entry for `atelier` in `config.toml`
 - Codex loads the installed Atelier plugin and its bundled skills when the marketplace is visible to Codex
-- The Codex MCP entry runs `atelier-mcp --host codex` with `ATELIER_DEV_MODE=1`
+- The Codex MCP entry runs `atelier-mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
 - Atelier persists Codex session imports and savings data under `~/.atelier/`
 - The optional `atelier-codex` preflight wrapper records task context before handing off to Codex
 
@@ -76,14 +76,12 @@ Or run the Atelier preflight wrapper:
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 
-With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Codex includes
-`context`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`,
-`sql`, `search`, `compact`, `shell`, and the `code` helpers.
+With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Codex adds
+dev-only tools (`rescue`, `verify`) on top of the stable surface.
 
-The standard Atelier install path enables `ATELIER_DEV_MODE=1` by default for
-the Codex MCP server entry registered in `config.toml`. Without developer mode,
-`trace` remains the most reliable active surface and some other tools may still
-appear as passive compatibility stubs.
+The standard Atelier install path now defaults to stable mode
+(`ATELIER_DEV_MODE=0`) for the Codex MCP server entry registered in
+`config.toml`.
 
 See `integrations/codex/tasks/preflight.md` for how to use `memory` and `search` in the preflight workflow.
 
