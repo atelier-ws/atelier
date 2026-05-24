@@ -7,6 +7,7 @@ surfaces:
 - ``.langchain()``       → LangChain ``BaseCallbackHandler``
 - ``.openai_hooks()``    → OpenAI Agents SDK ``AgentHooks``
 - ``.anthropic_tools()`` → ``(tool_specs, dispatch)`` for raw Anthropic API
+- ``.gemini_adk()``      → Gemini ADK-style lifecycle hooks
 
 All three surfaces share a single ``RunLedger`` so cost metrics, loop
 detection events, and prefix-cache diagnostics are unified across the session.
@@ -23,6 +24,7 @@ from atelier.infra.runtime.run_ledger import RunLedger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from atelier.sdk.gemini_adk import GeminiADKMiddleware
     from atelier.sdk.langchain_middleware import LangChainMiddleware
     from atelier.sdk.openai_hooks import OpenAIAgentsHooks
 
@@ -72,7 +74,11 @@ class AtelierMiddleware:
 
         return OpenAIAgentsHooks(self._ledger, mode=self.mode)
 
-    def anthropic_tools(self) -> tuple[list[dict[str, Any]], Callable[[Any], None]]:
+    def anthropic_tools(
+        self,
+        *,
+        include_telemetry_tool: bool = True,
+    ) -> tuple[list[dict[str, Any]], Callable[[Any], None]]:
         """Return ``(tool_specs, dispatch)`` for raw Anthropic API integration.
 
         Pass ``tool_specs`` to ``Anthropic().messages.create(tools=tool_specs, ...)``
@@ -81,7 +87,13 @@ class AtelierMiddleware:
         """
         from atelier.sdk.anthropic_tools import make_atelier_tools
 
-        return make_atelier_tools(self._ledger)
+        return make_atelier_tools(self._ledger, include_telemetry_tool=include_telemetry_tool)
+
+    def gemini_adk(self) -> GeminiADKMiddleware:
+        """Return Gemini ADK-style hooks backed by this middleware."""
+        from atelier.sdk.gemini_adk import GeminiADKMiddleware
+
+        return GeminiADKMiddleware(self._ledger, mode=self.mode)
 
     # ---------------------------------------------------------------------- #
     # Context manager support                                                  #
