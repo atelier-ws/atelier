@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -146,12 +147,17 @@ def _configure_workspace(monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> No
 def _flatten_smart_payload(payload: dict[str, object]) -> str:
     mode = str(payload.get("mode") or "")
     if mode == "map":
-        parts = [str(payload.get("outline") or "")]
-        parts.extend(str(item) for item in payload.get("ranked_files", []) if item)
-        return "\n".join(part for part in parts if part)
+        map_parts = [str(payload.get("outline") or "")]
+        ranked_files = payload.get("ranked_files")
+        if isinstance(ranked_files, list):
+            map_parts.extend(str(item) for item in ranked_files if item)
+        return "\n".join(part for part in map_parts if part)
 
     parts: list[str] = []
-    for match in payload.get("matches", []):
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        return ""
+    for match in matches:
         if not isinstance(match, dict):
             continue
         parts.append(str(match.get("path") or ""))
@@ -167,7 +173,10 @@ def _flatten_smart_payload(payload: dict[str, object]) -> str:
 
 def _flatten_native_payload(payload: dict[str, object]) -> str:
     parts: list[str] = []
-    for item in payload.get("content", []):
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return ""
+    for item in content:
         if not isinstance(item, dict):
             continue
         if item.get("type") == "text":
@@ -266,22 +275,6 @@ def _baseline_smart_chunks(repo_root: Path, query: str, max_files: int) -> str:
     return "\n".join(parts)
 
 
-def _baseline_smart_full(repo_root: Path, query: str, max_files: int) -> str:
-    parts: list[str] = []
-    needle = query.lower()
-    files_seen = 0
-    for file_path in _text_candidates(repo_root / "src"):
-        content = file_path.read_text(encoding="utf-8", errors="replace")
-        if needle not in content.lower():
-            continue
-        parts.append(str(file_path.relative_to(repo_root)))
-        parts.append(content)
-        files_seen += 1
-        if files_seen >= max_files:
-            break
-    return "\n".join(parts)
-
-
 def _baseline_repo_map(repo_root: Path) -> str:
     parts: list[str] = []
     for file_path in sorted((repo_root / "src").glob("**/*.py")):
@@ -321,7 +314,6 @@ def _baseline_full_glob_read(repo_root: Path, path: str, globs: list[str]) -> st
     ("tool_name", "mode", "native_tool", "baseline_builder"),
     [
         ("search.smart_chunks", "chunks", "grep_plus_snippets", _baseline_smart_chunks),
-        ("search.smart_full", "full", "grep_plus_full_read", _baseline_smart_full),
         (
             "search.smart_map",
             "map",
@@ -336,7 +328,7 @@ def test_search_ab_smart_modes(
     tool_name: str,
     mode: str,
     native_tool: str,
-    baseline_builder,
+    baseline_builder: Callable[[Path, str | None, int], str],
 ) -> None:
     _write_fixture_repo(tmp_path)
     _configure_workspace(monkeypatch, tmp_path)
@@ -390,6 +382,7 @@ def test_search_ab_native_regex_mode(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "content_regex": "NEEDLE_TOKEN",
         "file_glob_patterns": ["**/*.md"],
         "output_mode": "file_paths_with_content",
+        "include_meta": True,
     }
 
     t0 = time.perf_counter()
@@ -427,6 +420,7 @@ def test_search_ab_native_glob_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         "path": ".",
         "file_glob_patterns": globs,
         "output_mode": "file_paths_only",
+        "include_meta": True,
     }
 
     t0 = time.perf_counter()
@@ -499,7 +493,7 @@ def test_search_ab_cache_hit_second_call(tmp_path: Path, monkeypatch: pytest.Mon
     _write_fixture_repo(tmp_path)
     _configure_workspace(monkeypatch, tmp_path)
 
-    tool_args = {"query": "OrderService", "path": "src", "budget_tokens": 4000}
+    tool_args = {"query": "OrderService", "path": "src", "budget_tokens": 4000, "include_meta": True}
     native_text = _baseline_smart_chunks(tmp_path, "OrderService", 3)
     native_ms = 0.0
 

@@ -15,6 +15,24 @@
 
 set -euo pipefail
 
+# ANSI Colors
+if [[ -t 1 ]]; then
+    C_RESET="$(printf '\033[0m')"
+    C_DIM="$(printf '\033[2m')"
+    C_GREEN="$(printf '\033[32m')"
+    C_RED="$(printf '\033[31m')"
+    C_YELLOW="$(printf '\033[33m')"
+    C_PURPLE="$(printf '\033[38;2;155;117;217m')"
+else
+    C_RESET=""
+    C_DIM=""
+    C_GREEN=""
+    C_RED=""
+    C_YELLOW=""
+    C_PURPLE=""
+fi
+C_FRAME="$C_DIM"
+
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
 ATELIER_TOOL_DIR="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
@@ -24,6 +42,7 @@ ATELIER_DEFAULT_INSTALL_DIR="${HOME}/.local/share/atelier"
 PASSTHROUGH=()
 WORKSPACE_EXPLICIT=0
 PURGE=0
+DEFERRED_REMOVE_INSTALL_DIR=""
 
 # Read the memory sidecar that was selected at install time (if any).
 _MEMORY_BACKEND_FILE="${HOME}/.atelier/memory_backend"
@@ -33,13 +52,6 @@ if [[ -f "$_MEMORY_BACKEND_FILE" ]]; then
 fi
 
 # Read the Zoekt selection that was persisted at install time (if any).
-_ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
-ATELIER_ZOEKT=""
-if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
-    ATELIER_ZOEKT="$(head -n 1 "$_ZOEKT_ENABLED_FILE" 2>/dev/null | tr -d '[:space:]')"
-fi
-
-# Read persisted Zoekt sidecar selection (if any).
 _ZOEKT_ENABLED_FILE="${HOME}/.atelier/zoekt_enabled"
 ATELIER_ZOEKT=""
 if [[ -f "$_ZOEKT_ENABLED_FILE" ]]; then
@@ -61,8 +73,8 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-info() { echo "[atelier-uninstall] $*"; }
-warn() { echo "[atelier-uninstall] WARN: $*" >&2; }
+info() { printf "%b│%b  ◇  %s\n" "$C_FRAME" "$C_RESET" "$*"; }
+warn() { printf "%b│%b  %b⚠%b  %s\n" "$C_FRAME" "$C_RESET" "$C_YELLOW" "$C_RESET" "$*"; }
 run()  { [[ "$ATELIER_DRY_RUN" == "1" ]] && echo "[dry-run] $*" || eval "$*"; }
 
 remove_path() {
@@ -108,7 +120,7 @@ purge_leftovers() {
     install_dir="${ATELIER_INSTALL_DIR:-$(install_dir_from_record)}"
     install_dir="${install_dir:-$ATELIER_DEFAULT_INSTALL_DIR}"
 
-    echo ""
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
     info "Purging Atelier runtime state, install environments, and known host residue..."
 
     remove_path "${ATELIER_TOOL_DIR}/atelier"
@@ -152,17 +164,26 @@ purge_leftovers() {
     remove_path "${HOME}/.atelier"
 
     if [ -n "$install_dir" ]; then
-        case "$install_dir" in
-            "$repo_root"|"$PWD")
-                warn "Skipping install source removal because it is the current source checkout: $install_dir"
-                ;;
-            "$HOME"/*)
-                remove_path "$install_dir"
-                ;;
-            *)
-                warn "Skipping install source outside HOME: $install_dir"
-                ;;
-        esac
+        local script_root_real install_dir_real
+        script_root_real="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+        if [[ -d "$install_dir" ]]; then
+            install_dir_real="$(cd "$install_dir" && pwd -P)"
+        else
+            install_dir_real="$install_dir"
+        fi
+
+        if [[ "$script_root_real" == "$install_dir_real" || "$script_root_real" == "$install_dir_real/"* || "$install_dir" == "$repo_root" || "$install_dir" == "$PWD" ]]; then
+            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+                warn "Will remove install source after script exits (deferred): $install_dir"
+            else
+                DEFERRED_REMOVE_INSTALL_DIR="$install_dir_real"
+                warn "Deferring install source removal until script exit: $install_dir"
+            fi
+        elif [[ "$install_dir" == "$HOME/"* ]]; then
+            remove_path "$install_dir"
+        else
+            warn "Skipping install source outside HOME: $install_dir"
+        fi
     fi
 }
 
@@ -220,10 +241,9 @@ if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
     for host in claude codex opencode copilot antigravity; do
         script="${SCRIPT_DIR}/uninstall_${host}.sh"
         [ -f "$script" ] || continue
-        echo ""
-        echo "──────────────────────────────────────────"
-        echo " Uninstalling Atelier ← ${host}"
-        echo "──────────────────────────────────────────"
+        printf "%b│%b\n" "$C_FRAME" "$C_RESET"
+        printf "%b┌%b  Uninstalling Atelier ← %s\n" "$C_FRAME" "$C_RESET" "$host"
+        printf "%b│%b\n" "$C_FRAME" "$C_RESET"
         bash "$script" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} || true
         # Also clean workspace-local configs in CWD when no explicit --workspace given
         if [[ "$WORKSPACE_EXPLICIT" == "0" && "$PWD" != "$HOME" ]]; then
@@ -232,7 +252,7 @@ if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then
             bash "$script" "${local_args[@]}" 2>/dev/null || true
         fi
     done
-    echo ""
+    printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 else
     info "Skipping host integrations because ATELIER_NO_HOSTS=1"
 fi
@@ -275,18 +295,33 @@ if [[ "$PURGE" == "1" ]]; then
     # ---- Zoekt code-search Docker cleanup -----------------------------------
     if [[ "$ATELIER_ZOEKT" == "1" ]] && command -v docker >/dev/null 2>&1; then
         info "Removing Zoekt Docker containers and volumes..."
-        zoekt_containers="$(docker ps -aq --filter "name=atelier-zoekt-" 2>/dev/null || true)"
-        if [[ -n "$zoekt_containers" ]]; then
-            run "docker stop $zoekt_containers 2>/dev/null || true"
-            run "docker rm $zoekt_containers 2>/dev/null || true"
+        mapfile -t zoekt_container_ids < <(docker ps -aq --filter "name=atelier-zoekt-" 2>/dev/null || true)
+        if [[ ${#zoekt_container_ids[@]} -gt 0 ]]; then
+            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+                echo "[dry-run] docker stop ${zoekt_container_ids[*]} 2>/dev/null || true"
+                echo "[dry-run] docker rm ${zoekt_container_ids[*]} 2>/dev/null || true"
+            else
+                docker stop "${zoekt_container_ids[@]}" 2>/dev/null || true
+                docker rm "${zoekt_container_ids[@]}" 2>/dev/null || true
+            fi
         fi
-        zoekt_volumes="$(docker volume ls -q --filter "name=atelier-zoekt-" 2>/dev/null || true)"
-        if [[ -n "$zoekt_volumes" ]]; then
-            run "docker volume rm $zoekt_volumes 2>/dev/null || true"
+        mapfile -t zoekt_volume_ids < <(docker volume ls -q --filter "name=atelier-zoekt-" 2>/dev/null || true)
+        if [[ ${#zoekt_volume_ids[@]} -gt 0 ]]; then
+            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+                echo "[dry-run] docker volume rm ${zoekt_volume_ids[*]} 2>/dev/null || true"
+            else
+                docker volume rm "${zoekt_volume_ids[@]}" 2>/dev/null || true
+            fi
         fi
     fi
 
     purge_leftovers
 fi
 
+printf "%b│%b\n" "$C_FRAME" "$C_RESET"
 info "Uninstall complete."
+
+if [[ -n "$DEFERRED_REMOVE_INSTALL_DIR" ]]; then
+    info "Scheduling deferred removal of install source: $DEFERRED_REMOVE_INSTALL_DIR"
+    ( sleep 1; rm -rf -- "$DEFERRED_REMOVE_INSTALL_DIR" ) >/dev/null 2>&1 &
+fi
