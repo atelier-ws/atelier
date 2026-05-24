@@ -102,9 +102,7 @@ def make_atelier_tools(
             input_tokens = getattr(usage, "input_tokens", 0) or 0
             output_tokens = getattr(usage, "output_tokens", 0) or 0
             # Anthropic extended usage fields
-            cache_read_tokens = (
-                getattr(usage, "cache_read_input_tokens", 0) or 0
-            )
+            cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
 
         model = getattr(response, "model", "unknown") or "unknown"
         _stop_reason = getattr(response, "stop_reason", "")
@@ -201,7 +199,6 @@ def _handle_telemetry_call(ledger: RunLedger) -> dict[str, Any]:
         "total_input_tokens": total_input,
         "watchdog_alerts": len(watchdog_events),
         "loop_detected": any(
-            e.payload.get("event_type") in {"REPEATED_TOOL_CALL", "REPEATED_COMMAND"}
-            for e in watchdog_events
+            e.payload.get("event_type") in {"REPEATED_TOOL_CALL", "REPEATED_COMMAND"} for e in watchdog_events
         ),
     }

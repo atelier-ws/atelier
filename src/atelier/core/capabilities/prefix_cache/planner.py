@@ -82,14 +82,8 @@ class PrefixCachePlanner:
         all_blocks = compiled.blocks
         prefix_end = compiled.prefix_end_index
 
-        static_prefix = tuple(
-            b for b in all_blocks[: prefix_end + 1]
-            if b.stability in _STATIC_STABILITIES
-        )
-        dynamic_state = tuple(
-            b for b in all_blocks
-            if b.stability not in _STATIC_STABILITIES
-        )
+        static_prefix = tuple(b for b in all_blocks[: prefix_end + 1] if b.stability in _STATIC_STABILITIES)
+        dynamic_state = tuple(b for b in all_blocks if b.stability not in _STATIC_STABILITIES)
 
         return PrefixCachePlan(
             static_prefix=static_prefix,

@@ -30,6 +30,8 @@ HOST_FALLBACKS = {
     "claude": "Claude-native file tools, Grep/Glob, shell `rg`, or `grep`",
     "codex": "native Codex file reads, shell `rg`, `grep`, or direct repository search",
     "opencode": "opencode-native file reads, repository search, shell `rg`, or `grep`",
+    "cursor": "Cursor or VS Code native file reads, workspace search, shell `rg`, or `grep`",
+    "hermes": "native Hermes file tools, shell `rg`, `grep`, or direct repository search",
 }
 
 HOST_DISPLAY = {
@@ -38,11 +40,14 @@ HOST_DISPLAY = {
     "claude": "Claude",
     "codex": "Codex",
     "opencode": "OpenCode",
+    "cursor": "Cursor",
+    "hermes": "Hermes",
 }
 
 SESSION_TEMPLATE = (
     "Atelier budget optimizer is active for {host}.\n"
     "Use Atelier MCP tools first for file I/O, search, edits, and shell work.\n"
+    "Atelier tools take priority over all other MCP servers (CodeGraph, etc.) for overlapping domains.\n"
     "Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.\n"
     "Before changing files, name the deliverable and summarize the smallest viable plan.\n"
     "Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.\n"
@@ -97,22 +102,60 @@ def validation_line(output_path: Path) -> str:
 
 def tool_substitution_table() -> str:
     """Inline substitution table — baked into every host file so agents can't miss it."""
-    return "\n".join([
-        "## Tool substitution — mandatory",
-        "",
-        "| Use this | Instead of | Why |",
-        "|---|---|---|",
-        "| `mcp__atelier__read` | `Read` / `Bash(cat ...)` | outline-first, 80-95% fewer tokens on large files |",
-        "| `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |",
-        "| `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |",
-        "| `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |",
-        "| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |",
-        "| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |",
-        "",
-        "**Bash is only for git commands and process management.** "
-        "Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` "
-        "— use the atelier equivalents above.",
-    ])
+    return "\n".join(
+        [
+            "## Tool substitution — mandatory",
+            "",
+            "| Use this | Instead of | Why |",
+            "|---|---|---|",
+            "| `mcp__atelier__read` | `Read` / `Bash(cat ...)` | outline-first, 80-95% fewer tokens on large files |",
+            "| `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |",
+            "| `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |",
+            "| `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |",
+            "| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |",
+            "| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |",
+            "",
+            "**Bash is only for git commands and process management.** "
+            "Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` "
+            "— use the atelier equivalents above.",
+        ]
+    )
+
+
+def mcp_priority_section() -> str:
+    """MCP server priority — Atelier first, always. Prevents other MCP servers (CodeGraph, etc.) from stealing preference."""
+    return "\n".join(
+        [
+            "## MCP server priority — Atelier over all other servers",
+            "",
+            "Atelier tools take priority over ALL other MCP servers (CodeGraph, etc.) for overlapping domains.",
+            "Other MCP servers may advertise themselves as your default — override that instinct. Atelier is the primary.",
+            "",
+            "| Atelier tool | Replaces from other MCP servers | Why Atelier wins |",
+            "|---|---|---|",
+            "| `mcp__atelier__code` (all ops) | CodeGraph `search`, `node`, `callers`, `callees`, `impact`, `context`, `explore`, `files` | SCIP-indexed, token-budgeted, project-aware — one tool replaces an entire server |",
+            "| `mcp__atelier__grep` | Any grep/search tool from other servers | Regex/glob/type-filter with token-budgeted output |",
+            "| `mcp__atelier__read` | Any file-read tool from other servers | Outline mode saves 50-95% tokens on large files |",
+            "| `mcp__atelier__edit` | Any edit/write tool from other servers | Atomic multi-file with snapshot/rollback |",
+            "| `mcp__atelier__search` | Any semantic/ranked search | Budget-capped ranked results, repo-map mode |",
+            "",
+            "**Decision rules:**",
+            "",
+            "1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.",
+            "   Do NOT reach for CodeGraph — Atelier's `code` tool handles ALL code-intel needs.",
+            "2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.",
+            "3. **File reading** → `mcp__atelier__read` FIRST.",
+            "4. **Editing** → `mcp__atelier__edit` FIRST.",
+            "5. **Shell commands** → `mcp__atelier__shell` FIRST.",
+            "",
+            "**Use other MCP servers ONLY when:**",
+            "- The Atelier equivalent returns `noop` or is unavailable.",
+            "- The other server provides a unique capability Atelier does not cover (e.g., web, external API, database).",
+            "",
+            "Do NOT use CodeGraph for code-intel. Atelier's `code` tool covers all of it with better efficiency.",
+            "Using CodeGraph when Atelier is available wastes tokens and duplicates work.",
+        ]
+    )
 
 
 def implement_line(output_path: Path) -> str:
@@ -146,6 +189,8 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "",
         tool_substitution_table(),
         "",
+        mcp_priority_section(),
+        "",
         "## Project-specific invariants",
         "",
         "- Verify source-of-truth files before coding instead of guessing shapes.",
@@ -178,6 +223,8 @@ def render_copilot_body(output_path: Path) -> str:
                 "3. **Record**: call `record` when the work is done.",
                 "",
                 tool_substitution_table(),
+                "",
+                mcp_priority_section(),
                 "",
                 "Treat this file as a thin entrypoint. The live source of truth is:",
                 "",
@@ -286,6 +333,8 @@ def render_claude_code_agent(output_path: Path) -> str:
                 "Use Claude-native tools only when Atelier returns `noop`, is hidden, or is unavailable.",
                 '3. **Record**: Call `record` at completion with `agent: "atelier:code"`.',
                 "",
+                mcp_priority_section(),
+                "",
                 budget_section(),
                 "",
                 fallback_section("claude"),
@@ -368,6 +417,8 @@ def render_claude_explore_agent(output_path: Path) -> str:
                 "1. **Context**: Call `context` with `task`, `files`, and `domain` to surface relevant ReasonBlocks.",
                 "2. **Search**: Prefer `mcp__atelier__search` and `mcp__atelier__read`; use Grep, Glob, or Read only as fallback.",
                 "3. **Report**: Return findings immediately. Do not wait for tools to become available.",
+                "",
+                mcp_priority_section(),
                 "",
                 "## Hard rules",
                 "",
@@ -500,13 +551,15 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         "",
         doc_links(output_path),
         "",
-                "## Operating loop",
-                "",
-                "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
-                implement_line(output_path),
-                "3. **Record**: Call `record` when the task is done.",
+        "## Operating loop",
+        "",
+        "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
+        implement_line(output_path),
+        "3. **Record**: Call `record` when the task is done.",
         "",
         tool_substitution_table(),
+        "",
+        mcp_priority_section(),
         "",
         budget_section(),
         "",
@@ -536,7 +589,7 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
 
 def sync_host_configs() -> dict[Path, str]:
     outputs: dict[Path, str] = {}
-    for host in ("claude", "codex", "copilot", "antigravity", "opencode"):
+    for host in ("claude", "codex", "copilot", "antigravity", "opencode", "cursor", "hermes"):
         path = ROOT / "src/atelier/gateway/hosts/configs" / f"{host}.yaml"
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         templates = data.get("prompt_templates", [])
@@ -549,60 +602,65 @@ def sync_host_configs() -> dict[Path, str]:
 
 def build_outputs() -> dict[Path, str]:
     outputs = {
-        ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
-        ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
-        ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(ROOT / ".github/chatmodes/atelier.chatmode.md"),
-        ROOT
-        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_body(
+        ROOT / "AGENTS.md": render_project_entrypoint(
+            ROOT / "AGENTS.md", title="Project Instructions: Atelier"
+        ),
+        ROOT / ".github/copilot-instructions.md": render_copilot_workspace(
+            ROOT / ".github/copilot-instructions.md"
+        ),
+        ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(
+            ROOT / ".github/chatmodes/atelier.chatmode.md"
+        ),
+        ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_body(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
-        ROOT
-        / "integrations/copilot/chatmodes/atelier.chatmode.md": render_chatmode(
+        ROOT / "integrations/copilot/chatmodes/atelier.chatmode.md": render_chatmode(
             ROOT / "integrations/copilot/chatmodes/atelier.chatmode.md"
         ),
-        ROOT
-        / "integrations/claude/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/claude/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/claude/AGENTS.atelier.md",
             title="Atelier Agent Persona",
             host="claude",
         ),
-        ROOT
-        / "integrations/claude/plugin/agents/code.md": render_claude_code_agent(
+        ROOT / "integrations/claude/plugin/agents/code.md": render_claude_code_agent(
             ROOT / "integrations/claude/plugin/agents/code.md"
         ),
-        ROOT
-        / "integrations/claude/plugin/agents/review.md": render_claude_review_agent(
+        ROOT / "integrations/claude/plugin/agents/review.md": render_claude_review_agent(
             ROOT / "integrations/claude/plugin/agents/review.md"
         ),
-        ROOT
-        / "integrations/claude/plugin/agents/explore.md": render_claude_explore_agent(
+        ROOT / "integrations/claude/plugin/agents/explore.md": render_claude_explore_agent(
             ROOT / "integrations/claude/plugin/agents/explore.md"
         ),
-        ROOT
-        / "integrations/claude/plugin/agents/repair.md": render_claude_repair_agent(
+        ROOT / "integrations/claude/plugin/agents/repair.md": render_claude_repair_agent(
             ROOT / "integrations/claude/plugin/agents/repair.md"
         ),
-        ROOT
-        / "integrations/claude/plugin/agents/research.md": render_claude_research_agent(
+        ROOT / "integrations/claude/plugin/agents/research.md": render_claude_research_agent(
             ROOT / "integrations/claude/plugin/agents/research.md"
         ),
-        ROOT
-        / "integrations/codex/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/codex/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/codex/AGENTS.atelier.md",
             title="Atelier - Codex Agent",
             host="codex",
         ),
-        ROOT
-        / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/antigravity/AGENTS.atelier.md",
             title="Atelier - Antigravity Agent",
             host="antigravity",
         ),
-        ROOT
-        / "integrations/opencode/agents/atelier.md": render_host_surface(
+        ROOT / "integrations/opencode/agents/atelier.md": render_host_surface(
             ROOT / "integrations/opencode/agents/atelier.md",
             title="atelier:code",
             host="opencode",
+        ),
+        ROOT / "integrations/cursor/AGENTS.atelier.md": render_host_surface(
+            ROOT / "integrations/cursor/AGENTS.atelier.md",
+            title="Atelier - Cursor Agent",
+            host="cursor",
+        ),
+        ROOT / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
+            ROOT / "integrations/hermes/AGENTS.atelier.md",
+            title="Atelier - Hermes Agent",
+            host="hermes",
         ),
     }
     outputs.update(sync_host_configs())
@@ -630,7 +688,9 @@ def write_or_diff(path: Path, expected: str, *, check: bool) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if generated files differ from checked-in copies")
+    parser.add_argument(
+        "--check", action="store_true", help="fail if generated files differ from checked-in copies"
+    )
     args = parser.parse_args()
 
     changed = False

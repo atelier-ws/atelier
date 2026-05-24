@@ -374,7 +374,7 @@ else
         info "Creating ${CLAUDE_SETTINGS}"
         echo "{}" > "${CLAUDE_SETTINGS}"
     fi
-    HOOK_SCRIPT=$(mktemp /tmp/atelier_hook_XXXXXX.py)
+    HOOK_SCRIPT=$(mktemp /tmp/atelier_hook_XXXXXX)
     cat > "${HOOK_SCRIPT}" << 'PYEOF'
 import json
 import sys
@@ -414,7 +414,7 @@ fi
 if $DRY_RUN; then
     echo "  [dry-run] merge Atelier MCP tools into permissions.allow in ${CLAUDE_SETTINGS}"
 else
-    PERM_SCRIPT=$(mktemp /tmp/atelier_perm_XXXXXX.py)
+    PERM_SCRIPT=$(mktemp /tmp/atelier_perm_XXXXXX)
     cat > "${PERM_SCRIPT}" << 'PYEOF'
 import json
 import sys
