@@ -1,165 +1,321 @@
-# Codebase Structure
+# Structure
 
-**Analysis Date:** 2026-05-18
+**Analysis Date:** 2025-05-25
 
 ## Directory Layout
 
-```text
-[project-root]/
-├── `src/atelier/`              # Main Python product package
-├── `src/benchmarks/`           # Packaged benchmark modules shipped with the wheel
-├── `frontend/src/`             # React/Vite dashboard application
-├── `tests/`                    # Python pytest suites for core, gateway, infra, docs
-├── `scripts/`                  # Installers, sync tools, verification scripts, hooks
-├── `integrations/`             # Host-specific install surfaces and skill sources
-├── `templates/reasonblocks/`   # Starter template bundles copied by CLI init flows
-├── `.knowledge/`               # Repo-local knowledge/rubric content
-├── `docs/`                     # Active product and engineering documentation
-└── `benchmarks/`               # Top-level harness assets and wrappers
+```
+atelier/                          # repo root
+├── src/atelier/                  # Python package (all runtime code)
+│   ├── gateway/                  # entry points — thin dispatchers only
+│   │   ├── adapters/             # MCP server, CLI, ecosystem adapters, runtime façade
+│   │   ├── cli/                  # CLI sub-module helpers
+│   │   ├── hosts/                # host-specific session parsers + configs
+│   │   ├── integrations/         # external analytics, Langfuse, ledger reconstructor
+│   │   └── sdk/                  # AtelierClient SDK (local / mcp / remote)
+│   ├── core/                     # domain logic — no infra/gateway imports
+│   │   ├── capabilities/         # 30+ capability modules (see below)
+│   │   ├── foundation/           # Pydantic models, store, retriever, renderer, paths
+│   │   ├── runtime/              # AtelierRuntimeCore orchestrator (engine.py)
+│   │   ├── service/              # FastAPI HTTP API surface
+│   │   ├── domains/              # domain-specific logic + builtin domain loader
+│   │   ├── improvement/          # failure analyzer
+│   │   └── rubrics/              # YAML rubric definitions
+│   ├── infra/                    # persistence + integrations — depends on core
+│   │   ├── storage/              # SQLite / Postgres / vector stores
+│   │   ├── runtime/              # RunLedger, Checkpoint, RealtimeContext, CostTracker
+│   │   ├── code_intel/           # SCIP, ast-grep, Zoekt, git history, cross-lang
+│   │   ├── embeddings/           # local / OpenAI / Letta embedders
+│   │   ├── memory_bridges/       # Letta, OpenMemory adapters
+│   │   ├── internal_llm/         # internal LLM routing
+│   │   ├── tree_sitter/          # AST parsing helpers
+│   │   ├── benchmarks/           # benchmark harnesses
+│   │   └── seed_blocks/          # seed memory block data
+│   └── sdk/                      # public SDK (thin __init__.py)
+├── frontend/                     # React/Vite dashboard
+│   ├── src/                      # React components + api.ts
+│   └── public/                   # static assets
+├── integrations/                 # host integrations (not in Python package)
+│   ├── claude/plugin/            # Claude Code plugin + hooks
+│   ├── codex/                    # Codex integration
+│   ├── copilot/                  # GitHub Copilot integration
+│   ├── opencode/                 # OpenCode integration
+│   ├── antigravity/              # Antigravity integration
+│   └── skills/                   # agent skills
+├── tests/                        # test suite mirroring src layout
+│   ├── core/                     # core layer tests
+│   ├── gateway/                  # gateway layer tests
+│   ├── infra/                    # infra layer tests
+│   ├── benchmarks/               # A/B benchmark tests (marked slow)
+│   ├── fixtures/                 # shared test fixtures
+│   ├── golden/                   # golden output files
+│   └── docs/                     # doc-governance tests
+├── docs/                         # documentation
+│   ├── architecture/             # layers.md, domain-map.md, README.md
+│   ├── agent-os/                 # agent operating rules (source of truth)
+│   ├── specs/                    # feature execution specs
+│   ├── decisions/                # architectural decision records
+│   ├── plans/                    # execution plans
+│   └── quality/                  # scorecard, debt tracking
+├── scripts/                      # operational scripts
+│   ├── install_claude.sh         # Claude plugin install
+│   └── verify_*.sh               # verification scripts
+├── pyproject.toml                # Python package config (uv)
+├── Makefile                      # lint, format, typecheck, test, docs targets
+├── CLAUDE.md                     # Claude Code working instructions
+├── AGENTS.md                     # generated agent instructions (from docs/agent-os/)
+├── Dockerfile.api                # API service Docker image
+├── Dockerfile.frontend           # Frontend Docker image
+└── docker-compose.yml            # local dev stack
 ```
 
-## Directory Purposes
+## Key Files
 
-**`src/atelier/core/`:**
-- Purpose: reasoning/runtime business logic.
-- Contains: capabilities, domain bundles, foundational models/store, runtime engine, service API.
-- Key files: `src/atelier/core/runtime/engine.py`, `src/atelier/core/foundation/store.py`, `src/atelier/core/service/api.py`, `src/atelier/core/domains/manager.py`
+### Entry Points
+| File | Purpose |
+|------|---------|
+| `src/atelier/gateway/adapters/mcp_server.py` | stdio MCP server (4855 lines) — primary agent interface |
+| `src/atelier/gateway/adapters/cli.py` | `atelier` CLI (8988 lines — largest file) |
+| `src/atelier/core/service/api.py` | FastAPI HTTP service (5812 lines) |
+| `src/atelier/gateway/adapters/runtime.py` | `ContextRuntime` in-process façade |
+| `src/atelier/gateway/adapters/adapter_base.py` | Base class for all ecosystem adapters |
 
-**`src/atelier/gateway/`:**
-- Purpose: entry points and external access adapters.
-- Contains: CLI/MCP adapters, host/session parsers, SDK clients, host-facing integrations.
-- Key files: `src/atelier/gateway/adapters/cli.py`, `src/atelier/gateway/adapters/mcp_server.py`, `src/atelier/gateway/adapters/runtime.py`, `src/atelier/gateway/hosts/session_parsers/registry.py`
+### Orchestration
+| File | Purpose |
+|------|---------|
+| `src/atelier/core/runtime/engine.py` | `AtelierRuntimeCore` — capability orchestrator (940 lines) |
+| `src/atelier/core/foundation/store.py` | `ContextStore` — SQLite block/trace/fact store (1824 lines) |
+| `src/atelier/infra/runtime/run_ledger.py` | `RunLedger` — append-only event ledger |
+| `src/atelier/infra/runtime/checkpoint.py` | `Checkpoint` — resumable execution snapshots |
+| `src/atelier/infra/runtime/realtime_context.py` | `RealtimeContextManager` — rolling context minimizer |
+| `src/atelier/infra/runtime/cost_tracker.py` | `CostTracker` — per-call cost accumulation |
 
-**`src/atelier/infra/`:**
-- Purpose: operational implementation details beneath the core contracts.
-- Contains: storage backends, runtime ledgers, embeddings, memory bridges, seed data, tree-sitter helpers.
-- Key files: `src/atelier/infra/storage/factory.py`, `src/atelier/infra/storage/sqlite_store.py`, `src/atelier/infra/storage/postgres_store.py`, `src/atelier/infra/runtime/run_ledger.py`, `src/atelier/infra/runtime/realtime_context.py`
+### Core Foundation
+| File | Purpose |
+|------|---------|
+| `src/atelier/core/foundation/models.py` | Core Pydantic models: `Trace`, `ReasonBlock`, `LedgerEvent`, etc. |
+| `src/atelier/core/foundation/memory_models.py` | `MemoryBlock`, `ArchivalPassage` |
+| `src/atelier/core/foundation/routing_models.py` | `RouteDecision`, `StepType`, `TaskType` |
+| `src/atelier/core/foundation/retriever.py` | `retrieve()`, `score_block()`, `count_tokens()` |
+| `src/atelier/core/foundation/renderer.py` | `render_context_for_agent()`, `render_block_markdown()` |
+| `src/atelier/core/foundation/rubric_gate.py` | `run_rubric()` — YAML rubric evaluator |
+| `src/atelier/core/foundation/paths.py` | `default_store_root()`, `resolve_workspace_root()` |
+| `src/atelier/core/foundation/watchdog_profiles.py` | `active_watchdog_weights()` per-domain config |
+| `src/atelier/core/foundation/extractor.py` | `extract_candidate()` — extract CandidateBlock from output |
 
-**`src/atelier/sdk/`:**
-- Purpose: public import surface for Python consumers.
-- Contains: re-exports over `src/atelier/gateway/sdk/`
-- Key files: `src/atelier/sdk/__init__.py`
+### Capabilities (each in its own subdirectory)
+| Path | Class | Size |
+|------|-------|------|
+| `src/atelier/core/capabilities/code_context/engine.py` | Code intelligence engine | 6291 lines |
+| `src/atelier/core/capabilities/context_reuse/capability.py` | `ContextReuseCapability` | 983 lines |
+| `src/atelier/core/capabilities/semantic_file_memory/capability.py` | `SemanticFileMemoryCapability` | 627 lines |
+| `src/atelier/core/capabilities/plugin_runtime.py` | Plugin execution runtime | 1918 lines |
+| `src/atelier/core/capabilities/context_compression/capability.py` | `ContextCompressionCapability` | — |
+| `src/atelier/core/capabilities/model_routing/router.py` | `ModelRouter` 5-tier routing | — |
+| `src/atelier/core/capabilities/prefix_cache/planner.py` | `PrefixCachePlanner` | — |
+| `src/atelier/core/capabilities/prefix_cache/diagnostics.py` | `PrefixCacheDiagnostics` | — |
+| `src/atelier/core/capabilities/proof_gate/capability.py` | `ProofGateCapability` | — |
+| `src/atelier/core/capabilities/quality_router/capability.py` | `QualityRouterCapability` | — |
+| `src/atelier/core/capabilities/tool_supervision/capability.py` | `ToolSupervisionCapability` | — |
+| `src/atelier/core/capabilities/loop_detection/capability.py` | `LoopDetectionCapability` | — |
+| `src/atelier/core/capabilities/failure_analysis/capability.py` | `FailureAnalysisCapability` | — |
+| `src/atelier/core/capabilities/archival_recall/capability.py` | `ArchivalRecallCapability` | — |
+| `src/atelier/core/capabilities/prompt_compilation/compiler.py` | `compile_prompt` | — |
+| `src/atelier/core/capabilities/pricing.py` | `usage_cost_usd()` | — |
+| `src/atelier/core/capabilities/pricing.yaml` | Model cost table | — |
 
-**`src/benchmarks/`:**
-- Purpose: packaged benchmark code that ships with the Python wheel.
-- Contains: SWE benchmark runners, datasets, configs, retrieval ground truth.
-- Key files: `src/benchmarks/swe/run_swe_bench.py`, `src/benchmarks/swe/config.py`, `src/benchmarks/retrieval/ground_truth.jsonl`
+### Storage
+| File | Purpose |
+|------|---------|
+| `src/atelier/infra/storage/factory.py` | `make_memory_store()` — selects SQLite or Postgres |
+| `src/atelier/infra/storage/sqlite_store.py` | Default SQLite backend |
+| `src/atelier/infra/storage/postgres_store.py` | Production Postgres backend (1235 lines) |
+| `src/atelier/infra/storage/memory_store.py` | `MemoryStore` abstract base |
+| `src/atelier/infra/storage/vector.py` | Vector similarity search |
+| `src/atelier/infra/embeddings/factory.py` | `make_embedder()` — selects embedder |
 
-**`frontend/src/`:**
-- Purpose: browser UI for operational visibility.
-- Contains: route pages, components, API clients, shared state/context, tests.
-- Key files: `frontend/src/main.tsx`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/lib/insightsApi.ts`
+### Ecosystem Adapters
+| File | Purpose |
+|------|---------|
+| `src/atelier/gateway/adapters/langgraph_adapter.py` | LangGraph nodes/edges integration |
+| `src/atelier/gateway/adapters/aider_adapter.py` | Aider integration |
+| `src/atelier/gateway/adapters/continue_adapter.py` | Continue.dev integration |
+| `src/atelier/gateway/adapters/sweagent_adapter.py` | SWE-agent integration |
+| `src/atelier/gateway/adapters/openhands_adapter.py` | OpenHands integration |
+| `src/atelier/gateway/sdk/client.py` | `AtelierClient` — main SDK client |
+| `src/atelier/gateway/sdk/local.py` | Local (in-process) client |
+| `src/atelier/gateway/sdk/mcp.py` | MCP-based client |
+| `src/atelier/gateway/sdk/remote.py` | Remote HTTP client |
 
-**`tests/`:**
-- Purpose: backend regression coverage split by architectural layer.
-- Contains: `tests/core/`, `tests/gateway/`, `tests/infra/`, `tests/docs/`, fixtures.
-- Key files: `tests/gateway/test_service_api.py`, `tests/gateway/test_mcp_tool_handlers.py`, `tests/core/test_capabilities_runtime_core.py`, `tests/infra/test_store.py`
+### Rubrics
+| File | Purpose |
+|------|---------|
+| `src/atelier/core/rubrics/rubric_code_change.yaml` | Rubric for code changes |
+| `src/atelier/core/rubrics/rubric_state_change_safety.yaml` | Safety gate for state changes |
+| `src/atelier/core/rubrics/rubric_debugging_task.yaml` | Debugging task rubric |
+| `src/atelier/core/rubrics/rubric_verification_ladder.yaml` | Verification ladder rubric |
+| `src/atelier/core/rubrics/rubric_code_review.yaml` | Code review rubric |
+| `src/atelier/core/rubrics/rubric_knowledge_authoring.yaml` | Knowledge authoring rubric |
+| `src/atelier/core/rubrics/rubric_change_gate_discipline.yaml` | Change gate discipline |
+| `src/atelier/core/rubrics/rubric_source_of_truth_change.yaml` | Source of truth change |
+| `src/atelier/core/rubrics/rubric_atelier_retrieval_recall.yaml` | Retrieval recall quality |
 
-**`scripts/`:**
-- Purpose: developer lifecycle, installer, verification, and sync automation.
-- Contains: shell installers, verification scripts, Python maintenance utilities, shell hooks.
-- Key files: `scripts/install.sh`, `scripts/sync_agent_context.py`, `scripts/worktree_env.py`, `scripts/verify_atelier_service.sh`, `scripts/hooks/tool_redirect_hook.py`
+### Claude Code Integration
+| File | Purpose |
+|------|---------|
+| `integrations/claude/plugin/hooks/session_start.py` | Session metadata capture |
+| `integrations/claude/plugin/hooks/pre_tool_use.py` | Pre-tool savings tracking |
+| `integrations/claude/plugin/hooks/post_tool_use.py` | Post-tool savings tracking |
+| `integrations/claude/plugin/hooks/stop.py` | Session stats display + auto-record |
+| `integrations/claude/plugin/hooks/session_telemetry.py` | Per-tool telemetry → live_savings_events.jsonl |
+| `scripts/install_claude.sh` | Stages and installs the Claude plugin |
 
-**`integrations/`:**
-- Purpose: generated or source-controlled install surfaces for supported agent hosts.
-- Contains: host directories plus skill sources under `integrations/skills/`
-- Key files: `integrations/README.md`, `integrations/skills/`, `integrations/claude/`, `integrations/codex/`
+### Configuration & Build
+| File | Purpose |
+|------|---------|
+| `pyproject.toml` | Package deps, ruff/mypy config, entry points |
+| `Makefile` | `lint`, `format`, `typecheck`, `test`, `pre-commit`, `sync-agent-context` |
+| `CLAUDE.md` | Working instructions for Claude Code (authoritative) |
+| `AGENTS.md` | Generated from `docs/agent-os/` — do NOT edit directly |
 
-**`.knowledge/`:**
-- Purpose: project-local, Git-tracked knowledge content separated from runtime state.
-- Contains: `blocks/`, `rubrics/`
-- Key files: `.knowledge/blocks/`, `.knowledge/rubrics/`
+## Module Responsibilities
 
-## Key File Locations
+### `gateway/adapters/`
+**Dispatchers only.** No business logic. Responsibilities:
+- Protocol handling (stdio JSON-RPC for MCP, Click commands for CLI)
+- Tool registration and schema derivation (`@mcp_tool` decorator)
+- Lazy singleton initialization of core/infra objects
+- Session lifecycle management (`_emit_mcp_session_start/end`)
+- Auto-compact monitoring and handover advisories
+- Savings event emission to `live_savings_events.jsonl`
 
-**Entry Points:**
-- `src/atelier/gateway/adapters/cli.py`: installed `atelier` command tree
-- `src/atelier/gateway/adapters/mcp_server.py`: installed `atelier-mcp` stdio server
-- `src/atelier/core/service/api.py`: FastAPI factory and uvicorn launcher
-- `frontend/src/main.tsx`: SPA bootstrap
-- `src/atelier/sdk/__init__.py`: public Python SDK namespace
+### `gateway/hosts/`
+Host-specific session parsers and configurations. Contains session import parsers for Claude Code, Copilot, Codex with `session_parsers/_session_parser.py` (2133 lines) as the base.
 
-**Configuration:**
-- `pyproject.toml`: Python package metadata, scripts, tool config, package data inclusion
-- `frontend/package.json`: frontend scripts and dependency graph
-- `frontend/vite.config.ts`: dev server and `/api` proxy wiring
-- `docker-compose.yml`: local service + frontend stack orchestration
-- `Dockerfile.api`: backend image build
-- `Dockerfile.frontend`: frontend static build image
-- `Makefile`: common dev/test/install targets
+### `gateway/integrations/`
+- `external_analytics.py` (911 lines) — savings metrics, cost analytics
+- `langfuse.py` — LLM observability telemetry
+- `ledger_reconstructor.py` — rebuild ledger from session events
+- `openmemory.py` — OpenMemory bridge
 
-**Core Logic:**
-- `src/atelier/core/runtime/engine.py`: composition root for runtime capabilities
-- `src/atelier/gateway/adapters/runtime.py`: gateway-safe façade over the runtime
-- `src/atelier/core/foundation/store.py`: canonical SQLite/FTS data model and persistence behavior
-- `src/atelier/core/service/worker.py`: job processor
-- `src/atelier/core/capabilities/__init__.py`: capability registry/export map
+### `gateway/sdk/`
+`AtelierClient` in three modes — `local` (in-process), `mcp` (stdio), `remote` (HTTP). Used by all ecosystem adapters.
 
-**Testing:**
-- `tests/core/`: runtime, models, retrieval, routing, capability coverage
-- `tests/gateway/`: CLI, MCP, API, installation/integration coverage
-- `tests/infra/`: storage, runtime ledger, memory backend, benchmark infrastructure
-- `frontend/src/pages/*.test.tsx`: route-level React tests
-- `frontend/src/lib/*.test.ts`: focused frontend helper tests
+### `core/capabilities/`
+Pure domain logic. Each capability is a class with no state except what is injected at construction (store, root path). Capabilities are lazy-loaded via `__getattr__` in `__init__.py`. New capabilities MUST go here, not in gateway code.
+
+### `core/foundation/`
+Shared data contracts and utilities used by all capabilities:
+- Pydantic models for all cross-layer data
+- `ContextStore` — the single source of truth for persisted blocks
+- Token budget enforcement
+- Rendering and retrieval utilities
+
+### `core/service/`
+FastAPI application factory (`create_app()`). Bearer auth, request/response schemas, worker jobs, usage sync, telemetry. Started by `atelier runtime start`.
+
+### `core/rubrics/`
+YAML rubrics evaluated by `rubric_gate.run_rubric()`. Loaded at runtime by the rubric loader in `core/domains/loader.py`.
+
+### `infra/storage/`
+Two backends selectable at runtime via `factory.py`:
+- `sqlite_store.py` — default for local/dev use
+- `postgres_store.py` — production multi-tenant use
+Both implement the same base interface in `base.py`.
+
+### `infra/runtime/`
+Stateful runtime artifacts:
+- `RunLedger` — append-only event log for one session
+- `Checkpoint` — content-addressed step snapshot for resumability
+- `RealtimeContextManager` — rolling signal compressor for next-call context
+- `CostTracker` — per-call USD cost accumulation
+- `SessionReport` — end-of-session summary
+- `OutcomeCapture` — records agent outcomes for learning
+
+### `infra/code_intel/`
+Code intelligence stack:
+- `scip/` — semantic code index navigation
+- `astgrep/` — structural AST search
+- `zoekt/` — full-text code search
+- `git_history/` — blame, log, diff analysis
+- `cross_lang/` — multi-language symbol resolution
 
 ## Naming Conventions
 
-**Files:**
-- Python modules use `snake_case.py`: `src/atelier/core/foundation/store.py`, `src/atelier/gateway/hosts/session_parsers/registry.py`
-- React pages/components use `PascalCase.tsx`: `frontend/src/pages/Sessions.tsx`, `frontend/src/components/MemoryBlockCard.tsx`
-- Frontend helper modules use lowercase or mixed camel names for utilities/APIs: `frontend/src/api.ts`, `frontend/src/lib/insightsApi.ts`, `frontend/src/lib/runtimeCatalog.ts`
+### Files
+- `capability.py` — primary class file for each capability module (e.g., `context_compression/capability.py`)
+- `models.py` — Pydantic models scoped to that module
+- `factory.py` — factory functions (`make_*`)
+- `_common.py`, `_session_parser.py` — shared/base implementations (underscore prefix)
+- `AGENT_README.md` — per-directory guidance for AI agents navigating that module
 
-**Directories:**
-- Backend directories are capability- or boundary-oriented: `src/atelier/core/capabilities/`, `src/atelier/gateway/hosts/`, `src/atelier/infra/storage/`
-- Frontend directories are role-oriented: `frontend/src/pages/`, `frontend/src/components/`, `frontend/src/lib/`
-- Tests mirror product boundaries instead of source-tree paths exactly: `tests/core/`, `tests/gateway/`, `tests/infra/`
+### Classes
+- `*Capability` — all capability classes (e.g., `ContextCompressionCapability`)
+- `*Store` — storage backends (`ContextStore`, `MemoryStore`, `SqliteStore`)
+- `*Adapter` — ecosystem adapters (`LangGraphAdapter`, `AiderAdapter`)
+- `*Manager` — stateful managers (`RealtimeContextManager`)
+
+### Functions
+- `make_*` — factory functions (`make_embedder`, `make_memory_store`)
+- `render_*` — rendering functions (`render_context_for_agent`, `render_block_markdown`)
+- `_get_*` / `_*` — private/internal functions (underscore prefix)
+- `tool_*` — MCP tool handler functions in `mcp_server.py`
+
+### Tests
+- Mirror `src/atelier/` structure under `tests/`
+- `tests/gateway/test_mcp_tool_handlers.py` — MCP tool handler tests
+- `tests/gateway/test_p0_mcp_surfaces.py` — P0 MCP surface coverage
+- `tests/core/test_code_context.py` — code intelligence engine tests
+- Slow tests marked with `@pytest.mark.slow` (excluded from default run)
 
 ## Where to Add New Code
 
-**New Feature:**
-- Primary backend logic: `src/atelier/core/` if it changes reasoning/routing/policy, or `src/atelier/infra/` if it changes persistence/runtime mechanics
-- API surface: `src/atelier/core/service/api.py` with request/response models in `src/atelier/core/service/schemas.py`
-- Gateway exposure: `src/atelier/gateway/adapters/cli.py` for CLI, `src/atelier/gateway/adapters/mcp_server.py` for MCP, `src/atelier/gateway/sdk/` for SDK transport changes
-- Tests: `tests/core/`, `tests/gateway/`, or `tests/infra/` matching the layer you touched
+### New Capability
+1. Create directory: `src/atelier/core/capabilities/<name>/`
+2. Create `capability.py` with the `<Name>Capability` class
+3. Create `models.py` for capability-specific Pydantic models
+4. Create `AGENT_README.md` with module guidance
+5. Register in `src/atelier/core/capabilities/__init__.py` via `__getattr__` lazy loading
+6. Expose in `AtelierRuntimeCore.__init__` in `src/atelier/core/runtime/engine.py`
+7. Tests in `tests/core/test_<name>.py`
 
-**New Component/Module:**
-- Runtime capability: add under `src/atelier/core/capabilities/` and wire it through `src/atelier/core/capabilities/__init__.py` plus `src/atelier/core/runtime/engine.py`
-- Host/session importer: add parser under `src/atelier/gateway/hosts/session_parsers/` and register it in `src/atelier/gateway/hosts/session_parsers/registry.py`
-- Storage backend or persistence extension: add under `src/atelier/infra/storage/` and select it through `src/atelier/infra/storage/factory.py`
-- Frontend page: add `frontend/src/pages/<Name>.tsx` and register its route in `frontend/src/App.tsx`
+### New MCP Tool
+1. Add `@mcp_tool(name="<name>", description="...")` decorated function in `src/atelier/gateway/adapters/mcp_server.py`
+2. Delegate immediately to a capability or foundation function — no logic in the handler
+3. Add tests in `tests/gateway/test_mcp_tool_handlers.py`
 
-**Utilities:**
-- Shared backend helpers: `src/atelier/core/foundation/` for domain-agnostic logic or `src/atelier/infra/runtime/` for operational helpers
-- Frontend shared helpers: `frontend/src/lib/`
-- Developer automation: `scripts/` for repo tooling, not `src/atelier/`
+### New CLI Command
+1. Add `@click.command()` in `src/atelier/gateway/adapters/cli.py`
+2. Support `--json` flag for machine-readable output
+3. Delegate to SDK/core, not to infra directly
 
-## Special Directories
+### New Ecosystem Adapter
+1. Create `src/atelier/gateway/adapters/<name>_adapter.py`
+2. Extend `AgentAdapter` from `adapter_base.py`
+3. Use `AtelierClient` from `gateway/sdk/` for all capability calls
 
-**`.knowledge/`:**
-- Purpose: workspace-owned knowledge base resolved by `src/atelier/core/foundation/paths.py`
-- Generated: No
-- Committed: Yes
+### New Storage Migration
+1. Add migration SQL in `src/atelier/infra/storage/migrations/`
+2. Update both `sqlite_store.py` and `postgres_store.py`
 
-**`templates/reasonblocks/`:**
-- Purpose: starter templates copied by CLI init flows such as `atelier init --stack ...`
-- Generated: No
-- Committed: Yes
+### New Rubric
+1. Add `rubric_<name>.yaml` to `src/atelier/core/rubrics/`
+2. Reference by ID in `run_rubric(rubric_id="rubric_<name>", checks={...})`
 
-**`integrations/skills/`:**
-- Purpose: host-skill source material consumed by `scripts/build_host_skills.sh`
-- Generated: No
-- Committed: Yes
+## Runtime State Paths
 
-**`src/atelier/infra/seed_blocks/`:**
-- Purpose: bundled seed knowledge included in package builds through `pyproject.toml`
-- Generated: No
-- Committed: Yes
+All runtime state lives under `~/.atelier/` (or `$ATELIER_ROOT`):
 
-**`src/benchmarks/swe/outputs/`:**
-- Purpose: destination for benchmark run artifacts while preserving the folder in the packaged benchmark tree
-- Generated: Yes
-- Committed: Yes
+| Path | Contents |
+|------|---------|
+| `runs/<session_id>.json` | RunLedger — events, traces, token stats |
+| `session_stats/<uuid>.json` | Per-session savings (Claude Code UUID keyed) |
+| `live_savings_events.jsonl` | Append-only savings event log |
+| `workspaces/<hash>/session_state.json` | Hook-to-hook workspace state |
+| `smart_state.json` | Cumulative savings counters |
+| `checkpoints/<session_id>/<step_id>.json` | Resumable execution checkpoints |
+| `runtime/realtime_context.json` | Rolling next-call context pack |
 
 ---
 
-*Structure analysis: 2026-05-18*
+*Structure analysis: 2025-05-25*

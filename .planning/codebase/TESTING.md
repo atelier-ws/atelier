@@ -1,223 +1,327 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-05-18
+**Analysis Date:** 2025-01-31
 
 ## Test Framework
 
-**Runner:**
-- Python: `pytest` from `pyproject.toml`
-  - Config: `pyproject.toml`
-- Frontend: `vitest` from `frontend/package.json`
-  - Config: `frontend/vite.config.ts`
+**Runner:** pytest 9.x
+- Config: `pyproject.toml` `[tool.pytest.ini_options]`
+- `testpaths = ["tests"]`
+- `addopts = "-ra --strict-markers -m 'not slow'"` — slow tests excluded by default
+- `pythonpath = ["src", "."]`
 
-**Assertion Library:**
-- Python uses plain `assert`, `pytest.raises`, and fixture-based assertions in files such as `tests/gateway/test_service_api.py` and `tests/infra/test_postgres_store.py`.
-- Frontend uses Vitest `expect` plus `@testing-library/jest-dom` from `frontend/src/test/setup.ts`.
+**Assertion library:** plain `assert` statements (pytest rewriting)
 
-**Run Commands:**
+**Parallelism:** `pytest-xdist` — `make test` uses `-n auto --dist=loadfile` when xdist is available
+
+**Coverage:** `pytest-cov` — no minimum threshold enforced
+
+**HTTP testing:** FastAPI `TestClient` (`httpx`-backed) — no real server started
+
+**Mocking:** `unittest.mock` (`patch`, `MagicMock`) + pytest `monkeypatch` fixture
+
+## Test Commands
+
 ```bash
-uv run pytest -q                               # Run all Python tests (`Makefile`)
-uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html  # Python coverage (`Makefile`)
-make test-fast                                # Documented fast Python subset (`Makefile`)
-cd frontend && npm test                        # Run frontend Vitest suite via `frontend/scripts/run-vitest.mjs`
+make test                             # full suite (xdist parallel if available)
+make test-fast                        # -x stop-on-fail, skip Postgres/worker, -m "not slow"
+make test-cov                         # with terminal + HTML coverage reports
+make security-test                    # tests/gateway/test_security.py only
+make docs-check                       # tests/gateway/test_docs.py + test_generated_agent_contexts.py
+
+uv run pytest -q                      # quiet run (uses default -m "not slow")
+uv run pytest -q -x                   # stop on first failure
+uv run pytest -q -m slow              # run slow tests only
+uv run pytest -q -m ab                # run A/B benchmark tests
+uv run pytest -q tests/core/          # run a specific subtree
+uv run pytest -q tests/infra/test_store.py   # single file
+uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 ```
 
 ## Test File Organization
 
-**Location:**
-- Python tests live in dedicated top-level folders under `tests/`: `tests/core/`, `tests/gateway/`, `tests/infra/`, and `tests/docs/`.
-- Shared Python fixtures live in `tests/conftest.py`.
-- Frontend tests are co-located beside source files in `frontend/src/**`, for example `frontend/src/pages/Reports.test.tsx` and `frontend/src/lib/insightsApi.test.ts`.
-
-**Naming:**
-- Python: `test_*.py`, for example `tests/core/test_repo_map.py`.
-- Frontend: `*.test.ts` and `*.test.tsx`, for example `frontend/src/pages/Sessions.test.tsx`.
-
-**Structure:**
-```text
-tests/
-├── conftest.py
-├── core/
-├── gateway/
-├── infra/
-├── docs/
-├── fixtures/
-└── golden/
-
-frontend/src/
-├── lib/*.test.ts
-├── pages/*.test.tsx
-└── pages/sessions/*.test.tsx
+**Structure:** Mirrors `src/atelier/` under `tests/`:
 ```
+tests/
+├── conftest.py                      # global autouse fixtures
+├── core/                            # mirrors src/atelier/core/
+│   ├── capabilities/
+│   │   ├── cross_vendor_routing/    # one file per behaviour
+│   │   │   ├── test_advisor_returns_cheapest_capable.py
+│   │   │   ├── test_advisor_skips_unconfigured_vendor.py
+│   │   │   └── test_route_yaml_is_round_trippable.py
+│   │   ├── lesson_promotion/        # one file per behaviour
+│   │   └── prompt_compilation/
+│   └── service/
+├── gateway/                         # mirrors src/atelier/gateway/
+│   ├── test_service_api.py          # large: full HTTP API coverage
+│   └── test_security.py
+├── infra/                           # mirrors src/atelier/infra/
+│   ├── test_store.py
+│   └── test_outcome_capture.py      # large: grouped by class
+├── benchmarks/                      # performance / A/B tests
+│   └── code_intel/
+├── fixtures/                        # static fixture files (JSONL, YAML, JSON)
+│   ├── optimization/
+│   ├── memory/
+│   ├── golden/
+│   └── savings_baseline.json
+└── golden/                          # golden output files for snapshot tests
+```
+
+**Naming conventions:**
+- Files: `test_{behaviour_being_verified}.py`
+- Functions: `def test_{sentence_describing_expected_outcome}(...)` — full sentence names
+- Classes: `class TestXxx:` when grouping related behaviours (large test files)
 
 ## Test Structure
 
-**Suite Organization:**
+**Single-function style (capability tests):**
+Each capability subdirectory uses one file per behaviour — typically one test function per file:
 ```python
-# `tests/gateway/test_cli.py`
-def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
-    runner = CliRunner()
-    return runner.invoke(cli, ["--root", str(root), *args], input=input)
+# tests/core/capabilities/cross_vendor_routing/test_advisor_returns_cheapest_capable.py
+from __future__ import annotations
 
-def test_run_rubric_via_cli(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(root, "tools", "call", "verify", "--dev", "--json")
-    assert res.exit_code == 0, res.output
+from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfig
+from atelier.core.capabilities.cross_vendor_routing.router import CrossVendorRouter
+
+
+def test_advisor_returns_cheapest_capable(tmp_path) -> None:
+    router = CrossVendorRouter(
+        RouteConfig(enabled_vendors=["anthropic", "openai", "google"]),
+        env={"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k", "GOOGLE_API_KEY": "k"},
+    )
+    recommendation = router.recommend(
+        tool_name="read",
+        task_text="find the failing test",
+        session_state={"expected_input_tokens": 1200, ...},
+    )
+    assert recommendation.vendor == "google"
+    assert recommendation.model == "gemini-2.0-flash"
 ```
 
-```tsx
-// `frontend/src/pages/Sessions.test.tsx`
-describe("Sessions page", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("renders session rows after load", async () => {
-    mockFetch({ "/api/traces": jsonResponse(sampleTraces) });
-    renderSessions();
-    expect(await screen.findByText("Fix login bug")).toBeInTheDocument();
-  });
-});
-```
-
-**Patterns:**
-- Python tests are mostly single-function arrange/act/assert flows with local helper builders instead of deep class hierarchies, as in `tests/core/test_repo_map.py` and `tests/core/service/test_api_week2_routes.py`.
-- Frontend tests wrap components in only the providers they need, such as `MemoryRouter` and `TimeRangeProvider` in `frontend/src/pages/Sessions.test.tsx`.
-- Teardown is lightweight: frontend suites call `vi.restoreAllMocks()` and sometimes `localStorage.clear()` in `afterEach`, while Python relies on fixture isolation from `tmp_path` and `monkeypatch`.
-
-## Mocking
-
-**Framework:** 
-- Python: `pytest` fixtures plus `monkeypatch`
-- Frontend: Vitest spies/mocks (`vi.spyOn`, `vi.mockImplementation`)
-
-**Patterns:**
+**Class-grouped style (larger test files):**
 ```python
-# `tests/infra/test_postgres_store.py`
-def test_postgres_store_no_psycopg(monkeypatch: pytest.MonkeyPatch) -> None:
-    import atelier.infra.storage.postgres_store as pg_mod
+# tests/infra/test_outcome_capture.py
+class TestRouteScore:
+    def test_perfect_score(self) -> None:
+        assert _route_score(0, 0, 0) == 1.0
 
-    original = pg_mod._psycopg
-    try:
-        pg_mod._psycopg = None
-        with pytest.raises(RuntimeError, match="psycopg"):
-            pg_mod.PostgresStore(database_url="postgresql://localhost/test")
-    finally:
-        pg_mod._psycopg = original
+    def test_retry_penalty(self) -> None:
+        score = _route_score(retries_same_tool=1, model_errors_in_window=0, extra_reads=0)
+        assert abs(score - 0.6) < 1e-6
+
+class TestAdvanceRoute:
+    def test_fills_window_after_five_turns(self) -> None:
+        ...
 ```
 
-```tsx
-// `frontend/src/lib/insightsApi.test.ts`
-afterEach(() => {
-  localStorage.clear();
-  vi.restoreAllMocks();
-});
-
-vi.spyOn(globalThis, "fetch").mockResolvedValue(
-  jsonResponse(telemetryConfig({ acknowledged: false }))
-);
-```
-
-**What to Mock:**
-- Mock network boundaries in frontend tests by spying on `globalThis.fetch`, as in `frontend/src/pages/Insights.test.tsx`, `frontend/src/pages/Sessions.test.tsx`, and `frontend/src/pages/Reports.test.tsx`.
-- Patch environment variables and optional dependencies in Python tests with `monkeypatch` and `pytest.importorskip`, as in `tests/gateway/test_service_api.py`, `tests/infra/test_postgres_store.py`, and `tests/gateway/test_mcp_remote_mode.py`.
-- Monkeypatch expensive or unavailable backend calls rather than the surrounding orchestration, as in `tests/gateway/test_cli.py` replacing `atelier.core.capabilities.consolidation.worker.chat`.
-
-**What NOT to Mock:**
-- Do not mock core stores when a real temporary store is easy to create. Tests frequently instantiate `ContextStore` or `SQLiteStore` against `tmp_path`, for example `tests/conftest.py`, `tests/gateway/test_service_api.py`, and `tests/core/service/test_api_week2_routes.py`.
-- Do not mock the FastAPI app surface for route tests. Build the real app with `create_app(...)` and exercise it with `TestClient`, as in `tests/gateway/test_service_api.py`.
-- Do not mock rendered DOM structure when a direct Testing Library query is enough. Frontend tests assert on visible text and ARIA labels instead of component internals.
-
-## Fixtures and Factories
-
-**Test Data:**
+**Section dividers in large test files:**
 ```python
-# `tests/conftest.py`
+# --------------------------------------------------------------------------- #
+# Score formula tests                                                          #
+# --------------------------------------------------------------------------- #
+```
+
+**Helper factories in test files:**
+```python
+def _block(bid: str = "b1", domain: str = "coding", **kw: object) -> ReasonBlock:
+    """Build a minimal valid ReasonBlock for testing."""
+    base: dict[str, Any] = dict(id=bid, title="Title", ...)
+    base.update(kw)
+    return ReasonBlock(**base)
+```
+Private helper functions (prefix `_`) at module level provide minimal valid test objects.
+
+**Arrange / Act / Assert:** No explicit labels — layout is implicitly AAA.
+
+## Fixtures
+
+**Global fixtures (`tests/conftest.py`):**
+
+```python
+@pytest.fixture(autouse=True)
+def _no_network_sync() -> Iterator[None]:
+    """Block all outbound sync_usage calls so no test ever hits atelier.beseam.com."""
+    with patch("atelier.core.service.usage_sync.sync_usage", return_value=True):
+        yield
+
+@pytest.fixture(autouse=True)
+def _no_ollama() -> Iterator[None]:
+    """Block real Ollama calls so no test waits on a local LLM."""
+    with patch(
+        "atelier.infra.internal_llm.ollama_client._ollama_module",
+        side_effect=OllamaUnavailable("ollama blocked in tests"),
+    ):
+        yield
+
 @pytest.fixture()
 def store(tmp_path: Path) -> ContextStore:
     s = ContextStore(tmp_path / "atelier")
     s.init()
     return s
+
+@pytest.fixture()
+def seeded_runtime(tmp_path: Path) -> Iterator[ContextRuntime]:
+    """Runtime backed by the bundled seed blocks + rubrics."""
+    ...
 ```
+
+**Key rules about global fixtures:**
+- `_no_network_sync` and `_no_ollama` are `autouse=True` — all tests get them without opt-in
+- Tests that need LLM behaviour override these via `monkeypatch`
+- `store` fixture creates a fresh `ContextStore` in `tmp_path` — use this for all store-dependent tests
+
+**Local fixtures (per test file):**
+Defined at module level in test files when scope is narrow:
+```python
+# tests/gateway/test_service_api.py
+@pytest.fixture()
+def store(tmp_path: Path) -> SQLiteStore:
+    st = SQLiteStore(tmp_path / ".atelier")
+    st.init()
+    return st
+
+@pytest.fixture()
+def app_no_auth(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """App with auth disabled."""
+    monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
+    return cast("TestClient", FastAPITestClient(create_app(store_root=store.root)))
+```
+
+**Static fixture files:**
+- `tests/fixtures/optimization/` — optimization scenario JSON
+- `tests/fixtures/memory/` — memory test data
+- `tests/fixtures/200_failed_traces.jsonl` — failure trace corpus
+- `tests/fixtures/archival_eval_questions.yaml` — eval questions
+- `tests/fixtures/savings_baseline.json` — benchmark baseline
+
+## Mocking Approach
+
+**Two tools, different use cases:**
+
+### `unittest.mock.patch` — module-level patching
+Used for blocking outbound calls and replacing module globals:
+```python
+from unittest.mock import patch
+
+with patch("atelier.core.service.usage_sync.sync_usage", return_value=True):
+    yield
+
+with patch(
+    "atelier.infra.internal_llm.ollama_client._ollama_module",
+    side_effect=OllamaUnavailable("blocked"),
+):
+    yield
+```
+
+### `monkeypatch` — environment and attribute patching
+Used for environment variables and module attribute replacement:
+```python
+def test_foo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(mcp_server, "_REMOTE_TOOLS", frozenset())
+    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+```
+
+### `MagicMock` — object stubs
+Used when an interface needs partial implementation:
+```python
+from unittest.mock import MagicMock
+
+mock_store = MagicMock()
+mock_store.get_block.return_value = None
+```
+
+**What to mock:**
+- All outbound network calls (autouse fixtures handle sync/ollama globally)
+- LLM API calls in unit tests (real calls only in `@pytest.mark.ab` tests)
+- Filesystem paths — always use `tmp_path` instead of mocking
+
+**What NOT to mock:**
+- SQLite store — use real in-memory store via `store` fixture
+- Pydantic models — test real validation
+- Pure business logic functions — test directly
+
+## Optional Dependency Guards
+
+For tests requiring optional extras (`fastapi`, `uvicorn`, `mcp`):
+```python
+# Module-level skip if package absent
+pytest.importorskip("fastapi", reason="FastAPI API tests require the api extra")
+
+# Inside a test
+FastAPITestClient = pytest.importorskip(
+    "fastapi.testclient",
+    reason="FastAPI API tests require the api extra",
+).TestClient
+```
+
+## Pytest Markers
+
+**Registered markers (`pyproject.toml`):**
+```toml
+markers = [
+    "slow: marks tests as slow",
+    "ab: real A/B benchmark; writes to ~/.atelier/savings_calibration.jsonl",
+]
+```
+
+**Usage:**
+```python
+pytestmark = pytest.mark.slow   # file-level — all tests in file are slow
+
+@pytest.mark.slow               # function-level
+def test_expensive(): ...
+
+pytestmark = pytest.mark.ab     # A/B benchmarks — run with `make bench-ab`
+```
+
+**Default behaviour:** `addopts = "-m 'not slow'"` — slow tests never run in `make test` or `uv run pytest`. Run them explicitly with `uv run pytest -m slow`.
+
+## Exception Testing
 
 ```python
-# `tests/core/service/test_api_week2_routes.py`
-def _write_trace(root: Path, session_id: str, *, model: str = "claude-sonnet-4-5") -> None:
-    store = ContextStore(root)
-    store.init()
-    trace = Trace(
-        id=f"trace-{session_id}",
-        session_id=session_id,
-        agent="copilot",
-        domain="ui",
-        task="Session UI audit",
-        status="success",
-        model=model,
-    )
-    store.record_trace(trace, write_json=False)
-```
+with pytest.raises(ValidationError):
+    ReasonBlock(procedure=[])  # empty procedure violates validator
 
-**Location:**
-- Shared reusable fixtures live in `tests/conftest.py`.
-- Scenario-specific factories stay local to each suite, for example `_run_snapshot`, `_write_trace`, `_write_imported_trace`, and `_build_imported_host_fixture` in `tests/core/service/test_api_week2_routes.py`.
-- Static fixture assets live under `tests/fixtures/` and `tests/golden/`.
+with pytest.raises(ValueError, match="seed_files is required when mode='map'"):
+    some_function(mode="map")
+```
+Use `match=` parameter to assert on error message content.
+
+## Parametrize
+
+Used selectively, mainly in gateway and benchmark tests:
+```python
+@pytest.mark.parametrize("host", ["codex", "opencode", "copilot", "antigravity"])
+def test_host_install_artifacts(host: str) -> None:
+    ...
+
+@pytest.mark.parametrize("fixture", FIXTURES, ids=lambda p: p.name)
+def test_read_ab(fixture: Path) -> None:
+    ...
+```
 
 ## Coverage
 
-**Requirements:** No minimum coverage threshold is enforced in the checked-in config, but Python coverage is part of the documented command surface in `Makefile`.
+**No minimum threshold enforced.**
 
-**View Coverage:**
 ```bash
+make test-cov                   # terminal + HTML reports
 uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 ```
 
-## Test Types
+HTML report written to `htmlcov/`. Clean with `make clean`.
 
-**Unit Tests:**
-- Pure logic tests dominate `tests/core/**` and `tests/infra/**`, using temporary files and direct function calls, for example `tests/core/test_repo_map.py` and `tests/infra/test_openmemory.py`.
-- Frontend component/page tests are UI-level unit tests that mock fetch and assert rendered states, for example `frontend/src/pages/Insights.test.tsx`.
+## Test Count Summary
 
-**Integration Tests:**
-- CLI integration tests run the real Click command tree through `CliRunner`, for example `tests/gateway/test_cli.py`.
-- API integration tests run the real FastAPI app in-process with `TestClient`, for example `tests/gateway/test_service_api.py`.
-- Some live service tests start subprocesses and poll `/health`, for example `tests/gateway/test_live_production_validation.py` and `tests/gateway/test_mcp_remote_mode.py`.
-- Docs and repo-governance checks are treated as tests under `tests/docs/`, for example `tests/docs/test_readme_no_unmeasured_claims.py`.
-
-**E2E Tests:**
-- Browser E2E frameworks such as Playwright or Cypress are not detected.
-- Closest equivalent is process-level and container-level validation in `tests/gateway/test_live_production_validation.py`.
-
-## Common Patterns
-
-**Async Testing:**
-```tsx
-// `frontend/src/pages/Reports.test.tsx`
-renderReports();
-expect(await screen.findByText(/No reports published yet/i)).toBeInTheDocument();
-```
-
-- Frontend async tests prefer `findBy*` queries over manual polling.
-- Python tests are mostly synchronous; when remote services are involved they poll explicitly, as in `_wait_for_health()` inside `tests/gateway/test_live_production_validation.py`.
-
-**Error Testing:**
-```python
-# `tests/infra/test_postgres_store.py`
-with pytest.raises(RuntimeError, match="psycopg"):
-    pg_mod.PostgresStore(database_url="postgresql://localhost/test")
-```
-
-```tsx
-// `frontend/src/pages/Sessions.test.tsx`
-vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network error"));
-renderSessions();
-expect(await screen.findByText(/network error/i)).toBeInTheDocument();
-```
-
-- Python tests check failure paths explicitly with `pytest.raises`, `skipif`, and `importorskip`.
-- Frontend tests verify loading, empty, success, and error states for the same component whenever feasible.
-- `pytest.mark.slow` is used for heavier runtime tests such as `tests/gateway/test_live_production_validation.py`, and `Makefile` exposes a `test-fast` command that skips them.
+- 235 test files total
+- ~1,666 test functions
+- Excluded by default: `@pytest.mark.slow`, `@pytest.mark.ab`
+- Auto-excluded files in `make test-fast`: `tests/test_postgres_store.py`, `tests/test_worker_jobs.py`
 
 ---
 
-*Testing analysis: 2026-05-18*
+*Testing analysis: 2025-01-31*
