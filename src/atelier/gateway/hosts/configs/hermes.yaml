@@ -1,93 +1,74 @@
-host_id: antigravity
-name: Antigravity
+host_id: hermes
+name: Hermes Agent
 version: 1.0.0
-description: Integration with Antigravity and the agy companion CLI for MCP-backed
-  coding workflows
+description: Integration with Nous Research Hermes Agent framework
 platforms:
 - macos
 - linux
 - windows
 detection:
-  command: antigravity --version
-  config_path: ~/.config/Antigravity/User/settings.json
-  env_var: ANTIGRAVITY_HOME
+  env_var: HERMES_HOME
+  config_path: ~/.hermes/config.yaml
 recommended_packs:
-- atelier-pack-vscode-extensions
 - atelier-pack-coding-general
-- atelier-pack-audit-service
 mcp:
   servers:
   - name: atelier
     command: atelier-mcp
     args:
     - --host
-    - antigravity
+    - hermes
     env:
       ATELIER_ROOT: ~/.atelier
 installation:
-  macos: '# Install Antigravity
-
-    brew install --cask antigravity
-
-
-    # Install Atelier
+  macos: '# Install Atelier
 
     brew install atelier
 
 
-    # Setup Antigravity integration
+    # Setup Hermes integration
 
-    atelier host setup antigravity
-
-
-    # Verify installation
-
-    atelier host info antigravity
-
-    '
-  linux: '# Install Antigravity
-
-    antigravity --version
-
-
-    # Install Atelier
-
-    sudo apt-get install atelier  # or your distro''s package manager
-
-
-    # Setup Antigravity integration
-
-    atelier host setup antigravity
+    atelier host setup hermes
 
 
     # Verify installation
 
-    atelier host info antigravity
+    atelier host info hermes
 
     '
-  windows: '# Install Antigravity
+  linux: '# Install Atelier
 
-    winget install Antigravity.Antigravity
+    sudo apt-get install atelier
 
 
-    # Install Atelier
+    # Setup Hermes integration
+
+    atelier host setup hermes
+
+
+    # Verify installation
+
+    atelier host info hermes
+
+    '
+  windows: '# Install Atelier
 
     choco install atelier
 
 
-    # Setup Antigravity integration
+    # Setup Hermes integration
 
-    atelier host setup antigravity
+    atelier host setup hermes
 
 
     # Verify installation
 
-    atelier host info antigravity
+    atelier host info hermes
 
     '
 prompt_templates:
 - name: session-optimization
-  template: 'Atelier budget optimizer is active for Antigravity.
+  template: 'Atelier budget optimizer is active for Hermes.
 
     Use Atelier MCP tools first for file I/O, search, edits, and shell work.
 

@@ -200,9 +200,7 @@ class ModelRouter:
             cache_affinity_model=cache_affinity_model,
         )
 
-    def _compute_route_tier(
-        self, tier: ModelTier, score: int, state: Mapping[str, Any]
-    ) -> RouteTier:
+    def _compute_route_tier(self, tier: ModelTier, score: int, state: Mapping[str, Any]) -> RouteTier:
         """Map scored ModelTier to semantic RouteTier.
 
         Escalation to human_review is triggered when the caller sets

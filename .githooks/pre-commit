@@ -78,7 +78,22 @@ if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
     fi
 fi
 
-# 2. Large file detection
+# 2. Type checking — run mypy on staged Python files
+if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
+    echo "🔍 Running type checking..."
+
+    set +e
+    uv run mypy "${PYTHON_FILES[@]}"
+    MYPY_EXIT=$?
+    set -e
+    if [ $MYPY_EXIT -ne 0 ]; then
+        echo -e "\033[1;31m❌ Type checking failed (exit code $MYPY_EXIT).\033[0m"
+        echo "   Fix the issues above or use 'git commit --no-verify' to bypass."
+        exit 1
+    fi
+fi
+
+# 3. Large file detection
 echo "📏 Checking for large files..."
 MAX_SIZE=$((10 * 1024 * 1024)) # 10 MB
 LARGE_FILES=()

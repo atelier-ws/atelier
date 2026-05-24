@@ -66,29 +66,17 @@ class GeminiADKMiddleware:
 
         usage_meta = getattr(response, "usage_metadata", None)
         if isinstance(usage_meta, dict):
-            input_tokens = int(
-                usage_meta.get("prompt_token_count")
-                or usage_meta.get("input_tokens")
-                or 0
-            )
-            output_tokens = int(
-                usage_meta.get("candidates_token_count")
-                or usage_meta.get("output_tokens")
-                or 0
-            )
+            input_tokens = int(usage_meta.get("prompt_token_count") or usage_meta.get("input_tokens") or 0)
+            output_tokens = int(usage_meta.get("candidates_token_count") or usage_meta.get("output_tokens") or 0)
             cache_read_tokens = int(
-                usage_meta.get("cached_content_token_count")
-                or usage_meta.get("cache_read_input_tokens")
-                or 0
+                usage_meta.get("cached_content_token_count") or usage_meta.get("cache_read_input_tokens") or 0
             )
             used_model = str(usage_meta.get("model") or used_model)
         else:
             usage = getattr(response, "usage", None)
             if usage is not None:
                 input_tokens = int(getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0)
-                output_tokens = int(
-                    getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
-                )
+                output_tokens = int(getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0)
                 cache_read_tokens = int(
                     getattr(usage, "cached_tokens", 0) or getattr(usage, "cache_read_input_tokens", 0) or 0
                 )
