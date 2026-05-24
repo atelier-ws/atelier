@@ -12,6 +12,7 @@ Usage (middleware)::
     # LangChain: callbacks=[mw.langchain()]
     # OpenAI Agents SDK: hooks=mw.openai_hooks()
     # Raw Anthropic: tool_specs, dispatch = mw.anthropic_tools()
+    # Gemini ADK-style hooks: gemini_hooks = mw.gemini_adk()
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from atelier.gateway.sdk import (
     RemoteClient,
     SavingsSummary,
 )
+from atelier.sdk.gemini_adk import GeminiADKMiddleware
 from atelier.sdk.middleware import AtelierMiddleware
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     "AtelierMiddleware",
     "ContextResult",
     "FailureAnalysisResult",
+    "GeminiADKMiddleware",
     "LessonDecisionResult",
     "LessonInboxResult",
     "LocalClient",
@@ -41,4 +44,3 @@ __all__ = [
     "RemoteClient",
     "SavingsSummary",
 ]
-
