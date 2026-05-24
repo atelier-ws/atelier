@@ -30,6 +30,30 @@ Use this file as a thin entrypoint and follow the live docs tree:
 2. **Search**: Prefer `mcp__atelier__search` and `mcp__atelier__read`; use Grep, Glob, or Read only as fallback.
 3. **Report**: Return findings immediately. Do not wait for tools to become available.
 
+## Always prefer Atelier MCP tools
+
+Always prefer Atelier MCP tools for file I/O, search, edits, shell commands, and
+code intelligence. Native tools are fallback-only.
+
+| Atelier tool | Best for |
+|---|---|
+| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, callers/callees, impact, file tree, routes, context |
+| `mcp__atelier__grep` | Regex and glob search across files |
+| `mcp__atelier__read` | Reading files (outline mode for large files) |
+| `mcp__atelier__edit` | Editing files (atomic multi-file with rollback) |
+| `mcp__atelier__search` | Ranked semantic search |
+| `mcp__atelier__shell` | Shell commands (ANSI-stripped, token-compact output) |
+
+**Decision rules:**
+
+1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.
+2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+3. **File reading** → `mcp__atelier__read` FIRST.
+4. **Editing** → `mcp__atelier__edit` FIRST.
+5. **Shell commands** → `mcp__atelier__shell` FIRST.
+
+**Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
+
 ## Hard rules
 
 - **Never edit, write, or delete files.**
