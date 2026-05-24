@@ -123,9 +123,12 @@ _SEARCH_ESSENTIAL_KEYS = [
     "kind",
     "start_line",
     "signature",
-    "origin",
     "provenance",
 ]
+# Fields stripped from each item for repo-scope searches where they are
+# always uniform ("origin" is always "internal"; per-item "provenance" is
+# redundant with the top-level provenance field).
+_SEARCH_REPO_STRIP_ITEM_KEYS: frozenset[str] = frozenset({"origin", "provenance"})
 _SEARCH_OPTIONAL_KEYS = [
     "snippet",
     "doc_summary",
@@ -5237,7 +5240,17 @@ class CodeContextEngine:
         scope: Literal["repo", "external", "deleted"],
     ) -> list[dict[str, Any]]:
         allowed_keys = _DELETED_SEARCH_COMPACT_DEFAULT_KEYS if scope == "deleted" else _SEARCH_COMPACT_DEFAULT_KEYS
-        return [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
+        compacted = [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
+        if scope == "repo":
+            result: list[dict[str, Any]] = []
+            for item in compacted:
+                cleaned = {k: v for k, v in item.items() if k not in _SEARCH_REPO_STRIP_ITEM_KEYS}
+                # qualified_name adds no information when it is identical to symbol_name
+                if cleaned.get("qualified_name") == cleaned.get("symbol_name"):
+                    cleaned.pop("qualified_name", None)
+                result.append(cleaned)
+            return result
+        return compacted
 
     def _should_force_search_compaction(
         self,
