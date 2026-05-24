@@ -31,8 +31,8 @@ A route, service, or test needs access to request-scoped resources such as sessi
 - Tests need network access because dependencies cannot be overridden.
 - Connection/session lifecycle is hidden in route code.
 
-## Scope
-- file_patterns: **/api/**/*.py, **/dependencies.py
-
 ## When not to apply
 Simple pure functions that do not depend on request state or external resources.
+
+## Scope
+- file_patterns: **/api/**/*.py, **/dependencies.py
