@@ -32,8 +32,8 @@ A request path, middleware, or downstream client needs traceability across servi
 - A single user request produces unrelated IDs across logs.
 - Background work cannot be tied back to the originating request.
 
-## Scope
-- file_patterns: **/middleware*.py, **/api/**/*.py, **/*.py
-
 ## When not to apply
 Offline scripts and one-shot migrations that do not handle service requests.
+
+## Scope
+- file_patterns: **/middleware*.py, **/api/**/*.py, **/*.py
