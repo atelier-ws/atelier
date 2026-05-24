@@ -200,6 +200,8 @@ class RunLedger:
         lessons_used: list[str] | None = None,
         prompt: str | None = None,
         response: str | None = None,
+        stable_prefix_hash: str | None = None,
+        prefix_invalidated_reason: str = "",
     ) -> LedgerEvent:
         """Record a single LLM call with cost + lessons attribution."""
         if self.cost_tracker is None:
@@ -231,12 +233,50 @@ class RunLedger:
                 "op_key": rec.op_key,
                 "prompt": prompt,
                 "response": response,
+                "stable_prefix_hash": stable_prefix_hash or "",
+                "prefix_invalidated_reason": prefix_invalidated_reason,
             },
         )
 
     def close(self, status: str = "complete") -> None:
         self.status = status
         self.updated_at = _utcnow()
+
+    def record_checkpoint(
+        self,
+        tool_name: str,
+        model_route: str,
+        input_data: str,
+        output_data: str,
+        compact_state: str = "",
+        cost_so_far_usd: float = 0.0,
+        root: Path | None = None,
+    ) -> Any:
+        """Create and persist an idempotent Checkpoint at the current step.
+
+        Returns the Checkpoint object. Uses run_ledger root if root is None.
+        """
+        from atelier.infra.runtime.checkpoint import Checkpoint, CheckpointStore
+
+        step_id = len([e for e in self.events if e.kind == "checkpoint"])
+        ckpt = Checkpoint.create(
+            session_id=self.session_id,
+            step_id=step_id,
+            tool_name=tool_name,
+            model_route=model_route,
+            input_data=input_data,
+            output_data=output_data,
+            compact_state=compact_state,
+            cost_so_far_usd=cost_so_far_usd,
+        )
+        store = CheckpointStore(root or self._root)
+        store.save(ckpt)
+        self.record(
+            "checkpoint",
+            f"step={step_id} tool={tool_name} route={model_route}",
+            ckpt.to_dict(),
+        )
+        return ckpt
 
     # ----- trace summary --------------------------------------------------- #
 

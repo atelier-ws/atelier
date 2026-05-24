@@ -149,9 +149,7 @@ class SessionDirectoryWatcher:
                             logger.error("Error accessing file %s: %s", file_path, exc)
 
                     # Remove entries for files that no longer exist
-                    self._seen_files = {
-                        path: mtime for path, mtime in self._seen_files.items() if path.exists()
-                    }
+                    self._seen_files = {path: mtime for path, mtime in self._seen_files.items() if path.exists()}
 
                     # Wait for the next poll interval or until stopped
                     self._stop_event.wait(self.poll_interval)

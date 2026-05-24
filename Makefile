@@ -9,7 +9,7 @@ EXTERNAL_PERIODS ?= today week month
 
 .PHONY: help install uninstall status start restart build-host-skills sync-agent-context \
 	check-agent-context docs-check worktree-env runtime-evidence \
-	test test-fast test-cov security-test lint format-check format typecheck verify pre-commit \
+	test test-fast test-cov security-test lint format-check format typecheck launch-gate verify pre-commit \
 	benchmark bench-savings bench-savings-honest proof-cost-quality demo import clean
 
 # --------------------------------------------------------------------------- #
@@ -102,6 +102,9 @@ format: ## Format all code: Python (ruff+black) and frontend (prettier if availa
 
 typecheck: ## Run mypy strict type-checking
 	uv run mypy --strict $(PY_PATHS)
+
+launch-gate: ## Run pre-launch policy gate (set mode with LAUNCH_GATE_MODE=shadow|suggest|enforce)
+	bash scripts/launch_gate.sh --mode $${LAUNCH_GATE_MODE:-enforce}
 
 verify: lint format-check typecheck docs-check test ## Verify code, docs, runtime smoke tests, and agent integrations
 	bash scripts/verify_atelier_service.sh

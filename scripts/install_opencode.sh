@@ -57,11 +57,14 @@ else
     AGENT_DEST_DIR="${OPENCODE_CONFIG_HOME}/agents"
 fi
 
-info()  { echo "[atelier:opencode] $*"; }
+info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:opencode] $*" || true; }
 warn()  { echo "[atelier:opencode] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 backup_file() {
     local f="$1"
+    if $WORKSPACE_SET; then
+        return
+    fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
         run "cp '$f' '$bk'"

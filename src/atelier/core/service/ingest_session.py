@@ -44,11 +44,7 @@ def ingest_session_file(file_path: str, store: Any = None) -> dict[str, Any]:
 
     # Attempt to extract a session ID from the first line if it looks like a session ID.
     first_line = raw_content.splitlines()[0] if raw_content else ""
-    if (
-        first_line
-        and 16 <= len(first_line) <= 64
-        and all(c in "0123456789abcdef" for c in first_line.lower())
-    ):
+    if first_line and 16 <= len(first_line) <= 64 and all(c in "0123456789abcdef" for c in first_line.lower()):
         # Looks like a hex ID, use it if it's reasonable length.
         session_id = first_line
 
