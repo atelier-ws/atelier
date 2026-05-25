@@ -273,12 +273,11 @@ def test_worker_runs_consolidation_job_on_sqlite(
 
 
 def test_stack_start_spawns_native_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    spawned: dict[str, object] = {}
+    spawned_calls: list[list[str]] = []
 
     class FakePopen:
         def __init__(self, args, **kwargs):  # type: ignore[no-untyped-def]
-            spawned["args"] = args
-            spawned["kwargs"] = kwargs
+            spawned_calls.append(list(args) if isinstance(args, (list, tuple)) else [str(args)])
             self.pid = 2468
 
     monkeypatch.setattr("atelier.gateway.adapters.cli.subprocess.Popen", FakePopen)
@@ -287,9 +286,13 @@ def test_stack_start_spawns_native_runner(tmp_path: Path, monkeypatch: pytest.Mo
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
     assert res.exit_code == 0, res.output
-    args = spawned["args"]
-    assert isinstance(args, list)
-    assert args[-2:] == ["stack", "run"]
+    # The stack-start command spawns one supervisor process ending in ["stack", "run"].
+    # Filter to that call (other Popen calls may originate from background telemetry workers).
+    stack_run_call = next(
+        (call for call in spawned_calls if len(call) >= 2 and call[-2:] == ["stack", "run"]),
+        None,
+    )
+    assert stack_run_call is not None, f"no `stack run` supervisor spawned; saw: {spawned_calls!r}"
     assert "http://localhost:3125" in res.output
     assert "docs are no longer part of the managed stack" in res.output
 
@@ -366,9 +369,14 @@ def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: 
     killpg_calls: list[tuple[int, int]] = []
 
     monkeypatch.setattr("atelier.gateway.adapters.cli.os.getpgid", lambda pid: pid)
+
+    def _mock_killpg(pgid: int, sig: int) -> None:
+        killpg_calls.append((pgid, sig))
+        killed.add(pgid)
+
     monkeypatch.setattr(
         "atelier.gateway.adapters.cli.os.killpg",
-        lambda pgid, sig: (killpg_calls.append((pgid, sig)), killed.add(pgid)),
+        _mock_killpg,
     )
     monkeypatch.setattr("atelier.gateway.adapters.cli._pid_is_running", lambda pid: pid not in killed)
 

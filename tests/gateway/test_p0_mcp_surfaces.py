@@ -59,7 +59,12 @@ def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeyp
     monkeypatch.setattr(smart_search_mod, "get_zoekt_supervisor", lambda _root: fake_supervisor)
 
     result = tool_smart_search(
-        {"query": "needle token", "file_path": str(tmp_path), "budget_tokens": 4000, "include_meta": True}
+        {
+            "query": "needle token",
+            "file_path": str(tmp_path),
+            "budget_tokens": 4000,
+            "include_meta": True,
+        }
     )
 
     assert result["backend"] == "zoekt"
@@ -327,7 +332,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
 
     assert payload["provenance"] == "local"
     assert "provenance_breakdown" not in payload
-    assert payload["items"][0]["file_path"] == "src/orders.py"
+    assert payload["items"][0]["path"] == "src/orders.py"
     assert (
         payload["items"][0]["snippet"] == "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:"
     )
@@ -379,11 +384,11 @@ def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> N
     )
 
     assert semantic["mode"] == "semantic"
-    assert semantic["items"][0]["symbol_name"] == "issue_access_token"
+    assert semantic["items"][0]["name"] == "issue_access_token"
     assert hybrid_auto["mode"] == "hybrid"
-    assert hybrid_auto["items"][0]["symbol_name"] == "issue_access_token"
+    assert hybrid_auto["items"][0]["name"] == "issue_access_token"
     assert exact_auto["mode"] == "lexical"
-    assert exact_auto["items"][0]["symbol_name"] == "issue_access_token"
+    assert exact_auto["items"][0]["name"] == "issue_access_token"
 
 
 def test_tool_code_pattern_requires_pattern(tmp_path: Path) -> None:
@@ -564,7 +569,14 @@ def test_tool_code_files_dispatches_to_engine(tmp_path: Path, monkeypatch: pytes
         "pattern": "*.py",
         "format": "flat",
         "file_count": 1,
-        "files": [{"file_path": "src/orders.py", "language": "python", "symbol_count": 2, "top_symbols": ["Order"]}],
+        "files": [
+            {
+                "file_path": "src/orders.py",
+                "language": "python",
+                "symbol_count": 2,
+                "top_symbols": ["Order"],
+            }
+        ],
         "truncated": False,
         "cache_hit": False,
         "provenance": "local",
@@ -667,12 +679,20 @@ def test_tool_code_status_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
         "cache": {"entry_count": 1},
         "providers": [{"name": "scip", "status": "ok", "ok": True}],
         "provider_freshness": {
-            "thresholds": {"required_health_status": "ok", "require_index_head_match_for_scip": True},
+            "thresholds": {
+                "required_health_status": "ok",
+                "require_index_head_match_for_scip": True,
+            },
             "summary": {"ok": 1, "degraded": 0, "unhealthy": 0, "total": 1},
         },
         "warnings": [],
         "freshness": {"status": "fresh", "indexed": True, "stale_after_seconds": 86400},
-        "autosync": {"enabled": False, "state": "idle", "mode": "scaffold_only", "debounce_ms": 500},
+        "autosync": {
+            "enabled": False,
+            "state": "idle",
+            "mode": "scaffold_only",
+            "debounce_ms": 500,
+        },
         "cache_hit": False,
         "provenance": "local",
         "tokens_saved": 0,
@@ -716,7 +736,13 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
     )
 
     payload = tool_code(
-        {"op": "callers", "repo_root": str(tmp_path), "query": "beta", "budget_tokens": 220, "render_compact": True}
+        {
+            "op": "callers",
+            "repo_root": str(tmp_path),
+            "query": "beta",
+            "budget_tokens": 220,
+            "render_compact": True,
+        }
     )
 
     assert "rendered" in payload
@@ -818,9 +844,24 @@ def test_tool_code_impact_rendered_shape_groups_lists(tmp_path: Path, monkeypatc
         "target_type": "file",
         "file_path": "src/orders.py",
         "affected_files": [
-            {"file_path": "src/api.py", "reasons": ["direct_import"], "symbols": [], "symbol_count": 0},
-            {"file_path": "src/handlers.py", "reasons": ["transitive_import"], "symbols": [], "symbol_count": 0},
-            {"file_path": "tests/test_orders.py", "reasons": ["test"], "symbols": [], "symbol_count": 0},
+            {
+                "file_path": "src/api.py",
+                "reasons": ["direct_import"],
+                "symbols": [],
+                "symbol_count": 0,
+            },
+            {
+                "file_path": "src/handlers.py",
+                "reasons": ["transitive_import"],
+                "symbols": [],
+                "symbol_count": 0,
+            },
+            {
+                "file_path": "tests/test_orders.py",
+                "reasons": ["test"],
+                "symbols": [],
+                "symbol_count": 0,
+            },
         ],
         "direct_importers": ["src/api.py"],
         "transitive_importers": ["src/handlers.py"],
@@ -924,7 +965,12 @@ def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkey
     )
 
     payload = tool_code(
-        {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True}
+        {
+            "op": "cache_status",
+            "repo_root": str(tmp_path),
+            "budget_tokens": 220,
+            "render_compact": True,
+        }
     )
 
     assert "rendered" in payload
@@ -941,8 +987,20 @@ def test_tool_code_routes_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
         "repo_root": str(tmp_path),
         "route_count": 2,
         "routes": [
-            {"framework": "fastapi", "method": "GET", "route": "/health", "file_path": "src/api.py", "line": 4},
-            {"framework": "express", "method": "GET", "route": "/ping", "file_path": "src/server.ts", "line": 6},
+            {
+                "framework": "fastapi",
+                "method": "GET",
+                "route": "/health",
+                "file_path": "src/api.py",
+                "line": 4,
+            },
+            {
+                "framework": "express",
+                "method": "GET",
+                "route": "/ping",
+                "file_path": "src/server.ts",
+                "line": 6,
+            },
         ],
         "truncated": False,
         "cache_hit": False,

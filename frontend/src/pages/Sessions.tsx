@@ -1,5 +1,12 @@
 import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Terminal,
+  X,
+} from "lucide-react";
 import { api, type Trace, type SessionSummary } from "../api";
 import { MetricCard, SectionHeader, cx } from "../components/WorkbenchUI";
 import {
@@ -210,18 +217,7 @@ export default function Sessions() {
               className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
               title="Expand sidebar"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M5.22 2.22a.75.75 0 0 1 1.06 0L11.06 7.5l-4.78 4.78a.75.75 0 1 1-1.06-1.06L9.44 7.5 5.22 3.28a.75.75 0 0 1 0-1.06Z"
-                  clipRule="evenodd"
-                />
-              </svg>
+              <ChevronRight size={14} />
             </button>
             <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500 [writing-mode:vertical-lr]">
               History
@@ -253,19 +249,7 @@ export default function Sessions() {
                      title="Refresh sessions"
                      disabled={loadingTraces}
                    >
-                     <svg
-                       xmlns="http://www.w3.org/2000/svg"
-                       viewBox="0 0 24 24"
-                       fill="currentColor"
-                       className="w-4 h-4"
-                     >
-                       <path
-                         d="M4 4v5h5M4 20a2 2 0 002-2h.01M16 11.37V4h5v5H16Z"
-                       />
-                       <path
-                         d="M14.34 20A2 2 0 0016.34 20h2c1.1 0 2-.9 2-2v-4.93a2 2 0 00-2-1.93l-.01-.07-2.68 2.68z"
-                       />
-                     </svg>
+                     <RefreshCw size={14} className={cx(loadingTraces && "animate-spin")} />
                    </button>
                    <button
                      type="button"
@@ -273,18 +257,7 @@ export default function Sessions() {
                      className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                      title="Collapse sidebar"
                    >
-                     <svg
-                       xmlns="http://www.w3.org/2000/svg"
-                       viewBox="0 0 16 16"
-                       fill="currentColor"
-                       className="w-3 h-3"
-                     >
-                       <path
-                         fillRule="evenodd"
-                         d="M10.78 2.22a.75.75 0 0 1 0 1.06L6.56 7.5l4.22 4.22a.75.75 0 1 1-1.06 1.06L4.94 7.5l4.78-4.78a.75.75 0 0 1 1.06 0Z"
-                         clipRule="evenodd"
-                       />
-                     </svg>
+                     <ChevronLeft size={14} />
                    </button>
                  </div>
                </div>
@@ -302,7 +275,7 @@ export default function Sessions() {
                     onClick={() => setSearchInput("")}
                     className="px-2 border border-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
                   >
-                    ✕
+                    <X size={14} />
                   </button>
                 )}
               </div>
@@ -414,19 +387,7 @@ export default function Sessions() {
                      title="Refresh sessions"
                      disabled={loadingTraces}
                    >
-                     <svg
-                       xmlns="http://www.w3.org/2000/svg"
-                       viewBox="0 0 24 24"
-                       fill="currentColor"
-                       className="w-4 h-4"
-                     >
-                       <path
-                         d="M4 4v5h5M4 20a2 2 0 002-2h.01M16 11.37V4h5v5H16Z"
-                       />
-                       <path
-                         d="M14.34 20A2 2 0 0016.34 20h2c1.1 0 2-.9 2-2v-4.93a2 2 0 00-2-1.93l-.01-.07-2.68 2.68z"
-                       />
-                     </svg>
+                     <RefreshCw size={14} className={cx(loadingTraces && "animate-spin")} />
                    </button>
                    <button
                      type="button"
@@ -434,18 +395,7 @@ export default function Sessions() {
                      className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                      title="Collapse sidebar"
                    >
-                     <svg
-                       xmlns="http://www.w3.org/2000/svg"
-                       viewBox="0 0 16 16"
-                       fill="currentColor"
-                       className="w-3 h-3"
-                     >
-                       <path
-                         fillRule="evenodd"
-                         d="M10.78 2.22a.75.75 0 0 1 0 1.06L6.56 7.5l4.22 4.22a.75.75 0 1 1-1.06 1.06L4.94 7.5l4.78-4.78a.75.75 0 0 1 1.06 0Z"
-                         clipRule="evenodd"
-                       />
-                     </svg>
+                     <ChevronLeft size={14} />
                    </button>
                  </div>
                     </div>
@@ -596,7 +546,7 @@ function EmptyState({ summaries }: { summaries: SessionSummary[] | null }) {
       </div>
 
       <div className="border border-neutral-800 bg-[#0d0d0d] p-16 text-center rounded-sm">
-        <p className="text-4xl mb-6 text-neutral-500 font-mono">❯_</p>
+        <Terminal size={48} className="mx-auto mb-6 text-neutral-500" />
         <h3 className="text-xs font-bold text-neutral-500 mb-2 uppercase tracking-[0.4em]">
           Select History
         </h3>

@@ -9082,5 +9082,27 @@ def insights_cmd(
         click.echo(render_text(display_window, no_color=no_color))
 
 
+@cli.command("savings-line", hidden=True)
+@click.option("--session-id", default="", envvar="ATELIER_STATUS_SESSION_ID", help="Claude session UUID.")
+@click.option("--model-id", default="", envvar="ATELIER_STATUS_MODEL", help="Canonical model id for pricing.")
+@click.option(
+    "--workspace", default="", envvar="CLAUDE_WORKSPACE_ROOT", help="Workspace root for session_state lookup."
+)
+def savings_line_cmd(session_id: str, model_id: str, workspace: str) -> None:
+    """Emit pipe-delimited savings line for statusline.sh.
+
+    Output format: $<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>
+    """
+    from atelier.core.capabilities.savings_summary import savings_line
+
+    click.echo(
+        savings_line(
+            session_id,
+            model_id=model_id,
+            workspace=workspace or None,
+        )
+    )
+
+
 if __name__ == "__main__":
     main()

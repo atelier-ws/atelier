@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { ExternalLink, ChevronRight, X } from "lucide-react";
 import {
   api,
   type Trace,
@@ -187,7 +188,7 @@ function SidebarList({
                     className="text-[8px] text-neutral-400 hover:text-emerald-500 uppercase font-black flex items-center gap-1"
                     title="View raw content"
                   >
-                    Raw <span className="text-[9px]">⎋</span>
+                    Raw <ExternalLink size={10} />
                   </a>
                 )}
               </div>
@@ -381,7 +382,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     rel="noreferrer"
                     className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-white transition-all text-[9px] font-mono text-neutral-500 uppercase tracking-widest flex items-center gap-2"
                   >
-                    <span className="text-[10px]">⎋</span>
+                    <ExternalLink size={10} />
                     Raw Link
                   </a>
                 )}
@@ -401,7 +402,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 )}
                 title="Toggle Detailed Metrics"
               >
-                {rightPanelOpen ? "✕" : "›"}
+                {rightPanelOpen ? <X size={14} /> : <ChevronRight size={14} />}
               </button>
             </div>
           </div>
