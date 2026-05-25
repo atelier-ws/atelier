@@ -44,11 +44,7 @@ def _session_state_path() -> Path:
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -57,7 +53,10 @@ def _read_session_state() -> dict[str, Any]:
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text("utf-8"))
+        data = json.loads(p.read_text("utf-8"))
+        if isinstance(data, dict):
+            return data
+        return {}
     except Exception:
         return {}
 
@@ -122,7 +121,9 @@ def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
         atelier_root = _atelier_root()
         manifest_path = atelier_root / "runs" / session_id / "compact_manifest.json"
         if manifest_path.exists():
-            return json.loads(manifest_path.read_text("utf-8"))
+            data = json.loads(manifest_path.read_text("utf-8"))
+            if isinstance(data, dict):
+                return data
     except Exception:
         pass
     return None

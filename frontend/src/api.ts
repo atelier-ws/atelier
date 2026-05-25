@@ -97,6 +97,13 @@ export interface ValidationResult {
   detail?: string;
 }
 
+export interface TraceLearning {
+  kind: "worked" | "did_not_work" | "next_rule" | "risk" | "note";
+  text: string;
+  evidence?: string;
+  promote_to?: "memory" | "reasonblock" | "rubric" | "none" | null;
+}
+
 export interface Trace {
   id: string;
   session_id?: string;
@@ -114,6 +121,7 @@ export interface Trace {
   diff_summary?: string;
   output_summary?: string;
   validation_results: ValidationResult[];
+  learnings?: TraceLearning[];
   reasoning?: string[];
   created_at: string;
   note?: string;
@@ -817,6 +825,11 @@ export interface MCPStatus {
   description?: string;
   is_dev?: boolean;
   mode?: "active" | "passive";
+  enum_params?: Array<{
+    name: string;
+    options: string[];
+    description?: string;
+  }>;
 }
 
 export interface HostAdapter {
@@ -983,7 +996,7 @@ export interface SessionReport extends SessionSummary {
 
 export interface MemoryFact {
   fact_id: string;
-  vendor: "claude" | "codex" | "gemini";
+  vendor: "claude" | "codex" | "gemini" | "copilot" | "opencode";
   source_path: string;
   source_kind: string;
   content: string;

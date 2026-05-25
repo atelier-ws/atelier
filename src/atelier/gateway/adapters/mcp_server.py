@@ -1323,7 +1323,7 @@ def tool_record_trace(
     event_type: str | None = None,
     event_payload: dict[str, Any] | None = None,
     capture_files: list[str] | None = None,
-    learnings: list[str] | None = None,
+    learnings: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Record an observable trace from an agent run."""
     from atelier.core.foundation.redaction import redact, redact_list
@@ -1417,6 +1417,40 @@ def tool_record_trace(
             normalized.append({"name": redact(str(item)), "args_hash": "", "count": 1})
         return normalized
 
+    def _normalize_learnings(items: list[Any]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, str):
+                text = redact(item.strip())
+                if text:
+                    normalized.append({"kind": "note", "text": text})
+                continue
+            if not isinstance(item, dict):
+                continue
+            raw_text = (
+                item.get("text")
+                or item.get("learning")
+                or item.get("lesson")
+                or item.get("body")
+                or item.get("summary")
+                or ""
+            )
+            text = redact(str(raw_text).strip())
+            if not text:
+                continue
+            entry: dict[str, Any] = {"text": text}
+            if item.get("kind") is not None:
+                entry["kind"] = redact(str(item["kind"]))
+            if item.get("evidence") is not None:
+                entry["evidence"] = redact(str(item["evidence"]))
+            promote_to = item.get("promote_to")
+            if promote_to is None:
+                promote_to = item.get("target") or item.get("promotion_target")
+            if promote_to is not None:
+                entry["promote_to"] = redact(str(promote_to))
+            normalized.append(entry)
+        return normalized
+
     def _normalize_trace_confidence(value: Any) -> str | None:
         if value is None:
             return None
@@ -1483,6 +1517,7 @@ def tool_record_trace(
     }
     payload["tools_called"] = _normalize_tool_calls(tools_called)
     payload["validation_results"] = _normalize_validation_results(validation_results)
+    payload["learnings"] = _normalize_learnings(learnings)
 
     raw_artifacts: list[str] = []
     if capture_files:
@@ -1540,10 +1575,10 @@ def tool_record_trace(
     # Write learnings to archival memory (not ReasonBlocks - those are curated).
     # Each learning is a short sentence the agent synthesises; stored deduped so
     # repeated identical insights across sessions don't accumulate noise.
-    if learnings:
+    if trace.learnings:
         mem = _memory_store()
-        for raw in learnings:
-            text = redact(raw.strip())
+        for learning in trace.learnings:
+            text = redact(learning.text.strip())
             if not text:
                 continue
             dedup_hash = sha256(f"{agent}:{text}".encode()).hexdigest()[:32]
@@ -1552,7 +1587,7 @@ def tool_record_trace(
                 text=text,
                 source="trace",
                 source_ref=trace.id,
-                tags=["learning", domain],
+                tags=["learning", domain, learning.kind],
                 dedup_hash=dedup_hash,
             )
             with contextlib.suppress(Exception):
@@ -4421,11 +4456,20 @@ def _lever_for_tool(tool_name: str) -> str:
 def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    pricing = get_model_pricing(model)
+    effective = model if model and model != "_default" else ""
+    pricing = get_model_pricing(effective) if effective else None
+    if pricing is None or not pricing.known or pricing.input <= 0:
+        pricing = get_model_pricing("claude-sonnet-4-5")
+
+    input_saved = int(savings.get("input_tokens_saved", 0) or 0)
+    output_saved = int(savings.get("output_tokens_saved", 0) or 0)
+    cache_read_saved = int(savings.get("cache_read_tokens_saved", 0) or 0)
+    if not (input_saved or output_saved or cache_read_saved):
+        input_saved = int(savings.get("tokens_saved", 0) or 0)
     return pricing.cost_usd(
-        input_tokens=int(savings.get("input_tokens_saved", 0) or 0),
-        output_tokens=int(savings.get("output_tokens_saved", 0) or 0),
-        cache_read_tokens=int(savings.get("cache_read_tokens_saved", 0) or 0),
+        input_tokens=input_saved,
+        output_tokens=output_saved,
+        cache_read_tokens=cache_read_saved,
     )
 
 

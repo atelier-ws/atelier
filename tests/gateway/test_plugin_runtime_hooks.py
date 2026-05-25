@@ -237,6 +237,118 @@ def test_claude_session_telemetry_emits_quality_guard_once(tmp_path: Path) -> No
     assert fifth.stdout == ""
 
 
+def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    stats_dir = root / "session_stats"
+    stats_dir.mkdir(parents=True)
+    (stats_dir / "s1.json").write_text(
+        json.dumps(
+            {
+                "session_id": "s1",
+                "total_tool_calls": 4,
+                "edit_tool_calls": 0,
+                "equivalent_baseline_calls": 7.0,
+                "savings": {"calls_saved": 3, "time_saved_ms": 75_000, "tokens_saved": 12_000},
+                "usage": {
+                    "input_tokens": 150_000,
+                    "output_tokens": 2_000,
+                    "cache_read_tokens": 9_000,
+                    "cache_write_tokens": 700,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "usage": {
+                        "input_tokens": 107_386,
+                        "output_tokens": 356,
+                        "cache_read_input_tokens": 500,
+                        "cache_creation_input_tokens": 10,
+                    },
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "mcp__mcp-vector-search__codegraph_context",
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run_hook(
+        "stop.py",
+        {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(transcript), "total_cost_usd": 0.1683},
+        env={"ATELIER_ROOT": str(root)},
+    )
+
+    output = json.loads(result.stdout)
+    message = output["systemMessage"]
+    assert "Session stats:" in message
+    assert "tool calls: 4" in message
+    assert "tokens: 150.0k in / 700 cW / 9.0k cR / 2.0k out  (161.7k total)" in message
+    assert "savings: ~$0.0360 · 3 calls avoided · 12,000 tokens saved" in message
+    assert "top tools: mcp__mcp-vector-search__codegraph_context" in message
+
+
+def test_claude_stop_hook_dedupes_usage_and_prices_each_model(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    transcript = tmp_path / "session.jsonl"
+    opus_turn = {
+        "type": "assistant",
+        "message": {
+            "id": "msg-opus",
+            "model": "claude-opus-4-7",
+            "usage": {
+                "input_tokens": 1_000,
+                "output_tokens": 1_000,
+                "cache_read_input_tokens": 1_000,
+                "cache_creation_input_tokens": 1_000,
+            },
+            "content": [{"type": "tool_use", "id": "toolu-opus", "name": "Edit", "input": {}}],
+        },
+    }
+    sonnet_turn = {
+        "type": "assistant",
+        "message": {
+            "id": "msg-sonnet",
+            "model": "claude-sonnet-4-6",
+            "usage": {
+                "input_tokens": 2_000,
+                "output_tokens": 2_000,
+                "cache_read_input_tokens": 2_000,
+                "cache_creation_input_tokens": 2_000,
+            },
+            "content": [{"type": "tool_use", "id": "toolu-sonnet", "name": "Read", "input": {}}],
+        },
+    }
+    transcript.write_text(
+        "\n".join(json.dumps(event) for event in (opus_turn, opus_turn, sonnet_turn, sonnet_turn)) + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run_hook(
+        "stop.py",
+        {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(transcript)},
+        env={"ATELIER_ROOT": str(root)},
+    )
+
+    output = json.loads(result.stdout)
+    message = output["systemMessage"]
+    assert "tool calls: 2" in message
+    assert "tokens: 3.0k in / 3.0k cW / 3.0k cR / 3.0k out  (12.0k total)" in message
+    assert "est. cost: ~$0.0809" in message
+    assert "top tools: Edit" in message
+    assert "Read" in message
+
+
 def test_apply_session_start_files_mutates_host_settings_and_plugin_mcp(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     config_dir = tmp_path / "config"
@@ -396,6 +508,7 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
 def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     (root / "session_stats").mkdir(parents=True)
+    (root / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
     (root / "session_stats" / "s1.json").write_text(
         json.dumps({"session_id": "s1", "savings": {"calls_saved": 1, "tokens_saved": 10_000}}),
         encoding="utf-8",
