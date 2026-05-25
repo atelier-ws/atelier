@@ -699,6 +699,23 @@ def main() -> int:
         ):
             savings = None
 
+    # ── Write terminal snapshot so savings-line uses transcript data post-stop ──
+    # After this point the session is over; live events are no longer relevant.
+    # write_session_done() creates session_done/<session_id>.json which
+    # compute_savings_summary() will use as the sole source on the next call.
+    if session_id:
+        with contextlib.suppress(Exception):
+            from atelier.core.capabilities.savings_summary import write_session_done
+
+            write_session_done(
+                session_id,
+                tokens_saved=int((savings or {}).get("tokens_saved", 0) or 0),
+                calls_avoided=int((savings or {}).get("calls_avoided", 0) or 0),
+                saved_usd=float((savings or {}).get("saved_usd", 0.0) or 0.0),
+                routing_usd=float((savings or {}).get("routing_usd", 0.0) or 0.0),
+                est_cost_usd=float((stats or {}).get("est_cost_usd", 0.0) or 0.0),
+            )
+
     # ── Always show stats (discussion and task sessions alike) ───────────────
     # If no code-editing tools were used, show stats but skip the trace reminder.
     if not _is_task_session(stats, session_aggregate):
