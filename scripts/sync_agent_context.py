@@ -637,6 +637,205 @@ def render_cursor_coding_rules() -> str:
     )
 
 
+def _antigravity_frontmatter(description: str) -> list[str]:
+    return ["---", f"description: {description}", "---", ""]
+
+
+def render_antigravity_code_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                *_antigravity_frontmatter(
+                    "Main Atelier coding agent. Uses Atelier MCP tools for all file I/O, search, edits, and shell work."
+                ),
+                generated_notice(output_path),
+                "",
+                "# Atelier - Antigravity Plugin Agent",
+                "",
+                "You are operating as *atelier:code*.",
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
+                "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work."
+                " Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable."
+                " Use `route` or `rescue` when the same approach fails twice.",
+                "3. **Record**: Call `record` when the task is done.",
+                "",
+                tool_substitution_table(),
+                "",
+                mcp_priority_section(),
+                "",
+                budget_section(),
+                "",
+                coding_guidelines_section(),
+                "",
+                fallback_section("antigravity"),
+                "",
+                "## Savings visibility",
+                "",
+                "Run `atelier status` or `atelier savings --json` to see current savings.",
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_antigravity_explore_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                *_antigravity_frontmatter(
+                    "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits."
+                ),
+                generated_notice(output_path),
+                "",
+                "# Atelier Explore Agent",
+                "",
+                "You are the **read-only explorer**. Locate, read, and report. Never edit, create, or delete files.",
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context**: Call `context` with `task`, `files`, and `domain` to surface relevant ReasonBlocks.",
+                "2. **Search**: Prefer `mcp__atelier__search` and `mcp__atelier__read`; use native host tools only as fallback.",
+                "3. **Report**: Return findings immediately. Do not wait for tools to become available.",
+                "",
+                mcp_priority_section(),
+                "",
+                "## Hard rules",
+                "",
+                "- **Never edit, write, or delete files.**",
+                "- Stay within 12 tool calls per task — prioritize breadth over depth.",
+                "- Return findings even when partial — partial coverage beats silence.",
+                "- If the first search path is wrong, try an alternative before giving up.",
+                "",
+                fallback_section("antigravity"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_antigravity_repair_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                *_antigravity_frontmatter(
+                    "Repair specialist for repeated failures."
+                    " Captures the failing signal, calls rescue, applies the fix, records a postmortem."
+                ),
+                generated_notice(output_path),
+                "",
+                "# Atelier Repair Agent",
+                "",
+                "You are the **repair specialist**. Activate when the same approach has failed twice.",
+                "",
+                "## Operating loop",
+                "",
+                "1. **Capture** the exact failing signal: command output, error text, file and line.",
+                "2. **Rescue** — call `rescue` with the error and recent actions. Apply the recommendation exactly.",
+                "3. **Validate** — run the narrowest command that would prove the fix worked.",
+                "4. **Escalate** — if the same failure persists after the rescue, stop and report. Do not retry a third time.",
+                '5. **Record** — call `record` with `agent: "atelier:repair"`. Include a postmortem in `learnings`.',
+                "",
+                "## Hard rules",
+                "",
+                "- Never retry the same approach a third time. Change strategy or escalate.",
+                "- The failing signal must be captured verbatim before calling rescue.",
+                "- Do not modify unrelated files during repair.",
+                "",
+                budget_section(),
+                "",
+                fallback_section("antigravity"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_antigravity_research_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                *_antigravity_frontmatter(
+                    "External researcher. Fetches web pages, GitHub repos, and package docs."
+                    " Never edits. Produces a structured memo with citations."
+                ),
+                generated_notice(output_path),
+                "",
+                "# Atelier Research Agent",
+                "",
+                "You are the **external researcher**. Fetch, synthesise, and cite. Never edit files.",
+                "",
+                "## Operating loop",
+                "",
+                "1. **Context**: Call `context` with `task` and `domain` to surface any codebase-side constraints.",
+                "2. **Fetch**: Use web tools for external sources; use `mcp__atelier__search` / `mcp__atelier__read` to cross-reference the codebase.",
+                "3. **Synthesise**: Combine findings into a structured memo. Every claim must carry a URL or file:line citation.",
+                "4. **Deliver**: Return the memo. Do not wait for tools — partial coverage with citations beats silence.",
+                "",
+                "## Hard rules",
+                "",
+                "- **Never edit, write, or delete files.**",
+                "- Every factual claim must have a citation (URL or file:line).",
+                "- If a source is paywalled or unavailable, say so — do not guess.",
+                "- Prefer official docs and source code over blog posts.",
+                "",
+                "## Output format",
+                "",
+                "```",
+                "## Summary",
+                "<2-3 sentence answer>",
+                "",
+                "## Findings",
+                "- <finding> — [source](url)",
+                "",
+                "## Gaps",
+                "- <what could not be confirmed>",
+                "```",
+                "",
+                fallback_section("antigravity"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_antigravity_review_agent(output_path: Path) -> str:
+    return (
+        "\n".join(
+            [
+                *_antigravity_frontmatter(
+                    "Adversarial code reviewer. Applies the verification ladder. Never edits source files."
+                ),
+                generated_notice(output_path),
+                "",
+                "# Atelier Review Agent",
+                "",
+                "You are the **adversarial reviewer**. Your job is to find what is wrong, not to validate that work was done.",
+                "",
+                "## Operating loop",
+                "",
+                "1. **Read** the files in scope, preferring `mcp__atelier__read` and `mcp__atelier__search` before native host tools. Never trust summaries — verify the code directly.",
+                "2. **Apply the verification ladder**: existence → substantive → wired → data flow.",
+                "3. **Report findings**: every finding must have a severity (Blocker|Warning), `file:line`, and a concrete fix.",
+                '4. **Record** — call `record` with `agent: "atelier:review"`. Include learnings for any surprise or lesson.',
+                "",
+                "## Hard rules",
+                "",
+                "- **Never edit source files.** Read only.",
+                "- Every finding must carry Blocker or Warning. Unlabelled findings are invalid output.",
+                "- Every Blocker must include `file:line` and a concrete fix snippet.",
+                "- Do not flag style preferences as Blocker or Warning.",
+                "- `status: skipped` (nothing to review) ≠ `status: clean` (reviewed, no issues).",
+                "",
+                fallback_section("antigravity"),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def _opencode_frontmatter(description: str) -> list[str]:
     return ["---", f"description: {description}", "---", ""]
 
@@ -644,10 +843,8 @@ def _opencode_frontmatter(description: str) -> list[str]:
 def render_opencode_explore_agent(output_path: Path) -> str:
     return (
         "\n".join(
-            _opencode_frontmatter(
-                "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits."
-            )
-            + [
+            [
+                *_opencode_frontmatter("Read-only codebase explorer. Finds files, symbols, and patterns. Never edits."),
                 generated_notice(output_path),
                 "",
                 "# Atelier Explore Agent",
@@ -679,11 +876,11 @@ def render_opencode_explore_agent(output_path: Path) -> str:
 def render_opencode_repair_agent(output_path: Path) -> str:
     return (
         "\n".join(
-            _opencode_frontmatter(
-                "Repair specialist for repeated failures."
-                " Captures the failing signal, calls rescue, applies the fix, records a postmortem."
-            )
-            + [
+            [
+                *_opencode_frontmatter(
+                    "Repair specialist for repeated failures."
+                    " Captures the failing signal, calls rescue, applies the fix, records a postmortem."
+                ),
                 generated_notice(output_path),
                 "",
                 "# Atelier Repair Agent",
@@ -716,11 +913,11 @@ def render_opencode_repair_agent(output_path: Path) -> str:
 def render_opencode_research_agent(output_path: Path) -> str:
     return (
         "\n".join(
-            _opencode_frontmatter(
-                "External researcher. Fetches web pages, GitHub repos, and package docs."
-                " Never edits. Produces a structured memo with citations."
-            )
-            + [
+            [
+                *_opencode_frontmatter(
+                    "External researcher. Fetches web pages, GitHub repos, and package docs."
+                    " Never edits. Produces a structured memo with citations."
+                ),
                 generated_notice(output_path),
                 "",
                 "# Atelier Research Agent",
@@ -764,10 +961,10 @@ def render_opencode_research_agent(output_path: Path) -> str:
 def render_opencode_review_agent(output_path: Path) -> str:
     return (
         "\n".join(
-            _opencode_frontmatter(
-                "Adversarial code reviewer. Applies the verification ladder. Never edits source files."
-            )
-            + [
+            [
+                *_opencode_frontmatter(
+                    "Adversarial code reviewer. Applies the verification ladder. Never edits source files."
+                ),
                 generated_notice(output_path),
                 "",
                 "# Atelier Review Agent",
@@ -906,6 +1103,26 @@ def build_outputs() -> dict[Path, str]:
             ROOT / "integrations/antigravity/AGENTS.atelier.md",
             title="Atelier - Antigravity Agent",
             host="antigravity",
+        ),
+        ROOT
+        / "integrations/antigravity/plugin/agents/atelier-code.md": render_antigravity_code_agent(
+            ROOT / "integrations/antigravity/plugin/agents/atelier-code.md"
+        ),
+        ROOT
+        / "integrations/antigravity/plugin/agents/atelier-explore.md": render_antigravity_explore_agent(
+            ROOT / "integrations/antigravity/plugin/agents/atelier-explore.md"
+        ),
+        ROOT
+        / "integrations/antigravity/plugin/agents/atelier-repair.md": render_antigravity_repair_agent(
+            ROOT / "integrations/antigravity/plugin/agents/atelier-repair.md"
+        ),
+        ROOT
+        / "integrations/antigravity/plugin/agents/atelier-research.md": render_antigravity_research_agent(
+            ROOT / "integrations/antigravity/plugin/agents/atelier-research.md"
+        ),
+        ROOT
+        / "integrations/antigravity/plugin/agents/atelier-review.md": render_antigravity_review_agent(
+            ROOT / "integrations/antigravity/plugin/agents/atelier-review.md"
         ),
         ROOT
         / "integrations/opencode/agents/atelier.md": render_host_surface(

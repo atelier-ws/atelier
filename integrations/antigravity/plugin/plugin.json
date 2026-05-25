@@ -1,0 +1,17 @@
+{
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "Atelier AI coding runtime for Antigravity. Context, code-intel, memory, and tracing for agentic workflows.",
+  "agents": "./agents",
+  "skills": "./skills",
+  "mcp_config": "./mcp_config.json",
+  "delegation_definitions": "./delegation-definitions",
+  "interface": {
+    "displayName": "Atelier",
+    "shortDescription": "Atelier tools and agents for agy.",
+    "longDescription": "Bundle the Atelier MCP server, specialized agents (code, explore, repair, research, review), and skills for Antigravity. Always prefer Atelier MCP tools for file I/O, search, edits, and shell work.",
+    "developerName": "Atelier Team",
+    "category": "Productivity",
+    "brandColor": "#0f766e"
+  }
+}
