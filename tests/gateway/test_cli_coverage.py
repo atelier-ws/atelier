@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
-from atelier.gateway.adapters.cli import cli
+from atelier.gateway.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
 
 
@@ -106,11 +106,9 @@ def test_search_returns_matches(tmp_path: Path) -> None:
                 "file_glob_patterns": ["*.md"],
             }
         ),
-        "--json",
     )
     assert res.exit_code == 0
-    results = json.loads(res.output)
-    assert isinstance(results, dict)
+    assert "shopify" in res.output
 
 
 def test_search_table_format(tmp_path: Path) -> None:
@@ -402,11 +400,9 @@ def test_search_blocks_returns_matches(tmp_path: Path) -> None:
                 "file_glob_patterns": ["*.md"],
             }
         ),
-        "--json",
     )
     assert res.exit_code == 0
-    payload = json.loads(res.output)
-    assert isinstance(payload, dict)
+    assert "shopify" in res.output
 
 
 def test_search_empty_query_returns_empty(tmp_path: Path) -> None:

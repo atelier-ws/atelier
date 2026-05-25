@@ -699,7 +699,7 @@ def main() -> int:
         ):
             savings = None
 
-    # ── Write terminal snapshot so savings-line uses transcript data post-stop ──
+    # ── Write terminal snapshot so `savings --line` uses transcript data post-stop ──
     # After this point the session is over; live events are no longer relevant.
     # write_session_done() creates session_done/<session_id>.json which
     # compute_savings_summary() will use as the sole source on the next call.
