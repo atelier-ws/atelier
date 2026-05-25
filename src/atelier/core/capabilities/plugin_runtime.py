@@ -1818,9 +1818,15 @@ def build_savings_report(
     # smart_state.json is LIFETIME-cumulative across all sessions, so max()
     # against it would leak prior sessions' totals into the current display
     # (this was the bug behind "calls_avoided > total_calls" and savings >> cost).
+    #
+    # For token/call counts: live_savings_events.jsonl has REAL counts from each
+    # MCP tool result. session_stats uses fixed heuristic constants per call
+    # (~77k tokens regardless of actual response size). We prefer live events;
+    # fall back to session_stats only when live events are empty (old sessions
+    # that predate the live events file).
     if session_id:
-        tokens_saved = max(session_tokens, live_tokens)
-        calls_avoided = max(session_calls, live_calls)
+        tokens_saved = live_tokens if live_tokens > 0 else session_tokens
+        calls_avoided = live_calls if live_calls > 0 else session_calls
         # Sanity cap: cannot save more calls than the session actually made.
         session_tool_calls = int(session.get("total_tool_calls", 0) or 0)
         if session_tool_calls > 0:
@@ -1840,8 +1846,8 @@ def build_savings_report(
             if session_total_tokens > 0:
                 tokens_saved = min(tokens_saved, session_total_tokens)
     else:
-        tokens_saved = max(smart_tokens, session_tokens, live_tokens)
-        calls_avoided = max(smart_calls, session_calls, live_calls)
+        tokens_saved = live_tokens if live_tokens > 0 else max(smart_tokens, session_tokens)
+        calls_avoided = live_calls if live_calls > 0 else max(smart_calls, session_calls)
     # Price savings at the model's input rate when possible. Atelier savings
     # are context tokens we kept out of the LLM input -- without the savings,
     # those bytes would have been input or cache_read tokens.

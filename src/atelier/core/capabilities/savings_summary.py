@@ -363,7 +363,53 @@ class SavingsSummary:
     ctx_saved: int = 0
     smart_calls: int = 0
     routing_saved_usd: float = 0.0
+    est_cost_usd: float = 0.0  # baseline cost from terminated session transcript
     status_text: str = ""
+
+
+def session_done_path(session_id: str, atelier_root: str | Path | None = None) -> Path:
+    """Return the path for the terminal savings snapshot written by the stop hook."""
+    root: Path
+    if atelier_root:
+        root = Path(atelier_root)
+    else:
+        root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
+        root = Path(root_env) if root_env else Path.home() / ".atelier"
+    return root / "session_done" / f"{session_id}.json"
+
+
+def write_session_done(
+    session_id: str,
+    *,
+    tokens_saved: int,
+    calls_avoided: int,
+    saved_usd: float,
+    routing_usd: float,
+    est_cost_usd: float = 0.0,
+    atelier_root: str | Path | None = None,
+) -> None:
+    """Write a terminal savings snapshot so savings-line uses transcript data after stop."""
+    if not session_id:
+        return
+    try:
+        path = session_done_path(session_id, atelier_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "session_id": session_id,
+                    "tokens_saved": tokens_saved,
+                    "calls_avoided": calls_avoided,
+                    "saved_usd": saved_usd,
+                    "routing_usd": routing_usd,
+                    "est_cost_usd": est_cost_usd,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def _workspace_digest(workspace: str | None = None) -> str:
@@ -451,24 +497,32 @@ def compute_savings_summary(
 
     session_candidates = resolve_session_candidates(session_id, atelier_root=root, workspace=workspace)
 
-    result = SavingsSummary()
-
-    # --- session_stats (token counts, call counts) ---
+    # --- terminal snapshot (written by stop hook) takes precedence over live events ---
+    # Once a session ends, the transcript is authoritative; live events are no longer relevant.
     if root is not None:
         for candidate in session_candidates:
-            stats_path = root / "session_stats" / f"{candidate}.json"
-            if not stats_path.is_file():
+            done_path = session_done_path(candidate, root)
+            if not done_path.is_file():
                 continue
             try:
-                data = json.loads(stats_path.read_text(encoding="utf-8"))
-                savings = data.get("savings") or {}
-                result.smart_calls = int(savings.get("calls_saved", 0) or 0)
-                result.ctx_saved = int(savings.get("tokens_saved", 0) or 0)
-                break
+                data = json.loads(done_path.read_text(encoding="utf-8"))
+                return SavingsSummary(
+                    saved_usd=float(data.get("saved_usd", 0.0) or 0.0),
+                    ctx_saved=int(data.get("tokens_saved", 0) or 0),
+                    smart_calls=int(data.get("calls_avoided", 0) or 0),
+                    routing_saved_usd=float(data.get("routing_usd", 0.0) or 0.0),
+                    est_cost_usd=float(data.get("est_cost_usd", 0.0) or 0.0),
+                )
             except Exception:
                 continue
 
-    # --- live events (USD amounts + token/call counts) ---
+    result = SavingsSummary()
+
+    # --- live events only — real token counts from MCP tool results ---
+    # session_stats uses fixed heuristic constants (~77k tokens/call regardless
+    # of actual response size). live_savings_events.jsonl has real tokens_saved
+    # from each tool result. We use live events exclusively so the number is
+    # grounded in what the tools actually reported, not a formula.
     if root is not None:
         for candidate in session_candidates:
             live = load_live_savings_summary(root, session_id=candidate)
@@ -478,10 +532,10 @@ def compute_savings_summary(
             live_routing_usd = float(live.get("routing_saved_usd", 0.0) or 0.0)
             if not (live_calls or live_tokens or live_saved_usd or live_routing_usd):
                 continue
-            result.smart_calls = max(result.smart_calls, live_calls)
-            result.ctx_saved = max(result.ctx_saved, live_tokens)
-            result.saved_usd = max(result.saved_usd, live_saved_usd)
-            result.routing_saved_usd = max(result.routing_saved_usd, live_routing_usd)
+            result.smart_calls = live_calls
+            result.ctx_saved = live_tokens
+            result.saved_usd = live_saved_usd
+            result.routing_saved_usd = live_routing_usd
             break
 
     # --- recompute saved_usd at the correct rate ---
@@ -586,4 +640,4 @@ def savings_line(
         workspace=workspace,
     )
     summary.status_text = _resolve_status_text(atelier_root)
-    return f"${summary.saved_usd:.3f}|{_fmt_tok(summary.ctx_saved)}|{summary.smart_calls}|{summary.status_text}|${summary.routing_saved_usd:.3f}"
+    return f"${summary.saved_usd:.3f}|{_fmt_tok(summary.ctx_saved)}|{summary.smart_calls}|{summary.status_text}|${summary.routing_saved_usd:.3f}|{summary.est_cost_usd:.3f}"
