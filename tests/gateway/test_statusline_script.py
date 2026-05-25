@@ -66,10 +66,12 @@ def test_statusline_shows_missing_login_before_update(tmp_path: Path) -> None:
 
 
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
-    stats_dir = tmp_path / "session_stats"
-    stats_dir.mkdir()
-    (stats_dir / "s1.json").write_text(
-        json.dumps({"savings": {"calls_saved": 4, "tokens_saved": 12_000}}),
+    done_dir = tmp_path / "session_done"
+    done_dir.mkdir()
+    (done_dir / "s1.json").write_text(
+        json.dumps(
+            {"session_id": "s1", "tokens_saved": 12_000, "calls_avoided": 4, "saved_usd": 0.036, "routing_usd": 0.0}
+        ),
         encoding="utf-8",
     )
 
@@ -85,10 +87,9 @@ def test_statusline_reads_session_savings(tmp_path: Path) -> None:
 def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     tmp_path: Path,
 ) -> None:
-    stats_dir = tmp_path / "session_stats"
-    stats_dir.mkdir()
-    (stats_dir / "s1.json").write_text(
-        json.dumps({"savings": {"calls_saved": 4, "tokens_saved": 12_000}}),
+    # Write live events with real token counts (no session_done so pricing recomputes from transcript).
+    (tmp_path / "live_savings_events.jsonl").write_text(
+        json.dumps({"session_id": "s1", "calls_saved": 4, "tokens_saved": 12_000, "cost_saved_usd": 0.044}) + "\n",
         encoding="utf-8",
     )
     home = tmp_path / "home"
@@ -149,10 +150,12 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
-    stats_dir = tmp_path / "session_stats"
-    stats_dir.mkdir()
-    (stats_dir / "s1.json").write_text(
-        json.dumps({"savings": {"calls_saved": 4, "tokens_saved": 12_000}}),
+    done_dir = tmp_path / "session_done"
+    done_dir.mkdir()
+    (done_dir / "s1.json").write_text(
+        json.dumps(
+            {"session_id": "s1", "tokens_saved": 12_000, "calls_avoided": 4, "saved_usd": 0.036, "routing_usd": 0.0}
+        ),
         encoding="utf-8",
     )
 
@@ -165,10 +168,12 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
 
 
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
-    stats_dir = tmp_path / "session_stats"
-    stats_dir.mkdir()
-    (stats_dir / "s1.json").write_text(
-        json.dumps({"savings": {"calls_saved": 2, "tokens_saved": 2_000}}),
+    done_dir = tmp_path / "session_done"
+    done_dir.mkdir()
+    (done_dir / "s1.json").write_text(
+        json.dumps(
+            {"session_id": "s1", "tokens_saved": 2_000, "calls_avoided": 2, "saved_usd": 0.006, "routing_usd": 0.0}
+        ),
         encoding="utf-8",
     )
     (tmp_path / "smart_state.json").write_text(

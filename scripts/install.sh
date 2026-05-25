@@ -148,9 +148,9 @@ while [[ $# -gt 0 ]]; do
         *) PASSTHROUGH+=("$1") ;;
     esac
     shift
-done
+        done
 
-if [[ -z "$ATELIER_INSTALL_LOG_FILE" ]]; then
+        if [[ -z "$ATELIER_INSTALL_LOG_FILE" ]]; then
     ATELIER_INSTALL_LOG_FILE="${TMPDIR:-/tmp}/atelier-install.$(date +%Y%m%dT%H%M%S).$$.log"
 fi
 
@@ -1106,6 +1106,10 @@ host_target_for_name() {
 
 format_host_status_label() {
     local raw_name="$1"
+    case "$raw_name" in
+        skills) printf "%s" "shared skills bundle" ; return ;;
+        agents) printf "%s" "universal agents" ; return ;;
+    esac
     local target
     target="$(host_target_for_name "$raw_name")"
     if [[ -n "$target" ]]; then
@@ -1381,10 +1385,11 @@ install_code_tools() {
 
     # prettier + eslint + ts-morph (TypeScript/JavaScript tools, require npm)
     if command -v npm >/dev/null 2>&1; then
+        mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
         verbose "Installing prettier (JS/TS formatter)..."
-        spin "Installing prettier" npm install -g --no-fund prettier
+        spin "Installing prettier" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund prettier
         verbose "Installing eslint, ts-morph, and typescript (JS/TS linter and rename backend)..."
-        spin "Installing eslint + ts-morph" npm install -g --no-fund eslint ts-morph typescript
+        spin "Installing eslint + ts-morph" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
     else
         warn "npm not found — skipping prettier, eslint, and ts-morph (install Node.js 20+ to enable)"
     fi
@@ -1418,6 +1423,70 @@ install_code_tools() {
         verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
 
+}
+
+# Detect the user's shell profile file
+_detect_shell_profile() {
+    local shell_name
+    shell_name="$(basename "${SHELL:-bash}")"
+    case "$shell_name" in
+        zsh)  printf "%s" "${ZDOTDIR:-$HOME}/.zshrc" ;;
+        bash) printf "%s" "$HOME/.bashrc" ;;
+        fish) printf "%s" "$HOME/.config/fish/config.fish" ;;
+        *)    printf "%s" "$HOME/.profile" ;;
+    esac
+}
+
+# Write sentinel-guarded PATH exports to the user's shell profile.
+# Replaces on re-install instead of duplicating.
+_ensure_path_persistence() {
+    local profile_file sentinel_start sentinel_end node_user_bin
+    local tmp_input tmp_output in_block line
+
+    profile_file="$(_detect_shell_profile)"
+    sentinel_start="# >>> atelier path setup >>>"
+    sentinel_end="# <<< atelier path setup <<<"
+    node_user_bin="${ATELIER_NODE_DIR}/bin"
+
+    mkdir -p "$(dirname "$profile_file")" 2>/dev/null || true
+    touch "$profile_file"
+
+    tmp_input="$(mktemp)"
+    tmp_output="$(mktemp)"
+
+    # Build the new sentinel block
+    {
+        printf '%s\n' "$sentinel_start"
+        printf 'export PATH="%s:\$PATH"\n' "$ATELIER_BIN_DIR"
+        if [[ -d "$node_user_bin" ]]; then
+            printf 'export PATH="%s:\$PATH"\n' "$node_user_bin"
+        fi
+        printf '%s\n' "$sentinel_end"
+    } > "$tmp_input"
+
+    if grep -qF "$sentinel_start" "$profile_file" 2>/dev/null; then
+        # Replace existing sentinel block in-place
+        in_block=0
+        while IFS= read -r line; do
+            if [[ "$line" == "$sentinel_start" ]]; then
+                in_block=1
+                cat "$tmp_input"
+            elif [[ "$line" == "$sentinel_end" ]]; then
+                in_block=0
+            elif [[ "$in_block" == "0" ]]; then
+                printf '%s\n' "$line"
+            fi
+        done < "$profile_file" > "$tmp_output"
+        mv "$tmp_output" "$profile_file"
+    else
+        # Append new block
+        printf '\n' >> "$profile_file"
+        cat "$tmp_input" >> "$profile_file"
+    fi
+
+    rm -f "$tmp_input" "$tmp_output"
+
+    info "Added Atelier directories to PATH in ${profile_file/#$HOME/~}"
 }
 
 main() {
@@ -1547,17 +1616,14 @@ main() {
         : >"$zoekt_record"
     fi
 
-    if [[ ":$PATH:" != *":$ATELIER_BIN_DIR:"* ]]; then
-        warn "$ATELIER_BIN_DIR is not currently on PATH"
-        info "Add this to your shell profile, then restart your shell:"
-        info "  export PATH=\"$ATELIER_BIN_DIR:\$PATH\""
-    fi
-
     local node_user_bin="${ATELIER_NODE_DIR}/bin"
+    _ensure_path_persistence
+    # Re-export for this session too
+    if [[ ":$PATH:" != *":$ATELIER_BIN_DIR:"* ]]; then
+        export PATH="${ATELIER_BIN_DIR}:${PATH}"
+    fi
     if [[ -d "$node_user_bin" && ":$PATH:" != *":$node_user_bin:"* ]]; then
-        warn "$node_user_bin is not currently on PATH"
-        info "Add this to your shell profile, then restart your shell:"
-        info "  export PATH=\"$node_user_bin:\$PATH\""
+        export PATH="${node_user_bin}:${PATH}"
     fi
 
     local atelier_cli="$ATELIER_BIN_DIR/atelier"
@@ -1855,9 +1921,9 @@ main() {
         printf "   installer log: %s\n\n" "$ATELIER_INSTALL_LOG_FILE"
     fi
     printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
-    if [[ ":$PATH:" != *":$ATELIER_BIN_DIR:"* ]]; then
-        printf "⚡ Reload your shell to use 'atelier' command.\n"
-    fi
+    local _profile
+    _profile="$(_detect_shell_profile)"
+    printf "⚡ Run 'source %s' or restart your shell to use 'atelier'.\n" "${_profile/#$HOME/~}"
 
     return "$FINAL_EXIT_CODE"
 }
