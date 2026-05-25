@@ -196,6 +196,16 @@ else
     warn "agent source missing: $AGENT_SRC"
 fi
 
+AGENTS_SRC_DIR="${ATELIER_REPO}/integrations/opencode/agents"
+for agent_name in explore repair research review; do
+    agent_file="${AGENTS_SRC_DIR}/${agent_name}.md"
+    if [ -f "$agent_file" ]; then
+        atelier_write_managed_copy "$agent_file" "$STAGING_DIR/${agent_name}.md" "$DRY_RUN"
+        run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+        info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
+    fi
+done
+
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."
     exit 0
