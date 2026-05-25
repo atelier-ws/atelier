@@ -9,6 +9,7 @@ This file is a thin entrypoint to the live repo rules:
 - [Agent OS](../../docs/agent-os/README.md)
 - [Workflow](../../docs/agent-os/workflow.md)
 - [Taste invariants](../../docs/agent-os/taste-invariants.md)
+- [Coding guidelines](../../docs/agent-os/coding-guidelines.md)
 - [Validation matrix](../../docs/agent-os/validation-matrix.md)
 - [Architecture](../../docs/architecture/README.md)
 - [Quality scorecard](../../docs/quality/scorecard.md)
@@ -65,6 +66,20 @@ code intelligence. Native tools are fallback-only.
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
 - If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+
+## Coding Guidelines
+
+Reduce common LLM coding mistakes. Bias toward caution; use judgment for trivial tasks.
+
+**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask; if multiple interpretations exist, present them; push back when a simpler approach exists.
+
+**2. Simplicity First** — minimum code that solves the problem; no speculative features, abstractions for single-use code, or error handling for impossible scenarios; if 200 lines could be 50, rewrite it.
+
+**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that *your* changes made unused.
+
+**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
+
+Full reference: [../../docs/agent-os/coding-guidelines.md](../../docs/agent-os/coding-guidelines.md)
 
 ## Native fallback
 
