@@ -17,7 +17,6 @@ DOC_LINKS = [
     ("Agent OS", ROOT / "docs/agent-os/README.md"),
     ("Workflow", ROOT / "docs/agent-os/workflow.md"),
     ("Taste invariants", ROOT / "docs/agent-os/taste-invariants.md"),
-    ("Coding guidelines", ROOT / "docs/agent-os/coding-guidelines.md"),
     ("Validation matrix", ROOT / "docs/agent-os/validation-matrix.md"),
     ("Architecture", ROOT / "docs/architecture/README.md"),
     ("Quality scorecard", ROOT / "docs/quality/scorecard.md"),
@@ -101,32 +100,75 @@ def validation_line(output_path: Path) -> str:
     return f"See [Validation matrix]({matrix}) for the minimum checks by change surface."
 
 
-def coding_guidelines_section(output_path: Path) -> str:
-    """Behavioral coding guidelines — included in host integration surfaces."""
-    guide_link = relpath(output_path, ROOT / "docs/agent-os/coding-guidelines.md")
-    return "\n".join(
-        [
-            "## Coding Guidelines",
-            "",
-            "Reduce common LLM coding mistakes. Bias toward caution; use judgment for trivial tasks.",
-            "",
-            "**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask;"
-            " if multiple interpretations exist, present them; push back when a simpler approach exists.",
-            "",
-            "**2. Simplicity First** — minimum code that solves the problem; no speculative features,"
-            " abstractions for single-use code, or error handling for impossible scenarios;"
-            " if 200 lines could be 50, rewrite it.",
-            "",
-            "**3. Surgical Changes** — touch only what you must; don't improve adjacent code,"
-            " refactor things that aren't broken, or delete unrelated dead code; match existing style;"
-            " remove only the imports/variables/functions that *your* changes made unused.",
-            "",
-            "**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing;"
-            " for multi-step work, state a brief plan with per-step verify checks; loop until verified.",
-            "",
-            f"Full reference: [{guide_link}]({guide_link})",
-        ]
-    )
+def coding_guidelines_section() -> str:
+    """Behavioral coding guidelines — fully inlined, no external doc links. https://github.com/multica-ai/andrej-karpathy-skills"""
+
+    return """
+## Coding Guidelines
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+"""
 
 
 def tool_substitution_table() -> str:
@@ -223,6 +265,8 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "- Promote durable process changes into plans, decisions, or generated host artifacts.",
         "",
         budget_section(),
+        "",
+        coding_guidelines_section(),
     ]
     if host:
         lines.extend(["", fallback_section(host)])
@@ -231,6 +275,8 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
 
 
 def render_copilot_body(output_path: Path) -> str:
+    """Thin in-repo version — for .github/copilot-instructions.md where docs/ exists."""
+    tool_sub_link = relpath(output_path, ROOT / "docs/agent-os/tool-substitution.md")
     return (
         "\n".join(
             [
@@ -241,8 +287,7 @@ def render_copilot_body(output_path: Path) -> str:
                 "Use the Atelier 3-step process for every task:",
                 "1. **Context**: call `context` with the task, domain, and tools.",
                 f"2. **Implement**: use Atelier MCP tools for file I/O, search, edits, and shell work "
-                f"(see [Tool substitution]({relpath(output_path, ROOT / 'docs/agent-os/tool-substitution.md')})). "
-                "Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable. "
+                f"(see [Tool substitution]({tool_sub_link})). Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable. "
                 "Use `route` or `rescue` when needed.",
                 "3. **Record**: call `record` when the work is done.",
                 "",
@@ -261,6 +306,42 @@ def render_copilot_body(output_path: Path) -> str:
                 "## Validation",
                 "",
                 f"{validation_line(output_path)} Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_copilot_user_surface(output_path: Path) -> str:
+    """Self-contained user-repo version — no relative doc links, coding guidelines inlined."""
+    return (
+        "\n".join(
+            [
+                generated_notice(output_path),
+                "",
+                "## Atelier - Copilot Instructions",
+                "",
+                "Use the Atelier 3-step process for every task:",
+                "1. **Context**: call `context` with the task, domain, and tools.",
+                "2. **Implement**: use Atelier MCP tools for file I/O, search, edits, and shell work "
+                "(see Tool substitution table below). "
+                "Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable. "
+                "Use `route` or `rescue` when needed.",
+                "3. **Record**: call `record` when the work is done.",
+                "",
+                tool_substitution_table(),
+                "",
+                mcp_priority_section(),
+                "",
+                budget_section(),
+                "",
+                coding_guidelines_section(),
+                "",
+                fallback_section("copilot"),
+                "",
+                "## Validation",
+                "",
+                "See the validation matrix for the minimum checks by change surface. Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
             ]
         ).rstrip()
         + "\n"
@@ -306,10 +387,6 @@ def render_chatmode(output_path: Path) -> str:
                 "",
                 "You are operating as *atelier:code*.",
                 "",
-                "Use this chat mode as a thin entrypoint to the live repo rules:",
-                "",
-                doc_links(output_path),
-                "",
                 "## Operating loop",
                 "",
                 "1. **Context** - call MCP tool `context` with task, domain, files, and tools.",
@@ -345,23 +422,18 @@ def render_claude_code_agent(output_path: Path) -> str:
                 "",
                 "You are the **main coding agent**. The Atelier MCP server is wired in as `atelier`.",
                 "",
-                "Use this file as a thin entrypoint and follow the live docs tree:",
-                "",
-                doc_links(output_path),
-                "",
                 "## Operating loop",
                 "",
                 "1. **Context**: Call `context` with `task`, `files`, `domain`, and `errors`.",
-                f"2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work "
-                f"(see [Tool substitution]({relpath(output_path, ROOT / 'docs/agent-os/tool-substitution.md')})). "
-                "Use Claude-native tools only when Atelier returns `noop`, is hidden, or is unavailable.",
+                "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work."
+                " Use Claude-native tools only when Atelier returns `noop`, is hidden, or is unavailable.",
                 '3. **Record**: Call `record` at completion with `agent: "atelier:code"`.',
                 "",
                 mcp_priority_section(),
                 "",
                 budget_section(),
                 "",
-                coding_guidelines_section(output_path),
+                coding_guidelines_section(),
                 "",
                 fallback_section("claude"),
             ]
@@ -371,7 +443,6 @@ def render_claude_code_agent(output_path: Path) -> str:
 
 
 def render_claude_review_agent(output_path: Path) -> str:
-    rubric_path = relpath(output_path, ROOT / "docs/agent-os/review-rubric.md")
     return (
         "\n".join(
             [
@@ -388,15 +459,11 @@ def render_claude_review_agent(output_path: Path) -> str:
                 "",
                 "You are the **adversarial reviewer**. Your job is to find what is wrong, not to validate that work was done.",
                 "",
-                "Use this file as a thin entrypoint and follow the live docs tree:",
-                "",
-                doc_links(output_path),
-                "",
                 "## Operating loop",
                 "",
                 "1. **Read** the files in scope, preferring `mcp__atelier__read` and `mcp__atelier__search` before native Read/Grep/Glob. Never trust summaries — verify the code directly.",
                 "2. **Apply the verification ladder**: existence → substantive → wired → data flow.",
-                f"3. **Report findings** following [{rubric_path}]({rubric_path}): every finding must have a severity (Blocker|Warning), `file:line`, and a concrete fix.",
+                "3. **Report findings**: every finding must have a severity (Blocker|Warning), `file:line`, and a concrete fix.",
                 '4. **Verify** — call `verify(rubric_id="rubric_code_review", checks={{...}})` before concluding.',
                 '5. **Record** — call `record` with `agent: "atelier:review"`. Include learnings for any surprise or lesson.',
                 "",
@@ -433,10 +500,6 @@ def render_claude_explore_agent(output_path: Path) -> str:
                 "# Atelier Explore Agent",
                 "",
                 "You are the **read-only explorer**. Locate, read, and report. Never edit, create, or delete files.",
-                "",
-                "Use this file as a thin entrypoint and follow the live docs tree:",
-                "",
-                doc_links(output_path),
                 "",
                 "## Operating loop",
                 "",
@@ -476,10 +539,6 @@ def render_claude_repair_agent(output_path: Path) -> str:
                 "# Atelier Repair Agent",
                 "",
                 "You are the **repair specialist**. Activate when the same approach has failed twice.",
-                "",
-                "Use this file as a thin entrypoint and follow the live docs tree:",
-                "",
-                doc_links(output_path),
                 "",
                 "## Operating loop",
                 "",
@@ -526,10 +585,6 @@ def render_claude_research_agent(output_path: Path) -> str:
                 "",
                 "You are the **external researcher**. Fetch, synthesise, and cite. Never edit files.",
                 "",
-                "Use this file as a thin entrypoint and follow the live docs tree:",
-                "",
-                doc_links(output_path),
-                "",
                 "## Operating loop",
                 "",
                 "1. **Context**: Call `context` with `task` and `domain` to surface any codebase-side constraints.",
@@ -564,8 +619,25 @@ def render_claude_research_agent(output_path: Path) -> str:
     )
 
 
+def render_cursor_coding_rules() -> str:
+    return (
+        "\n".join(
+            [
+                "---",
+                "description: Behavioral guidelines to reduce common LLM coding mistakes."
+                " Use when writing, reviewing, or refactoring code to avoid overcomplication,"
+                " make surgical changes, surface assumptions, and define verifiable success criteria.",
+                "alwaysApply: true",
+                "---",
+                "",
+                coding_guidelines_section().strip(),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
-    override = relpath(output_path, ROOT / f"docs/agent-os/host-overrides/{host}.md")
     lines = [
         generated_notice(output_path),
         "",
@@ -573,14 +645,12 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         "",
         "You are operating as *atelier:code*.",
         "",
-        "This file is a thin entrypoint to the live repo rules:",
-        "",
-        doc_links(output_path),
-        "",
         "## Operating loop",
         "",
         "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it.",
-        implement_line(output_path),
+        "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work."
+        " Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable."
+        " Use `route` or `rescue` when the same approach fails twice.",
         "3. **Record**: Call `record` when the task is done.",
         "",
         tool_substitution_table(),
@@ -589,14 +659,13 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         "",
         budget_section(),
         "",
-        coding_guidelines_section(output_path),
+        coding_guidelines_section(),
         "",
         fallback_section(host),
         "",
         "## Savings visibility",
         "",
         "Run `atelier status` or `atelier savings --json` to see current savings.",
-        f"{HOST_DISPLAY[host]} host-specific notes live in [docs/agent-os/host-overrides/{host}.md]({override}).",
     ]
     if host == "opencode":
         return (
@@ -634,7 +703,7 @@ def build_outputs() -> dict[Path, str]:
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(ROOT / ".github/chatmodes/atelier.chatmode.md"),
         ROOT
-        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_body(
+        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
         ROOT
@@ -691,6 +760,7 @@ def build_outputs() -> dict[Path, str]:
             title="Atelier - Cursor Agent",
             host="cursor",
         ),
+        ROOT / "integrations/cursor/rules/coding-guidelines.mdc": render_cursor_coding_rules(),
         ROOT
         / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/hermes/AGENTS.atelier.md",
