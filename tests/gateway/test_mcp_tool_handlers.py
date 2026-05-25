@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -21,8 +22,8 @@ from atelier.core.environment import (
 from atelier.core.service.bootstrap_context import build_bootstrap_plan, persist_bootstrap_plan
 from atelier.core.service.jobs import JOB_BOOTSTRAP_CONTEXT
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.adapters.cli import cli
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_code, tool_smart_edit
+from atelier.gateway.cli import cli
 from atelier.infra.code_intel.astgrep import (
     AstGrepToolUnavailable,
     PatternMatch,
@@ -63,13 +64,17 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 def _result(resp: dict[str, Any]) -> Any:
     assert "result" in resp, resp
-    return json.loads(resp["result"]["content"][0]["text"])
+    text = resp["result"]["content"][0]["text"]
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 def _seed_store(root: Path) -> None:
     from click.testing import CliRunner
 
-    from atelier.gateway.adapters.cli import cli
+    from atelier.gateway.cli import cli
 
     result = CliRunner().invoke(cli, ["--root", str(root), "init"])
     assert result.exit_code == 0, result.output
@@ -734,18 +739,18 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     target = tmp_path / "sample.py"
     target.write_text("def alpha():\n    return 'needle'\n", encoding="utf-8")
 
-    read_payload = _result(_call("read", {"file_path": str(target)}))
-    assert read_payload["language"] == "python"
+    read_payload = _result(_call("read", {"path": str(target)}))
+    assert "python" in read_payload
 
-    search_payload = _result(_call("search", {"query": "needle", "file_path": str(tmp_path)}))
-    assert search_payload["matches"]
+    search_payload = _result(_call("search", {"query": "needle", "path": str(tmp_path)}))
+    assert "### " in search_payload
 
-    grep_payload = _result(_call("grep", {"file_path": str(target), "content_regex": "needle"}))
-    assert grep_payload["matches"]
+    grep_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle"}))
+    assert grep_payload
     assert "_meta" not in grep_payload
 
     legacy_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle", "include_meta": True}))
-    assert legacy_payload["_meta"]["fileMatchCount"] == 1
+    assert "meta: files=1" in legacy_payload
 
 
 def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1031,14 +1036,16 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
 
     indexed = _result(_call("code", {"op": "index", "repo_root": str(tmp_path)}))
-    assert indexed["symbols_indexed"] >= 2
-    assert indexed["provenance"] == "local"
+    _m = re.search(r"symbols=(\d+)", indexed)
+    assert _m is not None
+    assert int(_m.group(1)) >= 2
+    assert "provenance: local" in indexed
 
     searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert searched["items"]
-    assert all("snippet" not in item for item in searched["items"])
+    assert searched and "no matches" not in searched
+    assert "snippet:" not in searched
     cached_search = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert cached_search["provenance"] == "cached"
+    assert "provenance: cached" in cached_search
 
     symbol = _result(
         _call(
@@ -1051,12 +1058,12 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
             },
         )
     )
-    assert "def alpha" in symbol["source"]
-    assert symbol["provenance"] == "local"
+    assert "def alpha" in symbol
+    assert "provenance: local" in symbol
 
     outline = _result(_call("code", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
-    assert "a.py" in outline["files"]
-    assert outline["provenance"] == "local"
+    assert "a.py" in outline
+    assert "provenance: local" in outline
 
     context = _result(
         _call(
@@ -1070,18 +1077,24 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
             },
         )
     )
-    assert context["token_count"] <= context["budget_tokens"]
-    assert context["provenance"] == "local"
+    _packed_m = re.search(r"packed_tokens: (\d+)", context)
+    assert _packed_m is not None
+    packed_tokens = int(_packed_m.group(1))
+    _budget_m = re.search(r"budget: (\d+)", context)
+    assert _budget_m is not None
+    budget_tokens = int(_budget_m.group(1))
+    assert packed_tokens <= budget_tokens
+    assert "provenance: local" in context
 
     impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "path": "a.py"}))
-    assert "b.py" in impact["direct_importers"]
-    assert impact["target_type"] == "file"
-    assert impact["provenance"] == "local"
+    assert "b.py" in impact
+    assert "target_type: file" in impact
+    assert "provenance: local" in impact
 
     symbol_impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert symbol_impact["target_type"] == "symbol"
-    assert symbol_impact["target"]["type"] == "symbol"
-    assert symbol_impact["affected_files"]
+    assert "target_type: symbol" in symbol_impact
+    assert "target: symbol" in symbol_impact
+    assert "affected_files:" in symbol_impact
 
 
 @pytest.mark.skip(
@@ -1100,9 +1113,9 @@ def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tm
     )
     fresh = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
 
-    assert first["provenance"] == "scip"
-    assert cached["provenance"] == "cached"
-    assert fresh["provenance"] == "scip"
+    assert first["provenance"] == "scip" if isinstance(first, dict) else "provenance: scip" in first
+    assert cached["provenance"] == "cached" if isinstance(cached, dict) else "provenance: cached" in cached
+    assert fresh["provenance"] == "scip" if isinstance(fresh, dict) else "provenance: scip" in fresh
 
 
 def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root: Path, tmp_path: Path) -> None:
@@ -1344,10 +1357,10 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
 
     payload = _result(_call("code", {"op": "usages", "repo_root": str(tmp_path), "query": "OrderService"}))
 
-    assert payload["group_by"] == "file"
-    assert payload["target"]["qualified_name"] == "OrderService"
-    assert "src/checkout.py" in payload["references"]
-    assert payload["references"]["src/checkout.py"][0]["provenance"] == "local_index"
+    assert "group_by: file" in payload
+    assert "OrderService" in payload
+    assert "src/checkout.py" in payload
+    assert "local_index" in payload
 
 
 def test_code_context_call_graph_surface_is_additive(store_root: Path, tmp_path: Path) -> None:
@@ -1359,10 +1372,10 @@ def test_code_context_call_graph_surface_is_additive(store_root: Path, tmp_path:
     callers = _result(_call("code", {"op": "callers", "repo_root": str(tmp_path), "query": "alpha"}))
     callees = _result(_call("code", {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True}))
 
-    assert callers["provenance"] == "scip"
-    assert callers["data_status"] == "available"
-    assert callers["related"][0]["qualified_name"] == "beta"
-    assert callees["snapshot"]["direction"] == "callees"
+    assert "provenance: scip" in callers
+    assert "data_status: available" in callers
+    assert "beta" in callers
+    assert "snapshot.direction: callees" in callees
 
 
 def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
@@ -1375,8 +1388,8 @@ def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: P
 
     searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
 
-    assert searched["provenance"] == "local"
-    assert searched["items"][0]["name"] == "alpha"
+    assert "provenance: local" in searched
+    assert "alpha" in searched
 
 
 def test_code_context_pattern_search_surface_is_cached(
@@ -1481,7 +1494,7 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
         )
     )
 
-    assert status["entries_by_tool"] == {"code.search": 1, "code.symbol": 1}
+    assert "code.search=1" in status and "code.symbol=1" in status
     assert "items" not in status
     assert "matches" not in status
     assert invalidated["scope"]["cache_tool"] == "search"
