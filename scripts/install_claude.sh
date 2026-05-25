@@ -51,14 +51,13 @@ while [[ $# -gt 0 ]]; do
             ;;
         --project)
             # Explicitly configure enforcement for a project directory.
-            # Without a value, defaults to the current directory.
-            if [[ $# -ge 2 && "$2" != --* ]]; then
-                PROJECT_ENFORCE="$2"
-                shift
-            else
-                PROJECT_ENFORCE="$(pwd)"
+            if [ $# -lt 2 ]; then
+                echo "Missing value for --project" >&2
+                exit 1
             fi
+            PROJECT_ENFORCE="$2"
             PROJECT_ENFORCE_SET=true
+            shift
             ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
@@ -171,6 +170,12 @@ run "cp -r '${SOURCE_PLUGIN_DIR}/scripts' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/skills' '$STAGING_DIR/'"
 run "cp '${SOURCE_PLUGIN_DIR}/settings.json' '$STAGING_DIR/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
+# Ensure runnable bits on hook + script entrypoints, even if source perms got
+# stripped (e.g. via `git stash`, fresh clone on some FS, or restore from tar).
+# Claude Code invokes statusline.sh via the `command` type and exec()s the
+# path directly; without +x the statusline silently disappears.
+run "chmod +x '$STAGING_DIR/scripts/'*.sh 2>/dev/null || true"
+run "chmod +x '$STAGING_DIR/hooks/'*.sh '$STAGING_DIR/hooks/'*.py 2>/dev/null || true"
 PLUGIN_DIR="$STAGING_DIR"
 INSTALL_SOURCE_DIR="$STAGING_DIR"
 
@@ -362,9 +367,7 @@ print("[atelier:claude] CLAUDE_WORKSPACE_ROOT written to ${CLAUDE_LOCAL_SETTINGS
 PYEOF
     fi
 
-    # Workspace installs always get project-level enforcement.
-    info "Writing project enforcement (permissions.deny + scoped allows) for workspace: ${WORKSPACE}"
-    configure_project_enforcement "${WORKSPACE}"
+    # Workspace installs are managed separately by install_agents.sh
 fi
 
 # ---- Claude hook settings ---------------------------------------------------
@@ -494,33 +497,13 @@ if $DRY_RUN; then
 fi
 
 # ---- per-project enforcement -----------------------------------------------
-# --project DIR was given: configure non-interactively.
-# Otherwise: offer an interactive prompt when:
-#   - not in workspace mode (workspace already enforced above)
-#   - running in a terminal (stdin is a tty)
-#   - current directory is inside a git repo
-if ! $WORKSPACE_SET; then
-    if $PROJECT_ENFORCE_SET; then
-        if [[ -d "$PROJECT_ENFORCE" ]]; then
-            PROJECT_ENFORCE="$(cd "$PROJECT_ENFORCE" && pwd)"
-        fi
-        info "Configuring enforcement for project: ${PROJECT_ENFORCE}"
-        configure_project_enforcement "${PROJECT_ENFORCE}"
-    elif ! $DRY_RUN && [[ -t 0 ]] && git -C "$(pwd)" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        PROJ_ROOT="$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)"
-        echo ""
-        printf "[atelier:claude] Enable atelier enforcement for '%s'? [y/N] " "$(basename "$PROJ_ROOT")"
-        read -r yn </dev/tty || yn="n"
-        case "${yn}" in
-            [Yy]*)
-                configure_project_enforcement "${PROJ_ROOT}"
-                ;;
-            *)
-                info "Skipped project enforcement. Run later with:"
-                info "  bash ${ATELIER_REPO}/scripts/install_claude.sh --project ${PROJ_ROOT}"
-                ;;
-        esac
+# Only apply enforcement if explicitly requested via --project.
+if [[ -n "${PROJECT_ENFORCE:-}" ]]; then
+    if [[ -d "$PROJECT_ENFORCE" ]]; then
+        PROJECT_ENFORCE="$(cd "$PROJECT_ENFORCE" && pwd)"
     fi
+    info "Configuring enforcement for project: ${PROJECT_ENFORCE}"
+    configure_project_enforcement "${PROJECT_ENFORCE}"
 fi
 
 info "Done. Start Claude Code in your workspace. Skills and agents are available."
