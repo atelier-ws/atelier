@@ -17,6 +17,7 @@ DOC_LINKS = [
     ("Agent OS", ROOT / "docs/agent-os/README.md"),
     ("Workflow", ROOT / "docs/agent-os/workflow.md"),
     ("Taste invariants", ROOT / "docs/agent-os/taste-invariants.md"),
+    ("Coding guidelines", ROOT / "docs/agent-os/coding-guidelines.md"),
     ("Validation matrix", ROOT / "docs/agent-os/validation-matrix.md"),
     ("Architecture", ROOT / "docs/architecture/README.md"),
     ("Quality scorecard", ROOT / "docs/quality/scorecard.md"),
@@ -98,6 +99,34 @@ def fallback_section(host: str) -> str:
 def validation_line(output_path: Path) -> str:
     matrix = relpath(output_path, ROOT / "docs/agent-os/validation-matrix.md")
     return f"See [Validation matrix]({matrix}) for the minimum checks by change surface."
+
+
+def coding_guidelines_section(output_path: Path) -> str:
+    """Behavioral coding guidelines — included in host integration surfaces."""
+    guide_link = relpath(output_path, ROOT / "docs/agent-os/coding-guidelines.md")
+    return "\n".join(
+        [
+            "## Coding Guidelines",
+            "",
+            "Reduce common LLM coding mistakes. Bias toward caution; use judgment for trivial tasks.",
+            "",
+            "**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask;"
+            " if multiple interpretations exist, present them; push back when a simpler approach exists.",
+            "",
+            "**2. Simplicity First** — minimum code that solves the problem; no speculative features,"
+            " abstractions for single-use code, or error handling for impossible scenarios;"
+            " if 200 lines could be 50, rewrite it.",
+            "",
+            "**3. Surgical Changes** — touch only what you must; don't improve adjacent code,"
+            " refactor things that aren't broken, or delete unrelated dead code; match existing style;"
+            " remove only the imports/variables/functions that *your* changes made unused.",
+            "",
+            "**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing;"
+            " for multi-step work, state a brief plan with per-step verify checks; loop until verified.",
+            "",
+            f"Full reference: [{guide_link}]({guide_link})",
+        ]
+    )
 
 
 def tool_substitution_table() -> str:
@@ -332,6 +361,8 @@ def render_claude_code_agent(output_path: Path) -> str:
                 "",
                 budget_section(),
                 "",
+                coding_guidelines_section(output_path),
+                "",
                 fallback_section("claude"),
             ]
         ).rstrip()
@@ -557,6 +588,8 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         mcp_priority_section(),
         "",
         budget_section(),
+        "",
+        coding_guidelines_section(output_path),
         "",
         fallback_section(host),
         "",
