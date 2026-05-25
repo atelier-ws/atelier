@@ -1,5 +1,12 @@
 import { useEffect, useState, useMemo } from "react";
 import {
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  Search,
+  Zap,
+} from "lucide-react";
+import {
   api,
   type GranularToolUsage,
   type AnalyticsDashboard,
@@ -945,8 +952,8 @@ function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
         <div className="space-y-3">
           {highCostSessions.length > 0 && (
             <div className="border border-red-900/40 bg-red-950/20 p-3 rounded">
-              <div className="text-[10px] text-red-400 font-bold uppercase mb-1">
-                🔴 {highCostSessions.length} High-Cost Session
+              <div className="text-[10px] text-red-400 font-bold uppercase mb-1 flex items-center gap-1.5">
+                <AlertCircle size={12} /> {highCostSessions.length} High-Cost Session
                 {highCostSessions.length > 1 ? "s" : ""} (&gt;$1.00 each)
               </div>
               <div className="text-[10px] text-red-300/70 space-y-0.5">
@@ -966,8 +973,8 @@ function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
 
           {noCacheSessions.length > 0 && (
             <div className="border border-amber-900/40 bg-amber-950/20 p-3 rounded">
-              <div className="text-[10px] text-amber-400 font-bold uppercase mb-1">
-                🟡 {noCacheSessions.length} Session
+              <div className="text-[10px] text-amber-400 font-bold uppercase mb-1 flex items-center gap-1.5">
+                <Info size={12} /> {noCacheSessions.length} Session
                 {noCacheSessions.length > 1 ? "s" : ""} with Low Cache
                 Utilization
               </div>
@@ -983,8 +990,8 @@ function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
 
           {heavyContextSessions.length > 0 && (
             <div className="border border-purple-900/40 bg-purple-950/20 p-3 rounded">
-              <div className="text-[10px] text-purple-400 font-bold uppercase mb-1">
-                🟣 {heavyContextSessions.length} Context-Heavy Session
+              <div className="text-[10px] text-purple-400 font-bold uppercase mb-1 flex items-center gap-1.5">
+                <Zap size={12} /> {heavyContextSessions.length} Context-Heavy Session
                 {heavyContextSessions.length > 1 ? "s" : ""} (&gt;500k input
                 tokens)
               </div>
@@ -1004,8 +1011,8 @@ function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
 
           {multiModelCount > 2 && (
             <div className="border border-blue-900/40 bg-blue-950/20 p-3 rounded">
-              <div className="text-[10px] text-blue-400 font-bold uppercase mb-1">
-                🔵 {multiModelCount} Active Models — Consider Consolidation
+              <div className="text-[10px] text-blue-400 font-bold uppercase mb-1 flex items-center gap-1.5">
+                <Info size={12} /> {multiModelCount} Active Models — Consider Consolidation
               </div>
               <div className="text-[10px] text-blue-300/70">
                 You're using {multiModelCount} models with non-trivial cost.
@@ -1017,8 +1024,8 @@ function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
           {highCostSessions.length === 0 &&
             noCacheSessions.length === 0 &&
             heavyContextSessions.length === 0 && (
-              <div className="text-neutral-500 italic text-xs">
-                ✅ No significant optimization opportunities detected in this
+              <div className="text-neutral-500 italic text-xs flex items-center gap-1.5">
+                <CheckCircle2 size={12} className="text-emerald-500" /> No significant optimization opportunities detected in this
                 period.
               </div>
             )}
@@ -1865,19 +1872,7 @@ export default function Analytics() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="bg-neutral-900 border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 focus:outline-none focus:border-emerald-500 w-64 pl-8"
                 />
-                <svg
-                  className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
+                <Search size={14} className="absolute left-2.5 top-2 text-neutral-600" />
               </div>
             </div>
             <div className="overflow-x-auto">

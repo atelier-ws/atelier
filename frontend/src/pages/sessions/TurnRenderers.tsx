@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   api,
   type CommandRecord,
@@ -161,9 +162,17 @@ function TextBlock({
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-4 border border-neutral-800 px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200"
+          className="mt-4 border border-neutral-800 px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200 flex items-center gap-1.5"
         >
-          {expanded ? "Collapse ▲" : "Expand ▼"}
+          {expanded ? (
+            <>
+              Collapse <ChevronUp size={10} />
+            </>
+          ) : (
+            <>
+              Expand <ChevronDown size={10} />
+            </>
+          )}
         </button>
       )}
     </div>
@@ -625,9 +634,18 @@ export function ConversationTurn({
               <button
                 type="button"
                 onClick={() => setInternalExpanded((value) => !value)}
-                className="mt-6 border border-neutral-800 bg-neutral-900/50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500 transition-all hover:border-neutral-500 hover:text-neutral-200"
+                className="mt-6 border border-neutral-800 bg-neutral-900/50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500 transition-all hover:border-neutral-500 hover:text-neutral-200 flex items-center gap-1.5"
               >
-                {internalExpanded ? "Shrink ▲" : `Expand (${turn.content?.length || 0} chars) ▼`}
+                {internalExpanded ? (
+                  <>
+                    Shrink <ChevronUp size={10} />
+                  </>
+                ) : (
+                  <>
+                    Expand ({turn.content?.length || 0} chars){" "}
+                    <ChevronDown size={10} />
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -668,8 +686,16 @@ export function ToolCallDetail({
               {tool.name}
             </span>
           </div>
-          <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/tool:text-neutral-300">
-            {expanded ? "Collapse ▲" : "Inspect ▼"}
+          <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/tool:text-neutral-300 flex items-center gap-1.5">
+            {expanded ? (
+              <>
+                Collapse <ChevronUp size={10} />
+              </>
+            ) : (
+              <>
+                Inspect <ChevronDown size={10} />
+              </>
+            )}
           </span>
         </div>
       </button>
@@ -745,8 +771,16 @@ export function CommandDetail({
                 EXIT_{rc ?? "?"}
               </span>
             )}
-            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/cmd:text-neutral-300">
-              {expanded ? "Hide ▲" : "Logs ▼"}
+            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/cmd:text-neutral-300 flex items-center gap-1.5">
+              {expanded ? (
+                <>
+                  Hide <ChevronUp size={10} />
+                </>
+              ) : (
+                <>
+                  Logs <ChevronDown size={10} />
+                </>
+              )}
             </span>
           </div>
         </div>
