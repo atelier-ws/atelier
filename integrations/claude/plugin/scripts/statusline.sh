@@ -64,7 +64,6 @@ PCT_INT=${PCT%%.*}
 [ -z "$PCT_INT" ] && PCT_INT=0
 DUR_MS_INT=${DUR_MS%%.*}
 [ -z "$DUR_MS_INT" ] && DUR_MS_INT=0
-COST_FMT=$(printf '$%.3f' "$COST" 2>/dev/null || echo "\$0.000")
 MINS=$(( DUR_MS_INT / 60000 ))
 SECS=$(( (DUR_MS_INT % 60000) / 1000 ))
 
@@ -109,13 +108,20 @@ fi
 if [ -z "${SAVED_LINE:-}" ]; then
   SAVED_LINE=$(uv run --quiet atelier savings-line 2>/dev/null)
 fi
-IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD <<EOF
+IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST <<EOF
 $SAVED_LINE
 EOF
 [ -z "$SAVED_USD" ] && SAVED_USD="\$0.000"
 [ -z "$SAVED_CTX" ] && SAVED_CTX="0"
 [ -z "$SAVED_CALLS" ] && SAVED_CALLS="0"
 [ -z "$ROUTING_USD" ] && ROUTING_USD="\$0.000"
+[ -z "$SESSION_BASE_COST" ] && SESSION_BASE_COST="0"
+
+# Cost = sessions baseline (from stop-hook transcript) + live Claude delta.
+# Claude's COST starts at 0 on each invocation (even resumed sessions), so we
+# add the two: baseline covers historical turns, COST covers turns since launch.
+TOTAL_COST=$(awk "BEGIN { printf \"%.3f\", ${SESSION_BASE_COST:-0} + ${COST:-0} }" 2>/dev/null || echo "0")
+COST_FMT=$(printf '$%.3f' "$TOTAL_COST" 2>/dev/null || echo "\$0.000")
 
 # Persist real API cost so the Stop hook can use it instead of estimating.
 # The Stop hook payload from Claude Code never includes the total cost, so we
