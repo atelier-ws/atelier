@@ -78,6 +78,7 @@ ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}
 ATELIER_REF="${ATELIER_REF:-main}"
 ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local/share/atelier}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
+ATELIER_NODE_DIR="${ATELIER_NODE_DIR:-${HOME}/.local/node}"
 ATELIER_TOOL_DIR="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
 ATELIER_INSTALL_RECORD="${ATELIER_INSTALL_RECORD:-${HOME}/.atelier/install_dir}"
 ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
@@ -1107,6 +1108,70 @@ ensure_local_zoekt_runtime() {    # Kept for legacy --zoekt-auto-install flag pa
     warn "Local Zoekt binaries missing — run: atelier zoekt install"
 }
 
+# Install Node.js to ~/.local/node via official tarball (self-contained, no sudo)
+_install_node() {
+    local node_ver="v20.12.2"
+    local arch os_low tarball os_name
+    case "$(uname -m)" in
+        x86_64)        arch="x64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        *)             arch="x64" ;;
+    esac
+    os_name="$(uname -s)"
+    os_low="$(echo "$os_name" | tr '[:upper:]' '[:lower:]')"
+    [[ "$os_low" == "darwin" ]] && os_low="darwin"
+
+    tarball="node-${node_ver}-${os_low}-${arch}.tar.gz"
+    mkdir -p "$ATELIER_NODE_DIR"
+    
+    local tmp_tar
+    tmp_tar="$(mktemp "${TMPDIR:-/tmp}/node-tarball.XXXXXX.tar.gz")"
+    curl -sSL "https://nodejs.org/dist/${node_ver}/${tarball}" -o "$tmp_tar" || return 1
+    
+    if tar --help 2>&1 | grep -q "strip-components"; then
+        tar -xzf "$tmp_tar" -C "$ATELIER_NODE_DIR" --strip-components=1 || { rm -f "$tmp_tar"; return 1; }
+    else
+        local tmp_dir
+        tmp_dir="$(mktemp -d)"
+        tar -xzf "$tmp_tar" -C "$tmp_dir" || { rm -f "$tmp_tar"; rm -rf "$tmp_dir"; return 1; }
+        mv "$tmp_dir"/node-*/* "$ATELIER_NODE_DIR/"
+        rm -rf "$tmp_dir"
+    fi
+    rm -f "$tmp_tar"
+    
+    export PATH="${ATELIER_NODE_DIR}/bin:${PATH}"
+    command -v node >/dev/null 2>&1
+    command -v npm >/dev/null 2>&1
+}
+
+install_node_if_needed() {
+    local node_user_bin="${ATELIER_NODE_DIR}/bin"
+    if [[ -x "${node_user_bin}/node" && ":$PATH:" != *":${node_user_bin}:"* ]]; then
+        export PATH="${node_user_bin}:${PATH}"
+    fi
+
+    if command -v npm >/dev/null 2>&1; then
+        verbose "Found npm: $(npm --version 2>/dev/null || echo unknown)"
+        return
+    fi
+
+    if [[ "$ATELIER_NO_STACK" == "1" ]]; then
+        return
+    fi
+
+    need_cmd curl
+    verbose "npm not found — attempting local Node.js installation..."
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        echo "[dry-run] install node"
+    else
+        spin "Installing Node.js" _install_node || true
+    fi
+    
+    if [[ -x "${node_user_bin}/node" && ":$PATH:" != *":${node_user_bin}:"* ]]; then
+        export PATH="${node_user_bin}:${PATH}"
+    fi
+}
+
 # Install Go to ~/.local/go via official tarball (self-contained, no sudo)
 _install_go() {
     local go_ver arch os_low tarball
@@ -1361,6 +1426,7 @@ main() {
     fi
 
     install_uv_if_needed
+    install_node_if_needed
 
     local stack_available=0
     if [[ "$ATELIER_NO_STACK" != "1" ]] && command -v npm >/dev/null 2>&1; then
@@ -1463,6 +1529,13 @@ main() {
         warn "$ATELIER_BIN_DIR is not currently on PATH"
         info "Add this to your shell profile, then restart your shell:"
         info "  export PATH=\"$ATELIER_BIN_DIR:\$PATH\""
+    fi
+
+    local node_user_bin="${ATELIER_NODE_DIR}/bin"
+    if [[ -d "$node_user_bin" && ":$PATH:" != *":$node_user_bin:"* ]]; then
+        warn "$node_user_bin is not currently on PATH"
+        info "Add this to your shell profile, then restart your shell:"
+        info "  export PATH=\"$node_user_bin:\$PATH\""
     fi
 
     local atelier_cli="$ATELIER_BIN_DIR/atelier"

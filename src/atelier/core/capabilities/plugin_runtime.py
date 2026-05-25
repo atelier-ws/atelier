@@ -1756,8 +1756,19 @@ def _cost_history_summary(root: str | Path) -> dict[str, Any]:
 
 
 def build_savings_report(
-    root: str | Path, *, session_id: str | None = None, usd_per_1k_tokens: float = 0.003
+    root: str | Path,
+    *,
+    session_id: str | None = None,
+    usd_per_1k_tokens: float = 0.003,
+    model_id: str | None = None,
 ) -> dict[str, Any]:
+    """Compose savings/cost report.
+
+    When *model_id* is supplied, savings are priced at the model's input rate
+    (most honest: Atelier savings are context-bytes-not-loaded, which would
+    have been billed as input tokens). When *model_id* is None or unknown,
+    fall back to the flat *usd_per_1k_tokens* rate for backward compat.
+    """
     root_path = Path(root)
     smart = {}
     smart_path = root_path / "smart_state.json"
@@ -1774,27 +1785,91 @@ def build_savings_report(
     smart_tokens = int(smart_savings.get("tokens_saved", 0) or 0)
     session_calls = int(session["savings"].get("calls_saved", 0) or 0)
     session_tokens = int(session["savings"].get("tokens_saved", 0) or 0)
-    tokens_saved = max(smart_tokens, session_tokens)
-    calls_avoided = max(smart_calls, session_calls)
     live = load_live_savings_summary(root_path, session_id=session_id)
-    tokens_saved = max(tokens_saved, int(live.get("tokens_saved", 0) or 0))
-    calls_avoided = max(calls_avoided, int(live.get("calls_saved", 0) or 0))
-    estimated_saved_usd = round((tokens_saved / 1000.0) * float(usd_per_1k_tokens), 6)
-    cost = _cost_history_summary(root_path)
+    live_calls = int(live.get("calls_saved", 0) or 0)
+    live_tokens = int(live.get("tokens_saved", 0) or 0)
+
+    # IMPORTANT: when session_id is provided, the caller wants session-scoped
+    # savings (e.g. the Stop hook reporting on the session that just ended).
+    # smart_state.json is LIFETIME-cumulative across all sessions, so max()
+    # against it would leak prior sessions' totals into the current display
+    # (this was the bug behind "calls_avoided > total_calls" and savings >> cost).
+    if session_id:
+        tokens_saved = max(session_tokens, live_tokens)
+        calls_avoided = max(session_calls, live_calls)
+        # Sanity cap: cannot save more calls than the session actually made.
+        session_tool_calls = int(session.get("total_tool_calls", 0) or 0)
+        if session_tool_calls > 0:
+            calls_avoided = min(calls_avoided, session_tool_calls)
+        # Sanity cap: cannot save more tokens than the session handled.
+        usage = session.get("usage") or {}
+        if isinstance(usage, dict):
+            session_total_tokens = sum(
+                int(usage.get(k, 0) or 0)
+                for k in (
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_read_tokens",
+                    "cache_write_tokens",
+                )
+            )
+            if session_total_tokens > 0:
+                tokens_saved = min(tokens_saved, session_total_tokens)
+    else:
+        tokens_saved = max(smart_tokens, session_tokens, live_tokens)
+        calls_avoided = max(smart_calls, session_calls, live_calls)
+    # Price savings at the model's input rate when possible. Atelier savings
+    # are context tokens we kept out of the LLM input -- without the savings,
+    # those bytes would have been input or cache_read tokens.
+    rate_per_token: float | None = None
+    if model_id:
+        try:
+            from atelier.core.capabilities.pricing import get_model_pricing
+
+            pricing = get_model_pricing(model_id)
+            if pricing.known and pricing.input > 0:
+                rate_per_token = pricing.input / 1_000_000.0
+        except Exception:
+            rate_per_token = None
+    if rate_per_token is None:
+        rate_per_token = float(usd_per_1k_tokens) / 1000.0
+    estimated_saved_usd = round(tokens_saved * rate_per_token, 6)
     live_saved_usd = float(live.get("saved_usd", 0.0) or 0.0)
-    if live_saved_usd > 0:
-        cost["saved_usd"] = round(float(cost["saved_usd"]) + live_saved_usd, 6)
-        cost["live_saved_usd"] = round(live_saved_usd, 6)
-        cost["routing_saved_usd"] = round(float(live.get("routing_saved_usd", 0.0) or 0.0), 6)
-        cost["would_have_cost_usd"] = round(float(cost["would_have_cost_usd"]) + live_saved_usd, 6)
-        cost["saved_pct"] = (
-            round(100.0 * float(cost["saved_usd"]) / float(cost["would_have_cost_usd"]), 2)
-            if float(cost["would_have_cost_usd"]) > 0
-            else 0.0
-        )
-    elif cost["saved_usd"] <= 0 and estimated_saved_usd > 0:
-        cost["saved_usd"] = estimated_saved_usd
-    estimated_saved_usd = max(estimated_saved_usd, float(cost["saved_usd"]))
+    routing_saved_usd = float(live.get("routing_saved_usd", 0.0) or 0.0)
+
+    if session_id:
+        # Session-scoped: cost_history.json is LIFETIME-cumulative, so do NOT
+        # add its `saved_usd` to the live (session-filtered) value. Use only
+        # what we can attribute to THIS session.
+        # Prefer real live $ from per-call cost_saved events. Fall back to
+        # pricing the session's tokens_saved counter when no live $ exists
+        # (hooks record tokens_saved but not always cost_saved_usd).
+        session_saved_usd = live_saved_usd if live_saved_usd > 0 else estimated_saved_usd
+        cost = {
+            "saved_usd": round(session_saved_usd, 6),
+            "live_saved_usd": round(live_saved_usd, 6),
+            "routing_saved_usd": round(routing_saved_usd, 6),
+            "would_have_cost_usd": round(session_saved_usd, 6),
+            "actually_cost_usd": 0.0,
+            "saved_pct": 0.0,
+            "operations_tracked": 0,
+            "total_calls": int(session.get("total_tool_calls", 0) or 0),
+        }
+    else:
+        cost = _cost_history_summary(root_path)
+        if live_saved_usd > 0:
+            cost["saved_usd"] = round(float(cost["saved_usd"]) + live_saved_usd, 6)
+            cost["live_saved_usd"] = round(live_saved_usd, 6)
+            cost["routing_saved_usd"] = round(routing_saved_usd, 6)
+            cost["would_have_cost_usd"] = round(float(cost["would_have_cost_usd"]) + live_saved_usd, 6)
+            cost["saved_pct"] = (
+                round(100.0 * float(cost["saved_usd"]) / float(cost["would_have_cost_usd"]), 2)
+                if float(cost["would_have_cost_usd"]) > 0
+                else 0.0
+            )
+        elif cost["saved_usd"] <= 0 and estimated_saved_usd > 0:
+            cost["saved_usd"] = estimated_saved_usd
+        estimated_saved_usd = max(estimated_saved_usd, float(cost["saved_usd"]))
     baseline = _read_json(baseline_estimate_path(root_path), {})
     if not isinstance(baseline, dict):
         baseline = {}
