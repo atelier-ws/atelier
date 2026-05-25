@@ -185,7 +185,7 @@ def main() -> int:
     except Exception:
         return 0
 
-    session_id: str = payload.get("session_id", "") or ""
+    session_id_raw: str = payload.get("session_id", "") or ""
     source: str = payload.get("source", "startup") or "startup"
     model: str = payload.get("model", "") or ""
     cwd: str = payload.get("cwd", "") or ""
@@ -194,9 +194,9 @@ def main() -> int:
     try:
         # Write session_id + transcript_path to session_state so other hooks
         # and the MCP server can find the transcript for title extraction.
-        if session_id:
+        if session_id_raw:
             state_update: dict[str, Any] = {
-                "session_id": session_id,
+                "session_id": session_id_raw,
                 "atelier_root": str(_atelier_root()),
             }
             if transcript_path:
@@ -206,7 +206,7 @@ def main() -> int:
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
 
-        session_id = _active_session_id()
+        session_id: str | None = _active_session_id() or session_id_raw
         if not session_id:
             return 0
 

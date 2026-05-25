@@ -112,7 +112,7 @@ def _cost_breakdown_from_calls(
         total_out_cost += pricing.cost_usd(output_tokens=out_tok)
         total_cr_cost += pricing.cost_usd(cache_read_tokens=cr_tok)
         if cw_tok:
-            total_cw_cost += pricing.cost_usd(input_tokens=cw_tok)
+            total_cw_cost += pricing.cost_usd(cache_write_tokens=cw_tok)
 
     return (
         total_in_tok,
@@ -157,6 +157,33 @@ def _read_compact_savings(session_id: str, root: Path) -> tuple[int, float]:
     except OSError:
         pass
     return count, round(total_saved, 6)
+
+
+def read_total_savings_from_events(session_id: str, root: Path) -> float:
+    """Sum all ``cost_saved_usd`` from ``live_savings_events.jsonl`` for *session_id*.
+
+    Used for trace-only sessions that have no ledger file, where routing and
+    compaction savings are only recorded in the live-events log.
+    """
+    path = _live_savings_path(root)
+    if not path.exists():
+        return 0.0
+
+    total = 0.0
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("session_id") == session_id:
+                total += float(ev.get("cost_saved_usd") or 0.0)
+    except OSError:
+        pass
+    return round(total, 6)
 
 
 # --------------------------------------------------------------------------- #

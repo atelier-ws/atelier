@@ -24,6 +24,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 # Tools that indicate real code work (not just discussion / exploration).
 # Sessions that only used Read, Bash (read-only), Glob, WebFetch, etc. are
@@ -52,12 +53,13 @@ def _state_path() -> Path:
     return root / "workspaces" / h / "session_state.json"
 
 
-def _load_state() -> dict:  # type: ignore[type-arg]
+def _load_state() -> dict[str, Any]:
     sp = _state_path()
     if not sp.exists():
         return {}
     try:
-        return json.loads(sp.read_text("utf-8"))  # type: ignore[no-any-return]
+        result = json.loads(sp.read_text("utf-8"))
+        return result if isinstance(result, dict) else {}
     except Exception:
         return {}
 
@@ -77,7 +79,7 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _write_token_event(stats: dict) -> None:  # type: ignore[type-arg]
+def _write_token_event(stats: dict[str, Any]) -> None:
     """Append a session_stats note event to the active run file."""
     state = _load_state()
     session_id: str | None = state.get("active_session_id")
@@ -91,7 +93,7 @@ def _write_token_event(stats: dict) -> None:  # type: ignore[type-arg]
     except Exception:
         return
 
-    events: list[dict] = data.setdefault("events", [])  # type: ignore[assignment]
+    events: list[dict[str, Any]] = data.setdefault("events", [])
     events.append(
         {
             "kind": "note",
@@ -142,7 +144,7 @@ def _trace_recorded(session_id: str) -> bool:
     state = _load_state()
 
     if session_id:
-        sessions: dict[str, dict] = state.get("sessions", {})  # type: ignore[assignment]
+        sessions: dict[str, dict[str, Any]] = state.get("sessions", {})
         session_data = sessions.get(session_id, {})
         if "trace_recorded" in session_data:
             return bool(session_data["trace_recorded"])
@@ -152,61 +154,65 @@ def _trace_recorded(session_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Transcript helpers
+# Transcript helpers — thin wrappers around the shared savings_summary module.
 # ---------------------------------------------------------------------------
 
 
-def _read_transcript_stats(transcript_path: str) -> dict | None:  # type: ignore[type-arg]
-    """Parse the Claude Code transcript JSONL and return session stats."""
-    if not transcript_path:
+def _is_real_model_id(raw: object) -> bool:
+    from atelier.core.capabilities.savings_summary import is_real_model
+
+    return is_real_model(raw)
+
+
+def _resolve_model_id(raw: str | None) -> str:
+    from atelier.core.capabilities.savings_summary import resolve_model_id
+
+    return resolve_model_id(raw or "")
+
+
+def _estimate_cost_usd(
+    *,
+    model_id: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+) -> float:
+    from atelier.core.capabilities.savings_summary import estimate_cost_usd
+
+    return estimate_cost_usd(
+        model_id=model_id,
+        input_tokens=int(input_tokens or 0),
+        output_tokens=int(output_tokens or 0),
+        cache_read_tokens=int(cache_read_tokens or 0),
+        cache_write_tokens=int(cache_write_tokens or 0),
+    )
+
+
+def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
+    """Parse the Claude Code transcript JSONL and return session stats.
+
+    Delegates to savings_summary.read_transcript_stats() for all parsing,
+    then converts the TranscriptStats dataclass to the dict format stop.py
+    has always returned.
+    """
+    from atelier.core.capabilities.savings_summary import TranscriptStats, read_transcript_stats
+
+    stats: TranscriptStats | None = read_transcript_stats(transcript_path)
+    if stats is None:
         return None
-    p = Path(transcript_path)
-    if not p.exists():
-        return None
-
-    tool_calls = 0
-    input_tokens = 0
-    output_tokens = 0
-    tools_used: dict[str, int] = {}
-
-    try:
-        with p.open(encoding="utf-8") as f:
-            for raw in f:
-                raw = raw.strip()
-                if not raw:
-                    continue
-                try:
-                    entry = json.loads(raw)
-                except Exception:
-                    continue
-
-                msg = entry.get("message", {}) or {}
-
-                # Accumulate token counts from assistant turns
-                usage = msg.get("usage", {}) or {}
-                input_tokens += usage.get("input_tokens", 0)
-                output_tokens += usage.get("output_tokens", 0)
-
-                # Count tool-use blocks
-                for block in msg.get("content", []) or []:
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        name = block.get("name") or "unknown"
-                        tools_used[name] = tools_used.get(name, 0) + 1
-                        tool_calls += 1
-    except Exception:
-        return None
-
-    # Approximate cost (Claude Sonnet 3.7 pricing as baseline)
-    # $3/M input, $15/M output — rough indicator, not billed amount
-    est_cost_usd = (input_tokens * 3 + output_tokens * 15) / 1_000_000
 
     return {
-        "tool_calls": tool_calls,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": input_tokens + output_tokens,
-        "est_cost_usd": est_cost_usd,
-        "tools_used": tools_used,
+        "tool_calls": stats.tool_calls,
+        "input_tokens": stats.input_tokens,
+        "output_tokens": stats.output_tokens,
+        "cache_read_tokens": stats.cache_read_tokens,
+        "cache_write_tokens": stats.cache_write_tokens,
+        "total_tokens": stats.input_tokens + stats.output_tokens + stats.cache_read_tokens + stats.cache_write_tokens,
+        "est_cost_usd": stats.est_cost_usd,
+        "model": stats.model,
+        "models_used": stats.models_used,
+        "tools_used": stats.tools_used,
     }
 
 
@@ -353,7 +359,7 @@ def _write_session_enrichment(
     if session_title and not (data.get("task") or "").strip():
         data["task"] = session_title
 
-    events: list[dict] = data.setdefault("events", [])
+    events: list[dict[str, Any]] = data.setdefault("events", [])
     events.append(
         {
             "kind": "note",
@@ -388,84 +394,193 @@ def _write_session_enrichment(
                 Path(tmp_path).unlink(missing_ok=True)
 
 
-def _is_task_session(stats: dict | None) -> bool:  # type: ignore[type-arg]
+def _load_session_aggregate(session_id: str) -> dict[str, Any]:
+    if not session_id:
+        return {}
+    try:
+        from atelier.core.capabilities.plugin_runtime import aggregate_session_stats
+
+        aggregate = aggregate_session_stats(_atelier_root(), session_id=session_id)
+        return aggregate if isinstance(aggregate, dict) else {}
+    except Exception:
+        return {}
+
+
+def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not aggregate:
+        return stats
+
+    if stats is None:
+        stats = {
+            "tool_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "total_tokens": 0,
+            "est_cost_usd": 0.0,
+            "tools_used": {},
+        }
+
+    usage_raw = aggregate.get("usage")
+    usage: dict[str, Any] = usage_raw if isinstance(usage_raw, dict) else {}
+    stats["tool_calls"] = max(int(stats.get("tool_calls", 0) or 0), int(aggregate.get("total_tool_calls", 0) or 0))
+    stats["input_tokens"] = max(int(stats.get("input_tokens", 0) or 0), int(usage.get("input_tokens", 0) or 0))
+    stats["output_tokens"] = max(int(stats.get("output_tokens", 0) or 0), int(usage.get("output_tokens", 0) or 0))
+    stats["cache_read_tokens"] = max(
+        int(stats.get("cache_read_tokens", 0) or 0),
+        int(usage.get("cache_read_tokens", 0) or 0),
+    )
+    stats["cache_write_tokens"] = max(
+        int(stats.get("cache_write_tokens", 0) or 0),
+        int(usage.get("cache_write_tokens", 0) or 0),
+    )
+    stats["total_tokens"] = (
+        int(stats["input_tokens"])
+        + int(stats["output_tokens"])
+        + int(stats["cache_read_tokens"])
+        + int(stats["cache_write_tokens"])
+    )
+    return stats
+
+
+def _is_task_session(stats: dict[str, Any] | None, session_aggregate: dict[str, Any] | None = None) -> bool:
     """Return True only if code-editing tools were used this session.
 
     A session that only called Read, Bash (read-only), Glob, WebFetch,
     WebSearch, or had zero tool calls is classified as a "discussion" session
     and does not require an Atelier trace.
     """
+    if session_aggregate and int(session_aggregate.get("edit_tool_calls", 0) or 0) > 0:
+        return True
     if stats is None or stats.get("tool_calls", 0) == 0:
         return False
     tools_used: set[str] = set(stats.get("tools_used", {}).keys())
     return bool(CODE_EDITING_TOOLS & tools_used)
 
 
-def _load_session_savings(session_id: str) -> dict:  # type: ignore[type-arg]
-    """Return compaction and routing cost savings for this session from JSONL."""
+def _load_session_savings(session_id: str, model_id: str | None = None) -> dict[str, Any]:
+    """Return session savings summary merged from session stats and live events."""
     if not session_id:
-        return {"compact": 0.0, "routing": 0.0, "total": 0.0}
-    compact_usd = 0.0
-    routing_usd = 0.0
+        return {
+            "saved_usd": 0.0,
+            "routing_usd": 0.0,
+            "tokens_saved": 0,
+            "calls_avoided": 0,
+            "estimated": False,
+        }
     try:
-        events_path = _atelier_root() / "live_savings_events.jsonl"
-        if events_path.exists():
-            with events_path.open(encoding="utf-8") as f:
-                for raw in f:
-                    raw = raw.strip()
-                    if not raw:
-                        continue
-                    try:
-                        ev = json.loads(raw)
-                    except Exception:
-                        continue
-                    if ev.get("session_id") != session_id:
-                        continue
-                    cost = float(ev.get("cost_saved_usd", 0.0) or 0.0)
-                    lever = str(ev.get("lever") or ev.get("tool_name") or "")
-                    if "routing" in lever:
-                        routing_usd += cost
-                    elif "compact" in lever:
-                        compact_usd += cost
+        from atelier.core.capabilities.plugin_runtime import build_savings_report
+
+        report = build_savings_report(_atelier_root(), session_id=session_id, model_id=model_id)
+        cost_raw = report.get("cost")
+        cost: dict[str, Any] = cost_raw if isinstance(cost_raw, dict) else {}
+        live_saved = float(cost.get("live_saved_usd", 0.0) or 0.0)
+        saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
+        effective_saved = live_saved if live_saved > 0 else saved_usd
+        return {
+            "saved_usd": effective_saved,
+            "routing_usd": float(cost.get("routing_saved_usd", 0.0) or 0.0),
+            "tokens_saved": int(report.get("tokens_saved", 0) or 0),
+            "calls_avoided": int(report.get("calls_avoided", 0) or 0),
+            "estimated": live_saved <= 0 and effective_saved > 0,
+        }
     except Exception:
         pass
     return {
-        "compact": compact_usd,
-        "routing": routing_usd,
-        "total": compact_usd + routing_usd,
+        "saved_usd": 0.0,
+        "routing_usd": 0.0,
+        "tokens_saved": 0,
+        "calls_avoided": 0,
+        "estimated": False,
     }
 
 
+def _fmt_tok(n: int) -> str:
+    """Compact token count: 87645 → 87.6k, 24063189 → 24.1M, 4110167440 → 4.1B."""
+    n = int(n or 0)
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.1f}B"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(n)
+
+
 def _format_stats(
-    stats: dict,  # type: ignore[type-arg]
-    savings: dict | None = None,  # type: ignore[type-arg]
+    stats: dict[str, Any],
+    savings: dict[str, Any] | None = None,
     real_cost: bool = False,
 ) -> str:
-    total = stats["total_tokens"]
-    inp = stats["input_tokens"]
-    out = stats["output_tokens"]
-    calls = stats["tool_calls"]
-    cost = stats["est_cost_usd"]
+    inp = int(stats.get("input_tokens", 0) or 0)
+    out = int(stats.get("output_tokens", 0) or 0)
+    cache_read = int(stats.get("cache_read_tokens", 0) or 0)
+    cache_write = int(stats.get("cache_write_tokens", 0) or 0)
+    total = inp + out + cache_read + cache_write
+    calls = int(stats.get("tool_calls", 0) or 0)
+    cost = float(stats.get("est_cost_usd", 0.0) or 0.0)
 
     # Top tools (up to 4)
-    top = sorted(stats["tools_used"].items(), key=lambda x: -x[1])[:4]
+    top = sorted(stats.get("tools_used", {}).items(), key=lambda x: -x[1])[:4]
     tools_str = " · ".join(f"{n}×{c}" for n, c in top) if top else "none"  # noqa: RUF001
 
     cost_prefix = "cost: " if real_cost else "est. cost: ~"
+    # One-line tokens with all 4 Anthropic billing categories. No separate
+    # cache line — cW (cache write, expensive at ~$6.25/M for Opus) and cR
+    # (cache read, cheap at $0.50/M) get equal billing prominence so users
+    # see the real cost structure at a glance.
     lines = [
         f"tool calls: {calls}",
-        f"tokens: {inp:,} in / {out:,} out  ({total:,} total)",
+        f"tokens: {_fmt_tok(inp)} in / {_fmt_tok(cache_write)} cW / {_fmt_tok(cache_read)} cR / {_fmt_tok(out)} out  ({_fmt_tok(total)} total)",
         f"{cost_prefix}${cost:.4f}",
-        f"top tools: {tools_str}",
     ]
 
-    if savings and savings.get("total", 0.0) > 0:
-        parts = []
-        if savings["compact"] > 0:
-            parts.append(f"compact=${savings['compact']:.4f}")
-        if savings["routing"] > 0:
-            parts.append(f"routing=${savings['routing']:.4f}")
-        lines.append(f"savings: {' · '.join(parts)}")
+    if savings and (
+        float(savings.get("saved_usd", 0.0) or 0.0) > 0
+        or int(savings.get("tokens_saved", 0) or 0) > 0
+        or int(savings.get("calls_avoided", 0) or 0) > 0
+    ):
+        saved_usd = float(savings.get("saved_usd", 0.0) or 0.0)
+        tokens_saved = int(savings.get("tokens_saved", 0) or 0)
+        calls_avoided = int(savings.get("calls_avoided", 0) or 0)
+
+        # Final sanity caps at the display boundary so we never print numbers
+        # that are obviously inconsistent with the session that just ended.
+        raw_calls_avoided = calls_avoided
+        raw_tokens_saved = tokens_saved
+        if calls > 0:
+            calls_avoided = min(calls_avoided, calls)
+        if total > 0:
+            tokens_saved = min(tokens_saved, total)
+        # If a count was hard-clamped down (raw ≫ actual), the underlying
+        # counter is mis-attributing throughput as savings. Drop the count.
+        if calls > 0 and raw_calls_avoided > calls:
+            calls_avoided = 0
+        if total > 0 and raw_tokens_saved > total:
+            tokens_saved = 0
+        # If savings would exceed the actual session cost by >5x, the math is
+        # almost certainly leaking cross-session totals -- hide the dollar
+        # figure rather than print something misleading.
+        if cost > 0 and saved_usd > cost * 5:
+            saved_usd = 0.0
+
+        if saved_usd > 0 or tokens_saved > 0 or calls_avoided > 0:
+            parts = []
+            if saved_usd > 0:
+                prefix = "~$" if savings.get("estimated") else "$"
+                parts.append(f"{prefix}{saved_usd:.4f}")
+            if calls_avoided > 0:
+                parts.append(f"{calls_avoided} calls avoided")
+            if tokens_saved > 0:
+                parts.append(f"{tokens_saved:,} tokens saved")
+            if parts:
+                lines.append("savings: " + " · ".join(parts))
+        routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
+        if routing_usd > 0 and (cost <= 0 or routing_usd <= cost * 5):
+            lines.append(f"routing savings: ${routing_usd:.4f}")
+
+    lines.append(f"top tools: {tools_str}")
 
     return "\n".join(lines)
 
@@ -475,7 +590,7 @@ def _format_stats(
 # ---------------------------------------------------------------------------
 
 
-def _auto_record(session_id: str, stats: dict | None) -> None:  # type: ignore[type-arg]
+def _auto_record(session_id: str, stats: dict[str, Any] | None) -> None:
     """Call `atelier runs record` silently so the ledger stays complete."""
     import subprocess
 
@@ -520,12 +635,41 @@ def main() -> int:
     session_id: str = payload.get("session_id", "") or ""
     transcript_path: str = payload.get("transcript_path", "") or ""
     stats = _read_transcript_stats(transcript_path)
+    session_aggregate = _load_session_aggregate(session_id)
+    stats = _merge_session_aggregate(stats, session_aggregate)
     payload_cost: float = float(payload.get("total_cost_usd") or payload.get("total_cost") or 0.0)
     if not payload_cost and session_id:
         with contextlib.suppress(Exception):
-            cost_file = _atelier_root() / "session_costs" / f"{session_id}.txt"
-            if cost_file.is_file():
-                payload_cost = float(cost_file.read_text("utf-8").strip())
+            cost_dir = _atelier_root() / "session_costs"
+            # The statusline writes <session_id>.txt. A historical parsing bug
+            # could also produce <noise>\t<session_id>.txt variants. Pick the
+            # freshest file whose name CONTAINS the session_id and read the
+            # largest numeric value (the latest snapshot).
+            candidates = []
+            clean_file = cost_dir / f"{session_id}.txt"
+            if clean_file.is_file():
+                candidates.append(clean_file)
+            if cost_dir.is_dir():
+                for entry in cost_dir.iterdir():
+                    if entry.is_file() and session_id in entry.name and entry not in candidates:
+                        candidates.append(entry)
+            if candidates:
+                best_cost = 0.0
+                best_mtime = 0.0
+                for entry in candidates:
+                    try:
+                        value = float(entry.read_text("utf-8").strip())
+                        mtime = entry.stat().st_mtime
+                    except Exception:
+                        continue
+                    if value <= 0:
+                        continue
+                    # Prefer most recent; on tie prefer larger (cost only grows).
+                    if mtime > best_mtime or (mtime == best_mtime and value > best_cost):
+                        best_cost = value
+                        best_mtime = mtime
+                if best_cost > 0:
+                    payload_cost = best_cost
     real_cost = False
     if stats is not None and payload_cost > 0:
         stats["est_cost_usd"] = payload_cost
@@ -544,15 +688,20 @@ def main() -> int:
             _write_session_enrichment(session_id, session_title, user_prompts, transcript_path)
 
     # ── Load per-session savings breakdown ────────────────────────────────────
-    savings: dict | None = None  # type: ignore[type-arg]
+    savings: dict[str, Any] | None = None
+    session_model = stats.get("model") if isinstance(stats, dict) else None
     with contextlib.suppress(Exception):
-        savings = _load_session_savings(session_id)
-        if savings and savings.get("total", 0.0) <= 0:
+        savings = _load_session_savings(session_id, model_id=session_model)
+        if savings and (
+            float(savings.get("saved_usd", 0.0) or 0.0) <= 0
+            and int(savings.get("tokens_saved", 0) or 0) <= 0
+            and int(savings.get("calls_avoided", 0) or 0) <= 0
+        ):
             savings = None
 
     # ── Always show stats (discussion and task sessions alike) ───────────────
     # If no code-editing tools were used, show stats but skip the trace reminder.
-    if not _is_task_session(stats):
+    if not _is_task_session(stats, session_aggregate):
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
             print(json.dumps({"systemMessage": f"Session stats:\n{summary}"}))
