@@ -1322,24 +1322,25 @@ prepare_repo() {
 install_console_scripts() {
     local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
-    local install_args=(tool install --force)
-
-    if [[ "$ATELIER_LOCAL" == "1" ]]; then
-        install_args+=(--editable)
-    fi
-    install_args+=("$package_spec")
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
-        printf ' %q' "${install_args[@]}"
+        printf '[dry-run] uv tool uninstall atelier (if present)\n'
+        printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+        printf ' %q' "$package_spec"
         printf '\n'
         return
     fi
 
     mkdir -p "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+    # Gracefully remove old installation first — uv tool install --force
+    # sometimes fails with "Directory not empty" on Linux when the tool
+    # is in use.  Uninstall is idempotent and avoids the atomic-swap path.
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
-        uv "${install_args[@]}"
+        uv tool uninstall atelier >/dev/null 2>&1 || true
+    UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
+        UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
+        uv tool install "$package_spec"
 
     local mcp_path="$ATELIER_BIN_DIR/atelier-mcp"
     local wrapped_path="$ATELIER_BIN_DIR/atelier-mcp.real"
@@ -1708,11 +1709,13 @@ main() {
                 # Dump the full host output inline so failures are visible
                 # even when sub-scripts don't stream verbose output.
                 if [[ -s "$host_output_file" ]]; then
-                    info "Host install details (from $host_output_file):"
-                    while IFS= read -r _host_line; do
-                        [[ -z "${_host_line// }" ]] && continue
-                        info "  $_host_line"
-                    done <"$host_output_file"
+                    # Write host details to log file, not terminal — the
+                    # @@ATELIER_HOST_STATUS@@ lines are internal markers.
+                    {
+                        printf -- "Host install details (from %s):\n" "$host_output_file"
+                        cat "$host_output_file"
+                        printf -- "--- end host output ---\n"
+                    } >>"$ATELIER_INSTALL_LOG_FILE"
                 fi
             fi
             if [[ -f "$host_output_file" ]]; then

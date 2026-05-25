@@ -840,12 +840,32 @@ def codex_update_notification(root: str | Path, *, current_version: str) -> dict
     return {**result, "stdout": stdout, "optimizer": {"host": "codex"}}
 
 
+_ATELIER_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "context",
+        "route",
+        "rescue",
+        "trace",
+        "verify",
+        "memory",
+        "read",
+        "edit",
+        "sql",
+        "code",
+        "grep",
+        "search",
+        "compact",
+        "shell",
+    }
+)
+
+
 def _is_atelier_tool(tool_name: str) -> bool:
     lowered = tool_name.lower()
-    suffixes = ("edit", "search", "sql", "recall")
-    if lowered in suffixes:
+    if "atelier" in lowered:
         return True
-    return "atelier" in lowered and any(lowered.endswith(suffix) for suffix in suffixes)
+    # Bare tool name from hosts that strip the MCP server prefix
+    return lowered in _ATELIER_TOOL_NAMES
 
 
 def build_codex_post_tool_use_savings_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
