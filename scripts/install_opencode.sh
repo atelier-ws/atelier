@@ -76,6 +76,9 @@ if $WORKSPACE_SET; then
     NEW_ENTRY=$(cat <<JSON
 {
   "default_agent": "atelier",
+  "permission": {
+    "atelier_*": "allow"
+  },
   "mcp": {
       "atelier": {
         "type": "local",
@@ -92,6 +95,9 @@ else
     NEW_ENTRY=$(cat <<JSON
 {
   "default_agent": "atelier",
+  "permission": {
+    "atelier_*": "allow"
+  },
   "mcp": {
     "atelier": {
       "type": "local",
@@ -149,6 +155,7 @@ existing = json.loads(stripped) if stripped.strip() else {}
 new_entry = json.loads('''$NEW_ENTRY''')
 existing.setdefault('mcp', {}).update(new_entry['mcp'])
 existing.setdefault('default_agent', new_entry['default_agent'])
+existing.setdefault('permission', {}).update(new_entry['permission'])
 path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
 print("[atelier:opencode] merged atelier entry into $OC_FILE")
 PYEOF

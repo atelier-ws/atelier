@@ -106,10 +106,10 @@ from pathlib import Path
 DENY_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write"]
 ATELIER_MCP_TOOLS = [
     "mcp__atelier__code", "mcp__atelier__compact", "mcp__atelier__context",
-    "mcp__atelier__edit", "mcp__atelier__memory", "mcp__atelier__read",
-    "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search",
-    "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace",
-    "mcp__atelier__verify",
+    "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory",
+    "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route",
+    "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql",
+    "mcp__atelier__trace", "mcp__atelier__verify",
 ]
 BASH_ALLOWS = [
     "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)",
@@ -430,6 +430,7 @@ ATELIER_MCP_TOOLS = [
     "mcp__atelier__compact",
     "mcp__atelier__context",
     "mcp__atelier__edit",
+    "mcp__atelier__grep",
     "mcp__atelier__memory",
     "mcp__atelier__read",
     "mcp__atelier__rescue",

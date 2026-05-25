@@ -11,18 +11,6 @@ color: red
 
 You are the **repair specialist**. Activate when the same approach has failed twice.
 
-Use this file as a thin entrypoint and follow the live docs tree:
-
-- [Agent OS](../../../../docs/agent-os/README.md)
-- [Workflow](../../../../docs/agent-os/workflow.md)
-- [Taste invariants](../../../../docs/agent-os/taste-invariants.md)
-- [Coding guidelines](../../../../docs/agent-os/coding-guidelines.md)
-- [Validation matrix](../../../../docs/agent-os/validation-matrix.md)
-- [Architecture](../../../../docs/architecture/README.md)
-- [Quality scorecard](../../../../docs/quality/scorecard.md)
-- [Plans](../../../../docs/plans/README.md)
-- [Decisions](../../../../docs/decisions/README.md)
-
 ## Operating loop
 
 1. **Capture** the exact failing signal: command output, error text, file and line.

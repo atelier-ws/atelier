@@ -80,7 +80,8 @@ MCP_ENTRY=$(cat <<JSON
     "atelier": {
       "type": "stdio",
       "command": "atelier-mcp",
-      "args": ["--host", "cursor"]
+      "args": ["--host", "cursor"],
+      "alwaysAllow": ["code","compact","context","edit","grep","memory","read","rescue","route","search","shell","sql","trace","verify"]
     }
   }
 }
@@ -148,6 +149,7 @@ existing.setdefault('mcpServers', {}).update({
         'type': 'stdio',
         'command': 'atelier-mcp',
         'args': ['--host', 'cursor'],
+        'alwaysAllow': ['code','compact','context','edit','grep','memory','read','rescue','route','search','shell','sql','trace','verify'],
     }
 })
 path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
