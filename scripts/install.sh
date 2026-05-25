@@ -828,6 +828,14 @@ prompt_local_zoekt_selection() {
     fi
 }
 
+_zoekt_all_local_binaries_present() {
+    local _z
+    for _z in zoekt-git-index zoekt-index zoekt zoekt-webserver; do
+        command -v "$_z" >/dev/null 2>&1 || return 1
+    done
+    return 0
+}
+
 has_flag() {
     local needle="$1"
     local item
@@ -1505,11 +1513,12 @@ main() {
 
     local selected_zoekt=""
     if [[ "$ATELIER_ZOEKT" == "1" ]]; then
-        if command -v docker >/dev/null 2>&1; then
+        if _zoekt_all_local_binaries_present; then
             selected_zoekt="1"
-            verbose "Zoekt sidecar: enabled by default (Docker)"
+            verbose "Zoekt runtime: local binaries found on PATH"
         else
-            warn "Docker not found — skipping Zoekt sidecar service setup"
+            selected_zoekt="1"
+            verbose "Zoekt runtime: local binaries will be installed"
         fi
     fi
 
@@ -1611,7 +1620,7 @@ main() {
             fi
         fi
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${host_install_args[*]}"
+            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${host_install_args[*]+${host_install_args[*]}}"
         else
             local host_output host_output_file host_ret
             host_output_file="${TMPDIR:-/tmp}/atelier-hosts.$(date +%Y%m%dT%H%M%S).$$.log"
@@ -1619,21 +1628,22 @@ main() {
             set +e
             if [[ "$ATELIER_VERBOSE" == "1" ]]; then
                 if [[ -n "$C_RESET" ]]; then
-                    FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | tee "$host_output_file"
+                    FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
                 else
-                    bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | tee "$host_output_file"
+                    bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
                 fi
                 host_ret=${PIPESTATUS[0]}
             else
                 local had_lastpipe=0
-                if shopt -q lastpipe; then
+                # lastpipe is bash 4.2+; macOS 3.2 doesn't have it.
+                if shopt -q lastpipe 2>/dev/null; then
                     had_lastpipe=1
                 else
-                    shopt -s lastpipe
+                    shopt -s lastpipe 2>/dev/null || true
                 fi
                 _SPINNER_MSG="Installing host integrations"                _SPINNER_ACTIVE=1
                 _spinner_run
-                ATELIER_HOST_STATUS_STREAM=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]}" 2>&1 | while IFS= read -r line; do
+                ATELIER_HOST_STATUS_STREAM=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | while IFS= read -r line; do
                     printf "%s\n" "$line" >>"$host_output_file"
                     if [[ "$line" =~ ^@@ATELIER_HOST_STATUS@@[[:space:]]+([A-Z]+)[[:space:]]+(.+)$ ]]; then
                         local status="${BASH_REMATCH[1]}"
@@ -1683,7 +1693,7 @@ main() {
                 done
                 host_ret=${PIPESTATUS[0]}
                 if [[ "$had_lastpipe" -eq 0 ]]; then
-                    shopt -u lastpipe
+                    shopt -u lastpipe 2>/dev/null || true
                 fi
                 _SPINNER_MSG="Installing host integrations"
                 _spinner_pause
@@ -1692,11 +1702,21 @@ main() {
             set -e
             host_output="$(cat "$host_output_file")"
             collect_issues_from_output "$host_output"
-            if [[ -f "$host_output_file" ]] && [[ ${#WARNINGS[@]} -gt 0 || ${#ERRORS[@]} -gt 0 ]]; then
-                info "Host integration log: $host_output_file"
-            fi
-            if [[ $host_ret -ne 0 ]]; then                ERRORS+=("One or more host integrations failed")
+            if [[ $host_ret -ne 0 ]]; then
+                ERRORS+=("One or more host integrations failed")
                 FINAL_EXIT_CODE=1
+                # Dump the full host output inline so failures are visible
+                # even when sub-scripts don't stream verbose output.
+                if [[ -s "$host_output_file" ]]; then
+                    info "Host install details (from $host_output_file):"
+                    while IFS= read -r _host_line; do
+                        [[ -z "${_host_line// }" ]] && continue
+                        info "  $_host_line"
+                    done <"$host_output_file"
+                fi
+            fi
+            if [[ -f "$host_output_file" ]]; then
+                verbose "Host integration log preserved at: $host_output_file"
             fi
         fi
         # Persist host detection results for the local service/UI surfaces
