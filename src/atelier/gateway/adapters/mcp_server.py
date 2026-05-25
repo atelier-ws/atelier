@@ -603,6 +603,10 @@ def _extract_tokens_saved(result: dict[str, Any]) -> int:
     direct = _coerce_saved_tokens(result.get("tokens_saved"))
     if direct > 0:
         return direct
+    # Check thread-local written by tool handlers that strip tokens_saved before returning
+    tl = getattr(_tool_call_tokens_saved, "value", 0)
+    if tl > 0:
+        return tl
     return _extract_compact_output_tokens_saved(result)
 
 
@@ -707,6 +711,39 @@ def _workspace_root() -> Path:
         or os.getcwd()
     )
     return Path(workspace)
+
+
+_host_session_id_cache: dict[str, str] = {}
+# Thread-local slot for passing real tokens_saved from tool handlers to the
+# budget recorder without polluting the LLM-facing response dict.
+_tool_call_tokens_saved: threading.local = threading.local()
+
+
+def _read_host_session_id() -> str:
+    """Read the host agent's session UUID from the workspace session_state.json.
+
+    The MCP server's internal session ID (led.session_id) is a hex UUID that
+    doesn't match the host agent's UUID written by session_start hooks.  This
+    function reads the correct host UUID so live savings events are indexed under
+    the same ID that the statusline and hooks use.
+    """
+    global _host_session_id_cache
+    ws_key = str(_workspace_root())
+    cached = _host_session_id_cache.get(ws_key)
+    if cached:
+        return cached
+    try:
+        digest = sha256(str(_workspace_root().resolve()).encode("utf-8")).hexdigest()[:12]
+        state_path = _atelier_root() / "workspaces" / digest / "session_state.json"
+        if state_path.is_file():
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            sid = str(data.get("session_id") or "").strip()
+            if sid:
+                _host_session_id_cache[ws_key] = sid
+                return sid
+    except Exception:
+        pass
+    return ""
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -2159,6 +2196,10 @@ def tool_smart_read(
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
         response["tokens_saved"] = int(payload.get("tokens_saved", 0))
+    # Always save real savings via thread-local for the budget recorder
+    ts = int(payload.get("tokens_saved", 0) or 0)
+    if ts > 0:
+        _tool_call_tokens_saved.value = ts
     return response
 
 
@@ -2928,6 +2969,12 @@ def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Remove internal/telemetry fields that waste LLM context."""
     drop = _CODE_OP_TOP_STRIP | _CODE_OP_EXTRA_STRIP.get(op, frozenset())
     result: dict[str, Any] = {k: v for k, v in payload.items() if k not in drop}
+
+    # Save real tokens_saved via thread-local so _record_context_budget_for_tool
+    # can read it without polluting the LLM-facing response.
+    ts = int(payload.get("tokens_saved", 0) or 0)
+    if ts > 0:
+        _tool_call_tokens_saved.value = ts
 
     # Strip internal keys from the target object
     if isinstance(result.get("target"), dict):
@@ -4553,7 +4600,7 @@ def _record_context_budget_for_tool(
         if calls_avoided > 0 or tokens_saved > 0:
             event = {
                 "at": datetime.now(UTC).isoformat(),
-                "session_id": led.session_id,
+                "session_id": _read_host_session_id() or led.session_id,
                 "agent": led.agent or _detect_agent(),
                 "tool_name": tool_name,
                 "lever": lever,
@@ -4868,6 +4915,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 led = _get_ledger()
                 _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
+                _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
                 result = handler(args)
                 _record_context_budget_for_tool(
                     name,
@@ -4941,7 +4989,8 @@ def _strip_nulls(value: Any) -> Any:
 def _clean_tool_result(result: dict[str, Any], tool_name: str) -> dict[str, Any]:
     """Apply final response normalization before serialization."""
     _ = tool_name
-    return cast(dict[str, Any], _strip_nulls(result))
+    result = cast(dict[str, Any], _strip_nulls(result))
+    return result
 
 
 def _ok(rid: Any, result: dict[str, Any]) -> dict[str, Any]:
