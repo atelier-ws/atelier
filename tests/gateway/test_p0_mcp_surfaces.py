@@ -1328,8 +1328,8 @@ def test_read_budget_safe_mode_is_smaller_than_expand_mode(tmp_path: Path, monke
         encoding="utf-8",
     )
 
-    default_payload = tool_smart_read({"file_path": str(target), "max_lines": 20})
-    expanded_payload = tool_smart_read({"file_path": str(target), "expand": True})
+    default_payload = tool_smart_read({"path": str(target), "max_lines": 20})
+    expanded_payload = tool_smart_read({"path": str(target), "expand": True})
 
     assert count_tokens(json.dumps(default_payload, sort_keys=True, default=str)) < count_tokens(
         json.dumps(expanded_payload, sort_keys=True, default=str)

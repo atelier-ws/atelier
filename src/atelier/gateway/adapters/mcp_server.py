@@ -713,37 +713,21 @@ def _workspace_root() -> Path:
     return Path(workspace)
 
 
-_host_session_id_cache: dict[str, str] = {}
 # Thread-local slot for passing real tokens_saved from tool handlers to the
 # budget recorder without polluting the LLM-facing response dict.
 _tool_call_tokens_saved: threading.local = threading.local()
+_tool_call_rendered_text: threading.local = threading.local()
 
 
 def _read_host_session_id() -> str:
-    """Read the host agent's session UUID from the workspace session_state.json.
+    """Return the Claude session ID for this MCP server process.
 
-    The MCP server's internal session ID (led.session_id) is a hex UUID that
-    doesn't match the host agent's UUID written by session_start hooks.  This
-    function reads the correct host UUID so live savings events are indexed under
-    the same ID that the statusline and hooks use.
+    Claude Code spawns a fresh MCP server subprocess per session, so
+    CLAUDE_SESSION_ID in the environment is always the correct session.
+    No shared-file reading needed (and shared files break with N concurrent
+    sessions since they overwrite each other).
     """
-    global _host_session_id_cache
-    ws_key = str(_workspace_root())
-    cached = _host_session_id_cache.get(ws_key)
-    if cached:
-        return cached
-    try:
-        digest = sha256(str(_workspace_root().resolve()).encode("utf-8")).hexdigest()[:12]
-        state_path = _atelier_root() / "workspaces" / digest / "session_state.json"
-        if state_path.is_file():
-            data = json.loads(state_path.read_text(encoding="utf-8"))
-            sid = str(data.get("session_id") or "").strip()
-            if sid:
-                _host_session_id_cache[ws_key] = sid
-                return sid
-    except Exception:
-        pass
-    return ""
+    return os.environ.get("CLAUDE_SESSION_ID", "").strip()
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -2107,6 +2091,138 @@ def tool_memory(
     raise ValueError(f"unsupported memory op: {op}")
 
 
+def _render_read_md(result: dict[str, Any]) -> str | None:
+    mode = str(result.get("mode") or "")
+    path = str(result.get("path") or "?")
+    language = str(result.get("language") or "")
+    if mode == "directory":
+        entries = result.get("entries")
+        if isinstance(entries, list):
+            lines = [f"### {path} (directory)"]
+            for entry in entries:
+                lines.append(f"- {entry}")
+            return "\n".join(lines)
+        return None
+    if mode in {"full", "range"}:
+        content = str(result.get("content") or "")
+        range_label = f" ({result.get('range')})" if result.get("range") else ""
+        return f"### {path}{range_label}\n```{language}\n{content}\n```"
+    if mode == "outline":
+        outline = result.get("outline")
+        if isinstance(outline, dict):
+            return _render_read_outline_md(path, outline, language)
+        return None
+    return None
+
+
+def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -> str:
+    lines = [f"### {path} (outline)"]
+    # Treesitter/generic: has pre-formatted `text` field
+    text = str(outline.get("text") or "").strip()
+    if text:
+        kind = str(outline.get("kind") or outline.get("language") or language)
+        lines.append(f"```{kind}")
+        lines.append(text)
+        lines.append("```")
+        return "\n".join(lines)
+    # AST outline: has `symbols`, `imports`, `hint` fields
+    hint = str(outline.get("hint") or "").strip()
+    if hint:
+        lines.append(f"- hint: {hint}")
+    imports_list = outline.get("imports")
+    if isinstance(imports_list, list) and imports_list:
+        lines.append("#### imports")
+        for imp in imports_list:
+            lines.append(f"- {imp}")
+    symbols_list = outline.get("symbols")
+    if isinstance(symbols_list, list) and symbols_list:
+        lines.append("#### symbols")
+        for sym in symbols_list:
+            if not isinstance(sym, dict):
+                continue
+            name = str(sym.get("name") or "?")
+            kind = str(sym.get("kind") or "?")
+            start = int(sym.get("start_line") or 0)
+            end = int(sym.get("end_line") or 0)
+            loc = f"{start}-{end}" if end > start else str(start)
+            lines.append(f"- {loc}: {name} [{kind}]")
+    if len(lines) == 1:
+        lines.append("- (no outline)")
+    return "\n".join(lines)
+
+
+def _render_grep_md(result: dict[str, Any]) -> str | None:
+    mode = str(result.get("mode") or result.get("output_mode") or "")
+    if mode == "ranked_file_map":
+        matches = result.get("matches")
+        if not isinstance(matches, list) or not matches:
+            return "### grep\n- no matches"
+        lines: list[str] = []
+        meta = result.get("_meta")
+        if isinstance(meta, dict):
+            file_count = int(meta.get("fileMatchCount") or 0)
+            lines.append(f"- meta: files={file_count}")
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+            file_path = str(match.get("file") or "?")
+            match_count = int(match.get("match_count") or 0)
+            count_label = f"{match_count} match" if match_count == 1 else f"{match_count} matches"
+            lines.append(f"### {file_path} ({count_label})")
+            ranges = match.get("ranges")
+            if isinstance(ranges, list):
+                for r in ranges:
+                    lines.append(f"- lines {r}")
+        return "\n".join(lines) if lines else "### grep\n- no matches"
+    # Non-ranked modes: content is pre-formatted text blocks
+    content = result.get("content")
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = str(block.get("text") or "").strip()
+                if text:
+                    parts.append(text)
+        if parts:
+            return "\n".join(parts)
+    return None
+
+
+def _render_search_md(result: dict[str, Any]) -> str | None:
+    mode = str(result.get("mode") or "chunks")
+    if mode == "map":
+        ranked_files = result.get("ranked_files")
+        lines = ["### search"]
+        if isinstance(ranked_files, list):
+            lines.append("- ranked_files:")
+            for f in ranked_files[:30]:
+                lines.append(f"  - {f}")
+        else:
+            lines.append("- (map result)")
+        return "\n".join(lines)
+    matches = result.get("matches")
+    if not isinstance(matches, list) or not matches:
+        return "### search\n- no matches"
+    lines = ["### search"]
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        path = str(match.get("path") or "?")
+        lines.append(f"### {path}")
+        content = str(match.get("content") or "").strip()
+        if content:
+            lines.append(f"```\n{content}\n```")
+        else:
+            snippets = match.get("snippets")
+            if isinstance(snippets, list):
+                for snip in snippets[:3]:
+                    if isinstance(snip, dict):
+                        snip_content = str(snip.get("content") or "").strip()
+                        if snip_content:
+                            lines.append(f"```\n{snip_content}\n```")
+    return "\n".join(lines)
+
+
 @mcp_tool(name="read")
 def tool_smart_read(
     path: Annotated[
@@ -2994,18 +3110,18 @@ def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_compact: bool) -> dict[str, Any]:
     # Render first so the markdown uses all original fields (e.g. repo_id for cache_status heading).
-    if render_compact:
-        from atelier.core.capabilities.code_context.renderer import render_code_payload
+    from atelier.core.capabilities.code_context.renderer import render_code_payload
 
-        rendered = render_code_payload(op, payload)
-    else:
-        rendered = None
+    rendered = render_code_payload(op, payload)
+
+    # Store in thread-local so _handle can use MD text as the MCP response body.
+    _tool_call_rendered_text.value = rendered
 
     # Strip internal fields after rendering — LLMs get clean JSON without duplicating
     # internal bookkeeping that only Atelier needs.
     result = _strip_code_op_response(op, payload)
 
-    if rendered:
+    if render_compact and rendered:
         result["rendered"] = rendered
 
     return result
@@ -4542,6 +4658,8 @@ def _record_context_budget_for_tool(
     args: dict[str, Any],
     led: RunLedger,
     result: dict[str, Any],
+    *,
+    rendered_text_size: int | None = None,
 ) -> None:
     try:
         recorder = _get_context_budget_recorder()
@@ -4623,7 +4741,10 @@ def _record_context_budget_for_tool(
 
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
-            actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+            if rendered_text_size is not None:
+                actual_output_tokens = max(0, rendered_text_size // 4)
+            else:
+                actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -4908,20 +5029,43 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 )
 
         remote_routed = name in _REMOTE_TOOLS
+        rendered_text: str | None = None
         try:
             if remote_routed:
                 result = _dispatch_remote(name, args)
+                if isinstance(result, dict):
+                    result = _clean_tool_result(result, name)
             else:
                 led = _get_ledger()
                 _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
                 _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
+                _tool_call_rendered_text.value = None  # reset before handler
                 result = handler(args)
+
+                if isinstance(result, dict):
+                    result = _clean_tool_result(result, name)
+
+                # Compute MD text for read-heavy tools
+                _args = args if isinstance(args, dict) else {}
+                if name == "code":
+                    rendered_text = getattr(_tool_call_rendered_text, "value", None)
+                elif name == "read":
+                    with contextlib.suppress(Exception):
+                        rendered_text = _render_read_md(result if isinstance(result, dict) else {})
+                elif name == "grep":
+                    with contextlib.suppress(Exception):
+                        rendered_text = _render_grep_md(result if isinstance(result, dict) else {})
+                elif name == "search":
+                    with contextlib.suppress(Exception):
+                        rendered_text = _render_search_md(result if isinstance(result, dict) else {})
+
                 _record_context_budget_for_tool(
                     name,
-                    args if isinstance(args, dict) else {},
+                    _args,
                     led,
                     result if isinstance(result, dict) else {"result": result},
+                    rendered_text_size=len(rendered_text) if rendered_text else None,
                 )
 
                 with contextlib.suppress(Exception):
@@ -4935,8 +5079,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         writer=_make_outcome_writer(led),
                     )
 
-            if isinstance(result, dict):
-                result = _clean_tool_result(result, name)
+            response_text: str
+            if rendered_text:
+                response_text = rendered_text
+            else:
+                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
             return _ok(
                 rid,
@@ -4944,7 +5091,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                            "text": response_text,
                         }
                     ],
                 },

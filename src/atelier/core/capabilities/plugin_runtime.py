@@ -1007,16 +1007,15 @@ def load_live_savings_summary(root: str | Path, *, session_id: str | None = None
 
 
 def compute_live_savings(equivalent_call_count: float, model: str | None = None) -> dict[str, Any]:
-    # Use float throughout so fractional equivalents (e.g. grep=2.5) still
-    # contribute proportional token savings; only coerce to int at final values.
+    # calls_saved is metadata only; token counts come from real tool measurements.
     calls_saved_f = max(0.0, equivalent_call_count - 1.0)
     calls_saved = int(calls_saved_f)
     return {
         "calls_saved": calls_saved,
         "time_saved_ms": int(calls_saved_f * LIVE_TIME_SAVED_PER_CALL_MS),
-        "input_tokens_saved": int(calls_saved_f * LIVE_INPUT_TOKENS_PER_CALL * LIVE_CONTEXT_MULTIPLIER),
-        "output_tokens_saved": int(calls_saved_f * LIVE_OUTPUT_TOKENS_PER_CALL),
-        "cache_read_tokens_saved": int(calls_saved_f * LIVE_CACHE_READ_TOKENS_PER_CALL * LIVE_CONTEXT_MULTIPLIER),
+        "input_tokens_saved": 0,
+        "output_tokens_saved": 0,
+        "cache_read_tokens_saved": 0,
         "cache_write_tokens_saved": 0,
         "model": model,
     }

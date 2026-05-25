@@ -3,7 +3,7 @@
 Single source of truth for:
 - Claude transcript discovery and per-model cost parsing
 - Session savings aggregation (live events + session_stats)
-- savings-line output formatting (consumed by statusline.sh via ``atelier savings-line``)
+- savings --line output formatting (consumed by statusline.sh via ``atelier savings --line``)
 
 Previously this logic was spread across:
 - integrations/claude/plugin/scripts/statusline.sh (inline Python heredoc)
@@ -388,7 +388,7 @@ def write_session_done(
     est_cost_usd: float = 0.0,
     atelier_root: str | Path | None = None,
 ) -> None:
-    """Write a terminal savings snapshot so savings-line uses transcript data after stop."""
+    """Write a terminal savings snapshot so `savings --line` uses transcript data after stop."""
     if not session_id:
         return
     try:
@@ -537,6 +537,19 @@ def compute_savings_summary(
             result.saved_usd = live_saved_usd
             result.routing_saved_usd = live_routing_usd
             break
+
+    # --- est_cost_usd from transcript for live/resumed sessions (no done file) ---
+    # The done file is only written at stop; for active sessions we fall back to
+    # reading cost directly from the JSONL transcript (per-turn model + token counts).
+    if result.est_cost_usd == 0.0 and root is not None:
+        for candidate in session_candidates:
+            paths = claude_transcript_candidates(candidate)
+            if not paths:
+                continue
+            stats = read_transcript_stats(paths[0])
+            if stats is not None and stats.est_cost_usd > 0:
+                result.est_cost_usd = stats.est_cost_usd
+                break
 
     # --- recompute saved_usd at the correct rate ---
     # Saved tokens are context tokens that were NOT loaded — they would have been

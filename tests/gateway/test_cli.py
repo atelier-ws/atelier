@@ -14,7 +14,7 @@ from atelier.core.capabilities.plugin_runtime import update_session_stats
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
-from atelier.gateway.adapters.cli import cli
+from atelier.gateway.cli import cli
 from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
 
 
@@ -280,8 +280,8 @@ def test_stack_start_spawns_native_runner(tmp_path: Path, monkeypatch: pytest.Mo
             spawned_calls.append(list(args) if isinstance(args, (list, tuple)) else [str(args)])
             self.pid = 2468
 
-    monkeypatch.setattr("atelier.gateway.adapters.cli.subprocess.Popen", FakePopen)
-    monkeypatch.setattr("atelier.gateway.adapters.cli._pid_is_running", lambda pid: pid == 2468)
+    monkeypatch.setattr("atelier.gateway.cli.app.subprocess.Popen", FakePopen)
+    monkeypatch.setattr("atelier.gateway.cli.app._pid_is_running", lambda pid: pid == 2468)
 
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
@@ -302,15 +302,15 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     unit_dir = tmp_path / "systemd-user"
     commands: list[list[str]] = []
 
-    monkeypatch.setattr("atelier.gateway.adapters.cli._is_linux", lambda: True)
-    monkeypatch.setattr("atelier.gateway.adapters.cli._is_macos", lambda: False)
-    monkeypatch.setattr("atelier.gateway.adapters.cli.SYSTEMD_USER_DIR", unit_dir)
+    monkeypatch.setattr("atelier.gateway.cli.app._is_linux", lambda: True)
+    monkeypatch.setattr("atelier.gateway.cli.app._is_macos", lambda: False)
+    monkeypatch.setattr("atelier.gateway.cli.app.SYSTEMD_USER_DIR", unit_dir)
     monkeypatch.setattr(
-        "atelier.gateway.adapters.cli.shutil.which",
+        "atelier.gateway.cli.app.shutil.which",
         lambda name: "/bin/systemctl" if name == "systemctl" else "/usr/bin/atelier",
     )
     monkeypatch.setattr(
-        "atelier.gateway.adapters.cli.subprocess.run",
+        "atelier.gateway.cli.app.subprocess.run",
         lambda args, **kwargs: commands.append([str(item) for item in args]),
     )
 
@@ -339,12 +339,12 @@ def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: 
         }
         return mapping.get(name)
 
-    monkeypatch.setattr("atelier.gateway.adapters.cli._is_linux", lambda: True)
-    monkeypatch.setattr("atelier.gateway.adapters.cli._is_macos", lambda: False)
-    monkeypatch.setattr("atelier.gateway.adapters.cli.SYSTEMD_USER_DIR", unit_dir)
-    monkeypatch.setattr("atelier.gateway.adapters.cli.shutil.which", _which)
+    monkeypatch.setattr("atelier.gateway.cli.app._is_linux", lambda: True)
+    monkeypatch.setattr("atelier.gateway.cli.app._is_macos", lambda: False)
+    monkeypatch.setattr("atelier.gateway.cli.app.SYSTEMD_USER_DIR", unit_dir)
+    monkeypatch.setattr("atelier.gateway.cli.app.shutil.which", _which)
     monkeypatch.setattr(
-        "atelier.gateway.adapters.cli.subprocess.run",
+        "atelier.gateway.cli.app.subprocess.run",
         lambda args, **kwargs: commands.append([str(item) for item in args]),
     )
 
@@ -368,19 +368,19 @@ def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: 
     killed: set[int] = set()
     killpg_calls: list[tuple[int, int]] = []
 
-    monkeypatch.setattr("atelier.gateway.adapters.cli.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr("atelier.gateway.cli.app.os.getpgid", lambda pid: pid)
 
     def _mock_killpg(pgid: int, sig: int) -> None:
         killpg_calls.append((pgid, sig))
         killed.add(pgid)
 
     monkeypatch.setattr(
-        "atelier.gateway.adapters.cli.os.killpg",
+        "atelier.gateway.cli.app.os.killpg",
         _mock_killpg,
     )
-    monkeypatch.setattr("atelier.gateway.adapters.cli._pid_is_running", lambda pid: pid not in killed)
+    monkeypatch.setattr("atelier.gateway.cli.app._pid_is_running", lambda pid: pid not in killed)
 
-    from atelier.gateway.adapters.cli import _stop_stack_processes
+    from atelier.gateway.cli.app import _stop_stack_processes
 
     payload = _stop_stack_processes(root, force=False)
 
@@ -465,8 +465,8 @@ def test_servicectl_start_writes_pidfile(tmp_path: Path, monkeypatch: pytest.Mon
             spawned["kwargs"] = kwargs
             self.pid = 4321
 
-    monkeypatch.setattr("atelier.gateway.adapters.cli.subprocess.Popen", FakePopen)
-    monkeypatch.setattr("atelier.gateway.adapters.cli._pid_is_running", lambda pid: pid == 4321)
+    monkeypatch.setattr("atelier.gateway.cli.app.subprocess.Popen", FakePopen)
+    monkeypatch.setattr("atelier.gateway.cli.app._pid_is_running", lambda pid: pid == 4321)
 
     res = _invoke(
         root,
@@ -487,7 +487,7 @@ def test_servicectl_start_writes_pidfile(tmp_path: Path, monkeypatch: pytest.Mon
     assert payload["pid"] == 4321
     args = spawned["args"]
     assert isinstance(args, list)
-    assert "atelier.gateway.adapters.cli" in " ".join(str(item) for item in args)
+    assert "atelier.gateway.cli" in " ".join(str(item) for item in args)
     assert (root / "servicectl" / "servicectl.pid").read_text(encoding="utf-8").strip() == "4321"
 
 

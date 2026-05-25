@@ -24,9 +24,10 @@ source "${SCRIPT_DIR}/lib/managed_context.sh"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
+SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
+MODE_RENDERER="${SCRIPT_DIR}/render_mode_surfaces.py"
 
 PLUGIN_REF="atelier@atelier"
-
 DRY_RUN=false
 PRINT_ONLY=false
 STRICT=false
@@ -146,6 +147,7 @@ atelier_resolve_install_profile "atelier:claude"
 if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
     warn "$ATELIER_INSTALL_PROFILE_WARNING"
 fi
+python3 "$MODE_RENDERER" >/dev/null
 STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".
@@ -156,18 +158,22 @@ run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.cl
 run "mkdir -p '$STAGING_DIR/agents'"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
     info "Install profile: dev; staging full plugin with task loop"
-    for agent in code explore review repair; do
+    for agent in code explore review repair research; do
         atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 else
     info "Install profile: stable; staging stable plugin without dev-only task loop"
-    for agent in code explore review repair; do
+    for agent in code explore review repair research; do
         atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 fi
 run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/scripts' '$STAGING_DIR/'"
-run "cp -r '${SOURCE_PLUGIN_DIR}/skills' '$STAGING_DIR/'"
+if [[ "$INSTALL_PROFILE" == "dev" ]]; then
+    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills' --include-dev"
+else
+    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills'"
+fi
 run "cp '${SOURCE_PLUGIN_DIR}/settings.json' '$STAGING_DIR/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
 # Ensure runnable bits on hook + script entrypoints, even if source perms got
@@ -178,7 +184,6 @@ run "chmod +x '$STAGING_DIR/scripts/'*.sh 2>/dev/null || true"
 run "chmod +x '$STAGING_DIR/hooks/'*.sh '$STAGING_DIR/hooks/'*.py 2>/dev/null || true"
 PLUGIN_DIR="$STAGING_DIR"
 INSTALL_SOURCE_DIR="$STAGING_DIR"
-
 if $PRINT_ONLY; then
     echo ""
     echo "=== Atelier Claude Code - Install Steps ==="
@@ -202,7 +207,7 @@ if $PRINT_ONLY; then
         echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
     fi
     echo ""
-    echo "After install, in Claude Code: /atelier:status"
+    echo "After install, in Claude Code: /atelier:explore"
     exit 0
 fi
 
@@ -261,7 +266,7 @@ if [ -f "${PLUGIN_JSON}" ]; then
     fi
 fi
 
-for agent in code explore review repair; do
+for agent in code explore review repair research; do
     AGENT_FILE="${SOURCE_PLUGIN_DIR}/agents/${agent}.md"
     if [ -f "${AGENT_FILE}" ]; then
         struct_pass "agent exists: agents/${agent}.md"
@@ -507,8 +512,7 @@ if [[ -n "${PROJECT_ENFORCE:-}" ]]; then
     configure_project_enforcement "${PROJECT_ENFORCE}"
 fi
 
-info "Done. Start Claude Code in your workspace. Skills and agents are available."
-info "  /atelier:status  - show run ledger"
-info "  /atelier:context - show task context"
-info "  Agents: atelier:code, atelier:explore, atelier:review, atelier:repair"
+info "Done. Start Claude Code in your workspace. Mode skills and agents are available."
+info "  Skills: /atelier:code, /atelier:explore, /atelier:review, /atelier:repair, /atelier:research"
+info "  Agents: atelier:code, atelier:explore, atelier:review, atelier:repair, atelier:research"
 info "  Project enforcement: bash scripts/install_claude.sh --project [DIR]"

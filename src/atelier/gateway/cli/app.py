@@ -726,7 +726,7 @@ def _kill_orphan_servicectl_processes(current_root: Path) -> None:
             continue
         cmdline = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
         if (
-            "atelier.gateway.adapters.cli" in cmdline
+            "atelier.gateway.cli" in cmdline
             and "servicectl" in cmdline
             and " run " in cmdline
             and current_root_str not in cmdline
@@ -885,7 +885,7 @@ def _servicectl_check_and_apply_updates(root: Path) -> bool:
         if record_path.exists():
             project_root = Path(record_path.read_text(encoding="utf-8").strip())
         else:
-            # Fallback: traverse up from src/atelier/gateway/adapters/cli.py
+            # Fallback: traverse up from src/atelier/gateway/cli/app.py
             project_root = Path(__file__).parents[4]
 
         if not (project_root / ".git").exists():
@@ -4421,7 +4421,7 @@ def stack_start(ctx: click.Context, with_docs: bool) -> None:
     command = [
         sys.executable,
         "-m",
-        "atelier.gateway.adapters.cli",
+        "atelier.gateway.cli",
         "--root",
         str(root),
         "stack",
@@ -4538,7 +4538,7 @@ def stack_run(
         [
             sys.executable,
             "-m",
-            "atelier.gateway.adapters.cli",
+            "atelier.gateway.cli",
             "--root",
             str(root),
             "service",
@@ -4978,9 +4978,21 @@ def cached_grep(ctx: click.Context, pattern: str, search_path: str) -> None:
 
 @cli.command("savings")
 @click.option("--json", "as_json", is_flag=True)
+@click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
+    if line:
+        from atelier.core.capabilities.savings_summary import savings_line
+
+        click.echo(
+            savings_line(
+                os.environ.get("ATELIER_STATUS_SESSION_ID", ""),
+                model_id=os.environ.get("ATELIER_STATUS_MODEL", ""),
+                workspace=os.environ.get("CLAUDE_WORKSPACE_ROOT", "") or None,
+            )
+        )
+        return
     from atelier.core.capabilities.plugin_runtime import build_savings_report
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
@@ -7192,7 +7204,7 @@ def servicectl_start(
     command = [
         sys.executable,
         "-m",
-        "atelier.gateway.adapters.cli",
+        "atelier.gateway.cli",
         "--root",
         str(root),
         "servicectl",
@@ -9080,28 +9092,6 @@ def insights_cmd(
         click.echo(render_json(window))
     else:
         click.echo(render_text(display_window, no_color=no_color))
-
-
-@cli.command("savings-line", hidden=True)
-@click.option("--session-id", default="", envvar="ATELIER_STATUS_SESSION_ID", help="Claude session UUID.")
-@click.option("--model-id", default="", envvar="ATELIER_STATUS_MODEL", help="Canonical model id for pricing.")
-@click.option(
-    "--workspace", default="", envvar="CLAUDE_WORKSPACE_ROOT", help="Workspace root for session_state lookup."
-)
-def savings_line_cmd(session_id: str, model_id: str, workspace: str) -> None:
-    """Emit pipe-delimited savings line for statusline.sh.
-
-    Output format: $<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>
-    """
-    from atelier.core.capabilities.savings_summary import savings_line
-
-    click.echo(
-        savings_line(
-            session_id,
-            model_id=model_id,
-            workspace=workspace or None,
-        )
-    )
 
 
 if __name__ == "__main__":
