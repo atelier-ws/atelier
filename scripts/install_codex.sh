@@ -409,16 +409,16 @@ else
 fi
 
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/status/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/context/SKILL.md" ]; then
-        vpass "Codex skill bundle installed with dev skills: ${PLUGIN_DIR}/skills"
+    if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
+        vpass "Codex skill bundle installed with generated mode skills: ${PLUGIN_DIR}/skills"
     else
-        vfail "Codex dev skill bundle missing context or status skill: ${PLUGIN_DIR}/skills"
+        vfail "Codex skill bundle missing generated mode skills: ${PLUGIN_DIR}/skills"
     fi
 else
-    if [ ! -f "${PLUGIN_DIR}/skills/context/SKILL.md" ] && [ ! -f "${PLUGIN_DIR}/skills/status/SKILL.md" ]; then
-        vpass "Codex stable skill bundle installed without dev-only skills: ${PLUGIN_DIR}/skills"
+    if [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
+        vpass "Codex stable skill bundle installed with shared mode skills: ${PLUGIN_DIR}/skills"
     else
-        vfail "Codex stable skill bundle unexpectedly contains dev-only skills: ${PLUGIN_DIR}/skills"
+        vfail "Codex stable skill bundle missing shared mode skills: ${PLUGIN_DIR}/skills"
     fi
 fi
 

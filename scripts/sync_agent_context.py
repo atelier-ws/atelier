@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from render_mode_surfaces import build_mode_outputs
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -271,7 +272,10 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
     if host:
         lines.extend(["", fallback_section(host)])
     lines.extend(["", "## Validation", "", validation_line(output_path)])
-    return "\n".join(lines).rstrip() + "\n"
+    body = "\n".join(lines).rstrip() + "\n"
+    if output_path == ROOT / "AGENTS.md":
+        return "\n".join(["<!-- ATELIER:CODE START -->", body.rstrip(), "<!-- ATELIER:CODE END -->"]) + "\n"
+    return body
 
 
 def render_copilot_body(output_path: Path) -> str:
@@ -1160,6 +1164,7 @@ def build_outputs() -> dict[Path, str]:
             host="hermes",
         ),
     }
+    outputs.update(build_mode_outputs(ROOT))
     outputs.update(sync_host_configs())
     return outputs
 

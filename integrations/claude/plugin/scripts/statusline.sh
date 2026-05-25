@@ -103,10 +103,10 @@ ATELIER_PY="${ATELIER_PY:-python3}"
 # failure when the package lacks __main__.py in some install layouts).
 _ATELIER_BIN="$(dirname "${ATELIER_PY}")/atelier"
 if [ -x "${_ATELIER_BIN}" ]; then
-  SAVED_LINE=$("${_ATELIER_BIN}" savings-line 2>/dev/null)
+  SAVED_LINE=$("${_ATELIER_BIN}" savings --line 2>/dev/null)
 fi
 if [ -z "${SAVED_LINE:-}" ]; then
-  SAVED_LINE=$(uv run --quiet atelier savings-line 2>/dev/null)
+  SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
 IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST <<EOF
 $SAVED_LINE
@@ -158,11 +158,11 @@ else
   CACHE_NEW_SEG=""
 fi
 
+# Total consumed tokens for the cost annotation: input + output + cache reads + cache writes.
+TOTAL_TOK=$(( ${IN_TOK:-0} + ${OUT_TOK:-0} + ${CACHE_R:-0} + ${CACHE_W:-0} ))
+TOTAL_TOK_F=$(fmt_tok "$TOTAL_TOK")
+
 # Calls-saved counter intentionally not shown in the statusline.
-# Until the calibration store from tests/benchmarks/ feeds equivalent_calls,
-# the per-tool "calls saved" number is a guessed multiplier and showing it
-# next to a real dollar figure misleads. Tokens-saved (chars-of-context not
-# loaded) is measurable today.
 SAVED_CALLS_SEG=""
 if [ -n "${STATUS_TEXT:-}" ]; then
   STATUS_SEG=" ${SEP} ${STATUS_TEXT}"
@@ -176,11 +176,11 @@ else
   ROUTING_SEG=""
 fi
 
-printf '%s%s%s %s %s%s ctx %s%% cache %s%s %s %s ↓ %s%s(%s)%s%s %s %dm%02ds\n' \
+printf '%s%s%s %s %s%s ctx %s%% cache %s%s %s %s(%s) ↓ %s%s(%s)%s%s %s %dm%02ds\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$PCT_INT" \
   "$CACHE_F" "$CACHE_NEW_SEG" \
-  "$PIPE" "$COST_FMT" \
+  "$PIPE" "$COST_FMT" "$TOTAL_TOK_F" \
   "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
   "$ROUTING_SEG" \
   "$PIPE" "$MINS" "$SECS"

@@ -44,11 +44,11 @@ make verify
 ## First Task
 
 Start a new Codex session in your workspace, open the plugin browser with
-`/plugins` if you want to confirm Atelier is installed, and run the bundled
-status command:
+`/plugins` if you want to confirm Atelier is installed, and switch into the
+bundled explore mode:
 
 ```text
-/atelier:status
+/atelier:explore
 ```
 
 Or run the Atelier preflight wrapper:
@@ -60,7 +60,7 @@ Or run the Atelier preflight wrapper:
 ## Expected Behavior
 
 - Codex has a real MCP server entry for `atelier` in `config.toml`
-- Codex loads the installed Atelier plugin and its bundled skills when the marketplace is visible to Codex
+- Codex loads the installed Atelier plugin and its bundled mode skills when the marketplace is visible to Codex
 - The Codex MCP entry runs `atelier-mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
 - Atelier persists Codex session imports and savings data under `~/.atelier/`
 - The optional `atelier-codex` preflight wrapper records task context before handing off to Codex
