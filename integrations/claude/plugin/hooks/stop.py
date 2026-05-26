@@ -211,6 +211,7 @@ def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
         "total_tokens": stats.input_tokens + stats.output_tokens + stats.cache_read_tokens + stats.cache_write_tokens,
         "est_cost_usd": stats.est_cost_usd,
         "model": stats.model,
+        "last_model": stats.last_model,
         "models_used": stats.models_used,
         "tools_used": stats.tools_used,
     }
@@ -424,16 +425,16 @@ def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, 
 
     usage_raw = aggregate.get("usage")
     usage: dict[str, Any] = usage_raw if isinstance(usage_raw, dict) else {}
-    stats["tool_calls"] = max(int(stats.get("tool_calls", 0) or 0), int(aggregate.get("total_tool_calls", 0) or 0))
-    stats["input_tokens"] = max(int(stats.get("input_tokens", 0) or 0), int(usage.get("input_tokens", 0) or 0))
-    stats["output_tokens"] = max(int(stats.get("output_tokens", 0) or 0), int(usage.get("output_tokens", 0) or 0))
-    stats["cache_read_tokens"] = max(
-        int(stats.get("cache_read_tokens", 0) or 0),
-        int(usage.get("cache_read_tokens", 0) or 0),
+    # Transcript is authoritative; aggregate is a fallback for zero values.
+    # Never let potentially-inflated aggregate values override correct transcript totals.
+    stats["tool_calls"] = int(stats.get("tool_calls", 0) or 0) or int(aggregate.get("total_tool_calls", 0) or 0)
+    stats["input_tokens"] = int(stats.get("input_tokens", 0) or 0) or int(usage.get("input_tokens", 0) or 0)
+    stats["output_tokens"] = int(stats.get("output_tokens", 0) or 0) or int(usage.get("output_tokens", 0) or 0)
+    stats["cache_read_tokens"] = int(stats.get("cache_read_tokens", 0) or 0) or int(
+        usage.get("cache_read_tokens", 0) or 0
     )
-    stats["cache_write_tokens"] = max(
-        int(stats.get("cache_write_tokens", 0) or 0),
-        int(usage.get("cache_write_tokens", 0) or 0),
+    stats["cache_write_tokens"] = int(stats.get("cache_write_tokens", 0) or 0) or int(
+        usage.get("cache_write_tokens", 0) or 0
     )
     stats["total_tokens"] = (
         int(stats["input_tokens"])
@@ -459,41 +460,35 @@ def _is_task_session(stats: dict[str, Any] | None, session_aggregate: dict[str, 
     return bool(CODE_EDITING_TOOLS & tools_used)
 
 
-def _load_session_savings(session_id: str, model_id: str | None = None) -> dict[str, Any]:
-    """Return session savings summary merged from session stats and live events."""
-    if not session_id:
-        return {
-            "saved_usd": 0.0,
-            "routing_usd": 0.0,
-            "tokens_saved": 0,
-            "calls_avoided": 0,
-            "estimated": False,
-        }
-    try:
-        from atelier.core.capabilities.plugin_runtime import build_savings_report
+def _load_session_savings(session_id: str) -> dict[str, Any]:
+    """Return session savings summary from the Claude transcript.
 
-        report = build_savings_report(_atelier_root(), session_id=session_id, model_id=model_id)
-        cost_raw = report.get("cost")
-        cost: dict[str, Any] = cost_raw if isinstance(cost_raw, dict) else {}
-        live_saved = float(cost.get("live_saved_usd", 0.0) or 0.0)
-        saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
-        effective_saved = live_saved if live_saved > 0 else saved_usd
-        return {
-            "saved_usd": effective_saved,
-            "routing_usd": float(cost.get("routing_saved_usd", 0.0) or 0.0),
-            "tokens_saved": int(report.get("tokens_saved", 0) or 0),
-            "calls_avoided": int(report.get("calls_avoided", 0) or 0),
-            "estimated": live_saved <= 0 and effective_saved > 0,
-        }
-    except Exception:
-        pass
-    return {
+    Single source of truth: walk ~/.claude/projects/.../<session_id>.jsonl
+    once and sum tool_result.content[].saved blocks (priced at the model
+    that issued the originating tool_use).
+    """
+    zero = {
         "saved_usd": 0.0,
         "routing_usd": 0.0,
         "tokens_saved": 0,
         "calls_avoided": 0,
         "estimated": False,
     }
+    if not session_id:
+        return zero
+    try:
+        from atelier.core.capabilities.savings_summary import compute_savings_summary
+
+        summary = compute_savings_summary(session_id, atelier_root=_atelier_root())
+        return {
+            "saved_usd": float(summary.saved_usd),
+            "routing_usd": float(summary.routing_saved_usd),
+            "tokens_saved": int(summary.ctx_saved),
+            "calls_avoided": int(summary.smart_calls),
+            "estimated": False,
+        }
+    except Exception:
+        return zero
 
 
 def _fmt_tok(n: int) -> str:
@@ -536,49 +531,17 @@ def _format_stats(
         f"{cost_prefix}${cost:.4f}",
     ]
 
-    if savings and (
-        float(savings.get("saved_usd", 0.0) or 0.0) > 0
-        or int(savings.get("tokens_saved", 0) or 0) > 0
-        or int(savings.get("calls_avoided", 0) or 0) > 0
-    ):
-        saved_usd = float(savings.get("saved_usd", 0.0) or 0.0)
-        tokens_saved = int(savings.get("tokens_saved", 0) or 0)
-        calls_avoided = int(savings.get("calls_avoided", 0) or 0)
-
-        # Final sanity caps at the display boundary so we never print numbers
-        # that are obviously inconsistent with the session that just ended.
-        raw_calls_avoided = calls_avoided
-        raw_tokens_saved = tokens_saved
-        if calls > 0:
-            calls_avoided = min(calls_avoided, calls)
-        if total > 0:
-            tokens_saved = min(tokens_saved, total)
-        # If a count was hard-clamped down (raw ≫ actual), the underlying
-        # counter is mis-attributing throughput as savings. Drop the count.
-        if calls > 0 and raw_calls_avoided > calls:
-            calls_avoided = 0
-        if total > 0 and raw_tokens_saved > total:
-            tokens_saved = 0
-        # If savings would exceed the actual session cost by >5x, the math is
-        # almost certainly leaking cross-session totals -- hide the dollar
-        # figure rather than print something misleading.
-        if cost > 0 and saved_usd > cost * 5:
-            saved_usd = 0.0
-
-        if saved_usd > 0 or tokens_saved > 0 or calls_avoided > 0:
-            parts = []
-            if saved_usd > 0:
-                prefix = "~$" if savings.get("estimated") else "$"
-                parts.append(f"{prefix}{saved_usd:.4f}")
-            if calls_avoided > 0:
-                parts.append(f"{calls_avoided} calls avoided")
-            if tokens_saved > 0:
-                parts.append(f"{tokens_saved:,} tokens saved")
-            if parts:
-                lines.append("savings: " + " · ".join(parts))
-        routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
-        if routing_usd > 0 and (cost <= 0 or routing_usd <= cost * 5):
-            lines.append(f"routing savings: ${routing_usd:.4f}")
+    # Always show savings — even at $0 — so the stop output shape is stable
+    # across sessions. No display-time clamps; each saving was priced at the
+    # model in use when it was emitted, so we trust the numbers as-is.
+    savings = savings or {}
+    saved_usd = float(savings.get("saved_usd", 0.0) or 0.0)
+    tokens_saved = int(savings.get("tokens_saved", 0) or 0)
+    calls_avoided = int(savings.get("calls_avoided", 0) or 0)
+    routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
+    lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
+    if routing_usd > 0:
+        lines.append(f"routing savings: ${routing_usd:.4f}")
 
     lines.append(f"top tools: {tools_str}")
 
@@ -637,39 +600,9 @@ def main() -> int:
     stats = _read_transcript_stats(transcript_path)
     session_aggregate = _load_session_aggregate(session_id)
     stats = _merge_session_aggregate(stats, session_aggregate)
+    # Claude's Stop payload usually omits total_cost; fall back to the
+    # transcript-derived estimate already computed in _read_transcript_stats.
     payload_cost: float = float(payload.get("total_cost_usd") or payload.get("total_cost") or 0.0)
-    if not payload_cost and session_id:
-        with contextlib.suppress(Exception):
-            cost_dir = _atelier_root() / "session_costs"
-            # The statusline writes <session_id>.txt. A historical parsing bug
-            # could also produce <noise>\t<session_id>.txt variants. Pick the
-            # freshest file whose name CONTAINS the session_id and read the
-            # largest numeric value (the latest snapshot).
-            candidates = []
-            clean_file = cost_dir / f"{session_id}.txt"
-            if clean_file.is_file():
-                candidates.append(clean_file)
-            if cost_dir.is_dir():
-                for entry in cost_dir.iterdir():
-                    if entry.is_file() and session_id in entry.name and entry not in candidates:
-                        candidates.append(entry)
-            if candidates:
-                best_cost = 0.0
-                best_mtime = 0.0
-                for entry in candidates:
-                    try:
-                        value = float(entry.read_text("utf-8").strip())
-                        mtime = entry.stat().st_mtime
-                    except Exception:
-                        continue
-                    if value <= 0:
-                        continue
-                    # Prefer most recent; on tie prefer larger (cost only grows).
-                    if mtime > best_mtime or (mtime == best_mtime and value > best_cost):
-                        best_cost = value
-                        best_mtime = mtime
-                if best_cost > 0:
-                    payload_cost = best_cost
     real_cost = False
     if stats is not None and payload_cost > 0:
         stats["est_cost_usd"] = payload_cost
@@ -689,32 +622,11 @@ def main() -> int:
 
     # ── Load per-session savings breakdown ────────────────────────────────────
     savings: dict[str, Any] | None = None
-    session_model = stats.get("model") if isinstance(stats, dict) else None
     with contextlib.suppress(Exception):
-        savings = _load_session_savings(session_id, model_id=session_model)
-        if savings and (
-            float(savings.get("saved_usd", 0.0) or 0.0) <= 0
-            and int(savings.get("tokens_saved", 0) or 0) <= 0
-            and int(savings.get("calls_avoided", 0) or 0) <= 0
-        ):
-            savings = None
+        savings = _load_session_savings(session_id)
 
-    # ── Write terminal snapshot so `savings --line` uses transcript data post-stop ──
-    # After this point the session is over; live events are no longer relevant.
-    # write_session_done() creates session_done/<session_id>.json which
-    # compute_savings_summary() will use as the sole source on the next call.
-    if session_id:
-        with contextlib.suppress(Exception):
-            from atelier.core.capabilities.savings_summary import write_session_done
-
-            write_session_done(
-                session_id,
-                tokens_saved=int((savings or {}).get("tokens_saved", 0) or 0),
-                calls_avoided=int((savings or {}).get("calls_avoided", 0) or 0),
-                saved_usd=float((savings or {}).get("saved_usd", 0.0) or 0.0),
-                routing_usd=float((savings or {}).get("routing_usd", 0.0) or 0.0),
-                est_cost_usd=float((stats or {}).get("est_cost_usd", 0.0) or 0.0),
-            )
+    # Transcript JSONL stays as the source of truth even after stop —
+    # cost, tokens, and savings are all derivable from it. No snapshot needed.
 
     # ── Always show stats (discussion and task sessions alike) ───────────────
     # If no code-editing tools were used, show stats but skip the trace reminder.
