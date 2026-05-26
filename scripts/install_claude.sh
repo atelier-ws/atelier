@@ -84,62 +84,82 @@ warn()  { echo "[atelier:claude] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
 # --------------------------------------------------------------------------- #
-# configure_project_enforcement DIR
-#   Writes permissions.deny + scoped allow into DIR/.claude/settings.json.
+# Atelier enforcement lists
+#
+# DENY_TOOLS: native tools that Atelier provides a replacement for. Listing
+# them in permissions.deny removes them from the model's effective toolbelt
+# (Claude Code blocks invocation at the harness layer). Bash is denied too
+# because that's the biggest "leak" path (subshell grep/cat/find); the
+# scoped Bash(*) patterns in ATELIER_BASH_ALLOWS_JSON keep legitimate
+# git / gh / uv / make / npm usage working.
 # --------------------------------------------------------------------------- #
-configure_project_enforcement() {
-    local dir="$1"
-    local proj_settings_dir="${dir}/.claude"
-    local proj_settings="${proj_settings_dir}/settings.json"
+ATELIER_DENY_TOOLS_JSON='["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]'
+ATELIER_MCP_TOOLS_JSON='["mcp__atelier__code", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
+ATELIER_BASH_ALLOWS_JSON='["Bash(git *)", "Bash(gh *)", "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)", "Bash(uv run ruff *)", "Bash(uv run atelier *)", "Bash(uv run uvicorn *)", "Bash(uv sync *)", "Bash(uv add *)", "Bash(uv pip *)", "Bash(uv lock *)", "Bash(npm run *)", "Bash(npm install *)", "Bash(npm test *)", "Bash(npx tsc *)", "Bash(make *)", "Bash(docker-compose *)", "Bash(docker compose *)"]'
+
+# --------------------------------------------------------------------------- #
+# apply_enforcement_to_settings <path>
+#   Merges Atelier deny+allow lists into the given Claude settings.json,
+#   preserving any existing entries. Idempotent.
+# --------------------------------------------------------------------------- #
+apply_enforcement_to_settings() {
+    local settings_path="$1"
+    local settings_dir
+    settings_dir="$(dirname "${settings_path}")"
 
     if $DRY_RUN; then
-        echo "  [dry-run] configure_project_enforcement: write deny+allow → ${proj_settings}"
+        echo "  [dry-run] apply_enforcement_to_settings: merge deny+allow → ${settings_path}"
         return
     fi
 
-    mkdir -p "${proj_settings_dir}"
-    [[ -f "${proj_settings}" ]] || echo "{}" > "${proj_settings}"
+    mkdir -p "${settings_dir}"
+    [[ -f "${settings_path}" ]] || echo "{}" > "${settings_path}"
 
-    python3 - <<PYEOF
+    DENY_JSON="${ATELIER_DENY_TOOLS_JSON}" \
+    MCP_JSON="${ATELIER_MCP_TOOLS_JSON}" \
+    BASH_JSON="${ATELIER_BASH_ALLOWS_JSON}" \
+    SETTINGS_PATH="${settings_path}" \
+    python3 - <<'PYEOF'
 import json
+import os
 from pathlib import Path
 
-DENY_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write"]
-ATELIER_MCP_TOOLS = [
-    "mcp__atelier__code", "mcp__atelier__compact", "mcp__atelier__context",
-    "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory",
-    "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route",
-    "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql",
-    "mcp__atelier__trace", "mcp__atelier__verify",
-]
-BASH_ALLOWS = [
-    "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)",
-    "Bash(uv run ruff *)", "Bash(uv run atelier *)", "Bash(uv run uvicorn *)",
-    "Bash(uv sync *)", "Bash(uv add *)", "Bash(uv pip *)", "Bash(uv lock *)",
-    "Bash(npm run *)", "Bash(npm install *)", "Bash(make *)",
-    "Bash(docker-compose *)", "Bash(docker compose *)",
-    "Bash(curl *)", "Bash(wget *)", "Bash(cp *)", "Bash(mv *)",
-    "Bash(mkdir *)", "Bash(touch *)", "Bash(chmod *)",
-]
+DENY_TOOLS = json.loads(os.environ["DENY_JSON"])
+ATELIER_MCP_TOOLS = json.loads(os.environ["MCP_JSON"])
+BASH_ALLOWS = json.loads(os.environ["BASH_JSON"])
 
-path = Path("${proj_settings}")
+path = Path(os.environ["SETTINGS_PATH"])
 data = json.loads(path.read_text(encoding="utf-8") or "{}")
 
 perms = data.setdefault("permissions", {})
 deny = perms.setdefault("deny", [])
+added_deny = []
 for t in DENY_TOOLS:
     if t not in deny:
         deny.append(t)
+        added_deny.append(t)
 
 allow = perms.setdefault("allow", [])
+added_allow = []
 for t in ATELIER_MCP_TOOLS + BASH_ALLOWS:
     if t not in allow:
         allow.append(t)
+        added_allow.append(t)
 
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-print(f"[atelier:claude] project enforcement written → {path}")
+print(
+    f"[atelier:claude] enforcement merged → {path} "
+    f"(deny +{len(added_deny)}, allow +{len(added_allow)})"
+)
 PYEOF
 }
+
+configure_project_enforcement() {
+    # Backwards-compatible alias for callers that pass a project DIR; resolves
+    # to <DIR>/.claude/settings.json and forwards to the generic merger.
+    local dir="$1"
+    apply_enforcement_to_settings "${dir}/.claude/settings.json"
+    }
 
 
 # ---- resolve install profile ------------------------------------------------
@@ -299,6 +319,56 @@ if [ "$STRUCT_FAIL" -ne 0 ]; then
 fi
 info "Structural validation passed"
 
+# ---- refresh atelier-mcp from local source ---------------------------------
+# The MCP server runs from `uv tool install`'s isolated site-packages, NOT
+# from a live source link. Without this step, any change you make under src/
+# (e.g. capability fixes that affect savings emission) won't reach Claude
+# until you re-run install.sh. Reinstall here so install_claude.sh is the
+# single command that keeps plugin assets AND the MCP runtime in sync.
+refresh_atelier_tool() {
+    if ! command -v uv >/dev/null 2>&1; then
+        warn "uv not on PATH — skipping atelier-mcp refresh"
+        return 0
+    fi
+    local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
+    local pkg_spec="${ATELIER_REPO}[${extras}]"
+    local bin_dir="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
+    local tool_dir="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
+
+    if $DRY_RUN; then
+        echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
+        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper (exports ATELIER_DEV_MODE)"
+        return 0
+    fi
+
+    info "Refreshing atelier-mcp from ${ATELIER_REPO}"
+    UV_TOOL_BIN_DIR="$bin_dir" UV_TOOL_DIR="$tool_dir" \
+        uv tool install --reinstall "$pkg_spec" >/dev/null 2>&1 || {
+            warn "uv tool install --reinstall failed; MCP may run stale code"
+            return 0
+        }
+
+    # uv replaces atelier-mcp with the raw Python entry point. Restore the
+    # bash wrapper that exports ATELIER_DEV_MODE so the MCP server's
+    # dev-mode flag stays the default-off it shipped with.
+    local mcp_path="${bin_dir}/atelier-mcp"
+    local wrapped_path="${bin_dir}/atelier-mcp.real"
+    local real_target="${tool_dir}/atelier/bin/atelier-mcp"
+    if [[ -e "$mcp_path" || -L "$mcp_path" ]]; then
+        rm -f "$wrapped_path" "$mcp_path"
+        ln -s "$real_target" "$wrapped_path"
+        cat > "$mcp_path" <<EOF
+#!/usr/bin/env bash
+export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
+exec "$wrapped_path" "\$@"
+EOF
+        chmod +x "$mcp_path"
+        info "atelier-mcp wrapper restored"
+    fi
+}
+
+refresh_atelier_tool
+
 # ---- plugin install ---------------------------------------------------------
 if $DRY_RUN; then
     echo "  [dry-run] claude plugin validate ${PLUGIN_DIR}"
@@ -421,57 +491,11 @@ PYEOF
     rm -f "${HOOK_SCRIPT}"
 fi
 
-# ---- permissions: auto-allow all Atelier MCP tools --------------------------
-if $DRY_RUN; then
-    echo "  [dry-run] merge Atelier MCP tools into permissions.allow in ${CLAUDE_SETTINGS}"
-else
-    PERM_SCRIPT=$(mktemp /tmp/atelier_perm_XXXXXX)
-    cat > "${PERM_SCRIPT}" << 'PYEOF'
-import json
-import sys
-
-ATELIER_MCP_TOOLS = [
-    "mcp__atelier__code",
-    "mcp__atelier__compact",
-    "mcp__atelier__context",
-    "mcp__atelier__edit",
-    "mcp__atelier__grep",
-    "mcp__atelier__memory",
-    "mcp__atelier__read",
-    "mcp__atelier__rescue",
-    "mcp__atelier__route",
-    "mcp__atelier__search",
-    "mcp__atelier__shell",
-    "mcp__atelier__sql",
-    "mcp__atelier__trace",
-    "mcp__atelier__verify",
-]
-
-path = sys.argv[1]
-with open(path) as f:
-    d = json.load(f)
-
-perms = d.setdefault("permissions", {})
-allow = perms.setdefault("allow", [])
-
-added = []
-for tool in ATELIER_MCP_TOOLS:
-    if tool not in allow:
-        allow.append(tool)
-        added.append(tool)
-
-with open(path, "w") as f:
-    json.dump(d, f, indent=2)
-    f.write("\n")
-
-if added:
-    print(f"[atelier:claude] Added {len(added)} Atelier MCP tools to permissions.allow in {path}")
-else:
-    print("[atelier:claude] Atelier MCP tools already in permissions.allow")
-PYEOF
-    python3 "${PERM_SCRIPT}" "${CLAUDE_SETTINGS}"
-    rm -f "${PERM_SCRIPT}"
-fi
+# ---- permissions: deny native + allow Atelier MCP (and scoped Bash) --------
+# This is the always-on enforcement layer. Previously gated behind --project;
+# now applied to the active Claude settings.json so the model can't reach
+# for native Read/Grep/Glob/Edit/Write/Bash when an Atelier equivalent exists.
+apply_enforcement_to_settings "${CLAUDE_SETTINGS}"
 
 # ---- statusLine setting in ~/.claude/settings.json -------------------------
 STATUSLINE_SCRIPT="${INSTALL_SOURCE_DIR}/scripts/statusline.sh"
