@@ -331,29 +331,6 @@ if [[ "$PURGE" == "1" ]]; then
             ;;
     esac
 
-    # ---- Zoekt code-search Docker cleanup -----------------------------------
-    if [[ "$ATELIER_ZOEKT" == "1" ]] && command -v docker >/dev/null 2>&1; then
-        info "Removing Zoekt Docker containers and volumes..."
-        mapfile -t zoekt_container_ids < <(docker ps -aq --filter "name=atelier-zoekt-" 2>/dev/null || true)
-        if [[ ${#zoekt_container_ids[@]} -gt 0 ]]; then
-            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-                echo "[dry-run] docker stop ${zoekt_container_ids[*]} 2>/dev/null || true"
-                echo "[dry-run] docker rm ${zoekt_container_ids[*]} 2>/dev/null || true"
-            else
-                docker stop "${zoekt_container_ids[@]}" 2>/dev/null || true
-                docker rm "${zoekt_container_ids[@]}" 2>/dev/null || true
-            fi
-        fi
-        mapfile -t zoekt_volume_ids < <(docker volume ls -q --filter "name=atelier-zoekt-" 2>/dev/null || true)
-        if [[ ${#zoekt_volume_ids[@]} -gt 0 ]]; then
-            if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-                echo "[dry-run] docker volume rm ${zoekt_volume_ids[*]} 2>/dev/null || true"
-            else
-                docker volume rm "${zoekt_volume_ids[@]}" 2>/dev/null || true
-            fi
-        fi
-    fi
-
     purge_leftovers
 fi
 
