@@ -405,18 +405,32 @@ spin_progress() {
 }
 
 print_installer_header() {
-    local script_root=""
-    local display_version="0.1.0"
+    local display_version=""
+
+    # Fast path: running from a local checkout — read pyproject.toml directly.
     if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-        script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    fi
-    if [[ -f "$script_root/pyproject.toml" ]]; then
-        local parsed
-        parsed="$(sed -n 's/^version = "\(.*\)"/\1/p' "$script_root/pyproject.toml" | head -n 1)"
-        if [[ -n "$parsed" ]]; then
-            display_version="$parsed"
+        local script_root
+        script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+        if [[ -f "$script_root/pyproject.toml" ]]; then
+            display_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$script_root/pyproject.toml" | head -n 1)"
         fi
     fi
+
+    # Network path: fetch pyproject.toml from the same ref being installed.
+    if [[ -z "$display_version" ]] && command -v curl >/dev/null 2>&1; then
+        local owner_repo
+        owner_repo="$(printf "%s" "$ATELIER_REPO_URL" | sed -n 's#.*github\.com/\([^/]*/[^/]*\)\.git#\1#p')"
+        if [[ -n "$owner_repo" ]]; then
+            display_version="$(
+                curl -sSL "https://raw.githubusercontent.com/${owner_repo}/${ATELIER_REF}/pyproject.toml" \
+                    2>/dev/null | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1
+            )"
+        fi
+    fi
+
+    # Last-resort fallback.
+    display_version="${display_version:-unknown}"
+
     echo ""
     printf "%b┌%b  Atelier v%s\n" "$C_FRAME" "$C_RESET" "$display_version"
     printf "%b│%b\n" "$C_FRAME" "$C_RESET"
@@ -1391,31 +1405,9 @@ install_code_tools() {
         warn "npm not found — skipping eslint, ts-morph, and typescript (install Node.js 20+ to enable)"
     fi
 
-    # cargo (Rust lint-fix backend, via rustup)
+    # Rust toolchain — only used by edit hooks for Rust file lint-fix. Optional.
     if ! command -v cargo >/dev/null 2>&1; then
-        verbose "cargo not found — installing Rust toolchain via rustup..."
-        if [[ "$os_type" == "Darwin" ]]; then
-            if command -v brew >/dev/null 2>&1; then
-                run brew install rustup
-                if [[ "$ATELIER_DRY_RUN" != "1" ]]; then
-                    rustup-init -y --no-modify-path 2>/dev/null || true
-                fi
-            else
-                warn "Homebrew not found — skipping Rust install on macOS (install from https://rustup.rs)"
-            fi
-        else
-            # Linux
-            if command -v curl >/dev/null 2>&1; then
-                if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-                    echo "[dry-run] curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-                else
-                    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path 2>/dev/null \
-                        || warn "rustup install failed — Rust edit hooks will be skipped"
-                fi
-            else
-                warn "curl not found — skipping Rust toolchain install"
-            fi
-        fi
+        warn "cargo not found — skipping Rust edit hooks (install from https://rustup.rs if needed)"
     else
         verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
