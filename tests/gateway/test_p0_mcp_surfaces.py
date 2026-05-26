@@ -237,38 +237,10 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
     assert "class OrderService" not in payload["rendered"]
 
 
-def test_tool_code_schema_exposes_additive_repo_filter() -> None:
-    properties = TOOLS["code"]["inputSchema"]["properties"]
-
-    assert "repo" in properties
-
-
-def test_tool_code_schema_exposes_files_operation() -> None:
-    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
-    exposed_ops = op_schema["enum"]
-
-    assert "files" in exposed_ops
-
-
 def test_tool_code_schema_exposes_explore_operation() -> None:
-    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
-    exposed_ops = op_schema["enum"]
-
-    assert "explore" in exposed_ops
-
-
-def test_tool_code_schema_exposes_status_operation() -> None:
-    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
-    exposed_ops = op_schema["enum"]
-
-    assert "status" in exposed_ops
-
-
-def test_tool_code_schema_exposes_routes_operation() -> None:
-    op_schema = TOOLS["code"]["inputSchema"]["properties"]["op"]
-    exposed_ops = op_schema["enum"]
-
-    assert "routes" in exposed_ops
+    # `explore` is now a dedicated top-level MCP tool, not a `code` op
+    assert "explore" in TOOLS
+    assert TOOLS["explore"]["inputSchema"]["properties"]["query"]["type"] == "string"
 
 
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
@@ -560,59 +532,6 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
     )
 
 
-def test_tool_code_files_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_files.return_value = {
-        "repo_id": "repo",
-        "repo_root": str(tmp_path),
-        "path": "src",
-        "pattern": "*.py",
-        "format": "flat",
-        "file_count": 1,
-        "files": [
-            {
-                "file_path": "src/orders.py",
-                "language": "python",
-                "symbol_count": 2,
-                "top_symbols": ["Order"],
-            }
-        ],
-        "truncated": False,
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 80,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = tool_code(
-        {
-            "op": "files",
-            "repo_root": str(tmp_path),
-            "path": "src",
-            "pattern": "*.py",
-            "format": "flat",
-            "include_metadata": True,
-            "max_depth": 2,
-            "budget_tokens": 220,
-        }
-    )
-
-    assert payload["format"] == "flat"
-    assert payload["file_count"] == 1
-    fake_engine.tool_files.assert_called_once_with(
-        path="src",
-        pattern="*.py",
-        format="flat",
-        include_metadata=True,
-        max_depth=2,
-        budget_tokens=220,
-    )
-
-
 def test_tool_code_explore_requires_query(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="query is required for code explore"):
         tool_code({"op": "explore", "repo_root": str(tmp_path), "budget_tokens": 220})
@@ -666,49 +585,6 @@ def test_tool_code_explore_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         depth=2,
         budget_tokens=600,
     )
-
-
-def test_tool_code_status_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_status.return_value = {
-        "repo_id": "repo",
-        "repo_root": str(tmp_path),
-        "db_path": str(tmp_path / "code.sqlite"),
-        "index_version": 2,
-        "index": {"files_indexed": 3, "symbols_indexed": 8, "imports_indexed": 2},
-        "cache": {"entry_count": 1},
-        "providers": [{"name": "scip", "status": "ok", "ok": True}],
-        "provider_freshness": {
-            "thresholds": {
-                "required_health_status": "ok",
-                "require_index_head_match_for_scip": True,
-            },
-            "summary": {"ok": 1, "degraded": 0, "unhealthy": 0, "total": 1},
-        },
-        "warnings": [],
-        "freshness": {"status": "fresh", "indexed": True, "stale_after_seconds": 86400},
-        "autosync": {
-            "enabled": False,
-            "state": "idle",
-            "mode": "scaffold_only",
-            "debounce_ms": 500,
-        },
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 90,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = tool_code({"op": "status", "repo_root": str(tmp_path), "budget_tokens": 220})
-
-    assert payload["freshness"]["status"] == "fresh"
-    assert payload["provider_freshness"]["summary"]["ok"] == 1
-    assert payload["autosync"]["mode"] == "scaffold_only"
-    fake_engine.tool_status.assert_called_once_with(budget_tokens=220)
 
 
 def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -893,32 +769,6 @@ def test_tool_code_impact_rendered_shape_groups_lists(tmp_path: Path, monkeypatc
     assert "tests/test_orders.py" in payload["rendered"]
 
 
-def test_tool_code_status_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_status.return_value = {
-        "repo_id": "repo",
-        "repo_root": str(tmp_path),
-        "index": {"files_indexed": 3, "symbols_indexed": 8},
-        "cache": {"entry_count": 2},
-        "freshness": {"status": "fresh"},
-        "providers": [{"name": "scip", "status": "ok"}, {"name": "ast", "status": "degraded"}],
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 90,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = tool_code({"op": "status", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
-
-    assert "rendered" in payload
-    assert "index: files=3, symbols=8" in payload["rendered"]
-    assert "provider:ast=degraded" in payload["rendered"]
-
-
 def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_engine = MagicMock()
     fake_engine.tool_index.return_value = {
@@ -978,59 +828,6 @@ def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkey
     assert "entries: 4" in payload["rendered"]
     assert "tools: code.search=2, code.symbol=2" in payload["rendered"]
     fake_engine.tool_cache_status.assert_called_once_with(budget_tokens=220)
-
-
-def test_tool_code_routes_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_routes.return_value = {
-        "repo_id": "repo",
-        "repo_root": str(tmp_path),
-        "route_count": 2,
-        "routes": [
-            {
-                "framework": "fastapi",
-                "method": "GET",
-                "route": "/health",
-                "file_path": "src/api.py",
-                "line": 4,
-            },
-            {
-                "framework": "express",
-                "method": "GET",
-                "route": "/ping",
-                "file_path": "src/server.ts",
-                "line": 6,
-            },
-        ],
-        "truncated": False,
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 110,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = tool_code(
-        {
-            "op": "routes",
-            "repo_root": str(tmp_path),
-            "file_glob": "src/**/*.py",
-            "language": "python",
-            "limit": 10,
-            "budget_tokens": 220,
-        }
-    )
-
-    assert payload["route_count"] == 2
-    fake_engine.tool_routes.assert_called_once_with(
-        file_glob="src/**/*.py",
-        language="python",
-        limit=10,
-        budget_tokens=220,
-    )
 
 
 def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

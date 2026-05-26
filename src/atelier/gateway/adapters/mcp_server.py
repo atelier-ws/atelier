@@ -549,6 +549,12 @@ def _live_savings_events_path() -> Path:
 
 
 def _append_live_savings_event(event: dict[str, Any]) -> None:
+    """Append a routing / compaction analytics event.
+
+    Display savings ride the MCP response's content[].saved field into the
+    transcript and are summed from there. This file remains the log for
+    audit_export and cross_vendor_routing.advisor only.
+    """
     path = _live_savings_events_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -722,10 +728,8 @@ _tool_call_rendered_text: threading.local = threading.local()
 def _read_host_session_id() -> str:
     """Return the Claude session ID for this MCP server process.
 
-    Claude Code spawns a fresh MCP server subprocess per session, so
-    CLAUDE_SESSION_ID in the environment is always the correct session.
-    No shared-file reading needed (and shared files break with N concurrent
-    sessions since they overwrite each other).
+    Claude Code spawns a fresh MCP server subprocess per session and sets
+    CLAUDE_SESSION_ID in the env. Empty string if unavailable.
     """
     return os.environ.get("CLAUDE_SESSION_ID", "").strip()
 
@@ -780,11 +784,15 @@ def tool_get_context(
     dedup: bool = True,
     agent_id: str | None = None,
     recall: bool = True,
+    mode: Literal["procedures", "symbols"] = "procedures",
 ) -> dict[str, Any]:
     """Record task context and retrieve relevant ReasonBlocks for the task.
 
     Call this at the start of every task to seed your context with prior
     procedures, bootstrap repo knowledge, and per-agent memory.
+
+    Pass mode="symbols" to surface the most relevant code symbols and files
+    for the task (powered by the SCIP code index) instead of procedure blocks.
 
     Args:
         task:         Current task description (required). Drives block retrieval ranking.
@@ -797,6 +805,8 @@ def tool_get_context(
         dedup:        Deduplicate near-identical blocks before returning (default True).
         agent_id:     When set, loads per-agent archival memory passages via recall.
         recall:       Set False to skip archival memory recall entirely (default True).
+        mode:         "procedures" (default) returns ReasonBlocks. "symbols" returns relevant
+                      code symbols and files from the SCIP index for the given task.
 
     Returns a dict with:
         context:            Full context string ready to prepend to your prompt.
@@ -804,6 +814,17 @@ def tool_get_context(
         recalled_passages:  Per-agent memory passages (empty list when agent_id is None).
         tokens_breakdown:   Token counts by source (reasonblocks / bootstrap / memory / total).
     """
+    if mode == "symbols":
+        engine = _code_context_engine(".")
+        return cast(
+            dict[str, Any],
+            engine.tool_context(
+                task=task,
+                seed_files=files or [],
+                budget_tokens=token_budget or 4000,
+                max_symbols=max_blocks,
+            ),
+        )
     if errors is None:
         errors = []
     if tools is None:
@@ -2617,6 +2638,12 @@ def tool_smart_edit(
         _compute_and_record_diffs(snapshots)
     result.pop("diagnostics", None)
     result.pop("hooks", None)
+    # Batched edits collapse N would-be individual edit calls into 1.
+    # Use successful applies as the count; the dispatcher reads this and
+    # writes it into the response's content[].saved.calls field.
+    applied_count = len(result.get("applied") or [])
+    if applied_count > 1:
+        result.setdefault("calls_saved", applied_count - 1)
     return result
 
 
@@ -2698,7 +2725,7 @@ def tool_sql(
     if action == "query" and not sql and not queries:
         return {"isError": True, "message": "action='query' requires sql or queries parameter"}
 
-    return sql_tool(
+    result = sql_tool(
         action=action,
         name=name,
         sql=sql,
@@ -2710,6 +2737,10 @@ def tool_sql(
         allow_writes=allow_writes,
         repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
     )
+    # Batched queries collapse N would-be individual sql calls into 1.
+    if isinstance(result, dict) and isinstance(queries, list) and len(queries) > 1:
+        result.setdefault("calls_saved", len(queries) - 1)
+    return result
 
 
 _TASK_BOUNDARY_SUCCESS_RE = re.compile(
@@ -3127,317 +3158,55 @@ def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_comp
     return result
 
 
-_CODE_CORE_SURFACE_OPS = {
-    "context",
-    "search",
-    "node",
-    "symbol",
-    "explore",
-    "files",
-    "callers",
-    "callees",
-    "impact",
-    "status",
-}
-
-
-CODE_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "required": ["op"],
+    "required": ["query"],
     "properties": {
-        "op": {
-            "type": "string",
-            "description": (
-                "Operation to perform. "
-                "**PREFER this tool over `grep` and `search` for all symbol-level tasks** — "
-                "results come from a SCIP index (exact, not textual) and are token-budgeted. "
-                "Use `grep` only for free-form regex on non-symbol text. "
-                "Use `search` only when you have a natural-language description and no symbol name. "
-                "\n\n**Recommended workflow (funnel strategy):**\n"
-                "1. `search` or `files` → discover symbol names/locations\n"
-                "2. `node` → inspect a specific symbol\n"
-                "3. `callers`/`callees`/`impact` → understand relationships\n"
-                "4. `context`/`explore` → task-level synthesis\n"
-                "Read file content (via `read`) only as a last step — most tasks complete without it."
-                "\n\nOp reference:"
-                "\n• `search` — Find symbols by name or natural-language description. "
-                "Indexed, up to 100x faster than grep. mode='semantic' for intent-based ('parse JSON config'), "
-                "'lexical' for exact identifier match. Requires: query."
-                "\n• `node` — Full definition for one symbol (symbol-level inspect). "
-                "Requires one of: symbol_name, qualified_name, symbol_id, path+line."
-                "\n• `files` — Indexed file tree/list view with optional path/pattern filters and grouped output. "
-                "Use this before globbing the filesystem."
-                "\n• `explore` — One-call grouped source and relationships for a query. "
-                "Use it instead of chaining search → symbol → callers/callees for multi-file understanding."
-                "\n• `callers` — Who calls this function (call graph, inbound edges). "
-                "depth=1 for direct callers, depth=2 for transitive. Use to trace invocation paths."
-                "\n• `callees` — What this function calls (call graph, outbound edges). "
-                "Use to understand dependencies before editing."
-                "\n• `impact` — Blast radius for a file path or symbol (query, symbol_id, qualified_name). "
-                "Includes grouped affected files and deterministic reason labels."
-                "\n• `context` — Task-based context builder: given a task description, surfaces the most "
-                "relevant symbols + files. Replaces reading many files manually. Requires: task."
-                "\n• `status` — Quick index/cache/freshness/autosync diagnostics for this repo. "
-                "Use before heavy code-intel operations if results look stale."
-            ),
-            "enum": [
-                "context",
-                "search",
-                "node",
-                "explore",
-                "files",
-                "callers",
-                "callees",
-                "impact",
-                "status",
-                "routes",
-            ],
-        },
         "query": {
             "type": "string",
             "description": (
                 "Symbol name or natural-language description. "
-                "For search: can be identifier ('MyClass'), qualified ('module.MyClass.method'), "
-                "or intent ('function that handles HTTP errors'). "
-                "For usages/callers/callees/blame: identifier to resolve."
+                "Use an identifier ('MyClass', 'module.MyClass.method') for lexical/hybrid lookup, "
+                "or a description ('function that handles HTTP errors') for semantic search."
             ),
         },
-        "symbol_name": {
-            "type": "string",
-            "description": (
-                "Short unqualified name, e.g. 'run_command'. "
-                "When multiple symbols share a name, returns a disambiguation list. "
-                "Use qualified_name for precision."
-            ),
-        },
-        "qualified_name": {
-            "type": "string",
-            "description": (
-                "Fully qualified name, e.g. 'atelier.core.bash_exec.run_command'. "
-                "Most precise identifier when you know the module path."
-            ),
-        },
-        "symbol_id": {
-            "type": "string",
-            "description": (
-                "Stable SCIP symbol ID from a previous search/symbol result (e.g. 'scip-python … run_command'). "
-                "Most precise — use it when available from a prior tool call."
-            ),
-        },
-        "path": {
-            "type": "string",
-            "description": (
-                "Workspace-relative file path. "
-                "Required for: outline (one file), hover (positional lookup). "
-                "Optional filter for: usages, callers, callees (restrict to file), files (subtree or file)."
-            ),
-        },
-        "format": {
-            "type": "string",
-            "description": "Output shape for op='files': tree (default), flat list, or grouped by language.",
-            "enum": ["tree", "flat", "grouped"],
-            "default": "tree",
-        },
-        "include_metadata": {
-            "type": "boolean",
-            "description": "For op='files': include language and symbol stats in file entries.",
-            "default": True,
-        },
-        "max_depth": {
-            "type": "integer",
-            "description": "For op='files': maximum directory depth relative to path filter.",
-        },
-        "max_files": {
-            "type": "integer",
-            "description": "For op='explore': max files to include in grouped output. Default 8.",
-            "default": 8,
-        },
-        "include_source": {
-            "type": "boolean",
-            "description": "For op='explore': include grouped source sections for selected symbols.",
-            "default": True,
-        },
-        "include_relationships": {
-            "type": "boolean",
-            "description": "For op='explore': include callers/callees/usages summaries.",
-            "default": True,
-        },
-        "line_numbers": {
-            "type": "boolean",
-            "description": "For op='explore': prefix returned source section lines with line numbers.",
-            "default": True,
-        },
-        "line": {
-            "type": "integer",
-            "description": "1-based line number. Required for positional hover (path + line).",
-        },
-        "col": {
-            "type": "integer",
-            "description": "1-based column number. Optional precision for positional hover.",
-        },
-        "task": {
-            "type": "string",
-            "description": "Natural-language task description for op='context'. E.g. 'add retry logic to HTTP client'.",
-        },
-        "pattern": {
-            "type": "string",
-            "description": (
-                "For op='pattern': ast-grep structural pattern. Use $VAR for single-node capture, $$$VARS for "
-                "multi-node (variadics). Example: 'console.log($MSG)' matches all console.log calls. "
-                "For op='files': optional glob filter over indexed file paths (e.g. 'src/**/*.py')."
-            ),
-        },
-        "rewrite": {
-            "type": "string",
-            "description": (
-                "ast-grep rewrite template. Use captured variables from pattern. "
-                "Combined with dry_run=false to apply codemod. Example: 'logger.info($MSG)'."
-            ),
-        },
-        "new_name": {
-            "type": "string",
-            "description": "New identifier name for op='rename'.",
-        },
+        "symbol_name": {"type": "string", "description": "Short unqualified symbol name (internal, prefer query)."},
+        "qualified_name": {"type": "string", "description": "Fully qualified dotted path (internal)."},
+        "symbol_id": {"type": "string", "description": "Stable SCIP symbol ID from a prior result (internal)."},
         "mode": {
             "type": "string",
-            "description": (
-                "Search mode for op='search'. "
-                "'auto' (default): picks best mode for the query. "
-                "'lexical': exact identifier match — use for known symbol names. "
-                "'semantic': embedding-based intent match — use for descriptions. "
-                "'hybrid': both, merged results."
-            ),
             "enum": ["auto", "lexical", "semantic", "hybrid"],
             "default": "auto",
+            "description": "'auto': picks best mode. 'lexical': exact identifier match. 'semantic': description/intent match.",
         },
         "kind": {
             "type": "string",
-            "description": (
-                "Filter by symbol kind: 'function', 'method', 'class', 'variable', 'interface', "
-                "'type', 'module', etc. Omit to search all kinds."
-            ),
+            "description": "Filter by symbol kind: 'function', 'method', 'class', 'variable', etc.",
         },
-        "language": {
-            "type": "string",
-            "description": "Filter by language: 'python', 'typescript', 'javascript', 'go', 'rust', etc.",
-        },
-        "depth": {
-            "type": "integer",
-            "description": "Call graph traversal depth for callers/callees. 1=direct only, 2=transitive. Default 1.",
-            "default": 1,
-        },
-        "limit": {
-            "type": "integer",
-            "description": "Maximum results to return. Default 20.",
-            "default": 20,
-        },
+        "language": {"type": "string", "description": "Filter by language: 'python', 'typescript', etc."},
+        "limit": {"type": "integer", "default": 20, "description": "Maximum results to return."},
         "snippet": {
             "type": "string",
-            "description": (
-                "Source snippet verbosity for search results. "
-                "'none' (default): no source — smallest tokens. "
-                "'head': first N lines of body. "
-                "'full': complete source."
-            ),
             "enum": ["none", "head", "full"],
             "default": "none",
+            "description": "Source snippet in results: 'none' (smallest), 'head' (first N lines), 'full'.",
         },
-        "snippet_lines": {
-            "type": "integer",
-            "description": "Lines of source to include when snippet='head'. Default 8.",
-            "default": 8,
-        },
-        "file_glob": {
-            "type": "string",
-            "description": "Glob to restrict search/pattern/usages/routes to a subtree, e.g. 'src/api/**/*.py'.",
-        },
-        "group_by": {
-            "type": "string",
-            "description": "Group usages results by 'file' (default), 'caller', or 'none' (flat list).",
-            "enum": ["file", "caller", "none"],
-            "default": "file",
-        },
+        "snippet_lines": {"type": "integer", "default": 8, "description": "Lines when snippet='head'."},
+        "file_glob": {"type": "string", "description": "Restrict to a subtree, e.g. 'src/api/**/*.py'."},
         "scope": {
             "type": "string",
-            "description": (
-                "Symbol scope for search. "
-                "'repo' (default): live symbols in the codebase. "
-                "'external': third-party dependencies. "
-                "'deleted': symbols removed in git history (graveyard search)."
-            ),
             "enum": ["repo", "external", "deleted"],
             "default": "repo",
+            "description": "'repo': live symbols. 'external': dependencies. 'deleted': git graveyard.",
         },
-        "since": {
-            "type": "string",
-            "description": "ISO date or relative string ('7d', '2w') to filter search to recently changed symbols.",
-        },
-        "touched_by": {
-            "type": "string",
-            "description": "Git author name/email to filter search to symbols touched by that author.",
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "For pattern with rewrite= : true (default) previews changes, false applies them.",
-            "default": True,
-        },
-        "rename_backend": {
-            "type": "string",
-            "description": (
-                "Rename engine. 'auto' (default) picks by language: rope (Python), "
-                "ts-morph (JS/TS), ast-grep (others), naive (fallback text replace)."
-            ),
-            "enum": ["auto", "rope", "ts-morph", "ast-grep", "naive"],
-            "default": "auto",
-        },
-        "seed_files": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Starting files for op='context'. Engine expands outward to find related symbols.",
-        },
-        "max_symbols": {
-            "type": "integer",
-            "description": "Max symbols to include in context op output. Default 8.",
-            "default": 8,
-        },
-        "budget_tokens": {
-            "type": "integer",
-            "description": (
-                "Output token cap. Results are packed to fit within this budget — "
-                "optional fields dropped first, then items trimmed. "
-                "Increase if results are truncated. Default 4000."
-            ),
-            "default": 4000,
-        },
-        "include_globs": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Glob patterns to include during index. Omit to index everything.",
-        },
-        "exclude_globs": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Glob patterns to exclude during index. E.g. ['tests/**', '*.generated.py'].",
-        },
-        "repo": {
-            "type": "string",
-            "description": "Repo name filter for multi-repo workspaces (requires .atelier/workspace.toml). ops: search, symbol.",
-        },
-        "render_compact": {
-            "type": "boolean",
-            "description": (
-                "When true, include a compact benchmark-facing markdown summary in response field `rendered` "
-                "without changing the structured payload."
-            ),
-            "default": False,
-        },
+        "since": {"type": "string", "description": "ISO date or relative ('7d') to filter to recently changed."},
     },
 }
 
 
-@mcp_tool(name="code", input_schema=CODE_TOOL_INPUT_SCHEMA)
+@mcp_tool(name="symbols", input_schema=SYMBOLS_TOOL_INPUT_SCHEMA)
 def tool_code(
-    op: str,
+    op: str = "search",
     repo_root: str = ".",
     repo: str | None = None,
     include_globs: list[str] | None = None,
@@ -3463,9 +3232,6 @@ def tool_code(
     qualified_name: str | None = None,
     symbol_name: str | None = None,
     path: str | None = None,
-    format: Literal["tree", "flat", "grouped"] = "tree",
-    include_metadata: bool = True,
-    max_depth: int | None = None,
     max_files: int = 8,
     include_source: bool = True,
     include_relationships: bool = True,
@@ -3474,7 +3240,6 @@ def tool_code(
     col: int | None = None,
     new_name: str | None = None,
     rename_backend: Literal["auto", "rope", "ts-morph", "ast-grep", "naive"] = "auto",
-    task: str | None = None,
     seed_files: list[str] | None = None,
     budget_tokens: int = 4000,
     max_symbols: int = 4,
@@ -3493,14 +3258,18 @@ def tool_code(
             "pattern",
             "hover",
             "explore",
-            "routes",
-            "status",
         ]
         | None
     ) = None,
     render_compact: bool = False,
 ) -> dict[str, Any]:
-    """Index, search, inspect, outline, pack, or analyze code context."""
+    """Search the SCIP code index for symbols by name or description.
+
+    Prefer over `grep` for symbol lookup — results are exact (not textual), indexed, and token-budgeted.
+    Use `grep` for regex on arbitrary text. Use `search` for ranked file/snippet retrieval.
+
+    For call-graph and definition work use the dedicated tools: `node`, `callers`, `callees`, `impact`, `explore`.
+    """
     if op == "node":
         op = "symbol"
     workspace_router = _workspace_code_router(repo_root)
@@ -3646,48 +3415,6 @@ def tool_code(
             render_compact=render_compact,
         )
 
-    if op == "files":
-        result = cast(
-            dict[str, Any],
-            engine.tool_files(
-                path=path,
-                pattern=pattern,
-                format=format,
-                include_metadata=include_metadata,
-                max_depth=max_depth,
-                budget_tokens=budget_tokens,
-            ),
-        )
-        # Auto-fallback: the index only tracks code files with parseable symbols.
-        # When 0 files are returned but the path exists on disk, the directory
-        # likely contains non-code files (YAML, Markdown, JSON, configs, etc.).
-        if result.get("file_count", 0) == 0 and path:
-            target = _workspace_path(path)
-            if target.is_dir():
-                try:
-                    entries = sorted(
-                        os.listdir(target),
-                        key=lambda x: (not (target / x).is_dir(), x.lower()),
-                    )
-                    files_list = []
-                    for entry in entries:
-                        full = target / entry
-                        files_list.append(
-                            {
-                                "file_path": entry + "/" if full.is_dir() else entry,
-                            }
-                        )
-                    result["file_count"] = len(files_list)
-                    result["files"] = files_list
-                    result["non_code_fallback"] = True
-                except OSError:
-                    pass
-        return _maybe_attach_code_rendered(
-            op,
-            result,
-            render_compact=render_compact,
-        )
-
     if op == "explore":
         if not query:
             raise ValueError("query is required for code explore")
@@ -3710,43 +3437,11 @@ def tool_code(
             render_compact=render_compact,
         )
 
-    if op == "routes":
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_routes(
-                    file_glob=file_glob,
-                    language=language,
-                    limit=limit,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "status":
-        return _maybe_attach_code_rendered(
-            op,
-            cast(dict[str, Any], engine.tool_status(budget_tokens=budget_tokens)),
-            render_compact=render_compact,
-        )
-
-    if op == "context":
-        if not task:
-            raise ValueError("task is required for code context")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_context(
-                    task=task,
-                    seed_files=seed_files,
-                    budget_tokens=budget_tokens,
-                    max_symbols=max_symbols,
-                ),
-            ),
-            render_compact=render_compact,
+    if op in {"routes", "status", "files", "context"}:
+        raise ValueError(
+            f"op={op!r} is no longer available on this tool. "
+            "Use: `context` tool with mode='symbols' (was context), "
+            "`grep` (was files), status/routes are retired."
         )
 
     if op == "pattern":
@@ -3946,18 +3641,144 @@ def tool_code(
 
 # Normalize "code:callers" → "callers" etc. so external benchmarks using the
 # "code:" prefix alias convention still route correctly.
-_raw_tool_code_handler = TOOLS["code"]["handler"]
+_raw_tool_code_handler = TOOLS["symbols"]["handler"]
 
 
-def _tool_code_alias_handler(args: dict[str, Any]) -> Any:
+# Result keys that represent batched discoveries — each item would have
+# required its own naive grep/read in a side-by-side baseline.
+_CODE_BATCH_KEYS: tuple[str, ...] = (
+    "matches",
+    "callers",
+    "callees",
+    "usages",
+    "results",
+    "items",
+    "files",
+    "symbols",
+    "routes",
+)
+
+
+def _tool_code_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
     op = args.get("op")
     if isinstance(op, str) and op.startswith("code:"):
         args = {**args, "op": op[5:]}
-    return _raw_tool_code_handler(args)
+    result: dict[str, Any] = _raw_tool_code_handler(args)
+    # Infer calls_saved for batched ops: each list-of-items result represents
+    # N findings that would have cost N naive calls (grep + read + scan).
+    if isinstance(result, dict) and "calls_saved" not in result:
+        for key in _CODE_BATCH_KEYS:
+            items = result.get(key)
+            if isinstance(items, list) and len(items) > 1:
+                result["calls_saved"] = len(items) - 1
+                break
+    return result
 
 
-TOOLS["code"]["handler"] = _tool_code_alias_handler
+TOOLS["symbols"]["handler"] = _tool_code_alias_handler
 tool_code = _tool_code_alias_handler  # noqa: F811
+
+# ------------------------------------------------------------------ #
+# Dedicated code-intel tools — thin wrappers over the `code` op.     #
+# Dedicated names let LLMs pick the right tool without knowing the   #
+# op parameter; each has a focused schema and clear description.      #
+# ------------------------------------------------------------------ #
+
+_CODE_INTEL_TOOLS: frozenset[str] = frozenset({"node", "callers", "callees", "impact", "explore"})
+
+
+def _parse_symbol(symbol: str) -> dict[str, Any]:
+    """Route a symbol string to the correct engine kwarg based on form."""
+    if symbol.startswith("scip-"):
+        return {"symbol_id": symbol}
+    if "." in symbol:
+        return {"qualified_name": symbol}
+    return {"symbol_name": symbol}
+
+
+@mcp_tool(name="node")
+def tool_node(
+    symbol: str | None = None,
+    path: str | None = None,
+    line: int | None = None,
+) -> dict[str, Any]:
+    """Get the full source definition of a symbol (function, class, method, variable).
+
+    Prefer over `read` — returns just the symbol, not the whole file.
+    Returns: signature, docstring, body, file location, and a stable symbol_id for follow-up calls.
+
+    Pass symbol as unqualified name ('run_command'), qualified path ('module.Class.method'),
+    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup.
+    """
+    kwargs: dict[str, Any] = {"op": "node"}
+    if symbol:
+        kwargs.update(_parse_symbol(symbol))
+    if path:
+        kwargs["path"] = path
+    if line is not None:
+        kwargs["line"] = line
+    return _tool_code_alias_handler(kwargs)
+
+
+@mcp_tool(name="callers")
+def tool_callers(
+    symbol: str,
+    depth: int = 1,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Find all callers of a function — inbound call graph edges (who calls this?).
+
+    Prefer over grep when tracing where a function is invoked from.
+    Returns caller names, file paths, and line numbers grouped by file.
+    depth=1: direct callers; depth=2: transitive callers.
+    """
+    return _tool_code_alias_handler({"op": "callers", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+
+
+@mcp_tool(name="callees")
+def tool_callees(
+    symbol: str,
+    depth: int = 1,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Find all functions called by a symbol — outbound call graph edges (what does this call?).
+
+    Use before editing to understand a function's dependencies.
+    Returns callee names, file paths, and call sites grouped by file.
+    depth=1: direct callees; depth=2: transitive callees.
+    """
+    return _tool_code_alias_handler({"op": "callees", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+
+
+@mcp_tool(name="impact")
+def tool_impact(
+    query: str,
+) -> dict[str, Any]:
+    """Blast radius for a file or symbol — all files/symbols affected by changing it.
+
+    Use before refactoring to understand scope.
+    Pass a file path (e.g. 'src/auth.py') for file-level, or a symbol name/qualified path/scip-id for symbol-level.
+    Returns: files grouped by reason (calls, imports, inherits, etc.).
+    """
+    result = _tool_code_alias_handler({"op": "impact", "query": query})
+    if isinstance(result, dict) and "affected_files" in result:
+        result["files"] = result.pop("affected_files")
+    return result
+
+
+@mcp_tool(name="explore")
+def tool_explore(
+    query: str,
+    seed_files: list[str] | None = None,
+    max_files: int = 8,
+) -> dict[str, Any]:
+    """One-call grouped source + call-graph context for a concept or query.
+
+    Replaces chaining code search → node → callers/callees for multi-file understanding.
+    Returns: symbol definitions, source, and caller/callee summaries in one call.
+    Use seed_files to bias search toward specific files.
+    """
+    return _tool_code_alias_handler({"op": "explore", "query": query, "seed_files": seed_files, "max_files": max_files})
 
 
 def _run_shell_tool(
@@ -4601,24 +4422,21 @@ def _lever_for_tool(tool_name: str) -> str:
     return lowered or "unknown"
 
 
-def _live_savings_cost_usd(model: str, savings: dict[str, Any]) -> float:
+def _price_tokens_saved_usd(model: str, tokens_saved: int) -> float:
+    """Price ``tokens_saved`` at *model*'s INPUT rate. No fallback.
+
+    Saved tokens are bytes Atelier kept out of the LLM input — they would
+    have been billed as new input tokens at the model in use at that turn.
+    If the model is unknown or has no pricing entry, returns 0.0 (no guess).
+    """
+    if tokens_saved <= 0 or not model or model == "_default":
+        return 0.0
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    effective = model if model and model != "_default" else ""
-    pricing = get_model_pricing(effective) if effective else None
+    pricing = get_model_pricing(model)
     if pricing is None or not pricing.known or pricing.input <= 0:
-        pricing = get_model_pricing("claude-sonnet-4-5")
-
-    input_saved = int(savings.get("input_tokens_saved", 0) or 0)
-    output_saved = int(savings.get("output_tokens_saved", 0) or 0)
-    cache_read_saved = int(savings.get("cache_read_tokens_saved", 0) or 0)
-    if not (input_saved or output_saved or cache_read_saved):
-        input_saved = int(savings.get("tokens_saved", 0) or 0)
-    return pricing.cost_usd(
-        input_tokens=input_saved,
-        output_tokens=output_saved,
-        cache_read_tokens=cache_read_saved,
-    )
+        return 0.0
+    return pricing.cost_usd(input_tokens=int(tokens_saved))
 
 
 def _classify_read_savings(
@@ -4663,30 +4481,13 @@ def _record_context_budget_for_tool(
 ) -> None:
     try:
         recorder = _get_context_budget_recorder()
-        from atelier.core.capabilities.plugin_runtime import compute_live_savings, equivalent_calls
 
-        model = str(getattr(led, "model", "") or os.environ.get("ATELIER_MODEL") or "_default")
-        equivalent = equivalent_calls(tool_name, args if isinstance(args, dict) else {})
-        live_savings = compute_live_savings(equivalent, model=model)
-        live_tokens_saved = (
-            int(live_savings.get("input_tokens_saved", 0) or 0)
-            + int(live_savings.get("output_tokens_saved", 0) or 0)
-            + int(live_savings.get("cache_read_tokens_saved", 0) or 0)
-            + int(live_savings.get("cache_write_tokens_saved", 0) or 0)
-        )
+        # Model is best-effort for the analytics recorder below; the
+        # response-embedded `saved` field carries the per-event truth.
+        model = str(getattr(led, "model", "") or os.environ.get("ATELIER_MODEL") or "").strip()
+
         compact_tool_tokens_saved = _extract_compact_output_tokens_saved(result)
-        tool_tokens_saved = _extract_tokens_saved(result)
-        tokens_saved = tool_tokens_saved if tool_tokens_saved > 0 else live_tokens_saved
-        calls_avoided = int(live_savings.get("calls_saved", 0) or 0)
-        # If the tool reports more savings than the per-call formula predicts
-        # (typical for read/search in outline/chunks mode, which avoid loading
-        # context rather than replacing whole LLM turns), credit the surplus to
-        # input_tokens_saved so the LiteLLM-backed pricer values it correctly.
-        if tool_tokens_saved > live_tokens_saved:
-            extra = tool_tokens_saved - live_tokens_saved
-            live_savings = dict(live_savings)
-            live_savings["input_tokens_saved"] = int(live_savings.get("input_tokens_saved", 0) or 0) + extra
-            live_tokens_saved = tool_tokens_saved
+        tokens_saved = _extract_tokens_saved(result)
         base_lever = _lever_for_tool(tool_name)
         lever, savings_metadata = _classify_read_savings(
             tool_name,
@@ -4714,30 +4515,12 @@ def _record_context_budget_for_tool(
         if tool_name:
             lever_savings.setdefault(f"tool:{tool_name}", 0)
 
-        _record_smart_state_savings(tokens_saved=tokens_saved, calls_avoided=calls_avoided)
-        if calls_avoided > 0 or tokens_saved > 0:
-            event = {
-                "at": datetime.now(UTC).isoformat(),
-                "session_id": _read_host_session_id() or led.session_id,
-                "agent": led.agent or _detect_agent(),
-                "tool_name": tool_name,
-                "lever": lever,
-                "equivalent_baseline_calls": equivalent,
-                "calls_saved": calls_avoided,
-                "time_saved_ms": int(live_savings.get("time_saved_ms", 0) or 0),
-                "input_tokens_saved": int(live_savings.get("input_tokens_saved", 0) or 0),
-                "output_tokens_saved": int(live_savings.get("output_tokens_saved", 0) or 0),
-                "cache_read_tokens_saved": int(live_savings.get("cache_read_tokens_saved", 0) or 0),
-                "cache_write_tokens_saved": int(live_savings.get("cache_write_tokens_saved", 0) or 0),
-                "live_tokens_saved": live_tokens_saved,
-                "tool_tokens_saved": tool_tokens_saved,
-                "tokens_saved": tokens_saved,
-                "cost_saved_usd": _live_savings_cost_usd(model, live_savings),
-                "model": model,
-            }
-            if savings_metadata:
-                event.update(savings_metadata)
-            _append_live_savings_event(event)
+        # Lifetime smart-state counters remain useful for cumulative "savings
+        # since install" metrics; they're a single integer pair, not a
+        # per-event log. Real per-session savings ride the MCP response's
+        # content[].saved field into the Claude transcript.
+        if tokens_saved > 0:
+            _record_smart_state_savings(tokens_saved=tokens_saved, calls_avoided=0)
 
         actual_output_tokens = int(result.get("total_tokens", 0) or 0)
         if actual_output_tokens <= 0:
@@ -4818,12 +4601,14 @@ def _session_compaction_savings_payload(
     reason: str,
     utilisation_pct: float | None = None,
 ) -> dict[str, Any]:
-    from atelier.core.capabilities.pricing import get_model_pricing
-
     tokens_after_estimate = _estimate_compacted_state_tokens(state)
     tokens_freed = max(0, int(tokens_before) - tokens_after_estimate)
-    model = _latest_cache_affinity_model(led) or str(getattr(led, "model", "") or "").strip() or "auto"
-    cost_saved_usd = round(get_model_pricing(model).cost_usd(input_tokens=tokens_freed), 6)
+    model = (
+        _latest_cache_affinity_model(led)
+        or str(getattr(led, "model", "") or "").strip()
+        or os.environ.get("ATELIER_MODEL", "")
+    ).strip()
+    cost_saved_usd = round(_price_tokens_saved_usd(model, tokens_freed), 6)
     utilisation = (
         round(float(utilisation_pct), 1)
         if utilisation_pct is not None
@@ -5029,6 +4814,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 )
 
         remote_routed = name in _REMOTE_TOOLS
+        # mode="symbols" must always run locally (SCIP engine); bypass remote routing
+        if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
+            remote_routed = False
         rendered_text: str | None = None
         try:
             if remote_routed:
@@ -5048,7 +4836,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
                 # Compute MD text for read-heavy tools
                 _args = args if isinstance(args, dict) else {}
-                if name == "code":
+                if name in {"symbols"} | _CODE_INTEL_TOOLS:
                     rendered_text = getattr(_tool_call_rendered_text, "value", None)
                 elif name == "read":
                     with contextlib.suppress(Exception):
@@ -5085,17 +4873,26 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             else:
                 response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
-            return _ok(
-                rid,
-                {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": response_text,
-                        }
-                    ],
-                },
-            )
+            # Embed real savings on the content item itself so the values
+            # land in the Claude transcript JSONL. Statusline / analytics /
+            # frontends read the transcript and sum these — no side files,
+            # no session-id filter, no model-resolution dance.
+            # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
+            # object is omitted entirely when both are 0.
+            content_item: dict[str, Any] = {
+                "type": "text",
+                "text": response_text,
+            }
+            if isinstance(result, dict):
+                saved_tokens = _extract_tokens_saved(result)
+                saved_calls = _coerce_saved_tokens(result.get("calls_saved"))
+                if saved_tokens > 0 or saved_calls > 0:
+                    content_item["saved"] = {
+                        "tokens": int(saved_tokens),
+                        "calls": int(saved_calls),
+                    }
+
+            return _ok(rid, {"content": [content_item]})
         except Exception as exc:
             if not remote_routed:
                 with contextlib.suppress(Exception):
