@@ -56,6 +56,7 @@ if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* 
 fi
 
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
+ATELIER_HOST_INSTALL_TIMEOUT_SECONDS="${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS:-180}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
 print_message() {
@@ -65,6 +66,101 @@ print_message() {
 }
 
 verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && printf "%s\n" "$*" || true; }
+
+has_interactive_input() {
+    [[ -t 0 ]] || { [[ -e /dev/tty ]] && : </dev/tty; } 2>/dev/null
+}
+
+has_passthrough() {
+    local needle="$1"
+    local item
+    for item in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+_in_array() {
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+host_is_detected() {
+    local host="$1"
+    case "$host" in
+        claude) command -v claude >/dev/null 2>&1 ;;
+        codex) command -v codex >/dev/null 2>&1 ;;
+        cursor) [[ -d "${HOME}/.cursor" ]] ;;
+        opencode) command -v opencode >/dev/null 2>&1 ;;
+        copilot) command -v code >/dev/null 2>&1 ;;
+        hermes) [[ -n "${HERMES_HOME:-}" ]] || [[ -n "${HERMES_SESSION_ID:-}" ]] || command -v hermes >/dev/null 2>&1 ;;
+        antigravity) command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1 ;;
+        *) return 1 ;;
+    esac
+}
+
+enable_detected_hosts_by_default() {
+    host_is_detected claude && DO_CLAUDE=true
+    host_is_detected codex && DO_CODEX=true
+    host_is_detected cursor && DO_CURSOR=true
+    host_is_detected opencode && DO_OPENCODE=true
+    host_is_detected copilot && DO_COPILOT=true
+    host_is_detected hermes && DO_HERMES=true
+    host_is_detected antigravity && DO_ANTIGRAVITY=true
+}
+
+run_host_installer() {
+    local script="$1"
+    shift
+
+    if [[ ! "${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS}" -le 0 ]]; then
+        bash "$script" "$@"
+        return
+    fi
+
+    if ! command -v perl >/dev/null 2>&1; then
+        bash "$script" "$@"
+        return
+    fi
+
+    perl -e '
+        use strict;
+        use warnings;
+
+        my $timeout = shift @ARGV;
+        my @cmd = @ARGV;
+        my $pid = fork();
+        die "fork failed: $!" unless defined $pid;
+
+        if ($pid == 0) {
+            exec @cmd or die "exec failed: $!";
+        }
+
+        local $SIG{ALRM} = sub {
+            print STDERR "[atelier:install] ERROR: host installer timed out after ${timeout}s\n";
+            kill "TERM", $pid;
+            sleep 2;
+            kill "KILL", $pid;
+            waitpid($pid, 0);
+            exit 124;
+        };
+
+        alarm($timeout);
+        waitpid($pid, 0);
+        my $status = $?;
+        alarm(0);
+
+        if ($status & 127) {
+            exit(128 + ($status & 127));
+        }
+        exit($status >> 8);
+    ' "${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS}" bash "$script" "$@"
+}
 
 print_active_line() {
     printf "%b%s%b  %b%s%b\n" "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "$1" "$C_RESET"
@@ -152,8 +248,8 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# ── Interactive prompts (when no flags and TTY) ──────────────────────────────
-if ! $EXPLICIT && [[ -t 0 ]] && [[ -t 1 ]]; then
+# ── Interactive prompts (when no flags and a terminal is available) ──────────
+if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
     echo ""
     print_message "$C_PURPLE" "══════════════════════════════════════════════"
     print_message "$C_PURPLE" " Atelier — Agent Installation"
@@ -174,7 +270,7 @@ if ! $EXPLICIT && [[ -t 0 ]] && [[ -t 1 ]]; then
     echo "  ${C_PURPLE}n${C_RESET}) None (skip agent installs)"
     echo ""
 
-    read -r -p "  Choice [a]: " runtime_answer
+    read -r -p "  Choice [a]: " runtime_answer </dev/tty || runtime_answer="a"
     runtime_answer="${runtime_answer:-a}"
 
     # Reset all to false — user picks explicitly
@@ -225,11 +321,11 @@ if ! $EXPLICIT && [[ -t 0 ]] && [[ -t 1 ]]; then
         echo "  ${C_PURPLE}1${C_RESET}) Global — available in all projects"
         echo "  ${C_PURPLE}2${C_RESET}) Project — this directory only (via .mcp.json + AGENTS.md)"
         echo ""
-        read -r -p "  Choice [1]: " scope_answer
+        read -r -p "  Choice [1]: " scope_answer </dev/tty || scope_answer="1"
         scope_answer="${scope_answer:-1}"
 
         if [ "$scope_answer" = "2" ]; then
-            if [[ ! " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
+            if ! has_passthrough "--workspace"; then
                 PASSTHROUGH+=("--workspace" ".")
             fi
             echo "  → Project-local install"
@@ -244,7 +340,7 @@ fi
 
 # Default: all hosts
 if ! $EXPLICIT; then
-    DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true
+    enable_detected_hosts_by_default
 fi
 
 prebuild_shared_skill_bundles() {
@@ -256,7 +352,7 @@ prebuild_shared_skill_bundles() {
     fi
     [[ "$needs_skills" == "1" ]] || return 0
 
-    if [[ " ${PASSTHROUGH[*]} " =~ "--dry-run" ]]; then
+    if has_passthrough "--dry-run"; then
         [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]] && print_frame_line "Dry run: skipping shared skill bundle generation"
         return 0
     fi
@@ -362,22 +458,22 @@ print_issue_group() {
     local color="$2"
     shift 2
     local entries=("$@")
-    local -A counted=()
-    local -A printed=()
+    local unique_entries=()
     local entry
     local count=0
 
     for entry in "${entries[@]+"${entries[@]}"}"; do
-        [[ -n "$entry" && -z "${counted[$entry]+x}" ]] || continue
-        counted["$entry"]=1
+        [[ -n "$entry" ]] || continue
+        if _in_array "$entry" "${unique_entries[@]+"${unique_entries[@]}"}"; then
+            continue
+        fi
+        unique_entries+=("$entry")
         count=$((count + 1))
     done
 
     [[ $count -gt 0 ]] || return 0
     printf "%b%s (%d)%b\n" "$color" "$title" "$count" "$C_RESET"
-    for entry in "${entries[@]+"${entries[@]}"}"; do
-        [[ -n "$entry" && -z "${printed[$entry]+x}" ]] || continue
-        printed["$entry"]=1
+    for entry in "${unique_entries[@]+"${unique_entries[@]}"}"; do
         printf "  %b-%b %s\n" "$color" "$C_RESET" "$entry"
     done
 }
@@ -404,9 +500,9 @@ run_installer() {
     output_file="$(mktemp "${TMPDIR:-/tmp}/atelier-${host}.XXXXXX")"
     set +e
     if [[ "$host" == "claude" ]]; then
-        bash "$script" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" "${CLAUDE_EXTRA_ARGS[@]+"${CLAUDE_EXTRA_ARGS[@]}"}" 2>&1 | stream_colored_output "$output_file"
+        run_host_installer "$script" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" "${CLAUDE_EXTRA_ARGS[@]+"${CLAUDE_EXTRA_ARGS[@]}"}" 2>&1 | stream_colored_output "$output_file"
     else
-        bash "$script" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" 2>&1 | stream_colored_output "$output_file"
+        run_host_installer "$script" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}" 2>&1 | stream_colored_output "$output_file"
     fi
     ret=${PIPESTATUS[0]}
     set -e
@@ -452,7 +548,7 @@ run_installer() {
 prebuild_shared_skill_bundles
 
 # ── Universal agents (always run first when using --workspace) ──────────────
-if [[ " ${PASSTHROUGH[*]} " =~ "--workspace" ]]; then
+if has_passthrough "--workspace"; then
     spinner_started=0
     echo ""
     emit_host_status "START" "agents"
