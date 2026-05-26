@@ -1375,26 +1375,23 @@ persist_install_record() {
 }
 
 install_code_tools() {
-    # Install optional code-quality tools used by the post-edit hook pipeline and
-    # the rename backend.  All steps are best-effort: missing tools are warned about
-    # but do not abort the install.
-
+    # Install optional code-quality tools used by edit hooks and the rename backend.
+    # All steps are best-effort: missing tools are warned about but do not abort the
+    # install.
     local os_type
     os_type="$(uname -s)"
 
 
-    # prettier + eslint + ts-morph (TypeScript/JavaScript tools, require npm)
+    # eslint + ts-morph + typescript (TypeScript/JavaScript lint, type-check, and rename tools; require npm)
     if command -v npm >/dev/null 2>&1; then
         mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
-        verbose "Installing prettier (JS/TS formatter)..."
-        spin "Installing prettier" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund prettier
-        verbose "Installing eslint, ts-morph, and typescript (JS/TS linter and rename backend)..."
+        verbose "Installing eslint, ts-morph, and typescript (JS/TS lint, type-check, and rename tools)..."
         spin "Installing eslint + ts-morph" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
     else
-        warn "npm not found — skipping prettier, eslint, and ts-morph (install Node.js 20+ to enable)"
+        warn "npm not found — skipping eslint, ts-morph, and typescript (install Node.js 20+ to enable)"
     fi
 
-    # rustfmt + cargo (Rust formatter and lint-fix backend, via rustup)
+    # cargo (Rust lint-fix backend, via rustup)
     if ! command -v cargo >/dev/null 2>&1; then
         verbose "cargo not found — installing Rust toolchain via rustup..."
         if [[ "$os_type" == "Darwin" ]]; then
@@ -1413,7 +1410,7 @@ install_code_tools() {
                     echo "[dry-run] curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
                 else
                     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path 2>/dev/null \
-                        || warn "rustup install failed — Rust post-edit hooks will be skipped"
+                        || warn "rustup install failed — Rust edit hooks will be skipped"
                 fi
             else
                 warn "curl not found — skipping Rust toolchain install"
@@ -1457,9 +1454,9 @@ _ensure_path_persistence() {
     # Build the new sentinel block
     {
         printf '%s\n' "$sentinel_start"
-        printf 'export PATH="%s:\$PATH"\n' "$ATELIER_BIN_DIR"
+        printf 'export PATH="%s:$PATH"\n' "$ATELIER_BIN_DIR"
         if [[ -d "$node_user_bin" ]]; then
-            printf 'export PATH="%s:\$PATH"\n' "$node_user_bin"
+            printf 'export PATH="%s:$PATH"\n' "$node_user_bin"
         fi
         printf '%s\n' "$sentinel_end"
     } > "$tmp_input"
@@ -1921,9 +1918,6 @@ main() {
         printf "   installer log: %s\n\n" "$ATELIER_INSTALL_LOG_FILE"
     fi
     printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
-    local _profile
-    _profile="$(_detect_shell_profile)"
-    printf "⚡ Run 'source %s' or restart your shell to use 'atelier'.\n" "${_profile/#$HOME/~}"
 
     return "$FINAL_EXIT_CODE"
 }
