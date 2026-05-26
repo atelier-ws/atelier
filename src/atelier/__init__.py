@@ -12,6 +12,7 @@ or user preferences.
 """
 
 from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -40,13 +41,21 @@ _LAZY_EXPORTS = {
 
 # The canonical version is in pyproject.toml.
 # At runtime we read the installed package metadata so they never drift.
+
 try:
     from importlib.metadata import version as _version
 
     __version__ = _version(__name__.split(".")[0])
 except Exception:
-    # Fallback for development / uninstalled usage.
-    __version__ = "0.1.0"
+    # Fallback: read pyproject.toml directly for dev/uninstalled usage.
+    _pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if _pyproject.exists():
+        import re
+
+        _match = re.search(r'^version\s*=\s*"([^"]+)"', _pyproject.read_text(), re.M)
+        __version__ = _match.group(1) if _match else "0.0.0"
+    else:
+        __version__ = "0.0.0"
 
 
 def __getattr__(name: str) -> Any:
