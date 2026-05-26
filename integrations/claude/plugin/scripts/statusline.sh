@@ -108,7 +108,7 @@ fi
 if [ -z "${SAVED_LINE:-}" ]; then
   SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
-IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST <<EOF
+IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK <<EOF
 $SAVED_LINE
 EOF
 [ -z "$SAVED_USD" ] && SAVED_USD="\$0.000"
@@ -116,27 +116,13 @@ EOF
 [ -z "$SAVED_CALLS" ] && SAVED_CALLS="0"
 [ -z "$ROUTING_USD" ] && ROUTING_USD="\$0.000"
 [ -z "$SESSION_BASE_COST" ] && SESSION_BASE_COST="0"
+[ -z "$CUMULATIVE_TOK" ] && CUMULATIVE_TOK="0"
 
-# Cost = sessions baseline (from stop-hook transcript) + live Claude delta.
-# Claude's COST starts at 0 on each invocation (even resumed sessions), so we
-# add the two: baseline covers historical turns, COST covers turns since launch.
-TOTAL_COST=$(awk "BEGIN { printf \"%.3f\", ${SESSION_BASE_COST:-0} + ${COST:-0} }" 2>/dev/null || echo "0")
+# Cost = max(transcript-derived, live Claude cost). Both are cumulative; we
+# trust whichever is larger so the very first frame of a resumed session
+# (before Claude reports cost) still shows the transcript total.
+TOTAL_COST=$(awk "BEGIN { a=${SESSION_BASE_COST:-0}; b=${COST:-0}; printf \"%.3f\", (a>b?a:b) }" 2>/dev/null || echo "0")
 COST_FMT=$(printf '$%.3f' "$TOTAL_COST" 2>/dev/null || echo "\$0.000")
-
-# Persist real API cost so the Stop hook can use it instead of estimating.
-# The Stop hook payload from Claude Code never includes the total cost, so we
-# cache it here (written after every assistant turn) and read it there.
-# Sanitize SESSION_ID: only allow [A-Za-z0-9-_]. Belt-and-suspenders against
-# any future parsing regression that could embed a tab/whitespace.
-SESSION_ID_CLEAN=$(printf '%s' "${SESSION_ID:-}" | tr -cd 'A-Za-z0-9-_')
-if [ -n "${SESSION_ID_CLEAN}" ] && [ "${COST:-0}" != "0" ]; then
-  SESSION_ID="$SESSION_ID_CLEAN"
-fi
-if [ -n "${SESSION_ID:-}" ] && [ "${COST:-0}" != "0" ]; then
-  _COST_DIR="${ATELIER_STATUS_ROOT}/session_costs"
-  mkdir -p "$_COST_DIR" 2>/dev/null
-  printf '%s' "$COST" > "${_COST_DIR}/${SESSION_ID}.txt" 2>/dev/null || true
-fi
 
 if [ -n "${ATELIER_NO_COLOR:-}" ]; then
   C_BRAND=""; C_PIPE=""; C_DIM=""; C_GREEN=""; C_RESET=""
@@ -158,8 +144,14 @@ else
   CACHE_NEW_SEG=""
 fi
 
-# Total consumed tokens for the cost annotation: input + output + cache reads + cache writes.
-TOTAL_TOK=$(( ${IN_TOK:-0} + ${OUT_TOK:-0} + ${CACHE_R:-0} + ${CACHE_W:-0} ))
+# Cumulative session tokens (in+out+cR+cW) from the transcript walk.
+# Falls back to current-window only when the transcript hasn't been read yet.
+WINDOW_TOK=$(( ${IN_TOK:-0} + ${OUT_TOK:-0} + ${CACHE_R:-0} + ${CACHE_W:-0} ))
+if [ "${CUMULATIVE_TOK:-0}" -gt "$WINDOW_TOK" ] 2>/dev/null; then
+  TOTAL_TOK=$CUMULATIVE_TOK
+else
+  TOTAL_TOK=$WINDOW_TOK
+fi
 TOTAL_TOK_F=$(fmt_tok "$TOTAL_TOK")
 
 # Calls-saved counter intentionally not shown in the statusline.
