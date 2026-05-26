@@ -999,6 +999,7 @@ class ContextStore:
                 "FROM traces_fts "
                 "JOIN traces t ON t.id = traces_fts.id "
                 "WHERE traces_fts MATCH ? "
+                "AND t.task != 'session-auto-record' "
             )
             params: list[Any] = [search_query]
             if domain:
@@ -1032,7 +1033,7 @@ class ContextStore:
             return results
 
         # Standard filter path
-        sql = "SELECT payload FROM traces WHERE 1=1"
+        sql = "SELECT payload FROM traces WHERE task != 'session-auto-record' AND 1=1"
         params = []
         if domain:
             sql += " AND domain = ?"
@@ -1065,7 +1066,7 @@ class ContextStore:
         since: datetime | None = None,
     ) -> dict[str, Any]:
         """Return aggregate metrics for traces matching the filters."""
-        base_sql = "FROM traces WHERE 1=1"
+        base_sql = "FROM traces WHERE task != 'session-auto-record' AND 1=1"
         params: list[Any] = []
         if domain:
             base_sql += " AND domain = ?"

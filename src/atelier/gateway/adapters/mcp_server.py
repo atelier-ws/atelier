@@ -733,34 +733,64 @@ def _get_host_session_sidecar_path() -> Path:
     return _workspace_savings_path()
 
 
-def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int) -> None:
-    """Write per-call savings to the per-session sidecar for the current host.
+def _context_savings_path(session_id: str) -> Path:
+    """Per-session context-compression savings file, alongside the run ledger."""
+    return _atelier_root() / "runs" / f"{session_id}_context_savings.jsonl"
 
-    Rows include the current model so compute_savings_summary can price
-    each row individually (Opus tokens at Opus rate, Sonnet at Sonnet rate).
+
+def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
+    """Write per-call savings to two places:
+
+    1. session_stats/<host>/<id>.jsonl  — host session UUID, read by statusline/stop hook
+    2. runs/<ledger_session_id>_context_savings.jsonl — per-session, read by session report
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
     _register_mcp_session()
+    model = _get_mcp_model()
+    ts = datetime.utcnow().isoformat()
+    # --- sidecar for statusline / stop hook ---
     try:
         path = _get_host_session_sidecar_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         entry: dict[str, Any] = {
             "tool": tool_name,
-            "tokens": int(tokens_saved),
-            "calls": int(calls_saved),
-            "model": _get_mcp_model(),
-            "ts": datetime.utcnow().isoformat(),
+            "tokens_saved": int(tokens_saved),
+            "calls_saved": int(calls_saved),
+            "model": model,
+            "ts": ts,
         }
+        if rid:
+            entry["rid"] = rid
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
     except Exception:
         pass
+    # --- per-session context savings for session report / analytics ---
+    try:
+        led = _get_ledger()
+        cost_saved = round(_price_tokens_saved_usd(model, tokens_saved), 6)
+        event: dict[str, Any] = {
+            "at": ts,
+            "tool": tool_name,
+            "model": model,
+            "tokens_saved": int(tokens_saved),
+            "calls_saved": int(calls_saved),
+            "cost_saved_usd": cost_saved,
+        }
+        if rid:
+            event["rid"] = rid
+        cpath = _context_savings_path(led.session_id)
+        cpath.parent.mkdir(parents=True, exist_ok=True)
+        with cpath.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
 
 
-def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int) -> None:
+def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Backward-compat shim — delegates to _append_savings."""
-    _append_savings(tool_name, tokens_saved, calls_saved)
+    _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
 
 
 def _smart_state_path() -> Path:
@@ -1718,7 +1748,12 @@ def tool_record_trace(
             return "copilot"
         if "codex" in al or os.environ.get("CODEX_CLI"):
             return "codex"
-        if "opencode" in al or os.environ.get("OPENCODE_CLI"):
+        if (
+            "opencode" in al
+            or os.environ.get("OPENCODE_CLI")
+            or os.environ.get("OPENCODE_SESSION_ID")
+            or os.environ.get("ATELIER_AGENT", "") == "opencode"
+        ):
             return "opencode"
         if "claude" in al or os.environ.get("CLAUDE_CODE"):
             return "claude"
@@ -4111,6 +4146,48 @@ def _run_shell_tool(
     return response
 
 
+def _render_shell_text(result: dict[str, Any]) -> str:
+    """Render shell output as compact text while preserving structured internals."""
+    exit_code = result.get("exit_code")
+    stdout = str(result.get("stdout") or "")
+    stderr = str(result.get("stderr") or "")
+    blocked = bool(result.get("blocked"))
+    blocked_reason = str(result.get("blocked_reason") or "")
+    truncated = bool(result.get("truncated"))
+    lines_omitted = result.get("lines_omitted")
+
+    parts: list[str] = []
+    if blocked:
+        header = "blocked"
+        if exit_code is not None:
+            header = f"{header} (exit_code={exit_code})"
+        parts.append(header)
+        if blocked_reason:
+            parts.append(blocked_reason)
+    elif exit_code not in (None, 0):
+        parts.append(f"exit_code={exit_code}")
+
+    if stdout:
+        parts.append(stdout)
+    if stderr:
+        if stdout:
+            parts.append("")
+        if exit_code in (None, 0) and not blocked:
+            parts.append("stderr:")
+        parts.append(stderr)
+    if truncated and isinstance(lines_omitted, int) and lines_omitted > 0:
+        if stdout or stderr:
+            parts.append("")
+        parts.append(f"[output truncated: {lines_omitted} lines omitted]")
+
+    rendered = "\n".join(parts).strip()
+    if rendered:
+        return rendered
+    if exit_code is not None:
+        return f"exit_code={exit_code}"
+    return ""
+
+
 def _run_native_grep(
     *,
     path: str,
@@ -5075,6 +5152,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 elif name == "search":
                     with contextlib.suppress(Exception):
                         rendered_text = _render_search_md(result if isinstance(result, dict) else {})
+                elif name == "shell":
+                    with contextlib.suppress(Exception):
+                        rendered_text = _render_shell_text(result if isinstance(result, dict) else {})
 
                 _record_context_budget_for_tool(
                     name,
@@ -5119,7 +5199,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         "tokens": int(saved_tokens),
                         "calls": int(saved_calls),
                     }
-                    _append_workspace_savings(name, saved_tokens, saved_calls)
+                    _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
             return _ok(rid, {"content": [content_item]})
         except Exception as exc:
