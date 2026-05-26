@@ -104,17 +104,12 @@ def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
 
     stats = json.loads((atelier_root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
-    assert stats["equivalent_baseline_calls"] > 1
-    assert stats["savings"]["calls_saved"] > 0
+    assert stats["edit_tool_calls"] == 1
+    assert (atelier_root / "session_events" / "s1.jsonl").exists()
 
 
 def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    transcript = tmp_path / "session.jsonl"
-    transcript.write_text(
-        json.dumps({"message": {"usage": {"input_tokens": 11, "output_tokens": 7}}}) + "\n",
-        encoding="utf-8",
-    )
 
     update_session_stats(
         root,
@@ -124,7 +119,6 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
             "tool_name": "Agent",
             "tool_input": {"subagent_type": "explore"},
             "usage": {"input_tokens": 5, "output_tokens": 3, "cache_read_input_tokens": 2},
-            "transcript_path": str(transcript),
             "now_ms": 1000,
         },
     )
@@ -133,8 +127,9 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     update_session_stats(root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000})
 
     stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
-    assert stats["usage"]["input_tokens"] == 16
-    assert stats["usage"]["output_tokens"] == 10
+    # Only per-turn deltas from payload.usage accumulate; transcript is NOT read here.
+    assert stats["usage"]["input_tokens"] == 5
+    assert stats["usage"]["output_tokens"] == 3
     assert stats["usage"]["cache_read_tokens"] == 2
     assert stats["compactions"] == 1
     assert stats["compaction_duration_ms"] == 750
@@ -144,13 +139,49 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert (root / "session_events" / "s1.jsonl").exists()
 
 
-def test_savings_report_merges_smart_state_and_session_stats(tmp_path: Path) -> None:
+def test_context_window_snapshot_overwrites_not_accumulates(tmp_path: Path) -> None:
+    """context_window.current_usage is cumulative — must overwrite, not sum.
+
+    The root cause of the historical 17B-token inflation was adding the cumulative
+    snapshot on every PostToolUse call (arithmetic series). Calling 5 times with a
+    growing snapshot must result in the LAST snapshot value, not the sum of all.
+    """
+    root = tmp_path / ".atelier"
+    for turn, cR in enumerate([1_000, 5_000, 20_000, 80_000, 200_000], start=1):
+        update_session_stats(
+            root,
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "s1",
+                "tool_name": "Read",
+                "context_window": {
+                    "current_usage": {
+                        "input_tokens": turn * 10,
+                        "output_tokens": turn * 5,
+                        "cache_creation_input_tokens": turn * 2,
+                        "cache_read_input_tokens": cR,
+                    }
+                },
+            },
+        )
+
+    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    # Must equal the LAST snapshot values, not the sum over 5 calls.
+    assert stats["usage"]["cache_read_tokens"] == 200_000  # last cR snapshot
+    assert stats["usage"]["input_tokens"] == 50  # turn=5: 5*10
+    assert stats["usage"]["output_tokens"] == 25  # turn=5: 5*5
+    assert stats["usage"]["cache_write_tokens"] == 10  # turn=5: 5*2
+
+
+def test_savings_report_uses_live_events_only(tmp_path: Path) -> None:
+    """build_savings_report sums per-event cost_saved_usd values — no synthesis.
+
+    Live events were priced at emit time against the model in use AT THAT TURN.
+    A session that never produced a real ``tokens_saved`` measurement has zero
+    savings, not a synthesized number.
+    """
     root = tmp_path / ".atelier"
     root.mkdir()
-    (root / "smart_state.json").write_text(
-        json.dumps({"savings": {"calls_avoided": 2, "tokens_saved": 1000}}),
-        encoding="utf-8",
-    )
     update_session_stats(
         root,
         {
@@ -162,13 +193,36 @@ def test_savings_report_merges_smart_state_and_session_stats(tmp_path: Path) -> 
     )
 
     aggregate = aggregate_session_stats(root)
-    report = build_savings_report(root, usd_per_1k_tokens=0.01)
+    report = build_savings_report(root)
 
     assert aggregate["session_count"] == 1
-    assert report["calls_avoided"] >= 4
-    assert report["tokens_saved"] >= 1000
-    assert report["estimated_saved_usd"] >= 0.01
-    assert "local estimates" in report["local_note"]
+    assert aggregate["total_tool_calls"] == 1
+    # No live savings events emitted — no real measurements — so zero savings.
+    assert report["calls_avoided"] == 0
+    assert report["tokens_saved"] == 0
+    assert report["saved_usd"] == 0.0
+
+    # Now write a real live event: 50k tokens saved, priced at $0.50 against
+    # the model that was active when the event was emitted.
+    (root / "live_savings_events.jsonl").write_text(
+        json.dumps(
+            {
+                "session_id": "s1",
+                "tool_name": "Read",
+                "lever": "structure_map",
+                "tokens_saved": 50_000,
+                "cost_saved_usd": 0.5,
+                "model": "claude-opus-4-7",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    # Global aggregate (no session_id) reads from live_savings_events.jsonl.
+    report = build_savings_report(root)
+    assert report["tokens_saved"] == 50_000
+    assert report["saved_usd"] == 0.5
+    assert report["cost"]["saved_usd"] == 0.5
 
 
 def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path: Path) -> None:
@@ -247,8 +301,6 @@ def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Pa
                 "session_id": "s1",
                 "total_tool_calls": 4,
                 "edit_tool_calls": 0,
-                "equivalent_baseline_calls": 7.0,
-                "savings": {"calls_saved": 3, "time_saved_ms": 75_000, "tokens_saved": 12_000},
                 "usage": {
                     "input_tokens": 150_000,
                     "output_tokens": 2_000,
@@ -285,7 +337,12 @@ def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Pa
 
     result = _run_hook(
         "stop.py",
-        {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(transcript), "total_cost_usd": 0.1683},
+        {
+            "hook_event_name": "Stop",
+            "session_id": "s1",
+            "transcript_path": str(transcript),
+            "total_cost_usd": 0.1683,
+        },
         env={"ATELIER_ROOT": str(root)},
     )
 
@@ -294,7 +351,8 @@ def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Pa
     assert "Session stats:" in message
     assert "tool calls: 4" in message
     assert "tokens: 150.0k in / 700 cW / 9.0k cR / 2.0k out  (161.7k total)" in message
-    assert "savings: ~$0.0360 · 3 calls avoided · 12,000 tokens saved" in message
+    # Savings come from transcript saved blocks — none in this test transcript, so $0.
+    assert "savings: $0.0000 · 0 tokens saved · 0 calls avoided" in message
     assert "top tools: mcp__mcp-vector-search__codegraph_context" in message
 
 
@@ -491,7 +549,9 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
     )
 
     summary = load_live_savings_summary(root, session_id="s1")
-    report = build_savings_report(root, session_id="s1")
+    # build_savings_report with session_id reads from transcript (no live events).
+    # Use the global aggregate (no session_id) to validate live_savings_events routing.
+    report = build_savings_report(root)
 
     assert summary == {
         "calls_saved": 0,
@@ -502,7 +562,6 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
     assert report["cost"]["saved_usd"] == 0.87
     assert report["cost"]["live_saved_usd"] == 0.87
     assert report["cost"]["routing_saved_usd"] == 0.23
-    assert report["estimated_saved_usd"] == 0.87
 
 
 def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
