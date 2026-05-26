@@ -692,8 +692,49 @@ def _get_mcp_model() -> str:
     return _cached_mcp_model
 
 
+def _get_host_session_sidecar_path() -> Path:
+    """Return per-session sidecar path for the current host.
+
+    Priority:
+    1. Claude: workspace bridge or MCP session file (both written exclusively by
+       Claude Code's SessionStart hook — their presence is the reliable signal).
+    2. All other hosts: native session-ID env var exposed to the MCP process.
+    3. Fallback: workspace-scoped file (no per-session isolation).
+    """
+    # 1. Check the workspace bridge (written only by Claude Code's SessionStart hook).
+    sid, _ = _read_workspace_session_bridge()
+    if not sid:
+        try:
+            f = _mcp_session_file()
+            if f.is_file():
+                data = json.loads(f.read_text(encoding="utf-8"))
+                sid = str(data.get("claude_session_id") or "").strip()
+        except Exception:
+            pass
+    if sid:
+        return _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+
+    # 2. Other hosts — use their native session ID env var directly.
+    _HOST_SESSION_ENVS: list[tuple[str, str]] = [
+        ("CODEX_SESSION_ID", "codex"),
+        ("OPENCODE_SESSION_ID", "opencode"),
+        ("GITHUB_COPILOT_SESSION_ID", "copilot"),
+        ("CURSOR_SESSION_ID", "cursor"),
+        ("CURSOR_TRACE_ID", "cursor"),
+        ("HERMES_SESSION_ID", "hermes"),
+        ("ANTIGRAVITY_SESSION_ID", "antigravity"),
+        ("AGY_SESSION_ID", "antigravity"),
+    ]
+    for env_var, host in _HOST_SESSION_ENVS:
+        env_sid = os.environ.get(env_var, "").strip()
+        if env_sid:
+            return _atelier_root() / "session_stats" / host / f"{env_sid}.jsonl"
+
+    return _workspace_savings_path()
+
+
 def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int) -> None:
-    """Write per-call savings to the appropriate host sidecar.
+    """Write per-call savings to the per-session sidecar for the current host.
 
     Rows include the current model so compute_savings_summary can price
     each row individually (Opus tokens at Opus rate, Sonnet at Sonnet rate).
@@ -702,15 +743,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int) -> None
         return
     _register_mcp_session()
     try:
-        # Prefer the claude sidecar when the workspace bridge has a session_id.
-        # The bridge is written exclusively by Claude Code's SessionStart hook, so
-        # its presence is a reliable signal regardless of --host or inherited env vars
-        # (e.g. COPILOT_CLI=1 from a parent shell).
-        session_id = _get_claude_session_id()
-        if session_id:
-            path = _atelier_root() / "session_stats" / "claude" / f"{session_id}.jsonl"
-        else:
-            path = _workspace_savings_path()
+        path = _get_host_session_sidecar_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         entry: dict[str, Any] = {
             "tool": tool_name,
