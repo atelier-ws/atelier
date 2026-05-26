@@ -157,10 +157,6 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
 def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
-    (root / "smart_state.json").write_text(
-        json.dumps({"savings": {"calls_avoided": 1, "tokens_saved": 500}}),
-        encoding="utf-8",
-    )
     update_session_stats(
         root,
         {
@@ -170,15 +166,30 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
             "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
         },
     )
+    # Real measured savings come from live_savings_events.jsonl (written by
+    # MCP tool handlers at result time, priced at the model in use that turn).
+    (root / "live_savings_events.jsonl").write_text(
+        json.dumps(
+            {
+                "session_id": "s1",
+                "tool_name": "Read",
+                "lever": "structure_map",
+                "tokens_saved": 1200,
+                "cost_saved_usd": 0.0036,
+                "model": "claude-sonnet-4-5",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     res = _invoke(root, "savings", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["session"]["session_count"] == 1
-    assert payload["calls_avoided"] >= 2
-    assert payload["tokens_saved"] >= 500
-    assert "local estimates" in payload["local_note"]
+    assert payload["tokens_saved"] == 1200
+    assert payload["saved_usd"] == 0.0036
 
 
 def test_plugin_auth_status_share_and_settings_cli(tmp_path: Path) -> None:
