@@ -171,6 +171,10 @@ print_frame_line() {
 }
 
 _SPINNER_PID=""
+ATELIER_SPINNER_PID_FILE="${TMPDIR:-/tmp}/atelier-spinner-agent.$$.pid"
+touch "$ATELIER_SPINNER_PID_FILE"
+trap '[[ -f "$ATELIER_SPINNER_PID_FILE" ]] && { _SPINNER_PID=$(cat "$ATELIER_SPINNER_PID_FILE" 2>/dev/null); [[ -n "$_SPINNER_PID" ]] && kill "$_SPINNER_PID" 2>/dev/null; rm -f "$ATELIER_SPINNER_PID_FILE"; } || true' EXIT INT TERM
+
 spinner_start() {
     local msg="$1"
     [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]] || return 0
@@ -187,15 +191,18 @@ spinner_start() {
         done
     ) &
     _SPINNER_PID=$!
+    echo "$_SPINNER_PID" > "$ATELIER_SPINNER_PID_FILE"
 }
 
 spinner_finish() {
     local state="$1"
     local msg="$2"
+    _SPINNER_PID=$(cat "$ATELIER_SPINNER_PID_FILE" 2>/dev/null)
     [[ -n "${_SPINNER_PID:-}" ]] || return 0
     kill "$_SPINNER_PID" 2>/dev/null || true
     wait "$_SPINNER_PID" 2>/dev/null || true
     _SPINNER_PID=""
+    echo "" > "$ATELIER_SPINNER_PID_FILE"
     printf "\r\033[2K"
     case "$state" in
         ok)   printf "%b│%b  %b✓%b  %s\n" "$C_DIM" "$C_RESET" "$C_GREEN" "$C_RESET" "$msg" ;;
