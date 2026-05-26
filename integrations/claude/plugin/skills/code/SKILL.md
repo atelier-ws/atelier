@@ -54,10 +54,16 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 - For behavior changes, add focused verification at the right boundary.
 - Before concluding, run the narrowest set of checks that actually proves the change.
 
-## Budget guardrails
+## Budget optimizer
 
 - Name the deliverable before editing.
 - Summarize the smallest viable plan.
 - Keep context narrow: current goal, relevant files, failing output, constraints.
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, restate the expected deliverable.
+- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+
+## Native fallback
+
+If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use native host file reads, workspace search, shell `rg`, or `grep`.
+Always return findings instead of waiting for tool availability to improve.

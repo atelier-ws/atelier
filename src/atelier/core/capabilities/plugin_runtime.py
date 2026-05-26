@@ -1365,7 +1365,7 @@ def _active_run_loop_report(root: str | Path) -> dict[str, Any] | None:
     state = _read_json(state_path, {})
     if not isinstance(state, dict):
         return None
-    session_id = str(state.get("active_session_id") or "").strip()
+    session_id = str(state.get("session_id") or state.get("active_session_id") or "").strip()
     if not session_id:
         return None
     atelier_root = Path(str(state.get("atelier_root") or root))

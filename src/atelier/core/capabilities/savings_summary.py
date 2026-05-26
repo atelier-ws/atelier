@@ -395,8 +395,8 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
                 ev = json.loads(raw)
             except Exception:
                 continue
-            t = max(0, int(ev.get("tokens") or 0))
-            c = max(0, int(ev.get("calls") or 0))
+            t = max(0, int(ev.get("tokens_saved") or 0))
+            c = max(0, int(ev.get("calls_saved") or 0))
             tokens_total += t
             calls_total += c
             model_raw = str(ev.get("model") or "").strip()

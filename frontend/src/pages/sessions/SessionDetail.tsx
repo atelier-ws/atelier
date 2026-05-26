@@ -645,6 +645,29 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   </section>
                 )}
 
+              {report?.tool_savings && report.tool_savings.length > 0 && (
+                <section className="space-y-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 border-b border-neutral-800 pb-2">
+                    Context Savings by Tool
+                  </h3>
+                  <div className="space-y-2">
+                    {report.tool_savings.map((row, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between text-[10px] font-mono border-b border-neutral-800/40 pb-1 last:border-0"
+                      >
+                        <span className="text-emerald-400/80 truncate pr-4">
+                          {row.tool}
+                        </span>
+                        <span className="text-neutral-400">
+                          {(row.tokens_saved / 1000).toFixed(1)}k tok · {fmtUsd(row.cost_saved_usd)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {report?.models_used &&
                 Object.keys(report.models_used).length > 0 && (
                   <section className="space-y-4">

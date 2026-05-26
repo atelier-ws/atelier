@@ -977,6 +977,16 @@ export interface TopTool {
   cost_usd: number;
 }
 
+export interface ToolSavingsRow {
+  tool: string;
+  tokens_saved: number;
+  calls_saved: number;
+  cost_saved_usd: number;
+  model: string;
+  at: string;
+  rid?: string;
+}
+
 export interface SessionReport extends SessionSummary {
   tool_call_count: number;
   input_token_cost_usd: number;
@@ -991,6 +1001,9 @@ export interface SessionReport extends SessionSummary {
   routing_savings_usd: number;
   compact_events: number;
   compact_savings_estimate_usd: number;
+  context_compression_savings_usd: number;
+  context_compression_tool_calls: number;
+  tool_savings: ToolSavingsRow[];
   top_tools_by_cost: TopTool[];
 }
 

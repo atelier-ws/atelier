@@ -655,7 +655,7 @@ class PostgresStore:
         status: str | None = None,
         limit: int = 100,
     ) -> list[Trace]:
-        sql = "SELECT * FROM traces WHERE 1=1"
+        sql = "SELECT * FROM traces WHERE task != 'session-auto-record' AND 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = %s"
