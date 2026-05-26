@@ -587,6 +587,30 @@ def _mcp_session_file() -> Path:
     return _atelier_root() / "mcp_sessions" / f"{_MCP_ID}.json"
 
 
+def _workspace_session_state_file() -> Path:
+    import hashlib
+
+    ws = str(Path(os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()).resolve())
+    ws_hash = hashlib.sha256(ws.encode()).hexdigest()[:12]
+    return _atelier_root() / "workspaces" / ws_hash / "session_state.json"
+
+
+def _read_workspace_session_bridge() -> tuple[str, str]:
+    """Read `(claude_session_id, model)` from workspace session_state.json."""
+    try:
+        path = _workspace_session_state_file()
+        if not path.is_file():
+            return "", ""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return "", ""
+        sid = str(data.get("session_id") or "").strip()
+        model = str(data.get("model") or "").strip()
+        return sid, model
+    except Exception:
+        return "", ""
+
+
 def _register_mcp_session() -> None:
     """Create this MCP process's registration file if it doesn't exist yet."""
     f = _mcp_session_file()
@@ -614,13 +638,21 @@ def _register_mcp_session() -> None:
 def _get_claude_session_id() -> str:
     """Return the Claude Code session UUID.
 
-    Reads the MCP registration file once (populated by SessionStart hook),
+    Reads workspace session_state.json once (written by SessionStart hook),
     caches the result in _cached_claude_session_id for all subsequent calls.
+    Falls back to MCP registration file for backward compatibility.
     Falls back to the product session UUID if not yet populated.
     """
     global _cached_claude_session_id, _cached_mcp_model
     if _cached_claude_session_id:
         return _cached_claude_session_id
+
+    sid, model = _read_workspace_session_bridge()
+    if sid:
+        _cached_claude_session_id = sid
+        _cached_mcp_model = model
+        return sid
+
     try:
         f = _mcp_session_file()
         if f.is_file():
@@ -639,10 +671,17 @@ def _get_mcp_model() -> str:
     """Return the model string last written by SessionStart, or empty string."""
     global _cached_mcp_model
     if not _cached_claude_session_id:
-        # Try to populate both caches via session file read.
+        # Try to populate both caches via workspace bridge read.
         _get_claude_session_id()
-    # Re-read model on each call — SessionStart may fire again on resume/compact
-    # with a different model (user switched mid-session).
+
+    # Re-read model from workspace bridge on each call — SessionStart may fire
+    # again on resume/compact with a different model.
+    sid, model = _read_workspace_session_bridge()
+    if sid and model:
+        _cached_mcp_model = model
+        return _cached_mcp_model
+
+    # Backward-compatible fallback to MCP session file.
     try:
         f = _mcp_session_file()
         if f.is_file():
