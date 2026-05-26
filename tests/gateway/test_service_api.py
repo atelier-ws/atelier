@@ -107,9 +107,9 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert "memory" in names
     assert "route" in names
     assert "shell" in names
-    code_tool = next(tool for tool in tools if tool["tool_name"] == "code")
-    enum_param_names = {item["name"] for item in code_tool["enum_params"]}
-    assert "op" in enum_param_names
+    symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
+    enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
+    assert "mode" in enum_param_names
 
 
 def test_hosts_endpoint_lists_supported_integrations(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
