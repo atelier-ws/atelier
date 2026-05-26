@@ -21,7 +21,7 @@
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
 #   ATELIER_ADVANCED   If set to 1, enable Docker sidecar install (requires --memory)
 #   ATELIER_MEMORY_BACKEND  Memory sidecar to install: letta | openmemory (default: none)
-#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (Docker) (default: 1)
+#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (default: 1)
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
 #   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
@@ -112,6 +112,9 @@ HOST_SUMMARY=()
 _SPINNER_PID=""
 _SPINNER_MSG=""
 _SPINNER_ACTIVE=0
+ATELIER_SPINNER_PID_FILE="${TMPDIR:-/tmp}/atelier-spinner.$$.pid"
+touch "$ATELIER_SPINNER_PID_FILE"
+
 ORIGINAL_STDOUT_IS_TTY=0
 if [[ -t 1 ]]; then
     ORIGINAL_STDOUT_IS_TTY=1
@@ -158,7 +161,7 @@ mkdir -p "$(dirname "$ATELIER_INSTALL_LOG_FILE")" 2>/dev/null || true
 : >"$ATELIER_INSTALL_LOG_FILE" 2>/dev/null || true
 exec > >(tee -a "$ATELIER_INSTALL_LOG_FILE") 2>&1
 
-trap '[[ -n "${_SPINNER_PID:-}" ]] && { kill "${_SPINNER_PID}" 2>/dev/null; printf "\n"; } || true' EXIT INT TERM
+trap '[[ -f "$ATELIER_SPINNER_PID_FILE" ]] && { _SPINNER_PID=$(cat "$ATELIER_SPINNER_PID_FILE" 2>/dev/null); [[ -n "$_SPINNER_PID" ]] && kill "$_SPINNER_PID" 2>/dev/null; rm -f "$ATELIER_SPINNER_PID_FILE"; } || true' EXIT INT TERM
 
 log_raw() {
     [[ "$ATELIER_VERBOSE" == "1" ]] && return 0
@@ -204,12 +207,15 @@ _spinner_run() {
         done
     ) &
     _SPINNER_PID=$!
+    echo "$_SPINNER_PID" > "$ATELIER_SPINNER_PID_FILE"
 }
 _spinner_pause() {
+    _SPINNER_PID=$(cat "$ATELIER_SPINNER_PID_FILE" 2>/dev/null)
     [[ -n "${_SPINNER_PID:-}" ]] || return 0
     kill "$_SPINNER_PID" 2>/dev/null || true
     wait "$_SPINNER_PID" 2>/dev/null || true
     _SPINNER_PID=""
+    echo "" > "$ATELIER_SPINNER_PID_FILE"
     printf "\r\033[2K"
 }
 _spinner_resume() { if [[ "${_SPINNER_ACTIVE:-0}" == "1" ]]; then _spinner_run; fi; }
