@@ -45,8 +45,14 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "compact",
-    "code",
+    "symbols",
     "shell",
+    # Dedicated code-intel tools (split from `code` op for LLM discoverability)
+    "node",
+    "callers",
+    "callees",
+    "impact",
+    "explore",
 }
 
 
@@ -1035,21 +1041,21 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
 
-    indexed = _result(_call("code", {"op": "index", "repo_root": str(tmp_path)}))
+    indexed = _result(_call("symbols", {"op": "index", "repo_root": str(tmp_path)}))
     _m = re.search(r"symbols=(\d+)", indexed)
     assert _m is not None
     assert int(_m.group(1)) >= 2
     assert "provenance: local" in indexed
 
-    searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     assert searched and "no matches" not in searched
     assert "snippet:" not in searched
-    cached_search = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    cached_search = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     assert "provenance: cached" in cached_search
 
     symbol = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "symbol",
                 "repo_root": str(tmp_path),
@@ -1061,37 +1067,30 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     assert "def alpha" in symbol
     assert "provenance: local" in symbol
 
-    outline = _result(_call("code", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
+    outline = _result(_call("symbols", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "a.py" in outline
     assert "provenance: local" in outline
 
     context = _result(
         _call(
-            "code",
+            "context",
             {
-                "op": "context",
-                "repo_root": str(tmp_path),
                 "task": "change alpha",
-                "seed_files": ["a.py"],
-                "budget_tokens": 4000,
+                "files": ["a.py"],
+                "token_budget": 4000,
+                "mode": "symbols",
             },
         )
     )
-    _packed_m = re.search(r"packed_tokens: (\d+)", context)
-    assert _packed_m is not None
-    packed_tokens = int(_packed_m.group(1))
-    _budget_m = re.search(r"budget: (\d+)", context)
-    assert _budget_m is not None
-    budget_tokens = int(_budget_m.group(1))
-    assert packed_tokens <= budget_tokens
-    assert "provenance: local" in context
+    assert isinstance(context, dict)
+    assert context.get("task") == "change alpha"
 
-    impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "path": "a.py"}))
+    impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "path": "a.py"}))
     assert "b.py" in impact
     assert "target_type: file" in impact
     assert "provenance: local" in impact
 
-    symbol_impact = _result(_call("code", {"op": "impact", "repo_root": str(tmp_path), "query": "alpha"}))
+    symbol_impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "query": "alpha"}))
     assert "target_type: symbol" in symbol_impact
     assert "target: symbol" in symbol_impact
     assert "affected_files:" in symbol_impact
@@ -1105,13 +1104,13 @@ def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tm
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
 
-    first = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    cached = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    first = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    cached = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
     artifact_path.write_text(
         artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
         encoding="utf-8",
     )
-    fresh = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    fresh = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
 
     assert first["provenance"] == "scip" if isinstance(first, dict) else "provenance: scip" in first
     assert cached["provenance"] == "cached" if isinstance(cached, dict) else "provenance: cached" in cached
@@ -1355,7 +1354,7 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         encoding="utf-8",
     )
 
-    payload = _result(_call("code", {"op": "usages", "repo_root": str(tmp_path), "query": "OrderService"}))
+    payload = _result(_call("symbols", {"op": "usages", "repo_root": str(tmp_path), "query": "OrderService"}))
 
     assert "group_by: file" in payload
     assert "OrderService" in payload
@@ -1369,8 +1368,10 @@ def test_code_context_call_graph_surface_is_additive(store_root: Path, tmp_path:
     (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
     _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha", include_call_graph=True)
 
-    callers = _result(_call("code", {"op": "callers", "repo_root": str(tmp_path), "query": "alpha"}))
-    callees = _result(_call("code", {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True}))
+    callers = _result(_call("symbols", {"op": "callers", "repo_root": str(tmp_path), "query": "alpha"}))
+    callees = _result(
+        _call("symbols", {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True})
+    )
 
     assert "provenance: scip" in callers
     assert "data_status: available" in callers
@@ -1386,7 +1387,7 @@ def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: P
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
 
-    searched = _result(_call("code", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
 
     assert "provenance: local" in searched
     assert "alpha" in searched
@@ -1420,7 +1421,7 @@ def test_code_context_pattern_search_surface_is_cached(
 
     first = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "pattern",
                 "repo_root": str(tmp_path),
@@ -1431,7 +1432,7 @@ def test_code_context_pattern_search_surface_is_cached(
     )
     cached = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "pattern",
                 "repo_root": str(tmp_path),
@@ -1459,7 +1460,7 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
 
     _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "search",
                 "repo_root": str(tmp_path),
@@ -1470,7 +1471,7 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
     )
     _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "symbol",
                 "repo_root": str(tmp_path),
@@ -1481,10 +1482,10 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
         )
     )
 
-    status = _result(_call("code", {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 200}))
+    status = _result(_call("symbols", {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 200}))
     invalidated = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "cache_invalidate",
                 "repo_root": str(tmp_path),
@@ -1529,7 +1530,7 @@ def test_code_context_pattern_rewrite_reindexes_changed_files(
 
     preview = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "pattern",
                 "repo_root": str(tmp_path),
@@ -1541,7 +1542,7 @@ def test_code_context_pattern_rewrite_reindexes_changed_files(
     )
     applied = _result(
         _call(
-            "code",
+            "symbols",
             {
                 "op": "pattern",
                 "repo_root": str(tmp_path),
@@ -1580,7 +1581,7 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
         ),
     )
 
-    result = _result(_call("code", {"op": "pattern", "repo_root": str(tmp_path), "pattern": "requests.get($URL)"}))
+    result = _result(_call("symbols", {"op": "pattern", "repo_root": str(tmp_path), "pattern": "requests.get($URL)"}))
 
     assert result["error"] == "tool_unavailable"
     assert result["expected_binary"] == "ast-grep"
