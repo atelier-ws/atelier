@@ -20,7 +20,10 @@ if [ -n "$1" ]; then
     FILES_TO_CHECK=("$@")
     echo "📁 Checking ${#FILES_TO_CHECK[@]} provided files..."
 else
-    mapfile -t FILES_TO_CHECK < <(git diff --cached --name-only --diff-filter=ACM)
+    FILES_TO_CHECK=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && FILES_TO_CHECK+=("$file")
+    done < <(git diff --cached --name-only --diff-filter=ACM)
     echo "📁 Checking ${#FILES_TO_CHECK[@]} staged files..."
 fi
 
@@ -63,7 +66,10 @@ if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
     uvx black "${PYTHON_FILES[@]}"
 
     # Check if any files were modified by formatting — never auto-stage
-    mapfile -t FORMATTED_FILES < <(git diff --name-only -- "${PYTHON_FILES[@]}")
+    FORMATTED_FILES=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && FORMATTED_FILES+=("$file")
+    done < <(git diff --name-only -- "${PYTHON_FILES[@]}")
     if [ ${#FORMATTED_FILES[@]} -gt 0 ]; then
         echo -e "\n\033[1;31m================================================================================\033[0m"
         echo -e "\033[1;31m❌  FORMATTING APPLIED — COMMIT ABORTED\033[0m"
