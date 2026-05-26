@@ -502,13 +502,14 @@ print_final_report() {
 
 supports_interactive_selector() {
     [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 1
-    if [[ "$ORIGINAL_STDOUT_IS_TTY" == "1" ]]; then
-        [[ -t 0 ]] || return 1
-    else
-        [[ -t 0 && -t 1 ]] || return 1
-    fi
+    [[ "$ORIGINAL_STDOUT_IS_TTY" == "1" || -t 1 ]] || return 1
+    has_interactive_input || return 1
     [[ -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] || return 1
     return 0
+}
+
+has_interactive_input() {
+    [[ -t 0 ]] || { [[ -e /dev/tty ]] && : </dev/tty; } 2>/dev/null
 }
 
 _frame_line() {
@@ -791,7 +792,7 @@ interactive_multi_select() {
 
 prompt_memory_selection() {
     [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
-    [[ -t 0 ]] || return 0
+    has_interactive_input || return 0
     [[ -n "$ATELIER_MEMORY_BACKEND" || "$ATELIER_ADVANCED" == "1" ]] && return 0
 
     local choice_index=0
@@ -965,7 +966,7 @@ join_with_comma_space() {
 
 host_wizard() {
     [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
-    [[ -t 0 ]] || return 0
+    has_interactive_input || return 0
     [[ "$ATELIER_NO_HOSTS" == "1" ]] && return 0
     contains_any_host_flag && return 0
     [[ ${#HOST_SCOPE_ARGS[@]} -gt 0 ]] && return 0
@@ -1407,7 +1408,7 @@ install_code_tools() {
 
     # Rust toolchain — only used by edit hooks for Rust file lint-fix. Optional.
     if ! command -v cargo >/dev/null 2>&1; then
-        warn "cargo not found — skipping Rust edit hooks (install from https://rustup.rs if needed)"
+        verbose "cargo not found — skipping optional Rust edit hooks"
     else
         verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
