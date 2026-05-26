@@ -702,8 +702,12 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int) -> None
         return
     _register_mcp_session()
     try:
-        if _detect_agent() == "claude":
-            session_id = _get_claude_session_id()
+        # Prefer the claude sidecar when the workspace bridge has a session_id.
+        # The bridge is written exclusively by Claude Code's SessionStart hook, so
+        # its presence is a reliable signal regardless of --host or inherited env vars
+        # (e.g. COPILOT_CLI=1 from a parent shell).
+        session_id = _get_claude_session_id()
+        if session_id:
             path = _atelier_root() / "session_stats" / "claude" / f"{session_id}.jsonl"
         else:
             path = _workspace_savings_path()
