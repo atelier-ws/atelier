@@ -147,6 +147,31 @@ class TranscriptStats:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_write_tokens
 
+    def savings_input_rate(self) -> float | None:
+        """Weighted $/input-token rate across all models used in this session.
+
+        Saved tokens are context tokens NOT sent to the model — they would have
+        been charged as NEW INPUT tokens.  We weight each model's input rate by
+        the number of input tokens it actually processed.
+        """
+        from atelier.core.capabilities.pricing import get_model_pricing
+
+        if not self.per_model:
+            return None
+        total_input = sum(b.get("in", 0) for b in self.per_model.values())
+        if total_input <= 0:
+            for m in self.per_model:
+                p = get_model_pricing(m)
+                if p and p.known and p.input > 0:
+                    return p.input / 1_000_000
+            return None
+        weighted = 0.0
+        for m, b in self.per_model.items():
+            p = get_model_pricing(m)
+            if p and p.known and p.input > 0:
+                weighted += p.input / 1_000_000 * b.get("in", 0)
+        return weighted / total_input if weighted > 0 else None
+
 
 def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None:
     """Parse a Claude transcript JSONL and return session stats.
@@ -344,43 +369,133 @@ class SavingsSummary:
     status_text: str = ""
 
 
+def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int]:
+    """Return ``(tokens_saved, calls_saved)`` from the Claude session savings JSONL.
+
+    Written by the MCP dispatcher to ``session_stats/claude/<session_id>.jsonl``
+    (one append-only row per tool call with non-zero savings).
+    """
+    if not session_id:
+        return 0, 0
+    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    if not path.exists():
+        return 0, 0
+    tokens_total = 0
+    calls_total = 0
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                ev = json.loads(raw)
+            except Exception:
+                continue
+            tokens_total += max(0, int(ev.get("tokens") or 0))
+            calls_total += max(0, int(ev.get("calls") or 0))
+    except OSError:
+        pass
+    return tokens_total, calls_total
+
+
+def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str:
+    """Read the active session_id from workspace/session_state.json.
+
+    Used as fallback when the caller-supplied session_id has no savings
+    (e.g. subagent sessions that don't have their own MCP sidecar).
+    """
+    if not workspace:
+        return ""
+    import hashlib as _hl
+
+    try:
+        ws_hash = _hl.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+        state_path = root_path / "workspaces" / ws_hash / "session_state.json"
+        if not state_path.is_file():
+            return ""
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        return str(data.get("session_id") or "")
+    except Exception:
+        return ""
+
+
 def compute_savings_summary(
     session_id: str = "",
     *,
     atelier_root: str | Path | None = None,
     workspace: str | None = None,
 ) -> SavingsSummary:
-    """Single entry point. The Claude transcript JSONL is the only source.
+    """Aggregate savings for a session.
 
-    Reads ``~/.claude/projects/<project>/<session_id>.jsonl`` exactly once:
+    Token savings come from ``session_stats/claude/<session_id>.jsonl`` —
+    the MCP dispatcher appends one row per tool call there (keyed by the
+    Claude session UUID that SessionStart writes to session_state.json).
 
-    - cumulative tokens / cost: per-turn ``message.usage`` priced at
-      ``message.model`` (handles mid-session model switches).
-    - savings (tokens + calls + USD): summed from
-      ``tool_result.content[].saved`` blocks the MCP server embedded,
-      priced at the model that issued the originating ``tool_use``.
+    If ``session_id`` has no savings and ``workspace`` is provided, falls back
+    to the session_id stored in the workspace's session_state.json (for
+    subagent scenarios where the subagent doesn't have its own sidecar).
 
-    No side files. No session-id filter. No live-events jsonl. No done file.
+    Cost baseline (``est_cost_usd``) still comes from the Claude transcript
+    since Claude Code does preserve token-usage entries there.
     """
-    del atelier_root, workspace  # accepted for backward compatibility; unused
-
     result = SavingsSummary()
-    if not session_id:
+    if not session_id and not workspace:
         return result
 
-    paths = claude_transcript_candidates(session_id)
-    if not paths:
-        return result
+    root_path: Path
+    if atelier_root is not None:
+        root_path = Path(atelier_root)
+    else:
+        env_root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
+        root_path = Path(env_root) if env_root else Path.home() / ".atelier"
 
-    stats = read_transcript_stats(paths[0])
-    if stats is None:
-        return result
+    # --- savings rows (primary source) ---
+    tokens, calls = _read_claude_session_savings(session_id, root_path) if session_id else (0, 0)
 
-    result.saved_usd = stats.saved_usd
-    result.ctx_saved = stats.saved_tokens
-    result.smart_calls = stats.saved_calls
-    result.est_cost_usd = stats.est_cost_usd
-    result.total_tokens = stats.total_tokens
+    # Fallback: subagent sessions have no sidecar — use parent session from workspace.
+    if tokens == 0 and calls == 0 and workspace:
+        ws_session_id = _resolve_workspace_session_id(workspace, root_path)
+        if ws_session_id and ws_session_id != session_id:
+            tokens, calls = _read_claude_session_savings(ws_session_id, root_path)
+            if tokens > 0 or calls > 0:
+                session_id = ws_session_id  # use the found session for transcript lookup too
+
+    result.ctx_saved = tokens
+    result.smart_calls = calls
+
+    # --- cost baseline + model from transcript ---
+    paths = claude_transcript_candidates(session_id) if session_id else []
+    stats = read_transcript_stats(paths[0]) if paths else None
+    if stats is not None:
+        result.est_cost_usd = stats.est_cost_usd
+        result.total_tokens = stats.total_tokens
+
+    # --- price the saved tokens ---
+    if result.ctx_saved > 0:
+        try:
+            from atelier.core.capabilities.pricing import get_model_pricing
+
+            rate: float | None = None
+            if stats is not None:
+                rate = stats.savings_input_rate()
+            if rate is None:
+                for mid in (
+                    os.environ.get("ATELIER_STATUS_MODEL") or "",
+                    os.environ.get("ATELIER_MODEL") or "",
+                    stats.last_model if stats else "",
+                    "claude-sonnet-4-5",
+                ):
+                    if not mid:
+                        continue
+                    pricing = get_model_pricing(resolve_model_id(mid))
+                    if pricing is not None and pricing.known and pricing.input > 0:
+                        rate = pricing.input / 1_000_000
+                        break
+            if rate and rate > 0:
+                result.saved_usd = rate * result.ctx_saved
+        except Exception:
+            pass
+
     return result
 
 
