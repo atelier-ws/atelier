@@ -4988,7 +4988,6 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
         click.echo(
             savings_line(
                 os.environ.get("ATELIER_STATUS_SESSION_ID", ""),
-                model_id=os.environ.get("ATELIER_STATUS_MODEL", ""),
                 workspace=os.environ.get("CLAUDE_WORKSPACE_ROOT", "") or None,
             )
         )
