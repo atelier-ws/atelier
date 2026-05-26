@@ -98,7 +98,7 @@ check_codex() {
 
     if [ -f "${effective_codex_home}/config.toml" ] && \
        grep -q '\[mcp_servers\.atelier\]' "${effective_codex_home}/config.toml" 2>/dev/null && \
-       grep -q '\[plugins\."atelier@atelier"\]' "${effective_codex_home}/config.toml" 2>/dev/null; then
+       grep -Eq '\[plugins\."atelier@(atelier|openai-curated)"\]' "${effective_codex_home}/config.toml" 2>/dev/null; then
         echo "installed"
     elif [ -f "${effective_codex_home}/config.toml" ] && \
          grep -q '\[mcp_servers\.atelier\]' "${effective_codex_home}/config.toml" 2>/dev/null; then

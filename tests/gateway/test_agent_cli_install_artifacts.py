@@ -120,6 +120,20 @@ def test_host_installers_stream_output_instead_of_buffering() -> None:
     assert '| stream_colored_output "$output_file"' in host_content
 
 
+def test_host_installer_default_selection_uses_detection() -> None:
+    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    assert "host_is_detected()" in content
+    assert "enable_detected_hosts_by_default" in content
+    assert "enable_detected_hosts_by_default" in content.split("# Default: all hosts", 1)[1]
+
+
+def test_host_installer_has_timeout_guard() -> None:
+    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    assert 'ATELIER_HOST_INSTALL_TIMEOUT_SECONDS="${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS:-180}"' in content
+    assert "run_host_installer()" in content
+    assert "host installer timed out after" in content
+
+
 def test_verify_agent_clis_references_all_hosts() -> None:
     content = (SCRIPTS / "verify_agent_clis.sh").read_text()
     for host in ["claude", "codex", "opencode", "copilot", "antigravity"]:

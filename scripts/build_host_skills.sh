@@ -60,7 +60,10 @@ if [[ ! -d "$SKILLS_SRC" ]]; then
     exit 1
 fi
 
-mapfile -t DEV_ONLY_SKILLS < <(
+DEV_ONLY_SKILLS=()
+while IFS= read -r skill_name; do
+    [[ -n "$skill_name" ]] && DEV_ONLY_SKILLS+=("$skill_name")
+done < <(
     PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
 from atelier.core.environment import DEV_ONLY_SKILLS
 
