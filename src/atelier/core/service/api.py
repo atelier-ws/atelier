@@ -5511,6 +5511,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "routing_savings_usd": 0.0,
             "compact_events": 0,
             "compact_savings_estimate_usd": 0.0,
+            "context_compression_savings_usd": 0.0,
+            "context_compression_tool_calls": 0,
+            "tool_savings": [],
             "top_tools_by_cost": top_tools_by_cost,
         }
 
@@ -5596,6 +5599,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "routing_savings_usd": report.routing_savings_usd,
             "compact_events": report.compact_events,
             "compact_savings_estimate_usd": report.compact_savings_estimate_usd,
+            "context_compression_savings_usd": report.context_compression_savings_usd,
+            "context_compression_tool_calls": report.context_compression_tool_calls,
+            "tool_savings": report.tool_savings,
             "top_tools_by_cost": top_tools_by_cost,
         }
 
@@ -5955,9 +5961,8 @@ def main(
     Used by ``atelier service start`` CLI command and the ``atelier-service``
     entrypoint.
 
-    Refuses to start when binding a non-loopback interface without ATELIER_REQUIRE_AUTH=1.
-    This prevents accidentally exposing local memory, traces, and configuration to the
-    network. Set ATELIER_REQUIRE_AUTH=1 + ATELIER_API_KEY=<secret> to bind publicly.
+    Warns when binding a non-loopback interface without ATELIER_REQUIRE_AUTH=1.
+    Set ATELIER_REQUIRE_AUTH=1 + ATELIER_API_KEY=<secret> for authenticated public access.
     """
     import sys
 
@@ -5969,20 +5974,18 @@ def main(
     if not _is_loopback(_host):
         if not cfg.require_auth:
             sys.stderr.write(
-                f"\nRefusing to start: host={_host!r} is non-loopback but "
+                f"\nWarning: host={_host!r} is non-loopback and "
                 "ATELIER_REQUIRE_AUTH is not enabled.\n"
-                "To bind publicly:\n"
+                "Local memory, traces, and configuration will be exposed to the network.\n"
+                "To enable authenticated access:\n"
                 "  export ATELIER_REQUIRE_AUTH=1\n"
                 "  export ATELIER_API_KEY=<a-long-random-secret>\n"
-                "Or bind to 127.0.0.1 (the default).\n\n"
             )
-            raise SystemExit(2)
-        if not cfg.api_key:
+        elif not cfg.api_key:
             sys.stderr.write(
-                "\nRefusing to start: ATELIER_REQUIRE_AUTH=1 but ATELIER_API_KEY is empty.\n"
-                "Set ATELIER_API_KEY=<a-long-random-secret> before exposing the service.\n\n"
+                "\nWarning: ATELIER_REQUIRE_AUTH=1 but ATELIER_API_KEY is empty.\n"
+                "Set ATELIER_API_KEY=<a-long-random-secret> to enable authenticated access.\n"
             )
-            raise SystemExit(2)
 
     uvicorn.run(
         "atelier.core.service.api:create_app",

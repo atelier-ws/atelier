@@ -7555,15 +7555,22 @@ WantedBy=default.target
                     unit_path.unlink()
 
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
-        subprocess.run(["systemctl", "--user", "enable", "--now", CONTROLLER_UNIT], check=True)
+        # Use enable + restart (not enable --now) so already-running services
+        # pick up the new code after re-install. `restart` starts inactive units too.
+        subprocess.run(["systemctl", "--user", "enable", CONTROLLER_UNIT], check=True)
+        subprocess.run(["systemctl", "--user", "restart", CONTROLLER_UNIT], check=True)
         if with_stack:
-            subprocess.run(["systemctl", "--user", "enable", "--now", STACK_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "enable", STACK_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=True)
         if with_letta:
-            subprocess.run(["systemctl", "--user", "enable", "--now", LETTA_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "enable", LETTA_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "restart", LETTA_UNIT], check=True)
         if with_openmemory:
-            subprocess.run(["systemctl", "--user", "enable", "--now", OPENMEMORY_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "enable", OPENMEMORY_UNIT], check=True)
+            subprocess.run(["systemctl", "--user", "restart", OPENMEMORY_UNIT], check=True)
         if with_zoekt:
-            result = subprocess.run(["systemctl", "--user", "enable", "--now", ZOEKT_UNIT], check=False)
+            subprocess.run(["systemctl", "--user", "enable", ZOEKT_UNIT], check=True)
+            result = subprocess.run(["systemctl", "--user", "restart", ZOEKT_UNIT], check=False)
             if result.returncode != 0:
                 click.echo(
                     f"Warning: {ZOEKT_UNIT} did not start cleanly - "

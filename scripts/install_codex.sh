@@ -183,11 +183,11 @@ if $workspace_mode:
 else:
     env.pop("ATELIER_WORKSPACE_ROOT", None)
 server["env"] = env
+server["alwaysLoad"] = True
 server.pop("cwd", None)
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
 }
-
 ensure_codex_mcp() {
     run "mkdir -p '$CODEX_HOME'"
     if $DRY_RUN; then

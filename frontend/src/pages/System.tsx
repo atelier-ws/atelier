@@ -19,7 +19,6 @@ import {
   Search,
   Terminal,
   Wrench,
-  Zap,
 } from "lucide-react";
 import {
   api,
@@ -89,10 +88,14 @@ function HostIcon({ id }: { id: string }) {
 
 const HOST_DESC: Record<string, string> = {
   claude: "Generated AGENTS surface, MCP wrapper, and Claude plugin hooks.",
-  codex: "Codex MCP registration with generated instructions and shared telemetry.",
-  opencode: "OpenCode MCP config with imported session support and local agents.",
-  copilot: "VS Code / Copilot MCP config with custom instructions and shared telemetry.",
-  antigravity: "Antigravity MCP config plus generated AGENTS guidance and agy companion flow.",
+  codex:
+    "Codex MCP registration with generated instructions and shared telemetry.",
+  opencode:
+    "OpenCode MCP config with imported session support and local agents.",
+  copilot:
+    "VS Code / Copilot MCP config with custom instructions and shared telemetry.",
+  antigravity:
+    "Antigravity MCP config plus generated AGENTS guidance and agy companion flow.",
   cursor: "Cursor MCP config with project rules and MCP-first guidance.",
   hermes: "Global-only Hermes MCP registration through ~/.hermes/config.yaml.",
 };
@@ -126,8 +129,12 @@ export function HostsSection() {
     const rightStatus = right.status === "active" ? 0 : 1;
     if (leftStatus !== rightStatus) return leftStatus - rightStatus;
 
-    const leftOrder = HOST_ORDER.indexOf(left.host_id as (typeof HOST_ORDER)[number]);
-    const rightOrder = HOST_ORDER.indexOf(right.host_id as (typeof HOST_ORDER)[number]);
+    const leftOrder = HOST_ORDER.indexOf(
+      left.host_id as (typeof HOST_ORDER)[number]
+    );
+    const rightOrder = HOST_ORDER.indexOf(
+      right.host_id as (typeof HOST_ORDER)[number]
+    );
     const safeLeft = leftOrder === -1 ? Number.MAX_SAFE_INTEGER : leftOrder;
     const safeRight = rightOrder === -1 ? Number.MAX_SAFE_INTEGER : rightOrder;
     if (safeLeft !== safeRight) return safeLeft - safeRight;
@@ -140,8 +147,9 @@ export function HostsSection() {
         Hosts
       </h2>
       <p className="text-xs text-neutral-400">
-        Atelier can configure these host surfaces. Detected hosts are shown first, but
-        unsupported gaps are still visible so you can wire them up directly.
+        Atelier can configure these host surfaces. Detected hosts are shown
+        first, but unsupported gaps are still visible so you can wire them up
+        directly.
       </p>
       {orderedHosts.length === 0 ? (
         <EmptyState
@@ -162,11 +170,15 @@ export function HostsSection() {
                     <div className="text-base font-semibold text-neutral-100">
                       {host.label}
                     </div>
-                    <Chip tone={host.status === "active" ? "emerald" : "neutral"}>
+                    <Chip
+                      tone={host.status === "active" ? "emerald" : "neutral"}
+                    >
                       {host.status === "active" ? "detected" : "not detected"}
                     </Chip>
                     {HOST_SCOPE_BADGES[host.host_id] && (
-                      <Chip tone="amber">{HOST_SCOPE_BADGES[host.host_id]}</Chip>
+                      <Chip tone="amber">
+                        {HOST_SCOPE_BADGES[host.host_id]}
+                      </Chip>
                     )}
                   </div>
                   <p className="text-sm text-neutral-400">
@@ -303,7 +315,10 @@ function AgentCard({
                 </span>
               </span>
               {agent.model && (
-                <Chip tone="neutral" className="normal-case tracking-normal text-[10px]">
+                <Chip
+                  tone="neutral"
+                  className="normal-case tracking-normal text-[10px]"
+                >
                   {agent.model}
                 </Chip>
               )}
@@ -569,7 +584,9 @@ function isDevTool(tool: MCPStatus): boolean {
 
 function primaryEnumParam(tool: MCPStatus) {
   return (
-    tool.enum_params?.find((param) => param.name === "op" || param.name === "action") ??
+    tool.enum_params?.find(
+      (param) => param.name === "op" || param.name === "action"
+    ) ??
     tool.enum_params?.[0] ??
     null
   );
@@ -679,8 +696,11 @@ export function ToolsSection() {
                                 </span>
                                 {primaryEnum && (
                                   <span className="text-[8px] font-bold text-cyan-300 border border-cyan-500/30 px-1 py-0.5 mr-2">
-                                    {primaryEnum.options.length} {primaryEnum.name}
-                                    {primaryEnum.options.length === 1 ? "" : "s"}
+                                    {primaryEnum.options.length}{" "}
+                                    {primaryEnum.name}
+                                    {primaryEnum.options.length === 1
+                                      ? ""
+                                      : "s"}
                                   </span>
                                 )}
                                 {isDev && (
@@ -726,39 +746,49 @@ export function ToolsSection() {
                                       {tool.tool_name}
                                     </code>
                                   </div>
-                                  {tool.enum_params && tool.enum_params.length > 0 && (
-                                    <div className="mt-4 space-y-3">
-                                      <FieldLabel className="mb-1">
-                                        <ChevronRight size={10} className="inline mr-1" /> enum params
-                                      </FieldLabel>
-                                      {tool.enum_params.map((param) => (
-                                        <div key={`${tool.tool_name}-${param.name}`} className="space-y-2">
-                                          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
-                                            <code className="border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-neutral-300 normal-case">
-                                              {param.name}
-                                            </code>
-                                            <span>{param.options.length} values</span>
+                                  {tool.enum_params &&
+                                    tool.enum_params.length > 0 && (
+                                      <div className="mt-4 space-y-3">
+                                        <FieldLabel className="mb-1">
+                                          <ChevronRight
+                                            size={10}
+                                            className="inline mr-1"
+                                          />{" "}
+                                          enum params
+                                        </FieldLabel>
+                                        {tool.enum_params.map((param) => (
+                                          <div
+                                            key={`${tool.tool_name}-${param.name}`}
+                                            className="space-y-2"
+                                          >
+                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                                              <code className="border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-neutral-300 normal-case">
+                                                {param.name}
+                                              </code>
+                                              <span>
+                                                {param.options.length} values
+                                              </span>
+                                            </div>
+                                            {param.description && (
+                                              <p className="text-[10px] text-neutral-500">
+                                                {param.description}
+                                              </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-1">
+                                              {param.options.map((option) => (
+                                                <Chip
+                                                  key={`${tool.tool_name}-${param.name}-${option}`}
+                                                  tone="neutral"
+                                                  className="normal-case tracking-normal"
+                                                >
+                                                  {option}
+                                                </Chip>
+                                              ))}
+                                            </div>
                                           </div>
-                                          {param.description && (
-                                            <p className="text-[10px] text-neutral-500">
-                                              {param.description}
-                                            </p>
-                                          )}
-                                          <div className="flex flex-wrap gap-1">
-                                            {param.options.map((option) => (
-                                              <Chip
-                                                key={`${tool.tool_name}-${param.name}-${option}`}
-                                                tone="neutral"
-                                                className="normal-case tracking-normal"
-                                              >
-                                                {option}
-                                              </Chip>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
+                                        ))}
+                                      </div>
+                                    )}
                                 </div>
                               )}
                             </div>
@@ -860,7 +890,11 @@ export default function System() {
   const legacyTab = searchParams.get("tab");
   return (
     <Navigate
-      to={legacyTab && LEGACY_TAB_ROUTES[legacyTab] ? LEGACY_TAB_ROUTES[legacyTab] : "/system/hosts"}
+      to={
+        legacyTab && LEGACY_TAB_ROUTES[legacyTab]
+          ? LEGACY_TAB_ROUTES[legacyTab]
+          : "/system/hosts"
+      }
       replace
     />
   );

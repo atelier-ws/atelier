@@ -108,8 +108,8 @@ def _read_workspace_savings(workspace: str) -> dict[str, int]:
                 continue
             try:
                 entry = json.loads(raw)
-                tokens_saved += int(entry.get("tokens") or 0)
-                calls_saved += int(entry.get("calls") or 0)
+                tokens_saved += int(entry.get("tokens_saved") or 0)
+                calls_saved += int(entry.get("calls_saved") or 0)
             except Exception:
                 pass
     return {"tokens_saved": tokens_saved, "calls_saved": calls_saved}

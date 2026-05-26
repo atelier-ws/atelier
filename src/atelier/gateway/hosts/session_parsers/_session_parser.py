@@ -2015,9 +2015,10 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
         _type = ev.get("_type", "")
         data = ev.get("data") or {}
         at = ev.get("timestamp") or data.get("at")
-        if _type == "message" and data.get("role") == "user":
+        if _type == "message":
+            role = data.get("role", "")
             summary = data.get("summary") or {}
-            if isinstance(summary, dict) and summary.get("diffs"):
+            if role == "user" and isinstance(summary, dict) and summary.get("diffs"):
                 diffs = summary["diffs"]
                 turns.append(
                     _turn(
@@ -2039,6 +2040,14 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
                         ],
                     )
                 )
+            elif role == "user":
+                text = str(data.get("text") or "").strip()
+                if text:
+                    turns.append(_turn("user_message", text[:80], text, at=at, raw=ev))
+            elif role == "assistant":
+                text = str(data.get("text") or "").strip()
+                if text:
+                    turns.append(_turn("agent_message", text[:80], text, at=at, raw=ev))
         elif _type == "part":
             pt = data.get("type", "")
             role = ev.get("role", "")
