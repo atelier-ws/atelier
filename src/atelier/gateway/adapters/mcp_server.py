@@ -5172,6 +5172,10 @@ def main() -> None:
     atelier_root = os.environ.get("ATELIER_ROOT", str(Path.home() / ".atelier"))
     _setup_file_logging(atelier_root)
 
+    # Register before serve() so the SessionStart hook can find this process
+    # and write the Claude session UUID before the first tool call arrives.
+    _register_mcp_session()
+
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
 
