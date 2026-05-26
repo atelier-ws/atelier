@@ -4073,9 +4073,8 @@ def _run_shell_tool(
         response["blocked"] = True
         response["blocked_reason"] = result.policy_reason
     if result.lines_omitted > 0:
-        # Omitted lines would have been in LLM context; record as savings.
-        # Rough estimate: ~80 chars/line → ~20 tokens/line.
-        _tool_call_tokens_saved.value = result.lines_omitted * 20
+        # chars_omitted / 4 is the standard chars-per-token estimate.
+        _tool_call_tokens_saved.value = result.chars_omitted // 4
     return response
 
 
