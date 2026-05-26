@@ -159,6 +159,36 @@ def _read_compact_savings(session_id: str, root: Path) -> tuple[int, float]:
     return count, round(total_saved, 6)
 
 
+def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int, float, list[dict[str, Any]]]:
+    """Read per-tool context-compression savings from ``runs/<session_id>_context_savings.jsonl``.
+
+    Returns ``(call_count, total_cost_saved_usd, rows)`` where rows are the
+    raw event dicts (tool, tokens_saved, calls_saved, model, rid, at).
+    """
+    path = _runs_dir(root) / f"{session_id}_context_savings.jsonl"
+    if not path.exists():
+        return 0, 0.0, []
+
+    count = 0
+    total_saved = 0.0
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            count += 1
+            total_saved += float(ev.get("cost_saved_usd") or 0.0)
+            rows.append(ev)
+    except OSError:
+        pass
+    return count, round(total_saved, 6), rows
+
+
 def read_total_savings_from_events(session_id: str, root: Path) -> float:
     """Sum all ``cost_saved_usd`` from ``live_savings_events.jsonl`` for *session_id*.
 
@@ -266,6 +296,9 @@ class SessionReport:
     top_tools_by_cost: list[tuple[str, int, float]]
     routing_lesson_applications: int = 0
     cost_cap_fired_turns: int = 0
+    context_compression_savings_usd: float = 0.0
+    context_compression_tool_calls: int = 0
+    tool_savings: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     @property
     def is_running(self) -> bool:
@@ -373,7 +406,10 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
     # --- compact savings ---
     compact_count, compact_saved = _read_compact_savings(session_id, root)
 
-    total_saved = round(routing_saved + compact_saved, 6)
+    # --- context compression savings (per-tool read/grep/search/shell) ---
+    compression_count, compression_saved, compression_rows = _read_context_compression_savings(session_id, root)
+
+    total_saved = round(routing_saved + compact_saved + compression_saved, 6)
 
     # --- per-tool breakdown ---
     top_tools = CostTracker.per_tool_cost_breakdown(raw_events)
@@ -413,6 +449,9 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
         cost_cap_fired_turns=cost_cap_fired,
         compact_events=compact_count,
         compact_savings_estimate_usd=compact_saved,
+        context_compression_savings_usd=compression_saved,
+        context_compression_tool_calls=compression_count,
+        tool_savings=compression_rows,
         total_atelier_savings_usd=total_saved,
         top_tools_by_cost=top_tools[:5],
     )

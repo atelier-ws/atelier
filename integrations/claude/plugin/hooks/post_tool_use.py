@@ -56,7 +56,8 @@ def _atelier_root() -> Path:
 
 
 def _active_session_id() -> str | None:
-    return _read_session_state().get("active_session_id")
+    state = _read_session_state()
+    return state.get("session_id") or state.get("active_session_id")
 
 
 # ---------------------------------------------------------------------------
