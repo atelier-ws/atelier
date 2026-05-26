@@ -188,7 +188,9 @@ else
 fi
 AGENT_SRC="$STAGING_DIR/atelier.md"
 
-if [ -f "$AGENT_SRC" ]; then
+if $DRY_RUN; then
+    echo "  [dry-run] copy '$AGENT_SRC' to '$AGENT_DEST_DIR/atelier.md'"
+elif [ -f "$AGENT_SRC" ]; then
     run "mkdir -p '$AGENT_DEST_DIR'"
     run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
     info "atelier agent installed -> $AGENT_DEST_DIR/atelier.md"
@@ -201,7 +203,11 @@ for agent_name in explore repair research review; do
     agent_file="${AGENTS_SRC_DIR}/${agent_name}.md"
     if [ -f "$agent_file" ]; then
         atelier_write_managed_copy "$agent_file" "$STAGING_DIR/${agent_name}.md" "$DRY_RUN"
-        run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+        if $DRY_RUN; then
+            echo "  [dry-run] copy '$STAGING_DIR/${agent_name}.md' to '$AGENT_DEST_DIR/${agent_name}.md'"
+        else
+            run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+        fi
         info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
     fi
 done
