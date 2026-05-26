@@ -82,7 +82,7 @@ def _atelier_root() -> Path:
 def _write_token_event(stats: dict[str, Any]) -> None:
     """Append a session_stats note event to the active run file."""
     state = _load_state()
-    session_id: str | None = state.get("active_session_id")
+    session_id: str | None = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
     run_file = _atelier_root() / "runs" / f"{session_id}.json"

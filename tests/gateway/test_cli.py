@@ -11,16 +11,62 @@ from click.testing import CliRunner, Result
 os.environ["ATELIER_DEV_MODE"] = "1"
 
 from atelier.core.capabilities.plugin_runtime import update_session_stats
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import ReasonBlock, Rubric
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
+from atelier.gateway.adapters import mcp_server
 from atelier.gateway.cli import cli
 from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
     runner = CliRunner()
+    mcp_server._reset_runtime_cache_for_testing()
     return runner.invoke(cli, ["--root", str(root), *args], input=input)
+
+
+def _seed_state_change_rubric(root: Path) -> None:
+    ContextStore(root).upsert_rubric(
+        Rubric(
+            id="rubric_state_change_safety",
+            domain="state.change",
+            required_checks=[
+                "canonical_identifier_used",
+                "pre_change_state_captured",
+                "read_after_write_completed",
+                "observed_state_matches_intent",
+                "rollback_plan_available",
+                "user_visible_surface_checked",
+            ],
+            block_if_missing=[
+                "canonical_identifier_used",
+                "pre_change_state_captured",
+                "read_after_write_completed",
+                "observed_state_matches_intent",
+                "rollback_plan_available",
+                "user_visible_surface_checked",
+            ],
+        )
+    )
+
+
+def _seed_rescue_block(root: Path) -> None:
+    ContextStore(root).upsert_block(
+        ReasonBlock(
+            id="state-change-rescue",
+            title="Recover from wrong target update",
+            domain="state.change",
+            triggers=["wrong target updated", "Update external state"],
+            failure_signals=["wrong target updated"],
+            situation="When an external state change was applied to the wrong target.",
+            procedure=[
+                "Stop retrying the write path.",
+                "Confirm the intended target before any further state changes.",
+            ],
+            verification=["Verify the target identifier against the original request."],
+            dead_ends=["Do not repeat the mutation without checking the target."],
+        )
+    )
 
 
 def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
@@ -34,6 +80,7 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
 def test_run_rubric_via_cli(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
+    _seed_state_change_rubric(root)
     checks = {
         "canonical_identifier_used": True,
         "pre_change_state_captured": True,
@@ -60,6 +107,7 @@ def test_run_rubric_via_cli(tmp_path: Path) -> None:
 def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
+    _seed_state_change_rubric(root)
     res = _invoke(
         root,
         "tools",
@@ -132,6 +180,7 @@ def test_record_trace_and_extract_block(tmp_path: Path) -> None:
 def test_rescue_returns_procedure(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")
+    _seed_rescue_block(root)
     res = _invoke(
         root,
         "tools",
@@ -151,7 +200,7 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
     assert res.exit_code == 0
     payload = json.loads(res.output)
     assert "rescue" in payload
-    assert payload["matched_blocks"]
+    assert payload["rescue"]
 
 
 def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
@@ -332,7 +381,8 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert "docker compose" not in stack_unit
     assert "stack run" in stack_unit
     assert "stack stop" in stack_unit
-    assert any(cmd[:4] == ["systemctl", "--user", "enable", "--now"] for cmd in commands)
+    assert any(cmd[:3] == ["systemctl", "--user", "enable"] for cmd in commands)
+    assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
 def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -365,7 +415,8 @@ def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: 
     openmemory_unit = (unit_dir / "atelier-openmemory.service").read_text(encoding="utf-8")
     assert "openmemory up" in openmemory_unit
     assert "openmemory down" in openmemory_unit
-    assert any(cmd[:4] == ["systemctl", "--user", "enable", "--now"] for cmd in commands)
+    assert any(cmd[:3] == ["systemctl", "--user", "enable"] for cmd in commands)
+    assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
 def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

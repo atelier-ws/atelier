@@ -593,9 +593,9 @@ def search_workspace(
             "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
         }
 
-    # Track naive vs rendered bytes to compute tokens_saved. Naive = sum of
-    # full source bytes we touched (what a non-Atelier agent would read);
-    # rendered = bytes actually returned. ~4 bytes/token.
+    # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
+    # output bytes (matching lines + context, not full file); rendered = what
+    # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
     naive_bytes = 0
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
@@ -629,11 +629,11 @@ def search_workspace(
                 if candidate.suffix.lower() in _PDF_SUFFIXES
                 else candidate.read_text(encoding="utf-8", errors="replace")
             )
-            naive_bytes += len(source)
             lines = source.splitlines()
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
                 rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                naive_bytes += len(source)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -648,6 +648,7 @@ def search_workspace(
             if spec.graph_mode == "imported_by":
                 imported = _imported_by_for(root, candidate, candidates)
                 rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                naive_bytes += len(source)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -663,6 +664,19 @@ def search_workspace(
             line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
             if regex and not line_nos:
                 continue
+            # Naive = grep output: matched lines + context window only.
+            # When there's no regex (include_all), whole file is the baseline.
+            if regex and line_nos:
+                ctx_set: set[int] = set()
+                for ln in line_nos:
+                    for i in range(
+                        max(0, ln - 1 - lines_before),
+                        min(len(lines), ln + lines_after),
+                    ):
+                        ctx_set.add(i)
+                naive_bytes += sum(len(lines[i]) + 1 for i in ctx_set)
+            else:
+                naive_bytes += len(source)
             ranges, symbols = _symbol_windows(
                 candidate,
                 lines,
@@ -767,12 +781,12 @@ def search_workspace(
             continue
         if not _is_text_file(candidate) and suffix not in _PDF_SUFFIXES:
             continue
-        with contextlib.suppress(OSError):
-            naive_bytes += candidate.stat().st_size
         if spec.graph_mode == "imported_by":
             imported = _imported_by_for(root, candidate, candidates)
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
+            with contextlib.suppress(OSError):
+                naive_bytes += candidate.stat().st_size
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:
@@ -798,6 +812,9 @@ def search_workspace(
         )
         if _file_rendered is None:
             continue
+        # Naive = grep output = _file_rendered (matched lines + context).
+        # Savings = Atelier's post-processing reduction (summarisation, cap truncation).
+        naive_bytes += len(_file_rendered)
         rendered = _file_rendered
         file_match_count += 1
         remaining = effective_cap_chars - total_chars
