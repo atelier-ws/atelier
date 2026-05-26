@@ -178,35 +178,6 @@ def _append_session_start_event(
 # ---------------------------------------------------------------------------
 
 
-def _update_mcp_sessions(session_id: str, model: str, workspace: str) -> None:
-    """Find all active MCP registration files for this workspace and write session info."""
-    root = Path(_atelier_root())
-    mcp_dir = root / "mcp_sessions"
-    if not mcp_dir.is_dir():
-        return
-
-    ws_hash = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-
-    for entry in mcp_dir.glob("atelier-mcp-*.json"):
-        try:
-            data: dict[str, Any] = json.loads(entry.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if data.get("workspace_hash") != ws_hash:
-            continue
-        pid = int(data.get("pid") or 0)
-        if not pid:
-            continue
-        try:
-            os.kill(pid, 0)  # alive check — raises OSError if dead
-        except OSError:
-            continue  # process gone, skip
-        data["claude_session_id"] = session_id
-        data["model"] = model
-        with suppress(Exception):
-            entry.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -221,12 +192,14 @@ def main() -> int:
 
     try:
         # Write session_id + transcript_path to session_state so other hooks
-        # and the MCP server can find the transcript for title extraction.
+        # and the MCP server can read a one-shot session-id/model bridge.
         if session_id_raw:
             state_update: dict[str, Any] = {
                 "session_id": session_id_raw,
                 "atelier_root": str(_atelier_root()),
             }
+            if model:
+                state_update["model"] = model
             if transcript_path:
                 state_update["transcript_path"] = transcript_path
             _write_session_state(state_update)
@@ -237,10 +210,6 @@ def main() -> int:
         session_id: str | None = _active_session_id() or session_id_raw
         if not session_id:
             return 0
-
-        # Update all active MCP registration files for this workspace so the
-        # MCP server can read its session UUID from its own cached file.
-        _update_mcp_sessions(session_id, model, cwd or os.getcwd())
 
         _append_session_start_event(session_id, source, model, cwd, transcript_path)
     except Exception:
