@@ -36,7 +36,9 @@ PY
         return 1
     fi
 
-    mapfile -t profile_lines <<<"$output"
+    while IFS= read -r line; do
+        profile_lines+=("$line")
+    done <<<"$output"
     INSTALL_PROFILE="${profile_lines[0]:-}"
     ATELIER_INSTALL_PROFILE_WARNING="${profile_lines[1]:-}"
 
