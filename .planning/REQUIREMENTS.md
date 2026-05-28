@@ -167,11 +167,33 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LINEAGE-01–06 | Phase 8 | Pending |
-| CACHE-01–05 | Phase 9 | Pending |
-| COUNTER-01–05 | Phase 10 | Pending |
-| SCOPED-01–06 | Phase 11 | Pending |
-| CQEVAL-01–05 | Phases 8–11 | Pending |
+| LINEAGE-01 | Phase 8 | Pending |
+| LINEAGE-02 | Phase 8 | Pending |
+| LINEAGE-03 | Phase 8 | Pending |
+| LINEAGE-04 | Phase 8 | Pending |
+| LINEAGE-05 | Phase 8 | Pending |
+| LINEAGE-06 | Phase 8 | Pending |
+| CQEVAL-01 | Phase 8 | Pending |
+| CQEVAL-02 | Phase 8 | Pending |
+| CACHE-01 | Phase 9 | Pending |
+| CACHE-02 | Phase 9 | Pending |
+| CACHE-03 | Phase 9 | Pending |
+| CACHE-04 | Phase 9 | Pending |
+| CACHE-05 | Phase 9 | Pending |
+| CQEVAL-03 | Phase 9 | Pending |
+| COUNTER-01 | Phase 10 | Pending |
+| COUNTER-02 | Phase 10 | Pending |
+| COUNTER-03 | Phase 10 | Pending |
+| COUNTER-04 | Phase 10 | Pending |
+| COUNTER-05 | Phase 10 | Pending |
+| CQEVAL-04 | Phase 10 | Pending |
+| SCOPED-01 | Phase 11 | Pending |
+| SCOPED-02 | Phase 11 | Pending |
+| SCOPED-03 | Phase 11 | Pending |
+| SCOPED-04 | Phase 11 | Pending |
+| SCOPED-05 | Phase 11 | Pending |
+| SCOPED-06 | Phase 11 | Pending |
+| CQEVAL-05 | Phase 11 | Pending |
 
 **Coverage:**
 - v0.1 requirements: 47 total | Mapped: 47 | Unmapped: 0 ✓
