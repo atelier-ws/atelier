@@ -2,7 +2,7 @@
 phase: 08
 plan: "01b"
 title: "Engine Integration — Schema, Bootstrap, Search, Hook, Tests"
-status: pending
+status: complete
 created: 2025-07-15
 requires:
   - 08-01a-PLAN.md
