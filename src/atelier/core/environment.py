@@ -11,6 +11,8 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from atelier.bench.mode import is_off as _bench_is_off
+
 try:
     import tomllib
 except ImportError:  # pragma: no cover
@@ -91,6 +93,10 @@ def mcp_tool_description(tool_name: str, description: str | None) -> str:
 
 
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
+    # Bench-off overrides dev-mode — baseline arm must not see Atelier MCP tools.
+    # This check MUST run before is_dev_mode() (per MODE-04).
+    if _bench_is_off():
+        return False
     if is_dev_mode():
         return True
     return tool_name in STABLE_LLM_TOOLS
