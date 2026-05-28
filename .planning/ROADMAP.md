@@ -11,11 +11,11 @@
 
 - [x] **Phase 1: Bench-Mode Toggle** — Clean `ATELIER_BENCH_MODE` on/off toggle that gates router, compactor, memory, and MCP tools; unblocks every downstream phase
 - [x] **Phase 2: TerminalBench Adapter** — Isolated Python 3.12 workspace running TerminalBench tasks via `claude -p` subprocess, capturing full transcript + metrics per run (completed 2026-05-28)
-- [ ] **Phase 3: A/B Runner** — Interleaved N-rep execution with seeded determinism, resumability, and Wilson-score `summary.json`
-- [ ] **Phase 4: Report Generator** — Three delta plots (cost/latency/quality) and a `report.md` with methodology, headline table, transcript links, and explicit losses section
-- [ ] **Phase 5: Publication Pipeline** — `atelier bench publish` assembles a self-contained Docusaurus blog post; fixes `blog: false` in docusaurus.config.ts
-- [ ] **Phase 6: Long-Session Suite + User-Facing CLI** — Recall-rubric grader for 50/100/200-turn degradation, plus `atelier bench run --quick/--full` with Rich progress and cost gate
-- [ ] **Phase 7: PR-Replay Benchmarks** — `atelier bench run --pr <url>` replays any GitHub PR A/B with diff-quality scoring; non-Claude judge to avoid self-judging bias
+- [x] **Phase 3: A/B Runner** — Interleaved N-rep execution with seeded determinism, resumability, and Wilson-score `summary.json`
+- [x] **Phase 4: Report Generator** — Three delta plots (cost/latency/quality) and a `report.md` with methodology, headline table, transcript links, and explicit losses section
+- [x] **Phase 5: Publication Pipeline** — `atelier bench publish` assembles a self-contained Docusaurus blog post; fixes `blog: false` in docusaurus.config.ts
+- [x] **Phase 6: Long-Session Suite + User-Facing CLI** — Recall-rubric grader for 50/100/200-turn degradation, plus `atelier bench run --quick/--full` with Rich progress and cost gate
+- [x] **Phase 7: PR-Replay Benchmarks** — `atelier bench run --pr <url>` replays any GitHub PR A/B with diff-quality scoring; non-Claude judge to avoid self-judging bias
 
 ---
 
@@ -245,52 +245,52 @@ Plans:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODE-01 | Phase 1 | Pending |
-| MODE-02 | Phase 1 | Pending |
-| MODE-03 | Phase 1 | Pending |
-| MODE-04 | Phase 1 | Pending |
-| MODE-05 | Phase 1 | Pending |
-| MODE-06 | Phase 1 | Pending |
-| MODE-07 | Phase 1 | Pending |
-| MODE-08 | Phase 1 | Pending |
-| TB-01 | Phase 2 | Pending |
-| TB-02 | Phase 2 | Pending |
-| TB-03 | Phase 2 | Pending |
-| TB-04 | Phase 2 | Pending |
-| TB-05 | Phase 2 | Pending |
-| AB-01 | Phase 3 | Pending |
-| AB-02 | Phase 3 | Pending |
-| AB-03 | Phase 3 | Pending |
-| AB-04 | Phase 3 | Pending |
-| AB-05 | Phase 3 | Pending |
-| AB-06 | Phase 3 | Pending |
-| RPT-01 | Phase 4 | Pending |
-| RPT-02 | Phase 4 | Pending |
-| RPT-03 | Phase 4 | Pending |
-| RPT-04 | Phase 4 | Pending |
-| RPT-05 | Phase 4 | Pending |
-| RPT-06 | Phase 4 | Pending |
-| PUB-01 | Phase 5 | Pending |
-| PUB-02 | Phase 5 | Pending |
-| PUB-03 | Phase 5 | Pending |
-| PUB-04 | Phase 5 | Pending |
-| PUB-05 | Phase 5 | Pending |
-| LS-01 | Phase 6 | Pending |
-| LS-02 | Phase 6 | Pending |
-| LS-03 | Phase 6 | Pending |
-| LS-04 | Phase 6 | Pending |
-| CLI-01 | Phase 6 | Pending |
-| CLI-02 | Phase 6 | Pending |
-| CLI-03 | Phase 6 | Pending |
-| CLI-04 | Phase 6 | Pending |
-| CLI-05 | Phase 6 | Pending |
-| CLI-06 | Phase 6 | Pending |
-| PR-01 | Phase 7 | Pending |
-| PR-02 | Phase 7 | Pending |
-| PR-03 | Phase 7 | Pending |
-| PR-04 | Phase 7 | Pending |
-| PR-05 | Phase 7 | Pending |
-| PR-06 | Phase 7 | Pending |
+| MODE-01 | Phase 1 | Complete |
+| MODE-02 | Phase 1 | Complete |
+| MODE-03 | Phase 1 | Complete |
+| MODE-04 | Phase 1 | Complete |
+| MODE-05 | Phase 1 | Complete |
+| MODE-06 | Phase 1 | Complete |
+| MODE-07 | Phase 1 | Complete |
+| MODE-08 | Phase 1 | Complete |
+| TB-01 | Phase 2 | Complete | 
+| TB-02 | Phase 2 | Complete | 
+| TB-03 | Phase 2 | Complete | 
+| TB-04 | Phase 2 | Complete | 
+| TB-05 | Phase 2 | Complete | 
+| AB-01 | Phase 3 | Complete | 
+| AB-02 | Phase 3 | Complete | 
+| AB-03 | Phase 3 | Complete | 
+| AB-04 | Phase 3 | Complete | 
+| AB-05 | Phase 3 | Complete | 
+| AB-06 | Phase 3 | Complete | 
+| RPT-01 | Phase 4 | Complete | 
+| RPT-02 | Phase 4 | Complete | 
+| RPT-03 | Phase 4 | Complete | 
+| RPT-04 | Phase 4 | Complete | 
+| RPT-05 | Phase 4 | Complete | 
+| RPT-06 | Phase 4 | Complete | 
+| PUB-01 | Phase 5 | Complete | 
+| PUB-02 | Phase 5 | Complete | 
+| PUB-03 | Phase 5 | Complete | 
+| PUB-04 | Phase 5 | Complete | 
+| PUB-05 | Phase 5 | Complete | 
+| LS-01 | Phase 6 | Complete | 
+| LS-02 | Phase 6 | Complete | 
+| LS-03 | Phase 6 | Complete | 
+| LS-04 | Phase 6 | Complete | 
+| CLI-01 | Phase 6 | Complete | 
+| CLI-02 | Phase 6 | Complete | 
+| CLI-03 | Phase 6 | Complete | 
+| CLI-04 | Phase 6 | Complete | 
+| CLI-05 | Phase 6 | Complete | 
+| CLI-06 | Phase 6 | Complete | 
+| PR-01 | Phase 7 | Complete | 
+| PR-02 | Phase 7 | Complete | 
+| PR-03 | Phase 7 | Complete | 
+| PR-04 | Phase 7 | Complete | 
+| PR-05 | Phase 7 | Complete | 
+| PR-06 | Phase 7 | Complete | 
 
 **v1 coverage: 47/47 requirements mapped ✓**
 

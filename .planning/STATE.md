@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-last_updated: "2026-05-28T17:22:02.155Z"
+last_updated: "2026-05-28T00:00:00.000Z"
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 5
-  percent: 14
+  completed_phases: 7
+  total_plans: 7
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -17,25 +17,23 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.1
 **Updated:** 2026-05-28
-**Status:** Phase 1 complete — ready to execute Phase 2
+**Status:** ✅ All 7 phases complete
 
 ## Current Phase
 
-**Next up: Phase 2 — TerminalBench Adapter**
-
-Wave 2 complete: AtelierClaudeAgent + runner CLI + ANSI reporter.
+**All phases complete.** 71 benchmark tests passing.
 
 ## Roadmap Progress
 
 | Phase | Status | Goal |
 |-------|--------|------|
 | Phase 1 | ✅ Complete | Bench-mode toggle (MODE-01–08) |
-| Phase 2 | 🔄 In Progress | TerminalBench adapter (TB-01–05) |
-| Phase 3 | 🔲 Not started | A/B runner (AB-01–06) |
-| Phase 4 | 🔲 Not started | Report generator (RPT-01–06) |
-| Phase 5 | 🔲 Not started | Publication pipeline (PUB-01–05) |
-| Phase 6 | 🔲 Not started | Long-session suite + CLI (LS-01–04, CLI-01–06) |
-| Phase 7 | 🔲 Not started | PR-replay benchmarks (PR-01–06) |
+| Phase 2 | ✅ Complete | TerminalBench adapter (TB-01–05) |
+| Phase 3 | ✅ Complete | A/B runner (AB-01–06) |
+| Phase 4 | ✅ Complete | Report generator (RPT-01–06) |
+| Phase 5 | ✅ Complete | Publication pipeline (PUB-01–05) |
+| Phase 6 | ✅ Complete | Long-session suite + CLI (LS-01–04, CLI-01–06) |
+| Phase 7 | ✅ Complete | PR-replay benchmarks (PR-01–06) |
 
 ## Key Decisions Log
 
