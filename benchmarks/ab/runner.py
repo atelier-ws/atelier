@@ -23,6 +23,10 @@ from pathlib import Path
 
 def load_suite_tasks(suite: str, n_tasks: int) -> list[str]:
     """Return the first n_tasks task IDs for the given suite."""
+    if suite == "long_session":
+        from ab.suites.long_session import load_tasks
+
+        return load_tasks(n_tasks)
     if suite != "terminalbench":
         raise ValueError(f"Unknown suite: {suite!r}")
     tasks_yaml = Path(__file__).parent.parent / "terminalbench" / "tasks.yaml"

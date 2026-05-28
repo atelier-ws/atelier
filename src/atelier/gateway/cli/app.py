@@ -8969,6 +8969,70 @@ def bench_publish_cmd(run_dir: Path, out_dir: Path) -> None:
     assemble_post(run_dir, out_dir)
 
 
+@bench_group.command("run")
+@click.option("--suite", default="terminalbench", show_default=True, help="Benchmark suite name.")
+@click.option("--quick", is_flag=True, help="Quick mode: 1 task, N=2 (CLI-01).")
+@click.option("--full", is_flag=True, help="Full mode: 10 tasks, N=5 (CLI-02).")
+@click.option("--n", "n_reps", default=3, show_default=True, help="Repetitions per cell.")
+@click.option("--tasks", "n_tasks", default=5, show_default=True, help="Number of tasks.")
+@click.option("--models", "model", default="claude-sonnet-4-5", show_default=True)
+@click.option("--modes", default="on,off", show_default=True, help="Comma-separated bench modes.")
+@click.option("--seed", default=42, show_default=True)
+@click.option("--yes", "confirmed", is_flag=True, help="Skip cost confirmation (CLI-03).")
+@click.option("--no-cost-cap", is_flag=True, help="Remove $50 hard-stop (CLI-03).")
+@click.option("--out", "out_dir", type=click.Path(path_type=Path), default=None)
+def bench_run_cmd(
+    suite: str,
+    quick: bool,
+    full: bool,
+    n_reps: int,
+    n_tasks: int,
+    model: str,
+    modes: str,
+    seed: int,
+    confirmed: bool,
+    no_cost_cap: bool,
+    out_dir: Path | None,
+) -> None:
+    """Run an A/B benchmark suite comparing Atelier-on vs off (CLI-01 through CLI-06).
+
+    Results are stored under ~/.atelier/bench/<run-id>/ by default (CLI-05).
+    """
+    # Build a Click context and invoke
+    import sys
+
+    from benchmarks.ab.bench_run import main as _bench_run_main
+
+    argv = [
+        "run",
+        "--suite",
+        suite,
+        "--n",
+        str(n_reps),
+        "--tasks",
+        str(n_tasks),
+        "--models",
+        model,
+        "--modes",
+        modes,
+        "--seed",
+        str(seed),
+    ]
+    if quick:
+        argv.append("--quick")
+    if full:
+        argv.append("--full")
+    if confirmed:
+        argv.append("--yes")
+    if no_cost_cap:
+        argv.append("--no-cost-cap")
+    if out_dir is not None:
+        argv += ["--out", str(out_dir)]
+
+    sys.argv = argv
+    _bench_run_main(standalone_mode=False)  # type: ignore[call-arg]
+
+
 # --------------------------------------------------------------------------- #
 # governance                                                                   #
 # --------------------------------------------------------------------------- #
