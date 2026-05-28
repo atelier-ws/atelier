@@ -75,6 +75,50 @@
 - [ ] **PR-05**: Per-PR comparison table printed: cost, latency, diff similarity score, judge score per arm with delta
 - [ ] **PR-06**: Each replay produces a transcript JSON stored under `~/.atelier/bench/<run-id>/`
 
+## v0.2 Requirements — Context Quality Lift
+
+### Context Lineage
+
+- [ ] **LINEAGE-01**: Bootstrap walk summarises last 500 commits and persists to `commit_chunks` SQLite table; merge commits and commits with >50 files touched are skipped automatically
+- [ ] **LINEAGE-02**: Incremental update fires on next session start when new commits exist; walk is resumable if interrupted mid-way
+- [ ] **LINEAGE-03**: `code op="search"` merges commit chunks with symbol/file results; each commit result carries `provenance="commit"` and `commit_sha` fields
+- [ ] **LINEAGE-04**: `code op="search" provenance="commit"` filter returns only commit chunk results
+- [ ] **LINEAGE-05**: Summariser uses version-pinned prompt (`_PROMPT_V1`); bumping the version triggers re-summarisation of all commits
+- [ ] **LINEAGE-06**: Commit chunks get a small score penalty (configurable, default −0.1) so they don't crowd current-file results
+
+### Cache-Aware Routing
+
+- [ ] **CACHE-01**: `ModelRouter.recommend()` accepts optional `prior_plan`, `current_plan`, `prior_route`, `stickiness_remaining` arguments; existing callers compile without change
+- [ ] **CACHE-02**: Router stays on prior model when `cache_eviction_cost_usd > estimated_quality_gain_usd`
+- [ ] **CACHE-03**: Routes are sticky for a configurable window (default 3 follow-up tool calls) within a single agent turn; stickiness resets on new user-visible response
+- [ ] **CACHE-04**: Every `recommend()` call emits a `route_decision` event to the run ledger with `cache_cost_usd`, `quality_gain_usd_estimated`, `decision`, and `stickiness_remaining` fields
+- [ ] **CACHE-05**: New `cache_cost.py` pure function `cache_eviction_cost_usd(plan_a, plan_b, pricing)` and `stickiness.py` turn-window state module added
+
+### Counterexample Loop
+
+- [ ] **COUNTER-01**: `VerifierCapability` runs lint/typecheck/tests/semantic checks scoped to files touched by the agent in the current attempt
+- [ ] **COUNTER-02**: Each failure produces a structured `Counterexample` dataclass with `check`, `severity`, `file_path`, `line`, `diagnostic`, `expected`, `actual`, `repro_command` fields
+- [ ] **COUNTER-03**: Counterexamples injected as **tool-result channel** blocks (never system prompt); prompt compiler rejects `Counterexample` blocks with Stability ≥ BRANCH
+- [ ] **COUNTER-04**: Retry loop capped at 3 attempts per subtask; budget exhaustion calls `rescue.invoke(reason="verification_budget_exhausted")`
+- [ ] **COUNTER-05**: Test scoping: only tests whose paths match touched files run inside the loop; full-suite run is never triggered automatically
+
+### Scoped Pull Context
+
+- [ ] **SCOPED-01**: `ScopedContextCapability.pull(subtask: Subtask) → ScopedContext` returns ranked, budget-packed chunks within `subtask.budget_tokens` (default 4000)
+- [ ] **SCOPED-02**: Chunks from `subtask.excluded_paths` are never included in output
+- [ ] **SCOPED-03**: `ScopedContext` includes `rationale` (citing top candidate scores), `excluded` (every dropped candidate with reason), and `trace_id` fields
+- [ ] **SCOPED-04**: Results are cached by `hash(subtask.description + affected_paths + keywords + index_version)`; second call with identical `Subtask` returns cached result with `provenance="cached"`
+- [ ] **SCOPED-05**: `context op="pull"` MCP op registered; accepts `subtask`, `budget_tokens`, `affected_paths`, `excluded_paths` parameters
+- [ ] **SCOPED-06**: M1 commit chunks surface in scoped pull results when subtask description matches prior commit summaries
+
+### Cross-Milestone Evaluation
+
+- [ ] **CQEVAL-01**: `tests/benchmarks/context_quality/` suite exists with benchmark modules for M1–M4 and a README describing the internal eval protocol
+- [ ] **CQEVAL-02**: M1 benchmark (`M1_lineage.py`): ≥7/10 commit history queries answered correctly (baseline ≤2/10 expected)
+- [ ] **CQEVAL-03**: M2 benchmark (`M2_routing.py`): ≥10% cost reduction on 50 replayed session traces with no quality-tier regressions
+- [ ] **CQEVAL-04**: M3 benchmark (`M3_verification.py`): ≥60% self-correction rate on 20 seeded type-error edits (baseline ≤15% expected)
+- [ ] **CQEVAL-05**: M4 benchmark (`M4_scoped.py`): precision ≥0.6 and recall ≥0.85 on 20 multi-file edits from this repo's history
+
 ## v2 Requirements
 
 ### Enhanced PR-Replay
@@ -106,6 +150,8 @@
 
 ## Traceability
 
+### v0.1 (Public Benchmarks MVP)
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | MODE-01–08 | Phase 1 | Pending |
@@ -117,11 +163,20 @@
 | LS-01–04 | Phase 6 | Pending |
 | PR-01–06 | Phase 7 | Pending |
 
+### v0.2 (Context Quality Lift)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| LINEAGE-01–06 | Phase 8 | Pending |
+| CACHE-01–05 | Phase 9 | Pending |
+| COUNTER-01–05 | Phase 10 | Pending |
+| SCOPED-01–06 | Phase 11 | Pending |
+| CQEVAL-01–05 | Phases 8–11 | Pending |
+
 **Coverage:**
-- v1 requirements: 47 total
-- Mapped to phases: 47
-- Unmapped: 0 ✓
+- v0.1 requirements: 47 total | Mapped: 47 | Unmapped: 0 ✓
+- v0.2 requirements: 27 total | Mapped: 27 | Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-28 after initial definition*
+*Last updated: 2026-05-28 — v0.2 requirements added*
