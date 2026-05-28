@@ -22,9 +22,12 @@ not modified).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from atelier.core.capabilities.context_compression.minify import minify_source
+from atelier.core.capabilities.context_compression.models import MinificationDelta
 from atelier.core.capabilities.prefix_cache.diagnostics import PrefixCacheDiagnostics
 from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlanner
 from atelier.core.capabilities.prompt_compilation.models import (
@@ -65,6 +68,8 @@ class PhaseRunner:
         diag: PrefixCacheDiagnostics,
         prompts_dir: Path | None = None,
         model: str = "test-model",
+        read_tool: Callable[[str], tuple[str, str]] | None = None,
+        bootstrap_reads: dict[str, list[str]] | None = None,
     ) -> None:
         self.plan = plan
         self.provider = provider
@@ -73,6 +78,11 @@ class PhaseRunner:
         self.diag = diag
         self._prompts_dir = prompts_dir or _DEFAULT_PROMPTS_DIR
         self._model = model
+        # 13-02: optional read-tool callable + per-phase bootstrap read paths.
+        # Production wiring (real read tool) lands in plan 13-03 via the
+        # runtime engine; test fixtures supply in-memory stubs.
+        self._read_tool = read_tool
+        self._bootstrap_reads: dict[str, list[str]] = dict(bootstrap_reads or {})
         # D-06: load shell.md once and reuse by reference for byte stability.
         self._shell_prompt: str = (self._prompts_dir / "shell.md").read_text(encoding="utf-8")
         # Pre-load each phase objective; key by phase name.
@@ -123,6 +133,44 @@ class PhaseRunner:
         return {"tool": tool_name, "phase": phase.name, "payload": payload}
 
     # ------------------------------------------------------------------
+    # 13-02: reader/writer profile dispatch for read-tool bodies
+    # ------------------------------------------------------------------
+
+    def _apply_read_profile(
+        self,
+        phase: Phase,
+        path: str,
+        body: str,
+        lang: str,
+        *,
+        deltas: list[dict[str, Any]],
+    ) -> str:
+        """Route a read-tool body through the reader/writer profile (D-09, D-11).
+
+        Writer profile: return the body unchanged; no telemetry — the
+        implementer must see exact bytes (T-13-04).
+
+        Reader profile: pass through ``minify_source`` and append a
+        :class:`MinificationDelta` ``to_dict()`` to *deltas* so the
+        running phase's ``PhaseCacheStats.minify_deltas`` captures per-
+        read original/minified token counts for 13-04 attribution.
+
+        Pure transform — no I/O, no logging (T-13-02).
+        """
+        if phase.profile == "writer":
+            return body
+        minified, original_tokens, minified_tokens = minify_source(body, lang)
+        deltas.append(
+            MinificationDelta(
+                path=path,
+                lang=lang,
+                original_tokens=original_tokens,
+                minified_tokens=minified_tokens,
+            ).to_dict()
+        )
+        return minified
+
+    # ------------------------------------------------------------------
     # Internal: agent loop + block conversion
     # ------------------------------------------------------------------
 
@@ -136,6 +184,18 @@ class PhaseRunner:
         and the loop terminates. Multi-turn tool-call iteration lands in
         later plans (13-02+) where reader/writer tools become wired.
         """
+        # 13-02: bootstrap read-tool calls — apply reader/writer profile
+        # to each body, accumulate minify deltas for telemetry (D-09, D-11).
+        minify_deltas: list[dict[str, Any]] = []
+        if self._read_tool is not None:
+            for path in self._bootstrap_reads.get(phase.name, []):
+                body, lang = self._read_tool(path)
+                final_body = self._apply_read_profile(phase, path, body, lang, deltas=minify_deltas)
+                messages = [
+                    *messages,
+                    {"role": "tool", "name": "read", "path": path, "content": final_body},
+                ]
+
         text, in_tok, out_tok, cache_read, cache_write = self.provider.complete(messages)
         # Append a minimal assistant turn so blocks reflect what happened.
         messages = [*messages, {"role": "assistant", "content": text}]
@@ -168,6 +228,7 @@ class PhaseRunner:
             cache_read_input_tokens=cache_read,
             cache_creation_input_tokens=cache_write,
             invalidated_reason=plan_record.invalidated_reason,
+            minify_deltas=minify_deltas,
         )
         return messages, stats, text
 
