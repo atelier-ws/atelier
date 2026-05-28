@@ -58,3 +58,31 @@ class CompressionResult:
             dropped=[],
             token_savings=0,
         )
+
+
+@dataclass
+class MinificationDelta:
+    """Per-read minification telemetry (LINEAR-03, D-11).
+
+    Emitted by ``PhaseRunner._apply_read_profile`` for every reader-
+    profile read so the benchmark (13-04) can attribute savings
+    independently from cache reuse.
+    """
+
+    path: str
+    lang: str
+    original_tokens: int
+    minified_tokens: int
+
+    @property
+    def saved_tokens(self) -> int:
+        return max(0, self.original_tokens - self.minified_tokens)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "lang": self.lang,
+            "original_tokens": self.original_tokens,
+            "minified_tokens": self.minified_tokens,
+            "saved_tokens": self.saved_tokens,
+        }
