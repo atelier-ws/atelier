@@ -145,7 +145,11 @@ class ModelRouter:
         tool_name: str,
         task_text: str,
         session_state: Mapping[str, Any] | None = None,
-    ) -> ModelRecommendation:
+    ) -> ModelRecommendation | None:
+        from atelier.bench.mode import is_off as _bench_is_off
+
+        if _bench_is_off():
+            return None
         state = session_state or {}
         reasons: list[str] = []
         score = 0

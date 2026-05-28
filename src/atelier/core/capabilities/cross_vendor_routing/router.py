@@ -79,7 +79,11 @@ class CrossVendorRouter:
         task_text: str,
         session_state: Mapping[str, Any] | None = None,
         actual_vendor: str | None = None,
-    ) -> CrossVendorRecommendation:
+    ) -> CrossVendorRecommendation | None:
+        from atelier.bench.mode import is_off as _bench_is_off
+
+        if _bench_is_off():
+            return None
         enabled = tuple(v for v in self._config.enabled_vendors if v in self._configured_vendors)
         if not enabled:
             raise NoFeasibleRouteError("no enabled vendors are reachable through API keys or installed host CLIs")
@@ -166,6 +170,8 @@ class CrossVendorRouter:
             )
         router = _router_for_vendor(candidates)
         scored = router.score(tool_name, task_text, session_state)
+        if scored is None:
+            return None
         candidate = _candidate_for_model(candidates, scored.model)
         if candidate is None:
             return None
