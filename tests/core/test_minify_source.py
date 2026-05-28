@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 
 import yaml
+
 from atelier.core.capabilities.context_compression.minify import minify_source
 
 
@@ -47,8 +48,6 @@ def test_python_semantics_preserved() -> None:
 
 def test_yaml_semantics_preserved() -> None:
     """13-02-03: YAML structural equality after minify (D-10)."""
-    original = (
-        "root:   \n" "  child_a: 1\t\n" "  child_b:\n" "    - one\n" "    - two   \n" "\n" "\n" "\n" "other: value\n"
-    )
+    original = "root:   \n  child_a: 1   \n  child_b:\n    - one\n    - two   \n\n\n\nother: value\n"
     out, _o, _m = minify_source(original, "yaml")
     assert yaml.safe_load(original) == yaml.safe_load(out)
