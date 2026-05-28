@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-05-28T18:24:01.223Z"
 last_activity: 2026-05-28
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -16,15 +16,21 @@ progress:
 # Project State
 
 **Project:** Atelier Public Benchmarks
-**Milestone:** v0.1
+**Milestone:** v0.2 — Context Quality Lift
 **Updated:** 2026-05-28
-**Status:** ✅ All 7 phases complete
+**Status:** 🚀 v0.1 complete (7 phases) — v0.2 ready to start
 
 ## Current Phase
 
-**All phases complete.** 71 benchmark tests passing.
+**Upcoming: Phase 8 — Context Lineage**
+
+Next action: `/gsd-plan-phase 8`
+
+Phase 8 ships LLM-summarised commit history embedded alongside code chunks. It is the highest-leverage gap and unblocks Phase 11 (scoped pull context needs M1 commit chunks in the candidate set).
 
 ## Roadmap Progress
+
+### v0.1 (Complete)
 
 | Phase | Status | Goal |
 |-------|--------|------|
@@ -35,6 +41,15 @@ progress:
 | Phase 5 | ✅ Complete | Publication pipeline (PUB-01–05) |
 | Phase 6 | ✅ Complete | Long-session suite + CLI (LS-01–04, CLI-01–06) |
 | Phase 7 | ✅ Complete | PR-replay benchmarks (PR-01–06) |
+
+### v0.2 (Not started)
+
+| Phase | Status | Goal |
+|-------|--------|------|
+| Phase 8 | ⏳ Not started | Context Lineage (LINEAGE-01–06, CQEVAL-01–02) |
+| Phase 9 | ⏳ Not started | Cache-Aware Routing (CACHE-01–05, CQEVAL-03) |
+| Phase 10 | ⏳ Not started | Counterexample Loop (COUNTER-01–05, CQEVAL-04) |
+| Phase 11 | ⏳ Not started | Scoped Pull Context (SCOPED-01–06, CQEVAL-05) |
 
 ## Key Decisions Log
 

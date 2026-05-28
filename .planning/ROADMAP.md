@@ -316,3 +316,154 @@ Plans:
 *Roadmap created: 2026-05-28*
 *Milestone target: v0.1 public benchmarks MVP*
 *First report target: 2026-06-04 (D1–D5 critical path)*
+
+---
+
+## Milestone v0.2: Context Quality Lift
+
+**Goal:** Make the same underlying model measurably better at coding tasks by feeding it better-scoped, history-aware context — and by refusing to break the KV-cache for marginal routing wins.
+
+**Phases:**
+
+- [ ] **Phase 8: Context Lineage** — LLM-summarised commit history embedded alongside code chunks; agent can answer "why was this changed?" without reading raw git log
+- [ ] **Phase 9: Cache-Aware Routing** — Router stays on current model when KV-cache eviction cost exceeds quality gain; sticky routes within tool-call chains reduce cache-miss tail latency
+- [ ] **Phase 10: Counterexample Loop** — Per-step lint/type/test verification inside the agent loop; structured counterexamples fed back as tool-result blocks for self-correction before user sees failures
+- [ ] **Phase 11: Scoped Pull Context** — Explicit `context op="pull"` API returns minimal, budget-packed, subtask-scoped context; replaces broad session-start retrieval with a pull-model gradient toward tightness
+
+---
+
+### Phase 8: Context Lineage
+**Goal**: Every past commit in the repo is a retrievable, ranked context chunk — the agent can answer "why was this code changed?", "is there prior art for this pattern?", and "when did this regression appear?" without asking the host LLM to parse raw `git log` output.
+**Depends on**: Phase 7 (v0.1 complete; builds on existing `infra/code_intel/git_history/walker.py` and `code_context` SQLite store)
+**Requirements**: LINEAGE-01, LINEAGE-02, LINEAGE-03, LINEAGE-04, LINEAGE-05, LINEAGE-06, CQEVAL-01, CQEVAL-02
+
+**Key modules**:
+- `src/atelier/infra/code_intel/git_history/summarizer.py` (new) — commit → SemanticSummary via small LLM (Haiku 3.5 default)
+- `src/atelier/infra/code_intel/git_history/embedder.py` (new) — summary → vector, persist via intel_store
+- `src/atelier/core/capabilities/code_context/intel_store.py` (extend) — new `commit_chunks` SQLite table
+- `src/atelier/core/capabilities/code_context/engine.py` (extend) — `search_symbols()` merges commit_chunks with `provenance="commit"`
+- `tests/benchmarks/context_quality/` (new) — M1_lineage.py benchmark + README
+
+**Success Criteria** (what must be TRUE):
+  1. Full bootstrap walk completes on the Atelier repo without error and all 500 commits persist to the `commit_chunks` SQLite table; bootstrap is resumable if interrupted mid-walk
+  2. Incremental update fires automatically on next session start whenever new commits exist; merge commits and >50-file commits are skipped by default
+  3. `code op="search"` returns commit chunks merged into the ranked result list alongside symbol/file results; every commit result carries `provenance="commit"` and `commit_sha` fields
+  4. `code op="search" provenance="commit"` filter returns only commit chunk results (no symbol/file results bleed through)
+  5. M1 benchmark passes: ≥7/10 commit history queries answered with a correct citation; `tests/benchmarks/context_quality/` suite exists with README describing the eval protocol
+
+**Plans**: TBD
+
+---
+
+### Phase 9: Cache-Aware Routing
+**Goal**: The model router refuses to switch models when doing so would evict a KV-cache prefix whose reconstruction cost exceeds the estimated quality gain — and routes are sticky across a tool-call chain within a single agent turn, preventing cache thrashing.
+**Depends on**: Nothing (independent; wires existing `prefix_cache/planner.py` into existing `model_routing/router.py`)
+**Requirements**: CACHE-01, CACHE-02, CACHE-03, CACHE-04, CACHE-05, CQEVAL-03
+
+**Key modules**:
+- `src/atelier/core/capabilities/model_routing/cache_cost.py` (new) — pure function `cache_eviction_cost_usd(plan_a, plan_b, pricing)`
+- `src/atelier/core/capabilities/model_routing/stickiness.py` (new) — turn-window state; resets on new user-visible response
+- `src/atelier/core/capabilities/model_routing/router.py` (extend) — accept `prior_plan`, `current_plan`, `prior_route`, `stickiness_remaining` args; existing callers unchanged (all default to None)
+
+**Success Criteria** (what must be TRUE):
+  1. All existing callers of `ModelRouter.recommend()` compile and pass their tests without modification (new args are optional with None defaults)
+  2. When `cache_eviction_cost_usd > estimated_quality_gain_usd`, the router returns the prior model; when quality gain exceeds cache cost, it switches normally
+  3. Three consecutive tool-call `recommend()` invocations within one agent turn return the same model (stickiness window default = 3); stickiness counter resets when the agent emits a new user-visible response
+  4. Every `recommend()` call emits a `route_decision` event to the run ledger containing `cache_cost_usd`, `quality_gain_usd_estimated`, `decision`, and `stickiness_remaining` fields
+  5. M2 benchmark passes: ≥10% cost reduction on 50 replayed session traces with zero quality-tier regressions
+
+**Plans**: TBD
+
+---
+
+### Phase 10: Counterexample Loop
+**Goal**: When the agent produces code that fails a deterministic check (lint, typecheck, or scoped tests), the failure is fed back as a structured counterexample in the tool-result channel — giving the agent a second (and third) attempt to self-correct before the user sees any failure.
+**Depends on**: Nothing (independent; Phase 9 makes retries cheaper but is not a hard dependency)
+**Requirements**: COUNTER-01, COUNTER-02, COUNTER-03, COUNTER-04, COUNTER-05, CQEVAL-04
+
+**Key modules**:
+- `src/atelier/core/capabilities/verification/` (new) — `capability.py`, `counterexample.py`, `budget.py`, `checks/lint.py`, `checks/typecheck.py`, `checks/tests.py`, `checks/semantic_review.py`
+- `src/atelier/core/capabilities/proof_gate/capability.py` (extend) — accept verification trace as evidence
+
+**Success Criteria** (what must be TRUE):
+  1. `VerifierCapability` runs lint, typecheck, and test checks scoped exclusively to files touched by the agent in the current attempt (no full-suite trigger)
+  2. Each check failure produces a `Counterexample` dataclass with all required fields: `check`, `severity`, `file_path`, `line`, `diagnostic`, `expected`, `actual`, `repro_command`
+  3. Counterexample blocks are injected into the agent via the tool-result channel only; the prompt compiler rejects any `Counterexample` block carrying Stability ≥ BRANCH (enforced by assertion, not convention)
+  4. Retry loop caps at 3 attempts per subtask; on budget exhaustion `rescue.invoke(reason="verification_budget_exhausted")` is called — never silent failure
+  5. M3 benchmark passes: ≥60% self-correction rate on 20 seeded type-error edits (baseline ≤15% without counterexamples)
+
+**Plans**: TBD
+
+---
+
+### Phase 11: Scoped Pull Context
+**Goal**: The agent (and host CLIs) can call `context op="pull"` with a subtask description to receive a minimal, budget-packed, rationale-annotated context bundle scoped to that subtask — including relevant commit summaries from M1 — replacing over-broad session-start retrieval with a pull-model that pushes toward context tightness.
+**Depends on**: Phase 8 (SCOPED-06 requires M1 commit chunks in `search_symbols()` candidate set)
+**Requirements**: SCOPED-01, SCOPED-02, SCOPED-03, SCOPED-04, SCOPED-05, SCOPED-06, CQEVAL-05
+
+**Key modules**:
+- `src/atelier/core/capabilities/scoped_context/` (new) — `capability.py`, `models.py` (Subtask, ScopedContext, ContextBudget), `pull.py`, `prune.py`
+- MCP `context` tool (extend) — register `context op="pull"` accepting `subtask`, `budget_tokens`, `affected_paths`, `excluded_paths`
+
+**Success Criteria** (what must be TRUE):
+  1. `ScopedContextCapability.pull(subtask)` returns a `ScopedContext` with chunks ranked and packed within `subtask.budget_tokens` (default 4000); output token count never exceeds the budget
+  2. No chunk whose path matches `subtask.excluded_paths` appears in any `ScopedContext` output, regardless of its ranking score
+  3. `ScopedContext` includes `rationale` (citing top candidate scores), `excluded` (every dropped candidate with reason), and `trace_id`; a second call with an identical `Subtask` returns a cached result with `provenance="cached"`
+  4. `context op="pull"` MCP op is registered and accessible to host CLIs; M1 commit chunks surface in results when the subtask description matches prior commit summaries
+  5. M4 benchmark passes: precision ≥0.6 and recall ≥0.85 on 20 multi-file edits drawn from this repo's history
+
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+## Progress Table (v0.2)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 8. Context Lineage | 0/? | Not started | - |
+| 9. Cache-Aware Routing | 0/? | Not started | - |
+| 10. Counterexample Loop | 0/? | Not started | - |
+| 11. Scoped Pull Context | 0/? | Not started | - |
+
+---
+
+## Coverage (v0.2)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| LINEAGE-01 | Phase 8 | Pending |
+| LINEAGE-02 | Phase 8 | Pending |
+| LINEAGE-03 | Phase 8 | Pending |
+| LINEAGE-04 | Phase 8 | Pending |
+| LINEAGE-05 | Phase 8 | Pending |
+| LINEAGE-06 | Phase 8 | Pending |
+| CQEVAL-01 | Phase 8 | Pending |
+| CQEVAL-02 | Phase 8 | Pending |
+| CACHE-01 | Phase 9 | Pending |
+| CACHE-02 | Phase 9 | Pending |
+| CACHE-03 | Phase 9 | Pending |
+| CACHE-04 | Phase 9 | Pending |
+| CACHE-05 | Phase 9 | Pending |
+| CQEVAL-03 | Phase 9 | Pending |
+| COUNTER-01 | Phase 10 | Pending |
+| COUNTER-02 | Phase 10 | Pending |
+| COUNTER-03 | Phase 10 | Pending |
+| COUNTER-04 | Phase 10 | Pending |
+| COUNTER-05 | Phase 10 | Pending |
+| CQEVAL-04 | Phase 10 | Pending |
+| SCOPED-01 | Phase 11 | Pending |
+| SCOPED-02 | Phase 11 | Pending |
+| SCOPED-03 | Phase 11 | Pending |
+| SCOPED-04 | Phase 11 | Pending |
+| SCOPED-05 | Phase 11 | Pending |
+| SCOPED-06 | Phase 11 | Pending |
+| CQEVAL-05 | Phase 11 | Pending |
+
+**v0.2 coverage: 27/27 requirements mapped ✓**
+
+---
+
+*v0.2 roadmap appended: 2026-05-28*
+*Milestone target: v0.2 Context Quality Lift*
+*Build order: Phase 8 → Phase 9 → Phase 10 → Phase 11 (Phase 9 can run parallel with Phase 8)*
