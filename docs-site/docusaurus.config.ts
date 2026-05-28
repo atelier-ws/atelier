@@ -29,7 +29,12 @@ const config: Config = {
           sidebarPath: "./sidebars.ts",
           editUrl: undefined,
         },
-        blog: false,
+        blog: {
+          showReadingTime: true,
+          blogTitle: "Benchmarks",
+          blogDescription: "A/B benchmark reports comparing Atelier-on vs Atelier-off",
+          postsPerPage: "ALL",
+        },
         theme: {
           customCss: "./src/css/custom.css",
         },
@@ -54,6 +59,11 @@ const config: Config = {
           sidebarId: "docs",
           position: "left",
           label: "Docs",
+        },
+        {
+          to: "/blog",
+          label: "Benchmarks",
+          position: "left",
         },
         {
           href: "https://github.com/pankaj4u4m/atelier",
