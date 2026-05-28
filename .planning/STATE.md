@@ -3,19 +3,17 @@
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.1
 **Updated:** 2026-05-28
-**Status:** Ready to execute Phase 1
+**Status:** Phase 1 complete — ready to execute Phase 2
 
 ## Current Phase
 
-**Next up: Phase 1 — Bench-Mode Toggle** *(in progress)*
-
-No phases have been executed yet. Initialization complete.
+**Next up: Phase 2 — TerminalBench Adapter**
 
 ## Roadmap Progress
 
 | Phase | Status | Goal |
 |-------|--------|------|
-| Phase 1 | 🔲 Not started | Bench-mode toggle (MODE-01–08) |
+| Phase 1 | ✅ Complete | Bench-mode toggle (MODE-01–08) |
 | Phase 2 | 🔲 Not started | TerminalBench adapter (TB-01–05) |
 | Phase 3 | 🔲 Not started | A/B runner (AB-01–06) |
 | Phase 4 | 🔲 Not started | Report generator (RPT-01–06) |

@@ -9,7 +9,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Bench-Mode Toggle** — Clean `ATELIER_BENCH_MODE` on/off toggle that gates router, compactor, memory, and MCP tools; unblocks every downstream phase
+- [x] **Phase 1: Bench-Mode Toggle** — Clean `ATELIER_BENCH_MODE` on/off toggle that gates router, compactor, memory, and MCP tools; unblocks every downstream phase
 - [ ] **Phase 2: TerminalBench Adapter** — Isolated Python 3.12 workspace running TerminalBench tasks via `claude -p` subprocess, capturing full transcript + metrics per run
 - [ ] **Phase 3: A/B Runner** — Interleaved N-rep execution with seeded determinism, resumability, and Wilson-score `summary.json`
 - [ ] **Phase 4: Report Generator** — Three delta plots (cost/latency/quality) and a `report.md` with methodology, headline table, transcript links, and explicit losses section
