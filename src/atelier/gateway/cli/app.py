@@ -8944,6 +8944,32 @@ def team_audit_cmd(ctx: click.Context, since: str, as_json: bool) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# bench (A/B benchmarks)                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@cli.group("bench")
+def bench_group() -> None:
+    """A/B benchmark suites: run, publish, and compare Atelier-on vs off."""
+
+
+@bench_group.command("publish")
+@click.argument("run_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output blog post directory (e.g. docs-site/blog/my-bench/).",
+)
+def bench_publish_cmd(run_dir: Path, out_dir: Path) -> None:
+    """Assemble a Docusaurus blog post from an A/B run directory (PUB-01)."""
+    from benchmarks.ab.publish import assemble_post
+
+    assemble_post(run_dir, out_dir)
+
+
+# --------------------------------------------------------------------------- #
 # governance                                                                   #
 # --------------------------------------------------------------------------- #
 
