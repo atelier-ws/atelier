@@ -325,7 +325,7 @@ Plans:
 
 **Phases:**
 
-- [ ] **Phase 8: Context Lineage** — LLM-summarised commit history embedded alongside code chunks; agent can answer "why was this changed?" without reading raw git log
+- [x] **Phase 8: Context Lineage** — LLM-summarised commit history embedded alongside code chunks; agent can answer "why was this changed?" without reading raw git log
 - [ ] **Phase 9: Cache-Aware Routing** — Router stays on current model when KV-cache eviction cost exceeds quality gain; sticky routes within tool-call chains reduce cache-miss tail latency
 - [ ] **Phase 10: Counterexample Loop** — Per-step lint/type/test verification inside the agent loop; structured counterexamples fed back as tool-result blocks for self-correction before user sees failures
 - [ ] **Phase 11: Scoped Pull Context** — Explicit `context op="pull"` API returns minimal, budget-packed, subtask-scoped context; replaces broad session-start retrieval with a pull-model gradient toward tightness
@@ -421,7 +421,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 8. Context Lineage | 0/? | Not started | - |
+| 8. Context Lineage | 3/3 | Complete | 2025-07-15 |
 | 9. Cache-Aware Routing | 0/? | Not started | - |
 | 10. Counterexample Loop | 0/? | Not started | - |
 | 11. Scoped Pull Context | 0/? | Not started | - |

@@ -2,7 +2,7 @@
 phase: 08
 plan: "01a"
 title: "Core Infra — Models, Walker, Summarizer, Embedder"
-status: pending
+status: complete
 created: 2025-07-15
 requires: []
 requirements:
