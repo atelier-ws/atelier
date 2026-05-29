@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nightly-coverage
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash
@@ -16,7 +20,7 @@ jobs:
   coverage:
     name: Nightly coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
 
     steps:
       - name: Check out repository
