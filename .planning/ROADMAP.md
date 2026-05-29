@@ -722,7 +722,11 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
   4. Dedicated outlines only ship when parser availability and the existing 25% savings guard make them better than generic.
   5. Missing grammars or low-value outlines degrade cleanly to the generic path.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Generalize outline_text engine (unwrap descent + keep_first_line), tune bash, add TOML outline
+- [ ] 17-02-PLAN.md — Add SQL, YAML, JSON tree-sitter outline configs (depends on 17-01)
 
 ---
 
@@ -830,7 +834,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 16. Canonical Language Registry | 2/2 | Complete | 2026-05-29 |
-| 17. Tree-sitter Outline Coverage | 0/? | Not started | - |
+| 17. Tree-sitter Outline Coverage | 0/2 | Planned | - |
 | 18. Tree-sitter Repo-map Tags | 0/? | Not started | - |
 | 19. Expanded SCIP Registry and Lazy Indexing | 0/? | Not started | - |
 | 20. Runtime SCIP Indexer Provisioning | 0/? | Not started | - |
