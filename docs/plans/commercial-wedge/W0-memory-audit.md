@@ -1,6 +1,6 @@
 # W0 — Memory audit log: append-only ground truth
 
-> Parent: [`index.md`](index.md). Driving spec: [`day30/08-memory-audit-viewer.md`](../../../specs/day30/08-memory-audit-viewer.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day30/08-memory-audit-viewer.md`](../../specs/day30/08-memory-audit-viewer.md).
 > Prerequisite for W1 (rollback), W6 (team audit), W7 (audit export).
 
 ## Goal

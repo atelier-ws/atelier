@@ -106,6 +106,7 @@ class DomainManager:
             try:
                 return self.loader.load(user_path), user_path
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 logger.warning(
                     "Suppressed exception at manager.py:105",
                     exc_info=True,
@@ -116,6 +117,7 @@ class DomainManager:
             try:
                 return self.loader.load(builtin_path), builtin_path
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 logger.warning(
                     "Suppressed exception at manager.py:112",
                     exc_info=True,

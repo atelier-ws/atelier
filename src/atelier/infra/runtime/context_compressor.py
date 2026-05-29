@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ def _load_compression_hints() -> dict[str, Any]:
         hints = state.get("compression_hints")
         return hints if isinstance(hints, dict) else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
 
 

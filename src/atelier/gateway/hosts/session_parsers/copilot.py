@@ -489,6 +489,7 @@ class CopilotImporter:
                         }
                     )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         return index
 

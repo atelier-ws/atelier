@@ -255,6 +255,7 @@ def print_enforcement_gap(settings_path: Path | None = None) -> None:
             result: dict[str, Any] = _json.loads(path.read_text())
             return result
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return {}
 
     global_cfg = _load_settings(settings_path)
@@ -292,6 +293,7 @@ def print_enforcement_gap(settings_path: Path | None = None) -> None:
             # Best-effort: agent front-matter is optional/free-form, so a parse
             # failure just means no disallowedTools for this agent.
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 logger.debug("enforcement-gap front-matter parse failed", exc_info=True)
 
     src_label = f"{settings_path}" + (f"\n  project: {project_settings_path}" if project_settings_path.exists() else "")
@@ -374,6 +376,7 @@ def print_savings_events(atelier_root: Path | None = None) -> None:
                 f"  {ts}  \033[35m{tool:<20}\033[0m lever={lever:<20}  tok_saved={tok_str:<6}  cost_saved=${cost:.4f}"
             )
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             print(f"  \033[2m{line[:80]}\033[0m")
 
     all_events = []
@@ -442,6 +445,7 @@ def print_statusline_preview(atelier_root: Path | None = None) -> None:
         if err:
             print(f"  \033[2mstderr: {err[:200]}\033[0m")
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         print(f"  \033[31mError running statusline: {exc}\033[0m")
 
 

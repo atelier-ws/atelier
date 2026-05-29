@@ -8,10 +8,11 @@ input=$(cat)
 PLUGIN_LABEL="atelier"
 
 if command -v jq >/dev/null 2>&1; then
-  # IFS=$'\t' so spaces in fields like model display_name (e.g. "Opus 4.7")
-  # don't cause field-shift that corrupts SESSION_ID (the trailing variable
-  # otherwise swallows all remaining whitespace + tab + real id).
-  IFS=$'\t' read -r MODEL PCT COST DUR_MS IN_TOK OUT_TOK CACHE_R CACHE_W SESSION_ID MODEL_ID <<<"$(printf '%s' "$input" | jq -r '
+  # Use a non-whitespace delimiter so Bash preserves empty fields. With TSV,
+  # an absent session_id shifts model.id into SESSION_ID and leaks stale
+  # workspace savings into a brand-new statusline frame.
+  ATELIER_STATUS_DELIM=$'\037'
+  IFS="${ATELIER_STATUS_DELIM}" read -r MODEL PCT COST DUR_MS IN_TOK OUT_TOK CACHE_R CACHE_W SESSION_ID MODEL_ID <<<"$(printf '%s' "$input" | jq -r '
     [
       # MODEL = display_name for the UI label ("Opus 4.7")
       (.model.display_name // .model.id // "claude"),
@@ -25,7 +26,7 @@ if command -v jq >/dev/null 2>&1; then
       (.session_id // ""),
       # MODEL_ID = canonical id ("claude-opus-4-7") for pricing lookups
       (.model.id // .model.display_name // "")
-    ] | @tsv
+    ] | map(tostring) | join("\u001f")
   ' 2>/dev/null)"
   else
   read_field() {

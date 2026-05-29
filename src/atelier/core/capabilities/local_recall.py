@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -74,6 +75,7 @@ def _read_jsonl(path: Path) -> list[str]:
         try:
             payload = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         content = payload.get("content") or payload.get("message", {}).get("content")
         if isinstance(content, str):

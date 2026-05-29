@@ -116,6 +116,22 @@ def test_native_search_file_content_mode_honors_context_budget_tokens(tmp_path: 
     assert text_chars <= result["_meta"]["capChars"]
 
 
+def test_native_search_ranked_file_map_baseline_is_path_list(tmp_path: Path) -> None:
+    path = tmp_path / "big.py"
+    path.write_text("\n".join(f"line_{idx} = 'needle'" for idx in range(1000)), encoding="utf-8")
+
+    result = search_workspace(
+        path=".",
+        content_regex="needle",
+        file_glob_patterns=["*.py"],
+        output_mode="ranked_file_map",
+        repo_root=tmp_path,
+    )
+
+    assert result["_meta"]["fileMatchCount"] == 1
+    assert result["tokens_saved"] == 0
+
+
 def test_native_search_file_content_mode_spills_large_payload(tmp_path: Path, monkeypatch: Any) -> None:
     spill_dir = tmp_path / "spill"
     monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(spill_dir))

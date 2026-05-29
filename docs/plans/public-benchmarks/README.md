@@ -1,7 +1,7 @@
 # Public benchmarks — reproducible Atelier-on vs Atelier-off A/B
 
 Status: **active** · Initiated 2026-05-28 · Owner: coding agent
-Related: [../../../strategy.md](../../../strategy.md), [../../../roadmap.md](../../../roadmap.md), [../savings-honest-ab/README.md](../savings-honest-ab/README.md)
+Related: [../../strategy.md](../../strategy.md), [../../roadmap.md](../../roadmap.md), [../savings-honest-ab/README.md](../savings-honest-ab/README.md)
 
 ## Why
 

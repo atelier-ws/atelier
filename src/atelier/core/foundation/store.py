@@ -771,6 +771,7 @@ class ContextStore:
                     self.upsert_block(block, write_markdown=False)
                     results["blocks"] += 1
                 except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons block from %s: %s", path, exc)
                     continue
 
@@ -795,6 +796,7 @@ class ContextStore:
                     self.upsert_rubric(rubric, write_yaml=False)
                     results["rubrics"] += 1
                 except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons rubric from %s: %s", path, exc)
                     continue
 
@@ -816,6 +818,7 @@ class ContextStore:
             for rubric in load_packaged_rubrics():
                 self.upsert_rubric(rubric, write_yaml=False)
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.warning("failed to seed packaged rubrics: %s", exc)
 
     def _sync_manifest_path(self, kind: str) -> Path:
@@ -829,6 +832,7 @@ class ContextStore:
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 return {k: int(v) for k, v in raw.items() if isinstance(v, int)}
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 return {}
         return {}
 
@@ -1251,8 +1255,32 @@ class ContextStore:
     def claim_job(self, worker_id: str | None = None) -> dict[str, Any] | None:
         claimed_by = worker_id or f"sqlite-{os.getpid()}"
         now = datetime.now(UTC).isoformat()
+        lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
+        lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
+        lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            # Reap orphaned jobs before claiming. A worker that crashes mid-job
+            # leaves its row stuck in 'running' forever (the lease is never
+            # released), and because the servicectl enqueue guard treats
+            # 'running'/'failed' as active, a single orphan blocks all future
+            # enqueues of that job type indefinitely. Reclaim any 'running' job
+            # whose lease expired so it retries, or dead-letters once attempts
+            # are exhausted -- the queue self-heals instead of jamming.
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = CASE WHEN attempts >= max_attempts THEN 'dead' ELSE 'failed' END,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    error = 'lease expired: worker did not finish (reaped)',
+                    updated_at = ?
+                WHERE status = 'running'
+                  AND locked_at IS NOT NULL
+                  AND locked_at < ?
+                """,
+                (now, lease_cutoff),
+            )
             row = conn.execute("""
                 SELECT *
                 FROM jobs

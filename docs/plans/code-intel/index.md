@@ -2,7 +2,7 @@
 
 > Status: **Active** — created 2026-05-18, revised 2026-05-18 (grounded).
 > Owner: unassigned.
-> ADR: [`../../decisions/001-symbol-first-mcp.md`](../../../decisions/001-symbol-first-mcp.md).
+> ADR: [`../../decisions/001-symbol-first-mcp.md`](../../decisions/001-symbol-first-mcp.md).
 > Tasks: see `TaskList` (numbered M0–M18).
 
 > ⚠️ **Read [`grounding.md`](grounding.md) before any milestone file.** This

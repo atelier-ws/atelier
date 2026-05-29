@@ -86,15 +86,17 @@ run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 # --------------------------------------------------------------------------- #
 # Atelier enforcement lists
 #
-# DENY_TOOLS: native tools that Atelier provides a replacement for. Listing
-# them in permissions.deny removes them from the model's effective toolbelt
-# (Claude Code blocks invocation at the harness layer). Bash is denied too
-# because that's the biggest "leak" path (subshell grep/cat/find); the
-# scoped Bash(*) patterns in ATELIER_BASH_ALLOWS_JSON keep legitimate
-# git / gh / uv / make / npm usage working.
+# DENY_TOOLS: optional native-tool hard deny list. Keep this empty by default
+# so Claude can ask the user for permission when the model reaches for native
+# tools. Set ATELIER_ENFORCE_NATIVE_DENY=1 to hide/block native tools at the
+# harness layer for locked-down installs.
 # --------------------------------------------------------------------------- #
-ATELIER_DENY_TOOLS_JSON='["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]'
-ATELIER_MCP_TOOLS_JSON='["mcp__atelier__code", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
+if [[ "${ATELIER_ENFORCE_NATIVE_DENY:-0}" == "1" ]]; then
+    ATELIER_DENY_TOOLS_JSON='["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]'
+else
+    ATELIER_DENY_TOOLS_JSON='[]'
+fi
+ATELIER_MCP_TOOLS_JSON='["mcp__atelier__symbols", "mcp__atelier__node", "mcp__atelier__callers", "mcp__atelier__callees", "mcp__atelier__usages", "mcp__atelier__impact", "mcp__atelier__pattern", "mcp__atelier__explore", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
 ATELIER_BASH_ALLOWS_JSON='["Bash(git *)", "Bash(gh *)", "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)", "Bash(uv run ruff *)", "Bash(uv run atelier *)", "Bash(uv run uvicorn *)", "Bash(uv sync *)", "Bash(uv add *)", "Bash(uv pip *)", "Bash(uv lock *)", "Bash(npm run *)", "Bash(npm install *)", "Bash(npm test *)", "Bash(npx tsc *)", "Bash(make *)", "Bash(docker-compose *)", "Bash(docker compose *)"]'
 
 # --------------------------------------------------------------------------- #
@@ -491,10 +493,9 @@ PYEOF
     rm -f "${HOOK_SCRIPT}"
 fi
 
-# ---- permissions: deny native + allow Atelier MCP (and scoped Bash) --------
-# This is the always-on enforcement layer. Previously gated behind --project;
-# now applied to the active Claude settings.json so the model can't reach
-# for native Read/Grep/Glob/Edit/Write/Bash when an Atelier equivalent exists.
+# ---- permissions: allow Atelier MCP (and optionally deny native tools) ------
+# By default this preserves Claude's normal permission prompt for native tools.
+# Set ATELIER_ENFORCE_NATIVE_DENY=1 for locked-down installs.
 apply_enforcement_to_settings "${CLAUDE_SETTINGS}"
 
 # ---- statusLine setting in ~/.claude/settings.json -------------------------

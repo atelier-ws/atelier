@@ -1,6 +1,6 @@
 # W7 — Audit export + governance policy enforcement
 
-> Parent: [`index.md`](index.md). Driving spec: [`day90/12-team-tier.md`](../../../specs/day90/12-team-tier.md) + [`day30/08-memory-audit-viewer.md`](../../../specs/day30/08-memory-audit-viewer.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day90/12-team-tier.md`](../../specs/day90/12-team-tier.md) + [`day30/08-memory-audit-viewer.md`](../../specs/day30/08-memory-audit-viewer.md).
 > Depends on: **W1** (audit log + rollback events), **W5** (typed lesson decisions), **W6** (team scope).
 > Closes the commercial-wedge plan.
 

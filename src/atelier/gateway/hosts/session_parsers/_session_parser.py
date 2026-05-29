@@ -12,6 +12,7 @@ Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"gemini"``, ``"c
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import re
 from datetime import UTC, datetime
@@ -106,6 +107,7 @@ def _extract_claude_session_id(content: str) -> str:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         sid = ev.get("sessionId")
         if isinstance(sid, str) and sid.strip():
@@ -501,6 +503,7 @@ def _coerce_jsonish(value: Any) -> Any:
         try:
             return json.loads(stripped)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return value
     return value
 
@@ -690,6 +693,7 @@ def _summarize_claude_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("type") != "assistant":
             continue
@@ -735,6 +739,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         if et == "turn_context":
@@ -811,6 +816,7 @@ def _summarize_copilot_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         data = ev.get("data") or {}
@@ -891,6 +897,7 @@ def _summarize_gemini_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("type") != "gemini":
             continue
@@ -925,6 +932,7 @@ def _summarize_opencode_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("_type") != "message":
             continue
@@ -993,6 +1001,7 @@ def _parse_normalized_session(content: str) -> list[dict[str, Any]]:
         try:
             event = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if event.get("type") != "message":
             continue
@@ -1112,6 +1121,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
         et = ev.get("type", "")
@@ -1418,6 +1428,7 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
                 fmt = "flat"
                 break
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
     turns = _parse_codex_format_a(content) if fmt == "event_msg" else _parse_codex_format_b(content)
@@ -1440,6 +1451,7 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
                     )
                     break
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
     return turns
@@ -1452,6 +1464,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         ev_type = ev.get("type")
         if ev_type not in {"event_msg", "response_item"}:
@@ -1618,6 +1631,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -1745,6 +1759,7 @@ def _parse_gemini(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         mid = str(ev.get("id") or "")
         et = ev.get("type")
@@ -1923,6 +1938,7 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -2145,6 +2161,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         _type = ev.get("_type", "")
         data = ev.get("data") or {}

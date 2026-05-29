@@ -50,7 +50,7 @@ def _read_session_state() -> dict[str, Any]:
     try:
         data = json.loads(p.read_text("utf-8"))
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -90,19 +90,16 @@ def _apply_session_bootstrap(payload: dict[str, Any]) -> bool:
         return False
     try:
         from atelier.core.capabilities.plugin_runtime import apply_session_start_files
-    except Exception:
+    except (ImportError, AttributeError):
         return False
     with suppress(Exception):
-        result = apply_session_start_files(
+        apply_session_start_files(
             _atelier_root(),
             plugin_root,
             config_dir=_claude_settings_path().parent,
             payload=payload,
             current_version=os.environ.get("ATELIER_VERSION", "0.0.0"),
         )
-        stdout = result.get("stdout") if isinstance(result, dict) else None
-        if stdout:
-            print(json.dumps(stdout) if isinstance(stdout, dict) else str(stdout))
         return True
     return False
 
@@ -112,7 +109,7 @@ def _initialize_session_stats(payload: dict[str, Any]) -> None:
         from atelier.core.capabilities.plugin_runtime import update_session_stats
 
         update_session_stats(_atelier_root(), payload)
-    except Exception:
+    except (OSError, json.JSONDecodeError, TypeError):
         pass
 
 
@@ -135,7 +132,7 @@ def _append_session_start_event(
 
     try:
         data = json.loads(run_file.read_text("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -168,7 +165,7 @@ def _append_session_start_event(
             json.dump(data, tmp, indent=2)
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
-    except Exception:
+    except OSError:
         if tmp_path:
             with suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
@@ -182,7 +179,7 @@ def _append_session_start_event(
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         return 0
 
     session_id_raw: str = payload.get("session_id", "") or ""
@@ -213,8 +210,16 @@ def main() -> int:
             return 0
 
         _append_session_start_event(session_id, source, model, cwd, transcript_path)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass  # fail-open
+
+    # Autopilot (M5): warm relevant prior context for this repo. Fail-open.
+    try:
+        from atelier.core.capabilities.autopilot.factory import run_and_emit
+
+        run_and_emit("session_start", {"cwd": cwd})
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
 
     return 0
 

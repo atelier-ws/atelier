@@ -39,6 +39,7 @@ def _make_client() -> Any:
             return None
         return Langfuse(public_key=public_key, secret_key=secret_key, host=host)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return None
 
 
@@ -87,6 +88,7 @@ def emit_trace(payload: dict[str, Any]) -> None:
         )
         client.flush()
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at langfuse.py:86",
             exc_info=True,

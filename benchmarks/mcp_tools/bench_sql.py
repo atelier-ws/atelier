@@ -20,7 +20,6 @@ from benchmarks.mcp_tools.cases.sql import SQL_CASES
 from benchmarks.mcp_tools.harness import BenchCase, CaseResult, ToolReport, run_case
 from benchmarks.mcp_tools.reporter import render_summary
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -49,6 +48,7 @@ def sql_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture(scope="session")
 def sql_tool_fn() -> Any:
     from atelier.gateway.adapters.mcp_server import tool_sql
+
     return tool_sql
 
 
@@ -120,6 +120,6 @@ def test_sql_op_saves_tokens(case: BenchCase, sql_bench_results: list[CaseResult
     result = _find(sql_bench_results, case.label)
     if not result.passed:
         pytest.skip(f"skipping savings check — op failed: {result.failure}")
-    assert result.atelier_tokens < case.baseline_tokens, (
-        f"[{case.label}] no savings: atelier={result.atelier_tokens} >= baseline={case.baseline_tokens}"
-    )
+    assert (
+        result.atelier_tokens < case.baseline_tokens
+    ), f"[{case.label}] no savings: atelier={result.atelier_tokens} >= baseline={case.baseline_tokens}"

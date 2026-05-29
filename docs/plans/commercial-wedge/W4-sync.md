@@ -1,6 +1,6 @@
 # W4 — Cross-machine sync (encrypted, manual)
 
-> Parent: [`index.md`](index.md). Driving spec: [`day30/06-cross-machine-sync.md`](../../../specs/day30/06-cross-machine-sync.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day30/06-cross-machine-sync.md`](../../specs/day30/06-cross-machine-sync.md).
 > Blocks: W6 (team workspace = shared sync namespace). Renames the existing telemetry path so the user-facing `sync` namespace is unambiguous.
 
 ## Goal

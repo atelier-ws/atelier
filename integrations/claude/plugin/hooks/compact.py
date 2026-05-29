@@ -57,7 +57,7 @@ def _read_session_state() -> dict[str, Any]:
         if isinstance(data, dict):
             return data
         return {}
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         return {}
 
 
@@ -110,7 +110,7 @@ def _ensure_compact_manifest(session_id: str) -> Path:
             "handover_file": None,
             "suggested_prompt": "Compact this conversation.",
         }
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError, TypeError):
             manifest_path.write_text(json.dumps(initial, indent=2), encoding="utf-8")
 
     return manifest_path
@@ -125,7 +125,7 @@ def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
             data = json.loads(manifest_path.read_text("utf-8"))
             if isinstance(data, dict):
                 return data
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         pass
     return None
 
@@ -146,7 +146,7 @@ def _append_compact_event(
 
     try:
         data = json.loads(run_file.read_text("utf-8"))
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -179,9 +179,9 @@ def _append_compact_event(
             json.dump(data, tmp, indent=2)
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         if tmp_path:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 Path(tmp_path).unlink(missing_ok=True)
 
 
@@ -223,7 +223,7 @@ def _handle_post_compact(session_id: str, trigger: str) -> None:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except json.JSONDecodeError:
         return 0
 
     hook_event: str = payload.get("hook_event_name", "") or ""
@@ -241,7 +241,7 @@ def main() -> int:
             _handle_pre_compact(session_id, trigger)
         elif hook_event == "PostCompact":
             _handle_post_compact(session_id, trigger)
-    except Exception:
+    except (OSError, ValueError, TypeError):
         pass  # Fail-open
 
     return 0

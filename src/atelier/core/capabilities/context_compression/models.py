@@ -62,11 +62,10 @@ class CompressionResult:
 
 @dataclass
 class MinificationDelta:
-    """Per-read minification telemetry (LINEAR-03, D-11).
+    """Per-read minification telemetry.
 
-    Emitted by ``PhaseRunner._apply_read_profile`` for every reader-
-    profile read so the benchmark (13-04) can attribute savings
-    independently from cache reuse.
+    Emitted for every minified read so token savings can be attributed
+    independently from any cache reuse.
     """
 
     path: str

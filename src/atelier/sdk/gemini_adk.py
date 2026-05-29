@@ -105,7 +105,8 @@ class GeminiADKMiddleware:
                 prefix_hash = plan.prefix_hash
                 prefix_invalidated_reason = plan.invalidated_reason
                 self._prior_prefix_hash = prefix_hash
-        except Exception:  # noqa: BLE001 — best-effort prefix-cache capture, must not break host model call
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("gemini prefix-cache capture failed", exc_info=True)
 
         self._ledger.record_call(

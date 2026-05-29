@@ -1,6 +1,6 @@
 # W1 — Memory rollback + provenance (`why`)
 
-> Parent: [`index.md`](index.md). Driving spec: [`day30/08-memory-audit-viewer.md`](../../../specs/day30/08-memory-audit-viewer.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day30/08-memory-audit-viewer.md`](../../specs/day30/08-memory-audit-viewer.md).
 > Depends on: **W0** (audit log + snapshotter).
 
 ## Goal

@@ -12,6 +12,7 @@ Security notes:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import ssl
 import urllib.error
@@ -73,6 +74,7 @@ class RemoteClient:
             try:
                 err_body = exc.read(_MAX_BODY_BYTES).decode(errors="replace")
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 err_body = ""
             return {"ok": False, "error": f"HTTP {exc.code}", "detail": err_body}
         except urllib.error.URLError as exc:
@@ -80,6 +82,7 @@ class RemoteClient:
         except TimeoutError:
             return {"ok": False, "error": "timeout", "detail": f"exceeded {self._timeout}s"}
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             return {"ok": False, "error": "client error", "detail": str(exc)}
 
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:

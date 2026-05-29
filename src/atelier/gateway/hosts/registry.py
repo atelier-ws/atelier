@@ -140,6 +140,7 @@ class HostRegistry:
                     registration = HostRegistration(**data)
                     self._hosts[str(registration.host_id)] = registration
                 except Exception as e:
+                    logging.exception("Recovered from broad exception handler")
                     # Log warning but continue
                     logger.warning("Failed to load %s: %s", file, e, exc_info=True)
 

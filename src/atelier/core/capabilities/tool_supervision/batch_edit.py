@@ -14,6 +14,7 @@ Safety protocol enforced here:
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import uuid
 from pathlib import Path
@@ -161,6 +162,7 @@ def apply_batch_edit(
         try:
             resolved = _resolve_path(str(raw_path), repo_root)
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             failed.append({"path": str(raw_path), "error": str(exc)})
             if atomic:
                 return {"applied": [], "failed": failed, "rolled_back": True}
@@ -228,6 +230,7 @@ def apply_batch_edit(
             )
 
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             failed.append({"path": str(edit.get("path", resolved_path)), "error": str(exc)})
             if atomic:
                 # Roll back all applied edits from backup.

@@ -392,6 +392,7 @@ def servicectl_status(ctx: click.Context, as_json: bool) -> None:
                     click.echo("-" * 40)
                     break
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 logger.warning(
                     "Suppressed exception at cli.py:4346",
                     exc_info=True,
