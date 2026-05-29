@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Dedicated Language Support
-status: planning
-last_updated: "2026-05-29T09:21:49.708Z"
-last_activity: 2026-05-29 -- Milestone v0.4 roadmap ready; Phase 16 ready
+status: executing
+last_updated: "2026-05-29T09:56:18.210Z"
+last_activity: 2026-05-29 -- Phase 16 planning complete
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -18,15 +18,15 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.4 — Dedicated Language Support
 **Updated:** 2026-05-29
-**Status:** Ready to plan Phase 16
+**Status:** Ready to execute
 
 ## Current Phase
 
-**Upcoming: Phase 16 — Canonical Language Registry**
+**Current: Phase 16 — Canonical Language Registry**
 
-Next action: `/gsd-plan-phase 16`
+Next action: `/gsd-execute-phase 16`
 
-Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 should add the canonical language registry that unifies extension detection, tree-sitter outline keys, repo-map tag detection, and SCIP binary lookup.
+Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 has 2 verified plans ready to execute for the canonical language registry that unifies extension detection, tree-sitter outline keys, repo-map tag detection, and SCIP binary lookup.
 
 ## Roadmap Progress
 
@@ -64,7 +64,7 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 
 | Phase | Status | Goal |
 |-------|--------|------|
-| Phase 16 | ⏳ Not started | Canonical Language Registry (DLS-LANG-01–04) |
+| Phase 16 | 📋 Planned | Canonical Language Registry (DLS-LANG-01–04) |
 | Phase 17 | ⏳ Not started | Tree-sitter Outline Coverage (DLS-OUTLINE-01–05) |
 | Phase 18 | ⏳ Not started | Tree-sitter Repo-map Tags (DLS-TAGS-01–04) |
 | Phase 19 | ⏳ Not started | Expanded SCIP Registry and Lazy Indexing (DLS-SCIP-01–04) |
@@ -123,7 +123,7 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 
 ## Current Position
 
-Phase: 16 (Canonical Language Registry) — READY TO PLAN
-Plan: —
-Status: Ready to plan
-Last activity: 2026-05-29 -- Milestone v0.4 roadmap ready; Phase 16 ready
+Phase: 16 (Canonical Language Registry) — READY TO EXECUTE
+Plans: 2
+Status: Ready to execute
+Last activity: 2026-05-29 -- Phase 16 planning complete
