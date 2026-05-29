@@ -22,6 +22,22 @@ from atelier.core.capabilities import (
     SemanticFileMemoryCapability,
     ToolSupervisionCapability,
 )
+
+# Phase 13 (LINEAR-04): mode dispatch primitives. Additive imports — must not
+# disturb the existing dirty hunks captured in
+# .planning/phases/13-phase-linear-cache-reuse-agent/dirty-snapshots/runtime_engine.diff.
+from atelier.core.capabilities.context_reuse.models import (
+    PhaseCacheStats,
+    PhasePlan,
+    PhaseResult,
+    RunMode,
+)
+from atelier.core.capabilities.context_reuse.phase_runner import (
+    _DEFAULT_PROMPTS_DIR as _PHASE_PROMPTS_DIR,
+)
+from atelier.core.capabilities.context_reuse.phase_runner import PhaseRunner
+from atelier.core.capabilities.prefix_cache.diagnostics import PrefixCacheDiagnostics
+from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlanner
 from atelier.core.capabilities.tool_supervision.sql_inspect import SqlInspectCapability
 from atelier.core.foundation.paths import default_store_root, resolve_workspace_root
 from atelier.core.foundation.renderer import render_context_for_agent
@@ -36,6 +52,10 @@ from atelier.core.foundation.retriever import (
 from atelier.core.foundation.routing_models import RouteDecision, StepType, TaskType
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.runtime.run_ledger import RunLedger
+
+# Phase 13 (LINEAR-04): empirically-tuned ceiling for AUTO→linear selection.
+# Plan 13-04 benchmark will revise this constant from real cache_read deltas.
+LINEAR_PREFIX_THRESHOLD: int = 60_000
 
 
 class AtelierRuntimeCore:
@@ -934,6 +954,132 @@ class AtelierRuntimeCore:
                 if match:
                     edges.append({"from": table, "to": match.group(1)})
         return edges
+
+    # ------------------------------------------------------------------
+    # Phase 13 (LINEAR-04): run_phased mode dispatch (D-12, D-13, D-14)
+    # ------------------------------------------------------------------
+
+    def run_phased(
+        self,
+        plan: PhasePlan,
+        *,
+        mode: RunMode = RunMode.AUTO,
+        projected_prefix_tokens: int = 0,
+        divergence_signal: bool = False,
+    ) -> dict[str, Any]:
+        """Dispatch a ``PhasePlan`` through linear or per-agent execution.
+
+        D-12: explicit ``RunMode.LINEAR``/``RunMode.PER_AGENT`` are honored
+        exactly. D-13: ``RunMode.AUTO`` selects per_agent when the projected
+        prefix exceeds ``LINEAR_PREFIX_THRESHOLD`` or when
+        ``divergence_signal`` is True. D-14: the per_agent path writes one
+        ledger row per phase (``cache_read_tokens=0``) so the Plan 13-04
+        benchmark arms produce comparable telemetry.
+
+        T-13-03: this method does not mutate the system prompt or cache
+        prefix; ``_resolve_run_mode`` is pure and only selects an executor.
+        """
+        chosen = self._resolve_run_mode(mode, projected_prefix_tokens, divergence_signal)
+        if chosen is RunMode.LINEAR:
+            return {"mode": "linear", "results": self._build_phase_runner(plan).run()}
+        return {"mode": "per_agent", "results": self._run_per_agent(plan)}
+
+    def _resolve_run_mode(
+        self,
+        mode: RunMode,
+        prefix_tokens: int,
+        divergence: bool,
+    ) -> RunMode:
+        """Pure mode-selection helper (T-13-03: no I/O, no prompt mutation)."""
+        if mode is not RunMode.AUTO:
+            return mode
+        if divergence or prefix_tokens > LINEAR_PREFIX_THRESHOLD:
+            return RunMode.PER_AGENT
+        return RunMode.LINEAR
+
+    def _build_phase_runner(self, plan: PhasePlan) -> PhaseRunner:
+        """Construct a ``PhaseRunner`` wired to the engine's provider/ledger.
+
+        T-13-01: this factory does not override per-phase profiles; profile
+        enforcement remains inside ``PhaseRunner._allowed_tools``.
+
+        Production wiring requires ``self._provider`` and ``self._ledger``
+        to be set by the caller (e.g., Plan 13-04's benchmark harness). In
+        tests this method is monkeypatched. A route-aware AUTO selector
+        beyond the prefix-tokens/divergence guard is deferred to Plan 13-04.
+        """
+        provider = getattr(self, "_provider", None)
+        if provider is None:
+            raise NotImplementedError("provider not wired for linear arm")
+        ledger = getattr(self, "_ledger", None)
+        if ledger is None:
+            raise NotImplementedError("ledger not wired for linear arm")
+        return PhaseRunner(
+            plan,
+            provider=provider,
+            ledger=ledger,
+            planner=PrefixCachePlanner(),
+            diag=PrefixCacheDiagnostics(),
+            prompts_dir=_PHASE_PROMPTS_DIR,
+        )
+
+    def _run_per_agent(self, plan: PhasePlan) -> dict[str, PhaseResult]:
+        """Per-phase one-shot baseline — no cross-phase cache reuse (D-14).
+
+        Each phase gets a fresh ``[system, user]`` message list (the same
+        ``shell.md`` byte-stable header used by ``PhaseRunner`` so the two
+        arms are apples-to-apples) and a single ``provider.complete`` call.
+        One ledger row per phase is emitted with ``cache_read_tokens=0``;
+        that zero is the point of the baseline — per_agent gets no
+        cross-phase cache reuse, and the Plan 13-04 reporter aggregates
+        these rows alongside the linear arm.
+
+        T-13-03: per-phase message list is freshly constructed; no shared
+        cache breakpoint is created or mutated.
+        """
+        provider = getattr(self, "_provider", None)
+        if provider is None:
+            raise NotImplementedError("provider not wired for per_agent arm")
+        ledger = getattr(self, "_ledger", None)
+        if ledger is None:
+            raise NotImplementedError("ledger not wired for per_agent arm")
+
+        shell_text = (_PHASE_PROMPTS_DIR / "shell.md").read_text(encoding="utf-8")
+        results: dict[str, PhaseResult] = {}
+        for phase_name in plan.iter_order():
+            phase = plan.phases[phase_name]
+            target = phase.objective_path or f"{phase_name}.md"
+            objective_text = (_PHASE_PROMPTS_DIR / target).read_text(encoding="utf-8")
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": shell_text},
+                {"role": "user", "content": objective_text},
+            ]
+            text, in_tok, out_tok, _cache_read, cache_write = provider.complete(messages)
+            # D-14: per_agent gets no cross-phase cache reuse — pin to 0.
+            ledger.record_call(
+                operation=f"phase:{phase.name}",
+                model="per-agent-baseline",
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                cache_read_tokens=0,
+                cache_write_tokens=cache_write,
+                phase=phase.name,
+            )
+            results[phase_name] = PhaseResult(
+                phase_name=phase_name,
+                messages=[*messages, {"role": "assistant", "content": text}],
+                cache_stats=PhaseCacheStats(
+                    prefix_hash="",
+                    prefix_tokens=0,
+                    dynamic_tokens=in_tok,
+                    total_tokens=in_tok + out_tok,
+                    cache_read_input_tokens=0,
+                    cache_creation_input_tokens=cache_write,
+                    invalidated_reason="per_agent_no_cache",
+                ),
+                output_text=text,
+            )
+        return results
 
 
 # Alias for the V3 lifecycle-enabled runtime
