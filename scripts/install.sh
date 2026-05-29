@@ -2,13 +2,13 @@
 # install.sh — bootstrap Atelier from GitHub using a curl|bash-friendly flow.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
 #
 # By default only the core service and frontend are installed natively.
 # Pass --advanced --memory letta|openmemory to install one Docker sidecar.
 #
 # Optional environment variables:
-#   ATELIER_REPO_URL   Git URL (default: https://github.com/pankaj4u4m/atelier.git)
+#   ATELIER_REPO_URL   Git URL (default: https://github.com/atelier-runtime/atelier.git)
 #   ATELIER_REF        Git ref to install (default: main)
 #   ATELIER_INSTALL_DIR Install location (default: ~/.local/share/atelier)
 #   ATELIER_BIN_DIR    Global bin dir for console scripts (default: ~/.local/bin)
@@ -74,7 +74,7 @@ if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* 
     ACTIVE_BAR="|"
 fi
 
-ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}"
+ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/atelier-runtime/atelier.git}"
 ATELIER_REF="${ATELIER_REF:-main}"
 ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local/share/atelier}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"

@@ -7,7 +7,7 @@ Verifies:
   appear in the docs
 - The Trace model accepts the new fields
 - full_live cannot be claimed without hooks in capture_sources (proof-gate guard)
-- Codex and Copilot AGENT_README files document trace confidence
+- Codex and Copilot trace confidence is documented via the code index (AGENTS_README.md files removed)
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from pathlib import Path
 DOCS_ROOT = Path(__file__).parent.parent.parent / "docs"
 TRACE_CONFIDENCE_DOC = DOCS_ROOT / "engineering" / "trace-confidence.md"
 HOST_MATRIX = DOCS_ROOT / "hosts" / "host-capability-matrix.md"
-CODEX_README = Path(__file__).parent.parent.parent / "integrations" / "codex" / "AGENT_README.md"
-COPILOT_README = Path(__file__).parent.parent.parent / "integrations" / "copilot" / "AGENT_README.md"
+# CODEX_README and COPILOT_README paths removed — AGENTS_README.md files deleted
+# in favor of live code-index discovery via atelier_context mode="symbols"
 
 SUPPORTED_HOSTS = [
     "Claude Code",
@@ -100,27 +100,6 @@ def test_required_metadata_fields_in_host_matrix() -> None:
     text = HOST_MATRIX.read_text(encoding="utf-8")
     for field in ("trace_confidence", "capture_sources", "missing_surfaces"):
         assert field in text, f"host-capability-matrix.md missing required field: {field}"
-
-
-# ---------------------------------------------------------------------------
-# Codex + Copilot AGENT_README coverage
-# ---------------------------------------------------------------------------
-
-
-def test_codex_readme_documents_trace_confidence() -> None:
-    assert CODEX_README.exists(), f"missing {CODEX_README}"
-    text = CODEX_README.read_text(encoding="utf-8")
-    assert "trace_confidence" in text, "Codex AGENT_README missing trace_confidence"
-    assert "capture_sources" in text, "Codex AGENT_README missing capture_sources"
-    assert "missing_surfaces" in text, "Codex AGENT_README missing missing_surfaces"
-
-
-def test_copilot_readme_documents_trace_confidence() -> None:
-    assert COPILOT_README.exists(), f"missing {COPILOT_README}"
-    text = COPILOT_README.read_text(encoding="utf-8")
-    assert "trace_confidence" in text, "Copilot AGENT_README missing trace_confidence"
-    assert "capture_sources" in text, "Copilot AGENT_README missing capture_sources"
-    assert "missing_surfaces" in text, "Copilot AGENT_README missing missing_surfaces"
 
 
 # ---------------------------------------------------------------------------

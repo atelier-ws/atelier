@@ -2,7 +2,7 @@
 
 **For developers.** Print this page. Keep it nearby while coding with Atelier.
 
-_For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
+_For agents/automation, see [AGENTS.md](AGENTS.md) instead._
 
 ---
 
@@ -229,7 +229,7 @@ rubric_failures_caught     Pre-success checks that failed
 ## 📚 Documentation Structure
 
 ```
-AGENT_README.md (684 lines)
+AGENTS.md (agent entrypoint)
 ├─ Sections 1–10: Original Atelier design + workflows + installation
 ├─ Section 11: MCP Tools (13 total) + availability matrix
 ├─ Section 12: Atelier Skills (11 total) + invocation syntax
