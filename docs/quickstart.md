@@ -5,7 +5,7 @@ This guide assumes you want to use the installed product, not work from a source
 ## Step 1 — Install Atelier
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
 ```
 
 That installs the `atelier` and `atelier-mcp` commands as user-level console scripts, initializes `~/.atelier`, registers background services with your OS (systemd/launchd), and attempts to start the optional visualization stack when npm is available.
