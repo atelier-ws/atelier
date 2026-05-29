@@ -185,6 +185,32 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
     assert "$0.036(12k)" in output
 
 
+def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
+    state_dir = tmp_path / "workspaces" / workspace_hash
+    state_dir.mkdir(parents=True)
+    (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
+
+    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar.mkdir(parents=True)
+    (sidecar / "s1.jsonl").write_text(
+        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
+
+    payload = _payload()
+    payload.pop("session_id")
+    payload["model"] = {"display_name": "Opus 4.8", "id": "claude-opus-4-8"}
+
+    output = _run_statusline(tmp_path, payload, env_extra={"CLAUDE_WORKSPACE_ROOT": str(workspace)})
+
+    assert "$0.000(0)" in output
+    assert "$0.036(12k)" not in output
+
+
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
     # Session sidecar has the real per-session data.
     sidecar = tmp_path / "session_stats" / "claude"

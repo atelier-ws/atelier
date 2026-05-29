@@ -5,14 +5,11 @@ Atelier tools are **not optional wrappers**. They are the reason this repo exist
 | Instead of | Use | Why | Measured |
 |---|---|---|---|
 | `Read(file)` | `mcp__atelier__read` | outline-first; large files return structure without bytes | **Measured token savings (cl100k_base) from `tests/benchmarks/test_read_ab_real.py`:** Ruby 97.2%, C++ 94.4%, Python 85.6%, Markdown 84.5%, TypeScript 74.0%, Shell 69.9%, Scala 50.6%. Current C/C#/Go/Java/Kotlin/PHP/Rust/Swift fixtures still hit full-read fallback (0%) at their base sizes. |
-| recursive `find` / `glob` inventory loops | `mcp__atelier__code op=files` | indexed file tree/list/grouped view without filesystem scanning | **Fixture A/B (`tests/benchmarks/test_code_files_ab_real.py`):** 1,908 → 517 tokens (72.9% fewer; 1,391 tokens saved) for a nested Python repo inventory flow. |
 | `Bash(grep ...)` / `Bash(rg ...)` | `mcp__atelier__grep` | regex/glob/type-filter search with token-budgeted output shaping | **Fixture A/B (`tests/benchmarks/test_search_ab_real.py`):** summary mode 1,908 → 165 tokens (91.4% fewer; 1,743 tokens saved). Tiny regex/glob/context fixtures are near parity (0% saved). |
 | manual grep + read + rank workflow | `mcp__atelier__search` | ranked query search plus repo-map construction | **Fixture A/B (`tests/benchmarks/test_search_ab_real.py`):** summary mode 1,908 → 197 tokens (89.7% fewer; 1,711 tokens saved). Tiny regex/glob/context fixtures currently favor native output volume. |
-| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree/list/grouped view without filesystem scanning | **Fixture A/B (`tests/benchmarks/test_code_files_ab_real.py`):** 1,908 → 517 tokens (72.9% fewer; 1,391 tokens saved) for nested repo inventory. |
-| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed; no subprocess | **Fixture A/B (`tests/benchmarks/test_code_search_ab_real.py`):** 2,142 → 432 tokens (79.8% fewer; 1,710 tokens saved) for symbol discovery across a Python module set. || `Bash(anything)` | `mcp__atelier__shell` | ANSI-stripped + line-truncated output | **Fixture A/B (`tests/benchmarks/test_shell_ab_real.py`):** 5,001 → 377 tokens (92.5% fewer; 4,624 tokens saved) on large command output (`seq 1 2000`) with line truncation. |
+| `mcp__atelier__symbols` | `Bash(grep -rn symbol ...)` | SCIP-indexed; no subprocess | **Fixture A/B (`tests/benchmarks/test_code_search_ab_real.py`):** 2,142 → 432 tokens (79.8% fewer; 1,710 tokens saved) for symbol discovery across a Python module set. || `Bash(anything)` | `mcp__atelier__shell` | ANSI-stripped + line-truncated output | **Fixture A/B (`tests/benchmarks/test_shell_ab_real.py`):** 5,001 → 377 tokens (92.5% fewer; 4,624 tokens saved) on large command output (`seq 1 2000`) with line truncation. |
 | `Edit(...)` / `Write(...)` | `mcp__atelier__edit` | atomic multi-file with snapshot/rollback | **Fixture A/B (`tests/benchmarks/test_edit_ab_real.py`):** 74 → 47 tokens (36.5% fewer; 27 tokens saved) for single-file replace response vs manual patch/diff transcript. |
-| chaining search + symbol + callers/callees + read | `mcp__atelier__code op=explore` | grouped source + relationships in one budgeted call | **Fixture A/B (`tests/benchmarks/test_code_explore_ab_real.py`):** 3,510 → 1,927 tokens (45.1% fewer; 1,583 tokens saved) for an auth/login exploration flow. |
-| manual grep+read route inventory | `mcp__atelier__code op=routes` | framework route nodes (method/path/handler) in one call | **Fixture A/B (`tests/benchmarks/test_code_routes_ab_real.py`):** 690 → 332 tokens (51.9% fewer; 358 tokens saved) for mixed FastAPI/Django/Express route discovery. |
+| chaining search + symbol + callers/callees + read | `mcp__atelier__explore` | grouped source + relationships in one budgeted call | **Fixture A/B (`tests/benchmarks/test_code_explore_ab_real.py`):** 3,510 → 1,927 tokens (45.1% fewer; 1,583 tokens saved) for an auth/login exploration flow. |
 
 > Every "X% saved" claim in this row must cite a real A/B test under `tests/benchmarks/`. If the test isn't there, the cell reads `_pending A/B_`. No exceptions.
 >
@@ -31,11 +28,13 @@ code intelligence. Native tools are fallback-only.
 
 | Atelier tool | Best for |
 |---|---|
-| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, file tree, routes, context, status |
+| `mcp__atelier__symbols` | Find symbol definitions by name (SCIP-indexed) — faster and exact vs grep |
 | `mcp__atelier__node` | Full definition of a specific symbol — faster than `read` for targeted inspection |
 | `mcp__atelier__callers` | Who calls a function (inbound call graph) — faster than grep for invocation tracing |
 | `mcp__atelier__callees` | What a function calls (outbound call graph) — understand dependencies before editing |
+| `mcp__atelier__usages` | All references to a symbol — exact (not textual), unlike grep |
 | `mcp__atelier__impact` | Blast radius for a file or symbol — use before refactoring |
+| `mcp__atelier__pattern` | AST-structural search / rewrite (ast-grep) — match code shape, not text |
 | `mcp__atelier__explore` | Grouped source + relationships in one call — replaces search→node→callers chain |
 | `mcp__atelier__grep` | Regex and glob search across files |
 | `mcp__atelier__read` | Reading files (outline mode for large files) |
@@ -45,16 +44,17 @@ code intelligence. Native tools are fallback-only.
 
 **Decision rules:**
 
-1. **Get a symbol definition** → `mcp__atelier__node` FIRST.
+1. **Find a symbol / its definition** → `mcp__atelier__symbols` then `mcp__atelier__node` FIRST (not grep).
 2. **Find callers of a function** → `mcp__atelier__callers` FIRST (not grep).
 3. **Find what a function calls** → `mcp__atelier__callees` FIRST.
-4. **Blast radius before refactoring** → `mcp__atelier__impact` FIRST.
-5. **Understand a concept across files** → `mcp__atelier__explore` FIRST.
-6. **Symbol search, file tree, context, routes** → `mcp__atelier__code` with the right `op`.
-7. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
-8. **File reading** → `mcp__atelier__read` FIRST.
-9. **Editing** → `mcp__atelier__edit` FIRST.
-10. **Shell commands** → `mcp__atelier__shell` FIRST.
+4. **Find all references to a symbol** → `mcp__atelier__usages` FIRST (not grep).
+5. **Blast radius before refactoring** → `mcp__atelier__impact` FIRST.
+6. **Match or rewrite code by shape** → `mcp__atelier__pattern` FIRST (not regex grep).
+7. **Understand a concept across files** → `mcp__atelier__explore` FIRST.
+8. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+9. **File reading** → `mcp__atelier__read` FIRST.
+10. **Editing** → `mcp__atelier__edit` FIRST.
+11. **Shell commands** → `mcp__atelier__shell` FIRST.
 
 **Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
 
@@ -123,30 +123,19 @@ These are tool behaviours that can confuse an LLM. They are not bugs — they ar
 response with `mode: "directory"`, the list of entries, and a directive for next steps,
 instead of raising a cryptic `file not found` error.
 
-### `atelier_code op=files` — blind to non-code files
+### File inventory — use `grep` / `shell`, not a code-intel op
 
-**Status: ✅ Fixed in server** (`src/atelier/gateway/adapters/mcp_server.py`)
-
-`atelier_code op=files` queries a symbol index that only tracks files with
-parseable code symbols (Python, TypeScript, JavaScript, Rust, Go, C++, Java, etc.).
-Non-code files — YAML, Markdown, JSON, TOML, shell scripts, Dockerfiles, configs —
-are invisible to `op=files` even though they exist on disk.
-
-The server now detects when `op=files` returns 0 results for a path that exists on
-disk, and **automatically falls back** to a native filesystem listing. The response
-includes `non_code_fallback: true` to signal that files were listed from the
-filesystem rather than the code index.
-
-**Manual workaround (if fallback doesn't apply):**
+The old `op=files` / `op=routes` / `op=context` / `op=status` ops have been
+**retired** from the code-intel tool (calling them now raises a `ValueError`
+pointing here). For file inventory, use the focused tools directly:
 
 ```
-# List YAML files in a directory:
-atelier_grep(
-    file_path="some/dir",
-    output_mode="file_paths_only",
-    file_glob_patterns=["*.yaml"],
-)
+# List files of a given type in a directory (token-budgeted):
+mcp__atelier__grep(path="some/dir", output_mode="file_paths_only", file_glob_patterns=["*.yaml"])
 
-# List ALL files (including non-code):
-atelier_shell(command="ls path/to/dir")
+# List ALL files (including non-code) in a directory:
+mcp__atelier__shell(command="ls path/to/dir")
+
+# Find where a concept lives across files:
+mcp__atelier__explore(query="...")
 ```

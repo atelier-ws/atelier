@@ -165,6 +165,7 @@ class OpenCodeImporter:
             try:
                 ev = json.loads(line)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
             etype = ev.get("_type")

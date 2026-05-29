@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import logging
 import re
 from bisect import bisect_right
 from dataclasses import dataclass
@@ -159,6 +160,7 @@ def _treesitter_tags(path: Path, text: str, language: str) -> list[Tag] | None:
     try:
         tree = parser.parse(text)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return None
 
     source = text.encode("utf-8")

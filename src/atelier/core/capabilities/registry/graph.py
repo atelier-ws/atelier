@@ -16,6 +16,7 @@ The registry provides:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +25,7 @@ try:
 
     _HAS_NX = True
 except Exception:  # pragma: no cover
+    logging.exception("Recovered from broad exception handler")
     nx = None
     _HAS_NX = False
 

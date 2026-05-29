@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -34,16 +35,19 @@ from .dead_ends import DeadEndTracker
 try:
     import networkx as nx
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     nx: Any = None  # type: ignore[no-redef]
 
 try:
     from river import stats
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     stats: Any = None  # type: ignore[no-redef]
 
 try:
     from datasketch import HNSW
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     HNSW: Any = None  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
@@ -81,7 +85,10 @@ _ADAPTIVE_MAX_MULTIPLIER = 1.10
 _VECTOR_DIM = 128
 _TRACE_ENV = "ATELIER_RETRIEVAL_TRACE"
 _BASE_RETRIEVER_MIN_SCORE = 0.0
-_MIN_CONTEXT_MATCH_SCORE = 0.80
+# Domain-only matches score ~0.35; a genuine domain+trigger/error match scores
+# ~0.43. The threshold sits between so weakly-related blocks are excluded while
+# real matches are injected. (0.80 was unreachable and starved all retrieval.)
+_MIN_CONTEXT_MATCH_SCORE = 0.40
 _MAX_CONTEXT_BLOCKS = 2
 _RETRIEVER_VERSION = 2
 
@@ -333,6 +340,7 @@ class ContextReuseCapability:
         try:
             vectors = self._embedder.embed([query_text])
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             vectors = [[]]
 
         if vectors and vectors[0]:
@@ -358,6 +366,7 @@ class ContextReuseCapability:
             try:
                 embedded = self._embedder.embed([rendered for _block, rendered, _cache_key in uncached])
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 embedded = [[] for _ in uncached]
 
         for idx, (block, rendered, cache_key) in enumerate(uncached):

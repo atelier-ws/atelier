@@ -73,7 +73,7 @@ def _wait_for_health(base_url: str, process: subprocess.Popen[str], timeout_s: f
             status, payload = _request_json("GET", f"{base_url}/health", timeout=1.0)
             if status == 200 and payload.get("status") == "ok":
                 return
-        except Exception as exc:  # pragma: no cover - best-effort polling
+        except (TimeoutError, urllib.error.URLError) as exc:  # pragma: no cover - best-effort polling
             last_error = str(exc)
         time.sleep(0.2)
     raise AssertionError(last_error)
@@ -416,7 +416,7 @@ def test_docker_deploy_load_latency_and_stability(tmp_path: Path) -> None:
                 if status == 200 and payload.get("status") == "ok":
                     healthy = True
                     break
-            except Exception:
+            except (urllib.error.URLError, TimeoutError):
                 pass
             time.sleep(1)
         assert healthy, "dockerized atelier service never became healthy"

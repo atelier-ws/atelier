@@ -26,11 +26,8 @@ Start here if you want to understand what Atelier is for, where it's going, and 
 
 | Doc                                                | What it covers                                          |
 | -------------------------------------------------- | ------------------------------------------------------- |
-| [product/EXECUTION-SUMMARY.md](product/EXECUTION-SUMMARY.md) | One-page summary for new team members            |
-| [product/STRATEGY.md](product/STRATEGY.md)         | Positioning, market gap, defensible moat                |
-| [product/ROADMAP.md](product/ROADMAP.md)           | Execution-ordered 2-week / 30-day / 90-day plan         |
-| [product/PRICING.md](product/PRICING.md)           | Tiers, business model, revenue targets                  |
-| [product/GTM.md](product/GTM.md)                   | Go-to-market and content strategy                       |
+| [strategy.md](strategy.md)                         | Positioning, market gap, defensible moat                |
+| [roadmap.md](roadmap.md)                           | Execution-ordered 2-week / 30-day / 90-day plan         |
 | [specs/README.md](specs/README.md)                 | Per-feature execution specs (for coding agents)         |
 
 ## Primary Docs

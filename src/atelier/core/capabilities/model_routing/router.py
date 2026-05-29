@@ -5,6 +5,7 @@ The router is advisory: host CLIs keep ownership of actual model selection.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
@@ -318,6 +319,7 @@ class ModelRouter:
         try:
             sink(payload)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return
 
     def _compute_route_tier(self, tier: ModelTier, score: int, state: Mapping[str, Any]) -> RouteTier:

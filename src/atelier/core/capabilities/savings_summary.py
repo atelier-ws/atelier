@@ -12,6 +12,7 @@ Previously this logic was spread across:
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,6 +88,7 @@ def estimate_cost_usd(
             cache_write_tokens=int(cache_write_tokens or 0),
         )
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return ((input_tokens or 0) * 3 + (output_tokens or 0) * 15) / 1_000_000
 
 
@@ -115,6 +117,7 @@ def claude_transcript_candidates(session_id: str) -> list[Path]:
         paths.extend(projects.glob(f"*/{session_id}.jsonl"))
         paths.extend(projects.glob(f"*/*/subagents/{session_id}.jsonl"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return []
     return sorted((p for p in paths if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -202,6 +205,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
             try:
                 entry = json.loads(raw)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
             msg = entry.get("message") or {}
@@ -262,6 +266,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                 tools_used[name] = tools_used.get(name, 0) + 1
                 tool_calls += 1
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return None
 
     resolved_model = resolve_model_id(model_id)
@@ -355,6 +360,7 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
             try:
                 ev = json.loads(raw)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             # Field names mirror the in-response `saved: {tokens, calls}` shape.
             # Older rows (briefly written as tokens_saved/calls_saved) are still
@@ -400,6 +406,7 @@ def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str
         data = json.loads(state_path.read_text(encoding="utf-8"))
         return str(data.get("session_id") or "")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return ""
 
 
@@ -441,13 +448,28 @@ def compute_savings_summary(
         _read_claude_session_savings(session_id, root_path) if session_id else (0, 0, 0.0, 0)
     )
 
-    # Fallback: subagent sessions have no sidecar — use parent session from workspace.
-    if priced_tokens == 0 and unpriced_tokens == 0 and calls == 0 and workspace:
-        ws_session_id = _resolve_workspace_session_id(workspace, root_path)
-        if ws_session_id and ws_session_id != session_id:
-            priced_tokens, calls, row_usd, unpriced_tokens = _read_claude_session_savings(ws_session_id, root_path)
+    # Fallback: subagent sessions have no sidecar — look for parent session in transcript.
+    if priced_tokens == 0 and unpriced_tokens == 0 and calls == 0:
+        # Extract parent session_id from subagent transcript if possible
+        parent_id = None
+        for cand in claude_transcript_candidates(session_id):
+            try:
+                with cand.open(encoding="utf-8") as f:
+                    for line in f:
+                        entry = json.loads(line)
+                        if entry.get("sessionId") and entry.get("sessionId") != session_id:
+                            parent_id = entry["sessionId"]
+                            break
+                if parent_id:
+                    break
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
+
+        if parent_id and parent_id != session_id:
+            priced_tokens, calls, row_usd, unpriced_tokens = _read_claude_session_savings(parent_id, root_path)
             if priced_tokens > 0 or unpriced_tokens > 0 or calls > 0:
-                session_id = ws_session_id  # use the found session for transcript lookup too
+                session_id = parent_id  # use the found session for transcript lookup too
 
     result.smart_calls = calls
 
@@ -483,6 +505,7 @@ def compute_savings_summary(
                         rate = pricing.input / 1_000_000
                         break
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 rate = None
         if rate and rate > 0:
             extra_usd = rate * unpriced_tokens
@@ -511,6 +534,7 @@ def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
             data = json.loads(p.read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return {}
 
     auth = _read("auth.json")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,7 @@ def ingest_session_file(file_path: str, store: Any = None) -> dict[str, Any]:
             raw_content=raw_content,
         )
     except Exception as exc:  # pylint: disable=broad-except
+        logging.exception("Recovered from broad exception handler")
         return {
             "status": "error",
             "message": f"Failed to reconstruct ledger from session file: {exc}",

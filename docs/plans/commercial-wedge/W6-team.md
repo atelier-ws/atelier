@@ -1,6 +1,6 @@
 # W6 — Team tier: workspace, RBAC, attribution
 
-> Parent: [`index.md`](index.md). Driving spec: [`day90/12-team-tier.md`](../../../specs/day90/12-team-tier.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day90/12-team-tier.md`](../../specs/day90/12-team-tier.md).
 > Depends on: **W1** (single-user rollback), **W4** (sync transport), **W5** (typed lesson scope).
 
 ## Goal

@@ -5,6 +5,11 @@ from typing import Any
 
 from click.testing import CliRunner
 
+from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.capabilities.semantic_file_memory.capability import (
+    _claude_read_baseline_text,
+    _count_tokens,
+)
 from atelier.gateway.adapters.mcp_server import _handle
 from atelier.gateway.cli import cli
 
@@ -88,3 +93,29 @@ def test_smart_read_small_file_defaults_to_full(tmp_path: Path, monkeypatch: Any
     payload = _smart_read({"path": str(target)})
     assert "(outline)" not in payload
     assert "def ping()" in payload
+
+
+def test_smart_read_range_claims_no_savings_against_builtin_range_read(tmp_path: Path) -> None:
+    target = tmp_path / "range_target.py"
+    target.write_text("\n".join(f"value_{idx} = {idx}" for idx in range(300)), encoding="utf-8")
+
+    payload = SemanticFileMemoryCapability(tmp_path).smart_read(target, range_spec="10-20")
+
+    assert payload["mode"] == "range"
+    assert payload["tokens_saved"] == 0
+
+
+def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> None:
+    target = tmp_path / "large_module.py"
+    source = "\n".join(
+        ["class Demo:", "    def run(self):", "        return 1"] + [f"value_{idx} = {idx}" for idx in range(2600)]
+    )
+    target.write_text(source, encoding="utf-8")
+
+    payload = SemanticFileMemoryCapability(tmp_path).smart_read(target, outline_threshold=10)
+    baseline_tokens = _count_tokens(_claude_read_baseline_text(source))
+    full_file_tokens = _count_tokens(source)
+
+    assert payload["mode"] == "outline"
+    assert payload["tokens_saved"] <= baseline_tokens
+    assert payload["tokens_saved"] < full_file_tokens

@@ -12,6 +12,7 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -27,7 +28,7 @@ def _git_commit_sha() -> str:
         return "unknown"
 
 
-def _reproduce_sh(config: dict, commit_sha: str) -> str:
+def _reproduce_sh(config: dict[str, Any], commit_sha: str) -> str:
     suite = config.get("suite", "terminalbench")
     tasks: list[str] = config.get("tasks", [])
     n = config.get("n_reps", 3)
@@ -58,7 +59,7 @@ def _reproduce_sh(config: dict, commit_sha: str) -> str:
     )
 
 
-def _docusaurus_frontmatter(config: dict, summary: dict, commit_sha: str) -> str:
+def _docusaurus_frontmatter(config: dict[str, Any], summary: dict[str, Any], commit_sha: str) -> str:
     suite = config.get("suite", "terminalbench")
     n_tasks = len(config.get("tasks", []))
     run_date = summary.get("created_at", config.get("started_at", datetime.now(UTC).isoformat()))[:10]

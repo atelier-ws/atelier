@@ -94,6 +94,7 @@ class LettaAdapter:
                 )
                 return self._as_mapping(result)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             # Block may not exist yet — create standalone + attach
             logger.debug("upsert_block label-scoped update fallback", exc_info=True)
         try:
@@ -122,6 +123,7 @@ class LettaAdapter:
                 result = self.client.agents.blocks.retrieve(block_label=label, agent_id=agent_id)
                 return self._as_mapping(result)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("get_block label-scoped retrieve fallback", exc_info=True)
         # Fallback: flat get_block
         try:

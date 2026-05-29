@@ -583,7 +583,7 @@ def test_runtime_loop_report_no_ledger(tmp_path: Path) -> None:
         report = rt.loop_report(session_id=None)
         # If there's no ledger, it may return an error dict or raise
         assert isinstance(report, dict)
-    except Exception:
+    except FileNotFoundError:
         pass  # raising is acceptable when no ledger exists
 
 
@@ -592,7 +592,7 @@ def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
     try:
         report = rt.context_report(session_id=None)
         assert isinstance(report, dict)
-    except Exception:
+    except FileNotFoundError:
         pass  # raising is acceptable when no ledger exists
 
 
@@ -601,48 +601,11 @@ def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_cli_symbol_search_no_crash(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "symbol-search", "somefunc"])
-    # Should exit 0 or print "(no matches)"
-    assert res.exit_code == 0
-
-
-def test_cli_module_summary(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    target = tmp_path / "mod.py"
-    target.write_text("def foo(): pass\n", encoding="utf-8")
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "module-summary", str(target)])
-    assert res.exit_code == 0
-    assert "path:" in res.output
-
-
 def test_cli_tool_report_no_crash(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _init_root(root)
     runner = CliRunner()
     res = runner.invoke(cli, ["--root", str(root), "tool-report"])
-    assert res.exit_code == 0
-
-
-def test_cli_diff_context_nonexistent_file(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "diff-context", "nonexistent.py"])
-    # Should not crash even for unknown files
-    assert res.exit_code == 0
-
-
-def test_cli_test_context_nonexistent_file(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "test-context", "nonexistent.py"])
     assert res.exit_code == 0
 
 

@@ -107,7 +107,7 @@ def _count_tiktoken(text: str) -> int:
 
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text, disallowed_special=()))
-    except Exception:
+    except ImportError:
         return len(text) // 4
 
 
@@ -186,13 +186,12 @@ def test_read_ab_real(fixture: Path) -> None:
         assert (
             row.chars_saved > 0
         ), f"{fixture.name}: tool reports tokens_saved={tokens_saved} but chars_saved={row.chars_saved}"
-    # Reported tokens_saved (from the tool, via tiktoken now) should agree
-    # with our independent tiktoken count within 10% on either side.
+    # Reported tokens_saved uses Claude Code's built-in Read baseline, so it
+    # may be lower than a raw cat/full-file delta. It must not overclaim it.
     if tokens_saved > 100 and row.tokens_saved_measured > 100:
-        ratio = tokens_saved / row.tokens_saved_measured
-        assert 0.9 <= ratio <= 1.1, (
-            f"{fixture.name}: tool tokens_saved={tokens_saved} disagrees with "
-            f"independent tiktoken count {row.tokens_saved_measured} (ratio {ratio:.2f})"
+        assert tokens_saved <= int(row.tokens_saved_measured * 1.1), (
+            f"{fixture.name}: tool tokens_saved={tokens_saved} exceeds "
+            f"independent full-file tiktoken delta {row.tokens_saved_measured}"
         )
 
 

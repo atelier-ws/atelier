@@ -5,7 +5,7 @@ Covers:
 - ledger reset, ledger update
 - env validate
 - failure show, eval show/deprecate, eval-from-cluster
-- search, cached-grep
+- search
 - savings-detail, savings-reset
 - benchmark hosts, benchmark full, benchmark packs
 - copilot/claude/codex/opencode import (with empty session dir)
@@ -375,7 +375,7 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# search / cached-grep                                                        #
+# search                                                        #
 # --------------------------------------------------------------------------- #
 
 
@@ -426,27 +426,6 @@ def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
         ),
     )
     assert res.exit_code == 0
-
-
-def test_cached_grep_finds_pattern(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    haystack = tmp_path / "code.py"
-    haystack.write_text("import os\nresult = compute()\n", encoding="utf-8")
-
-    # path is a --path option, not a positional arg
-    res = _invoke(root, "cached-grep", "compute", "--path", str(tmp_path))
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert "output" in payload
-    assert "compute" in payload["output"]
-
-
-def test_cached_grep_rejects_shell_metachar(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "cached-grep", "foo; rm -rf /")
-    assert res.exit_code != 0
 
 
 # --------------------------------------------------------------------------- #

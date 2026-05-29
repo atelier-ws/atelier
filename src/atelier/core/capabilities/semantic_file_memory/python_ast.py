@@ -39,6 +39,7 @@ def _extract_decorators(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Class
         try:
             out.append(ast.unparse(dec))
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             out.append("?")
     return out
 
@@ -60,6 +61,7 @@ def _build_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
         ret = f" -> {ast.unparse(node.returns)}" if node.returns else ""
         return f"{prefix} {node.name}({args}){ret}:"
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return f"def {node.name}(...):"
 
 
@@ -68,6 +70,7 @@ def _return_type_hint(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
         try:
             return ast.unparse(node.returns)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at python_ast.py:67",
                 exc_info=True,
@@ -178,6 +181,7 @@ def analyze_python(source: str) -> tuple[list[SymbolInfo], list[ImportInfo], str
             try:
                 type_str = ast.unparse(node.annotation)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 type_str = ""
             symbols.append(
                 SymbolInfo(
