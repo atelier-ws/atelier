@@ -7,5 +7,14 @@
     "total_routing_savings_usd": 43.607052,
     "routing_quality_score": 0.887,
     "compact_retention_score": 0.81
+  },
+  {
+    "week": "2026-W22",
+    "week_start": "2026-05-25",
+    "generated_at": "2026-05-29",
+    "benchmark": "dls-outline-savings",
+    "languages": 5,
+    "min_dedicated_vs_full_saved_pct": 71.08,
+    "guard_passed": 5
   }
 ]
