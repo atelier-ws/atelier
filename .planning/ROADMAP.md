@@ -658,7 +658,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 
 **Phases:**
 
-- [ ] **Phase 16: Canonical Language Registry** — One registry owns language identity across extension detection, tree-sitter outlines, repo-map tags, and SCIP binaries
+- [x] **Phase 16: Canonical Language Registry** — One registry owns language identity across extension detection, tree-sitter outlines, repo-map tags, and SCIP binaries
 - [ ] **Phase 17: Tree-sitter Outline Coverage** — Shell, YAML, TOML, JSON, and SQL get dedicated outlines where parser support and savings justify it
 - [ ] **Phase 18: Tree-sitter Repo-map Tags** — Repo-map symbol tags come from tree-sitter for every supported grammar while Python AST and regex fallback remain intact
 - [ ] **Phase 19: Expanded SCIP Registry and Lazy Indexing** — Go, Rust, Java, Ruby, C, and C++ join SCIP semantic indexing with env overrides, argv templates, and cached outputs
@@ -691,11 +691,14 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 **Plans**: 2 plans
 **Wave 1**
 
-- [ ] 16-01-PLAN.md — Canonical language registry module + Wave-0 registry unit tests (DLS-LANG-01, DLS-LANG-02)
+- [x] 16-01-PLAN.md — Canonical language registry module + Wave-0 registry unit tests (DLS-LANG-01, DLS-LANG-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 16-02-PLAN.md — Migrate the four code-intel surfaces to the registry + shell outline & SCIP env-var regression (DLS-LANG-03, DLS-LANG-04)
+- [x] 16-02-PLAN.md — Migrate the four code-intel surfaces to the registry + shell outline & SCIP env-var regression (DLS-LANG-03, DLS-LANG-04)
+
+**Summary**: `.planning/phases/16-canonical-language-registry/16-01-SUMMARY.md`, `.planning/phases/16-canonical-language-registry/16-02-SUMMARY.md`
+**Verification**: `.planning/phases/16-canonical-language-registry/16-VERIFICATION.md`
 
 ---
 
@@ -826,7 +829,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Canonical Language Registry | 0/2 | Not started | - |
+| 16. Canonical Language Registry | 2/2 | Complete | 2026-05-29 |
 | 17. Tree-sitter Outline Coverage | 0/? | Not started | - |
 | 18. Tree-sitter Repo-map Tags | 0/? | Not started | - |
 | 19. Expanded SCIP Registry and Lazy Indexing | 0/? | Not started | - |
@@ -839,10 +842,10 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DLS-LANG-01 | Phase 16 | Pending |
-| DLS-LANG-02 | Phase 16 | Pending |
-| DLS-LANG-03 | Phase 16 | Pending |
-| DLS-LANG-04 | Phase 16 | Pending |
+| DLS-LANG-01 | Phase 16 | Complete |
+| DLS-LANG-02 | Phase 16 | Complete |
+| DLS-LANG-03 | Phase 16 | Complete |
+| DLS-LANG-04 | Phase 16 | Complete |
 | DLS-OUTLINE-01 | Phase 17 | Pending |
 | DLS-OUTLINE-02 | Phase 17 | Pending |
 | DLS-OUTLINE-03 | Phase 17 | Pending |
