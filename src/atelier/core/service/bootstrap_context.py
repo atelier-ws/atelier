@@ -315,7 +315,7 @@ def _render_language_mix(repo_root: Path, repo_id: str) -> str:
     languages = Counter((detect_language(path) or "unknown") for path in files)
     scip = ScipIndexer(repo_root, repo_id)
     artifacts = [artifact.path.name for artifact in scip.discover_artifacts()]
-    binaries = sorted(scip.available_binaries())
+    statuses = scip.availability_statuses()
     lines = ["languages:"]
     for language, count in sorted(languages.items(), key=lambda item: (-item[1], item[0])):
         lines.append(f"- {language}: {count} files")
@@ -329,8 +329,10 @@ def _render_language_mix(repo_root: Path, repo_id: str) -> str:
         lines.append("- none discovered")
     lines.append("")
     lines.append("available scip binaries:")
-    if binaries:
-        lines.extend(f"- {name}" for name in binaries)
+    if statuses:
+        for name, status in statuses.items():
+            detail = status.binary.name if status.binary is not None else status.message
+            lines.append(f"- {name}: {status.status} ({detail})")
     else:
         lines.append("- none discovered")
     return "\n".join(lines).strip()
