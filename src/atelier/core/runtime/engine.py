@@ -129,6 +129,21 @@ class AtelierRuntimeCore:
             token_budget=token_budget,
             dedup=dedup,
         )
+        should_return_payload = include_telemetry or agent_id is not None
+        if not scored:
+            if not should_return_payload:
+                return ""
+            payload: dict[str, Any] = {
+                "context": "",
+                "recalled_passages": [],
+                "tokens_breakdown": {"reasonblocks": 0, "bootstrap": 0, "memory": 0, "total": 0},
+                "bootstrap": {"status": "cold", "repo_id": None, "blocks": []},
+            }
+            if include_telemetry:
+                payload["tokens_used"] = 0
+                payload["tokens_saved_vs_naive"] = 0
+            return payload
+
         reasonblock_context = render_context_for_agent([item.block for item in scored])
         bootstrap_context = ""
         bootstrap_blocks: list[dict[str, Any]] = []
@@ -136,7 +151,6 @@ class AtelierRuntimeCore:
         bootstrap_state = "cold"
         memory_context = ""
         recalled_passages: list[dict[str, str | float]] = []
-
         try:
             from atelier.core.capabilities.code_context import CodeContextEngine
             from atelier.core.service.bootstrap_context import (
@@ -196,11 +210,9 @@ class AtelierRuntimeCore:
         reasonblock_tokens = count_tokens(reasonblock_context)
         bootstrap_tokens = count_tokens(bootstrap_context) if bootstrap_context else 0
         memory_tokens = count_tokens(memory_context) if memory_context else 0
-        should_return_payload = include_telemetry or agent_id is not None
         if not should_return_payload:
             return context
-
-        payload: dict[str, Any] = {
+        payload = {
             "context": context,
             "recalled_passages": recalled_passages,
             "tokens_breakdown": {
