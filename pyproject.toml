@@ -114,20 +114,23 @@ ignore = ["E501"]
 #   uv run ruff check src --select T20    --output-format=concise | grep -oE "^src/[^:]+" | sort -u
 # Burn these down in Phases 23/24 by fixing the code and removing the entry.
 [tool.ruff.lint.per-file-ignores]
-# Files with both blind-except (BLE001) and print (T201) debt:
-"src/atelier/gateway/adapters/mcp_server.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/registry.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/_common.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/claude.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/cline.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/codex.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/copilot.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/gemini.py" = ["BLE001", "T201"]
-"src/atelier/gateway/hosts/session_parsers/opencode.py" = ["BLE001", "T201"]
+# Benchmark dev-CLIs under src/benchmarks/** with both blind-except (BLE001) and
+# print (T201) debt. The T201 ignore is INTENTIONAL here: src/benchmarks/** stdout is
+# the report channel for these developer-facing CLIs (Phase 24, QBL-LOG-03). Their
+# BLE001 entries remain pre-existing burn-down debt.
 "src/benchmarks/swe/routing_replay_bench.py" = ["BLE001", "T201"]
 "src/benchmarks/swe/savings_replay.py" = ["BLE001", "T201"]
 "src/benchmarks/tool_bench/report.py" = ["BLE001", "T201"]
-# Files with blind-except (BLE001) debt only:
+# Files with blind-except (BLE001) debt only (T201 converted to logging in Phase 24):
+"src/atelier/gateway/adapters/mcp_server.py" = ["BLE001"]
+"src/atelier/gateway/hosts/registry.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/_common.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/claude.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/cline.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/codex.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/copilot.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/gemini.py" = ["BLE001"]
+"src/atelier/gateway/hosts/session_parsers/opencode.py" = ["BLE001"]
 "src/atelier/__init__.py" = ["BLE001"]
 "src/atelier/core/capabilities/autopilot/capability.py" = ["BLE001"]
 "src/atelier/core/capabilities/autopilot/factory.py" = ["BLE001"]
@@ -204,10 +207,9 @@ ignore = ["E501"]
 "src/atelier/infra/storage/sqlite_store.py" = ["BLE001"]
 "src/atelier/infra/tree_sitter/tags.py" = ["BLE001"]
 "src/benchmarks/swe/compact_quality_bench.py" = ["BLE001"]
-# Files with print (T201) debt only:
-"src/atelier/gateway/hosts/session_parsers/goose.py" = ["T201"]
-"src/atelier/gateway/hosts/session_parsers/kiro.py" = ["T201"]
-"src/atelier/infra/benchmarks/publisher.py" = ["T201"]
+# Benchmark dev-CLIs under src/benchmarks/** with print (T201) debt only. These keep
+# stdout intentionally as their report channel (Phase 24, QBL-LOG-03); converted non-CLI
+# files (goose.py, kiro.py, infra/benchmarks/publisher.py) had their T201 ignores removed.
 "src/benchmarks/code_intel/scale_decision_eval.py" = ["T201"]
 "src/benchmarks/swe/savings_bench.py" = ["T201"]
 "src/benchmarks/swe/swebench_eval.py" = ["T201"]
