@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Quality & Benchmark Lift
 status: executing
-last_updated: "2026-05-29T16:55:53.641Z"
-last_activity: 2026-05-29 -- Phase 23 planning complete
+last_updated: "2026-05-29T17:57:25.496Z"
+last_activity: 2026-05-29 -- Completed 23-01-PLAN.md (gateway MCP/CLI silent exceptions observable)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 17
 ---
 
@@ -82,6 +82,18 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 | Phase 26 | ⏳ Not started | A/B Suite Expansion (QBL-AB-01–04) |
 | Phase 27 | ⏳ Not started | Public Benchmark Results (QBL-RES-01–04) |
 
+### v0.6 (World-Class Atelier - Ready)
+
+| Phase | Status | Goal |
+|-------|--------|------|
+| Phase 28 | ⏳ Not started | Neural Code Embeddings (WCA-EMB-01–06) |
+| Phase 29 | ⏳ Not started | Empirical Proof Program (WCA-PROOF-01–04) |
+| Phase 30 | ⏳ Not started | Cross-encoder Reranker (WCA-RERANK-01–03) |
+| Phase 31 | ⏳ Not started | Phase-aware Workflow (WCA-STEM-01–04) |
+| Phase 32 | ⏳ Not started | Calibrated & Enforcing Routing (WCA-ROUTE-01–02) |
+| Phase 33 | ⏳ Not started | Continuous Indexing (WCA-INDEX-01–03) |
+| Phase 34 | ⏳ Not started | Speculative Retrieval (WCA-SPEC-01–03) |
+
 ## Key Decisions Log
 
 | Decision | Choice | Rationale |
@@ -137,8 +149,9 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 
 ## Current Position
 
-Phase: 23
+Phase: 23 (silent-exception-audit) — EXECUTING
+Plan: 2 of 3
 Previous milestone: v0.4 (Dedicated Language Support) — COMPLETE
 Plans: TBD
-Status: Ready to execute
-Last activity: 2026-05-29 -- Phase 23 planning complete
+Status: Executing Phase 23
+Last activity: 2026-05-29 -- Completed 23-01-PLAN.md (13 in-scope gateway silent exceptions made observable; src commit 0df47e4)

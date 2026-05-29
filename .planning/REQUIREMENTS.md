@@ -190,10 +190,10 @@
 
 ### Silent Exception Audit
 
-- [ ] **QBL-EXC-01**: Fresh enumeration of `except Exception: pass` sites is captured before fixes
-- [ ] **QBL-EXC-02**: Every silent broad-except is removed, narrowed, re-raised, or explicitly logged with rationale
+- [x] **QBL-EXC-01**: Fresh enumeration of `except Exception: pass` sites is captured before fixes
+- [x] **QBL-EXC-02**: Every silent broad-except is removed, narrowed, re-raised, or explicitly logged with rationale
 - [ ] **QBL-EXC-03**: Fixed files are removed from BLE001 per-file ignores
-- [ ] **QBL-EXC-04**: MCP/tool-handler focused tests cover touched gateway surfaces
+- [x] **QBL-EXC-04**: MCP/tool-handler focused tests cover touched gateway surfaces
 
 ### Stdout to Logging
 
@@ -222,6 +222,54 @@
 - [ ] **QBL-RES-02**: Benchmark regression workflow replays a fixed corpus and fails below recorded savings/routing thresholds
 - [ ] **QBL-RES-03**: SWE-bench Lite/subset predictions and cost/accuracy frontier artifacts are committed
 - [ ] **QBL-RES-04**: Public benchmark index points to reproducible results and no longer contains smoke-only claims
+
+## v0.6 Requirements — World-Class Atelier
+
+### EMB: Neural Code Embeddings
+
+- [ ] **WCA-EMB-01**: `OllamaEmbedder` implementation POSTing to `http://localhost:11434/api/embed` with `nomic-embed-text/code` support
+- [ ] **WCA-EMB-02**: `OllamaEmbedder` applies required task prefixes and L2-normalization internally
+- [ ] **WCA-EMB-03**: `make_embedder()` factory priority: explicit pin → Ollama-reachable → OpenAI-key → hashing fallback
+- [ ] **WCA-EMB-04**: `code_embedder()` accessor replaces hard-pinned `LocalEmbedder` in `code_context/embedding.py` and `git_history/embedder.py`
+- [ ] **WCA-EMB-05**: Lineage bootstrap worker detects dim change, bumps `_LINEAGE_INDEX_VERSION`, and rebuilds `commit_chunks` automatically
+- [ ] **WCA-EMB-06**: `reasonblock_embedding_cache` uses `embedder.name` as key, forcing self-invalidation on model switch
+
+### PROOF: Empirical Proof Program
+
+- [ ] **WCA-PROOF-01**: M2 routing benchmark de-circularized: drives decisions from recorded traces, not hardcoded GAIN inputs
+- [ ] **WCA-PROOF-02**: TerminalBench A/B results committed to `docs/plans/world-class-atelier/results/` for ≥10 tasks × 5 reps
+- [ ] **WCA-PROOF-03**: Self-repo evaluation suite (30 multi-file tasks) stands up with test-pass/fail gate
+- [ ] **WCA-PROOF-04**: Modeled headlines in `bench_cost.py` and public README replaced with measured empirical deltas
+
+### RERANK: Cross-Encoder Reranker
+
+- [ ] **WCA-RERANK-01**: `bge-reranker-v2-m3` integration via Ollama or small local HF model
+- [ ] **WCA-RERANK-02**: Rerank stage inserted after RRF candidate fusion in `code_context/engine.py`
+- [ ] **WCA-RERANK-03**: Reranking gated by latency budget and candidate count (top 10-30 only)
+
+### STEM: Phase-aware "Stem" Workflow
+
+- [ ] **WCA-STEM-01**: Phase-aware workflow primitive preserves one conversation/cache warm across explore→plan→execute
+- [ ] **WCA-STEM-02**: `prefix_cache/planner.py` tracks prefix stability across workflow transitions
+- [ ] **WCA-STEM-03**: Workflow configuration (`vix.json` analogue) exposed via `AutopilotPolicy`
+- [ ] **WCA-STEM-04**: Multi-model voting enabled for critical planning/review steps within the stem conversation
+
+### ROUTE+: Calibrated Routing
+
+- [ ] **WCA-ROUTE-01**: `quality_gain_usd_estimated` calibrated from real trace outcomes instead of static `rank_delta * 0.001`
+- [ ] **WCA-ROUTE-02**: Opt-in enforcing routing wrapper/host-hook that executes the recommended model automatically
+
+### INDEX: Continuous Indexing
+
+- [ ] **WCA-INDEX-01**: `scip/watcher.py` upgraded to event-driven (watchdog/inotify) incremental reindex
+- [ ] **WCA-INDEX-02**: SCIP index keys are branch-aware, preventing cross-branch context leakage
+- [ ] **WCA-INDEX-03**: Measured edit-to-searchable latency remains below 5 seconds for the Atelier repo
+
+### SPEC: Speculative Retrieval
+
+- [ ] **WCA-SPEC-01**: SpecAgent predictor trained/heuristic on session context predicting next-needed files
+- [ ] **WCA-SPEC-02**: Parallel prefetch cache retrieves forecasted files in background before agent tool-calls
+- [ ] **WCA-SPEC-03**: Retrieval latency hidden for N-step tasks with no precision regression
 
 ## v2 Requirements
 
@@ -342,13 +390,37 @@
 | DLS-VAL-03 | Phase 21 | Complete |
 | DLS-VAL-04 | Phase 21 | Complete |
 
+### v0.5 (Quality & Benchmark Lift)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| QBL-GATE-01–05 | Phase 22 | Complete |
+| QBL-EXC-01–04 | Phase 23 | Pending |
+| QBL-LOG-01–04 | Phase 24 | Pending |
+| QBL-CLI-01–04 | Phase 25 | Pending |
+| QBL-AB-01–04 | Phase 26 | Pending |
+| QBL-RES-01–04 | Phase 27 | Pending |
+
+### v0.6 (World-Class Atelier)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| WCA-EMB-01–06 | Phase 28 | Pending |
+| WCA-PROOF-01–04 | Phase 29 | Pending |
+| WCA-RERANK-01–03 | Phase 30 | Pending |
+| WCA-STEM-01–04 | Phase 31 | Pending |
+| WCA-ROUTE-01–02 | Phase 32 | Pending |
+| WCA-INDEX-01–03 | Phase 33 | Pending |
+| WCA-SPEC-01–03 | Phase 34 | Pending |
+
 **Coverage:**
 - v0.1 requirements: 47 total | Mapped: 47 | Unmapped: 0 ✓
 - v0.2 requirements: 8 total | Mapped: 8 | Unmapped: 0 ✓
 - v0.3 requirements: 26 total | Mapped: 26 | Unmapped: 0 ✓
 - v0.4 requirements: 26 total | Mapped: 26 | Unmapped: 0 ✓
 - v0.5 requirements: 25 total | Mapped: 25 | Unmapped: 0 ✓
+- v0.6 requirements: 25 total | Mapped: 25 | Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — v0.5 Quality & Benchmark Lift requirements added*
+*Last updated: 2026-05-29 — v0.6 World-Class Atelier requirements added*

@@ -973,7 +973,7 @@ Plans:
 **Plans**: 3 plans
 **Wave 1**
 
-- [ ] 23-01-PLAN.md — MCP/CLI core: make 13 in-scope silent handlers observable (QBL-EXC-01/02/04)
+- [x] 23-01-PLAN.md — MCP/CLI core: make 13 in-scope silent handlers observable (QBL-EXC-01/02/04)
 - [ ] 23-02-PLAN.md — SDK/core/infra: 9 silent handlers observable + remove 4 BLE001 ignores (QBL-EXC-02/03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -1082,7 +1082,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 22. Lint and Coverage Gates | 1/1 | Complete    | 2026-05-29 |
-| 23. Silent Exception Audit | 0/? | Not started | - |
+| 23. Silent Exception Audit | 1/3 | In Progress|  |
 | 24. Stdout to Logging | 0/? | Not started | - |
 | 25. CLI Decomposition | 0/? | Not started | - |
 | 26. A/B Suite Expansion | 0/? | Not started | - |
@@ -1127,3 +1127,157 @@ Plans:
 *v0.5 roadmap appended: 2026-05-29*
 *Milestone target: v0.5 Quality & Benchmark Lift*
 *Build order: Phase 22 → Phase 23/24 → Phase 25 and Phase 26 → Phase 27*
+
+---
+
+## Milestone v0.6: World-Class Atelier
+
+**Goal:** Close the quality and efficiency gap against Augment and Vix by upgrading to neural code embeddings, adding a cross-encoder rerank stage, implementing phase-cache continuity ("stem agent"), and proving the lift with real (not modeled) numbers.
+
+**Source of truth:** `docs/plans/world-class-atelier/`
+
+**Phases:**
+
+- [ ] **Phase 28: EMB — Neural Code Embeddings** — Replace 384-dim feature hashing with code-trained neural embeddings via Ollama/local-HF
+- [ ] **Phase 29: PROOF — Empirical Proof Program** — Replace modeled headlines with real TerminalBench A/B and self-repo eval numbers
+- [ ] **Phase 30: RERANK — Cross-encoder Reranker** — Add a local cross-encoder rerank stage to the candidate fusion pipeline
+- [ ] **Phase 31: STEM — Phase-aware Workflow ("Stem Agent")** — Implement phase-aware "stem" workflows to reuse prompt cache across explore→plan→execute
+- [ ] **Phase 32: ROUTE+ — Calibrated & Enforcing Routing** — Calibrate quality-gain estimates from real traces and add opt-in enforcement
+- [ ] **Phase 33: INDEX — Continuous & Branch-aware Indexing** — Upgrade to event-driven (inotify) continuous indexing with per-branch index keys
+- [ ] **Phase 34: SPEC — Speculative & Forecasted Retrieval** — Implement speculative/forecasted retrieval (SpecAgent) to parallelize prefetching
+
+---
+
+### Phase 28: EMB — Neural Code Embeddings
+
+**Goal**: Upgrade the code and lineage search pipeline from feature hashing to high-quality neural embeddings served locally.
+**Depends on**: v0.5 completion
+**Requirements**: WCA-EMB-01, WCA-EMB-02, WCA-EMB-03, WCA-EMB-04, WCA-EMB-05, WCA-EMB-06
+
+**Key modules**:
+- `src/atelier/infra/embeddings/ollama_embedder.py` (new)
+- `src/atelier/infra/embeddings/factory.py` (extend)
+- `src/atelier/core/capabilities/code_context/embedding.py` (modify)
+- `src/atelier/infra/code_intel/git_history/embedder.py` (modify)
+- `src/atelier/core/capabilities/code_context/engine.py` (modify)
+
+**Success Criteria**:
+  1. `OllamaEmbedder` correctly POSTs to `/api/embed` and applies required prefixes/normalization.
+  2. `code_embedder()` accessor successfully replaces hard-pinned `LocalEmbedder` in search paths.
+  3. Bumping `_LINEAGE_INDEX_VERSION` triggers a background re-summarization and re-indexing of commits.
+  4. Unit tests prove Ollama-reachable → `OllamaEmbedder` and Ollama-down → hashing fallback.
+  5. Retrieval-precision microbench shows measurable lift (≥+2 grade points on M1_lineage).
+
+---
+
+### Phase 29: PROOF — Empirical Proof Program
+
+**Goal**: Replace all modeled or simulated performance claims with measured, reproducible empirical data.
+**Depends on**: Phase 28
+**Requirements**: WCA-PROOF-01, WCA-PROOF-02, WCA-PROOF-03, WCA-PROOF-04
+
+**Key modules**:
+- `tests/benchmarks/context_quality/M2_routing.py` (re-implement)
+- `benchmarks/ab/runner.py` (execute)
+- `docs/plans/world-class-atelier/results/` (new artifacts)
+- `bench_cost.py` (modify)
+
+**Success Criteria**:
+  1. M2 routing benchmark uses real recorded trace outcomes instead of static gains.
+  2. A complete TerminalBench A/B report (N=5) is committed to the results directory.
+  3. Self-repo evaluation suite completes on 30 tasks with original PR test gates.
+  4. Public docs and `bench_cost.py` show measured empirical numbers.
+
+---
+
+### Phase 30: RERANK — Cross-encoder Reranker
+
+**Goal**: Improve retrieval precision by adding a local cross-encoder rerank stage to the top candidates.
+**Depends on**: Phase 28
+**Requirements**: WCA-RERANK-01, WCA-RERANK-02, WCA-RERANK-03
+
+**Key modules**:
+- `src/atelier/core/capabilities/code_context/rerank.py` (new)
+- `src/atelier/core/capabilities/code_context/engine.py` (extend candidate fusion)
+
+**Success Criteria**:
+  1. `bge-reranker-v2-m3` (or equivalent) integrated and running locally.
+  2. Rerank stage correctly re-orders top 10-30 candidates from RRF fusion.
+  3. Precision@5 lift is measured and recorded in the EMB microbench.
+  4. Reranking latency stays within the configured per-turn budget.
+
+---
+
+### Phase 31: STEM — Phase-aware Workflow ("Stem Agent")
+
+**Goal**: Maximize token efficiency by keeping the prompt cache warm across workflow phases.
+**Depends on**: Phase 13 (Linear Cache-Reuse)
+**Requirements**: WCA-STEM-01, WCA-STEM-02, WCA-STEM-03, WCA-STEM-04
+
+**Key modules**:
+- `src/atelier/core/capabilities/prefix_cache/planner.py` (extend)
+- `src/atelier/core/capabilities/autopilot/policy.py` (extend)
+- workflow-config schema (new)
+
+**Success Criteria**:
+  1. A single conversation persists across explore→plan→execute steps with warm cache.
+  2. `AutopilotPolicy` correctly choreographs transitions and prefix stability.
+  3. A/B benchmark proves ≥X% fewer uncached input tokens vs. phase-distinct agents.
+  4. Multi-model voting is functional for planning/review steps.
+
+---
+
+### Phase 32: ROUTE+ — Calibrated & Enforcing Routing
+
+**Goal**: Turn model routing into an enforcing, data-driven quality lever.
+**Depends on**: Phase 12 (Cache-Aware Routing)
+**Requirements**: WCA-ROUTE-01, WCA-ROUTE-02
+
+**Key modules**:
+- `src/atelier/core/capabilities/model_routing/router.py` (calibrate)
+- routing enforcement wrapper (new)
+
+**Success Criteria**:
+  1. `quality_gain` estimates are derived from real trace outcome data.
+  2. Opt-in enforcement hook allows hosts to execute the recommended model automatically.
+  3. Replay benchmarks show cost reduction with zero quality-tier regressions.
+
+---
+
+### Phase 33: INDEX — Continuous & Branch-aware Indexing
+
+**Goal**: Reach sub-second search freshness with branch-aware index isolation.
+**Depends on**: Phase 4 (DLS)
+**Requirements**: WCA-INDEX-01, WCA-INDEX-02, WCA-INDEX-03
+
+**Key modules**:
+- `src/atelier/infra/code_intel/scip/watcher.py` (re-implement)
+- SCIP index keying logic (modify)
+
+**Success Criteria**:
+  1. SCIP index updates are event-driven (watchdog/inotify), not poll-based.
+  2. Index keys are isolated per-branch, preventing cross-branch leakage.
+  3. Measured edit-to-searchable latency remains < 5 seconds.
+
+---
+
+### Phase 34: SPEC — Speculative & Forecasted Retrieval
+
+**Goal**: Hide retrieval latency and improve recall via parallel speculative prefetching.
+**Depends on**: Phase 33, Phase 28
+**Requirements**: WCA-SPEC-01, WCA-SPEC-02, WCA-SPEC-03
+
+**Key modules**:
+- `src/atelier/core/capabilities/code_context/predictor.py` (new)
+- prefetch cache in `code_context/` (new)
+
+**Success Criteria**:
+  1. SpecAgent predictor forecasts next-needed files from context + graph.
+  2. Prefetch cache retrieves files in background during agent processing turns.
+  3. Retrieval latency is hidden on multi-step tasks with no precision regression.
+
+---
+
+*v0.6 roadmap appended: 2026-05-29*
+*Milestone target: v0.6 World-Class Atelier*
+*Build order: Phase 28 → Phase 29 → (Phase 30, Phase 31, Phase 32, Phase 33) → Phase 34*
