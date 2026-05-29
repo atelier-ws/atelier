@@ -151,10 +151,10 @@
 
 ### Tree-sitter Repo-map Tags
 
-- [ ] **DLS-TAGS-01**: Repo-map tag extraction uses tree-sitter-derived tags for all tree-sitter-supported languages
-- [ ] **DLS-TAGS-02**: Python keeps its existing AST-based tag extraction path
-- [ ] **DLS-TAGS-03**: Unknown or unsupported languages keep regex tag extraction as a fallback instead of failing
-- [ ] **DLS-TAGS-04**: Repo-map/PageRank can consume tags from languages that previously produced no useful symbols
+- [x] **DLS-TAGS-01**: Repo-map tag extraction uses tree-sitter-derived tags for all tree-sitter-supported languages
+- [x] **DLS-TAGS-02**: Python keeps its existing AST-based tag extraction path
+- [x] **DLS-TAGS-03**: Unknown or unsupported languages keep regex tag extraction as a fallback instead of failing
+- [x] **DLS-TAGS-04**: Repo-map/PageRank can consume tags from languages that previously produced no useful symbols
 
 ### SCIP Registry and Lazy Indexing
 
@@ -279,10 +279,10 @@
 | DLS-OUTLINE-03 | Phase 17 | Complete |
 | DLS-OUTLINE-04 | Phase 17 | Complete |
 | DLS-OUTLINE-05 | Phase 17 | Complete |
-| DLS-TAGS-01 | Phase 18 | Pending |
-| DLS-TAGS-02 | Phase 18 | Pending |
-| DLS-TAGS-03 | Phase 18 | Pending |
-| DLS-TAGS-04 | Phase 18 | Pending |
+| DLS-TAGS-01 | Phase 18 | Complete |
+| DLS-TAGS-02 | Phase 18 | Complete |
+| DLS-TAGS-03 | Phase 18 | Complete |
+| DLS-TAGS-04 | Phase 18 | Complete |
 | DLS-SCIP-01 | Phase 19 | Pending |
 | DLS-SCIP-02 | Phase 19 | Pending |
 | DLS-SCIP-03 | Phase 19 | Pending |
@@ -305,4 +305,4 @@
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — Phase 17 tree-sitter outline requirements complete*
+*Last updated: 2026-05-29 — Phase 18 tree-sitter repo-map tag requirements complete*

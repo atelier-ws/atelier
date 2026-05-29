@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Dedicated Language Support
 status: executing
-last_updated: "2026-05-29T13:10:00.000Z"
-last_activity: 2026-05-29 -- Phase 18 planned; execution next
+last_updated: "2026-05-29T14:05:00.000Z"
+last_activity: 2026-05-29 -- Phase 18 verified complete; Phase 19 planning next
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 4
-  percent: 33
+  completed_plans: 6
+  percent: 50
 ---
 
 # Project State
@@ -18,15 +18,15 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.4 — Dedicated Language Support
 **Updated:** 2026-05-29
-**Status:** Executing Phase 18
+**Status:** Planning Phase 19
 
 ## Current Phase
 
-**Current: Phase 18 — Tree-sitter Repo-map Tags**
+**Current: Phase 19 — Expanded SCIP Registry and Lazy Indexing**
 
-Next action: `/gsd-execute-phase 18`
+Next action: `/gsd-plan-phase 19`
 
-Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 18 planning is complete with two execution plans for tree-sitter tag extraction and repo-map validation.
+Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 18 completed tree-sitter-backed repo-map tags and verified DLS-TAGS-01 through DLS-TAGS-04. Phase 19 now needs planning for expanded SCIP registry support and lazy indexing.
 
 ## Roadmap Progress
 
@@ -66,7 +66,7 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 |-------|--------|------|
 | Phase 16 | ✅ Complete | Canonical Language Registry (DLS-LANG-01–04) |
 | Phase 17 | ✅ Complete | Tree-sitter Outline Coverage (DLS-OUTLINE-01–05) |
-| Phase 18 | 🔄 Planned | Tree-sitter Repo-map Tags (DLS-TAGS-01–04) |
+| Phase 18 | ✅ Complete | Tree-sitter Repo-map Tags (DLS-TAGS-01–04) |
 | Phase 19 | ⏳ Not started | Expanded SCIP Registry and Lazy Indexing (DLS-SCIP-01–04) |
 | Phase 20 | ⏳ Not started | Runtime SCIP Indexer Provisioning (DLS-PROV-01–05) |
 | Phase 21 | ⏳ Not started | Validation, Benchmarks, and Docs (DLS-VAL-01–04) |
