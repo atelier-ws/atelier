@@ -33,7 +33,6 @@ import yaml
 
 from atelier import __version__ as atelier_version
 from atelier.bench import bootstrap as _bench_bootstrap
-from atelier.core.environment import cli_dev_disabled_message, is_dev_mode
 from atelier.core.foundation.models import (
     ReasonBlock,
     Rubric,
@@ -47,6 +46,26 @@ from atelier.core.foundation.renderer import (
     render_rubric_result,
 )
 from atelier.core.foundation.store import ContextStore
+
+# Relocated CLI glue / dev-gating primitives (Phase 25 commands substrate).
+# These live in cli/commands/* as a downward import target so future command
+# modules avoid the app.py <-> commands/* circular-import risk. Re-imported here
+# so every existing call site in app.py is unchanged.
+from atelier.gateway.cli.commands import register as _register_command_modules
+from atelier.gateway.cli.commands._dev import (
+    MCP_TOOL_ONLY_COMMANDS,
+    MCP_TOOL_ONLY_GROUPS,
+    _check_dev_mode,
+    _DummyGroup,
+)
+from atelier.gateway.cli.commands._shared import (
+    _core_runtime,
+    _emit,
+    _load_store,
+    _parse_tags,
+    _read_memory_value,
+    _redact_memory_input,
+)
 from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
 from atelier.gateway.integrations.external_analytics import REPORTABLE_TOOL_IDS
 
@@ -284,26 +303,6 @@ def _record_reasonblock_events(
 # --------------------------------------------------------------------------- #
 
 
-def _load_store(root: Path) -> Any:
-    from atelier.infra.storage.factory import create_store
-
-    try:
-        store = create_store(root)
-    except (RuntimeError, ValueError) as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    db_path = getattr(store, "db_path", None)
-    if db_path is not None and not Path(db_path).exists():
-        raise click.ClickException(f"No atelier store at {root}. Run `atelier init` first.")
-    return store
-
-
-def _core_runtime(root: Path) -> Any:
-    from atelier.core.runtime import AtelierRuntimeCore
-
-    return AtelierRuntimeCore(root)
-
-
 def _lesson_promoter(root: Path) -> Any:
     from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
 
@@ -316,13 +315,6 @@ def _lesson_pr_bot(root: Path) -> Any:
 
     store = _load_store(root)
     return LessonPrBot(store=store, root=root)
-
-
-def _emit(data: Any, *, as_json: bool) -> None:
-    if as_json:
-        click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
-    else:
-        click.echo(data)
 
 
 def _seed_resources() -> tuple[list[Path], list[Path]]:
@@ -343,30 +335,6 @@ def _load_domain_manager(root: Path) -> Any:
     from atelier.core.domains import DomainManager
 
     return DomainManager(root)
-
-
-_REDACTION_PLACEHOLDER_RE = re.compile(r"<redacted[^>]*>")
-
-
-def _redact_memory_input(text: str, field_name: str) -> str:
-    from atelier.core.foundation.redaction import redact
-
-    redacted = redact(text)
-    if not text:
-        return redacted
-    remaining = _REDACTION_PLACEHOLDER_RE.sub("", redacted)
-    if len(remaining.strip()) < len(text.strip()) * 0.5:
-        raise click.ClickException(f"{field_name} rejected: likely secret leakage")
-    return redacted
-
-
-def _read_memory_value(value: str) -> str:
-    if not value.startswith("@"):
-        return value
-    path_text = value[1:]
-    if path_text == "/dev/stdin" or path_text == "-":
-        return sys.stdin.read()
-    return Path(path_text).read_text(encoding="utf-8")
 
 
 def _parse_duration(value: str) -> timedelta:
@@ -1133,13 +1101,6 @@ def _servicectl_tick(
     }
 
 
-def _parse_tags(values: tuple[str, ...]) -> list[str]:
-    tags: list[str] = []
-    for value in values:
-        tags.extend(tag.strip() for tag in value.split(",") if tag.strip())
-    return tags
-
-
 def _cache_disabled() -> bool:
     return os.environ.get("ATELIER_CACHE_DISABLED") == "1"
 
@@ -1357,20 +1318,6 @@ def uninstall(dry_run: bool, no_hosts: bool, purge: bool, workspace: Path | None
         raise click.ClickException(f"uninstall failed with code {exc.returncode}") from exc
 
 
-class _DummyGroup:
-    """A placeholder for a Click group that does nothing."""
-
-    def command(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return lambda f: f
-
-    def group(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Any]:
-        return lambda f: _DummyGroup()  # type: ignore
-
-
-MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "rescue", "verify", "read", "edit", "search"})
-MCP_TOOL_ONLY_GROUPS = frozenset({"memory", "route"})
-
-
 def _dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Register a dev command but gate execution at runtime."""
     if name in MCP_TOOL_ONLY_COMMANDS:
@@ -1560,12 +1507,6 @@ def search(ctx: click.Context, query_parts: tuple[str, ...], limit: int, as_json
         return
     for b in blocks:
         click.echo(f"{b.id}\t{b.domain}\t{b.title}")
-
-
-def _check_dev_mode(command_name: str, status: int = 1) -> None:
-    if not is_dev_mode():
-        click.echo(cli_dev_disabled_message(command_name))
-        sys.exit(status)
 
 
 # ----- context -------------------------------------------------------------- #
@@ -7117,6 +7058,10 @@ def _register_swe_benchmark_group() -> None:
 
 
 _register_swe_benchmark_group()
+
+# Register relocated command modules (Phase 25 commands substrate). Currently a
+# resilient no-op stub; later slices add extracted groups via register(cli).
+_register_command_modules(cli)
 
 
 @cli.group("service")
