@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from atelier.core.foundation.paths import default_store_root
 from atelier.infra.code_intel.languages import language_by_name
 
 ScipOutputStrategy = Literal["file_arg", "cache_dir_index", "repo_index"]
@@ -115,6 +116,55 @@ def scip_binary_specs() -> dict[str, ScipBinarySpec]:
     return dict(_SCIP_BINARY_SPECS)
 
 
+def managed_scip_binary_dirs() -> tuple[Path, ...]:
+    """Return Atelier-managed binary directories searched before system PATH."""
+
+    raw_dirs = [
+        Path(os.environ.get("ATELIER_NODE_DIR", str(Path.home() / ".local" / "node"))) / "bin",
+        default_store_root() / "bin",
+    ]
+    install_dir = os.environ.get("ATELIER_INSTALL_DIR", "").strip()
+    if install_dir:
+        raw_dirs.append(Path(install_dir).expanduser() / "bin")
+
+    seen: set[Path] = set()
+    dirs: list[Path] = []
+    for raw_dir in raw_dirs:
+        path = raw_dir.expanduser().resolve()
+        if path not in seen:
+            seen.add(path)
+            dirs.append(path)
+    return tuple(dirs)
+
+
+def _executable_path(path: Path) -> Path | None:
+    resolved = path.expanduser().resolve()
+    if resolved.is_file() and os.access(resolved, os.X_OK):
+        return resolved
+    return None
+
+
+def _resolve_explicit_candidate(candidate: str) -> Path | None:
+    resolved = shutil.which(candidate) if Path(candidate).name == candidate else candidate
+    if not resolved:
+        return None
+    return _executable_path(Path(resolved))
+
+
+def _resolve_managed_or_path(command: str) -> Path | None:
+    command_path = Path(command)
+    if command_path.name != command:
+        return _executable_path(command_path)
+    for directory in managed_scip_binary_dirs():
+        path = _executable_path(directory / command)
+        if path is not None:
+            return path
+    resolved = shutil.which(command)
+    if not resolved:
+        return None
+    return _executable_path(Path(resolved))
+
+
 def discover_scip_binary(language: str) -> Path | None:
     """Resolve a supported local SCIP indexer binary if one is installed."""
 
@@ -124,16 +174,14 @@ def discover_scip_binary(language: str) -> Path | None:
     env_var = spec.env_var
     lang = language_by_name(language)
     fallback = lang.scip_indexer if lang is not None and lang.scip_indexer else spec.fallback_command
-    candidates = [os.environ.get(env_var, ""), fallback]
-    for candidate in candidates:
-        if not candidate:
-            continue
-        resolved = shutil.which(candidate) if Path(candidate).name == candidate else candidate
-        if not resolved:
-            continue
-        path = Path(resolved).expanduser().resolve()
-        if path.is_file() and os.access(path, os.X_OK):
+    override = os.environ.get(env_var, "")
+    if override:
+        path = _resolve_explicit_candidate(override)
+        if path is not None:
             return path
+    path = _resolve_managed_or_path(fallback)
+    if path is not None:
+        return path
     return None
 
 
@@ -152,6 +200,7 @@ __all__ = [
     "ScipBinarySpec",
     "discover_scip_binaries",
     "discover_scip_binary",
+    "managed_scip_binary_dirs",
     "scip_binary_spec",
     "scip_binary_specs",
 ]
