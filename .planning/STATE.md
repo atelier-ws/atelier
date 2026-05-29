@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Dedicated Language Support
 status: executing
-last_updated: "2026-05-29T11:35:00.000Z"
-last_activity: 2026-05-29 -- Phase 16 verified complete; Phase 17 planning next
+last_updated: "2026-05-29T12:05:00.000Z"
+last_activity: 2026-05-29 -- Phase 17 plans verified; ready to execute
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 2
+  total_plans: 4
   completed_plans: 2
   percent: 17
 ---
@@ -18,15 +18,15 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.4 — Dedicated Language Support
 **Updated:** 2026-05-29
-**Status:** Planning Phase 17
+**Status:** Executing Phase 17
 
 ## Current Phase
 
 **Current: Phase 17 — Tree-sitter Outline Coverage**
 
-Next action: `/gsd-plan-phase 17`
+Next action: `/gsd-execute-phase 17`
 
-Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 completed the canonical language registry and verified DLS-LANG-01 through DLS-LANG-04. Phase 17 now needs planning for dedicated tree-sitter outline coverage across shell, SQL, YAML, TOML, and JSON.
+Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 completed the canonical language registry and verified DLS-LANG-01 through DLS-LANG-04. Phase 17 has 2 verified plans ready to execute for dedicated tree-sitter outline coverage across shell, SQL, YAML, TOML, and JSON.
 
 ## Roadmap Progress
 
@@ -123,8 +123,8 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 
 ## Current Position
 
-Phase: 17 (Tree-sitter Outline Coverage) — READY TO PLAN
+Phase: 17 (Tree-sitter Outline Coverage) — READY TO EXECUTE
 Previous phase: 16 (Canonical Language Registry) — COMPLETE
 Plans: 2
-Status: Planning Phase 17
-Last activity: 2026-05-29 -- Phase 16 verified complete; Phase 17 planning next
+Status: Executing Phase 17
+Last activity: 2026-05-29 -- Phase 17 plans verified; ready to execute
