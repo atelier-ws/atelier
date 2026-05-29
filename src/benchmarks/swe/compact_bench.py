@@ -43,11 +43,14 @@ Written to ``<root>/benchmarks/savings/compact_latest.json``.
 from __future__ import annotations
 
 import json
+import logging
 import statistics
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pricing constants (USD per 1 M tokens)
@@ -134,7 +137,8 @@ def _parse_session(path: Path) -> tuple[list[_Turn], str]:
                     continue
                 try:
                     ev = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("transcript line json parse skipped", exc_info=True)
                     continue
 
                 if ev.get("type") != "assistant":
@@ -175,8 +179,8 @@ def _parse_session(path: Path) -> tuple[list[_Turn], str]:
                         tool_names=tool_names,
                     )
                 )
-    except Exception:
-        pass
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+        logger.debug("transcript parse skipped", exc_info=True)
 
     return turns, model_id
 
