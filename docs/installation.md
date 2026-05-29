@@ -21,6 +21,12 @@ The installer uses uv at install time to create a managed tool environment.
 After install, `atelier` and `atelier-mcp` run directly from that environment;
 normal CLI usage does not shell through `uv run`.
 
+When npm is available, the installer also provisions Tier-1 SCIP indexers
+(`scip-python` and `scip-typescript`) into Atelier's managed Node prefix so
+Python, TypeScript, and JavaScript semantic indexing works without a
+system-global install. Heavier indexers are discovered from user toolchains or
+reported in availability status with install hints.
+
 Verify the install:
 
 ```bash
