@@ -287,11 +287,21 @@ def _parse_events(path: Path) -> list[_Event]:
                     logger.debug("event line json parse skipped", exc_info=True)
                     continue
 
+                if not isinstance(ev, dict):
+                    logger.debug("event line non-object json skipped")
+                    continue
+
                 ev_type = ev.get("type", "")
 
                 if ev_type == "assistant":
                     msg = ev.get("message") or {}
+                    if not isinstance(msg, dict):
+                        logger.debug("assistant message non-object skipped")
+                        continue
                     usage = msg.get("usage") or {}
+                    if not isinstance(usage, dict):
+                        logger.debug("assistant usage non-object skipped")
+                        continue
                     inp = int(usage.get("input_tokens", 0))
                     cache_c = int(usage.get("cache_creation_input_tokens", 0))
                     cache_r = int(usage.get("cache_read_input_tokens", 0))
@@ -326,6 +336,9 @@ def _parse_events(path: Path) -> list[_Event]:
                 elif ev_type == "user":
                     last_a_fingerprint = None
                     msg = ev.get("message") or {}
+                    if not isinstance(msg, dict):
+                        logger.debug("user message non-object skipped")
+                        continue
                     content = msg.get("content") or []
                     tool_results: list[dict[str, Any]] = []
                     if isinstance(content, list):
