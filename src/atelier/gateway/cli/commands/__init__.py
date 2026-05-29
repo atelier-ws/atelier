@@ -23,5 +23,16 @@ def register(cli: click.Group) -> None:
     in try/except ``ModuleNotFoundError`` so a missing optional module never
     breaks CLI startup (mirrors ``_register_swe_benchmark_group``).
     """
-    # No command modules have been extracted yet (Plan 25-01 substrate only).
-    return
+    try:
+        from .letta import letta_group
+
+        cli.add_command(letta_group)
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        from .openmemory import openmemory_group
+
+        cli.add_command(openmemory_group)
+    except ModuleNotFoundError:
+        pass
