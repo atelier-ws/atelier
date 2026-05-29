@@ -1033,7 +1033,34 @@ Plans:
   3. Command names, flags, and help output remain unchanged.
   4. `app.py` is registration-only and materially smaller.
 
-**Plans**: TBD
+**Plans**: 7 plans (sequential waves 1–7; all share `app.py` so strictly ordered)
+**Wave 1**
+
+- [ ] 25-01-PLAN.md — Safety net + scaffolding: recursive --help/tree snapshot baselined from dirty WIP, MCP-only suppression test, `cli/commands/` package (`__init__` register, `_dev`, `_shared`)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 25-02-PLAN.md — OpenMemory + Letta command extraction; lifecycle logic → `integrations/openmemory_lifecycle.py`
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 25-03-PLAN.md — Stack/servicectl/background/systemd/service/worker/logs extraction; lifecycle → `infra/runtime/*` (carries in-flight WIP)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 25-04-PLAN.md — Benchmark/savings/optimize/tools extraction; runners → `infra/benchmarks`, dashboards → `core/capabilities/reporting`
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 25-05-PLAN.md — Code/zoekt/context/memory/route/proof/session/outcomes/runs extraction (preserves duplicate memory/route suppression)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 25-06-PLAN.md — Remaining groups: hosts/blocks/domain/telemetry/lessons/eval/admin/misc
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 25-07-PLAN.md — Final thinning + `test_cli_thinness.py` (no subprocess/sqlite3, LOC budget) + full equivalence/lint/typecheck/test gate
 
 ---
 
@@ -1096,7 +1123,7 @@ Plans:
 | 22. Lint and Coverage Gates | 1/1 | Complete    | 2026-05-29 |
 | 23. Silent Exception Audit | 3/3 | Complete    | 2026-05-29 |
 | 24. Stdout to Logging | 4/4 | Complete    | 2026-05-29 |
-| 25. CLI Decomposition | 0/? | Not started | - |
+| 25. CLI Decomposition | 0/7 | Planning complete | - |
 | 26. A/B Suite Expansion | 0/? | Not started | - |
 | 27. Public Benchmark Results | 0/? | Not started | - |
 

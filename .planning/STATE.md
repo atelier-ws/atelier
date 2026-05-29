@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Quality & Benchmark Lift
-status: active
-last_updated: "2026-05-29T19:52:09.345Z"
-last_activity: 2026-05-29 -- Phase 24 marked complete
+status: executing
+last_updated: "2026-05-29T20:25:22.550Z"
+last_activity: 2026-05-29 -- Phase 25 planning complete
 progress:
-  total_phases: 27
-  completed_phases: 11
-  total_plans: 38
-  completed_plans: 27
-  percent: 41
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 8
+  percent: 50
 ---
 
 # Project State
@@ -18,13 +18,13 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.5 — Quality & Benchmark Lift
 **Updated:** 2026-05-29
-**Status:** Phase 24 complete; Phase 25 ready for planning
+**Status:** Ready to execute
 
 ## Current Phase
 
 **Current: Phase 25 — CLI Decomposition**
 
-Next action: `/gsd-plan-phase 25`
+Next action: `/gsd-execute-phase 25`
 
 Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focuses on coding-quality gates, silent exception burn-down, stdout/logging hygiene, CLI decomposition, expanded A/B suites, and reproducible public benchmark results.
 
@@ -151,9 +151,9 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 
 ## Current Position
 
-Phase: 24 — COMPLETE
-Plan: 4 of 4
+Phase: 25 — PLANNING COMPLETE
+Plan: 0 of 7
 Previous milestone: v0.4 (Dedicated Language Support) — COMPLETE
-Plans: 23-01, 23-02, 23-03 all complete; 24-01, 24-02, 24-03 complete
-Status: Phase 24 complete
-Last activity: 2026-05-29 -- Phase 24 marked complete
+Plans: 23-01..03, 24-01..03 complete; 25-01..07 planned (sequential waves 1–7), ready to execute
+Status: Ready to execute
+Last activity: 2026-05-29 -- Phase 25 planning complete
