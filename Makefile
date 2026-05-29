@@ -99,7 +99,7 @@ test-cov: ## Run tests with terminal and HTML coverage reports
 	uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 
 test-full: ## Run the FULL suite (incl. slow) with measured coverage floor
-	uv run pytest -m "" --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
+	uv run pytest -m "" --timeout=300 --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
 
 security-test: ## Run security-focused test cases
 	uv run pytest tests/gateway/test_security.py -v
