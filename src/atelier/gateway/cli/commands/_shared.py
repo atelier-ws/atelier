@@ -72,3 +72,21 @@ def _parse_tags(values: tuple[str, ...]) -> list[str]:
     for value in values:
         tags.extend(tag.strip() for tag in value.split(",") if tag.strip())
     return tags
+
+
+def _smart_state_path(root: Path) -> Path:
+    return Path(root) / "smart_state.json"
+
+
+def _load_smart_state(root: Path) -> dict[str, Any]:
+    p = _smart_state_path(root)
+    if not p.exists():
+        return {"mode": "shadow", "cache": {}, "savings": {"calls_avoided": 0, "tokens_saved": 0}}
+    data: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
+    return data
+
+
+def _save_smart_state(root: Path, state: dict[str, Any]) -> None:
+    p = _smart_state_path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2), encoding="utf-8")
