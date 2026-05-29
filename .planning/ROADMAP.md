@@ -637,7 +637,9 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
   3. Extension detection, tree-sitter outline configuration, repo-map tag detection, and SCIP binary lookup use the same language identity.
   4. Existing recognized languages continue to resolve to their prior or intentionally canonicalized language names.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 16-01-PLAN.md — Canonical language registry module + Wave-0 registry unit tests (DLS-LANG-01, DLS-LANG-02)
+- [ ] 16-02-PLAN.md — Migrate the four code-intel surfaces to the registry + shell outline & SCIP env-var regression (DLS-LANG-03, DLS-LANG-04)
 
 ---
 
@@ -753,7 +755,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Canonical Language Registry | 0/? | Not started | - |
+| 16. Canonical Language Registry | 0/2 | Not started | - |
 | 17. Tree-sitter Outline Coverage | 0/? | Not started | - |
 | 18. Tree-sitter Repo-map Tags | 0/? | Not started | - |
 | 19. Expanded SCIP Registry and Lazy Indexing | 0/? | Not started | - |
