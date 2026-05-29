@@ -920,7 +920,7 @@ Plans:
 
 **Phases:**
 
-- [ ] **Phase 22: Lint and Coverage Gates** — Enable BLE001/T20 with scoped ignores and add nightly full-suite coverage gating
+- [x] **Phase 22: Lint and Coverage Gates** — Enable BLE001/T20 with scoped ignores and add nightly full-suite coverage gating (completed 2026-05-29)
 - [ ] **Phase 23: Silent Exception Audit** — Remove or justify every `except Exception: pass` site and shrink BLE001 ignores
 - [ ] **Phase 24: Stdout to Logging** — Replace non-CLI `print()` calls with logging/stderr and preserve CLI output via Click
 - [ ] **Phase 25: CLI Decomposition** — Split `gateway/cli/app.py` into command modules and extract business logic
@@ -951,7 +951,7 @@ Plans:
 **Plans**: 1 plan
 Plans:
 
-- [ ] 22-01-PLAN.md — Enable Ruff BLE/T20 with scoped per-file-ignores, add slow-inclusive `test-full` target with measured coverage floor, and add nightly-coverage.yml workflow
+- [x] 22-01-PLAN.md — Enable Ruff BLE/T20 with scoped per-file-ignores, add slow-inclusive `test-full` target with measured coverage floor, and add nightly-coverage.yml workflow
 
 ---
 
@@ -1073,7 +1073,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 22. Lint and Coverage Gates | 0/? | Not started | - |
+| 22. Lint and Coverage Gates | 1/1 | Complete    | 2026-05-29 |
 | 23. Silent Exception Audit | 0/? | Not started | - |
 | 24. Stdout to Logging | 0/? | Not started | - |
 | 25. CLI Decomposition | 0/? | Not started | - |
