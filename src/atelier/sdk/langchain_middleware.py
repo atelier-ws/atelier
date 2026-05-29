@@ -22,6 +22,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,8 @@ from atelier.infra.runtime.run_ledger import RunLedger
 
 if TYPE_CHECKING:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 def _inject_cache_control(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -169,8 +172,8 @@ class LangChainMiddleware:
                 output_tokens = token_usage.get("completion_tokens", 0)
             if not cache_read_tokens:
                 cache_read_tokens = token_usage.get("cache_read_input_tokens", 0)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — best-effort token capture, must not break host model call
+            logger.debug("langchain token capture failed", exc_info=True)
 
         # Compute prefix hash from current prompt blocks
         try:
@@ -192,8 +195,8 @@ class LangChainMiddleware:
                 plan = planner.plan_with_history([task_block], self._prior_prefix_hash or None)
                 prefix_hash = plan.prefix_hash
                 self._prior_prefix_hash = prefix_hash
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — best-effort prefix-cache capture, must not break host model call
+            logger.debug("langchain prefix-cache capture failed", exc_info=True)
 
         self._ledger.record_call(
             operation="chat",
