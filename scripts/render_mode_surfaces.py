@@ -108,12 +108,16 @@ CLAUDE_STABLE_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
                 "mcp__atelier__context",
                 "mcp__atelier__search",
                 "mcp__atelier__read",
+                "mcp__atelier__grep",
+                "mcp__atelier__node",
+                "mcp__atelier__symbols",
+                "mcp__atelier__usages",
+                "mcp__atelier__explore",
                 "mcp__atelier__memory",
             ],
         ),
         ("disallowedTools", ["Edit", "Write", "MultiEdit", "NotebookEdit", "Agent"]),
         ("color", "blue"),
-        ("model", "haiku"),
     ],
     "review": [
         ("name", "review"),
@@ -127,6 +131,10 @@ CLAUDE_STABLE_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
                 "mcp__atelier__context",
                 "mcp__atelier__read",
                 "mcp__atelier__search",
+                "mcp__atelier__node",
+                "mcp__atelier__usages",
+                "mcp__atelier__callers",
+                "mcp__atelier__impact",
                 "mcp__atelier__verify",
                 "mcp__atelier__trace",
                 "mcp__atelier__memory",
@@ -165,7 +173,6 @@ CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
         ("name", "explore"),
         ("description", ""),
         ("color", "cyan"),
-        ("model", "haiku"),
         (
             "tools",
             [
@@ -176,10 +183,18 @@ CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
                 "mcp__atelier__context",
                 "mcp__atelier__search",
                 "mcp__atelier__read",
+                "mcp__atelier__grep",
+                "mcp__atelier__node",
+                "mcp__atelier__symbols",
+                "mcp__atelier__usages",
+                "mcp__atelier__explore",
                 "mcp__atelier__memory",
             ],
         ),
-        ("disallowedTools", ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"]),
+        (
+            "disallowedTools",
+            ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"],
+        ),
     ],
     "review": [
         ("name", "review"),
@@ -188,7 +203,11 @@ CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
             "tools",
             [
                 "Read",
-                "Grep",
+                "mcp__atelier__search",
+                "mcp__atelier__node",
+                "mcp__atelier__usages",
+                "mcp__atelier__callers",
+                "mcp__atelier__impact",
                 "Glob",
                 "mcp__atelier__context",
                 "mcp__atelier__read",
@@ -220,10 +239,21 @@ CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
 }
 
 OPENCODE_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
-    "code": [("description", "Atelier - main coding agent for the Agent Reasoning Runtime"), ("mode", "primary")],
-    "explore": [("description", "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.")],
+    "code": [
+        ("description", "Atelier - main coding agent for the Agent Reasoning Runtime"),
+        ("mode", "primary"),
+    ],
+    "explore": [
+        (
+            "description",
+            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
+        )
+    ],
     "review": [
-        ("description", "Adversarial code reviewer. Applies the verification ladder. Never edits source files.")
+        (
+            "description",
+            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
+        )
     ],
     "repair": [
         (
@@ -246,9 +276,17 @@ ANTIGRAVITY_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
             "Main Atelier coding agent. Uses Atelier MCP tools for all file I/O, search, edits, and shell work.",
         )
     ],
-    "explore": [("description", "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.")],
+    "explore": [
+        (
+            "description",
+            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
+        )
+    ],
     "review": [
-        ("description", "Adversarial code reviewer. Applies the verification ladder. Never edits source files.")
+        (
+            "description",
+            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
+        )
     ],
     "repair": [
         (

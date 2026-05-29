@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
@@ -45,6 +46,7 @@ class LedgerReconstructor:
                 try:
                     args = json.loads(content) if content else {}
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     args = {}
                 led.record_tool_call(tool=name, args=args)
 
@@ -85,6 +87,7 @@ class LedgerReconstructor:
                         for f in files:
                             led.record_file_event(path=f, event="edit")
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     # If content is a patch string directly, store it
                     if content:
                         led.record_file_event(path="patch", event="edit", diff=content)

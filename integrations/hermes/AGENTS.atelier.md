@@ -18,8 +18,9 @@ You are operating as *atelier:code*.
 | `mcp__atelier__search` | `Grep` / `Glob` / `Bash(grep/rg ...)` | ranked, budget-capped, ~280k tokens saved vs naive scan |
 | `mcp__atelier__edit` | `Edit` / `Write` | atomic multi-file, snapshot/rollback, diff recorded |
 | `mcp__atelier__shell` | `Bash(...)` | ANSI-stripped, line-truncated, token-compact |
-| `mcp__atelier__code op=files` | `find` / `glob` inventory loops | indexed file tree without filesystem scans |
-| `mcp__atelier__code op=search` | `Bash(grep -rn symbol ...)` | SCIP-indexed, zero subprocess cost |
+| `mcp__atelier__symbols` | `Bash(grep -rn symbol ...)` | SCIP-indexed symbol lookup, zero subprocess cost |
+| `mcp__atelier__usages` / `mcp__atelier__callers` | `Bash(grep -rn name ...)` | exact references / call sites, no false text hits |
+| `mcp__atelier__pattern` | `Bash(grep ...)` for code shapes | AST-structural match/rewrite instead of regex |
 
 **Bash is only for git commands and process management.** Do NOT use `Bash(cat file)`, `Bash(grep ...)`, or `Bash(find ...)` — use the atelier equivalents above.
 
@@ -30,7 +31,13 @@ code intelligence. Native tools are fallback-only.
 
 | Atelier tool | Best for |
 |---|---|
-| `mcp__atelier__code` (all ops) | Code intelligence: symbol search, definitions, callers/callees, impact, file tree, routes, context |
+| `mcp__atelier__symbols` | Find symbol definitions by name (SCIP-indexed) |
+| `mcp__atelier__node` | Full source of one symbol — faster than `read` for targeted inspection |
+| `mcp__atelier__callers` / `mcp__atelier__callees` | Inbound / outbound call graph for a function |
+| `mcp__atelier__usages` | All references to a symbol — exact, not textual |
+| `mcp__atelier__impact` | Blast radius for a file or symbol — use before refactoring |
+| `mcp__atelier__pattern` | AST-structural search / rewrite (ast-grep) |
+| `mcp__atelier__explore` | Grouped source + relationships in one call |
 | `mcp__atelier__grep` | Regex and glob search across files |
 | `mcp__atelier__read` | Reading files (outline mode for large files) |
 | `mcp__atelier__edit` | Editing files (atomic multi-file with rollback) |
@@ -39,11 +46,15 @@ code intelligence. Native tools are fallback-only.
 
 **Decision rules:**
 
-1. **Symbol lookup, definition, callers, callees, impact, file tree, routes, context** → `mcp__atelier__code` FIRST.
-2. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
-3. **File reading** → `mcp__atelier__read` FIRST.
-4. **Editing** → `mcp__atelier__edit` FIRST.
-5. **Shell commands** → `mcp__atelier__shell` FIRST.
+1. **Find a symbol / its definition** → `mcp__atelier__symbols` then `mcp__atelier__node` FIRST (not grep).
+2. **Who calls / what it calls / all references** → `mcp__atelier__callers` / `mcp__atelier__callees` / `mcp__atelier__usages` FIRST.
+3. **Blast radius before refactoring** → `mcp__atelier__impact` FIRST.
+4. **Match or rewrite code by shape** → `mcp__atelier__pattern` FIRST (not regex grep).
+5. **Understand a concept across files** → `mcp__atelier__explore` FIRST.
+6. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+7. **File reading** → `mcp__atelier__read` FIRST.
+8. **Editing** → `mcp__atelier__edit` FIRST.
+9. **Shell commands** → `mcp__atelier__shell` FIRST.
 
 **Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
 

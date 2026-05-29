@@ -1036,19 +1036,19 @@ Plans:
 **Plans**: 7 plans (sequential waves 1–7; all share `app.py` so strictly ordered)
 **Wave 1**
 
-- [ ] 25-01-PLAN.md — Safety net + scaffolding: recursive --help/tree snapshot baselined from dirty WIP, MCP-only suppression test, `cli/commands/` package (`__init__` register, `_dev`, `_shared`)
+- [x] 25-01-PLAN.md — Safety net + scaffolding: recursive --help/tree snapshot baselined from dirty WIP, MCP-only suppression test, `cli/commands/` package (`__init__` register, `_dev`, `_shared`)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 25-02-PLAN.md — OpenMemory + Letta command extraction; lifecycle logic → `integrations/openmemory_lifecycle.py`
+- [x] 25-02-PLAN.md — OpenMemory + Letta command extraction; lifecycle logic → `integrations/openmemory_lifecycle.py`
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 25-03-PLAN.md — Stack/servicectl/background/systemd/service/worker/logs extraction; lifecycle → `infra/runtime/*` (carries in-flight WIP)
+- [x] 25-03-PLAN.md — Stack/servicectl/background/systemd/service/worker/logs extraction; lifecycle → `infra/runtime/*` (carries in-flight WIP)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 25-04-PLAN.md — Benchmark/savings/optimize/tools extraction; runners → `infra/benchmarks`, dashboards → `core/capabilities/reporting`
+- [x] 25-04-PLAN.md — Benchmark/savings/optimize/tools extraction; runners → `infra/benchmarks`, dashboards → `core/capabilities/reporting`
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -1123,7 +1123,7 @@ Plans:
 | 22. Lint and Coverage Gates | 1/1 | Complete    | 2026-05-29 |
 | 23. Silent Exception Audit | 3/3 | Complete    | 2026-05-29 |
 | 24. Stdout to Logging | 4/4 | Complete    | 2026-05-29 |
-| 25. CLI Decomposition | 0/7 | Planning complete | - |
+| 25. CLI Decomposition | 4/7 | In Progress|  |
 | 26. A/B Suite Expansion | 0/? | Not started | - |
 | 27. Public Benchmark Results | 0/? | Not started | - |
 
@@ -1331,6 +1331,83 @@ Plans:
 
 ---
 
+### Phase 35: REL — Background Reliability & Memory GC
+
+**Goal**: Make the offline controller crash-safe and stop unbounded memory growth, so lessons stay fresh and a crashed worker can never jam the queue.
+**Depends on**: None (operational hardening; independent of the v0.6 retrieval phases)
+**Requirements**: REL-01, REL-02, REL-03, REL-04
+
+**Context / findings (2026-05-29)**:
+
+- A `consolidate_reasonblocks` job sat stuck in `running` for 4 days and jammed ALL consolidation. Root cause: `claim_job` had no lease/reaper, and the `_servicectl_tick` enqueue guard treats `running`/`failed` as "active", so a single orphaned row blocks every future enqueue of that job type indefinitely.
+- Consolidation (`consolidation/worker.py`) only writes merge/deprecate *proposals* (human-gated), ignores its `since` param (`_ = since`), and its 180-day stale sweep inspects only inbox lesson candidates — never active ReasonBlocks. Retrieval-time decay (7-day half-life in `context_reuse/ranking.py`) demotes stale blocks but nothing ever garbage-collects them, so the store grows unbounded.
+
+**Key modules**:
+
+- `src/atelier/core/foundation/store.py` (`claim_job` reaper — DONE 2026-05-29)
+- `src/atelier/core/capabilities/consolidation/worker.py`
+- `src/atelier/gateway/cli/app.py` (`_servicectl_tick`)
+
+**Success Criteria**:
+
+  1. [DONE] `claim_job` reclaims orphaned `running` jobs past a lease TTL (`ATELIER_JOB_LEASE_SECONDS`, default 900s): retried while attempts remain, dead-lettered once exhausted. Covered by `tests/infra/test_store.py` (reap + dead-letter cases).
+  2. Chronically-failing ReasonBlocks (poor success/failure ratio) are auto-quarantined instead of lingering at low rank.
+  3. The stale sweep covers active ReasonBlocks (not only inbox lessons), and `consolidate()`'s ignored `since` parameter is honored or removed.
+  4. servicectl tick / telemetry surfaces job-queue health (counts of stuck `running` and `dead` jobs) so a jam is observable.
+
+---
+
+### Phase 36: HARVEST+ — Parallel-Session Harvest Coverage
+
+**Goal**: Ensure Atelier's portable learnings layer captures the newer Claude Code parallel-session types (agent-view/background sessions, agent teams, dynamic workflows), not just foreground + subagent sessions.
+**Depends on**: None (operational; independent of retrieval phases)
+**Requirements**: HARV-01, HARV-02, HARV-03, HARV-04
+
+**Context / findings (verified 2026-05-29)**:
+
+- The Claude importer `find_claude_sessions` scans only `~/.claude/projects/<slug>/*.jsonl` (+ macOS/Windows equivalents) and subagent dirs. It does NOT scan `~/.claude/jobs/<id>/` (agent-view/background session state).
+- Open question, must be resolved first: background and teammate transcripts likely still land in `~/.claude/projects/` (that is what `claude --resume` reads), so they may already be harvested. But dynamic-workflow agents keep intermediate results in script variables and may never persist a per-agent transcript — those learnings are probably unrecoverable.
+
+**Key modules**:
+
+- `src/atelier/gateway/hosts/session_parsers/claude.py` (`find_claude_sessions`)
+- `src/atelier/core/service/ingest_session_directory.py` (`SessionDirectoryWatcher`)
+- `src/atelier/gateway/cli/app.py` (`_servicectl_import_sessions`)
+
+**Success Criteria**:
+
+  1. A coverage matrix documents, per parallel-session type (foreground, subagent, background/agent-view, teammate, workflow agent), exactly where the transcript is written and whether it is currently harvested.
+  2. Importer/watcher extended to cover any uncovered path the matrix reveals (e.g. `~/.claude/jobs/<id>/`), gated on the matrix findings — no speculative path scanning.
+  3. Dedup + redaction verified for any newly covered source; no double-import of the same session.
+  4. If workflow per-agent transcripts are not persisted, the limitation is documented and the final workflow report is captured instead where available.
+
+---
+
+### Phase 37: FLOW — Ship Atelier Dynamic Workflows
+
+**Goal**: Ship reusable Atelier dynamic-workflow scripts that orchestrate Atelier's agents with the adversarial cross-check pattern, so consumers get verified multi-agent flows (audit, GATE-benchmark) out of the box instead of single-pass review.
+**Depends on**: Phase 35 (queue robustness benefits long multi-agent runs); requires Claude Code ≥ v2.1.154 (dynamic workflows, research preview).
+**Requirements**: FLOW-01, FLOW-02, FLOW-03, FLOW-04
+
+**Context**:
+
+- Dynamic workflows (`/workflows`) run a JS script that orchestrates up to 1000 subagents (16 concurrent), keep intermediate results out of the model context (script variables), and support adversarial cross-check (independent agents review each other). This is a direct fit for Atelier's review/research agents and the v0.6 empirical-proof program.
+- Atelier ships zero workflows today; workflow-spawned agents inherit the user's tool allowlist, so Atelier MCP tools are available to them passively.
+
+**Key modules**:
+
+- `integrations/claude/plugin/` (ship workflows alongside agents/skills) or documented `.claude/workflows/`
+- Reuses existing Atelier agents (`review`, `research`, `code`) + MCP tools.
+
+**Success Criteria**:
+
+  1. A `code-audit` workflow fans review across independent lenses (security / performance / tests), cross-checks findings, and returns one consolidated report.
+  2. A `gate-benchmark` workflow runs an A/B GATE comparison (e.g. hashing vs neural embeddings) with statistical rigor and a single verdict.
+  3. Workflows are discoverable (plugin `workflows/` or documented `.claude/workflows/`) with tool-allowlist guidance so long runs do not stall on permission prompts.
+  4. The adversarial cross-check pattern is shown to improve over single-pass review on a fixture (measured, not asserted).
+
+---
+
 *v0.6 roadmap appended: 2026-05-29*
 *Milestone target: v0.6 World-Class Atelier*
-*Build order: Phase 28 → Phase 29 → (Phase 30, Phase 31, Phase 32, Phase 33) → Phase 34*
+*Build order: Phase 28 → Phase 29 → (Phase 30, Phase 31, Phase 32, Phase 33) → Phase 34; Phases 35 (REL), 36 (HARVEST+), 37 (FLOW) run independently as reliability / integration hardening*

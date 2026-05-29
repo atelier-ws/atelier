@@ -115,6 +115,7 @@ class DeletedHistorySearchAdapter:
             repo = pygit2.Repository(str(self._repo_root))
             return str(repo.revparse_single("HEAD").id)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return None
 
     def changed_files(self, *, since_ts: int | None, touched_by: str | None) -> set[str]:
@@ -130,6 +131,7 @@ class DeletedHistorySearchAdapter:
             repo = pygit2.Repository(str(self._repo_root))
             head = repo.revparse_single("HEAD")
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return set()
         changed: set[str] = set()
         touched_by_filter = touched_by.lower() if touched_by is not None else None
@@ -320,6 +322,7 @@ class DeletedHistorySearchAdapter:
                 self._rename_target_cache[cache_key] = candidates[0]
                 return candidates[0]
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("rename-target resolution failed", exc_info=True)
         self._rename_target_cache[cache_key] = None
         return None

@@ -41,6 +41,7 @@ def _emit_arbitration_metric(op: str) -> None:
             )
         _emit_arbitration_metric.counter.labels(op=op).inc()  # type: ignore[attr-defined]
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at arbiter.py:41",
             exc_info=True,
@@ -61,6 +62,7 @@ def _similar_blocks(new_fact: MemoryBlock, store: MemoryStore, *, k: int) -> lis
     try:
         blocks = store.list_blocks(new_fact.agent_id, include_tombstoned=False, limit=500)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return []
     query_tokens = _tokens(new_fact.value + " " + new_fact.label)
     scored: list[tuple[float, MemoryBlock]] = []
@@ -127,6 +129,7 @@ def arbitrate(
         _emit_arbitration_metric(decision.op)
         return decision
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _log.warning("invalid arbitration response: %s", exc)
         return _decision(op="ADD", reason="invalid arbitration response")
 

@@ -6,6 +6,7 @@ Usage::
         --task <task_id> \\
         --mode <on|off> \\
         [--model claude-sonnet-4-5] \\
+        [--provider claude|ollama] \\
         [--rep 1] \\
         [--out benchmarks/terminalbench/outputs] \\
         [--dataset-name terminal-bench-core] \\
@@ -144,7 +145,13 @@ def main() -> None:
     parser.add_argument(
         "--model",
         default="claude-sonnet-4-5",
-        help="Claude model slug (default: claude-sonnet-4-5)",
+        help="Model slug (default: claude-sonnet-4-5). For Ollama provider, use the Ollama model name like qwen3.6:27b.",
+    )
+    parser.add_argument(
+        "--provider",
+        default="claude",
+        choices=["claude", "ollama"],
+        help="Agent provider: 'claude' (Anthropic Claude Code, default) or 'ollama' (local Ollama via OpenAI-compatible API).",
     )
     parser.add_argument(
         "--rep",
@@ -178,6 +185,7 @@ def main() -> None:
         rep=args.rep,
         out_dir=out_dir,
         model=args.model,
+        provider=args.provider,
         dataset_name=args.dataset_name,
         dataset_version=args.dataset_version,
     )

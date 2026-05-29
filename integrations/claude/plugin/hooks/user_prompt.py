@@ -26,11 +26,14 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import logging
 import os
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _MAX_PROMPT_BYTES = 8192  # 8 KB
 
@@ -56,6 +59,7 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
     try:
         return json.loads(p.read_text("utf-8"))  # type: ignore[no-any-return]
     except Exception:
+        logger.exception("Failed to read session state")
         return {}
 
 
@@ -88,6 +92,7 @@ def _append_prompt_event(session_id: str, prompt: str) -> None:
     try:
         data = json.loads(run_file.read_text("utf-8"))
     except Exception:
+        logger.exception("Failed to read run file")
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -123,6 +128,7 @@ def _append_prompt_event(session_id: str, prompt: str) -> None:
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
     except Exception:
+        logger.exception("Failed to update run file")
         if tmp_path:
             with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
@@ -136,19 +142,27 @@ def _append_prompt_event(session_id: str, prompt: str) -> None:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return 0
 
     prompt: str = payload.get("prompt", "") or ""
     if not prompt.strip():
         return 0
 
+    # Autopilot (M5): inject scoped context for this prompt. Fail-open.
+    try:
+        from atelier.core.capabilities.autopilot.factory import run_and_emit
+
+        run_and_emit("user_prompt", {"prompt": prompt})
+    except (ImportError, OSError, ValueError):
+        pass
+
     try:
         session_id = _active_session_id()
         if not session_id:
             return 0
         _append_prompt_event(session_id, prompt)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass  # fail-open
 
     return 0

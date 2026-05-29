@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import shlex
 import sqlite3
@@ -223,6 +224,7 @@ def _git_sha() -> str:
     try:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return "unknown"
 
 

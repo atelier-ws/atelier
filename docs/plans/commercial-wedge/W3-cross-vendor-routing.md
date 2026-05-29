@@ -1,6 +1,6 @@
 # W3 — Cross-vendor live routing surface
 
-> Parent: [`index.md`](index.md). Driving spec: [`day30/09-cross-vendor-routing.md`](../../../specs/day30/09-cross-vendor-routing.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day30/09-cross-vendor-routing.md`](../../specs/day30/09-cross-vendor-routing.md).
 > Consumes: existing within-vendor `ModelRouter`, `outcome_capture.py`, and W2's pricing + capability tables.
 
 ## Goal

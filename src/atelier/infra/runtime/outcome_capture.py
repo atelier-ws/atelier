@@ -18,6 +18,7 @@ Workflow
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -474,6 +475,7 @@ class FileStateWriter(_StateWriter):
         try:
             existing: dict[str, Any] = json.loads(self._path.read_text("utf-8")) if self._path.exists() else {}
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             existing = {}
         existing.update(updates)
         self._path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -503,6 +505,7 @@ def load_outcomes_from_state(path: Path) -> dict[str, list[dict[str, Any]]]:
     try:
         state: dict[str, Any] = json.loads(path.read_text("utf-8"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {"route_outcomes": [], "compact_outcomes": []}
     return {
         "route_outcomes": list(state.get("route_outcomes") or []),

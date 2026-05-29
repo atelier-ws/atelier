@@ -14,10 +14,9 @@ Safety guarantees (T-13-02):
   ≥3-newline runs to exactly two) is applied to every language,
   including unknown ones (safest universal path).
 
-Telemetry contract (D-11): callers (``PhaseRunner``) wrap each minified
-read in a :class:`MinificationDelta` and append the ``to_dict()``
-payload to :attr:`PhaseCacheStats.minify_deltas` so the benchmark
-(13-04) can attribute savings separately from cache reuse.
+Telemetry contract (D-11): callers wrap each minified read in a
+:class:`MinificationDelta` and surface the ``to_dict()`` payload so
+savings can be attributed separately from any cache reuse.
 """
 
 from __future__ import annotations

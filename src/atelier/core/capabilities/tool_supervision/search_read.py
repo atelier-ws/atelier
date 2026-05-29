@@ -1,8 +1,9 @@
 """Combined search + read — WP-21.
 
 Collapses the common ``grep → read → read`` loop into a single deterministic
-call that returns ranked snippets *and* the surrounding context.  Token usage
-is always ≤ 30 % of the naïve approach (grep output + full file per hit).
+call that returns ranked snippets *and* the surrounding context. Token savings
+are estimated against Claude Code's built-in Grep content output, not against
+an inflated "read every matched file in full" baseline.
 
 Host-native tools (rg, grep, host Read) remain available for raw exploration;
 this module is an *augmentation*, not a replacement.
@@ -42,6 +43,7 @@ def _count_tokens(text: str) -> int:
     try:
         return len(_encoding().encode(text))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return len(text) // 4  # fallback: ~4 chars/token
 
 
@@ -143,6 +145,7 @@ def _file_outline(path: str, source: str, lang: str) -> dict[str, Any] | None:
                 "imports": [i.module for i in imports[:20]],
             }
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at search_read.py:138",
             exc_info=True,
@@ -219,6 +222,7 @@ def _load_state(repo_root: Path) -> dict[str, Any]:
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -318,11 +322,13 @@ def _cluster_snippets(linenos: list[int], lines: list[str], context: int = _CONT
 
 
 def _naive_token_count(grep_output: str, file_contents: dict[str, str]) -> int:
-    """Tokens a naive agent would consume: grep output + full file reads."""
-    naive = grep_output
-    for content in file_contents.values():
-        naive += content
-    return _count_tokens(naive)
+    """Tokens in the Claude Code built-in Grep content response.
+
+    ``file_contents`` stays in the signature for callers/tests that already
+    pass it, but the baseline intentionally does not add full matched files.
+    """
+    _ = file_contents
+    return _count_tokens(grep_output)
 
 
 def search_read(
@@ -375,7 +381,7 @@ def search_read(
     # Sort files deterministically (by path, then stable score order)
     sorted_files = sorted(hits_per_file.keys())[:max_files]
 
-    # ---- read files and build file_contents for naive comparison ----
+    # ---- read files and build result snippets ----
     file_contents: dict[str, str] = {}
     for fpath in sorted_files:
         try:

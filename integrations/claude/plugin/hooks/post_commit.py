@@ -37,7 +37,7 @@ def main() -> int:
             db_path=db_path,
         )
         engine._ensure_lineage_ready()
-    except Exception:
+    except (OSError, ImportError, ValueError, AttributeError):
         pass  # always fail-open
     return 0
 

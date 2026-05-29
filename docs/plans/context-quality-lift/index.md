@@ -12,7 +12,7 @@ The research finding that drives this plan: on SWE-bench Pro, **the same Claude 
 
 ## Scope
 
-4 milestones, each ≤1 week, each independently shippable, each measured against a baseline.
+5 milestones, each ≤1 week, each independently shippable, each measured against a baseline.
 
 | ID | File | What it ships | Effort |
 |----|------|---------------|--------|
@@ -20,6 +20,7 @@ The research finding that drives this plan: on SWE-bench Pro, **the same Claude 
 | M2 | [`M2-cache-aware-routing.md`](M2-cache-aware-routing.md) | Wire `prefix_cache/planner.py` into `model_routing/router.py`. Router refuses to switch models when the KV-cache delta would exceed the quality delta. Sticky routes within a tool-call chain. | 1–2 days |
 | M3 | [`M3-counterexample-loop.md`](M3-counterexample-loop.md) | Layered verification: deterministic checks (lint/type/test) → structured counterexamples → agent retry. Re-uses `proof_gate/` and `failure_analysis/`. | 3–4 days |
 | M4 | [`M4-scoped-pull-context.md`](M4-scoped-pull-context.md) | Explicit "given this subtask, return minimal scoped context" API over existing `context_reuse` + `code_context`. Pull model per subtask, not per session. | 2–3 days |
+| M5 | [`M5-autopilot-choreography.md`](M5-autopilot-choreography.md) | Opt-in **Autopilot**: thin hook-driven layer that auto-fires the capabilities above (recall, scoped pull, counterexamples) at host lifecycle events — turnkey context with no explicit tool calls. Rides on M4 scoping; choreography, not orchestration. | 2–3 days |
 
 Deliberately **out of scope** (see [`grounding.md`](grounding.md) §"Not in this plan"):
 
@@ -74,13 +75,16 @@ If M1 alone does not produce ≥+5 points, stop and reassess the plan before sta
 ```
 M1 (context lineage)
  └─► M4 (scoped pull context)   ← M4 wants M1's commit chunks in the candidate set
+       └─► M5 (autopilot)        ← Phase-2 prompt injection rides on M4 scoping
 
-M2 (cache-aware routing)        ← independent
-M3 (counterexample loop)        ← independent; benefits from M2 (cheaper retries)
+M2 (cache-aware routing)        ← independent; M5 uses it for cache-stable injection
+M3 (counterexample loop)        ← independent; M5 Phase-3 surfaces it on tool use
 ```
 
-Recommended build order: **M1 → M2 → M3 → M4**.
+Recommended build order: **M1 → M2 → M3 → M4 → M5**.
 M2 can run in parallel with M1 if a second contributor is available.
+M5 Phase 1 (session-start warm) is independent and may ship early; M5 Phases 2–3
+are gated on M4 and M3 respectively.
 
 ## Open questions
 

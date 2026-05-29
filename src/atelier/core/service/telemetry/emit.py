@@ -34,6 +34,7 @@ def init_product_telemetry(*, service_version: str = "0.1.0") -> bool:
             headers={"Authorization": f"Bearer {key}"},
         )
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.debug("telemetry.otel_init_failed", extra={"error": str(exc)})
         return False
 
@@ -54,6 +55,7 @@ def set_remote_enabled(value: bool) -> None:
 
             shutdown_otel()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at emit.py:48",
                 exc_info=True,
@@ -74,6 +76,7 @@ def _emit(event: str, props: dict[str, Any], *, remote: bool) -> None:
             exported = _export_remote(event, scrubbed)
         LocalTelemetryStore().write_event(event=event, props=scrubbed, exported=exported, ts=time.time())
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.debug("telemetry.emit_failed", extra={"event": event, "error": str(exc)})
 
 
@@ -83,5 +86,6 @@ def _export_remote(event: str, props: dict[str, Any]) -> bool:
 
         return emit_product_log(event, props)
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.debug("telemetry.remote_export_failed", extra={"event": event, "error": str(exc)})
         return False

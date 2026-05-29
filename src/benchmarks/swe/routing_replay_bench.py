@@ -211,6 +211,7 @@ def _call_haiku(
     except subprocess.TimeoutExpired:
         return "", "timeout", 0, 0
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         return "", str(exc)[:200], 0, 0
 
 
@@ -372,8 +373,10 @@ def _run_session(
                 try:
                     raw_events.append(json.loads(raw))
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     continue
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return None
 
     last_fp: tuple[int, int, int, int] | None = None

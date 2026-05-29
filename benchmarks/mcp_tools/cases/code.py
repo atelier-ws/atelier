@@ -75,10 +75,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
     ]
     by_op: dict[str, tuple[list[list[str]], list[str]]] = {
         "index": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "def\\s+|class\\s+", "src/atelier/gateway/adapters/mcp_server.py"],
-                ["rg", "-n", "def\\s+tool_|def\\s+search_symbols|def\\s+_tool_call_graph", "src/atelier/core/capabilities/code_context/engine.py"],
+                [
+                    "rg",
+                    "-n",
+                    "def\\s+tool_|def\\s+search_symbols|def\\s+_tool_call_graph",
+                    "src/atelier/core/capabilities/code_context/engine.py",
+                ],
             ],
             [
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -90,10 +95,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "search": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "classify_command|run_command", "src/atelier"],
-                ["rg", "-n", "search_symbols|tool_search|resolve_search_mode", "src/atelier/core/capabilities/code_context/engine.py"],
+                [
+                    "rg",
+                    "-n",
+                    "search_symbols|tool_search|resolve_search_mode",
+                    "src/atelier/core/capabilities/code_context/engine.py",
+                ],
             ],
             [
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -103,8 +113,10 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "symbol": (
-            common_cmds
-            + [["rg", "-n", "classify_command", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                ["rg", "-n", "classify_command", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -112,8 +124,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "hover": (
-            common_cmds
-            + [["rg", "-n", "classify_command|CommandPolicyDecision", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "classify_command|CommandPolicyDecision",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -121,8 +140,10 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "outline": (
-            common_cmds
-            + [["rg", "-n", "^def\\s+|^class\\s+", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                ["rg", "-n", "^def\\s+|^class\\s+", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -130,8 +151,8 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "usages": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "run_command\\(", "src", "tests", "benchmarks"],
                 ["rg", "-n", "run_command", "src", "tests", "benchmarks"],
             ],
@@ -143,8 +164,8 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "callers": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "run_command\\(", "src", "tests", "benchmarks"],
                 ["rg", "-n", "_run_shell_tool|tool_shell", "src/atelier/gateway/adapters/mcp_server.py"],
             ],
@@ -156,8 +177,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "callees": (
-            common_cmds
-            + [["rg", "-n", "classify_command|_is_|split\\(", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "classify_command|_is_|split\\(",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -165,8 +193,7 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "pattern": (
-            common_cmds
-            + [["rg", "-n", "@mcp_tool\\(|mcp_tool\\(", "src/atelier/gateway/adapters/mcp_server.py"]],
+            [*common_cmds, ["rg", "-n", "@mcp_tool\\(|mcp_tool\\(", "src/atelier/gateway/adapters/mcp_server.py"]],
             [
                 "src/atelier/gateway/adapters/mcp_server.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -174,8 +201,7 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "impact": (
-            common_cmds
-            + [["rg", "-n", "bash_exec|tool_supervision\\.bash_exec", "src", "tests", "benchmarks"]],
+            [*common_cmds, ["rg", "-n", "bash_exec|tool_supervision\\.bash_exec", "src", "tests", "benchmarks"]],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -184,8 +210,8 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "context": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "tool_code|tool_context|tool_search|tool_symbol", "src/atelier"],
                 ["rg", "-n", "test_tool_code_|code_context", "tests/gateway", "tests/core"],
             ],
@@ -198,9 +224,16 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "cache_status": (
-            common_cmds
-            + [
-                ["rg", "-n", "tool_cache_status|cache_invalidate|entries_by_tool", "src/atelier", "tests/core", "tests/gateway"],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "tool_cache_status|cache_invalidate|entries_by_tool",
+                    "src/atelier",
+                    "tests/core",
+                    "tests/gateway",
+                ],
             ],
             [
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -278,13 +311,11 @@ def _assert_index(result: dict[str, Any]) -> None:
 def _assert_search_semantic(result: dict[str, Any]) -> None:
     _assert_ok(result)
     # code.search returns 'items' (not 'matches'/'hits')
-    assert "items" in result or "matches" in result or "hits" in result or "results" in result, (
-        f"semantic search must return items/matches/hits/results, got keys={list(result)}"
-    )
+    assert (
+        "items" in result or "matches" in result or "hits" in result or "results" in result
+    ), f"semantic search must return items/matches/hits/results, got keys={list(result)}"
     items = result.get("items") or result.get("matches") or result.get("hits") or result.get("results") or []
-    assert len(items) > 0, (
-        f"semantic search for 'classify shell commands' must return at least one hit, got: {result}"
-    )
+    assert len(items) > 0, f"semantic search for 'classify shell commands' must return at least one hit, got: {result}"
     for item in items:
         fp = str(item.get("path") or item.get("file_path", ""))
         assert fp.startswith("src/"), f"search results must be filtered to src/, got file_path={fp!r}"
@@ -298,13 +329,9 @@ def _assert_search_semantic(result: dict[str, Any]) -> None:
 def _assert_search_lexical(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert "run_command" in text, (
-        f"lexical search for 'run_command' must find the function, got: {text[:300]!r}"
-    )
+    assert "run_command" in text, f"lexical search for 'run_command' must find the function, got: {text[:300]!r}"
     # Must include file path
-    assert "bash_exec" in text, (
-        f"lexical search must include file_path with bash_exec, got: {text[:300]!r}"
-    )
+    assert "bash_exec" in text, f"lexical search must include file_path with bash_exec, got: {text[:300]!r}"
 
 
 def _assert_search_compact_location_only(result: dict[str, Any]) -> None:
@@ -324,14 +351,12 @@ def _assert_search_compact_location_only(result: dict[str, Any]) -> None:
 def _assert_symbol(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert "classify_command" in text, (
-        f"symbol op must return the requested symbol name, got: {text[:300]!r}"
-    )
+    assert "classify_command" in text, f"symbol op must return the requested symbol name, got: {text[:300]!r}"
     assert "bash_exec" in text, f"symbol op must include file_path, got: {text[:300]!r}"
     # Should have signature/body or at least file+line location
-    assert any(k in result for k in ("source", "signature", "line", "line_number", "body")), (
-        f"symbol must include source/signature/line, got keys={list(result)}"
-    )
+    assert any(
+        k in result for k in ("source", "signature", "line", "line_number", "body")
+    ), f"symbol must include source/signature/line, got keys={list(result)}"
 
 
 def _assert_symbol_compact_no_full_source(result: dict[str, Any]) -> None:
@@ -352,9 +377,9 @@ def _assert_hover(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
     # hover at the classify_command definition line should return its signature info
-    assert "classify_command" in text or "CommandPolicyDecision" in text, (
-        f"hover at classify_command must return relevant type/signature info, got: {text[:300]!r}"
-    )
+    assert (
+        "classify_command" in text or "CommandPolicyDecision" in text
+    ), f"hover at classify_command must return relevant type/signature info, got: {text[:300]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -365,9 +390,9 @@ def _assert_hover(result: dict[str, Any]) -> None:
 def _assert_outline(result: dict[str, Any]) -> None:
     _assert_ok(result)
     # The outline returns 'files' dict mapping path → list of symbols
-    assert "files" in result or "symbols" in result, (
-        f"outline must return files or symbols key, got keys={list(result)}"
-    )
+    assert (
+        "files" in result or "symbols" in result
+    ), f"outline must return files or symbols key, got keys={list(result)}"
     files_dict = result.get("files") or {}
     # Find the symbols list for bash_exec.py (key may be full or relative path)
     symbols: list[Any] = []
@@ -403,13 +428,11 @@ def _assert_outline_compact_members(result: dict[str, Any]) -> None:
 def _assert_usages(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert "run_command" in text, (
-        f"usages of run_command must reference that symbol, got: {text[:300]!r}"
-    )
+    assert "run_command" in text, f"usages of run_command must reference that symbol, got: {text[:300]!r}"
     # Should include at least one file path that's not bash_exec (a caller)
-    assert "mcp_server" in text or "bench_shell" in text or "test_" in text, (
-        f"usages must include files outside bash_exec.py (cross-file refs), got: {text[:400]!r}"
-    )
+    assert (
+        "mcp_server" in text or "bench_shell" in text or "test_" in text
+    ), f"usages must include files outside bash_exec.py (cross-file refs), got: {text[:400]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -420,15 +443,13 @@ def _assert_usages(result: dict[str, Any]) -> None:
 def _assert_callers(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert "run_command" in text, (
-        f"callers result must reference run_command, got: {text[:300]!r}"
-    )
+    assert "run_command" in text, f"callers result must reference run_command, got: {text[:300]!r}"
     if result.get("data_status") == "unavailable":
         return
     # _run_shell_tool in mcp_server.py calls run_command
-    assert any(name in text for name in ("mcp_server", "_run_shell_tool", "bench_shell", "test_")), (
-        f"callers must surface at least one known caller file, got: {text[:400]!r}"
-    )
+    assert any(
+        name in text for name in ("mcp_server", "_run_shell_tool", "bench_shell", "test_")
+    ), f"callers must surface at least one known caller file, got: {text[:400]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -440,9 +461,9 @@ def _assert_callees(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
     # classify_command calls things; or even if empty, no error
-    assert "classify_command" in text or "callees" in text.lower() or "calls" in text.lower(), (
-        f"callees result must reference the target symbol, got: {text[:300]!r}"
-    )
+    assert (
+        "classify_command" in text or "callees" in text.lower() or "calls" in text.lower()
+    ), f"callees result must reference the target symbol, got: {text[:300]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -454,13 +475,13 @@ def _assert_pattern_decorator(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
     # @mcp_tool(...) decorator appears many times in mcp_server.py
-    assert "mcp_tool" in text or "mcp_server" in text, (
-        f"pattern search for @mcp_tool must find matches, got: {text[:300]!r}"
-    )
+    assert (
+        "mcp_tool" in text or "mcp_server" in text
+    ), f"pattern search for @mcp_tool must find matches, got: {text[:300]!r}"
     # Must return at least one match
-    assert any(k in result for k in ("matches", "results", "files", "count")), (
-        f"pattern must return matches/results/files, got keys={list(result)}"
-    )
+    assert any(
+        k in result for k in ("matches", "results", "files", "count")
+    ), f"pattern must return matches/results/files, got keys={list(result)}"
 
 
 # ---------------------------------------------------------------------------
@@ -472,9 +493,9 @@ def _assert_impact(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
     # bash_exec.py is imported by mcp_server.py and tests
-    assert "mcp_server" in text or "test_" in text or "bench_shell" in text, (
-        f"impact for bash_exec.py must list mcp_server or test files, got: {text[:400]!r}"
-    )
+    assert (
+        "mcp_server" in text or "test_" in text or "bench_shell" in text
+    ), f"impact for bash_exec.py must list mcp_server or test files, got: {text[:400]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -486,9 +507,9 @@ def _assert_context(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
     # Task: "add a new MCP tool handler" → should surface mcp_server.py and engine.py
-    assert "mcp_server" in text or "tool_code" in text or "mcp_tool" in text, (
-        f"context for 'new MCP tool' must surface mcp_server or tool_, got: {text[:400]!r}"
-    )
+    assert (
+        "mcp_server" in text or "tool_code" in text or "mcp_tool" in text
+    ), f"context for 'new MCP tool' must surface mcp_server or tool_, got: {text[:400]!r}"
 
 
 def _assert_context_compact_sections(result: dict[str, Any]) -> None:
@@ -510,9 +531,9 @@ def _assert_index_compact_summary(result: dict[str, Any]) -> None:
 def _assert_cache_status_compact(result: dict[str, Any]) -> None:
     _assert_has(result, "entry_count", "entries_by_tool", "total_bytes", "max_bytes")
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### cache_status"), (
-        f"compact cache_status must render markdown, got: {rendered[:120]!r}"
-    )
+    assert rendered.startswith(
+        "### cache_status"
+    ), f"compact cache_status must render markdown, got: {rendered[:120]!r}"
     assert "payload_json" not in str(result)
 
 
@@ -538,9 +559,9 @@ def _assert_usages_stress(result: dict[str, Any]) -> None:
 
 def _assert_call_graph_stress(result: dict[str, Any]) -> None:
     _assert_ok(result)
-    assert result.get("data_status") == "available", (
-        f"stress callers should be available after fallback, got data_status={result.get('data_status')!r}"
-    )
+    assert (
+        result.get("data_status") == "available"
+    ), f"stress callers should be available after fallback, got data_status={result.get('data_status')!r}"
     edge_count = int(result.get("edge_count", 0))
     assert edge_count >= 1, f"stress callers should return at least one edge, got edge_count={edge_count}"
 
@@ -557,9 +578,9 @@ def _assert_outline_stress(result: dict[str, Any]) -> None:
 def _assert_pattern_stress(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert any(k in result for k in ("matches", "results", "files", "count")) and len(text) > 200, (
-        f"stress pattern must return non-trivial result payload, got: {text[:300]!r}"
-    )
+    assert (
+        any(k in result for k in ("matches", "results", "files", "count")) and len(text) > 200
+    ), f"stress pattern must return non-trivial result payload, got: {text[:300]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -789,7 +810,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_search_stress,
-        spill_probe_pattern="\"symbol_name\": \"",
+        spill_probe_pattern='"symbol_name": "',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
@@ -839,7 +860,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_pattern_stress,
-        spill_probe_pattern="\"matches\"",
+        spill_probe_pattern='"matches"',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
@@ -854,7 +875,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_outline_stress,
-        spill_probe_pattern="\"symbol_count\"",
+        spill_probe_pattern='"symbol_count"',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
@@ -869,7 +890,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_context,
-        spill_probe_pattern="\"content\"",
+        spill_probe_pattern='"content"',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),

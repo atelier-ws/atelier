@@ -54,6 +54,7 @@ A stranger can clone the repo, run one command, and reproduce the exact benchmar
 - v0.3 is driven by the design docs in `docs/plans/context-quality-lift/` and `docs/plans/phase-linear-cache-reuse/`; do not re-decide those architecture choices during planning.
 - v0.4 is driven by the design docs in `docs/plans/dedicated-language-support/`; use those milestone files as the source of truth.
 - v0.5 is driven by the design docs in `docs/plans/quality-and-benchmark-lift/`; use those milestone files as the source of truth.
+- v0.6 is driven by the design docs in `docs/plans/world-class-atelier/`; use those milestone files as the source of truth.
 
 ## Constraints
 
@@ -83,7 +84,21 @@ A stranger can clone the repo, run one command, and reproduce the exact benchmar
 | Canonical language names follow tree-sitter parser names | Parser loading is the hard constraint and fixes shell/bash drift at the source | — v0.4 active |
 | SCIP provisioning is tiered | Python/TypeScript are cheap install-time wins; Go/Ruby/Clang can lazy-fetch; Rust/Java depend on heavier user toolchains | — v0.4 active |
 | Quality lift starts with gates before burn-down | Enable BLE001/T20 with per-file ignores first so new debt fails while existing debt is fixed phase-by-phase | — v0.5 active |
-| Public benchmark claims must be regression-gated | README savings claims need runnable A/B suites and CI thresholds before they are credible | — v0.5 active |
+- Public benchmark claims must be regression-gated: README savings claims need runnable A/B suites and CI thresholds before they are credible | — v0.5 active |
+
+## Next Milestone: v0.6 World-Class Atelier
+
+**Goal:** Close the quality and efficiency gap against Augment and Eval by upgrading to neural code embeddings, adding a cross-encoder rerank stage, implementing phase-cache continuity ("stem agent"), and proving the lift with real (not modeled) numbers.
+
+**Target features:**
+- **EMB**: Replace 384-dim feature hashing with code-trained neural embeddings (nomic-embed-text/code) via Ollama/local-HF
+- **PROOF**: Replace modeled/simulated headlines with real TerminalBench A/B and self-repo eval numbers
+- **RERANK**: Add a local cross-encoder rerank stage (bge-reranker-v2-m3) to the candidate fusion pipeline
+- **STEM**: Implement phase-aware "stem" workflows to reuse prompt cache across explore→plan→execute
+- **ROUTE+**: Calibrated routing from trace outcomes and opt-in enforcing host hooks
+- **INDEX**: Upgrade to event-driven (inotify) continuous indexing with per-branch index keys
+- **SPEC**: Implement speculative/forecasted retrieval (SpecAgent) to parallelize prefetching
+
 
 ## Evolution
 

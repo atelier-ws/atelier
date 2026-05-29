@@ -12,6 +12,7 @@ Design constraints:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shlex
@@ -784,6 +785,7 @@ def _run_json_command(
             try:
                 payload = parser(stdout)
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 parse_error = str(exc)
         else:
             try:

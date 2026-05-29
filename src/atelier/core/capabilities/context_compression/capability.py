@@ -193,6 +193,7 @@ class ContextCompressionCapability:
                 saved = store.insert_passage(passage)
                 archived_ids.append(saved.id)
         except Exception as exc:  # pragma: no cover
+            logging.exception("Recovered from broad exception handler")
             _log.warning("Failed to archive sleeptime passages: %s", exc)
 
         # Write RunMemoryFrame
@@ -219,6 +220,7 @@ class ContextCompressionCapability:
             )
             store.write_run_frame(frame)
         except Exception as exc:  # pragma: no cover
+            logging.exception("Recovered from broad exception handler")
             _log.warning("Failed to write RunMemoryFrame: %s", exc)
 
         return result

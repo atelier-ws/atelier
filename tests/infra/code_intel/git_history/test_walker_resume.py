@@ -64,7 +64,7 @@ def _get_sha(repo: Path, ref: str) -> str:
 def test_iter_all_5_commits(five_commit_repo: Path) -> None:
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
     records = list(iter_commit_records(five_commit_repo, limit=500))
     assert len(records) == 5, f"Expected 5 commits, got {len(records)}"
@@ -74,7 +74,7 @@ def test_skip_merge_commit(tmp_path: Path) -> None:
     """A merge commit with no diff patches should be skipped."""
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
 
     _git(["init"], tmp_path)
@@ -107,7 +107,7 @@ def test_skip_over_50_files_commit(tmp_path: Path) -> None:
     """Commits with >50 touched files are skipped."""
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
 
     _git(["init"], tmp_path)
@@ -139,7 +139,7 @@ def test_lineage_keep_overrides_skip(tmp_path: Path) -> None:
     """[lineage:keep] in commit message bypasses >50 files skip rule."""
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
 
     _git(["init"], tmp_path)
@@ -165,7 +165,7 @@ def test_resume_since_sha(five_commit_repo: Path) -> None:
     """since_sha stops enumeration at that commit — only newer commits are yielded."""
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
 
     # Get all 5 SHAs in order (newest first)
@@ -185,7 +185,7 @@ def test_bot_commit_skip(tmp_path: Path) -> None:
     """Commits from dependabot email are skipped."""
     try:
         from atelier.infra.code_intel.git_history.walker import iter_commit_records
-    except Exception:
+    except ImportError:
         pytest.skip("pygit2 not available")
 
     _git(["init"], tmp_path)

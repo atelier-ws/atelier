@@ -12,6 +12,7 @@ import json
 import re
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +60,7 @@ def parse_pr_url(github_url: str) -> tuple[str, str, int]:
     return owner, repo, int(number)
 
 
-def fetch_pr_metadata(github_url: str, *, _gh_run: Any = None) -> dict[str, Any]:
+def fetch_pr_metadata(github_url: str, *, _gh_run: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
     """Fetch PR metadata via gh CLI (PR-01).
 
     Returns: title, body, base_sha, head_sha, merged_at, repo, diff.
@@ -176,7 +177,7 @@ def grade_diff_quality(
 
 def _default_llm_call(prompt: str, model: str) -> str:
     try:
-        import openai  # type: ignore[import-untyped]
+        import openai
     except ImportError as exc:
         raise ImportError("openai package required for diff quality grader. Install: pip install openai") from exc
     client = openai.OpenAI()

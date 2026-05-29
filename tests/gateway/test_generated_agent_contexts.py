@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -86,7 +87,7 @@ def _wait_for_health(port: int, process: subprocess.Popen[str], timeout_s: float
                 payload = json.loads(response.read().decode("utf-8"))
                 if response.status == 200 and payload.get("status") == "ok":
                     return
-        except Exception:
+        except (TimeoutError, urllib.error.URLError):
             pass
         time.sleep(0.2)
     raise AssertionError(f"service on port {port} never became healthy")

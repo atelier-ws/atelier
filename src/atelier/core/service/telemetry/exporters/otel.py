@@ -113,6 +113,7 @@ def init_otel(
         # Setting this to 2 limits it to one attempt plus minimal backoff.
         OTLPLogExporter._MAX_RETRY_TIMEOUT = 2
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return False
 
     from atelier.core.foundation.identity import get_anon_id
@@ -209,6 +210,7 @@ def emit_product_log(event_name: str, props: dict[str, Any]) -> bool:
         _PROVIDER.get_logger("atelier.product.telemetry.otel").emit(record)
         return True
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return False
 
 

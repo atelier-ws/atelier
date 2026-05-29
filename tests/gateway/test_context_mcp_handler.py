@@ -475,7 +475,4 @@ def test_run_worker_tick_safe_suppresses_exceptions(tmp_path: Path) -> None:
     # Pass a non-existent root to trigger failure in create_store/store.init
     bad_root = tmp_path / "nonexistent_subdir" / "another"
     # Should not raise
-    try:
-        _run_worker_tick_safe(bad_root)
-    except Exception as exc:
-        pytest.fail(f"_run_worker_tick_safe leaked exception: {exc}")
+    _run_worker_tick_safe(bad_root)

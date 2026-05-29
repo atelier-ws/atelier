@@ -55,6 +55,7 @@ def _read_json(path: Path, default: Any) -> Any:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at plugin_runtime.py:58",
             exc_info=True,
@@ -257,6 +258,7 @@ def parse_login_token(token: str) -> dict[str, Any]:
         decoded = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
         candidates.append(decoded)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at plugin_runtime.py:170",
             exc_info=True,
@@ -265,6 +267,7 @@ def parse_login_token(token: str) -> dict[str, Any]:
         try:
             payload = json.loads(candidate)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if isinstance(payload, dict):
             if isinstance(payload.get("credentials"), dict):
@@ -924,6 +927,7 @@ def _codex_native_tool_nudge(root: str | Path, payload: dict[str, Any]) -> dict[
     try:
         state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         state = {}
     nudged = state.setdefault("native_tool_nudges", {}) if isinstance(state, dict) else {}
     tool_name = str(payload.get("tool_name") or "unknown")
@@ -1175,6 +1179,7 @@ def _usage_from_transcript(path: Path) -> list[dict[str, int]]:
         try:
             payload = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if not isinstance(payload, dict):
             continue
@@ -1222,6 +1227,7 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     try:
         state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         state = {}
     state.setdefault("session_id", session_id)
     state.setdefault("started_at_ms", _now_ms(payload))
@@ -1550,6 +1556,7 @@ def build_session_progress_optimization_output(root: str | Path, payload: dict[s
     try:
         stats = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {"no_output": True}
     from atelier.core.capabilities.session_optimizer import (
         mark_session_optimizer_notice,
@@ -1627,6 +1634,7 @@ def list_session_stats(root: str | Path, limit: int = 100) -> list[dict[str, Any
             if isinstance(data, dict):
                 results.append(data)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
     return results
 
@@ -1658,6 +1666,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if not isinstance(data, dict):
             continue
@@ -1682,6 +1691,7 @@ def _cost_history_summary(root: str | Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"operations": {}}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         data = {"operations": {}}
     operations = data.get("operations") if isinstance(data, dict) else {}
     if not isinstance(operations, dict):

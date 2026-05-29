@@ -19,6 +19,13 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 1. **Context**: Call `context` with `task`, `domain`, `files`, `tools`, and `errors` before exploratory reads or edits.
 2. **Implement**: Use Atelier MCP tools for file I/O, search, code intelligence, edits, and shell work. Treat native host tools as disabled-by-policy unless the Atelier equivalent returns `noop`, is hidden, or is unavailable. Call `route` or `rescue` when the same approach fails twice.
 3. **Record**: Call `record` or `trace` when the task is done.
+## Autopilot (automatic context)
+
+Atelier may auto-provide context so you do not have to ask for it:
+
+- Relevant prior lessons/memory are warmed at session start.
+- Scoped context for your current request may be injected automatically — when it is present, build on it instead of redundantly re-pulling.
+- After you edit a file, verification may surface `<counterexample>` blocks — treat each as a must-fix before continuing.
 ## Tool discipline
 
 - Use `mcp__atelier__node`, `mcp__atelier__callers`, `mcp__atelier__callees`, `mcp__atelier__impact`, or `mcp__atelier__explore` first for code intelligence.

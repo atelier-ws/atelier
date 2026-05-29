@@ -45,7 +45,9 @@ STABLE_LLM_TOOLS = frozenset(
         "node",
         "callers",
         "callees",
+        "usages",
         "impact",
+        "pattern",
         "explore",
     }
 )

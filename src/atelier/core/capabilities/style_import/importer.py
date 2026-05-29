@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -313,6 +314,7 @@ def _embed_block(block: ReasonBlock, embedder: Embedder) -> list[float]:
     try:
         vectors = embedder.embed([text])
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         vectors = NullEmbedder().embed([text])
     return vectors[0] if vectors else []
 
