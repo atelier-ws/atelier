@@ -997,7 +997,19 @@ Plans:
   3. T20 config enforces the intended CLI/non-CLI boundary.
   4. MCP stdio smoke tests confirm stdout framing remains clean.
 
-**Plans**: TBD
+**Plans**: 4 plans
+**Wave 1**
+
+- [ ] 24-01-PLAN.md — Harden MCP stdio smoke test to strictly reject non-protocol stdout (QBL-LOG-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 24-02-PLAN.md — Convert 9 session-parser modules to loggers + CLI stderr progress handler/test (QBL-LOG-02, QBL-LOG-03)
+- [ ] 24-03-PLAN.md — Convert registry/publisher prints + T201-clean atelier-mcp --version (QBL-LOG-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 24-04-PLAN.md — Shrink T201 per-file-ignores to benchmark boundary + record final inventory (QBL-LOG-01, QBL-LOG-03)
 
 ---
 
@@ -1155,6 +1167,7 @@ Plans:
 **Requirements**: WCA-EMB-01, WCA-EMB-02, WCA-EMB-03, WCA-EMB-04, WCA-EMB-05, WCA-EMB-06
 
 **Key modules**:
+
 - `src/atelier/infra/embeddings/ollama_embedder.py` (new)
 - `src/atelier/infra/embeddings/factory.py` (extend)
 - `src/atelier/core/capabilities/code_context/embedding.py` (modify)
@@ -1162,6 +1175,7 @@ Plans:
 - `src/atelier/core/capabilities/code_context/engine.py` (modify)
 
 **Success Criteria**:
+
   1. `OllamaEmbedder` correctly POSTs to `/api/embed` and applies required prefixes/normalization.
   2. `code_embedder()` accessor successfully replaces hard-pinned `LocalEmbedder` in search paths.
   3. Bumping `_LINEAGE_INDEX_VERSION` triggers a background re-summarization and re-indexing of commits.
@@ -1177,12 +1191,14 @@ Plans:
 **Requirements**: WCA-PROOF-01, WCA-PROOF-02, WCA-PROOF-03, WCA-PROOF-04
 
 **Key modules**:
+
 - `tests/benchmarks/context_quality/M2_routing.py` (re-implement)
 - `benchmarks/ab/runner.py` (execute)
 - `docs/plans/world-class-atelier/results/` (new artifacts)
 - `bench_cost.py` (modify)
 
 **Success Criteria**:
+
   1. M2 routing benchmark uses real recorded trace outcomes instead of static gains.
   2. A complete TerminalBench A/B report (N=5) is committed to the results directory.
   3. Self-repo evaluation suite completes on 30 tasks with original PR test gates.
@@ -1197,10 +1213,12 @@ Plans:
 **Requirements**: WCA-RERANK-01, WCA-RERANK-02, WCA-RERANK-03
 
 **Key modules**:
+
 - `src/atelier/core/capabilities/code_context/rerank.py` (new)
 - `src/atelier/core/capabilities/code_context/engine.py` (extend candidate fusion)
 
 **Success Criteria**:
+
   1. `bge-reranker-v2-m3` (or equivalent) integrated and running locally.
   2. Rerank stage correctly re-orders top 10-30 candidates from RRF fusion.
   3. Precision@5 lift is measured and recorded in the EMB microbench.
@@ -1215,11 +1233,13 @@ Plans:
 **Requirements**: WCA-STEM-01, WCA-STEM-02, WCA-STEM-03, WCA-STEM-04
 
 **Key modules**:
+
 - `src/atelier/core/capabilities/prefix_cache/planner.py` (extend)
 - `src/atelier/core/capabilities/autopilot/policy.py` (extend)
 - workflow-config schema (new)
 
 **Success Criteria**:
+
   1. A single conversation persists across explore→plan→execute steps with warm cache.
   2. `AutopilotPolicy` correctly choreographs transitions and prefix stability.
   3. A/B benchmark proves ≥X% fewer uncached input tokens vs. phase-distinct agents.
@@ -1234,10 +1254,12 @@ Plans:
 **Requirements**: WCA-ROUTE-01, WCA-ROUTE-02
 
 **Key modules**:
+
 - `src/atelier/core/capabilities/model_routing/router.py` (calibrate)
 - routing enforcement wrapper (new)
 
 **Success Criteria**:
+
   1. `quality_gain` estimates are derived from real trace outcome data.
   2. Opt-in enforcement hook allows hosts to execute the recommended model automatically.
   3. Replay benchmarks show cost reduction with zero quality-tier regressions.
@@ -1251,10 +1273,12 @@ Plans:
 **Requirements**: WCA-INDEX-01, WCA-INDEX-02, WCA-INDEX-03
 
 **Key modules**:
+
 - `src/atelier/infra/code_intel/scip/watcher.py` (re-implement)
 - SCIP index keying logic (modify)
 
 **Success Criteria**:
+
   1. SCIP index updates are event-driven (watchdog/inotify), not poll-based.
   2. Index keys are isolated per-branch, preventing cross-branch leakage.
   3. Measured edit-to-searchable latency remains < 5 seconds.
@@ -1268,10 +1292,12 @@ Plans:
 **Requirements**: WCA-SPEC-01, WCA-SPEC-02, WCA-SPEC-03
 
 **Key modules**:
+
 - `src/atelier/core/capabilities/code_context/predictor.py` (new)
 - prefetch cache in `code_context/` (new)
 
 **Success Criteria**:
+
   1. SpecAgent predictor forecasts next-needed files from context + graph.
   2. Prefetch cache retrieves files in background during agent processing turns.
   3. Retrieval latency is hidden on multi-step tasks with no precision regression.
