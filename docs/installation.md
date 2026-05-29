@@ -27,6 +27,18 @@ Python, TypeScript, and JavaScript semantic indexing works without a
 system-global install. Heavier indexers are discovered from user toolchains or
 reported in availability status with install hints.
 
+SCIP indexer discovery uses this precedence:
+
+1. Explicit environment override such as `ATELIER_SCIP_PYTHON_BIN`.
+2. Atelier-managed directories, including `$ATELIER_NODE_DIR/bin`, `$ATELIER_ROOT/bin`, and `$ATELIER_INSTALL_DIR/bin`.
+3. System `PATH`.
+
+| Tier | Languages | Provisioning |
+|------|-----------|--------------|
+| Tier 1 | Python, TypeScript, JavaScript | Installed at setup via npm when npm is available. |
+| Tier 2 | Go, Ruby, C, C++ | Lazy bootstrap is checksum-gated and fails closed offline or without allowlist metadata. |
+| Tier 3 | Rust, Java | User-managed toolchains only; Atelier reports install hints instead of auto-installing them. |
+
 Verify the install:
 
 ```bash

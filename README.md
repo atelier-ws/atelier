@@ -122,9 +122,15 @@ atelier tools call route --args '{
 ### Memory & Recall
 
 - **Archival recall** — per-agent memory passages with embedding search
-- **Semantic file memory** — indexed file content search via tree-sitter AST parsing
-- **Symbol recall** — SCIP-indexed symbol search across the workspace
+- **Semantic file memory** — token-aware outlines for Python, TypeScript, JavaScript, Go, Rust, Java, Ruby, C/C++, C#, Kotlin, PHP, Swift, Scala, Bash, SQL, YAML, TOML, JSON, Markdown, and generic text fallback
+- **Symbol recall** — SCIP-indexed symbol search across Python, TypeScript/JavaScript, Go, Rust, Java, Ruby, C, and C++ when the matching indexer is available
 - **Cross-vendor memory** — adapters for Claude, Codex CLI, and Gemini memory systems
+
+### Language Support
+
+Atelier uses one canonical language registry across detection, smart reads, repo-map tags, and SCIP indexing. Tree-sitter outlines and tags cover common code languages plus Bash, SQL, YAML, TOML, and JSON; small files can still fall back to generic/full reads when a dedicated outline does not clear the 25% savings guard.
+
+SCIP provisioning is tiered: `scip-python` and `scip-typescript` install into Atelier's managed Node prefix when npm is available; Go/Ruby/Clang indexers are checksum-gated lazy bootstrap candidates; Rust and Java are detected from user-managed toolchains.
 
 ### Loop Detection & Watchdogs
 
