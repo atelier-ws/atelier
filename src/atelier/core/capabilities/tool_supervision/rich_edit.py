@@ -217,6 +217,7 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
                 cells[index] = replacement
                 return
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at rich_edit.py:215",
                 exc_info=True,
@@ -314,6 +315,7 @@ def apply_rich_edits(
                 record_symbol_edit_memory(resolved)
         return {"applied": applied, "failed": [], "rolled_back": False, "writes": len(file_state)}
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         if isinstance(exc, SymbolEditError):
             failed.append(exc.to_dict())
         else:

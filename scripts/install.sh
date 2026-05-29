@@ -1408,7 +1408,9 @@ install_code_tools() {
     if command -v npm >/dev/null 2>&1; then
         mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
         verbose "Installing JS/TS tools and Tier-1 SCIP indexers..."
-        spin "Installing JS/TS tools + SCIP indexers" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript scip-python scip-typescript
+        # Sourcegraph publishes the npm packages under the @sourcegraph scope;
+        # they expose the unscoped scip-python/scip-typescript binaries.
+        spin "Installing JS/TS tools + SCIP indexers" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript @sourcegraph/scip-python @sourcegraph/scip-typescript
     else
         warn "npm not found — skipping JS/TS tools and Tier-1 SCIP indexers (install Node.js 20+ to enable)"
     fi
@@ -1820,7 +1822,7 @@ main() {
             echo "[dry-run] skip code index (run inside a git repo)"
         fi
     else
-        spin "Initializing runtime store" "$atelier_cli" init
+        spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
             if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$index_target"; then

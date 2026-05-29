@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -34,6 +35,7 @@ def iter_commit_records(
     try:
         head = repo.revparse_single("HEAD")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return
     count = 0
     for commit in repo.walk(head.id, pygit2.enums.SortMode.TIME):

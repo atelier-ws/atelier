@@ -172,7 +172,8 @@ class LangChainMiddleware:
                 output_tokens = token_usage.get("completion_tokens", 0)
             if not cache_read_tokens:
                 cache_read_tokens = token_usage.get("cache_read_input_tokens", 0)
-        except Exception:  # noqa: BLE001 — best-effort token capture, must not break host model call
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("langchain token capture failed", exc_info=True)
 
         # Compute prefix hash from current prompt blocks
@@ -195,7 +196,8 @@ class LangChainMiddleware:
                 plan = planner.plan_with_history([task_block], self._prior_prefix_hash or None)
                 prefix_hash = plan.prefix_hash
                 self._prior_prefix_hash = prefix_hash
-        except Exception:  # noqa: BLE001 — best-effort prefix-cache capture, must not break host model call
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("langchain prefix-cache capture failed", exc_info=True)
 
         self._ledger.record_call(

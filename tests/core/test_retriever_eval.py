@@ -243,7 +243,7 @@ def _cold_start_block_in_top_five(tmp_path: Path) -> bool:
         errors=["wrong_domain reason missing from retrieval trace"],
         limit=5,
     )
-    print(f"DEBUG: ranked ids: {[item.block.id for item in ranked]}")
+    # print(f"DEBUG: ranked ids: {[item.block.id for item in ranked]}")
     return any(item.block.id == "eval-cold-start-trace-playbook" for item in ranked)
 
 
@@ -253,7 +253,8 @@ def test_context_retrieval_eval_metrics(tmp_path: Path) -> None:
     metrics = _evaluate(runtime, _load_cases(), limit=5)
 
     if os.environ.get("ATELIER_RETRIEVAL_EVAL_VERBOSE") == "1":
-        print(json.dumps(metrics, indent=2, sort_keys=True))
+        # print(json.dumps(metrics, indent=2, sort_keys=True))
+        pass
 
     assert metrics["query_count"] >= _BASELINE_FLOOR["query_count"], metrics
     if seeded_missing:

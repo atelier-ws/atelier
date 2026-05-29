@@ -355,6 +355,7 @@ def _get_parser(lang: str) -> Any:
         name = (cfg.parser_name if cfg else "") or lang
         return get_parser(name)
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parser unavailable for %s: %s", lang, exc)
         return None
 
@@ -462,6 +463,7 @@ def outline_text(language: str, source: str) -> str | None:
     try:
         tree = parser.parse(source)
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parse failed for %s: %s", language, exc)
         return None
     source_bytes = source.encode("utf-8")

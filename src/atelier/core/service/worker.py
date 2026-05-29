@@ -144,6 +144,7 @@ class Worker:
                 path: mtime for path, mtime in self._seen_session_files.items() if path.exists()
             }
         except Exception as exc:  # pylint: disable=broad-except
+            logging.exception("Recovered from broad exception handler")
             logger.error("Unexpected error while checking session directory: %s", exc)
 
     # ------------------------------------------------------------------ #
@@ -202,6 +203,7 @@ class Worker:
             self._store.complete_job(job_id, result)
             logger.info("Job %s completed successfully", job_id)
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             error_msg = f"{type(exc).__name__}: {exc}"
             logger.error("Job %s failed: %s", job_id, error_msg)
             self._store.fail_job(job_id, error_msg)

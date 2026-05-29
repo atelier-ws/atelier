@@ -73,6 +73,7 @@ def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[P
                 "thinking_tiers": (),
             }
     except Exception as e:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Failed to load pricing overrides from %s: %s", path, e)
 
     return overrides
@@ -124,6 +125,7 @@ def _load_litellm_model_cost() -> dict[str, object]:
         litellm = importlib.import_module("litellm")
         model_cost = getattr(litellm, "model_cost", {})
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
     finally:
         if previous_litellm_log is None:

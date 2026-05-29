@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -145,6 +146,7 @@ class CheckpointStore:
             try:
                 results.append(Checkpoint.from_dict(json.loads(p.read_text(encoding="utf-8"))))
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         return results
 

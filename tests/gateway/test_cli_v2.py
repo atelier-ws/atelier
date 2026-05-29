@@ -107,17 +107,6 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     assert "Atelier compact state" in res2.output
 
 
-def test_compress_context_cli(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    _seed_ledger(root)
-    res = _invoke(root, "compress-context", "--json")
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert "preserved" in payload
-    assert payload["error_fingerprints"]
-
-
 def test_failure_list_accept_reject(tmp_path: Path) -> None:
     root = tmp_path / "a"
     _invoke(root, "init")

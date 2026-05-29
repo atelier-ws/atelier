@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import tiktoken
 
@@ -36,7 +37,7 @@ class BenchCase:
     baseline_tokens: int = 0
     # Optional callable to construct a measured baseline payload.
     # Signature: fn(case) -> BaselineMeasurement | serializable payload/string
-    baseline_builder: Callable[["BenchCase"], Any] | None = field(default=None, repr=False)
+    baseline_builder: Callable[[BenchCase], Any] | None = field(default=None, repr=False)
     # Optional quality gate for measured baseline hardness.
     min_baseline_tokens: int = 0
     # Optional callable for custom assertions: fn(result) -> None (raise on fail)
@@ -240,7 +241,7 @@ def _spill_probe_patterns(response: dict[str, Any], case: BenchCase) -> list[str
                     break
     for key in ("total_matches", "symbol_count", "tokens_saved", "provenance"):
         if key in response:
-            patterns.append(f"\"{key}\"")
+            patterns.append(f'"{key}"')
     patterns.append(str(case.op))
     seen: set[str] = set()
     ordered: list[str] = []

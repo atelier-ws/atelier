@@ -42,7 +42,7 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
         return {}
     try:
         return json.loads(p.read_text("utf-8"))  # type: ignore[no-any-return]
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         return {}
 
 
@@ -84,9 +84,8 @@ def _cache_bash_invocation(
                 "return_code": return_code,
             },
             cache_hit=False,
-            tool_name="Bash",
         )
-    except Exception:
+    except (OSError, ImportError, ValueError, AttributeError, TypeError):
         pass
 
 
@@ -110,7 +109,7 @@ def _append_command_result_event(
 
     try:
         data = json.loads(run_file.read_text("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -149,9 +148,9 @@ def _append_command_result_event(
             json.dump(data, tmp, indent=2)
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         if tmp_path:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 Path(tmp_path).unlink(missing_ok=True)
 
 
@@ -163,7 +162,7 @@ def _append_command_result_event(
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return 0  # fail-open
 
     tool_name: str = payload.get("tool_name", "") or ""
@@ -195,7 +194,7 @@ def main() -> int:
             return 0
         _append_command_result_event(session_id, command, stdout, stderr, return_code)
         _cache_bash_invocation(command, stdout, stderr, return_code)
-    except Exception:
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
         pass  # fail-open: never block the agent
 
     return 0
