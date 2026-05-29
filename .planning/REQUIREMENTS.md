@@ -182,11 +182,11 @@
 
 ### Lint and Coverage Gates
 
-- [ ] **QBL-GATE-01**: Ruff enables BLE001 and T20 so new broad-except and print debt is lint-gated
-- [ ] **QBL-GATE-02**: Existing BLE001/T20 violations are captured as per-file ignores, not blanket disables
-- [ ] **QBL-GATE-03**: A full-suite coverage command exists for slow-inclusive coverage runs
-- [ ] **QBL-GATE-04**: Nightly coverage workflow runs the full suite with a measured fail-under floor
-- [ ] **QBL-GATE-05**: M2/M3 burn-down worklists are derivable from lint config and current source enumeration
+- [x] **QBL-GATE-01**: Ruff enables BLE001 and T20 so new broad-except and print debt is lint-gated
+- [x] **QBL-GATE-02**: Existing BLE001/T20 violations are captured as per-file ignores, not blanket disables
+- [x] **QBL-GATE-03**: A full-suite coverage command exists for slow-inclusive coverage runs
+- [x] **QBL-GATE-04**: Nightly coverage workflow runs the full suite with a measured fail-under floor
+- [x] **QBL-GATE-05**: M2/M3 burn-down worklists are derivable from lint config and current source enumeration
 
 ### Silent Exception Audit
 
