@@ -8,10 +8,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from atelier.infra.code_intel.scip.binaries import (
-    discover_scip_binaries,
-    discover_scip_binary,
-    scip_binary_spec,
+from atelier.infra.code_intel.scip.binaries import discover_scip_binaries, scip_binary_spec
+from atelier.infra.code_intel.scip.bootstrap import (
+    ScipBootstrapResult,
+    ensure_scip_binary,
+    scip_availability_statuses,
 )
 from atelier.infra.code_intel.scip.external_artifacts import (
     DiscoveredScipArtifact,
@@ -30,6 +31,8 @@ ScipIndexStatus = Literal[
     "indexed",
     "unsupported",
     "missing_binary",
+    "bootstrap_unavailable",
+    "user_toolchain_required",
     "missing_context",
     "failed",
     "timeout",
@@ -84,15 +87,29 @@ class ScipIndexer:
 
         return discover_scip_binaries()
 
+    def availability_statuses(self) -> dict[str, ScipBootstrapResult]:
+        """Expose SCIP indexer availability and bootstrap hints."""
+
+        return scip_availability_statuses()
+
     def index_language(self, language: str, *, timeout_seconds: float = 120.0) -> ScipIndexResult:
         """Run one SCIP indexer on demand and write a repo-local artifact."""
 
         spec = scip_binary_spec(language)
         if spec is None:
             return ScipIndexResult(language=language, status="unsupported", message="unsupported language")
-        binary = discover_scip_binary(language)
-        if binary is None:
-            return ScipIndexResult(language=language, status="missing_binary", message="SCIP binary not found")
+        bootstrap = ensure_scip_binary(language)
+        if bootstrap.binary is None:
+            if bootstrap.status == "bootstrap_unavailable":
+                return ScipIndexResult(language=language, status="bootstrap_unavailable", message=bootstrap.message)
+            if bootstrap.status == "user_toolchain_required":
+                return ScipIndexResult(
+                    language=language, status="user_toolchain_required", message=bootstrap.install_hint
+                )
+            return ScipIndexResult(
+                language=language, status="missing_binary", message=bootstrap.message or "SCIP binary not found"
+            )
+        binary = bootstrap.binary
         missing_context = spec.missing_context_files(self.repo_root)
         if missing_context:
             return ScipIndexResult(
