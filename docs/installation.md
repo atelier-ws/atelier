@@ -5,7 +5,7 @@ This page starts with the installed product flow. Source-checkout and contributo
 ## Recommended Install for End Users
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
 ```
 
 What the installer does:
@@ -40,13 +40,13 @@ curl -fsSL https://raw.githubusercontent.com/leanchain/atelier/main/scripts/inst
 Skip auto-starting background services:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | ATELIER_NO_SERVICECTL=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | ATELIER_NO_SERVICECTL=1 bash
 ```
 
 Skip auto-starting the visualization stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | ATELIER_NO_STACK=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | ATELIER_NO_STACK=1 bash
 ```
 
 Install from a local checkout instead of GitHub:
