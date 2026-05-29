@@ -1403,13 +1403,14 @@ install_code_tools() {
     os_type="$(uname -s)"
 
 
-    # eslint + ts-morph + typescript (TypeScript/JavaScript lint, type-check, and rename tools; require npm)
+    # eslint + ts-morph + typescript (TypeScript/JavaScript lint/type-check/rename tools)
+    # and Tier-1 SCIP indexers; require npm.
     if command -v npm >/dev/null 2>&1; then
         mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
-        verbose "Installing eslint, ts-morph, and typescript (JS/TS lint, type-check, and rename tools)..."
-        spin "Installing eslint + ts-morph" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
+        verbose "Installing JS/TS tools and Tier-1 SCIP indexers..."
+        spin "Installing JS/TS tools + SCIP indexers" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript scip-python scip-typescript
     else
-        warn "npm not found — skipping eslint, ts-morph, and typescript (install Node.js 20+ to enable)"
+        warn "npm not found — skipping JS/TS tools and Tier-1 SCIP indexers (install Node.js 20+ to enable)"
     fi
 
     # Rust toolchain — only used by edit hooks for Rust file lint-fix. Optional.
