@@ -10,8 +10,8 @@ Design constraints:
 * Imports nothing from ``atelier.core`` (avoids the import cycle — Pitfall 1).
 * Shell extensions canonicalize to ``bash`` at the data layer (DLS-LANG-03); the
   legacy ``"shell"`` spelling is intentionally not reproduced here.
-* ``scip_indexer`` is seeded only for the three known indexers (python,
-  typescript, javascript); the full SCIP table is deferred to Phase 19.
+* ``scip_indexer`` is a bare fallback binary name; SCIP-specific argv metadata
+  lives in ``infra.code_intel.scip``.
 * This is a static table — no auto-detection machinery.
 """
 
@@ -44,14 +44,14 @@ LANGUAGES: tuple[Language, ...] = (
     Language("bash", frozenset({".sh", ".bash", ".zsh"}), "bash", None),
     # Canonical spelling is `csharp`, NOT `c_sharp`.
     Language("csharp", frozenset({".cs"}), "csharp", None),
-    Language("go", frozenset({".go"}), "go", None),
-    Language("rust", frozenset({".rs"}), "rust", None),
-    Language("java", frozenset({".java"}), "java", None),
+    Language("go", frozenset({".go"}), "go", "scip-go"),
+    Language("rust", frozenset({".rs"}), "rust", "rust-analyzer"),
+    Language("java", frozenset({".java"}), "java", "scip-java"),
     Language("kotlin", frozenset({".kt", ".kts"}), "kotlin", None),
     Language("scala", frozenset({".scala"}), "scala", None),
-    Language("ruby", frozenset({".rb"}), "ruby", None),
-    Language("cpp", frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hh"}), "cpp", None),
-    Language("c", frozenset({".c", ".h"}), "c", None),
+    Language("ruby", frozenset({".rb"}), "ruby", "scip-ruby"),
+    Language("cpp", frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hh"}), "cpp", "scip-clang"),
+    Language("c", frozenset({".c", ".h"}), "c", "scip-clang"),
     Language("swift", frozenset({".swift"}), "swift", None),
     Language("php", frozenset({".php"}), "php", None),
     Language("sql", frozenset({".sql"}), "sql", None),
