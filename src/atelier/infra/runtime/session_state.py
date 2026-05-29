@@ -6,6 +6,7 @@ Used by ``insights.py`` to build multi-session aggregates.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,10 +32,12 @@ def list_sessions(
         try:
             snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         try:
             report = build_report(snap, root)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if until is not None and report.started_at > until:
             continue

@@ -1,6 +1,6 @@
 # W5 — Adaptive lesson binding (closed loop, narrow)
 
-> Parent: [`index.md`](index.md). Driving spec: [`day90/11-federated-learning.md`](../../../specs/day90/11-federated-learning.md) (W5 is the local precursor).
+> Parent: [`index.md`](index.md). Driving spec: [`day90/11-federated-learning.md`](../../specs/day90/11-federated-learning.md) (W5 is the local precursor).
 > Depends on: `outcome_capture.py`, `lesson_promotion/capability.py`, W3 (router consumes lessons).
 
 ## Goal

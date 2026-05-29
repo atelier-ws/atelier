@@ -54,6 +54,7 @@ def make_embedder(*, pin: str | None = None) -> Embedder:
             if LettaAdapter.is_available():
                 return LettaEmbedder()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at factory.py:57",
                 exc_info=True,

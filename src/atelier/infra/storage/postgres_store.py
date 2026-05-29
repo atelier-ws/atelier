@@ -409,6 +409,7 @@ class PostgresStore:
                     active_conn.commit()
                 return True
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 if owns_connection:
                     active_conn.rollback()
                 return False
@@ -453,6 +454,7 @@ class PostgresStore:
                 "vector_search": self._vector_search,
             }
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             return {"ok": False, "backend": "postgres", "error": str(exc)}
 
     # ----- reasonblocks ---------------------------------------------------- #

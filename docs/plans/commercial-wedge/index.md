@@ -4,7 +4,7 @@
 > Owner: unassigned.
 > Coordinates existing specs: 06 (sync), 07 (counterfactual), 08 (memory audit),
 > 09 (cross-vendor routing), 11 (federated learning), 12 (team tier).
-> See also: [`../../decisions/`](../../../decisions/) for ADRs as they land.
+> See also: [`../../decisions/`](../../decisions/) for ADRs as they land.
 
 ## Problem
 

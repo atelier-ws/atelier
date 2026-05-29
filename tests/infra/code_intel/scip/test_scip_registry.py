@@ -108,10 +108,12 @@ def test_discover_scip_binaries_iterates_supported_specs(tmp_path: Path, monkeyp
 
 def test_install_script_installs_tier1_scip_npm_packages() -> None:
     install_script = (REPO_ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    npm_install_line = next(
+        line for line in install_script.splitlines() if 'npm install -g --prefix "$ATELIER_NODE_DIR"' in line
+    )
 
-    assert 'npm install -g --prefix "$ATELIER_NODE_DIR"' in install_script
-    assert "scip-python" in install_script
-    assert "scip-typescript" in install_script
+    assert "@sourcegraph/scip-python" in npm_install_line
+    assert "@sourcegraph/scip-typescript" in npm_install_line
 
 
 def test_tier2_bootstrap_fails_closed_without_checksum(monkeypatch: pytest.MonkeyPatch) -> None:

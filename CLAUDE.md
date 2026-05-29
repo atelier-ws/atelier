@@ -118,6 +118,18 @@ See [docs/agent-os/coding-guidelines.md](docs/agent-os/coding-guidelines.md) for
 
 ## Code Intelligence
 
-For all code-intel needs (symbol search, definitions, callers, callees, impact,
-file tree, routes, context), use `mcp__atelier__code` — it handles all of them
-with SCIP-indexed precision and native project awareness.
+Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
+
+| Need | Tool |
+|---|---|
+| Find a symbol definition by name | `mcp__atelier__symbols` |
+| Read the full source of one symbol | `mcp__atelier__node` |
+| Who calls a function / what it calls | `mcp__atelier__callers` / `mcp__atelier__callees` |
+| All references to a symbol | `mcp__atelier__usages` |
+| Blast radius before refactoring | `mcp__atelier__impact` |
+| Match/rewrite code by AST shape | `mcp__atelier__pattern` |
+| Grouped source + relationships in one call | `mcp__atelier__explore` |
+
+There is no `mcp__atelier__code` tool — it was split into the focused tools
+above for discoverability. The multiplexer is still registered as
+`mcp__atelier__symbols` (its `op=` parameter is an internal detail).

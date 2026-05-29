@@ -39,6 +39,7 @@ Same as compact_bench.py: consecutive real assistant events where
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -107,8 +108,10 @@ def _parse_turns(path: Path) -> list[_Turn]:
                 try:
                     raw_events.append(json.loads(raw))
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     continue
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return []
 
     i = 0

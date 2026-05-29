@@ -259,7 +259,14 @@ _BLAME_ESSENTIAL_KEYS = [
     "file_path",
     "provenance",
 ]
-_BLAME_OPTIONAL_KEYS = ["index_sha", "head_sha", "last_modified", "last_commit_summary", "hunks", "churn"]
+_BLAME_OPTIONAL_KEYS = [
+    "index_sha",
+    "head_sha",
+    "last_modified",
+    "last_commit_summary",
+    "hunks",
+    "churn",
+]
 _OVERFLOW_SPILL_MIN_EXCESS_TOKENS = 128
 _OVERFLOW_SPILL_MIN_REDUCTION_TOKENS = 256
 DeletedHistoryItem = dict[str, Any]
@@ -551,6 +558,7 @@ def _git_repo_class() -> Any:
     try:
         from git import Repo
     except Exception:  # pragma: no cover - optional dependency fallback
+        logging.exception("Recovered from broad exception handler")
         return None
     return Repo
 
@@ -603,8 +611,17 @@ class CodeContextEngine:
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
         force: bool = True,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> IndexStats:
-        """Build or refresh the persistent symbol/import index for this repository."""
+        """Build or refresh the persistent symbol/import index for this repository.
+
+        Args:
+            include_globs: Glob patterns to include (default source-code patterns).
+            exclude_globs: Glob patterns to exclude.
+            force: If True, delete and rebuild the full index.
+            progress_callback: Optional callback ``fn(current, total)`` called
+                after each file is processed during indexing.
+        """
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         files = [
             path
@@ -623,13 +640,15 @@ class CodeContextEngine:
                 conn.execute('DELETE FROM "references"')
                 conn.execute("DELETE FROM call_edges")
                 conn.execute("DELETE FROM files")
-                for path in files:
+                for idx, path in enumerate(files):
                     indexed, symbol_count, import_count = self._index_single_file(conn, path)
                     if not indexed:
                         continue
                     files_indexed += 1
                     symbols_indexed += symbol_count
                     imports_indexed += import_count
+                    if progress_callback is not None:
+                        progress_callback(idx + 1, len(files))
                 index_version = self._bump_index_version(conn)
             else:
                 existing_rows = conn.execute(
@@ -640,29 +659,39 @@ class CodeContextEngine:
                     str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
                 }
                 current_paths: set[str] = set()
-                for path in files:
+                for idx, path in enumerate(files):
                     rel = _safe_relpath(self.repo_root, path)
                     current_paths.add(rel)
                     try:
                         stat = path.stat()
                     except OSError:
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     if stat.st_size > _MAX_FILE_BYTES:
                         if rel in existing:
                             self._delete_file_index(conn, rel)
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
                     previous = existing.get(rel)
                     if previous == (content_hash, int(stat.st_size)):
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     self._delete_file_index(conn, rel)
                     indexed, symbol_count, import_count = self._index_single_file(conn, path, source_bytes=source_bytes)
                     if not indexed:
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     files_indexed += 1
                     symbols_indexed += symbol_count
                     imports_indexed += import_count
+                    if progress_callback is not None:
+                        progress_callback(idx + 1, len(files))
                 removed_paths = set(existing.keys()) - current_paths
                 for rel in sorted(removed_paths):
                     self._delete_file_index(conn, rel)
@@ -1484,7 +1513,11 @@ class CodeContextEngine:
                 file_entry["source_sections"] = merged_sections
             files_payload.append(file_entry)
 
-        relationships: dict[str, list[dict[str, Any]]] = {"callers": [], "callees": [], "usages": []}
+        relationships: dict[str, list[dict[str, Any]]] = {
+            "callers": [],
+            "callees": [],
+            "usages": [],
+        }
         if include_relationships:
             for symbol in trimmed_symbols[:3]:
                 callers = self.tool_callers(
@@ -2096,7 +2129,12 @@ class CodeContextEngine:
                         if not names_match(name):
                             continue
                         matches.append(
-                            build_match(rel, lines, decorator, captures={"decorator": name or target_name or ""})
+                            build_match(
+                                rel,
+                                lines,
+                                decorator,
+                                captures={"decorator": name or target_name or ""},
+                            )
                         )
             elif mode in {"call", "call_any"}:
                 for node in ast.walk(tree):
@@ -2171,6 +2209,7 @@ class CodeContextEngine:
             try:
                 health = provider.health()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 health = ProviderHealth(status="unhealthy", reason=str(exc))
             if isinstance(health, ProviderHealth):
                 entry["status"] = health.status
@@ -2689,7 +2728,11 @@ class CodeContextEngine:
                         str(item[1]["qualified_name"]),
                     )
                 )
-                consider_rows([row for _, row in fuzzy_scored[:strong_fetch_limit]], channel_rank=7, base=640.0)
+                consider_rows(
+                    [row for _, row in fuzzy_scored[:strong_fetch_limit]],
+                    channel_rank=7,
+                    base=640.0,
+                )
 
         ranked = sorted(
             scored.values(),
@@ -2884,7 +2927,10 @@ class CodeContextEngine:
         symbol_hits = self.search_symbols(task, limit=bounded_max_symbols, auto_index=False)
         seed_symbols = self._symbols_for_files(
             context_seed_files,
-            limit=max(bounded_max_symbols * max(1, context_policy.max_symbols_per_file), bounded_max_symbols),
+            limit=max(
+                bounded_max_symbols * max(1, context_policy.max_symbols_per_file),
+                bounded_max_symbols,
+            ),
         )
         selected = self._dedupe_symbols([*seed_symbols, *symbol_hits])
         selected = [symbol for symbol in selected if not self._is_noise_symbol_kind(symbol.kind)]
@@ -3047,6 +3093,7 @@ class CodeContextEngine:
         try:
             from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return set()
         with contextlib.suppress(Exception):
             search_path = self._resolve_inside_repo(path)
@@ -3152,7 +3199,14 @@ class CodeContextEngine:
             references.extend(cross_lang_refs)
         ordered_references = sorted(
             references,
-            key=lambda item: (item.file_path, item.line, item.column, item.end_line, item.end_column, item.provenance),
+            key=lambda item: (
+                item.file_path,
+                item.line,
+                item.column,
+                item.end_line,
+                item.end_column,
+                item.provenance,
+            ),
         )
         items = self._dedupe_usage_items(
             [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
@@ -3341,16 +3395,24 @@ class CodeContextEngine:
                 if status_rank[current.data_status] > status_rank[merged_status]:
                     merged_status = current.data_status
                 for node in current.nodes:
-                    node_key = (node.symbol_id, node.file_path, node.start_line, node.end_line, node.qualified_name)
+                    node_key = (
+                        node.symbol_id,
+                        node.file_path,
+                        node.start_line,
+                        node.end_line,
+                        node.qualified_name,
+                    )
                     nodes_by_identity[node_key] = node
                 for edge in current.edges:
                     key = (edge.caller_symbol_id, edge.callee_symbol_id, edge.depth)
                     edges_by_key[key] = edge
             merged_nodes = sorted(
-                nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id)
+                nodes_by_identity.values(),
+                key=lambda item: (item.file_path, item.start_line, item.symbol_id),
             )
             merged_edges = sorted(
-                edges_by_key.values(), key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id)
+                edges_by_key.values(),
+                key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id),
             )
             if merged_edges:
                 merged_status = "available"
@@ -3554,7 +3616,8 @@ class CodeContextEngine:
             {str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")}
         )
         for target in sorted(
-            targets, key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0))
+            targets,
+            key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
         ):
             target_file = str(target["file_path"])
             symbol_display = str(
@@ -3648,7 +3711,10 @@ class CodeContextEngine:
                     }
                     for target in sorted(
                         targets,
-                        key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
+                        key=lambda item: (
+                            str(item.get("file_path") or ""),
+                            int(item.get("start_line") or 0),
+                        ),
                     )[:10]
                 ],
                 "ambiguity": ambiguity,
@@ -4470,7 +4536,12 @@ class CodeContextEngine:
         if not sections:
             return []
         ordered = sorted(
-            sections, key=lambda item: (str(item["file_path"]), int(item["start_line"]), int(item["end_line"]))
+            sections,
+            key=lambda item: (
+                str(item["file_path"]),
+                int(item["start_line"]),
+                int(item["end_line"]),
+            ),
         )
         merged: list[dict[str, Any]] = [dict(ordered[0])]
         for section in ordered[1:]:
@@ -5118,7 +5189,10 @@ class CodeContextEngine:
                     end_line=target_end,
                     provenance="local_index",
                 )
-        return sorted(nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id))
+        return sorted(
+            nodes_by_identity.values(),
+            key=lambda item: (item.file_path, item.start_line, item.symbol_id),
+        )
 
     def _indexed_symbol_payloads_for_call_name(self, call_name: str) -> list[dict[str, Any]]:
         short_name = call_name.rsplit(".", 1)[-1]
@@ -5668,7 +5742,8 @@ class CodeContextEngine:
         filename = f"{self.repo_id}-{int(time.time() * 1000)}-{digest}.json"
         artifact_path = artifact_root / filename
         artifact_path.write_text(
-            json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+            json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
         )
         return {
             "spilled": True,
@@ -5678,7 +5753,14 @@ class CodeContextEngine:
 
     def _prune_overflow_artifact_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         artifact_payload = cast(dict[str, Any], self._json_safe(payload))
-        for key in ("tokens_saved", "total_tokens", "cache_hit", "overflow", "rendered", "rendered_format"):
+        for key in (
+            "tokens_saved",
+            "total_tokens",
+            "cache_hit",
+            "overflow",
+            "rendered",
+            "rendered_format",
+        ):
             artifact_payload.pop(key, None)
         return artifact_payload
 
@@ -5882,7 +5964,13 @@ class CodeContextEngine:
                     break
             if truncated:
                 break
-        routes.sort(key=lambda item: (str(item.get("file_path")), int(item.get("line", 0)), str(item.get("route"))))
+        routes.sort(
+            key=lambda item: (
+                str(item.get("file_path")),
+                int(item.get("line", 0)),
+                str(item.get("route")),
+            )
+        )
         return routes[:limit], truncated
 
     def _extract_routes_from_file(
@@ -6226,6 +6314,7 @@ class CodeContextEngine:
         try:
             from atelier.infra.code_intel.scip import ScipSymbolIntelProvider
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return
         self.intel_store.register(
             ScipSymbolIntelProvider(
@@ -6347,11 +6436,13 @@ class CodeContextEngine:
         try:
             self._ensure_indexed()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 self._maybe_autosync_reindex()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
 
     def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
@@ -6433,6 +6524,7 @@ class CodeContextEngine:
                 since_sha = str(watermark_row["value"]) if watermark_row is not None else None
             self._walk_and_summarise(since_sha=since_sha)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug(
                 "lineage bootstrap failed", exc_info=True
             )  # fail-open — lineage is additive, never blocks search
@@ -6455,6 +6547,7 @@ class CodeContextEngine:
                 diff = parent.tree.diff_to_tree(commit.tree)
                 return diff.patch or ""
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 return ""
 
         pygit2 = require_pygit2()
@@ -6466,6 +6559,7 @@ class CodeContextEngine:
                 commit_obj = repo.revparse_single(record.sha)
                 diff_text = _get_diff_text(repo, commit_obj)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 diff_text = ""
 
             try:
@@ -6474,6 +6568,7 @@ class CodeContextEngine:
             except SummarizerError:
                 continue
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
             batch.append(
@@ -6566,6 +6661,7 @@ class CodeContextEngine:
                 adjusted = sim - self._lineage_score_penalty
                 scored.append((adjusted, row))
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
         scored.sort(key=lambda t: t[0], reverse=True)
@@ -6598,6 +6694,7 @@ class CodeContextEngine:
                     )
                 )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         return results
 

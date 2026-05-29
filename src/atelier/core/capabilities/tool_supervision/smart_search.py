@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -21,6 +22,8 @@ from atelier.infra.storage.vector import cosine_similarity, generate_embedding
 
 SearchMode = Literal["chunks", "full", "map"]
 
+_CLAUDE_GREP_FILE_LIMIT = 100
+_CLAUDE_READ_LINE_LIMIT = 2000
 _SHELL_METACHARS_RE = re.compile(r"[;&|`$<>()\n\r]")
 _LEADING_DASH_RE = re.compile(r"^-")
 _SKIP_PARTS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
@@ -131,6 +134,7 @@ def _semantic_rank(repo_root: Path, paths: list[str], query: str) -> dict[str, f
     try:
         query_vector = generate_embedding(query)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
     scores: dict[str, float] = {}
     for path in paths:
@@ -139,6 +143,7 @@ def _semantic_rank(repo_root: Path, paths: list[str], query: str) -> dict[str, f
             content = file_path.read_text(encoding="utf-8", errors="replace")[:20_000]
             vector = generate_embedding(content)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         scores[path] = max(0.0, cosine_similarity(query_vector, vector))
     return scores
@@ -149,6 +154,7 @@ def _graph_rank(repo_root: Path, seed_files: list[str]) -> dict[str, float]:
         graph, _tags = build_reference_graph(repo_root)
         return personalized_pagerank(graph, seed_files)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
 
 
@@ -178,6 +184,7 @@ def _load_cache(repo_root: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
     cache = data.get("smart_search") if isinstance(data, dict) else None
     return cache if isinstance(cache, dict) else {}
@@ -188,6 +195,7 @@ def _save_cache(repo_root: Path, cache: dict[str, Any]) -> None:
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         data = {}
     if not isinstance(data, dict):
         data = {}
@@ -235,17 +243,33 @@ def _search_with_backend(
     return payload
 
 
-def _naive_bytes_for_matches(matches: list[dict[str, Any]]) -> int:
-    """Sum the full source size for each matched file (what a naive agent would read)."""
+def _claude_read_baseline_text(text: str) -> str:
+    lines = text.splitlines()
+    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
+        return text
+    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
+
+
+def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode = "chunks") -> int:
+    """Bytes in the closest Claude Code built-in baseline for these matches."""
+    if mode != "full":
+        paths = [str(match.get("path", "")) for match in matches[:_CLAUDE_GREP_FILE_LIMIT] if match.get("path")]
+        return len("\n".join(paths))
+
     total = 0
-    for match in matches:
+    for match in matches[:_CLAUDE_GREP_FILE_LIMIT]:
         raw = str(match.get("path", ""))
+        content = match.get("content")
+        if isinstance(content, str) and content:
+            total += len(_claude_read_baseline_text(content))
+            continue
         if not raw:
             continue
         try:
-            total += Path(raw).stat().st_size
+            source = Path(raw).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        total += len(_claude_read_baseline_text(source))
     return total
 
 
@@ -339,7 +363,7 @@ def smart_search(
                 full_matches.append({**match, "content": content, "snippets": []})
             matches = full_matches
         zoekt_matches = matches[:max_files]
-        zoekt_naive = _naive_bytes_for_matches(zoekt_matches)
+        zoekt_naive = _naive_bytes_for_matches(zoekt_matches, mode=mode)
         zoekt_rendered = _rendered_bytes_for_matches(zoekt_matches)
         response = {
             "matches": zoekt_matches,
@@ -393,7 +417,7 @@ def smart_search(
             fm.append({**match, "content": content, "snippets": []})
         matches = fm
     final_matches = matches[:max_files]
-    final_naive = _naive_bytes_for_matches(final_matches)
+    final_naive = _naive_bytes_for_matches(final_matches, mode=mode)
     final_rendered = _rendered_bytes_for_matches(final_matches)
     response = {
         "matches": final_matches,

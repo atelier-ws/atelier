@@ -1,6 +1,6 @@
 # W2 — Per-session counterfactual report
 
-> Parent: [`index.md`](index.md). Driving spec: [`day30/07-counterfactual-report.md`](../../../specs/day30/07-counterfactual-report.md).
+> Parent: [`index.md`](index.md). Driving spec: [`day30/07-counterfactual-report.md`](../../specs/day30/07-counterfactual-report.md).
 > Independent of W0/W1 (does not touch vendor files).
 
 ## Goal

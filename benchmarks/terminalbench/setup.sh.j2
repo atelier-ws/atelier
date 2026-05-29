@@ -1,9 +1,14 @@
 #!/bin/bash
 set -e
-apt-get update -qq && apt-get install -y -qq curl ca-certificates
+apt-get update -qq && apt-get install -y -qq curl ca-certificates python3-pip python3-venv
+
+# Install Claude Code CLI (used by the 'claude' provider)
 export NVM_DIR="$HOME/.nvm"
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
 source "$NVM_DIR/nvm.sh"
 nvm install 22
 nvm use 22
 npm install -g @anthropic-ai/claude-code@{{ version | default('latest') }}
+
+# Install Python deps for the 'ollama' provider
+pip3 install -q openai

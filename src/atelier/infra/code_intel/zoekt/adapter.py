@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import dataclass
@@ -76,6 +77,7 @@ class ZoektSupervisor:
             self.ensure_started()
             server_health = self.server.health()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             runtime_ref = resolution.image_ref or (str(resolution.path) if resolution.path is not None else None)
             return ZoektBackendHealth(
                 ok=False,

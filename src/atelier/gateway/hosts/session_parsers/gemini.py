@@ -122,6 +122,7 @@ def _canonicalize_gemini_events(raw_content: str) -> list[dict[str, Any]]:
         try:
             event = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
         key = _gemini_event_key(event)
@@ -209,6 +210,7 @@ class GeminiImporter:
                     actual_session_id = str(ev["sessionId"])
                     break
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
         artifact = RawArtifact(

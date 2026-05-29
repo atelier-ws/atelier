@@ -1020,6 +1020,7 @@ def _tracked_saved_tokens(store: ContextStore, trace: Trace) -> tuple[int, int]:
     try:
         rows = store.list_context_budgets(_trace_run_key(trace))
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Failed to load context budgets for trace %s: %s", trace.id, exc)
         return 0, 0
 
@@ -1206,6 +1207,7 @@ def _build_auto_optimizations(
         try:
             at_date = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00")).date()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in savings event, using today: %s", event.get("at"), exc)
             at_date = datetime.now(UTC).date()
         if at_date < start_day:
@@ -1297,6 +1299,7 @@ def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
         try:
             at = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00"))
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in reread event, using now: %s", event.get("at"), exc)
             at = datetime.now(UTC)
         if at.date() < start_day:
@@ -1708,6 +1711,7 @@ def _savings_summary_payload(
             try:
                 at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 logger.debug("Bad timestamp %r in savings call, using today: %s", at_raw, exc)
                 at_date = today
             day_key = at_date.isoformat()
@@ -1726,6 +1730,7 @@ def _savings_summary_payload(
         try:
             at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in live savings event, using today: %s", at_raw, exc)
             at_date = today
         if at_date < start_day:
@@ -1930,7 +1935,7 @@ def _savings_summary_payload(
         baseline_cost_usd = (
             actual_cost_usd
             if saved_tokens <= 0
-            else round(actual_cost_usd + pricing.cost_usd(input_tokens=naive_tokens), 6)
+            else round(actual_cost_usd + pricing.cost_usd(input_tokens=saved_tokens), 6)
         )
         saved_cost_usd = round(max(0.0, baseline_cost_usd - actual_cost_usd), 6)
         trace = trace_by_session.get(session_id)
@@ -3857,6 +3862,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 _session_savings[_sk] = read_total_savings_from_events(_sk, _atelier_root)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 _session_savings[_sk] = 0.0
 
         top_sessions_clean = [
@@ -4491,6 +4497,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 ledger = RunLedger.load(ledger_path)
                 snap = ledger.snapshot()
             except Exception as e:
+                logging.exception("Recovered from broad exception handler")
                 return {"session_id": session_id, "error": str(e)}
 
         # Always check for a trace to fetch the full conversation history.
@@ -4705,6 +4712,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 if _tool_visible_to_llm(name, spec)
             ]
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.warning("Failed to load MCP tool status: %s", exc, exc_info=True)
             return []
 
@@ -4816,6 +4824,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     try:
                         fm = yaml.safe_load(text[3:end]) or {}
                     except Exception:
+                        logging.exception("Recovered from broad exception handler")
                         fm = {}
                     body = text[end + 3 :].strip()
             # Strip generator comment from body
@@ -4924,6 +4933,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         try:
             return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
             return []
 
@@ -5651,6 +5661,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 results.append(payload)
                 seen_session_ids.add(payload["session_id"])
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         store_inst = get_store()
         for trace in store_inst.list_traces(since=cutoff, limit=max(limit * 5, limit)):
@@ -5855,6 +5866,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 outcomes = load_outcomes_from_state(state_path)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
             for entry in outcomes.get("route_outcomes", []):

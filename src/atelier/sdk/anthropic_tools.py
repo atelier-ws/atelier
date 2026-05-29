@@ -133,7 +133,8 @@ def make_atelier_tools(
                 prefix_hash = plan.prefix_hash
                 prefix_invalidated_reason = plan.invalidated_reason
                 prior_prefix_hash[0] = prefix_hash
-        except Exception:  # noqa: BLE001 — best-effort prefix-cache capture, must not break host model call
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("anthropic prefix-cache capture failed", exc_info=True)
 
         ledger.record_call(
