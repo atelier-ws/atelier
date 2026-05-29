@@ -13,10 +13,13 @@ Atelier keeps Gemini integration optional.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 from atelier.infra.runtime.run_ledger import RunLedger
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiADKMiddleware:
@@ -102,8 +105,8 @@ class GeminiADKMiddleware:
                 prefix_hash = plan.prefix_hash
                 prefix_invalidated_reason = plan.invalidated_reason
                 self._prior_prefix_hash = prefix_hash
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — best-effort prefix-cache capture, must not break host model call
+            logger.debug("gemini prefix-cache capture failed", exc_info=True)
 
         self._ledger.record_call(
             operation="gemini.generate_content",
