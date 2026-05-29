@@ -61,3 +61,41 @@ def register(cli: click.Group) -> None:
         cli.add_command(systemd_alias_group)
     except ModuleNotFoundError:
         pass
+
+    try:
+        from .tools import tool_mode, tools_group
+
+        cli.add_command(tool_mode)
+        cli.add_command(tools_group)
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        from .savings import (
+            external_report_cmd,
+            external_status_cmd,
+            optimize_group,
+            savings_cmd,
+            savings_detail,
+            savings_reset,
+        )
+
+        cli.add_command(savings_cmd)
+        cli.add_command(optimize_group)
+        cli.add_command(external_status_cmd)
+        cli.add_command(external_report_cmd)
+        cli.add_command(savings_detail)
+        cli.add_command(savings_reset)
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        from .benchmark import bench_group, benchmark_group
+
+        # ``benchmark.py`` attaches the optional SWE group to ``benchmark_group``
+        # at import time (resilient to ModuleNotFoundError), so registering the
+        # group here preserves the original "SWE after benchmark_group" ordering.
+        cli.add_command(benchmark_group)
+        cli.add_command(bench_group)
+    except ModuleNotFoundError:
+        pass
