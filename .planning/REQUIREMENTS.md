@@ -178,6 +178,51 @@
 - [x] **DLS-VAL-03**: A SCIP availability report matches the expanded registry and provisioning matrix
 - [x] **DLS-VAL-04**: Language-support, architecture, installation, quick-reference, and SCIP provisioning docs reflect actual shipped behavior
 
+## v0.5 Requirements — Quality & Benchmark Lift
+
+### Lint and Coverage Gates
+
+- [ ] **QBL-GATE-01**: Ruff enables BLE001 and T20 so new broad-except and print debt is lint-gated
+- [ ] **QBL-GATE-02**: Existing BLE001/T20 violations are captured as per-file ignores, not blanket disables
+- [ ] **QBL-GATE-03**: A full-suite coverage command exists for slow-inclusive coverage runs
+- [ ] **QBL-GATE-04**: Nightly coverage workflow runs the full suite with a measured fail-under floor
+- [ ] **QBL-GATE-05**: M2/M3 burn-down worklists are derivable from lint config and current source enumeration
+
+### Silent Exception Audit
+
+- [ ] **QBL-EXC-01**: Fresh enumeration of `except Exception: pass` sites is captured before fixes
+- [ ] **QBL-EXC-02**: Every silent broad-except is removed, narrowed, re-raised, or explicitly logged with rationale
+- [ ] **QBL-EXC-03**: Fixed files are removed from BLE001 per-file ignores
+- [ ] **QBL-EXC-04**: MCP/tool-handler focused tests cover touched gateway surfaces
+
+### Stdout to Logging
+
+- [ ] **QBL-LOG-01**: Fresh enumeration of `print()` in `src/` is bucketed into CLI-allowed vs non-CLI debt
+- [ ] **QBL-LOG-02**: Non-CLI core/infra/server/background prints are converted to module logging or stderr diagnostics
+- [ ] **QBL-LOG-03**: CLI user output uses `click.echo` and remains intentionally ignored by T20
+- [ ] **QBL-LOG-04**: MCP stdio smoke tests confirm no non-protocol stdout leaks
+
+### CLI Decomposition
+
+- [ ] **QBL-CLI-01**: `gateway/cli/app.py` becomes a thin Click group and command registration surface
+- [ ] **QBL-CLI-02**: Command groups move into `gateway/cli/commands/` modules without changing command names, flags, or help output
+- [ ] **QBL-CLI-03**: OpenMemory, stack, telemetry, and other non-CLI business logic moves to core/infra/gateway integration services
+- [ ] **QBL-CLI-04**: CLI help output before/after migration is byte-equivalent or differences are intentionally documented
+
+### A/B Suite Expansion
+
+- [ ] **QBL-AB-01**: README savings mechanisms are mapped to existing or new runnable A/B suites
+- [ ] **QBL-AB-02**: New suites and graders cover uncovered mechanisms with fast smoke fixtures
+- [ ] **QBL-AB-03**: Runner/report/aggregate surfaces enumerate and grade every suite
+- [ ] **QBL-AB-04**: `benchmarks/ab/tests` verifies suite/grader contracts and CI-bounded deltas
+
+### Public Benchmark Results
+
+- [ ] **QBL-RES-01**: `RESULTS.md` contains reproducible benchmark numbers with corpus versions, commit SHAs, CIs, and copy-paste commands
+- [ ] **QBL-RES-02**: Benchmark regression workflow replays a fixed corpus and fails below recorded savings/routing thresholds
+- [ ] **QBL-RES-03**: SWE-bench Lite/subset predictions and cost/accuracy frontier artifacts are committed
+- [ ] **QBL-RES-04**: Public benchmark index points to reproducible results and no longer contains smoke-only claims
+
 ## v2 Requirements
 
 ### Enhanced PR-Replay
@@ -302,7 +347,8 @@
 - v0.2 requirements: 8 total | Mapped: 8 | Unmapped: 0 ✓
 - v0.3 requirements: 26 total | Mapped: 26 | Unmapped: 0 ✓
 - v0.4 requirements: 26 total | Mapped: 26 | Unmapped: 0 ✓
+- v0.5 requirements: 25 total | Mapped: 25 | Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — Phase 19 expanded SCIP registry requirements complete*
+*Last updated: 2026-05-29 — v0.5 Quality & Benchmark Lift requirements added*

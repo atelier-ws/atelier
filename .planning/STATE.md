@@ -1,32 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.4
-milestone_name: Dedicated Language Support
-status: complete
-last_updated: "2026-05-29T17:30:00.000Z"
-last_activity: 2026-05-29 -- Phase 21 verified complete; v0.4 milestone complete
+milestone: v0.5
+milestone_name: Quality & Benchmark Lift
+status: executing
+last_updated: "2026-05-29T18:00:00.000Z"
+last_activity: 2026-05-29 -- v0.5 milestone created from docs/plans/quality-and-benchmark-lift
 progress:
   total_phases: 6
-  completed_phases: 6
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 **Project:** Atelier Public Benchmarks
-**Milestone:** v0.4 — Dedicated Language Support
+**Milestone:** v0.5 — Quality & Benchmark Lift
 **Updated:** 2026-05-29
-**Status:** v0.4 Complete
+**Status:** Executing
 
 ## Current Phase
 
-**Current: v0.4 — Dedicated Language Support Complete**
+**Current: Phase 22 — Lint and Coverage Gates**
 
-Next action: archive or start next milestone when requested.
+Next action: `/gsd-plan-phase 22`
 
-Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. All six phases are complete: canonical language registry, tree-sitter outlines, repo-map tags, expanded SCIP registry, runtime SCIP provisioning, validation benchmarks, and docs.
+Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focuses on coding-quality gates, silent exception burn-down, stdout/logging hygiene, CLI decomposition, expanded A/B suites, and reproducible public benchmark results.
 
 ## Roadmap Progress
 
@@ -71,6 +71,17 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. All six
 | Phase 20 | ✅ Complete | Runtime SCIP Indexer Provisioning (DLS-PROV-01–05) |
 | Phase 21 | ✅ Complete | Validation, Benchmarks, and Docs (DLS-VAL-01–04) |
 
+### v0.5 (Active)
+
+| Phase | Status | Goal |
+|-------|--------|------|
+| Phase 22 | ⏳ Not started | Lint and Coverage Gates (QBL-GATE-01–05) |
+| Phase 23 | ⏳ Not started | Silent Exception Audit (QBL-EXC-01–04) |
+| Phase 24 | ⏳ Not started | Stdout to Logging (QBL-LOG-01–04) |
+| Phase 25 | ⏳ Not started | CLI Decomposition (QBL-CLI-01–04) |
+| Phase 26 | ⏳ Not started | A/B Suite Expansion (QBL-AB-01–04) |
+| Phase 27 | ⏳ Not started | Public Benchmark Results (QBL-RES-01–04) |
+
 ## Key Decisions Log
 
 | Decision | Choice | Rationale |
@@ -86,6 +97,8 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. All six
 | v0.3 autonomy | Execute end-to-end without approval gates unless blocked by conflicting user changes | User requested autonomous execution and local proof benchmarks |
 | Canonical language names | Use tree-sitter parser names as the shared key set across code-intel surfaces | Fixes shell/bash drift and prevents future spelling mismatches |
 | SCIP provisioning tiers | Install cheap Python/TypeScript indexers, lazy-fetch medium indexers, detect/document heavy toolchain indexers | Semantic intel should work out of the box where practical without forcing large toolchains |
+| Quality lift starts with gates before burn-down | Enable BLE001/T20 with per-file ignores first so new debt fails while existing debt is fixed phase-by-phase | Prevents backsliding while keeping the milestone reviewable |
+| Public benchmark claims must be regression-gated | README savings claims need runnable A/B suites and CI thresholds before they are credible | Makes public claims reproducible and auditable |
 
 ## Watch Points
 
@@ -114,6 +127,7 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. All six
 | `.planning/ROADMAP.md` | 21-phase cumulative execution plan; v0.4 phases 16–21 active |
 | `.planning/config.json` | YOLO mode, quality model, all agents on |
 | `docs/plans/dedicated-language-support/` | Source design plan for v0.4 |
+| `docs/plans/quality-and-benchmark-lift/` | Source design plan for v0.5 |
 | `.planning/research/SUMMARY.md` | Synthesized research findings |
 | `.planning/research/STACK.md` | Stack research (TerminalBench, claude -p schema) |
 | `.planning/research/FEATURES.md` | Feature research (PR-replay, long-session) |
@@ -123,8 +137,8 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. All six
 
 ## Current Position
 
-Phase: v0.4 (Dedicated Language Support) — COMPLETE
-Previous phase: 21 (Validation, Benchmarks, and Docs) — COMPLETE
-Plans: 13/13 complete
-Status: Milestone complete
-Last activity: 2026-05-29 -- Phase 21 verified complete; v0.4 complete
+Phase: 22 (Lint and Coverage Gates) — READY TO PLAN
+Previous milestone: v0.4 (Dedicated Language Support) — COMPLETE
+Plans: TBD
+Status: Planning Phase 22
+Last activity: 2026-05-29 -- v0.5 milestone created from docs/plans/quality-and-benchmark-lift
