@@ -32,12 +32,15 @@ Pricing is hardcoded so the benchmark is deterministic without LiteLLM.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pricing constants (USD per 1 M input tokens)
@@ -199,7 +202,8 @@ def _parse_session_routing(path: Path) -> tuple[list[dict[str, Any]], str]:
                     continue
                 try:
                     ev = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("transcript line json parse skipped", exc_info=True)
                     continue
 
                 if ev.get("type") != "assistant":
@@ -245,8 +249,8 @@ def _parse_session_routing(path: Path) -> tuple[list[dict[str, Any]], str]:
                         "synthetic": synthetic,
                     }
                 )
-    except Exception:
-        pass
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+        logger.debug("transcript parse skipped", exc_info=True)
 
     return turns, dominant_model
 
