@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Dedicated Language Support
 status: executing
-last_updated: "2026-05-29T09:56:18.210Z"
-last_activity: 2026-05-29 -- Phase 16 planning complete
+last_updated: "2026-05-29T11:35:00.000Z"
+last_activity: 2026-05-29 -- Phase 16 verified complete; Phase 17 planning next
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 17
 ---
 
 # Project State
@@ -18,15 +18,15 @@ progress:
 **Project:** Atelier Public Benchmarks
 **Milestone:** v0.4 — Dedicated Language Support
 **Updated:** 2026-05-29
-**Status:** Ready to execute
+**Status:** Planning Phase 17
 
 ## Current Phase
 
-**Current: Phase 16 — Canonical Language Registry**
+**Current: Phase 17 — Tree-sitter Outline Coverage**
 
-Next action: `/gsd-execute-phase 16`
+Next action: `/gsd-plan-phase 17`
 
-Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 has 2 verified plans ready to execute for the canonical language registry that unifies extension detection, tree-sitter outline keys, repo-map tag detection, and SCIP binary lookup.
+Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 16 completed the canonical language registry and verified DLS-LANG-01 through DLS-LANG-04. Phase 17 now needs planning for dedicated tree-sitter outline coverage across shell, SQL, YAML, TOML, and JSON.
 
 ## Roadmap Progress
 
@@ -64,7 +64,7 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 
 | Phase | Status | Goal |
 |-------|--------|------|
-| Phase 16 | 📋 Planned | Canonical Language Registry (DLS-LANG-01–04) |
+| Phase 16 | ✅ Complete | Canonical Language Registry (DLS-LANG-01–04) |
 | Phase 17 | ⏳ Not started | Tree-sitter Outline Coverage (DLS-OUTLINE-01–05) |
 | Phase 18 | ⏳ Not started | Tree-sitter Repo-map Tags (DLS-TAGS-01–04) |
 | Phase 19 | ⏳ Not started | Expanded SCIP Registry and Lazy Indexing (DLS-SCIP-01–04) |
@@ -123,7 +123,8 @@ Milestone v0.4 is defined from `docs/plans/dedicated-language-support/`. Phase 1
 
 ## Current Position
 
-Phase: 16 (Canonical Language Registry) — READY TO EXECUTE
+Phase: 17 (Tree-sitter Outline Coverage) — READY TO PLAN
+Previous phase: 16 (Canonical Language Registry) — COMPLETE
 Plans: 2
-Status: Ready to execute
-Last activity: 2026-05-29 -- Phase 16 planning complete
+Status: Planning Phase 17
+Last activity: 2026-05-29 -- Phase 16 verified complete; Phase 17 planning next

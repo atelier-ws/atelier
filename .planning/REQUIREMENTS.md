@@ -136,10 +136,10 @@
 
 ### Language Registry
 
-- [ ] **DLS-LANG-01**: A canonical language registry exists as the single source of truth for recognized language identity, extensions, parser names, and SCIP indexer metadata
-- [ ] **DLS-LANG-02**: Extension-based language detection delegates to the registry while preserving the `"text"` fallback for unknown files
-- [ ] **DLS-LANG-03**: Shell extensions (`.sh`, `.bash`, `.zsh`) resolve to the canonical tree-sitter-compatible bash language key
-- [ ] **DLS-LANG-04**: Tree-sitter config keys, repo-map tag language detection, and SCIP binary registry keys all use canonical language names
+- [x] **DLS-LANG-01**: A canonical language registry exists as the single source of truth for recognized language identity, extensions, parser names, and SCIP indexer metadata
+- [x] **DLS-LANG-02**: Extension-based language detection delegates to the registry while preserving the `"text"` fallback for unknown files
+- [x] **DLS-LANG-03**: Shell extensions (`.sh`, `.bash`, `.zsh`) resolve to the canonical tree-sitter-compatible bash language key
+- [x] **DLS-LANG-04**: Tree-sitter config keys, repo-map tag language detection, and SCIP binary registry keys all use canonical language names
 
 ### Tree-sitter Outline Coverage
 
@@ -270,10 +270,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DLS-LANG-01 | Phase 16 | Pending |
-| DLS-LANG-02 | Phase 16 | Pending |
-| DLS-LANG-03 | Phase 16 | Pending |
-| DLS-LANG-04 | Phase 16 | Pending |
+| DLS-LANG-01 | Phase 16 | Complete |
+| DLS-LANG-02 | Phase 16 | Complete |
+| DLS-LANG-03 | Phase 16 | Complete |
+| DLS-LANG-04 | Phase 16 | Complete |
 | DLS-OUTLINE-01 | Phase 17 | Pending |
 | DLS-OUTLINE-02 | Phase 17 | Pending |
 | DLS-OUTLINE-03 | Phase 17 | Pending |
@@ -305,4 +305,4 @@
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — Milestone v0.4 requirements defined*
+*Last updated: 2026-05-29 — Phase 16 DLS language registry requirements complete*
