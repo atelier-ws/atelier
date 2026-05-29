@@ -659,7 +659,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 **Phases:**
 
 - [x] **Phase 16: Canonical Language Registry** — One registry owns language identity across extension detection, tree-sitter outlines, repo-map tags, and SCIP binaries
-- [ ] **Phase 17: Tree-sitter Outline Coverage** — Shell, YAML, TOML, JSON, and SQL get dedicated outlines where parser support and savings justify it
+- [x] **Phase 17: Tree-sitter Outline Coverage** — Shell, YAML, TOML, JSON, and SQL get dedicated outlines where parser support and savings justify it
 - [ ] **Phase 18: Tree-sitter Repo-map Tags** — Repo-map symbol tags come from tree-sitter for every supported grammar while Python AST and regex fallback remain intact
 - [ ] **Phase 19: Expanded SCIP Registry and Lazy Indexing** — Go, Rust, Java, Ruby, C, and C++ join SCIP semantic indexing with env overrides, argv templates, and cached outputs
 - [ ] **Phase 20: Runtime SCIP Indexer Provisioning** — Atelier-managed install and lazy bootstrap paths make SCIP binaries discoverable without manual PATH setup
@@ -725,8 +725,11 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 **Plans**: 2 plans
 
 Plans:
-- [ ] 17-01-PLAN.md — Generalize outline_text engine (unwrap descent + keep_first_line), tune bash, add TOML outline
-- [ ] 17-02-PLAN.md — Add SQL, YAML, JSON tree-sitter outline configs (depends on 17-01)
+- [x] 17-01-PLAN.md — Generalize outline_text engine (unwrap descent + keep_first_line), tune bash, add TOML outline
+- [x] 17-02-PLAN.md — Add SQL, YAML, JSON tree-sitter outline configs (depends on 17-01)
+
+**Summary**: `.planning/phases/17-tree-sitter-outline-coverage/17-01-SUMMARY.md`, `.planning/phases/17-tree-sitter-outline-coverage/17-02-SUMMARY.md`
+**Verification**: `.planning/phases/17-tree-sitter-outline-coverage/17-VERIFICATION.md`
 
 ---
 
@@ -834,7 +837,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 16. Canonical Language Registry | 2/2 | Complete | 2026-05-29 |
-| 17. Tree-sitter Outline Coverage | 0/2 | Planned | - |
+| 17. Tree-sitter Outline Coverage | 2/2 | Complete | 2026-05-29 |
 | 18. Tree-sitter Repo-map Tags | 0/? | Not started | - |
 | 19. Expanded SCIP Registry and Lazy Indexing | 0/? | Not started | - |
 | 20. Runtime SCIP Indexer Provisioning | 0/? | Not started | - |
@@ -850,11 +853,11 @@ Plans:
 | DLS-LANG-02 | Phase 16 | Complete |
 | DLS-LANG-03 | Phase 16 | Complete |
 | DLS-LANG-04 | Phase 16 | Complete |
-| DLS-OUTLINE-01 | Phase 17 | Pending |
-| DLS-OUTLINE-02 | Phase 17 | Pending |
-| DLS-OUTLINE-03 | Phase 17 | Pending |
-| DLS-OUTLINE-04 | Phase 17 | Pending |
-| DLS-OUTLINE-05 | Phase 17 | Pending |
+| DLS-OUTLINE-01 | Phase 17 | Complete |
+| DLS-OUTLINE-02 | Phase 17 | Complete |
+| DLS-OUTLINE-03 | Phase 17 | Complete |
+| DLS-OUTLINE-04 | Phase 17 | Complete |
+| DLS-OUTLINE-05 | Phase 17 | Complete |
 | DLS-TAGS-01 | Phase 18 | Pending |
 | DLS-TAGS-02 | Phase 18 | Pending |
 | DLS-TAGS-03 | Phase 18 | Pending |
