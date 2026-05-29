@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 from collections import defaultdict
 from dataclasses import asdict
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from .runner import BenchReport, ToolResult
+
+logger = logging.getLogger(__name__)
 
 HOSTS_ORDERED = ("builtin", "claude", "codex", "antigravity", "copilot", "opencode")
 
@@ -286,8 +289,10 @@ def print_enforcement_gap(settings_path: Path | None = None) -> None:
                         if t:
                             denied.add(t)
                     break
+            # Best-effort: agent front-matter is optional/free-form, so a parse
+            # failure just means no disallowedTools for this agent.
             except Exception:
-                pass
+                logger.debug("enforcement-gap front-matter parse failed", exc_info=True)
 
     src_label = f"{settings_path}" + (f"\n  project: {project_settings_path}" if project_settings_path.exists() else "")
     print(f"  \033[2mReading: global: {src_label}\033[0m\n")

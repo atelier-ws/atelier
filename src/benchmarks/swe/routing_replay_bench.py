@@ -38,6 +38,7 @@ Limitations
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import time
@@ -47,6 +48,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Model / tier mapping
@@ -220,8 +223,8 @@ def _parse_tool_response(raw: str) -> tuple[str, dict[str, Any]]:
             obj = json.loads(attempt)
             if isinstance(obj, dict) and "tool" in obj:
                 return str(obj.get("tool", "")), dict(obj.get("input") or {})
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError):
+            logger.debug("tool-response json parse skipped", exc_info=True)
     return "", {}
 
 
