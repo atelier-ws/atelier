@@ -947,7 +947,10 @@ Plans:
   3. Full slow-inclusive coverage command and nightly workflow exist.
   4. Coverage floor is measured first and set conservatively.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 22-01-PLAN.md — Enable Ruff BLE/T20 with scoped per-file-ignores, add slow-inclusive `test-full` target with measured coverage floor, and add nightly-coverage.yml workflow
 
 ---
 
