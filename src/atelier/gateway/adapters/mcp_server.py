@@ -631,8 +631,9 @@ def _register_mcp_session() -> None:
             "model": "",
         }
         f.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    except OSError:
+        # Best-effort sidecar registration; a failed write must not break startup.
+        _log.debug("MCP session registration write failed", exc_info=True)
 
 
 def _get_claude_session_id() -> str:
@@ -662,8 +663,8 @@ def _get_claude_session_id() -> str:
                 _cached_claude_session_id = sid
                 _cached_mcp_model = str(data.get("model") or "").strip()
                 return sid
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError):
+        _log.debug("MCP session id read failed", exc_info=True)
     return _get_product_session_id()
 
 
@@ -687,8 +688,8 @@ def _get_mcp_model() -> str:
         if f.is_file():
             data = json.loads(f.read_text(encoding="utf-8"))
             _cached_mcp_model = str(data.get("model") or "").strip()
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError):
+        _log.debug("MCP model read failed", exc_info=True)
     return _cached_mcp_model
 
 
@@ -709,8 +710,8 @@ def _get_host_session_sidecar_path() -> Path:
             if f.is_file():
                 data = json.loads(f.read_text(encoding="utf-8"))
                 sid = str(data.get("claude_session_id") or "").strip()
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError):
+            _log.debug("MCP sidecar session id read failed", exc_info=True)
     if sid:
         return _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
 
@@ -768,7 +769,8 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
     except Exception:
-        pass
+        # Best-effort statusline sidecar; a failed write must not break the tool call.
+        _log.debug("savings sidecar append failed", exc_info=True)
     # --- per-session context savings for session report / analytics ---
     try:
         led = _get_ledger()
@@ -793,7 +795,8 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         with cpath.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(event) + "\n")
     except Exception:
-        pass
+        # Best-effort per-session savings ledger; a failed write must not break the tool call.
+        _log.debug("context savings ledger append failed", exc_info=True)
 
 
 def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
@@ -1171,7 +1174,8 @@ def tool_get_context(
             plan = planner.plan_with_history(blocks, prior_hash or None)
             result["prefix_plan"] = plan.to_dict()
     except Exception:
-        pass  # Never break tool_context due to prefix planning errors
+        # Best-effort: never break tool_context due to prefix planning errors.
+        _log.debug("prefix-cache planning failed", exc_info=True)
 
     return result
 
@@ -1457,7 +1461,8 @@ def tool_route(
         tier = rec.get("tier", "")
         rationale = rec.get("reason", "")
     except Exception:
-        pass
+        # Best-effort model recommendation; fall back to defaults on any advisor failure.
+        _log.debug("model recommendation failed", exc_info=True)
 
     # Apply budget override on top of advisor recommendation
     if budget == "cheap" and available:
@@ -5366,8 +5371,8 @@ def main() -> None:
             )
             if _git_result.returncode == 0:
                 os.environ["ATELIER_WORKSPACE_ROOT"] = _git_result.stdout.strip()
-        except Exception:
-            pass
+        except (OSError, _subprocess.SubprocessError):
+            _log.debug("git rev-parse workspace-root detection failed", exc_info=True)
     os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
     os.environ.setdefault("ATELIER_LESSONS_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".lessons"))
 

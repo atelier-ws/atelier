@@ -1198,8 +1198,8 @@ def _detect_git_root(search_path: Path) -> Path | None:
         )
         if result.returncode == 0:
             return Path(result.stdout.strip())
-    except Exception:
-        pass
+    except (OSError, _subprocess.SubprocessError):
+        logger.debug("git root detection failed", exc_info=True)
     return None
 
 
@@ -5915,7 +5915,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                         compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
                         compaction_total += cost
             except Exception:
-                pass
+                # Best-effort per-row savings aggregation; skip malformed records.
+                logger.debug("dashboard cost aggregation failed", exc_info=True)
 
     # Load cost + token data from DB
     cost_map: dict[str, float] = {}
@@ -5950,7 +5951,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                     p = json.loads(row[0])
                     db_runs.append(p)
         except Exception:
-            pass
+            # Best-effort SQLite trace read; dashboard still renders without DB data.
+            logger.debug("dashboard trace read failed", exc_info=True)
 
     # Load flat ledger if exists
     def _load_run(path: str) -> dict | None:
@@ -6036,7 +6038,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                 all_run_entries.append(d)
                 seen_ids.add(rid)
             except Exception:
-                pass
+                # Best-effort run-JSON parse; skip unreadable/malformed run files.
+                logger.debug("dashboard run-json parse failed", exc_info=True)
 
     for dr in db_runs:
         rid = dr.get("session_id") or dr.get("id")
