@@ -143,11 +143,11 @@
 
 ### Tree-sitter Outline Coverage
 
-- [ ] **DLS-OUTLINE-01**: Shell/bash files produce dedicated tree-sitter outlines with meaningful function and assignment structure
-- [ ] **DLS-OUTLINE-02**: SQL files produce dedicated tree-sitter outlines for schema-level constructs such as tables, views, functions, and indexes
-- [ ] **DLS-OUTLINE-03**: YAML files produce dedicated tree-sitter outlines for top-level document structure
-- [ ] **DLS-OUTLINE-04**: TOML files produce dedicated tree-sitter outlines for table headers and top-level key/value structure
-- [ ] **DLS-OUTLINE-05**: JSON files produce dedicated tree-sitter outlines for top-level object structure when parser availability and the 25% savings threshold justify it
+- [x] **DLS-OUTLINE-01**: Shell/bash files produce dedicated tree-sitter outlines with meaningful function and assignment structure
+- [x] **DLS-OUTLINE-02**: SQL files produce dedicated tree-sitter outlines for schema-level constructs such as tables, views, functions, and indexes
+- [x] **DLS-OUTLINE-03**: YAML files produce dedicated tree-sitter outlines for top-level document structure
+- [x] **DLS-OUTLINE-04**: TOML files produce dedicated tree-sitter outlines for table headers and top-level key/value structure
+- [x] **DLS-OUTLINE-05**: JSON files produce dedicated tree-sitter outlines for top-level object structure when parser availability and the 25% savings threshold justify it
 
 ### Tree-sitter Repo-map Tags
 
@@ -274,11 +274,11 @@
 | DLS-LANG-02 | Phase 16 | Complete |
 | DLS-LANG-03 | Phase 16 | Complete |
 | DLS-LANG-04 | Phase 16 | Complete |
-| DLS-OUTLINE-01 | Phase 17 | Pending |
-| DLS-OUTLINE-02 | Phase 17 | Pending |
-| DLS-OUTLINE-03 | Phase 17 | Pending |
-| DLS-OUTLINE-04 | Phase 17 | Pending |
-| DLS-OUTLINE-05 | Phase 17 | Pending |
+| DLS-OUTLINE-01 | Phase 17 | Complete |
+| DLS-OUTLINE-02 | Phase 17 | Complete |
+| DLS-OUTLINE-03 | Phase 17 | Complete |
+| DLS-OUTLINE-04 | Phase 17 | Complete |
+| DLS-OUTLINE-05 | Phase 17 | Complete |
 | DLS-TAGS-01 | Phase 18 | Pending |
 | DLS-TAGS-02 | Phase 18 | Pending |
 | DLS-TAGS-03 | Phase 18 | Pending |
@@ -305,4 +305,4 @@
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — Phase 16 DLS language registry requirements complete*
+*Last updated: 2026-05-29 — Phase 17 tree-sitter outline requirements complete*
