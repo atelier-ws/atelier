@@ -1,16 +1,16 @@
 # Atelier Public Benchmarks
 
-## Current Milestone: v0.4 Dedicated Language Support
+## Current Milestone: v0.5 Quality & Benchmark Lift
 
-**Goal:** Give every recognized language first-class code intelligence through canonical language identity, dedicated tree-sitter structure, expanded repo-map tags, and runtime-provisioned SCIP indexing.
+**Goal:** Raise Atelier's coding-quality floor and benchmark credibility by gating broad exception/print debt, decomposing the CLI god-object, expanding A/B benchmark coverage, and publishing reproducible regression-gated results.
 
 **Target features:**
-- Canonical Language Registry: one source of truth for extensions, parser names, tags, and SCIP metadata
-- Dedicated Tree-sitter Outlines: shell, YAML, TOML, JSON, and SQL leave the generic regex path where grammar and savings justify it
-- Tree-sitter Repo-map Tags: all tree-sitter languages can contribute definition tags to PageRank repo maps
-- Expanded SCIP Registry: Go, Rust, Java, Ruby, C, and C++ join Python/TypeScript/JavaScript semantic indexing
-- Runtime SCIP Provisioning: Atelier-managed install and lazy bootstrap paths make indexers discoverable without manual PATH setup
-- Validation and Docs: fixture matrix, honest savings benchmark, SCIP availability report, and docs reflect shipped behavior
+- Lint and Coverage Gates: enforce new blind-except/print rules without blocking known debt, and add nightly full coverage gating
+- Silent Exception Audit: remove or explicitly justify every `except Exception: pass`
+- Stdout Hygiene: replace stray non-CLI `print()` calls with logging so MCP stdio framing stays clean
+- CLI Decomposition: split `gateway/cli/app.py` into command modules and move business logic to core/infra
+- A/B Suite Expansion: every README savings mechanism maps to a runnable suite/grader
+- Public Benchmark Results: reproducible `RESULTS.md`, regression-gate CI, and real SWE-bench Lite/subset artifacts
 
 ## What This Is
 
@@ -53,6 +53,7 @@ A stranger can clone the repo, run one command, and reproduce the exact benchmar
 - v0.2 Phase 8 shipped Context Lineage: commit summaries are searchable alongside code chunks and M1 benchmark scaffolding exists.
 - v0.3 is driven by the design docs in `docs/plans/context-quality-lift/` and `docs/plans/phase-linear-cache-reuse/`; do not re-decide those architecture choices during planning.
 - v0.4 is driven by the design docs in `docs/plans/dedicated-language-support/`; use those milestone files as the source of truth.
+- v0.5 is driven by the design docs in `docs/plans/quality-and-benchmark-lift/`; use those milestone files as the source of truth.
 
 ## Constraints
 
@@ -64,6 +65,8 @@ A stranger can clone the repo, run one command, and reproduce the exact benchmar
 - **v0.3 proof target**: local benchmark evidence must show lower cost and lower latency with equal-or-better task success; TerminalBench-oriented target is ≥90% pass rate
 - **Language support source of truth**: canonical language names must be shared across extension detection, tree-sitter outlines, repo-map tags, and SCIP registry
 - **Runtime provisioning**: cheap SCIP indexers can be installed by Atelier; heavy toolchain-backed indexers should be detected and documented rather than force-installed
+- **Benchmark credibility**: savings claims require runnable suites, versioned artifacts, confidence intervals, and reproducible commands
+- **MCP framing**: server/background code must not emit stray stdout; user-facing CLI output remains allowed through Click
 
 ## Key Decisions
 
@@ -79,6 +82,8 @@ A stranger can clone the repo, run one command, and reproduce the exact benchmar
 | Scoped pull as the default context gradient | Subtask-scoped context is required to reduce over-fetch while preserving recall for implementation agents | — v0.3 active |
 | Canonical language names follow tree-sitter parser names | Parser loading is the hard constraint and fixes shell/bash drift at the source | — v0.4 active |
 | SCIP provisioning is tiered | Python/TypeScript are cheap install-time wins; Go/Ruby/Clang can lazy-fetch; Rust/Java depend on heavier user toolchains | — v0.4 active |
+| Quality lift starts with gates before burn-down | Enable BLE001/T20 with per-file ignores first so new debt fails while existing debt is fixed phase-by-phase | — v0.5 active |
+| Public benchmark claims must be regression-gated | README savings claims need runnable A/B suites and CI thresholds before they are credible | — v0.5 active |
 
 ## Evolution
 
@@ -98,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-29 — Milestone v0.4 started*
+*Last updated: 2026-05-29 — Milestone v0.5 started*
