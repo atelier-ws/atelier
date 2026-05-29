@@ -725,6 +725,7 @@ Locked design reference: docs/plans/phase-linear-cache-reuse/01-PLAN.md
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 17-01-PLAN.md — Generalize outline_text engine (unwrap descent + keep_first_line), tune bash, add TOML outline
 - [x] 17-02-PLAN.md — Add SQL, YAML, JSON tree-sitter outline configs (depends on 17-01)
 
@@ -948,8 +949,8 @@ Plans:
   4. Coverage floor is measured first and set conservatively.
 
 **Plans**: 1 plan
-
 Plans:
+
 - [ ] 22-01-PLAN.md — Enable Ruff BLE/T20 with scoped per-file-ignores, add slow-inclusive `test-full` target with measured coverage floor, and add nightly-coverage.yml workflow
 
 ---
