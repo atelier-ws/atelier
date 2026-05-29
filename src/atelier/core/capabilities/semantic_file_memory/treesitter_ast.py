@@ -47,6 +47,11 @@ class LangCfg:
     body_kinds: frozenset[str] = field(default_factory=frozenset)
     # tree-sitter-language-pack key (defaults to the dict key).
     parser_name: str = ""
+    # Transparent wrapper kinds we descend into recursively (no output of their
+    # own). Used for grammars where declarations are buried in wrapper nodes.
+    unwrap: frozenset[str] = field(default_factory=frozenset)
+    # Data key/value kinds we keep as the first source line only (rstripped).
+    keep_first_line: frozenset[str] = field(default_factory=frozenset)
 
 
 _LANG_CONFIG: dict[str, LangCfg] = {
@@ -396,18 +401,31 @@ def outline_text(language: str, source: str) -> str | None:
     source_bytes = source.encode("utf-8")
     root = _node_attr(tree, "root_node")
     pieces: list[bytes] = []
-    for child in _children(root):
-        kind = _kind(child)
-        if kind in cfg.keep_full:
-            start, end = _byte_range(child)
-            pieces.append(source_bytes[start:end].rstrip())
-        elif kind in cfg.keep_signature:
-            pieces.append(_signature_slice(source_bytes, child, cfg.body_kinds))
-        elif kind in cfg.container:
-            # Container declaration line + member signatures inside.
-            header = _signature_slice(source_bytes, child, cfg.body_kinds)
-            pieces.append(header)
-            pieces.extend(_extract_member_signatures(child, source_bytes, cfg))
+
+    def visit(node: Any) -> None:
+        for child in _children(node):
+            kind = _kind(child)
+            if kind in cfg.unwrap:
+                # Transparent wrapper: descend without emitting anything.
+                visit(child)
+            elif kind in cfg.keep_full:
+                start, end = _byte_range(child)
+                pieces.append(source_bytes[start:end].rstrip())
+            elif kind in cfg.keep_signature:
+                pieces.append(_signature_slice(source_bytes, child, cfg.body_kinds))
+            elif kind in cfg.keep_first_line:
+                start, end = _byte_range(child)
+                text = source_bytes[start:end].decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                pieces.append(lines[0].rstrip().encode("utf-8") if lines else b"")
+            elif kind in cfg.container:
+                # Container declaration line + member signatures inside.
+                header = _signature_slice(source_bytes, child, cfg.body_kinds)
+                pieces.append(header)
+                pieces.extend(_extract_member_signatures(child, source_bytes, cfg))
+            # else: skip — and crucially do NOT recurse (preserves top-level-only output).
+
+    visit(root)
     if not pieces:
         return None
     return b"\n".join(pieces).decode("utf-8", errors="replace")
