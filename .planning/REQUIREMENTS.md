@@ -204,10 +204,10 @@
 
 ### CLI Decomposition
 
-- [ ] **QBL-CLI-01**: `gateway/cli/app.py` becomes a thin Click group and command registration surface
-- [ ] **QBL-CLI-02**: Command groups move into `gateway/cli/commands/` modules without changing command names, flags, or help output
-- [ ] **QBL-CLI-03**: OpenMemory, stack, telemetry, and other non-CLI business logic moves to core/infra/gateway integration services
-- [ ] **QBL-CLI-04**: CLI help output before/after migration is byte-equivalent or differences are intentionally documented
+- [x] **QBL-CLI-01**: `gateway/cli/app.py` becomes a thin Click group and command registration surface
+- [x] **QBL-CLI-02**: Command groups move into `gateway/cli/commands/` modules without changing command names, flags, or help output
+- [x] **QBL-CLI-03**: OpenMemory, stack, telemetry, and other non-CLI business logic moves to core/infra/gateway integration services
+- [x] **QBL-CLI-04**: CLI help output before/after migration is byte-equivalent or differences are intentionally documented
 
 ### A/B Suite Expansion
 
@@ -412,6 +412,9 @@
 | WCA-ROUTE-01–02 | Phase 32 | Pending |
 | WCA-INDEX-01–03 | Phase 33 | Pending |
 | WCA-SPEC-01–03 | Phase 34 | Pending |
+| REL-01–04 | Phase 35 | REL-01 Done; REL-02–04 Pending |
+| HARV-01–04 | Phase 36 | Pending |
+| FLOW-01–04 | Phase 37 | Pending |
 
 **Coverage:**
 - v0.1 requirements: 47 total | Mapped: 47 | Unmapped: 0 ✓
@@ -421,6 +424,27 @@
 - v0.5 requirements: 25 total | Mapped: 25 | Unmapped: 0 ✓
 - v0.6 requirements: 25 total | Mapped: 25 | Unmapped: 0 ✓
 
+### v0.6 Addendum — Background Reliability & Memory Hygiene (Phase 35)
+
+- [x] **REL-01**: `claim_job` reaps orphaned `running` jobs whose lease (`locked_at`) exceeds `ATELIER_JOB_LEASE_SECONDS` (default 900s) — retried while attempts remain, dead-lettered once exhausted — so a crashed/interrupted worker can never permanently jam the queue (implemented 2026-05-29; tests in `tests/infra/test_store.py`)
+- [ ] **REL-02**: Consolidation auto-quarantines ReasonBlocks with a poor success/failure ratio instead of leaving them to linger at low rank
+- [ ] **REL-03**: The 180-day stale sweep covers active ReasonBlocks (not only inbox lesson candidates), and `consolidate()`'s ignored `since` parameter is honored or removed
+- [ ] **REL-04**: servicectl tick / telemetry surfaces job-queue health (counts of stuck `running` and `dead` jobs) so a jam is observable
+
+### v0.6 Addendum — Parallel-Session Harvest Coverage (Phase 36)
+
+- [ ] **HARV-01**: Produce a coverage matrix of where each Claude Code parallel-session type (foreground, subagent, background/agent-view, teammate, workflow agent) writes its transcript and whether Atelier currently harvests it
+- [ ] **HARV-02**: Extend `find_claude_sessions` / `SessionDirectoryWatcher` to cover any uncovered path the matrix reveals (e.g. `~/.claude/jobs/<id>/`) — gated on HARV-01, no speculative scanning
+- [ ] **HARV-03**: Verify dedup + redaction hold for newly covered sources; no double-import
+- [ ] **HARV-04**: If workflow per-agent transcripts are not persisted, document the limitation and capture the final workflow report where available
+
+### v0.6 Addendum — Atelier Dynamic Workflows (Phase 37)
+
+- [ ] **FLOW-01**: Ship a `code-audit` dynamic workflow (independent security/performance/test reviewers + adversarial cross-check + one consolidated report) built on Atelier agents
+- [ ] **FLOW-02**: Ship a `gate-benchmark` workflow that runs an A/B GATE comparison with statistical rigor and a single verdict
+- [ ] **FLOW-03**: Package workflows for discovery (plugin `workflows/` or documented `.claude/workflows/`) with tool-allowlist guidance; requires Claude Code ≥ v2.1.154
+- [ ] **FLOW-04**: Demonstrate the adversarial cross-check improves over single-pass review on a fixture (measured)
+
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — v0.6 World-Class Atelier requirements added*
+*Last updated: 2026-05-29 — Phases 36 (HARVEST+) and 37 (FLOW) requirements added*

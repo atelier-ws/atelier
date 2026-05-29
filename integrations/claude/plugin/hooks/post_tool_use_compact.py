@@ -30,7 +30,7 @@ def _read_session_state() -> dict[str, Any]:
     try:
         result = json.loads(p.read_text("utf-8"))
         return result if isinstance(result, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -51,7 +51,7 @@ def _compact_config() -> tuple[int, int]:
 
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (tomllib.TOMLDecodeError, OSError):
         return DEFAULT_THRESHOLD_TOKENS, DEFAULT_BUDGET_TOKENS
 
     compact_config = data.get("compact", {}) if isinstance(data, dict) else {}
@@ -130,7 +130,7 @@ def _response_payload(result: Any) -> dict[str, Any]:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return 0
 
     try:
@@ -159,7 +159,7 @@ def main() -> int:
             return 0
 
         print(json.dumps(_response_payload(result)))
-    except Exception:
+    except (ImportError, OSError, ValueError, TypeError):
         pass
 
     return 0

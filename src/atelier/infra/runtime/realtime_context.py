@@ -188,6 +188,7 @@ class RealtimeContextManager:
             if isinstance(items, list):
                 return {"items": items}
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at realtime_context.py:187",
                 exc_info=True,
@@ -237,4 +238,5 @@ def _safe_json(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return str(value)

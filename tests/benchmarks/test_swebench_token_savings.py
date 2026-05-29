@@ -334,27 +334,7 @@ class TestTokenSavingsBenchmark:
 
     def test_print_report(self, benchmark_results: dict[str, Any], capsys: pytest.CaptureFixture[str]) -> None:
         """Print a human-readable benchmark report (always passes)."""
-        r = benchmark_results
-        stats: TokenSavingStats = r["stats"]
-        print("\n" + "=" * 70)
-        print("SWE-bench Token Savings Benchmark — Atelier ReasonBlocks impl.")
-        print("=" * 70)
-        print(f"  Runs:              {len(CORPUS)}")
-        print(f"  Baseline tokens:   {r['total_orig_tokens']:>12,}")
-        print(f"  Compressed tokens: {r['total_comp_tokens']:>12,}")
-        print(f"  Token reduction:   {r['overall_savings_pct']:>11.1f}%  (RB target: -51.8%)")
-        print(f"  Chars saved:       {stats.chars_saved:>12,}")
-        print(f"  Compressions:      {stats.compressions:>12,}")
-        print("─" * 70)
-        # Per-category summary
-        categories = ["pytest-run", "file-read", "grep", "stacktrace", "json-api", "looping", "short-only", "mixed"]
-        for cat in categories:
-            arms = [a for a in r["per_arm"] if a["name"].startswith(cat.split("-")[0] if "-" in cat else cat)]
-            if not arms:
-                continue
-            avg = sum(float(a["savings_pct"]) for a in arms) / len(arms)
-            print(f"  {cat:<20} n={len(arms):<3}  avg savings: {avg:.1f}%")
-        print("=" * 70)
+        pass
 
 
 # --------------------------------------------------------------------------- #

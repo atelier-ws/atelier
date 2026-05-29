@@ -20,6 +20,7 @@ from .typescript_ast import analyze_typescript
 from .typescript_ast import outline as typescript_outline
 
 _logger = logging.getLogger(__name__)
+_CLAUDE_READ_LINE_LIMIT = 2000
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +37,7 @@ def _tiktoken_encoder() -> Any:
 
         return tiktoken.get_encoding("cl100k_base")
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tiktoken unavailable, falling back to chars/4 heuristic: %s", exc)
         return None
 
@@ -50,9 +52,18 @@ def _count_tokens(text: str) -> int:
     return len(enc.encode(text, disallowed_special=()))
 
 
+def _claude_read_baseline_text(source: str) -> str:
+    """Approximate the text Claude Code's built-in Read would return."""
+    lines = source.splitlines()
+    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
+        return source
+    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
+
+
 try:
     from git import Repo
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     Repo: Any = None  # type: ignore[no-redef]
 
 
@@ -163,8 +174,8 @@ class SemanticFileMemoryCapability:
         return min(start, total_lines), min(end, total_lines)
 
     @staticmethod
-    def _token_savings(full_text: str, returned_text: str) -> int:
-        full_tokens = max(1, _count_tokens(full_text))
+    def _token_savings(baseline_text: str, returned_text: str) -> int:
+        full_tokens = max(1, _count_tokens(baseline_text))
         returned_tokens = max(1, _count_tokens(returned_text))
         return max(0, full_tokens - returned_tokens)
 
@@ -304,7 +315,7 @@ class SemanticFileMemoryCapability:
                     "mode": "range",
                     "range": f"{start}-{end}",
                     "content": content,
-                    "tokens_saved": self._token_savings(source, content),
+                    "tokens_saved": 0,
                 }
             )
             return result
@@ -318,11 +329,12 @@ class SemanticFileMemoryCapability:
                 effective_loc=effective_loc,
             )
             outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False)
+            baseline = _claude_read_baseline_text(source)
             result.update(
                 {
                     "mode": "outline",
                     "outline": outline.model_dump(mode="json"),
-                    "tokens_saved": self._token_savings(source, outline_json),
+                    "tokens_saved": self._token_savings(baseline, outline_json),
                 }
             )
             return result
@@ -338,6 +350,7 @@ class SemanticFileMemoryCapability:
             if language in SUPPORTED_LANGUAGES:
                 ts_text = ts_outline_text(language, source)
                 if ts_text and len(ts_text) <= int(len(source) * 0.75):
+                    baseline = _claude_read_baseline_text(source)
                     result.update(
                         {
                             "mode": "outline",
@@ -346,7 +359,7 @@ class SemanticFileMemoryCapability:
                                 "language": language,
                                 "text": ts_text,
                             },
-                            "tokens_saved": self._token_savings(source, ts_text),
+                            "tokens_saved": self._token_savings(baseline, ts_text),
                         }
                     )
                     return result
@@ -357,11 +370,12 @@ class SemanticFileMemoryCapability:
         if not expand and effective_loc > outline_threshold and language != "text":
             outline_text = self._generic_outline_text(source, language)
             if outline_text and len(outline_text) <= int(len(source) * 0.75):
+                baseline = _claude_read_baseline_text(source)
                 result.update(
                     {
                         "mode": "outline",
                         "outline": {"kind": "generic", "language": language, "text": outline_text},
-                        "tokens_saved": self._token_savings(source, outline_text),
+                        "tokens_saved": self._token_savings(baseline, outline_text),
                     }
                 )
                 return result
@@ -591,4 +605,5 @@ class SemanticFileMemoryCapability:
             commit = commits[0]
             return str(commit.hexsha), commit.authored_datetime.isoformat()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return "", ""

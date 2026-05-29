@@ -39,7 +39,7 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
         return {}
     try:
         return json.loads(sp.read_text("utf-8"))  # type: ignore[no-any-return]
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -77,7 +77,7 @@ def _append_failure_event(session_id: str, command: str, error: str, repeat: int
         return
     try:
         data = json.loads(run_file.read_text("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -109,7 +109,7 @@ def _append_failure_event(session_id: str, command: str, error: str, repeat: int
             json.dump(data, tmp, indent=2)
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
-    except Exception:
+    except OSError:
         if tmp_path:
             with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
@@ -127,7 +127,7 @@ def _signature(command: str, error: str) -> str:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         return 0
 
     tool_input = payload.get("tool_input", {}) or {}
@@ -149,7 +149,7 @@ def main() -> int:
         session_id = _active_session_id()
         if session_id:
             _append_failure_event(session_id, command, error, failures[sig])
-    except Exception:
+    except (OSError, json.JSONDecodeError, KeyError):
         pass
 
     if failures[sig] >= REPEAT_THRESHOLD:

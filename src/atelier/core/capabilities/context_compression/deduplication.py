@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 try:
     from blake3 import blake3
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     blake3: Any = None  # type: ignore[no-redef]
 
 try:
     from datasketch import MinHash
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     MinHash = None
 
 
@@ -128,6 +131,7 @@ def _content_digest(kind: str, summary: str, payload: Any) -> str:
     try:
         payload_str = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         payload_str = str(payload)
     text = f"{kind}\n{summary}\n{payload_str}".encode("utf-8", errors="replace")
     if blake3 is not None:

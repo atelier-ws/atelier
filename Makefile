@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-PY_PATHS := src
+PY_PATHS := src benchmarks tests scripts integrations
 ATELIER_STORE ?= $(HOME)/.atelier
 ATELIER_CMD ?= uv run atelier
 TEST_PRINT_TIME ?= 0

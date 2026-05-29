@@ -15,6 +15,7 @@ Usage::
 
 The proxy reports cumulative savings on shutdown (CTRL+C).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,10 +25,10 @@ import sys
 import time
 from pathlib import Path
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-import httpx
 
 # ---------------------------------------------------------------------------
 # Import Atelier compression from the installed package
@@ -37,8 +38,8 @@ _repo_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_repo_root / "src"))
 
 from atelier.core.capabilities.tool_supervision.compact_output import (  # noqa: E402
-    compress_history,
     TokenSavingStats,
+    compress_history,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -92,7 +93,10 @@ async def chat_completions(request: Request):
     }
     log.info(
         "compress  before=%d  after=%d  saved=%d (%.1f%%)",
-        before_tokens, after_tokens, saved, entry["pct"],
+        before_tokens,
+        after_tokens,
+        saved,
+        entry["pct"],
     )
     if _log_path:
         with _log_path.open("a") as f:
@@ -103,14 +107,15 @@ async def chat_completions(request: Request):
     upstream_url = f"{_upstream.rstrip('/')}/chat/completions"
 
     async with httpx.AsyncClient(timeout=300) as client:
-        headers = {k: v for k, v in request.headers.items()
-                   if k.lower() not in ("host", "content-length")}
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")}
 
         if body.get("stream"):
+
             async def stream_gen():
                 async with client.stream("POST", upstream_url, json=body, headers=headers) as resp:
                     async for chunk in resp.aiter_bytes():
                         yield chunk
+
             return StreamingResponse(stream_gen(), media_type="text/event-stream")
         else:
             resp = await client.post(upstream_url, json=body, headers=headers)

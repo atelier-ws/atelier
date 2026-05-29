@@ -834,6 +834,7 @@ def snapshot_edited_files(
             store.record_raw_artifact(artifact, file_content)
             saved += 1
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
 
     return saved

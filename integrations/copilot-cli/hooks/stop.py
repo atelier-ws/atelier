@@ -66,7 +66,7 @@ def _read_events_stats(transcript_path: str) -> dict[str, Any]:
                 continue
             try:
                 ev = json.loads(raw)
-            except Exception:
+            except json.JSONDecodeError:
                 continue
             etype = ev.get("type") or ""
             data = ev.get("data") or {}
@@ -110,7 +110,7 @@ def _read_workspace_savings(workspace: str) -> dict[str, int]:
                 entry = json.loads(raw)
                 tokens_saved += int(entry.get("tokens_saved") or 0)
                 calls_saved += int(entry.get("calls_saved") or 0)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
     return {"tokens_saved": tokens_saved, "calls_saved": calls_saved}
 
@@ -171,7 +171,7 @@ def _format_summary(stats: dict[str, Any], savings: dict[str, int]) -> str:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except json.JSONDecodeError:
         payload = {}
 
     transcript_path: str = payload.get("transcriptPath") or ""
@@ -189,7 +189,7 @@ def main() -> int:
         return 0
 
     summary = _format_summary(stats, savings)
-    print(json.dumps({"systemMessage": f"Atelier: session complete.\n{summary}"}))
+    sys.stdout.write(json.dumps({"systemMessage": f"Atelier: session complete.\n{summary}"}) + "\n")
     return 0
 
 

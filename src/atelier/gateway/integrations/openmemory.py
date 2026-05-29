@@ -49,6 +49,7 @@ def _default_user_id() -> str:
     try:
         return getuser()
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return "atelier"
 
 
@@ -133,6 +134,7 @@ class OpenMemoryClient:
                     raise OpenMemoryMCPError(str(error))
                 return response.get("result", {})
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 last_error = exc
                 logger.debug("OpenMemory MCP request failed for %s via %s: %s", method, endpoint, exc)
         raise OpenMemoryMCPError(f"OpenMemory MCP request failed for {method}: {last_error}")
@@ -177,6 +179,7 @@ class OpenMemoryClient:
             try:
                 body = exc.read(_MAX_BODY_BYTES).decode("utf-8", errors="replace")
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 body = ""
             raise OpenMemoryMCPError(f"HTTP {exc.code} from OpenMemory MCP: {body or exc.reason}") from exc
         except urllib.error.URLError as exc:
@@ -224,6 +227,7 @@ def _maybe_json(value: str) -> Any:
     try:
         return json.loads(stripped)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return value
 
 

@@ -1,9 +1,14 @@
-"""AtelierClaudeAgent — TerminalBench adapter that runs claude via stream-json.
+"""Agent adapters for TerminalBench: Claude CLI and Ollama.
 
 Wires the Atelier bench-mode toggle into TerminalBench's Docker execution model.
 ``run_terminalbench_trial()`` is the central function: it instantiates Harness,
 runs the trial, then post-processes TrialResults + stream.jsonl to assemble the
 full AdapterResult transcript.
+
+Providers:
+  - ``claude`` — uses the ``claude`` CLI (Anthropic Claude Code) inside the container.
+  - ``ollama`` — uses a Python tool-calling agent that calls Ollama via its
+    OpenAI-compatible API.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import shlex
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from terminal_bench.agents.installed_agents.abstract_installed_agent import (
     AbstractInstalledAgent,
@@ -26,7 +31,7 @@ from terminal_bench.terminal.models import TerminalCommand
 # Constants
 # ---------------------------------------------------------------------------
 
-CONTAINER_STREAM_LOG = "/agent-logs/stream.jsonl"
+CONTAINER_STREAM_LOG = "/logs/stream.jsonl"
 DEFAULT_DATASET_NAME = "terminal-bench-core"
 DEFAULT_DATASET_VERSION = "0.1.1"
 
@@ -227,8 +232,186 @@ class AtelierClaudeAgent(AbstractInstalledAgent):
 
 
 # ---------------------------------------------------------------------------
+# AtelierOllamaAgent — AbstractInstalledAgent subclass
+# ---------------------------------------------------------------------------
+
+
+class AtelierOllamaAgent(AbstractInstalledAgent):
+    """TerminalBench agent that runs an Ollama-powered agent inside Docker.
+
+    Uses a Python script (``ollama_agent.py``) that calls Ollama's
+    OpenAI-compatible API with tool calling (Bash, Read, Write, Edit, Glob,
+    Grep) — a drop-in replacement for the ``claude`` CLI.
+
+    Supports the same two bench-mode arms as ``AtelierClaudeAgent``.
+    """
+
+    _OLLAMA_SCRIPT_NAME = "ollama_agent.py"
+
+    def __init__(
+        self,
+        bench_mode: str = "on",
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._bench_mode = bench_mode
+        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen3.6:27b")
+
+    @staticmethod
+    def name() -> str:
+        return "atelier-ollama"
+
+    @property
+    def _env(self) -> dict[str, str]:
+        """Minimal container env — Ollama config + bench mode.
+
+        ``OLLAMA_BASE_URL`` is only passed through if explicitly set on the
+        host — the agent script auto-detects it inside the container using
+        ``host.docker.internal`` (Docker Desktop) or the default gateway IP.
+        """
+        env: dict[str, str] = {
+            "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "ATELIER_BENCH_MODE": self._bench_mode,
+            "OLLAMA_MODEL": self._model,
+            "OLLAMA_API_KEY": os.environ.get("OLLAMA_API_KEY", "ollama"),
+        }
+        # Only pass through OLLAMA_BASE_URL if explicitly overridden on host.
+        if os.environ.get("OLLAMA_BASE_URL"):
+            env["OLLAMA_BASE_URL"] = os.environ["OLLAMA_BASE_URL"]
+        return env
+
+    @property
+    def _install_agent_script_path(self) -> Path:
+        """Return path to the rendered setup.sh.j2 install script."""
+        return self._get_templated_script_path("setup.sh.j2")
+
+    def _ollama_script_path(self) -> Path:
+        """Return the path to the local ``ollama_agent.py`` file."""
+        return Path(__file__).parent / self._OLLAMA_SCRIPT_NAME
+
+    def perform_task(
+        self,
+        instruction: str,
+        session: Any,
+        logging_dir: Path | None = None,
+    ) -> Any:
+        """Run the Ollama agent inside the container.
+
+        Extends the base ``perform_task`` by also copying the Ollama agent
+        script (``ollama_agent.py``) into the container before installation.
+        """
+        from terminal_bench.agents.failure_mode import FailureMode
+        from terminal_bench.agents.installed_agents.abstract_installed_agent import (
+            AgentResult,
+        )
+
+        # Copy the Ollama agent script into the container first
+        script_path = self._ollama_script_path()
+        if script_path.exists():
+            session.copy_to_container(
+                script_path,
+                container_dir="/agent-tools",
+                container_filename=self._OLLAMA_SCRIPT_NAME,
+            )
+
+        # Copy the install script
+        session.copy_to_container(
+            self._install_agent_script_path,
+            container_dir="/installed-agent",
+            container_filename="install-agent.sh",
+        )
+
+        # Execute outside the session to avoid exposing the env variables.
+        env_setup_content = self._create_env_setup_file()
+        session.container.exec_run(
+            [
+                "sh",
+                "-c",
+                (f"echo {shlex.quote(env_setup_content)} > " "/installed-agent/setup-env.sh"),
+            ]
+        )
+
+        # Set up environment variables
+        session.send_keys(
+            [
+                "source /installed-agent/setup-env.sh",
+                "Enter",
+            ],
+            block=True,
+            max_timeout_sec=float("inf"),
+        )
+
+        # Execute installation script and capture failure status
+        session.send_keys(
+            [
+                ("source /installed-agent/install-agent.sh || " "echo 'INSTALL_FAIL_STATUS'"),
+                "Enter",
+            ],
+            block=True,
+            max_timeout_sec=float("inf"),
+        )
+
+        # Check if installation failed
+        installation_output = session.capture_pane()
+        output_lines = installation_output.split("\n")
+        installation_failed = "INSTALL_FAIL_STATUS" in output_lines
+
+        if installation_failed:
+            return AgentResult(
+                total_input_tokens=0,
+                total_output_tokens=0,
+                failure_mode=FailureMode.AGENT_INSTALLATION_FAILED,
+            )
+
+        # Run the agent commands
+        rendered_instruction = self._render_instruction(instruction)
+        run_agent_commands = self._run_agent_commands(rendered_instruction)
+        for command in run_agent_commands:
+            session.send_command(command)
+
+        return AgentResult(
+            total_input_tokens=0,
+            total_output_tokens=0,
+        )
+
+    def _run_agent_commands(self, instruction: str) -> list[TerminalCommand]:
+        """Build the Ollama agent command that tees NDJSON to the log file.
+
+        Runs the ``ollama_agent.py`` script that was copied into the container
+        by ``perform_task``.
+        """
+        escaped = shlex.quote(instruction)
+        cmd = (
+            f"python3 /agent-tools/ollama_agent.py "
+            f"--instruction {escaped} "
+            f"--model '{self._model}' "
+            f"2>&1 | tee {CONTAINER_STREAM_LOG}"
+        )
+        return [
+            TerminalCommand(
+                command=cmd,
+                min_timeout_sec=0.0,
+                max_timeout_sec=float("inf"),
+                block=True,
+                append_enter=True,
+            )
+        ]
+
+
+# ---------------------------------------------------------------------------
 # run_terminalbench_trial — orchestrate a single trial end-to-end
 # ---------------------------------------------------------------------------
+
+
+Provider = Literal["claude", "ollama"]
+
+
+def _agent_import_path(provider: Provider) -> str:
+    """Return the agent import path for the given provider."""
+    if provider == "ollama":
+        return "terminalbench.agent_adapter:AtelierOllamaAgent"
+    return "terminalbench.agent_adapter:AtelierClaudeAgent"
 
 
 def run_terminalbench_trial(
@@ -237,6 +420,7 @@ def run_terminalbench_trial(
     rep: int,
     out_dir: Path,
     model: str = "claude-sonnet-4-5",
+    provider: Provider = "claude",
     dataset_name: str = DEFAULT_DATASET_NAME,
     dataset_version: str = DEFAULT_DATASET_VERSION,
 ) -> AdapterResult:
@@ -250,7 +434,8 @@ def run_terminalbench_trial(
         bench_mode:      "on" or "off" — controls ATELIER_BENCH_MODE in container.
         rep:             Repetition number (1-based).
         out_dir:         Host directory for trial outputs and transcripts.
-        model:           Claude model slug passed to the agent.
+        model:           Model name passed to the agent.
+        provider:        ``"claude"`` (default) or ``"ollama"``.
         dataset_name:    TerminalBench dataset name.
         dataset_version: TerminalBench dataset version.
 
@@ -280,10 +465,11 @@ def run_terminalbench_trial(
         trial_out = out_dir / run_id
         trial_out.mkdir(parents=True, exist_ok=True)
 
+        agent_path = _agent_import_path(provider)
         harness = Harness(
             output_path=trial_out,
             run_id=run_id,
-            agent_import_path="terminalbench.agent_adapter:AtelierClaudeAgent",
+            agent_import_path=agent_path,
             agent_kwargs={"bench_mode": bench_mode, "model": model},
             dataset_name=dataset_name,
             dataset_version=dataset_version,
@@ -291,6 +477,7 @@ def run_terminalbench_trial(
             n_attempts=1,
             n_concurrent_trials=1,
             cleanup=True,
+            no_rebuild=True,
         )
 
         results: BenchmarkResults = harness.run()

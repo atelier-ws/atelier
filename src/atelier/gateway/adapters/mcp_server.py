@@ -346,6 +346,7 @@ def _detect_default_branch(repo: Path) -> str | None:
                 if branch:
                     return branch
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception in _detect_default_branch",
             exc_info=True,
@@ -363,6 +364,7 @@ def _detect_default_branch(repo: Path) -> str | None:
             if result.returncode == 0:
                 return candidate
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
     return None
 
@@ -475,6 +477,7 @@ def _check_auto_update() -> None:
         else:
             _log.warning("install script not found at %s", install_script)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         _log.exception("auto-update failed")
         with contextlib.suppress(Exception):
             from atelier.core.service.telemetry import emit_product
@@ -499,6 +502,7 @@ def _run_worker_tick_safe(root: Path) -> None:
             if worker.run_once() is None:
                 break
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception in _run_worker_tick_safe",
             exc_info=True,
@@ -608,6 +612,7 @@ def _read_workspace_session_bridge() -> tuple[str, str]:
         model = str(data.get("model") or "").strip()
         return sid, model
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return "", ""
 
 
@@ -772,6 +777,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         # Best-effort statusline sidecar; a failed write must not break the tool call.
         _log.debug("savings sidecar append failed", exc_info=True)
     # --- per-session context savings for session report / analytics ---
@@ -798,6 +804,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         with cpath.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(event) + "\n")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         # Best-effort per-session savings ledger; a failed write must not break the tool call.
         _log.debug("context savings ledger append failed", exc_info=True)
 
@@ -819,6 +826,7 @@ def _read_smart_state() -> dict[str, Any]:
         data = json.loads(path.read_text("utf-8"))
         return data if isinstance(data, dict) else {}
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
 
 
@@ -828,6 +836,7 @@ def _write_smart_state(state: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Suppressed exception while writing smart_state", exc_info=True)
 
 
@@ -901,6 +910,7 @@ def _get_context_budget_recorder() -> Any:
             store.init()
             _context_budget_recorder = ContextBudgetRecorder(store)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             _context_budget_recorder = _NoOpContextBudgetRecorder()
     return _context_budget_recorder
 
@@ -1021,7 +1031,7 @@ def tool_get_context(
     dedup: bool = True,
     agent_id: str | None = None,
     recall: bool = True,
-    mode: Literal["procedures", "symbols"] = "procedures",
+    mode: Literal["procedures", "symbols", "pull"] = "procedures",
 ) -> dict[str, Any]:
     """Record task context and retrieve relevant ReasonBlocks for the task.
 
@@ -1062,6 +1072,16 @@ def tool_get_context(
                 max_symbols=max_blocks,
             ),
         )
+    if mode == "pull":
+        from atelier.core.capabilities.scoped_context import ScopedContextCapability, Subtask
+
+        engine = _code_context_engine(".")
+        subtask = Subtask(
+            description=task,
+            affected_paths=files or [],
+            budget_tokens=token_budget or 4000,
+        )
+        return ScopedContextCapability(engine).pull(subtask).to_dict()
     if errors is None:
         errors = []
     if tools is None:
@@ -1177,6 +1197,7 @@ def tool_get_context(
             plan = planner.plan_with_history(blocks, prior_hash or None)
             result["prefix_plan"] = plan.to_dict()
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         # Best-effort: never break tool_context due to prefix planning errors.
         _log.debug("prefix-cache planning failed", exc_info=True)
 
@@ -1369,6 +1390,7 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
                 "model_used": model,
             }
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             return {"spawn_method": "cli_subprocess", "error": str(exc), "model_used": model}
 
         if result.returncode == 0:
@@ -1464,6 +1486,7 @@ def tool_route(
         tier = rec.get("tier", "")
         rationale = rec.get("reason", "")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         # Best-effort model recommendation; fall back to defaults on any advisor failure.
         _log.debug("model recommendation failed", exc_info=True)
 
@@ -1844,6 +1867,7 @@ def tool_record_trace(
                 rt.store.record_raw_artifact(artifact, redacted_content)
                 raw_artifacts.append(artifact_id)
             except Exception as e:
+                logging.exception("Recovered from broad exception handler")
                 logger.warning("Failed to capture context file %s: %s", fpath, e)
 
     if raw_artifacts:
@@ -2566,19 +2590,34 @@ def tool_smart_read(
 
     cap = SemanticFileMemoryCapability(_atelier_root())
     payload = cap.smart_read(target, range_spec=range, expand=expand)
+    mode = payload["mode"]
+    content = payload.get("content")
+    # Whitespace-minify file bodies before they enter the agent's context
+    # (token optimization that works under any host/orchestrator). Only the
+    # conservative transform is applied (strip trailing whitespace + collapse
+    # 3+ blank-line runs), which the fuzzy edit matcher tolerates. Outline mode
+    # carries no body, so it is left untouched.
+    minify_saved = 0
+    if isinstance(content, str) and content and mode in ("full", "range"):
+        from atelier.core.capabilities.context_compression.minify import minify_source
+
+        minified, orig_tok, min_tok = minify_source(content, str(payload.get("language") or ""))
+        if min_tok < orig_tok:
+            content = minified
+            minify_saved = orig_tok - min_tok
     response: dict[str, Any] = {
-        "mode": payload["mode"],
+        "mode": mode,
         "outline": payload.get("outline"),
-        "content": payload.get("content"),
+        "content": content,
         "path": payload.get("path", str(target)),
         "range": payload.get("range"),
         "language": payload.get("language"),
     }
+    ts = int(payload.get("tokens_saved", 0) or 0) + minify_saved
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
-        response["tokens_saved"] = int(payload.get("tokens_saved", 0))
+        response["tokens_saved"] = ts
     # Always save real savings via thread-local for the budget recorder
-    ts = int(payload.get("tokens_saved", 0) or 0)
     if ts > 0:
         _tool_call_tokens_saved.value = ts
     return response
@@ -2631,6 +2670,7 @@ def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, str | None]
         try:
             snap[display] = (fp, fp.read_text(encoding="utf-8") if fp.exists() else None)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             snap[display] = (fp, None)
     return snap
 
@@ -2646,6 +2686,7 @@ def _compute_and_record_diffs(
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             new_content = None
         if old_content == new_content:
             continue
@@ -2878,6 +2919,7 @@ def tool_smart_edit(
                     "total_ms": hook_result.total_ms,
                 }
             except Exception as hook_exc:
+                logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
         _compute_and_record_diffs(snapshots)
     result.pop("diagnostics", None)
@@ -3127,6 +3169,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             pinned = store.list_pinned_blocks(agent_id=agent_id)
             pin_memory = [b.id for b in pinned][:5]
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception in _compact_advise fetching pinned memory",
                 exc_info=True,
@@ -3181,6 +3224,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             }
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception in _compact_advise persisting manifest",
                 exc_info=True,
@@ -3213,6 +3257,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             "cost_saved_usd": float(compaction_savings["cost_saved_usd"]),
         }
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         # Fail-open: return conservative defaults
         return {
             "should_compact": False,
@@ -3279,6 +3324,7 @@ def _memory_summary(session_id: str) -> dict[str, Any]:
             "strategy": "tfidf",
         }
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         return {"error": str(exc)}
 
 
@@ -3549,7 +3595,10 @@ def tool_code(
     Prefer over `grep` for symbol lookup — results are exact (not textual), indexed, and token-budgeted.
     Use `grep` for regex on arbitrary text. Use `search` for ranked file/snippet retrieval.
 
-    For call-graph and definition work use the dedicated tools: `node`, `callers`, `callees`, `impact`, `explore`.
+    For call-graph, reference, and structural work use the dedicated tools:
+    `node` (read a definition), `callers` / `callees` (call graph), `usages`
+    (all references), `impact` (blast radius), `pattern` (AST search/rewrite),
+    `explore` (grouped context).
     """
     if op == "node":
         op = "symbol"
@@ -4063,6 +4112,52 @@ def tool_explore(
     Use seed_files to bias search toward specific files.
     """
     return _tool_code_alias_handler({"op": "explore", "query": query, "seed_files": seed_files, "max_files": max_files})
+
+
+@mcp_tool(name="usages")
+def tool_usages(
+    symbol: str,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Find all references/usages of a symbol across the codebase.
+
+    Prefer over `grep` for "where is this used" — results are SCIP-indexed and
+    exact (not textual), so renames, shadowed names, and comments don't create
+    false hits. Use `callers` instead when you only want call sites of a function.
+    Pass an unqualified name ('run_command'), qualified path ('module.Class.method'),
+    or a SCIP id from a prior result.
+    """
+    return _tool_code_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
+
+
+@mcp_tool(name="pattern")
+def tool_pattern(
+    pattern: str,
+    language: str | None = None,
+    file_glob: str | None = None,
+    rewrite: str | None = None,
+    limit: int = 20,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Structural (AST) search and optional rewrite via ast-grep.
+
+    Prefer over `grep` when you want to match code *shape* rather than text:
+    e.g. `$X == None`, `if ($C) { $$$ }`, a call with specific argument forms.
+    Pass `rewrite` to transform matches; `dry_run=True` (default) previews
+    changes without writing. Use `language` (e.g. 'python') and `file_glob` to
+    scope the search.
+    """
+    return _tool_code_alias_handler(
+        {
+            "op": "pattern",
+            "pattern": pattern,
+            "language": language,
+            "file_glob": file_glob,
+            "rewrite": rewrite,
+            "limit": limit,
+            "dry_run": dry_run,
+        }
+    )
 
 
 def _run_shell_tool(
@@ -4845,8 +4940,6 @@ def _record_context_budget_for_tool(
         if compact_tool_tokens_saved > 0 and not lever_savings:
             lever_savings[f"compact_tool_output:{lever}"] = compact_tool_tokens_saved
         elif tokens_saved > 0:
-            if tool_name and tool_name != lever and tool_name not in lever_savings and lever == base_lever:
-                lever_savings[tool_name] = tokens_saved
             lever_savings[lever] = max(int(lever_savings.get(lever, 0) or 0), tokens_saved)
         if tool_name:
             lever_savings.setdefault(f"tool:{tool_name}", 0)
@@ -4888,6 +4981,7 @@ def _record_context_budget_for_tool(
                 tool_calls=1,
             )
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Suppressed exception while recording context budget", exc_info=True)
 
 
@@ -5251,6 +5345,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
             return _ok(rid, {"content": [content_item]})
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             if not remote_routed:
                 with contextlib.suppress(Exception):
                     from atelier.infra.runtime import outcome_capture

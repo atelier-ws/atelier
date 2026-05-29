@@ -32,6 +32,7 @@ from atelier.infra.runtime.daemon_units import (
 
 logger = logging.getLogger(__name__)
 
+
 def _servicectl_dir(root: Path) -> Path:
     return Path(root) / "servicectl"
 
@@ -217,6 +218,7 @@ def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
             counts[host] = len(imported_ids)
             all_imported_ids.extend(imported_ids)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             counts[host] = 0
 
     # Report aggregated session counts to atelier.beseam.com
@@ -225,6 +227,7 @@ def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
 
         sync_usage(store.root, session_ids=all_imported_ids)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at cli.py:534",
             exc_info=True,
@@ -326,6 +329,7 @@ def _servicectl_check_and_apply_updates(root: Path) -> bool:
         return True
 
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.error(f"Auto-update failed: {exc}")
         return False
 

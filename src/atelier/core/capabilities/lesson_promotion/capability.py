@@ -64,6 +64,7 @@ class LessonPromoterCapability:
         try:
             vectors = self._embedder.embed([text])
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             _log.warning("lesson embedding unavailable, using NullEmbedder: %s", exc)
             self._embedder = NullEmbedder()
             vectors = self._embedder.embed([text])

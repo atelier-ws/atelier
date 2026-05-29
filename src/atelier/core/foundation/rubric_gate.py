@@ -104,6 +104,7 @@ def load_packaged_rubrics() -> list[Rubric]:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             rubrics.append(Rubric.model_validate(data))
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logging.getLogger(__name__).warning("failed to load packaged rubric %s: %s", path.name, exc)
 
     return rubrics

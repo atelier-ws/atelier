@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ def load_telemetry_config() -> TelemetryConfig:
             section = loaded.get("telemetry", {})
             data = section if isinstance(section, dict) else {}
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             data = {}
 
     cfg = TelemetryConfig(

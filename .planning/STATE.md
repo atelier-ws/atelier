@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Quality & Benchmark Lift
 status: executing
-last_updated: "2026-05-29T20:25:22.550Z"
-last_activity: 2026-05-29 -- Phase 25 planning complete
+last_updated: "2026-05-29T22:13:17.531Z"
+last_activity: 2026-05-29
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 15
-  completed_plans: 8
+  completed_plans: 12
   percent: 50
 ---
 
@@ -94,6 +94,14 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 | Phase 33 | ⏳ Not started | Continuous Indexing (WCA-INDEX-01–03) |
 | Phase 34 | ⏳ Not started | Speculative Retrieval (WCA-SPEC-01–03) |
 
+### v0.6 Addendum (Operational Hardening)
+
+| Phase | Status | Goal |
+|-------|--------|------|
+| Phase 35 | 🔧 In progress | Background Reliability & Memory GC (REL-01–04; REL-01 ✅ reaper done + tested) |
+| Phase 36 | ⏳ Not started | Parallel-Session Harvest Coverage (HARV-01–04) |
+| Phase 37 | ⏳ Not started | Ship Atelier Dynamic Workflows (FLOW-01–04) |
+
 ## Key Decisions Log
 
 | Decision | Choice | Rationale |
@@ -113,6 +121,8 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 | Public benchmark claims must be regression-gated | README savings claims need runnable A/B suites and CI thresholds before they are credible | Makes public claims reproducible and auditable |
 | Neural Code Embeddings (v0.6) | Use `nomic-embed-text/code` via Ollama/local-HF instead of feature hashing | Hashing is lexical-only; neural embeddings are required for true semantic recall |
 | Phase-aware "Stem" workflows (v0.6) | Reuse prompt cache across explore→plan→execute in a single conversation | Cache reuse across phases is the primary token-efficiency lever (Vix-style) |
+| Background job-queue reaper (REL-01, DONE) | `claim_job` reclaims orphaned `running` jobs past a lease TTL; dead-letter on max attempts | A crashed/interrupted controller left a consolidate job stuck `running` 4 days, jamming all lesson consolidation; no reaper/lease existed |
+| Memory GC scope (REL-02/03) | Auto-quarantine failing blocks + extend stale sweep to active blocks; fix dead `since` param | Nothing GCs old/irrelevant ReasonBlocks today — only 7-day retrieval decay demotes them; the store grows unbounded |
 
 ## Watch Points
 
@@ -151,9 +161,13 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 
 ## Current Position
 
-Phase: 25 — PLANNING COMPLETE
-Plan: 0 of 7
+Phase: 25 (cli-decomposition) — EXECUTING
+Plan: 4 of 7 (25-01 complete)
 Previous milestone: v0.4 (Dedicated Language Support) — COMPLETE
-Plans: 23-01..03, 24-01..03 complete; 25-01..07 planned (sequential waves 1–7), ready to execute
+Plans: 23-01..03, 24-01..03 complete; 25-01 complete (help-tree guard + commands substrate, commit 5bbcec0); 25-02..07 planned (sequential waves 2–7)
 Status: Ready to execute
-Last activity: 2026-05-29 -- Phase 25 planning complete
+Last activity: 2026-05-29
+
+### Blockers
+
+- 25-03 baseline blocked: working-tree app.py has unstaged broken WIP (orphaned ')' ~line 1378 from a botched 413-line deletion of unrelated search/context/rescue/route/proof commands). 'uv run atelier --help' fails with SyntaxError before any 25-03 edits. Per baseline_blocker_handling + 'do not reconstruct' constraint, execution halted. Daemon/systemd WIP block IS findable.
