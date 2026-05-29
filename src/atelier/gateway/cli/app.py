@@ -64,6 +64,41 @@ _EXTERNAL_REPORT_ALL_TOOLS = (
 
 logger = logging.getLogger(__name__)
 
+# Namespace covering every session-parser module logger (e.g.
+# ``atelier.gateway.hosts.session_parsers.claude``). Progress records emitted
+# by the parsers propagate up to this logger.
+_IMPORT_PROGRESS_LOGGER = "atelier.gateway.hosts.session_parsers"
+_IMPORT_PROGRESS_HANDLER_FLAG = "_atelier_import_progress_handler"
+
+
+def _ensure_import_progress_logging() -> None:
+    """Route session-parser import progress to stderr (never stdout).
+
+    Parser progress is emitted via ``logger.info(...)`` on the
+    ``atelier.gateway.hosts.session_parsers`` namespace. The CLI's root logger
+    defaults to WARNING with no handler, so without this those records would
+    vanish. Attach a single INFO-level stderr StreamHandler exactly once
+    (idempotent across repeat import invocations). This is intentionally
+    minimal — not a logging reconfiguration and not CLI decomposition.
+    """
+    progress_logger = logging.getLogger(_IMPORT_PROGRESS_LOGGER)
+    for handler in progress_logger.handlers:
+        if getattr(handler, _IMPORT_PROGRESS_HANDLER_FLAG, False):
+            # Already attached; refresh the target stream (the active stderr may
+            # differ between invocations, e.g. under test capture) without
+            # adding a duplicate handler.
+            if isinstance(handler, logging.StreamHandler):
+                handler.setStream(sys.stderr)
+            return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    setattr(handler, _IMPORT_PROGRESS_HANDLER_FLAG, True)
+    progress_logger.addHandler(handler)
+    if progress_logger.level == logging.NOTSET or progress_logger.level > logging.INFO:
+        progress_logger.setLevel(logging.INFO)
+
+
 DEFAULT_ROOT = default_store_root()
 SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS = ("today", "week", "month")
 DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS = (
@@ -2120,6 +2155,7 @@ def copilot_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     """Import Copilot sessions into the Atelier store (loss-preserving)."""
     from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     importer = CopilotImporter(store)
     ids = importer.import_all(path, force=force)
@@ -2152,6 +2188,7 @@ def claude_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     """Import Claude Code sessions into the Atelier store (loss-preserving)."""
     from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     importer = ClaudeImporter(store)
     ids = importer.import_all(path, force=force)
@@ -2184,6 +2221,7 @@ def codex_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     """Import Codex sessions into the Atelier store (loss-preserving)."""
     from atelier.gateway.hosts.session_parsers.codex import CodexImporter
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     importer = CodexImporter(store)
     ids = importer.import_all(path, force=force)
@@ -2216,6 +2254,7 @@ def opencode_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     """Import OpenCode sessions into the Atelier store (loss-preserving)."""
     from atelier.gateway.hosts.session_parsers.opencode import OpenCodeImporter
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     importer = OpenCodeImporter(store)
     ids = importer.import_all(path, force=force)
@@ -2248,6 +2287,7 @@ def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     """Import Gemini sessions into the Atelier store (loss-preserving)."""
     from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     importer = GeminiImporter(store)
     ids = importer.import_all(path, force=force)
@@ -2282,6 +2322,7 @@ def global_import(ctx: click.Context, host: str | None, force: bool, export_dir:
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
+    _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
     store.init()
 
