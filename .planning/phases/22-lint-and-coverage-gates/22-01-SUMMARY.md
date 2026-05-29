@@ -46,13 +46,16 @@ enforces the floor.
 | Surface | Change |
 |---------|--------|
 | `pyproject.toml` | `select` extended to include `"BLE"`, `"T20"`; new `[tool.ruff.lint.per-file-ignores]` table with 96 BLE001 + 19 T201 entries (12 combined). `ignore` unchanged at `["E501"]`. |
-| `Makefile` | `COV_FAIL_UNDER ?= 66` variable; `test-full` added to `.PHONY`; new `test-full` target running `uv run pytest -m "" --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)`. Fast path (`test`, `test-cov`, `addopts = -m 'not slow'`) untouched. |
-| `.github/workflows/nightly-coverage.yml` | New workflow: `schedule` (cron `"0 7 * * *"`) + `workflow_dispatch` only, `permissions: contents: read`, `uv sync --frozen --group dev`, `timeout-minutes: 40`, final step `run: make test-full`. |
+| `Makefile` | `COV_FAIL_UNDER ?= 66` variable; `test-full` added to `.PHONY`; new `test-full` target running `uv run pytest -m "" --timeout=300 --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)`. Fast path (`test`, `test-cov`, `addopts = -m 'not slow'`) untouched. |
+| `.github/workflows/nightly-coverage.yml` | New workflow: `schedule` (cron `"0 7 * * *"`) + `workflow_dispatch` only, `permissions: contents: read`, `concurrency.group: nightly-coverage`, `uv sync --frozen --group dev`, `timeout-minutes: 120`, final step `run: make test-full`. |
+| `pyproject.toml` / `uv.lock` | `pytest-timeout>=2.4.0` added to the dev group so `test-full` fails a blocking test in 300 seconds instead of burning the full workflow timeout. |
 
 ## Coverage Measurement (QBL-GATE-04 — measured, with documented limitations)
 
 **Measurement environment:** local **dirty worktree** (151 modified/deleted files per
-`git status`), branch `cc`, **no Postgres / worker services available**.
+`git status`), branch `cc`. The historical Postgres/worker test paths referenced by
+`test-fast` no longer exist, so the local serial hang is not attributable to those deleted
+service-gated files.
 
 **Measured value:** A partial parallel run (`pytest -m "not slow" -n auto --dist=loadfile`,
 service-gated `test_postgres_store.py` + `test_worker_jobs.py` excluded) reached ~93% of the
@@ -66,7 +69,9 @@ conservative so dirty-worktree / environment drift cannot cause false nightly fa
 
 **Why the full slow-inclusive run could not complete locally (Pitfall 1 + Pitfall 6):**
 - **Serial** `pytest -m ""` (and `-m "not slow"`) **hung at ~14%** — a test blocks on an
-  unavailable service. Three independent serial runs reproduced the hang.
+  unresolved local condition in the dirty checkout. Three independent serial runs reproduced
+  the hang, but the legacy `tests/test_postgres_store.py` / `tests/test_worker_jobs.py`
+  ignore paths are stale and no longer identify the blocker.
 - **Parallel** (`-n auto`) progressed quickly but hit repeated
   `pyo3_runtime.PanicException: _native::Parser is unsendable, but sent to another thread`
   from `src/atelier/infra/tree_sitter/tags.py` (tree-sitter Rust parser not thread-safe under
@@ -74,16 +79,17 @@ conservative so dirty-worktree / environment drift cannot cause false nightly fa
   parallelism issue unrelated to this config-only phase** — no runtime source was changed.
 
 **Action for M-after / CI:** The first `nightly-coverage.yml` run executes on clean `main`
-with CI services; read its reported TOTAL and raise `COV_FAIL_UNDER` to ~2 points below it.
+with a 120-minute budget, workflow-level concurrency, and a 300-second per-test timeout; read
+its reported TOTAL and raise `COV_FAIL_UNDER` to ~2 points below it.
 The `COV_FAIL_UNDER ?=` form allows override without editing the file
 (`make test-full COV_FAIL_UNDER=NN`).
 
 ## Slow-Inclusive Collection (QBL-GATE-03)
 
-`uv run pytest --collect-only -m ""` collects **2092** tests vs **2005** for the default
+`uv run pytest --collect-only -m ""` collects **2093** tests vs **2006** for the default
 filter (87 slow tests deselected by `addopts = -m 'not slow'`). `-m ""` correctly overrides
 the marker filter — the override-ini fallback (Assumption A1) was **not** needed. Note: the
-plan's stale estimate was 2088 (2001+87); the live tree is 2092 (2005+87) — the suite grew
+plan's stale estimate was 2088 (2001+87); the live tree is 2093 (2006+87) — the suite grew
 slightly. The 87 slow-test delta is unchanged.
 
 ## BLE001 / T201 Final Counts (QBL-GATE-02 + QBL-GATE-05)
@@ -112,8 +118,8 @@ reading the table.
 - ✅ Top-level `ignore = ["E501"]` unchanged (no BLE001/T201 blanket disable, QBL-GATE-02).
 - ✅ `select` contains `"BLE"` and `"T20"`; `[tool.ruff.lint.per-file-ignores]` present with
   the combined `["BLE001", "T201"]` entry for `mcp_server.py`.
-- ✅ `make test-full` exists, in `.PHONY`, listed in `make help`; collects 2092 slow-inclusive
-  tests; enforces `--cov-fail-under=$(COV_FAIL_UNDER)` (QBL-GATE-03).
+- ✅ `make test-full` exists, in `.PHONY`, listed in `make help`; collects 2093 slow-inclusive
+  tests; enforces `--timeout=300` and `--cov-fail-under=$(COV_FAIL_UNDER)` (QBL-GATE-03).
 - ✅ Fast PR path untouched: `addopts = "-ra --strict-markers -m 'not slow'"` intact.
 - ✅ `nightly-coverage.yml` parses; `schedule` present; `permissions.contents == read`;
   `workflow_dispatch` present; `make test-full` + `uv sync --frozen --group dev` present;
@@ -131,7 +137,7 @@ reading the table.
   - Resolution: used the plan's explicit fallback — measured the largest completable subset
     (68% lower bound) and set a conservative floor (66) flagged for CI calibration. No runtime
     source modified.
-- **Collection count is 2092, not the plan's stated 2088.** The live test tree grew; the
+- **Collection count is 2093, not the plan's stated 2088.** The live test tree grew; the
   slow delta (87) is unchanged. `-m ""` override works as designed; no fallback needed.
 
 ## Threat Surface
