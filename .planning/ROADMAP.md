@@ -908,3 +908,210 @@ Plans:
 *v0.4 roadmap appended: 2026-05-29*
 *Milestone target: v0.4 Dedicated Language Support*
 *Build order: Phase 16 → Phase 17/18/19 → Phase 20 → Phase 21*
+
+---
+
+## Milestone v0.5: Quality & Benchmark Lift
+
+**Goal:** Raise coding quality and benchmark credibility by gating new debt, burning down silent errors/stdout hazards, decomposing the CLI, expanding A/B suite coverage, and publishing reproducible regression-gated results.
+
+**Source of truth:** `docs/plans/quality-and-benchmark-lift/`
+
+**Phases:**
+
+- [ ] **Phase 22: Lint and Coverage Gates** — Enable BLE001/T20 with scoped ignores and add nightly full-suite coverage gating
+- [ ] **Phase 23: Silent Exception Audit** — Remove or justify every `except Exception: pass` site and shrink BLE001 ignores
+- [ ] **Phase 24: Stdout to Logging** — Replace non-CLI `print()` calls with logging/stderr and preserve CLI output via Click
+- [ ] **Phase 25: CLI Decomposition** — Split `gateway/cli/app.py` into command modules and extract business logic
+- [ ] **Phase 26: A/B Suite Expansion** — Map every savings mechanism to a runnable suite/grader with smoke coverage
+- [ ] **Phase 27: Public Benchmark Results** — Publish reproducible results and add benchmark regression CI
+
+---
+
+### Phase 22: Lint and Coverage Gates
+
+**Goal**: Stop new broad-except/print debt and gate full-suite coverage without blocking existing debt burn-down.
+**Depends on**: v0.4 completion
+**Requirements**: QBL-GATE-01, QBL-GATE-02, QBL-GATE-03, QBL-GATE-04, QBL-GATE-05
+
+**Key modules**:
+
+- `pyproject.toml` — Ruff BLE/T20 select and per-file ignores
+- `Makefile` — full coverage target
+- `.github/workflows/nightly-coverage.yml` — scheduled coverage workflow
+
+**Success Criteria**:
+
+  1. New BLE001/T20 violations fail lint outside scoped ignores.
+  2. Current violations are tracked with per-file ignores that M2/M3 can shrink.
+  3. Full slow-inclusive coverage command and nightly workflow exist.
+  4. Coverage floor is measured first and set conservatively.
+
+**Plans**: TBD
+
+---
+
+### Phase 23: Silent Exception Audit
+
+**Goal**: Remove silent `except Exception: pass` blocks or make intentional suppression observable.
+**Depends on**: Phase 22
+**Requirements**: QBL-EXC-01, QBL-EXC-02, QBL-EXC-03, QBL-EXC-04
+
+**Key modules**: Freshly enumerated `src/**/*.py` sites from M2.
+
+**Success Criteria**:
+
+  1. No silent broad-except pass sites remain unless explicitly justified inline.
+  2. Best-effort suppressions log with `exc_info=True`; true failures surface or re-raise.
+  3. BLE001 ignores shrink for fixed files.
+  4. Gateway/MCP focused tests cover touched protocol surfaces.
+
+**Plans**: TBD
+
+---
+
+### Phase 24: Stdout to Logging
+
+**Goal**: Ensure non-CLI modules do not write stray stdout that can corrupt MCP framing.
+**Depends on**: Phase 22
+**Requirements**: QBL-LOG-01, QBL-LOG-02, QBL-LOG-03, QBL-LOG-04
+
+**Key modules**: Freshly enumerated `print(` sites in `src/`, especially gateway/server/background code.
+
+**Success Criteria**:
+
+  1. Non-CLI prints become logging or stderr diagnostics.
+  2. CLI output remains user-facing through `click.echo`.
+  3. T20 config enforces the intended CLI/non-CLI boundary.
+  4. MCP stdio smoke tests confirm stdout framing remains clean.
+
+**Plans**: TBD
+
+---
+
+### Phase 25: CLI Decomposition
+
+**Goal**: Make `src/atelier/gateway/cli/app.py` a thin command-registration entrypoint.
+**Depends on**: Phase 24
+**Requirements**: QBL-CLI-01, QBL-CLI-02, QBL-CLI-03, QBL-CLI-04
+
+**Key modules**:
+
+- `src/atelier/gateway/cli/app.py`
+- `src/atelier/gateway/cli/commands/`
+- `src/atelier/gateway/integrations/openmemory.py`
+- extracted core/infra services as needed
+
+**Success Criteria**:
+
+  1. Command groups live in dedicated command modules.
+  2. Business logic moves out of the CLI entrypoint.
+  3. Command names, flags, and help output remain unchanged.
+  4. `app.py` is registration-only and materially smaller.
+
+**Plans**: TBD
+
+---
+
+### Phase 26: A/B Suite Expansion
+
+**Goal**: Make README savings claims independently runnable through A/B suites and graders.
+**Depends on**: v0.5 start; independent of Phases 22-25
+**Requirements**: QBL-AB-01, QBL-AB-02, QBL-AB-03, QBL-AB-04
+
+**Key modules**:
+
+- `benchmarks/ab/suites/`
+- `benchmarks/ab/graders/`
+- `benchmarks/ab/runner.py`
+- `benchmarks/ab/aggregate.py`
+- `benchmarks/ab/report.py`
+- `benchmarks/ab/tests/`
+
+**Success Criteria**:
+
+  1. Every advertised savings mechanism maps to a suite/grader.
+  2. Each new suite has a fast smoke fixture.
+  3. Runner/report/aggregate enumerate suites and produce graded deltas.
+  4. Benchmark tests pass.
+
+**Plans**: TBD
+
+---
+
+### Phase 27: Public Benchmark Results
+
+**Goal**: Publish reproducible benchmark results and add a CI regression gate for savings/routing claims.
+**Depends on**: Phase 26
+**Requirements**: QBL-RES-01, QBL-RES-02, QBL-RES-03, QBL-RES-04
+
+**Key modules**:
+
+- `docs/plans/public-benchmarks/RESULTS.md`
+- `docs/plans/public-benchmarks/index.md`
+- `.github/workflows/benchmark-regression.yml`
+- `benchmarks/swe/`
+- `benchmarks/ab/publish.py`
+- `benchmarks/ab/report.py`
+
+**Success Criteria**:
+
+  1. Results document includes corpus versions, commit SHAs, CIs, and reproduction commands.
+  2. Regression workflow fails when savings/routing thresholds regress.
+  3. SWE-bench Lite/subset frontier artifact is committed.
+  4. Public benchmark index points to real reproducible results.
+
+**Plans**: TBD
+
+---
+
+## Progress Table (v0.5)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 22. Lint and Coverage Gates | 0/? | Not started | - |
+| 23. Silent Exception Audit | 0/? | Not started | - |
+| 24. Stdout to Logging | 0/? | Not started | - |
+| 25. CLI Decomposition | 0/? | Not started | - |
+| 26. A/B Suite Expansion | 0/? | Not started | - |
+| 27. Public Benchmark Results | 0/? | Not started | - |
+
+---
+
+## Coverage (v0.5)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| QBL-GATE-01 | Phase 22 | Pending |
+| QBL-GATE-02 | Phase 22 | Pending |
+| QBL-GATE-03 | Phase 22 | Pending |
+| QBL-GATE-04 | Phase 22 | Pending |
+| QBL-GATE-05 | Phase 22 | Pending |
+| QBL-EXC-01 | Phase 23 | Pending |
+| QBL-EXC-02 | Phase 23 | Pending |
+| QBL-EXC-03 | Phase 23 | Pending |
+| QBL-EXC-04 | Phase 23 | Pending |
+| QBL-LOG-01 | Phase 24 | Pending |
+| QBL-LOG-02 | Phase 24 | Pending |
+| QBL-LOG-03 | Phase 24 | Pending |
+| QBL-LOG-04 | Phase 24 | Pending |
+| QBL-CLI-01 | Phase 25 | Pending |
+| QBL-CLI-02 | Phase 25 | Pending |
+| QBL-CLI-03 | Phase 25 | Pending |
+| QBL-CLI-04 | Phase 25 | Pending |
+| QBL-AB-01 | Phase 26 | Pending |
+| QBL-AB-02 | Phase 26 | Pending |
+| QBL-AB-03 | Phase 26 | Pending |
+| QBL-AB-04 | Phase 26 | Pending |
+| QBL-RES-01 | Phase 27 | Pending |
+| QBL-RES-02 | Phase 27 | Pending |
+| QBL-RES-03 | Phase 27 | Pending |
+| QBL-RES-04 | Phase 27 | Pending |
+
+**v0.5 coverage: 25/25 requirements mapped ✓**
+
+---
+
+*v0.5 roadmap appended: 2026-05-29*
+*Milestone target: v0.5 Quality & Benchmark Lift*
+*Build order: Phase 22 → Phase 23/24 → Phase 25 and Phase 26 → Phase 27*
