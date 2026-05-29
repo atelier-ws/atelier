@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -90,8 +93,8 @@ def _mcp_call(tool: str, args: dict[str, Any], host: str, timeout: int = 30) -> 
                 d = json.loads(line)
                 if d.get("id") == 2:
                     return d, elapsed
-            except Exception:
-                pass
+            except (json.JSONDecodeError, ValueError):
+                logger.debug("mcp stdout parse skipped", exc_info=True)
         return {"error": proc.stderr[:300] or "no response"}, elapsed
     except subprocess.TimeoutExpired:
         return {"error": f"timeout after {timeout}s"}, timeout * 1000.0

@@ -68,6 +68,7 @@ Quality score = (safe x 1.0 + moderate x 0.6 + risky x 0.0) / total_downtiered
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -75,6 +76,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Tool risk - base scores
@@ -280,7 +283,8 @@ def _parse_events(path: Path) -> list[_Event]:
                     continue
                 try:
                     ev = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("event line json parse skipped", exc_info=True)
                     continue
 
                 ev_type = ev.get("type", "")
@@ -348,8 +352,8 @@ def _parse_events(path: Path) -> list[_Event]:
                 else:
                     events.append(_Event(ev_type="other"))
 
-    except Exception:
-        pass
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+        logger.debug("events parse skipped", exc_info=True)
 
     return events
 
