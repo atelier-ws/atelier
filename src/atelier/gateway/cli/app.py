@@ -16,7 +16,6 @@ import signal
 import subprocess
 import sys
 import time
-import urllib.request
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from datetime import UTC, datetime, timedelta
@@ -68,6 +67,24 @@ from atelier.gateway.cli.commands._shared import (
 )
 from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
 from atelier.gateway.integrations.external_analytics import REPORTABLE_TOOL_IDS
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    ensure_service_env as _ensure_openmemory_service_env,
+)
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    mcp_log_path as _mcp_log_path,
+)
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    openmemory_log_path as _openmemory_log_path,
+)
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    openmemory_service_env_path as _openmemory_service_env_path,
+)
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    project_root as _project_root,
+)
+from atelier.gateway.integrations.openmemory_lifecycle import (
+    run_compose as _run_compose,
+)
 
 # `--tool` choices for the external-report CLI. Built once from the source-of-
 # truth `SPECS` tuple plus the special-case `codeburn:optimize` sub-report and
@@ -348,136 +365,6 @@ def _parse_duration(value: str) -> timedelta:
     if unit == "h":
         return timedelta(hours=amount)
     return timedelta(minutes=amount)
-
-
-def _letta_compose_file() -> Path:
-    return Path.cwd() / "deploy" / "letta" / "docker-compose.yml"
-
-
-def _run_compose(args: list[str]) -> None:
-    subprocess.run(["docker", "compose", "-f", str(_letta_compose_file()), *args], check=True)
-
-
-def _project_root() -> Path:
-    env = os.environ.get("ATELIER_INSTALL_DIR", "").strip()
-    if env:
-        return Path(env).expanduser().resolve()
-    install_record = Path.home() / ".atelier" / "install_dir"
-    with contextlib.suppress(OSError):
-        recorded = install_record.read_text(encoding="utf-8").strip()
-        if recorded:
-            recorded_path = Path(recorded).expanduser().resolve()
-            if recorded_path.exists():
-                return recorded_path
-    return Path(__file__).resolve().parents[4]
-
-
-def _openmemory_dir(root: Path) -> Path:
-    return Path(root) / "openmemory"
-
-
-def _openmemory_checkout_dir(root: Path) -> Path:
-    return _openmemory_dir(root) / "mem0"
-
-
-def _openmemory_workdir(root: Path) -> Path:
-    return _openmemory_checkout_dir(root) / "openmemory"
-
-
-def _openmemory_service_env_path(root: Path) -> Path:
-    return _openmemory_dir(root) / "service.env"
-
-
-def _openmemory_api_env_path(root: Path) -> Path:
-    return _openmemory_workdir(root) / "api" / ".env"
-
-
-def _openmemory_ui_env_path(root: Path) -> Path:
-    return _openmemory_workdir(root) / "ui" / ".env"
-
-
-def _openmemory_log_path(root: Path) -> Path:
-    return _openmemory_dir(root) / "openmemory.log"
-
-
-def _mcp_dir(root: Path) -> Path:
-    return Path(root) / "mcp"
-
-
-def _mcp_log_path(root: Path) -> Path:
-    return _mcp_dir(root) / "mcp.log"
-
-
-def _ensure_openmemory_service_env(root: Path) -> Path:
-    env_path = _openmemory_service_env_path(root)
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    values = {
-        # Do not persist API keys to disk in plaintext.
-        # Keep sensitive secrets in process environment at runtime instead.
-        "USER": os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "")),
-        "ATELIER_OPENMEMORY_URL": os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765"),
-    }
-    lines = []
-    for key, value in values.items():
-        if not value:
-            continue
-        escaped = value.replace('"', '\\"')
-        lines.append(f'{key}="{escaped}"')
-    if lines:
-        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    elif not env_path.exists():
-        env_path.write_text("", encoding="utf-8")
-    return env_path
-
-
-def _ensure_openmemory_checkout(root: Path) -> Path:
-    repo_dir = _openmemory_checkout_dir(root)
-    repo_dir.parent.mkdir(parents=True, exist_ok=True)
-    repo_url = os.environ.get("ATELIER_OPENMEMORY_REPO_URL", "https://github.com/mem0ai/mem0.git")
-    repo_ref = os.environ.get("ATELIER_OPENMEMORY_REF", "main")
-    if (repo_dir / ".git").exists():
-        subprocess.run(["git", "-C", str(repo_dir), "fetch", "--depth=1", "origin", repo_ref], check=True)
-        subprocess.run(["git", "-C", str(repo_dir), "checkout", repo_ref], check=True)
-        subprocess.run(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", repo_ref], check=True)
-    else:
-        subprocess.run(["git", "clone", "--depth=1", "--branch", repo_ref, repo_url, str(repo_dir)], check=True)
-    workdir = _openmemory_workdir(root)
-    if not workdir.exists():
-        raise click.ClickException(f"OpenMemory checkout is missing {workdir}")
-    return workdir
-
-
-def _write_openmemory_env_files(root: Path) -> None:
-    api_env = _openmemory_api_env_path(root)
-    ui_env = _openmemory_ui_env_path(root)
-    user_id = (
-        os.environ.get("ATELIER_OPENMEMORY_USER_ID", "").strip() or os.environ.get("USER", "").strip() or "atelier"
-    )
-    api_url = os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765").strip() or "http://127.0.0.1:8765"
-    openai_api_key = os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")).strip()
-    api_env.parent.mkdir(parents=True, exist_ok=True)
-    api_lines = [
-        f"OPENAI_API_KEY={openai_api_key}",
-        f"USER={user_id}",
-    ]
-    api_env.write_text("\n".join(api_lines) + "\n", encoding="utf-8")
-    ui_env.parent.mkdir(parents=True, exist_ok=True)
-    ui_lines = [
-        f"NEXT_PUBLIC_API_URL={api_url}",
-        f"NEXT_PUBLIC_USER_ID={user_id}",
-    ]
-    ui_env.write_text("\n".join(ui_lines) + "\n", encoding="utf-8")
-
-
-def _run_openmemory_make(root: Path, *args: str) -> None:
-    workdir = _openmemory_workdir(root)
-    env = {**os.environ}
-    user_id = (
-        os.environ.get("ATELIER_OPENMEMORY_USER_ID", "").strip() or os.environ.get("USER", "").strip() or "atelier"
-    )
-    env["USER"] = user_id
-    env["NEXT_PUBLIC_API_URL"] = os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765")
-    subprocess.run(["make", *args], cwd=workdir, env=env, check=True)
 
 
 def _stack_dir(root: Path) -> Path:
@@ -4012,107 +3899,6 @@ def memory_recall(
         return
     for passage in passages:
         click.echo(f"{passage.id}\t{passage.source_ref}\t{passage.text}")
-
-
-@cli.group("letta")
-def letta_group() -> None:
-    """Manage the self-hosted Letta sidecar."""
-
-
-@letta_group.command("up")
-def letta_up() -> None:
-    """Start the Letta memory server Docker Compose stack."""
-    _run_compose(["up", "-d"])
-
-
-@letta_group.command("down")
-def letta_down() -> None:
-    """Stop the Letta Docker Compose stack while preserving volumes."""
-    _run_compose(["down"])
-
-
-@letta_group.command("status")
-def letta_status() -> None:
-    """Print Letta health status."""
-    url = os.environ.get("ATELIER_LETTA_URL", "http://localhost:8283").rstrip("/")
-    try:
-        with urllib.request.urlopen(f"{url}/v1/health", timeout=5) as response:
-            body = response.read().decode("utf-8", errors="replace")
-        click.echo(f"healthy\t{url}\t{body}")
-    except Exception as exc:
-        raise click.ClickException(f"Letta is not healthy at {url}: {exc}") from exc
-
-
-@letta_group.command("reset")
-@click.option("--yes", is_flag=True, help="Confirm destructive volume removal.")
-def letta_reset(yes: bool) -> None:
-    """Remove the Letta container and persistent volume."""
-    if not yes:
-        raise click.ClickException("refusing to reset Letta data without --yes")
-    _run_compose(["down", "-v"])
-
-
-@cli.group("openmemory")
-def openmemory_group() -> None:
-    """Manage the self-hosted OpenMemory sidecar."""
-
-
-@openmemory_group.command("up")
-@click.pass_context
-def openmemory_up(ctx: click.Context) -> None:
-    """Clone/update OpenMemory and start its local MCP stack."""
-    root = ctx.obj["root"]
-    missing = [name for name in ("git", "docker", "make") if not shutil.which(name)]
-    if missing:
-        raise click.ClickException(f"OpenMemory requires: {', '.join(missing)}")
-    if not os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "")).strip():
-        raise click.ClickException("OPENAI_API_KEY or ATELIER_OPENMEMORY_OPENAI_API_KEY must be set for OpenMemory")
-    _ensure_openmemory_checkout(root)
-    _ensure_openmemory_service_env(root)
-    _write_openmemory_env_files(root)
-    _run_openmemory_make(root, "build")
-    _run_openmemory_make(root, "up")
-    click.echo(f"OpenMemory started at {os.environ.get('ATELIER_OPENMEMORY_URL', 'http://127.0.0.1:8765')}")
-
-
-@openmemory_group.command("down")
-@click.pass_context
-def openmemory_down(ctx: click.Context) -> None:
-    """Stop the local OpenMemory stack while preserving the checkout."""
-    root = ctx.obj["root"]
-    workdir = _openmemory_workdir(root)
-    if not workdir.exists():
-        click.echo("OpenMemory checkout not found; nothing to stop.")
-        return
-    _run_openmemory_make(root, "down")
-    click.echo("OpenMemory stopped.")
-
-
-@openmemory_group.command("status")
-@click.pass_context
-def openmemory_status(ctx: click.Context) -> None:
-    """Show the local OpenMemory service status."""
-    root = ctx.obj["root"]
-    workdir = _openmemory_workdir(root)
-    if not workdir.exists():
-        click.echo("OpenMemory checkout not found.")
-        return
-    subprocess.run(["docker", "compose", "ps"], cwd=workdir, check=False)
-
-
-@openmemory_group.command("logs")
-@click.option("-f", "--follow", is_flag=True, help="Follow the logs.")
-@click.pass_context
-def openmemory_logs(ctx: click.Context, follow: bool) -> None:
-    """Show OpenMemory Docker Compose logs."""
-    root = ctx.obj["root"]
-    workdir = _openmemory_workdir(root)
-    if not workdir.exists():
-        raise click.ClickException("OpenMemory checkout not found")
-    cmd = ["docker", "compose", "logs"]
-    if follow:
-        cmd.append("-f")
-    subprocess.run(cmd, cwd=workdir, check=False)
 
 
 @cli.group("zoekt")
