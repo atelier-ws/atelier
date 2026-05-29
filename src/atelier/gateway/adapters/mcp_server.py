@@ -658,11 +658,12 @@ def _get_claude_session_id() -> str:
         f = _mcp_session_file()
         if f.is_file():
             data = json.loads(f.read_text(encoding="utf-8"))
-            sid = str(data.get("claude_session_id") or "").strip()
-            if sid:
-                _cached_claude_session_id = sid
-                _cached_mcp_model = str(data.get("model") or "").strip()
-                return sid
+            if isinstance(data, dict):
+                sid = str(data.get("claude_session_id") or "").strip()
+                if sid:
+                    _cached_claude_session_id = sid
+                    _cached_mcp_model = str(data.get("model") or "").strip()
+                    return sid
     except (OSError, json.JSONDecodeError):
         _log.debug("MCP session id read failed", exc_info=True)
     return _get_product_session_id()
@@ -687,7 +688,8 @@ def _get_mcp_model() -> str:
         f = _mcp_session_file()
         if f.is_file():
             data = json.loads(f.read_text(encoding="utf-8"))
-            _cached_mcp_model = str(data.get("model") or "").strip()
+            if isinstance(data, dict):
+                _cached_mcp_model = str(data.get("model") or "").strip()
     except (OSError, json.JSONDecodeError):
         _log.debug("MCP model read failed", exc_info=True)
     return _cached_mcp_model
@@ -709,7 +711,8 @@ def _get_host_session_sidecar_path() -> Path:
             f = _mcp_session_file()
             if f.is_file():
                 data = json.loads(f.read_text(encoding="utf-8"))
-                sid = str(data.get("claude_session_id") or "").strip()
+                if isinstance(data, dict):
+                    sid = str(data.get("claude_session_id") or "").strip()
         except (OSError, json.JSONDecodeError):
             _log.debug("MCP sidecar session id read failed", exc_info=True)
     if sid:
