@@ -302,6 +302,22 @@ _LANG_CONFIG: dict[str, LangCfg] = {
         keep_full=frozenset({"pair"}),
         keep_first_line=frozenset({"table", "table_array_element"}),
     ),
+    # sql — unwrap the `statement` wrapper; signature-trim table/function bodies.
+    "sql": LangCfg(
+        unwrap=frozenset({"statement"}),
+        keep_signature=frozenset({"create_table", "create_view", "create_index", "create_function", "alter_table"}),
+        body_kinds=frozenset({"column_definitions", "function_body", "create_query", "index_fields"}),
+    ),
+    # yaml — descend 3 wrapper levels, keep top-level mapping keys' first line only.
+    "yaml": LangCfg(
+        unwrap=frozenset({"stream", "document", "block_node", "block_mapping"}),
+        keep_first_line=frozenset({"block_mapping_pair"}),
+    ),
+    # json — descend document→object, keep top-level pair first line (low value, guard-gated).
+    "json": LangCfg(
+        unwrap=frozenset({"document", "object"}),
+        keep_first_line=frozenset({"pair"}),
+    ),
 }
 
 # Languages that have a configured outliner. Imported by capability.py to gate
