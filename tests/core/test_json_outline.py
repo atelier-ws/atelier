@@ -97,13 +97,9 @@ def test_json_small_flat_degrades_via_guard(tmp_path: Path) -> None:
     full read (``mode == "full"``) — whichever the pipeline produces.
     """
     source = """
-{
-  "a": 1,
-  "b": 2,
-  "c": 3,
-  "d": 4,
-  "e": 5
-}
+{"first_name": "Alexander", "last_name": "Hamilton", \
+"email": "alex.hamilton@example.com", "role": "administrator", \
+"department": "platform-engineering"}
 """.strip()
     path = tmp_path / "flat.json"
     path.write_text(source, encoding="utf-8")
