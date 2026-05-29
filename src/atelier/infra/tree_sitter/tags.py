@@ -4,13 +4,41 @@ from __future__ import annotations
 
 import ast
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
+    definition_node_kinds,
+    supported_tree_sitter_languages,
+    transparent_node_kinds,
+    tree_sitter_parser,
+)
 from atelier.infra.code_intel.languages import language_for_path
 
 TagKind = Literal["definition", "reference"]
+_LEGACY_REGEX_LANGUAGES = frozenset({"javascript", "typescript", "go", "rust"})
+_DATA_LANGUAGES = frozenset({"json", "toml", "yaml"})
+_NO_REFERENCE_LANGUAGES = _DATA_LANGUAGES | frozenset({"bash", "sql"})
+_IDENTIFIER_KINDS = frozenset(
+    {
+        "bare_key",
+        "constant",
+        "dotted_key",
+        "field_identifier",
+        "identifier",
+        "name",
+        "namespace_identifier",
+        "package_identifier",
+        "property_identifier",
+        "simple_identifier",
+        "string_content",
+        "type_identifier",
+        "variable_name",
+        "word",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +57,148 @@ def _line_offsets(text: str) -> list[int]:
         total += len(line.encode("utf-8"))
         offsets.append(total)
     return offsets
+
+
+def _line_for_byte(offsets: list[int], byte_offset: int) -> int:
+    return max(1, bisect_right(offsets, byte_offset))
+
+
+def _node_attr(node: Any, name: str) -> Any:
+    val = getattr(node, name)
+    return val() if callable(val) else val
+
+
+def _child_count(node: Any) -> int:
+    return int(_node_attr(node, "child_count"))
+
+
+def _children(node: Any) -> list[Any]:
+    return [node.child(index) for index in range(_child_count(node))]
+
+
+def _kind(node: Any) -> str:
+    return str(_node_attr(node, "kind") or _node_attr(node, "type") or "")
+
+
+def _byte_range(node: Any) -> tuple[int, int]:
+    return int(_node_attr(node, "start_byte")), int(_node_attr(node, "end_byte"))
+
+
+def _node_text(source: bytes, node: Any) -> str:
+    start, end = _byte_range(node)
+    return source[start:end].decode("utf-8", errors="replace").strip()
+
+
+def _child_by_field_name(node: Any, field_name: str) -> Any | None:
+    child_by_field_name = getattr(node, "child_by_field_name", None)
+    if child_by_field_name is None:
+        return None
+    child = child_by_field_name(field_name)
+    return child if child is not None else None
+
+
+def _walk(node: Any) -> list[Any]:
+    nodes = [node]
+    for child in _children(node):
+        nodes.extend(_walk(child))
+    return nodes
+
+
+def _first_descendant(node: Any, kinds: frozenset[str]) -> Any | None:
+    for candidate in _walk(node):
+        if _kind(candidate) in kinds:
+            return candidate
+    return None
+
+
+def _definition_name_node(node: Any, language: str) -> Any | None:
+    kind = _kind(node)
+    if language == "bash":
+        if kind == "function_definition":
+            return next((child for child in _children(node) if _kind(child) == "word"), None)
+        return _first_descendant(node, frozenset({"variable_name"}))
+    if language == "json" and kind == "pair":
+        return _first_descendant(_children(node)[0], frozenset({"string_content"})) if _children(node) else None
+    if language == "toml" and kind in {"pair", "table", "table_array_element"}:
+        return _first_descendant(node, frozenset({"bare_key", "dotted_key"}))
+    if language == "yaml" and kind == "block_mapping_pair":
+        return _child_by_field_name(node, "key") or (_children(node)[0] if _children(node) else None)
+    if language == "sql":
+        return _first_descendant(node, frozenset({"identifier"}))
+
+    for field_name in ("name", "declarator"):
+        field_node = _child_by_field_name(node, field_name)
+        if field_node is not None:
+            identifier = _first_descendant(field_node, _IDENTIFIER_KINDS)
+            return identifier or field_node
+    return _first_descendant(node, _IDENTIFIER_KINDS)
+
+
+def _definition_candidates(root: Any, language: str, definition_kinds: frozenset[str]) -> list[Any]:
+    if language in {"json", "yaml"}:
+        unwrap = transparent_node_kinds(language)
+        candidates: list[Any] = []
+
+        def visit(node: Any) -> None:
+            for child in _children(node):
+                kind = _kind(child)
+                if kind in unwrap:
+                    visit(child)
+                elif kind in definition_kinds:
+                    candidates.append(child)
+
+        visit(root)
+        return candidates
+    return [node for node in _walk(root) if _kind(node) in definition_kinds]
+
+
+def _treesitter_tags(path: Path, text: str, language: str) -> list[Tag] | None:
+    parser = tree_sitter_parser(language)
+    if parser is None:
+        return None
+    try:
+        tree = parser.parse(text)
+    except Exception:
+        return None
+
+    source = text.encode("utf-8")
+    offsets = _line_offsets(text)
+    root = _node_attr(tree, "root_node")
+    definition_kinds = definition_node_kinds(language)
+    tags: list[Tag] = []
+    seen: set[tuple[str, TagKind, int, int]] = set()
+
+    for node in _definition_candidates(root, language, definition_kinds):
+        name_node = _definition_name_node(node, language)
+        if name_node is None:
+            continue
+        start, end = _byte_range(name_node)
+        name = _node_text(source, name_node)
+        if not name:
+            continue
+        kind: TagKind = "definition"
+        key = (name, kind, start, end)
+        if key in seen:
+            continue
+        seen.add(key)
+        tags.append(Tag(name, kind, str(path), _line_for_byte(offsets, start), (start, end)))
+
+    if language not in _NO_REFERENCE_LANGUAGES:
+        for node in _walk(root):
+            if _kind(node) not in _IDENTIFIER_KINDS:
+                continue
+            start, end = _byte_range(node)
+            name = _node_text(source, node)
+            if not name:
+                continue
+            kind = "reference"
+            key = (name, kind, start, end)
+            if key in seen:
+                continue
+            seen.add(key)
+            tags.append(Tag(name, kind, str(path), _line_for_byte(offsets, start), (start, end)))
+
+    return tags
 
 
 def _python_tags(path: Path, text: str) -> list[Tag]:
@@ -84,8 +254,6 @@ def _regex_tags(path: Path, text: str, language: str) -> list[Tag]:
 def detect_language(path: Path) -> str | None:
     # Delegate to the canonical registry (DLS-LANG-04). Preserves the
     # str | None contract: extract_tags_from_text short-circuits to [] on None.
-    # Widening to more languages is safe — _regex_tags falls back to the
-    # javascript pattern for any language without a dedicated regex.
     lang = language_for_path(path)
     return lang.name if lang is not None else None
 
@@ -101,6 +269,12 @@ def extract_tags_from_text(text: str, file_path: str | Path, language: str | Non
         try:
             return _python_tags(path, text)
         except SyntaxError:
+            return []
+    if resolved_language in supported_tree_sitter_languages():
+        tags = _treesitter_tags(path, text, resolved_language)
+        if tags is not None:
+            return tags
+        if resolved_language not in _LEGACY_REGEX_LANGUAGES:
             return []
     return _regex_tags(path, text, resolved_language)
 

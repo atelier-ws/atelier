@@ -79,7 +79,13 @@ _LANG_CONFIG: dict[str, LangCfg] = {
             }
         ),
         keep_signature=frozenset(
-            {"function_item", "function_signature_item", "struct_item", "enum_item", "foreign_mod_item"}
+            {
+                "function_item",
+                "function_signature_item",
+                "struct_item",
+                "enum_item",
+                "foreign_mod_item",
+            }
         ),
         container=frozenset({"impl_item", "trait_item", "mod_item"}),
         member=frozenset({"function_item", "function_signature_item", "const_item"}),
@@ -324,6 +330,21 @@ _LANG_CONFIG: dict[str, LangCfg] = {
 # the tree-sitter branch.
 SUPPORTED_LANGUAGES: frozenset[str] = frozenset(_LANG_CONFIG.keys())
 
+_NON_DEFINITION_KEEP_FULL_KINDS: frozenset[str] = frozenset(
+    {
+        "import_declaration",
+        "import_list",
+        "namespace_use_declaration",
+        "package_clause",
+        "package_declaration",
+        "package_header",
+        "preproc_include",
+        "using_declaration",
+        "using_directive",
+        "use_declaration",
+    }
+)
+
 
 @cache
 def _get_parser(lang: str) -> Any:
@@ -336,6 +357,31 @@ def _get_parser(lang: str) -> Any:
     except Exception as exc:
         _logger.warning("tree-sitter parser unavailable for %s: %s", lang, exc)
         return None
+
+
+def tree_sitter_parser(language: str) -> Any:
+    """Return the configured parser for a language, or None when unavailable."""
+    return _get_parser(language)
+
+
+def supported_tree_sitter_languages() -> frozenset[str]:
+    """Return languages with configured tree-sitter structural support."""
+    return SUPPORTED_LANGUAGES
+
+
+def definition_node_kinds(language: str) -> frozenset[str]:
+    """Return node kinds that represent repo-map definitions for a language."""
+    cfg = _LANG_CONFIG.get(language)
+    if cfg is None:
+        return frozenset()
+    keep_full_definitions = cfg.keep_full - _NON_DEFINITION_KEEP_FULL_KINDS
+    return frozenset(keep_full_definitions | cfg.keep_signature | cfg.container | cfg.member | cfg.keep_first_line)
+
+
+def transparent_node_kinds(language: str) -> frozenset[str]:
+    """Return wrapper node kinds that should be traversed without tagging."""
+    cfg = _LANG_CONFIG.get(language)
+    return cfg.unwrap if cfg is not None else frozenset()
 
 
 def _node_attr(node: Any, name: str) -> Any:
