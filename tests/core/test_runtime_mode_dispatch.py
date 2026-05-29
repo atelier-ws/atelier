@@ -212,9 +212,9 @@ def test_per_agent_writes_ledger(tmp_path: Path) -> None:
     assert len(provider.calls) == 3
 
     # Ledger has exactly 3 llm_call rows, one per phase, all cache_read=0.
-    llm_events = [e for e in ledger.events if e.detail.get("kind") == "llm_call"]
+    llm_events = [e for e in ledger.events if e.payload.get("kind") == "llm_call"]
     assert len(llm_events) == 3
-    phases_seen = [e.detail.get("phase") for e in llm_events]
+    phases_seen = [e.payload.get("phase") for e in llm_events]
     assert sorted(phases_seen) == ["implement", "plan", "survey"]
     for ev in llm_events:
-        assert ev.detail.get("cache_read_tokens") == 0
+        assert ev.payload.get("cache_read_tokens") == 0
