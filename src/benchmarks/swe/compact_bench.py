@@ -141,13 +141,23 @@ def _parse_session(path: Path) -> tuple[list[_Turn], str]:
                     logger.debug("transcript line json parse skipped", exc_info=True)
                     continue
 
+                if not isinstance(ev, dict):
+                    logger.debug("transcript line non-object json skipped")
+                    continue
+
                 if ev.get("type") != "assistant":
                     # Any non-assistant event resets the dedup window
                     last_fingerprint = None
                     continue
 
                 msg = ev.get("message") or {}
+                if not isinstance(msg, dict):
+                    logger.debug("assistant message non-object skipped")
+                    continue
                 usage = msg.get("usage") or {}
+                if not isinstance(usage, dict):
+                    logger.debug("assistant usage non-object skipped")
+                    continue
                 inp = int(usage.get("input_tokens", 0))
                 cache_create = int(usage.get("cache_creation_input_tokens", 0))
                 cache_read = int(usage.get("cache_read_input_tokens", 0))
