@@ -651,6 +651,72 @@ def read_swarm_log(
     return content or f"No log output yet at {log_path}"
 
 
+def build_swarm_export_payload(state: SwarmRunState) -> dict[str, object]:
+    return {
+        "run_id": state.run_id,
+        "status": state.status,
+        "mode": state.mode,
+        "runner_name": state.runner_name,
+        "runner_model": state.runner_model,
+        "base_ref": state.base_ref,
+        "base_snapshot_ref": state.base_snapshot_ref,
+        "integration_base_ref": state.integration_base_ref,
+        "artifact_root": state.artifact_root,
+        "base_snapshot_artifact": (
+            state.base_snapshot_artifact.model_dump(mode="json") if state.base_snapshot_artifact is not None else None
+        ),
+        "accepted_child_ids": list(state.accepted_child_ids),
+        "accepted_commits": [item.model_dump(mode="json") for item in state.accepted_commits],
+        "waves": [
+            {
+                "wave_index": wave.wave_index,
+                "status": wave.status,
+                "max_runs": wave.max_runs,
+                "planned_runs": wave.planned_runs,
+                "planning_mode": wave.planning_mode,
+                "primary_winner_child_id": wave.primary_winner_child_id,
+                "accepted_child_ids": list(wave.accepted_child_ids),
+                "rejected_child_ids": list(wave.rejected_child_ids),
+                "manifest_artifact": (
+                    wave.manifest_artifact.model_dump(mode="json") if wave.manifest_artifact is not None else None
+                ),
+            }
+            for wave in state.waves
+        ],
+        "artifacts": [artifact.model_dump(mode="json") for artifact in state.export_artifacts],
+        "transplant_commands": list(state.transplant_commands),
+    }
+
+
+def build_swarm_apply_payload(
+    state: SwarmRunState,
+    *,
+    wave_index: int | None = None,
+    child_id: str | None = None,
+) -> dict[str, object]:
+    selected_commits = list(state.accepted_commits)
+    if wave_index is not None:
+        selected_ids = {child_id for child_id in _latest_wave(state, wave_index).accepted_child_ids}
+        selected_commits = [item for item in selected_commits if item.child_id in selected_ids]
+    if child_id is not None:
+        selected_commits = [item for item in selected_commits if item.child_id == child_id]
+    cherry_pick_refs = [item.commit_ref for item in selected_commits if item.commit_ref]
+    commands: list[str] = []
+    if cherry_pick_refs:
+        commands.append(f"git cherry-pick {' '.join(cherry_pick_refs)}")
+    commands.extend(f"git apply {shlex.quote(item.patch_path)}" for item in selected_commits if item.patch_path)
+    return {
+        "run_id": state.run_id,
+        "wave_index": wave_index,
+        "child_id": child_id,
+        "base_snapshot_ref": state.base_snapshot_ref,
+        "integration_base_ref": state.integration_base_ref,
+        "selected_commits": [item.model_dump(mode="json") for item in selected_commits],
+        "commands": commands,
+        "artifacts": [artifact.model_dump(mode="json") for item in selected_commits for artifact in item.artifacts],
+    }
+
+
 def initialize_swarm_run(
     *,
     root: Path,
@@ -1282,6 +1348,7 @@ def format_swarm_summary(state: SwarmRunState) -> str:
         f"mode: {state.mode}",
         f"runner: {state.runner_name}",
         f"runner_model: {state.runner_model or '(default)'}",
+        f"max_runs: {state.max_runs or state.runs}",
         f"current_wave: {state.current_wave}",
         f"accepted_children: {len(state.accepted_child_ids)}",
         f"children: {len(state.children)}",
@@ -1291,8 +1358,12 @@ def format_swarm_summary(state: SwarmRunState) -> str:
         lines.append(f"stop_reason: {state.stop_reason}")
     if state.integration_worktree:
         lines.append(f"integration_worktree: {state.integration_worktree}")
-    if state.winner_child_id is not None:
-        lines.append(f"latest_winner: {state.winner_child_id}")
+    if state.base_snapshot_ref:
+        lines.append(f"base_snapshot_ref: {state.base_snapshot_ref}")
+    if state.primary_winner_child_id is not None:
+        lines.append(f"primary_winner: {state.primary_winner_child_id}")
+    if state.fan_out_reason:
+        lines.append(f"fan_out_reason: {state.fan_out_reason}")
     running = [child for child in state.children if child.status == "running"]
     if running:
         lines.append("running_children:")
@@ -1302,10 +1373,14 @@ def format_swarm_summary(state: SwarmRunState) -> str:
     recent_wave = state.waves[-1] if state.waves else None
     if recent_wave is not None:
         lines.append(
-            f"latest_wave: {recent_wave.wave_index} status={recent_wave.status} accepted={len(recent_wave.accepted_child_ids)}"
+            f"latest_wave: {recent_wave.wave_index} status={recent_wave.status} planned={recent_wave.planned_runs}/{recent_wave.max_runs} accepted={len(recent_wave.accepted_child_ids)}"
         )
         if recent_wave.summary:
             lines.append(f"latest_wave_summary: {recent_wave.summary}")
+    if state.transplant_commands:
+        lines.append("transplant_commands:")
+        for command in state.transplant_commands[:8]:
+            lines.append(f"  - {command}")
     if failed:
         lines.append("failed_children:")
         for child in failed[:8]:

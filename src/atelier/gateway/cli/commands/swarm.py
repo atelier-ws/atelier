@@ -5,10 +5,13 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import click
 
 from atelier.core.capabilities.swarm import (
+    build_swarm_apply_payload,
+    build_swarm_export_payload,
     discover_repo_root,
     format_swarm_summary,
     initialize_swarm_run,
@@ -137,23 +140,32 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
         click.echo("No swarm runs found.")
         return
     lines = [
-        "run_id                           status    runner           model               wave  ok/fail/run  created_at",
-        "---------------------------------------------------------------------------------------------------------------",
+        "run_id                           status    runner           model               wave  accepted fail live planned/max  created_at",
+        "--------------------------------------------------------------------------------------------------------------------------------",
     ]
     for state in states:
         running = sum(1 for child in state.children if child.status == "running")
         failed = sum(1 for child in state.children if child.status == "failed")
         runner_label = state.runner_name[:16]
         model_label = (state.runner_model or "-")[:18]
+        latest_wave = state.waves[-1] if state.waves else None
+        planned = latest_wave.planned_runs if latest_wave is not None else 0
+        max_runs = latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
         lines.append(
-            f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>2}/{failed:<4}/{running:<3} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>8} {failed:<4} {running:<4} {planned:>3}/{max_runs:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
     click.echo("\n".join(lines))
 
 
 @swarm_group.command("start")
 @click.argument("spec_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--runs", default=3, show_default=True, type=int, help="Number of isolated child attempts.")
+@click.option(
+    "--runs",
+    default=3,
+    show_default=True,
+    type=int,
+    help="Maximum children to launch per wave. The coordinator may launch fewer for bounded scopes.",
+)
 @click.option(
     "--validate",
     "validation_commands",
@@ -303,6 +315,79 @@ def swarm_status(ctx: click.Context, run_id: str, as_json: bool) -> None:
         _emit(state.model_dump(mode="json"), as_json=True)
         return
     click.echo(format_swarm_summary(state))
+
+
+@swarm_group.command("export")
+@click.argument("run_id")
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable export metadata.")
+@click.pass_context
+def swarm_export(ctx: click.Context, run_id: str, as_json: bool) -> None:
+    """Show durable export artifacts for RUN_ID."""
+
+    state_path = resolve_state_path(ctx.obj["root"], run_id)
+    if not state_path.exists():
+        raise click.ClickException(f"unknown swarm run: {run_id}")
+    state = load_swarm_state(state_path)
+    payload = build_swarm_export_payload(state)
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    lines = [
+        f"run_id: {state.run_id}",
+        f"base_snapshot_ref: {state.base_snapshot_ref}",
+        f"integration_base_ref: {state.integration_base_ref}",
+    ]
+    if state.base_snapshot_artifact is not None:
+        lines.append(f"base_snapshot_artifact: {state.base_snapshot_artifact.path}")
+    lines.append("accepted_commits:")
+    for accepted in state.accepted_commits:
+        lines.append(f"  - {accepted.child_id}: {accepted.commit_ref} patch={accepted.patch_path or '-'}")
+    lines.append("artifacts:")
+    for artifact in state.export_artifacts:
+        lines.append(f"  - {artifact.kind}: {artifact.path}")
+    lines.append("transplant_commands:")
+    for command in state.transplant_commands or ["(none)"]:
+        lines.append(f"  - {command}")
+    click.echo("\n".join(lines))
+
+
+@swarm_group.command("apply")
+@click.argument("run_id")
+@click.option("--wave", "wave_index", type=int, help="Limit to accepted commits from one wave.")
+@click.option("--child-id", help="Limit to one accepted child.")
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable apply instructions.")
+@click.pass_context
+def swarm_apply(
+    ctx: click.Context,
+    run_id: str,
+    wave_index: int | None,
+    child_id: str | None,
+    as_json: bool,
+) -> None:
+    """Print transplant commands for accepted commits without mutating the repo."""
+
+    state_path = resolve_state_path(ctx.obj["root"], run_id)
+    if not state_path.exists():
+        raise click.ClickException(f"unknown swarm run: {run_id}")
+    state = load_swarm_state(state_path)
+    try:
+        payload = build_swarm_apply_payload(state, wave_index=wave_index, child_id=child_id)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    selected_commits = cast(list[Any], payload["selected_commits"])
+    commands = cast(list[str], payload["commands"])
+    lines = [
+        f"run_id: {state.run_id}",
+        f"base_snapshot_ref: {state.base_snapshot_ref}",
+        f"selected_commits: {len(selected_commits)}",
+        "commands:",
+    ]
+    for command in commands or ["(none)"]:
+        lines.append(f"  - {command}")
+    click.echo("\n".join(lines))
 
 
 @swarm_group.command("stop")
