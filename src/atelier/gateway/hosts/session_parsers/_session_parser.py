@@ -12,6 +12,7 @@ Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"gemini"``, ``"c
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import re
 from datetime import UTC, datetime
@@ -106,6 +107,7 @@ def _extract_claude_session_id(content: str) -> str:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         sid = ev.get("sessionId")
         if isinstance(sid, str) and sid.strip():
@@ -501,6 +503,7 @@ def _coerce_jsonish(value: Any) -> Any:
         try:
             return json.loads(stripped)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return value
     return value
 
@@ -517,7 +520,7 @@ def _text_from_value(value: Any) -> str:
         return value.strip()
     if isinstance(value, (dict, list)):
         try:
-            return json.dumps(value, ensure_ascii=False)
+            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         except TypeError:
             return str(value)
     return str(value).strip()
@@ -690,6 +693,7 @@ def _summarize_claude_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("type") != "assistant":
             continue
@@ -735,6 +739,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         if et == "turn_context":
@@ -811,6 +816,7 @@ def _summarize_copilot_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         data = ev.get("data") or {}
@@ -891,6 +897,7 @@ def _summarize_gemini_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("type") != "gemini":
             continue
@@ -925,6 +932,7 @@ def _summarize_opencode_usage(content: str) -> dict[str, Any]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if ev.get("_type") != "message":
             continue
@@ -993,6 +1001,7 @@ def _parse_normalized_session(content: str) -> list[dict[str, Any]]:
         try:
             event = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         if event.get("type") != "message":
             continue
@@ -1112,6 +1121,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
         et = ev.get("type", "")
@@ -1256,13 +1266,11 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
                             for line in new.splitlines():
                                 raw_diff += f"+{line}\n"
                         diff_str = str(raw_diff).strip() if raw_diff else None
-                        content_text = diff_str or str(
-                            inp.get("content") or inp.get("text") or json.dumps(inp, indent=2, ensure_ascii=False)
-                        )
+                        content_text = diff_str or str(inp.get("content") or inp.get("text") or _text_from_value(inp))
                     elif kind == "shell_command":
                         content_text = str(inp.get("command") or "")
                     else:
-                        content_text = json.dumps(inp, indent=2, ensure_ascii=False)
+                        content_text = _text_from_value(inp)
 
                     summary = (
                         f"{name}({file_path_str or ''})"
@@ -1330,7 +1338,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
             elif file_info and isinstance(file_info.get("content"), str):
                 text_content = str(file_info.get("content") or "")
             elif attachment_type == "diagnostics":
-                text_content = json.dumps(attachment.get("files") or attachment, indent=2, ensure_ascii=False)
+                text_content = _text_from_value(attachment.get("files") or attachment)
 
             todos = _extract_todos(attachment.get("content") or attachment)
             if todos:
@@ -1396,7 +1404,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
             _turn(
                 "user_message",
                 "Session Initialized",
-                f"Metadata-only session: {json.dumps(meta)}",
+                f"Metadata-only session: {_text_from_value(meta)}",
                 at=meta.get("at"),
             )
         )
@@ -1418,6 +1426,7 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
                 fmt = "flat"
                 break
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
     turns = _parse_codex_format_a(content) if fmt == "event_msg" else _parse_codex_format_b(content)
@@ -1433,13 +1442,14 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
                         _turn(
                             "user_message",
                             "Session Initialized",
-                            f"Session Metadata: {json.dumps(ev)}",
+                            f"Session Metadata: {_text_from_value(ev)}",
                             at=at,
                             raw=ev,
                         )
                     )
                     break
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
     return turns
@@ -1452,6 +1462,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         ev_type = ev.get("type")
         if ev_type not in {"event_msg", "response_item"}:
@@ -1526,9 +1537,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
                 for _line in new.splitlines():
                     _raw_diff += f"+{_line}\n"
             _diff = str(_raw_diff).strip() if _raw_diff else None
-            content_text = _diff or str(
-                payload.get("content") or payload.get("text") or json.dumps(payload, indent=2, ensure_ascii=False)
-            )
+            content_text = _diff or str(payload.get("content") or payload.get("text") or _text_from_value(payload))
             if content_text:
                 last_turn = _turn(
                     "file_edit",
@@ -1589,7 +1598,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
                 last_turn = _turn(
                     "file_edit",
                     f"{name}({_fpath or ''})",
-                    patch_text or json.dumps(args or {"raw": args_raw}, indent=2, ensure_ascii=False),
+                    patch_text or _text_from_value(args or {"raw": args_raw}),
                     at=at,
                     raw=ev,
                     path=_fpath,
@@ -1602,7 +1611,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
             last_turn = _turn(
                 "tool_call",
                 f"{name}(...)",
-                json.dumps(args or {"raw": args_raw}, indent=2, ensure_ascii=False),
+                _text_from_value(args or {"raw": args_raw}),
                 at=at,
                 raw=ev,
                 tool_name=name,
@@ -1618,6 +1627,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -1700,9 +1710,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
                     for line in new.splitlines():
                         _raw_diff += f"+{line}\n"
                 _diff = str(_raw_diff).strip() if _raw_diff else None
-                content_text = _diff or str(
-                    args.get("content") or args.get("text") or json.dumps(args, indent=2, ensure_ascii=False)
-                )
+                content_text = _diff or str(args.get("content") or args.get("text") or _text_from_value(args))
                 summary = f"{name}({_fpath or ''})"
             elif kind == "shell_command":
                 _fpath = None
@@ -1712,9 +1720,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
             else:
                 _fpath = None
                 _diff = None
-                content_text = (
-                    json.dumps(args, indent=2, ensure_ascii=False) if isinstance(args, dict) else str(args_raw)
-                )
+                content_text = _text_from_value(args) if isinstance(args, dict) else str(args_raw)
                 summary = f"{name}(...)"
 
             turns.append(
@@ -1745,6 +1751,7 @@ def _parse_gemini(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         mid = str(ev.get("id") or "")
         et = ev.get("type")
@@ -1848,16 +1855,14 @@ def _parse_gemini(content: str) -> list[dict[str, Any]]:
                             for _line in new.splitlines():
                                 _raw_diff += f"+{_line}\n"
                         _diff = str(_raw_diff).strip() if _raw_diff else None
-                        _fcontent = _diff or str(
-                            args.get("content") or args.get("text") or json.dumps(args, ensure_ascii=False)
-                        )
+                        _fcontent = _diff or str(args.get("content") or args.get("text") or _text_from_value(args))
                         merged[mid].setdefault("file_edits", []).append((name, _fpath, _diff, _fcontent))
                     else:
                         merged[mid]["structured_turns"].append(
                             _turn(
                                 "tool_call",
                                 f"{name}(...)",
-                                json.dumps(args, indent=2, ensure_ascii=False),
+                                _text_from_value(args),
                                 at=at,
                                 raw=ev,
                                 tokens=merged[mid]["tokens"],
@@ -1923,6 +1928,7 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -2048,9 +2054,7 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
                         for _line in new.splitlines():
                             _raw_diff += f"+{_line}\n"
                     _diff = str(_raw_diff).strip() if _raw_diff else None
-                    c_text = _diff or str(
-                        args.get("content") or args.get("text") or json.dumps(args, ensure_ascii=False)
-                    )
+                    c_text = _diff or str(args.get("content") or args.get("text") or _text_from_value(args))
                     assistant_turns.append(
                         _turn(
                             "file_edit",
@@ -2066,7 +2070,7 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
                         )
                     )
                 else:
-                    c_text = json.dumps(args, ensure_ascii=False) if isinstance(args, dict) and args else str(args_raw)
+                    c_text = _text_from_value(args) if isinstance(args, dict) and args else str(args_raw)
                     assistant_turns.append(
                         _turn(
                             "tool_call",
@@ -2145,6 +2149,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
         try:
             ev = json.loads(line)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
         _type = ev.get("_type", "")
         data = ev.get("data") or {}
@@ -2231,7 +2236,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
                         for line in new.splitlines():
                             _raw_diff += f"+{line}\n"
                     _diff = str(_raw_diff).strip() if _raw_diff else None
-                    content_text = _diff or str(inp.get("content") or json.dumps(inp, indent=2, ensure_ascii=False))
+                    content_text = _diff or str(inp.get("content") or _text_from_value(inp))
                     summary = f"{tool}({_fpath or ''})"
                 elif kind == "shell_command":
                     _fpath = None
@@ -2241,7 +2246,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
                 else:
                     _fpath = None
                     _diff = None
-                    content_text = json.dumps(inp, indent=2, ensure_ascii=False)
+                    content_text = _text_from_value(inp)
                     summary = f"{tool}(...)"
 
                 turns.append(

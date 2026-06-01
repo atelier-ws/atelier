@@ -46,3 +46,42 @@ class CompressionResult:
             "dropped": [d.to_dict() for d in self.dropped],
             "token_savings": self.token_savings,
         }
+
+    @classmethod
+    def passthrough(cls) -> CompressionResult:
+        """Zero-work result for bench-off mode (no events dropped)."""
+        return cls(
+            chars_before=0,
+            chars_after=0,
+            reduction_pct=0.0,
+            preserved_facts=[],
+            dropped=[],
+            token_savings=0,
+        )
+
+
+@dataclass
+class MinificationDelta:
+    """Per-read minification telemetry.
+
+    Emitted for every minified read so token savings can be attributed
+    independently from any cache reuse.
+    """
+
+    path: str
+    lang: str
+    original_tokens: int
+    minified_tokens: int
+
+    @property
+    def saved_tokens(self) -> int:
+        return max(0, self.original_tokens - self.minified_tokens)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "lang": self.lang,
+            "original_tokens": self.original_tokens,
+            "minified_tokens": self.minified_tokens,
+            "saved_tokens": self.saved_tokens,
+        }

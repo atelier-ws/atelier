@@ -21,6 +21,7 @@ import pytest
 from atelier.core.capabilities.context_compression.sleeptime import summarize_ledger
 from atelier.core.capabilities.tool_supervision.compact_output import compact
 from atelier.infra.internal_llm import ollama_client
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
 pytestmark = pytest.mark.slow
@@ -73,7 +74,7 @@ def _wait_for_health(base_url: str, process: subprocess.Popen[str], timeout_s: f
             status, payload = _request_json("GET", f"{base_url}/health", timeout=1.0)
             if status == 200 and payload.get("status") == "ok":
                 return
-        except Exception as exc:  # pragma: no cover - best-effort polling
+        except (TimeoutError, urllib.error.URLError) as exc:  # pragma: no cover - best-effort polling
             last_error = str(exc)
         time.sleep(0.2)
     raise AssertionError(last_error)
@@ -222,7 +223,7 @@ def test_real_ollama_model_backed_paths() -> None:
             )
             assert chunks
             assert chunks[0].paraphrase.strip()
-        except ollama_client.OllamaUnavailable as exc:
+        except OllamaUnavailable as exc:
             pytest.skip(f"Ollama unavailable: {exc}")
     finally:
         os.environ.pop("ATELIER_OLLAMA_MODEL", None)
@@ -416,7 +417,7 @@ def test_docker_deploy_load_latency_and_stability(tmp_path: Path) -> None:
                 if status == 200 and payload.get("status") == "ok":
                     healthy = True
                     break
-            except Exception:
+            except (urllib.error.URLError, TimeoutError):
                 pass
             time.sleep(1)
         assert healthy, "dockerized atelier service never became healthy"

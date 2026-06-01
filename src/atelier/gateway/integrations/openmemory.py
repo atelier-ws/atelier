@@ -39,6 +39,10 @@ def _utcnow_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 def _default_user_id() -> str:
     configured = os.environ.get("ATELIER_OPENMEMORY_USER_ID", "").strip()
     if configured:
@@ -49,6 +53,7 @@ def _default_user_id() -> str:
     try:
         return getuser()
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return "atelier"
 
 
@@ -133,6 +138,7 @@ class OpenMemoryClient:
                     raise OpenMemoryMCPError(str(error))
                 return response.get("result", {})
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 last_error = exc
                 logger.debug("OpenMemory MCP request failed for %s via %s: %s", method, endpoint, exc)
         raise OpenMemoryMCPError(f"OpenMemory MCP request failed for {method}: {last_error}")
@@ -177,6 +183,7 @@ class OpenMemoryClient:
             try:
                 body = exc.read(_MAX_BODY_BYTES).decode("utf-8", errors="replace")
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 body = ""
             raise OpenMemoryMCPError(f"HTTP {exc.code} from OpenMemory MCP: {body or exc.reason}") from exc
         except urllib.error.URLError as exc:
@@ -224,6 +231,7 @@ def _maybe_json(value: str) -> Any:
     try:
         return json.loads(stripped)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return value
 
 
@@ -330,7 +338,7 @@ def maybe_link_trace_to_memory_context(
     }
     try:
         stored = add_memories(
-            messages=[{"role": "system", "content": json.dumps(record, ensure_ascii=False, sort_keys=True)}],
+            messages=[{"role": "system", "content": _compact_json(record)}],
             user_id=_default_user_id(),
             metadata={
                 "atelier_kind": "trace_context_link",
@@ -383,7 +391,7 @@ def maybe_store_memory_pointer(trace_id: str, memory_id: str) -> dict[str, objec
     }
     try:
         stored = add_memories(
-            messages=[{"role": "system", "content": json.dumps(record, ensure_ascii=False, sort_keys=True)}],
+            messages=[{"role": "system", "content": _compact_json(record)}],
             user_id=_default_user_id(),
             metadata={
                 "atelier_kind": "trace_memory_pointer",
@@ -419,7 +427,7 @@ def link_trace_with_memory_context(
     }
     try:
         stored = add_memories(
-            messages=[{"role": "system", "content": json.dumps(record, ensure_ascii=False, sort_keys=True)}],
+            messages=[{"role": "system", "content": _compact_json(record)}],
             user_id=_default_user_id(),
             metadata={
                 "atelier_kind": "trace_context_bundle",

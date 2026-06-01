@@ -8,6 +8,7 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from atelier.core.foundation.store import ContextStore
@@ -33,6 +34,7 @@ class SQLiteStore(ContextStore):
                 "block_count": block_count,
             }
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             return {"ok": False, "backend": "sqlite", "error": str(exc)}
 
 

@@ -35,12 +35,15 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from atelier.infra.runtime.run_ledger import RunLedger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 # Atelier's own Anthropic-compatible tool spec for session telemetry
@@ -131,7 +134,8 @@ def make_atelier_tools(
                 prefix_invalidated_reason = plan.invalidated_reason
                 prior_prefix_hash[0] = prefix_hash
         except Exception:
-            pass
+            logging.exception("Recovered from broad exception handler")
+            logger.debug("anthropic prefix-cache capture failed", exc_info=True)
 
         ledger.record_call(
             operation="messages.create",

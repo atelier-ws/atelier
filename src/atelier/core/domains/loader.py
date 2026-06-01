@@ -56,6 +56,7 @@ class DomainLoader:
                 try:
                     bundles.append(self.load(candidate))
                 except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
                     log.warning("skipping malformed builtin bundle %s: %s", candidate.name, exc)
         return bundles
 
@@ -69,6 +70,7 @@ class DomainLoader:
                 try:
                     bundles.append(self.load(candidate))
                 except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
                     log.warning("skipping malformed bundle %s: %s", candidate.name, exc)
         return bundles
 
@@ -89,5 +91,6 @@ class DomainLoader:
                 elif isinstance(raw, dict):
                     blocks.append(ReasonBlock(**raw))
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 log.warning("failed to load reasonblock %s: %s", candidate, exc)
         return blocks

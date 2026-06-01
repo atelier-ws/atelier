@@ -7,14 +7,19 @@ CLI, and UI-facing metadata stay consistent.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from pathlib import Path
+
+from atelier.bench.mode import is_off as _bench_is_off
 
 try:
     import tomllib
 except ImportError:  # pragma: no cover
     tomllib = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 DEV_MODE_ENV_VAR = "ATELIER_DEV_MODE"
 MEMORY_BACKEND_ENV_VAR = "ATELIER_MEMORY_BACKEND"
@@ -40,7 +45,9 @@ STABLE_LLM_TOOLS = frozenset(
         "node",
         "callers",
         "callees",
+        "usages",
         "impact",
+        "pattern",
         "explore",
     }
 )
@@ -91,6 +98,10 @@ def mcp_tool_description(tool_name: str, description: str | None) -> str:
 
 
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
+    # Bench-off overrides dev-mode — baseline arm must not see Atelier MCP tools.
+    # This check MUST run before is_dev_mode() (per MODE-04).
+    if _bench_is_off():
+        return False
     if is_dev_mode():
         return True
     return tool_name in STABLE_LLM_TOOLS
@@ -150,9 +161,9 @@ def resolve_memory_backend(
                 config_backend = str(memory.get("backend", "")).strip().lower()
                 if config_backend:
                     return _validated_memory_backend(config_backend)
-            except Exception:
+            except (tomllib.TOMLDecodeError, OSError, ValueError):
                 # Keep runtime robust; invalid config falls back to defaults.
-                pass
+                logger.warning("Invalid config.toml; falling back to defaults", exc_info=True)
 
     fallback = (prefer or "sqlite").strip().lower()
     return _validated_memory_backend(fallback)

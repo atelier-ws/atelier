@@ -12,6 +12,13 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from atelier.core.capabilities.swarm.models import (
+    SwarmAcceptedCommit,
+    SwarmArtifactRef,
+    SwarmChildState,
+    SwarmRunState,
+    SwarmWaveState,
+)
 from atelier.core.environment import (
     DEV_LLM_TOOLS,
     NON_DEV_LLM_TOOLS,
@@ -1207,3 +1214,344 @@ def test_cli_service_config_command(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "api_key_configured" in data
     # api_key value must NOT appear in output
     assert "test-secret-key" not in result.output
+
+
+def test_swarm_runs_endpoint_lists_live_activity(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    program = tmp_path / "PROGRAM.md"
+    program.write_text("Prompt title\n\nDo the thing.\n", encoding="utf-8")
+    running_child = SwarmChildState(
+        child_id="wave-01-run-01",
+        label="candidate-1",
+        wave_index=1,
+        status="running",
+        worktree_path=str(tmp_path / "worktree"),
+        atelier_root=str(tmp_path / "atelier-root"),
+        run_dir=str(tmp_path / "run"),
+        spec_path=str(program),
+        result_path=str(tmp_path / "result.json"),
+        stdout_path=str(tmp_path / "stdout.log"),
+        stderr_path=str(tmp_path / "stderr.log"),
+        metadata_path=str(tmp_path / "meta.json"),
+        current_activity="Running validation",
+    )
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="running",
+        mode="continuous",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        spec_source_path=str(program),
+        copied_spec_path=str(program),
+        runner_name="claude",
+        runner_model="sonnet",
+        evaluator_backend="ollama",
+        evaluator_model="claude-opus-4.8",
+        child_command=["echo", "hi"],
+        runs=4,
+        max_runs=4,
+        current_wave=1,
+        convergence_status="continue",
+        convergence_summary="Keep exploring independent optimization directions.",
+        next_wave_directives=["Trim redundant trace metadata."],
+        max_no_progress_waves=3,
+        consecutive_no_progress_waves=1,
+        primary_winner_child_id="wave-01-run-02",
+        accepted_child_ids=["wave-01-run-02"],
+        used_program_md=True,
+        waves=[
+            SwarmWaveState(
+                wave_index=1,
+                max_runs=4,
+                planned_runs=2,
+                planning_mode="bounded",
+                child_ids=["wave-01-run-01", "wave-01-run-02"],
+                accepted_child_ids=["wave-01-run-02"],
+                primary_winner_child_id="wave-01-run-02",
+            )
+        ],
+        children=[running_child],
+    )
+    monkeypatch.setattr("atelier.core.service.api.list_swarm_runs", lambda _root: [state])
+
+    response = app_no_auth.get("/v1/swarm/runs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["run_id"] == "swarm-123"
+    assert payload[0]["planned_runs"] == 2
+    assert payload[0]["max_runs"] == 4
+    assert payload[0]["running_children"][0]["activity"] == "Running validation"
+    assert payload[0]["spec_title"] == "Prompt title"
+    assert payload[0]["used_program_md"] is True
+    assert payload[0]["evaluator_backend"] == "ollama"
+    assert payload[0]["convergence_status"] == "continue"
+    assert payload[0]["next_wave_directives"] == ["Trim redundant trace metadata."]
+
+
+def test_swarm_launch_options_endpoint_returns_projects_and_editor_state(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    program = tmp_path / "PROGRAM.md"
+    program.write_text("Prompt title\n\nDo the thing.\n", encoding="utf-8")
+    monkeypatch.setattr("atelier.core.service.api.discover_repo_root", lambda _cwd: tmp_path)
+    monkeypatch.setattr("atelier.core.service.api.list_swarm_runs", lambda _root: [])
+
+    response = app_no_auth.get("/v1/swarm/launch/options")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_project_root"] == str(tmp_path)
+    assert payload["selected_spec_path"] == "PROGRAM.md"
+    assert payload["project_roots"][0]["full_path"] == str(tmp_path)
+    assert payload["providers"][0]["id"] == "cli"
+    assert payload["providers"][1]["supported"] is True
+    assert payload["spec_document"]["content"].startswith("Prompt title")
+    assert payload["notes"]["provider_credentials"]
+
+
+def test_swarm_run_create_endpoint_uses_default_program_md(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    program = tmp_path / "PROGRAM.md"
+    program.write_text("Prompt title\n\nDo the thing.\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="pending",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path=str(program),
+        copied_spec_path=str(program),
+        runner_name="claude",
+        child_command=["claude"],
+        runs=3,
+        max_runs=3,
+    )
+    monkeypatch.setattr("atelier.core.service.api.discover_repo_root", lambda _cwd: tmp_path)
+    monkeypatch.setattr("atelier.core.service.api.list_swarm_runs", lambda _root: [])
+    monkeypatch.setattr(
+        "atelier.core.service.api.initialize_swarm_run",
+        lambda **kwargs: (captured.update(kwargs) or state, tmp_path / "state.json"),
+    )
+    monkeypatch.setattr(
+        "atelier.core.service.api.spawn_swarm_coordinator",
+        lambda _root, _repo_root, _state_path, env_overrides=None: (
+            4321,
+            tmp_path / "coordinator.log",
+        ),
+    )
+    monkeypatch.setattr("atelier.core.service.api.save_swarm_state", lambda *_args, **_kwargs: None)
+
+    response = app_no_auth.post(
+        "/v1/swarm/runs",
+        json={
+            "project_root": str(tmp_path),
+            "provider": "cli",
+            "runner": "claude",
+            "runs": 3,
+            "continuous": True,
+            "keep_worktrees": True,
+            "effort": "high",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["coordinator_pid"] == 4321
+    assert captured["spec_path"] == program
+    assert captured["spec_resolution"] in {"default", "explicit"}
+    assert captured["used_program_md"] is True
+    assert captured["launch_provider"] == "cli"
+    assert captured["evaluator_backend"] == "auto"
+    assert captured["max_no_progress_waves"] == 3
+    assert captured["max_evaluator_failures"] == 3
+
+
+def test_swarm_run_create_endpoint_supports_provider_worker_and_inline_spec(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    captured_spawn: dict[str, object] = {}
+    state = SwarmRunState(
+        run_id="swarm-456",
+        status="pending",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path="PROGRAM.md",
+        copied_spec_path=str(tmp_path / "PROGRAM.md"),
+        runner_name="openai",
+        runner_model="gpt-4o-mini",
+        child_command=["python"],
+        runs=2,
+        max_runs=2,
+    )
+    monkeypatch.setattr("atelier.core.service.api.discover_repo_root", lambda _cwd: tmp_path)
+    monkeypatch.setattr("atelier.core.service.api.list_swarm_runs", lambda _root: [])
+    monkeypatch.setattr(
+        "atelier.core.service.api.initialize_swarm_run",
+        lambda **kwargs: (captured.update(kwargs) or state, tmp_path / "state.json"),
+    )
+    monkeypatch.setattr(
+        "atelier.core.service.api.spawn_swarm_coordinator",
+        lambda _root, _repo_root, _state_path, env_overrides=None: (
+            captured_spawn.update({"env_overrides": env_overrides}) or 9876,
+            tmp_path / "coordinator.log",
+        ),
+    )
+    monkeypatch.setattr("atelier.core.service.api.save_swarm_state", lambda *_args, **_kwargs: None)
+
+    response = app_no_auth.post(
+        "/v1/swarm/runs",
+        json={
+            "project_root": str(tmp_path),
+            "spec_mode": "inline",
+            "spec_path": "PROGRAM.md",
+            "spec_content": "Prompt title\n\nDo the thing.\n",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "evaluator_backend": "litellm",
+            "evaluator_model": "claude-opus-4.8",
+            "max_idle_waves": 5,
+            "max_evaluator_failures": 4,
+            "provider_api_key": "sk-test-key",
+            "provider_base_url": "https://openrouter.example/v1",
+            "runs": 2,
+            "continuous": False,
+            "keep_worktrees": True,
+            "effort": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (tmp_path / "PROGRAM.md").read_text(encoding="utf-8").startswith("Prompt title")
+    assert captured["runner_name"] == "openai"
+    assert captured["runner_model"] == "gpt-4o-mini"
+    assert captured["spec_source_path"] == "PROGRAM.md"
+    assert captured["launch_provider"] == "openai"
+    assert captured["evaluator_backend"] == "litellm"
+    assert captured["evaluator_model"] == "claude-opus-4.8"
+    assert captured["max_no_progress_waves"] == 5
+    assert captured["max_evaluator_failures"] == 4
+    assert "_provider-worker" in captured["child_command"]
+    assert "gpt-4o-mini" not in " ".join(captured["child_command"])
+    assert captured_spawn["env_overrides"] == {
+        "ATELIER_OPENAI_API_KEY": "sk-test-key",
+        "ATELIER_OPENAI_BASE_URL": "https://openrouter.example/v1",
+    }
+
+
+def test_swarm_run_detail_returns_export_and_apply_payloads(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    program = tmp_path / "program.md"
+    program.write_text("Prompt title\n\nDo the thing.\n", encoding="utf-8")
+    artifact = SwarmArtifactRef(
+        kind="wave-manifest",
+        label="Wave 1 manifest",
+        path=str(tmp_path / "wave-01-manifest.json"),
+        exists=True,
+    )
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        artifact_root=str(tmp_path / "artifacts"),
+        spec_source_path=str(program),
+        copied_spec_path=str(program),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=2,
+        max_runs=2,
+        accepted_commits=[
+            SwarmAcceptedCommit(
+                order=1,
+                child_id="wave-01-run-01",
+                commit_ref="abc1234",
+                patch_path=str(tmp_path / "candidate.patch"),
+                artifacts=[artifact],
+            )
+        ],
+        export_artifacts=[artifact],
+        transplant_commands=["git cherry-pick abc1234"],
+    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
+    monkeypatch.setattr("atelier.core.service.api.load_swarm_state", lambda _path: state)
+
+    response = app_no_auth.get("/v1/swarm/runs/swarm-123")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run"]["run_id"] == "swarm-123"
+    assert payload["spec"]["content"].startswith("Prompt title")
+    assert payload["export"]["accepted_commits"][0]["commit_ref"] == "abc1234"
+    assert payload["apply"]["commands"][0] == "git cherry-pick abc1234"
+
+
+def test_swarm_logs_and_stop_endpoints(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="stopped",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=1,
+        max_runs=1,
+        stop_reason="Stopped by user.",
+    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
+    monkeypatch.setattr("atelier.core.service.api.read_swarm_log", lambda *_args, **_kwargs: "child heartbeat")
+    monkeypatch.setattr("atelier.core.service.api.stop_swarm_run", lambda **_kwargs: state)
+
+    logs_response = app_no_auth.get("/v1/swarm/runs/swarm-123/logs", params={"child_id": "wave-01-run-01"})
+    stop_response = app_no_auth.post("/v1/swarm/runs/swarm-123/stop")
+
+    assert logs_response.status_code == 200
+    assert logs_response.json()["content"] == "child heartbeat"
+    assert stop_response.status_code == 200
+    assert stop_response.json()["status"] == "stopped"

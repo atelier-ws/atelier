@@ -82,6 +82,28 @@ EVENTS: dict[str, EventSpec] = {
     "code_index_completed": EventSpec({"repo_id": STR, "files_indexed": INT, "symbols_indexed": INT}),
     "code_context_retrieved": EventSpec({"repo_id": STR, "operation": STR, "result_count": INT}),
     "code_symbol_retrieved": EventSpec({"repo_id": STR, "kind": STR}),
+    "optimization_proposal_evaluated": EventSpec(
+        {
+            "source": STR,
+            "repo_id": STR,
+            "has_recommendation": BOOL,
+            "projected_tokens_saved": INT,
+            "projected_weekly_savings_usd": FLOAT,
+            "benchmark_evidence_present": BOOL,
+            "ni_passed": BOOL,
+            "open_pr_requested": BOOL,
+        }
+    ),
+    "optimization_proposal_result": EventSpec(
+        {
+            "source": STR,
+            "repo_id": STR,
+            "action": STR,
+            "benchmark_evidence_present": BOOL,
+            "ni_passed": BOOL,
+            "open_pr_requested": BOOL,
+        }
+    ),
     "mcp_auto_update_failed": EventSpec({"current_version": STR, "session_id": STR}),
 }
 

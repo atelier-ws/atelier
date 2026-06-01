@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import tiktoken
 
@@ -36,11 +37,11 @@ class BenchCase:
     baseline_tokens: int = 0
     # Optional callable to construct a measured baseline payload.
     # Signature: fn(case) -> BaselineMeasurement | serializable payload/string
-    baseline_builder: Callable[["BenchCase"], Any] | None = field(default=None, repr=False)
+    baseline_builder: Callable[[BenchCase], Any] | None = field(default=None, repr=False)
     # Optional quality gate for measured baseline hardness.
     min_baseline_tokens: int = 0
     # Optional callable for custom assertions: fn(result) -> None (raise on fail)
-    custom_assert: Callable[[dict[str, Any]], None] | None = field(default=None, repr=False)
+    custom_assert: Callable[[Any], None] | None = field(default=None, repr=False)
     # Optional grep needle used when a response spills to overflow artifact.
     spill_probe_pattern: str | None = None
     # Optional quality score used for effective-token reporting/comparisons.
@@ -55,7 +56,7 @@ class BenchCase:
 @dataclass
 class CaseResult:
     case: BenchCase
-    response: dict[str, Any]
+    response: Any
     atelier_tokens: int
     baseline_tokens: int
     quality_score: float
@@ -130,7 +131,7 @@ class BaselineMeasurement:
 
 def run_case(
     case: BenchCase,
-    tool_fn: Callable[[dict[str, Any]], dict[str, Any] | None],
+    tool_fn: Callable[[dict[str, Any]], Any | None],
 ) -> CaseResult:
     """Run a single benchmark case and return a result."""
     t0 = time.perf_counter()
@@ -138,10 +139,12 @@ def run_case(
         response = tool_fn(case.args)
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - t0) * 1000
+        # Use baseline_tokens (not 0) so a crash doesn't look like 100% savings.
+        # The agent would still have to use the baseline on failure.
         return CaseResult(
             case=case,
             response={},
-            atelier_tokens=0,
+            atelier_tokens=case.baseline_tokens,
             baseline_tokens=case.baseline_tokens,
             quality_score=case.quality_score,
             input_file_tokens=0,
@@ -169,7 +172,9 @@ def run_case(
             baseline_tokens = _tokens(measurement)
 
     if isinstance(response, dict):
-        probe_failure, spill_probe_tokens, spill_probe_hits = _probe_spilled_artifact(response, case)
+        probe_failure, spill_probe_tokens, spill_probe_hits = _probe_spilled_artifact(
+            response, case
+        )
         atelier_tokens += spill_probe_tokens
     else:
         probe_failure = ""
@@ -177,14 +182,18 @@ def run_case(
     failure = _check(case, response)
     if failure == "" and probe_failure:
         failure = probe_failure
-    if failure == "" and case.min_baseline_tokens > 0 and baseline_tokens < case.min_baseline_tokens:
+    if (
+        failure == ""
+        and case.min_baseline_tokens > 0
+        and baseline_tokens < case.min_baseline_tokens
+    ):
         failure = (
             f"measured baseline too small: baseline_tokens={baseline_tokens} "
             f"< min_baseline_tokens={case.min_baseline_tokens}"
         )
     return CaseResult(
         case=case,
-        response=response or {},
+        response=response if response is not None else {},
         atelier_tokens=atelier_tokens,
         baseline_tokens=baseline_tokens,
         quality_score=case.quality_score,
@@ -240,7 +249,7 @@ def _spill_probe_patterns(response: dict[str, Any], case: BenchCase) -> list[str
                     break
     for key in ("total_matches", "symbol_count", "tokens_saved", "provenance"):
         if key in response:
-            patterns.append(f"\"{key}\"")
+            patterns.append(f'"{key}"')
     patterns.append(str(case.op))
     seen: set[str] = set()
     ordered: list[str] = []
@@ -283,31 +292,41 @@ def _run_spill_probe(artifact_path: Path, pattern: str) -> tuple[int, int, str]:
     probe_tokens = _tokens(probe_text)
     if proc.returncode not in {0, 1}:
         return 0, probe_tokens, f"spill probe failed with exit={proc.returncode}"
-    hit_count = 0 if proc.returncode == 1 else len([line for line in probe_text.splitlines() if line.strip()])
+    hit_count = (
+        0
+        if proc.returncode == 1
+        else len([line for line in probe_text.splitlines() if line.strip()])
+    )
     if hit_count == 0:
         return 0, probe_tokens, f"spill probe found no matches for pattern={pattern!r}"
     return hit_count, probe_tokens, ""
 
 
-def _check(case: BenchCase, response: dict[str, Any] | None) -> str:
+def _check(case: BenchCase, response: Any | None) -> str:
     if response is None:
         # Custom assert may explicitly expect None
         if case.custom_assert is not None:
             try:
-                case.custom_assert(response)  # type: ignore[arg-type]
+                case.custom_assert(response)
             except AssertionError as exc:
                 return str(exc)
             return ""
         if case.assert_keys or case.assert_values:
             return "response was None"
         return ""
-    for key in case.assert_keys:
-        if key not in response:
-            return f"missing key '{key}' in response"
-    for key, expected in case.assert_values.items():
-        actual = response.get(key)
-        if actual != expected:
-            return f"key '{key}': expected {expected!r}, got {actual!r}"
+    if not isinstance(response, dict):
+        if case.assert_keys or case.assert_values:
+            return (
+                f"response is non-dict; cannot assert keys/values: type={type(response).__name__}"
+            )
+    else:
+        for key in case.assert_keys:
+            if key not in response:
+                return f"missing key '{key}' in response"
+        for key, expected in case.assert_values.items():
+            actual = response.get(key)
+            if actual != expected:
+                return f"key '{key}': expected {expected!r}, got {actual!r}"
     if case.custom_assert is not None:
         try:
             case.custom_assert(response)
@@ -319,7 +338,7 @@ def _check(case: BenchCase, response: dict[str, Any] | None) -> str:
 def run_tool_benchmark(
     tool_name: str,
     cases: list[BenchCase],
-    tool_fn: Callable[[dict[str, Any]], dict[str, Any]],
+    tool_fn: Callable[[dict[str, Any]], Any],
 ) -> ToolReport:
     results = [run_case(case, tool_fn) for case in cases]
     return ToolReport(tool_name=tool_name, results=results)

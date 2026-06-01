@@ -23,11 +23,17 @@ Adding a new language is editing ``_LANG_CONFIG``:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
-from functools import cache
 from typing import Any
 
 _logger = logging.getLogger(__name__)
+
+
+# Thread-local storage for tree-sitter parsers.
+# The Rust _native::Parser is !Send, so it must never be shared across threads.
+# Each thread gets its own parser instances via thread-local caching.
+_get_parser_local = threading.local()
 
 
 @dataclass(frozen=True)
@@ -47,6 +53,11 @@ class LangCfg:
     body_kinds: frozenset[str] = field(default_factory=frozenset)
     # tree-sitter-language-pack key (defaults to the dict key).
     parser_name: str = ""
+    # Transparent wrapper kinds we descend into recursively (no output of their
+    # own). Used for grammars where declarations are buried in wrapper nodes.
+    unwrap: frozenset[str] = field(default_factory=frozenset)
+    # Data key/value kinds we keep as the first source line only (rstripped).
+    keep_first_line: frozenset[str] = field(default_factory=frozenset)
 
 
 _LANG_CONFIG: dict[str, LangCfg] = {
@@ -74,11 +85,19 @@ _LANG_CONFIG: dict[str, LangCfg] = {
             }
         ),
         keep_signature=frozenset(
-            {"function_item", "function_signature_item", "struct_item", "enum_item", "foreign_mod_item"}
+            {
+                "function_item",
+                "function_signature_item",
+                "struct_item",
+                "enum_item",
+                "foreign_mod_item",
+            }
         ),
         container=frozenset({"impl_item", "trait_item", "mod_item"}),
         member=frozenset({"function_item", "function_signature_item", "const_item"}),
-        body_kinds=frozenset({"block", "declaration_list"}),
+        body_kinds=frozenset(
+            {"block", "declaration_list", "field_declaration_list", "enum_variant_list"}
+        ),
     ),
     "java": LangCfg(
         keep_full=frozenset({"package_declaration", "import_declaration"}),
@@ -289,9 +308,70 @@ _LANG_CONFIG: dict[str, LangCfg] = {
         body_kinds=frozenset({"template_body", "block"}),
     ),
     "bash": LangCfg(
-        keep_full=frozenset({"variable_assignment", "command", "comment"}),
+        keep_full=frozenset({"variable_assignment", "declaration_command"}),
         keep_signature=frozenset({"function_definition"}),
         body_kinds=frozenset({"compound_statement"}),
+    ),
+    "toml": LangCfg(
+        keep_full=frozenset({"pair"}),
+        keep_first_line=frozenset({"table", "table_array_element"}),
+    ),
+    # sql — unwrap the `statement` wrapper; signature-trim table/function bodies.
+    "sql": LangCfg(
+        unwrap=frozenset({"statement"}),
+        keep_signature=frozenset(
+            {"create_table", "create_view", "create_index", "create_function", "alter_table"}
+        ),
+        body_kinds=frozenset(
+            {"column_definitions", "function_body", "create_query", "index_fields"}
+        ),
+    ),
+    # yaml — descend 3 wrapper levels, keep top-level mapping keys' first line only.
+    "yaml": LangCfg(
+        unwrap=frozenset({"stream", "document", "block_node", "block_mapping"}),
+        keep_first_line=frozenset({"block_mapping_pair"}),
+    ),
+    # json — descend document→object, keep top-level pair first line (low value, guard-gated).
+    "json": LangCfg(
+        unwrap=frozenset({"document", "object"}),
+        keep_first_line=frozenset({"pair"}),
+    ),
+    # JavaScript — ES modules and CommonJS class/function declarations.
+    # IIFE-wrapped files (e.g. UMD bundles) produce no outline; guard falls through to full.
+    "javascript": LangCfg(
+        keep_full=frozenset({"import_statement"}),
+        keep_signature=frozenset({"function_declaration", "generator_function_declaration"}),
+        container=frozenset({"class_declaration"}),
+        member=frozenset({"method_definition", "field_definition"}),
+        body_kinds=frozenset({"statement_block", "class_body"}),
+        unwrap=frozenset({"export_statement"}),
+    ),
+    # TypeScript — export_statement wraps most top-level declarations; unwrap it
+    # so the inner node is processed by keep_signature / container rules.
+    # import_statement uses keep_first_line (not keep_full) because TS compiler
+    # files have massive multi-import blocks that would bloat the outline.
+    "typescript": LangCfg(
+        keep_first_line=frozenset({"import_statement"}),
+        keep_signature=frozenset(
+            {
+                "function_declaration",
+                "function_signature",
+                "interface_declaration",
+                "type_alias_declaration",
+                "enum_declaration",
+            }
+        ),
+        container=frozenset({"class_declaration"}),
+        member=frozenset(
+            {
+                "method_definition",
+                "method_signature",
+                "property_signature",
+                "public_field_definition",
+            }
+        ),
+        body_kinds=frozenset({"statement_block", "class_body", "interface_body", "enum_body"}),
+        unwrap=frozenset({"export_statement"}),
     ),
 }
 
@@ -299,18 +379,70 @@ _LANG_CONFIG: dict[str, LangCfg] = {
 # the tree-sitter branch.
 SUPPORTED_LANGUAGES: frozenset[str] = frozenset(_LANG_CONFIG.keys())
 
+_NON_DEFINITION_KEEP_FULL_KINDS: frozenset[str] = frozenset(
+    {
+        "import_declaration",
+        "import_list",
+        "namespace_use_declaration",
+        "package_clause",
+        "package_declaration",
+        "package_header",
+        "preproc_include",
+        "using_declaration",
+        "using_directive",
+        "use_declaration",
+    }
+)
 
-@cache
+
 def _get_parser(lang: str) -> Any:
     try:
         from tree_sitter_language_pack import get_parser
 
         cfg = _LANG_CONFIG.get(lang)
         name = (cfg.parser_name if cfg else "") or lang
-        return get_parser(name)
+        # Thread-local cache: the Rust Parser is !Send so it must never
+        # be shared across threads (would panic at runtime).
+        cache = _get_parser_local.__dict__
+        key = f"_parser_{name}"
+        if key not in cache:
+            cache[key] = get_parser(name)
+        return cache[key]
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parser unavailable for %s: %s", lang, exc)
         return None
+
+
+def tree_sitter_parser(language: str) -> Any:
+    """Return the configured parser for a language, or None when unavailable."""
+    return _get_parser(language)
+
+
+def supported_tree_sitter_languages() -> frozenset[str]:
+    """Return languages with configured tree-sitter structural support."""
+    return SUPPORTED_LANGUAGES
+
+
+def definition_node_kinds(language: str) -> frozenset[str]:
+    """Return node kinds that represent repo-map definitions for a language."""
+    cfg = _LANG_CONFIG.get(language)
+    if cfg is None:
+        return frozenset()
+    keep_full_definitions = cfg.keep_full - _NON_DEFINITION_KEEP_FULL_KINDS
+    return frozenset(
+        keep_full_definitions
+        | cfg.keep_signature
+        | cfg.container
+        | cfg.member
+        | cfg.keep_first_line
+    )
+
+
+def transparent_node_kinds(language: str) -> frozenset[str]:
+    """Return wrapper node kinds that should be traversed without tagging."""
+    cfg = _LANG_CONFIG.get(language)
+    return cfg.unwrap if cfg is not None else frozenset()
 
 
 def _node_attr(node: Any, name: str) -> Any:
@@ -349,7 +481,9 @@ def _signature_slice(source: bytes, node: Any, body_kinds: frozenset[str]) -> by
     return source[start:end].rstrip()
 
 
-def _extract_member_signatures(container: Any, source: bytes, cfg: LangCfg, indent: str = "    ") -> list[bytes]:
+def _extract_member_signatures(
+    container: Any, source: bytes, cfg: LangCfg, indent: str = "    "
+) -> list[bytes]:
     """Walk into a container and collect signature lines for its members."""
     out: list[bytes] = []
     # Find the body child (class_body, declaration_list, etc.) and iterate its children.
@@ -391,23 +525,37 @@ def outline_text(language: str, source: str) -> str | None:
     try:
         tree = parser.parse(source)
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parse failed for %s: %s", language, exc)
         return None
     source_bytes = source.encode("utf-8")
     root = _node_attr(tree, "root_node")
     pieces: list[bytes] = []
-    for child in _children(root):
-        kind = _kind(child)
-        if kind in cfg.keep_full:
-            start, end = _byte_range(child)
-            pieces.append(source_bytes[start:end].rstrip())
-        elif kind in cfg.keep_signature:
-            pieces.append(_signature_slice(source_bytes, child, cfg.body_kinds))
-        elif kind in cfg.container:
-            # Container declaration line + member signatures inside.
-            header = _signature_slice(source_bytes, child, cfg.body_kinds)
-            pieces.append(header)
-            pieces.extend(_extract_member_signatures(child, source_bytes, cfg))
+
+    def visit(node: Any) -> None:
+        for child in _children(node):
+            kind = _kind(child)
+            if kind in cfg.unwrap:
+                # Transparent wrapper: descend without emitting anything.
+                visit(child)
+            elif kind in cfg.keep_full:
+                start, end = _byte_range(child)
+                pieces.append(source_bytes[start:end].rstrip())
+            elif kind in cfg.keep_signature:
+                pieces.append(_signature_slice(source_bytes, child, cfg.body_kinds))
+            elif kind in cfg.keep_first_line:
+                start, end = _byte_range(child)
+                text = source_bytes[start:end].decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                pieces.append(lines[0].rstrip().encode("utf-8") if lines else b"")
+            elif kind in cfg.container:
+                # Container declaration line + member signatures inside.
+                header = _signature_slice(source_bytes, child, cfg.body_kinds)
+                pieces.append(header)
+                pieces.extend(_extract_member_signatures(child, source_bytes, cfg))
+            # else: skip — and crucially do NOT recurse (preserves top-level-only output).
+
+    visit(root)
     if not pieces:
         return None
     return b"\n".join(pieces).decode("utf-8", errors="replace")

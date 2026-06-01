@@ -138,11 +138,17 @@ node_modules/
 # -----------------------
 # Coverage/test outputs
 benchmark_results/
+.bench-work/
 eval_results/
 
 # Scripts output
 outputs/
 results/
+!docs/plans/world-class-atelier/results/
+!docs/plans/world-class-atelier/results/optimization/
+!docs/plans/world-class-atelier/results/optimization/latest.json
+!docs/plans/phase-linear-cache-reuse/results/
+!docs/plans/phase-linear-cache-reuse/results/**
 /*.py
 /*.sh
 
@@ -275,3 +281,6 @@ exports/
 
 # MCP Vector Search index directory
 .mcp-vector-search/
+# CocoIndex Code (ccc)
+/.cocoindex_code/
+/reports/

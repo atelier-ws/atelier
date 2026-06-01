@@ -77,30 +77,99 @@ Atelier persists observable execution state rather than hidden reasoning.
 | -------------------------- | ----------------------------------------------------- |
 | `atelier runs ...`         | Record, list, and inspect run data.                   |
 | `atelier ledger ...`       | Manage run ledgers and session state.                 |
-| `atelier compress-context` | Summarize a run ledger into a smaller state packet.   |
-| `atelier context-report`   | Emit compression and provenance details for a run.    |
-| `atelier diff-context`     | Show git diff context for the specified source files. |
+| `atelier swarm ...`        | Fan out isolated child attempts into git worktrees.   |
 
 Examples:
 
 ```bash
 atelier runs list
 atelier ledger list
-atelier compress-context --help
 ```
+
+## Swarm Harness
+
+`atelier swarm` is Atelier's multi-run harness. It creates one git worktree and
+one isolated `ATELIER_ROOT` per child, launches the same child agent command in
+each sandbox, collects structured result JSON, and merges accepted
+improvements onto a coordinator-owned integration base.
+
+```bash
+atelier swarm start program.md --runs 3 --continuous \
+  --runner ollama-claude \
+  --runner-model qwen3.6 \
+  --validate "make lint" \
+  --validate "uv run pytest tests/gateway/test_cli_swarm.py -q"
+```
+
+What the harness guarantees today:
+
+- one detached git worktree per child under a deterministic `*-swarm-worktrees/<run_id>/` pool
+- one isolated `ATELIER_ROOT` plus `ATELIER_WORKSPACE_ROOT` / `CLAUDE_WORKSPACE_ROOT` per child
+- a copied program spec at `.atelier-swarm/program.md` in each child worktree
+- structured child artifacts with summary, files changed, validations, cost/tokens (when available), final status, and live stdout/stderr previews
+- persisted coordinator state under `--root/swarm/runs/<run_id>/state.json`
+- a dedicated integration worktree whose accepted patches become the base for the next wave
+- optional continuous mode that keeps running until a full wave produces no accepted improvements or you stop the job
+
+Useful child environment variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `ATELIER_SWARM_SPEC_PATH` | Copied spec path inside the child worktree |
+| `ATELIER_SWARM_RESULT_PATH` | Final structured result artifact written by the wrapper |
+| `ATELIER_SWARM_METADATA_PATH` | Optional child-authored JSON metadata (`summary`, `token_count`, `cost_usd`, `validation_results`) |
+| `ATELIER_SWARM_RUN_ID` / `ATELIER_SWARM_CHILD_ID` | Stable coordinator and child identifiers |
+
+Inspection commands:
+
+```bash
+atelier swarm list
+atelier swarm status <run_id>
+atelier swarm logs <run_id> --child-id wave-03-run-01
+atelier swarm stop <run_id> --cleanup
+```
+
+If you omit the swarm spec path, Atelier resolves `program.md` relative to the
+selected project root. The command fails clearly if that file is missing or if a
+supplied spec path escapes the project root.
+
+Built-in runner profiles:
+
+| Runner | Command shape |
+| --- | --- |
+| `claude` | `claude --model <model> -p "<prompt>"` |
+| `codex` | `codex exec -m <model> "<prompt>"` |
+| `copilot` | `copilot --model <model> -p "<prompt>" --allow-all` |
+| `opencode` | `opencode run -m <provider/model> "<prompt>"` |
+| `ollama-claude` | `ollama launch claude --model <model> -- -p "<prompt>"` |
+
+You can still bypass profiles entirely and pass any raw child command after `--`
+for custom API wrappers or other CLIs.
+
+How patch acceptance works:
+
+- children from the same wave are ranked
+- successful, validated children with diffs are tried in score order
+- disjoint or cleanly mergeable patches stack onto the integration base
+- conflicting patches are rejected once a higher-ranked accepted patch already owns that space
+
+Current limitation: the coordinator owns the isolation/runtime/merge harness,
+but the actual child agent command is still supplied after `--` so you can plug
+in Claude/Codex/Copilot or another runner that speaks Atelier MCP inside that
+isolated environment. The current harness does **not** provide first-class
+OpenAI or LiteLLM child execution; the dashboard only exposes the real CLI
+runner path today.
 
 ## Retrieval, Search, and Code-Aware Helpers
 
-These commands expose the runtime's code retrieval and cached search utilities.
+Code retrieval, file reads, grep/search, and symbol lookup are exposed as
+Atelier **MCP tools** (`read`, `grep`, `search`, `symbols`, `node`, `callers`,
+`callees`, `usages`, `impact`, `explore`, `pattern`) rather than standalone CLI
+commands. Invoke them through your agent host or via `atelier tools call <name>`.
 
 | Command                  | Purpose                                                 |
 | ------------------------ | ------------------------------------------------------- |
-| `atelier search-read`    | Combined search and read workflow.                      |
-| `atelier cached-grep`    | Cache-aware grep for repeated queries.                  |
-| `atelier code ...`       | Code indexing, retrieval, and repo-map operations.      |
-| `atelier symbol-search`  | Search semantically cached symbols across the codebase. |
-| `atelier module-summary` | Generate concise module summaries.                      |
-| `atelier test-context`   | Find tests related to one or more source files.         |
+| `atelier code index`     | Build or refresh the SCIP code index for a repository.  |
 | `atelier tool-mode ...`  | Configure smart tool replacement/shadow/suggest modes.  |
 | `atelier tool-report`    | Report tool usage, savings, and redundancy patterns.    |
 | `atelier optimize`       | Show session cost optimization recommendations.         |
@@ -108,9 +177,8 @@ These commands expose the runtime's code retrieval and cached search utilities.
 Examples:
 
 ```bash
-atelier search-read "trace schema"
-atelier module-summary src/atelier/gateway/adapters/cli.py
-atelier test-context src/atelier/core/runtime.py
+atelier code index --repo-root .
+atelier tools call grep --args '{"path":".","content_regex":"TODO"}'
 ```
 
 ## Knowledge, Lessons, and Failure Workflows

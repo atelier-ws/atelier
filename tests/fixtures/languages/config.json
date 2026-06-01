@@ -1,0 +1,23 @@
+{
+  "name": "atelier-fixture",
+  "version": "1.0.0",
+  "settings": {
+    "logging": {
+      "level": "debug",
+      "format": "%(asctime)s %(levelname)s %(message)s",
+      "handlers": ["console", "file", "syslog"]
+    },
+    "database": {
+      "host": "db.internal.example.com",
+      "pool": {
+        "minSize": 1,
+        "maxSize": 8,
+        "timeoutSeconds": 30
+      }
+    }
+  },
+  "metadata": {
+    "owner": "platform",
+    "tier": "internal"
+  }
+}

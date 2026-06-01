@@ -14,6 +14,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -310,6 +311,7 @@ def build_insights(
         try:
             snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
         from atelier.infra.runtime.session_report import build_report
@@ -317,6 +319,7 @@ def build_insights(
         try:
             report = build_report(snap, root)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
 
         if report.started_at > until:
@@ -447,6 +450,7 @@ def _localdt(dt: datetime) -> str:
         local = dt.astimezone()
         return local.strftime("%Y-%m-%d")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return dt.strftime("%Y-%m-%d")
 
 

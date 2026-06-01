@@ -2,171 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from atelier.gateway.cli import cli
+from atelier.gateway.cli.commands import benchmark as benchmark_cmds
 
-
-def test_benchmark_run_action_writes_runtime_report(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(tmp_path / ".atelier"),
-            "benchmark",
-            "run",
-            "--prompt",
-            "Fix Shopify publish",
-            "--rounds",
-            "2",
-            "--json",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["tasks"]
-    report_path = tmp_path / ".atelier" / "benchmarks" / "runtime" / "latest.json"
-    assert report_path.exists()
-
-
-def test_benchmark_compare_and_export_actions(tmp_path: Path) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    run_one = runner.invoke(
-        cli,
-        ["--root", str(root), "benchmark", "run", "--prompt", "Fix Shopify publish", "--json"],
-    )
-    assert run_one.exit_code == 0, run_one.output
-
-    latest = root / "benchmarks" / "runtime" / "latest.json"
-    other = root / "benchmarks" / "runtime" / "other.json"
-    other.write_text(latest.read_text(encoding="utf-8"), encoding="utf-8")
-
-    compare = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(root),
-            "benchmark",
-            "compare",
-            "--input",
-            str(latest),
-            "--input",
-            str(other),
-        ],
-    )
-    assert compare.exit_code == 0, compare.output
-    assert len(json.loads(compare.output)["reports"]) == 2
-
-    export_path = root / "benchmarks" / "runtime" / "report.csv"
-    export = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(root),
-            "benchmark",
-            "export",
-            "--input",
-            str(latest),
-            "--output",
-            str(export_path),
-            "--format",
-            "csv",
-        ],
-    )
-    assert export.exit_code == 0, export.output
-    assert export_path.exists()
-
-
-def test_benchmark_savings_action_runs_paired_commands(tmp_path: Path) -> None:
-    script = tmp_path / "bench_agent.py"
-    script.write_text(
-        "\n".join(
-            [
-                "import json",
-                "import os",
-                "mode = os.environ['ATELIER_BENCH_MODE']",
-                "if mode == 'baseline':",
-                "    print(json.dumps({'input_tokens': 100, 'output_tokens': 50, 'cost_usd': 0.002, 'success': True}))",
-                "else:",
-                "    print(json.dumps({'input_tokens': 60, 'output_tokens': 30, 'cost_usd': 0.001, 'success': True}))",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    result = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(root),
-            "benchmark",
-            "savings",
-            "--prompt",
-            "Fix a failing benchmark",
-            "--baseline-command",
-            f"{sys.executable} {script}",
-            "--atelier-command",
-            f"{sys.executable} {script}",
-            "--json",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["tokens_saved"] == 60
-    assert payload["reduction_pct"] == 40.0
-    assert payload["cost_saved_usd"] == 0.001
-    assert (root / "benchmarks" / "savings" / "latest.json").exists()
-
-
-def test_benchmark_core_command_runs(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(tmp_path / ".atelier"),
-            "benchmark",
-            "core",
-            "--prompt",
-            "Validate publish workflow",
-            "--rounds",
-            "2",
-            "--json",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["suite"] == "core"
-    assert payload["report"]["tasks"]
-
-
-def test_benchmark_packs_command_runs(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "--root",
-            str(tmp_path / ".atelier"),
-            "benchmark",
-            "packs",
-            "--json",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["suite"] == "domains"
-    assert payload["domains_total"] >= payload["domains_benchmarked"]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_benchmark_legacy_top_level_commands_are_removed(tmp_path: Path) -> None:
@@ -174,10 +17,15 @@ def test_benchmark_legacy_top_level_commands_are_removed(tmp_path: Path) -> None
     root = tmp_path / ".atelier"
 
     assert runner.invoke(cli, ["--root", str(root), "benchmark-core", "--json"]).exit_code != 0
-    assert runner.invoke(cli, ["--root", str(root), "benchmark", "--prompt", "Fix PDP", "--json"]).exit_code != 0
+    assert (
+        runner.invoke(
+            cli, ["--root", str(root), "benchmark", "--prompt", "Fix PDP", "--json"]
+        ).exit_code
+        != 0
+    )
 
 
-def test_help_command_shows_root_and_nested_command_help(tmp_path: Path) -> None:
+def test_help_command_shows_root_command_help(tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
 
@@ -186,7 +34,227 @@ def test_help_command_shows_root_and_nested_command_help(tmp_path: Path) -> None
     assert "Commands:" in root_help.output
     assert "benchmark" in root_help.output
 
-    command_help = runner.invoke(cli, ["--root", str(root), "help", "benchmark", "run"])
-    assert command_help.exit_code == 0, command_help.output
-    assert "Usage: cli benchmark run" in command_help.output
-    assert "--prompt" in command_help.output
+
+def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(
+    monkeypatch, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench"])
+
+    assert result.exit_code == 0, result.output
+    trial_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench trial"]
+    summary_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench summary"]
+    assert len(trial_calls) == 20
+    assert len(summary_calls) == 1
+    assert {cmd[cmd.index("--mode") + 1] for cmd in trial_calls} == {"on", "off"}
+    assert {cmd[cmd.index("--task") + 1] for cmd in trial_calls} == {
+        "hello-world",
+        "fix-pandas-version",
+        "incompatible-python-fasttext",
+        "csv-to-parquet",
+        "fibonacci-server",
+        "simple-web-scraper",
+        "fix-git",
+        "swe-bench-fsspec",
+        "swe-bench-langcodes",
+        "grid-pattern-transform",
+    }
+
+
+def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    captured: dict[str, object] = {}
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+
+    def fake_run_swe_eval(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(benchmark_cmds, "_run_swe_eval", fake_run_swe_eval)
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["subset"] == "lite"
+    assert captured["split"] == "dev"
+    assert captured["slice_expr"] == "0:5"
+    assert captured["workers"] == 1
+    assert captured["proxy_upstream"] == "http://localhost:11434/v1"
+
+
+def test_benchmark_vix_wraps_runner(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+    vix_eval_dir = tmp_path / "vix-eval"
+    vix_eval_dir.mkdir()
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_vix_eval_dir", lambda repo_root, path: vix_eval_dir
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "benchmark",
+            "vix",
+            "--vix-eval-dir",
+            str(vix_eval_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    cmd, label, env = calls[0]
+    assert label == "VIX benchmark"
+    assert cmd[:3] == ["python", "-m", "benchmarks.vix_eval.run"]
+    assert "--tasks" in cmd and cmd[cmd.index("--tasks") + 1] == "all"
+    assert "--arms" in cmd
+    assert env == {"VIX_EVAL_DIR": str(vix_eval_dir.resolve())}
+
+
+def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_resolve_mcp_jobs", lambda jobs, repo_root: 6)
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp"])
+
+    assert result.exit_code == 0, result.output
+    cmd, _label, _env = calls[0]
+    assert cmd[cmd.index("--jobs") + 1] == "6"
+
+
+def test_benchmark_mcp_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp", "--jobs", "3"])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    cmd, label, _env = calls[0]
+    assert label == "MCP benchmark"
+    assert "--jobs" in cmd
+    assert cmd[cmd.index("--jobs") + 1] == "3"
+
+
+def test_benchmark_providers_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_workspace_dir",
+        lambda suite, repo_root, run_id: tmp_path / "workspace",
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers", "--jobs", "4"])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    cmd, label, _env = calls[0]
+    assert label == "provider benchmark"
+    assert "--jobs" in cmd
+    assert cmd[cmd.index("--jobs") + 1] == "4"
+
+
+def test_benchmark_providers_defaults_to_auto_and_cache_root(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(
+        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_workspace_dir",
+        lambda suite, repo_root, run_id: tmp_path / "workspace",
+    )
+    monkeypatch.setattr(benchmark_cmds, "_resolve_provider_jobs", lambda jobs, providers: 3)
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_cache_dir",
+        lambda suite, repo_root: tmp_path / "cache",
+    )
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers"])
+
+    assert result.exit_code == 0, result.output
+    cmd, label, _env = calls[0]
+    assert label == "provider benchmark"
+    assert cmd[cmd.index("--jobs") + 1] == "3"
+    assert cmd[cmd.index("--cache-root") + 1] == str((tmp_path / "cache").resolve())

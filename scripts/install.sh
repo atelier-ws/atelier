@@ -2,13 +2,13 @@
 # install.sh — bootstrap Atelier from GitHub using a curl|bash-friendly flow.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/pankaj4u4m/atelier/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
 #
 # By default only the core service and frontend are installed natively.
 # Pass --advanced --memory letta|openmemory to install one Docker sidecar.
 #
 # Optional environment variables:
-#   ATELIER_REPO_URL   Git URL (default: https://github.com/pankaj4u4m/atelier.git)
+#   ATELIER_REPO_URL   Git URL (default: https://github.com/atelier-runtime/atelier.git)
 #   ATELIER_REF        Git ref to install (default: main)
 #   ATELIER_INSTALL_DIR Install location (default: ~/.local/share/atelier)
 #   ATELIER_BIN_DIR    Global bin dir for console scripts (default: ~/.local/bin)
@@ -26,6 +26,7 @@
 #   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #   ATELIER_NON_INTERACTIVE If set to 1, disable all interactive prompts
+#   ATELIER_INSTALL_CLEAN_PROCESSES If set to 0, do not stop old Atelier processes before reinstall
 #   ATELIER_ZOEKT_AUTO_INSTALL If set to 1, non-interactive runs install local zoekt binaries when missing (default: 1)
 #   ATELIER_INSTALL_LOG_FILE Optional install log path (default: /tmp/atelier-install.<ts>.<pid>.log)
 #   --workspace DIR    Install host/project MCP artifacts into DIR instead of user-global config
@@ -74,7 +75,7 @@ if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* 
     ACTIVE_BAR="|"
 fi
 
-ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/pankaj4u4m/atelier.git}"
+ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/atelier-runtime/atelier.git}"
 ATELIER_REF="${ATELIER_REF:-main}"
 ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local/share/atelier}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
@@ -89,11 +90,13 @@ ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
 ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
 ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
+ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-0}"   # 1 = enable periodic optimize automation
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # 1 = install persistent Zoekt sidecar
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
+ATELIER_INSTALL_CLEAN_PROCESSES="${ATELIER_INSTALL_CLEAN_PROCESSES:-1}"
 export ATELIER_VERBOSE
 ATELIER_ZOEKT_AUTO_INSTALL="${ATELIER_ZOEKT_AUTO_INSTALL:-1}"
 ATELIER_INSTALL_LOG_FILE="${ATELIER_INSTALL_LOG_FILE:-}"
@@ -834,6 +837,44 @@ prompt_memory_selection() {
     esac
 }
 
+prompt_auto_optimize_selection() {
+    if [[ "$ATELIER_NO_SERVICECTL" == "1" ]]; then
+        ATELIER_AUTO_OPTIMIZE=0
+        return 0
+    fi
+    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
+    has_interactive_input || return 0
+    case "${ATELIER_AUTO_OPTIMIZE}" in
+        0|1) ;;
+        *) ATELIER_AUTO_OPTIMIZE=0 ;;
+    esac
+
+    local enable_choice=0
+    if supports_interactive_selector; then
+        interactive_single_select \
+            "Enable periodic optimization checks?" \
+            enable_choice \
+            "$ATELIER_AUTO_OPTIMIZE" \
+            "No (default, safe)" \
+            "Yes (diagnose + gated proposal artifacts)"
+    else
+        echo ""
+        printf "◇  Enable periodic optimization checks?\n"
+        printf "│  0) No  - keep autonomous optimization disabled (default)\n"
+        printf "│  1) Yes - run optimizer periodically; proposal artifacts remain NI-gated\n"
+        printf "Choice [0/1, default: %s]: " "$ATELIER_AUTO_OPTIMIZE"
+        local choice
+        read -r choice </dev/tty
+        echo ""
+        case "$choice" in
+            1) enable_choice=1 ;;
+            0|"") enable_choice="${ATELIER_AUTO_OPTIMIZE:-0}" ;;
+            *) enable_choice=0 ;;
+        esac
+    fi
+    ATELIER_AUTO_OPTIMIZE="$enable_choice"
+}
+
 prompt_local_zoekt_selection() {
     local zoekt_all_present=1
     local _z
@@ -1349,6 +1390,7 @@ install_console_scripts() {
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        stop_existing_atelier_processes
         printf '[dry-run] uv tool uninstall atelier (if present)\n'
         printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
         printf ' %q' "$package_spec"
@@ -1357,6 +1399,7 @@ install_console_scripts() {
     fi
 
     mkdir -p "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+    stop_existing_atelier_processes
     # Gracefully remove old installation first — uv tool install --force
     # sometimes fails with "Directory not empty" on Linux when the tool
     # is in use.  Uninstall is idempotent and avoids the atomic-swap path.
@@ -1378,6 +1421,55 @@ export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"
+    fi
+}
+
+stop_existing_atelier_processes() {
+    [[ "$ATELIER_INSTALL_CLEAN_PROCESSES" == "1" ]] || return 0
+
+    local current_pid="$$"
+    local parent_pid="${PPID:-}"
+    local pids=()
+    local pid args
+
+    while read -r pid args; do
+        [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
+        [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
+
+        case "$args" in
+            *"atelier-mcp.real"*|\
+            *"atelier-mcp --host"*|\
+            *"/atelier-mcp "*|\
+            *" atelier-mcp "*|\
+            *"/atelier --root "*servicectl*|\
+            *" atelier --root "*servicectl*|\
+            *"/atelier servicectl "*|\
+            *" atelier servicectl "*|\
+            *"/atelier stack run"*|\
+            *" atelier stack run"*)
+                pids+=("$pid")
+                ;;
+        esac
+    done < <(ps -eo pid=,args= 2>/dev/null || true)
+
+    [[ ${#pids[@]} -gt 0 ]] || return 0
+
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        printf '[dry-run] stop stale Atelier processes: %s\n' "${pids[*]}"
+        return 0
+    fi
+
+    verbose "Stopping stale Atelier processes before reinstall: ${pids[*]}"
+    kill -TERM "${pids[@]}" 2>/dev/null || true
+    sleep 1
+    local alive=()
+    for pid in "${pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            alive+=("$pid")
+        fi
+    done
+    if [[ ${#alive[@]} -gt 0 ]]; then
+        kill -KILL "${alive[@]}" 2>/dev/null || true
     fi
 }
 
@@ -1403,13 +1495,16 @@ install_code_tools() {
     os_type="$(uname -s)"
 
 
-    # eslint + ts-morph + typescript (TypeScript/JavaScript lint, type-check, and rename tools; require npm)
+    # eslint + ts-morph + typescript (TypeScript/JavaScript lint/type-check/rename tools)
+    # and Tier-1 SCIP indexers; require npm.
     if command -v npm >/dev/null 2>&1; then
         mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
-        verbose "Installing eslint, ts-morph, and typescript (JS/TS lint, type-check, and rename tools)..."
-        spin "Installing eslint + ts-morph" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
+        verbose "Installing JS/TS tools and Tier-1 SCIP indexers..."
+        # Sourcegraph publishes the npm packages under the @sourcegraph scope;
+        # they expose the unscoped scip-python/scip-typescript binaries.
+        spin "Installing JS/TS tools + SCIP indexers" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript @sourcegraph/scip-python @sourcegraph/scip-typescript
     else
-        warn "npm not found — skipping eslint, ts-morph, and typescript (install Node.js 20+ to enable)"
+        warn "npm not found — skipping JS/TS tools and Tier-1 SCIP indexers (install Node.js 20+ to enable)"
     fi
 
     # Rust toolchain — only used by edit hooks for Rust file lint-fix. Optional.
@@ -1497,6 +1592,7 @@ main() {
     print_installer_header
     host_wizard
     prompt_memory_selection
+    prompt_auto_optimize_selection
     prompt_local_zoekt_selection
 
     if supports_interactive_selector; then
@@ -1819,7 +1915,7 @@ main() {
             echo "[dry-run] skip code index (run inside a git repo)"
         fi
     else
-        spin "Initializing runtime store" "$atelier_cli" init
+        spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
             if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$index_target"; then
@@ -1829,6 +1925,23 @@ main() {
             index_skipped=1
             info "Index target: not detected (no git repository in current directory)"
             info "Skipped code indexing (no git repository detected)."
+        fi
+    fi
+    step_done
+    step_start "Persisting optimize automation"
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
+            echo "[dry-run] $atelier_cli optimize auto enable"
+        else
+            echo "[dry-run] $atelier_cli optimize auto disable"
+        fi
+    else
+        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
+            "$atelier_cli" optimize auto enable >>"$ATELIER_INSTALL_LOG_FILE" 2>&1 \
+                || degrade "Failed to persist auto optimize settings"
+        else
+            "$atelier_cli" optimize auto disable >>"$ATELIER_INSTALL_LOG_FILE" 2>&1 \
+                || degrade "Failed to persist auto optimize settings"
         fi
     fi
     step_done

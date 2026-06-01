@@ -71,6 +71,7 @@ def _estimate_risk_velocity(events: list[dict[str, Any]], full_risk: float) -> f
             if m is not None:
                 first_patterns.append(m)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at capability.py:70",
                 exc_info=True,
@@ -128,6 +129,7 @@ class LoopDetectionCapability:
                 if match is not None:
                     patterns.append(match)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 logger.warning(
                     "Suppressed exception at capability.py:124",
                     exc_info=True,

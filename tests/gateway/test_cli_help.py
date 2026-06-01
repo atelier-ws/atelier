@@ -12,6 +12,6 @@ def test_cli_help_shows_core_commands() -> None:
 
     output = result.output
     assert "init" in output
-    assert "context-report" in output
     assert "proof" in output
-    assert "search-read" in output
+    assert "code" in output
+    assert "savings" in output
