@@ -383,6 +383,9 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+litellm = [
+    { name = "litellm" },
+]
 mcp = [
     { name = "mcp" },
 ]
@@ -445,6 +448,7 @@ requires-dist = [
     { name = "letta", marker = "extra == 'memory-server'", specifier = ">=0.16.7" },
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
     { name = "litellm", specifier = ">=1.83.14" },
+    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", specifier = ">=1.20.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
@@ -490,7 +494,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "repo-map", "api", "postgres", "vector", "parsers", "rename", "telemetry", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "litellm", "repo-map", "api", "postgres", "vector", "parsers", "rename", "telemetry", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -15,6 +15,8 @@ import json
 from pathlib import Path
 from statistics import mean
 
+from atelier.gateway.cli.progress import ProgressReporter
+
 
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -31,9 +33,13 @@ def load_preds(path: Path) -> dict[str, str]:
 
 
 def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: Path) -> None:
+    progress = ProgressReporter("swe", total=4)
+    progress.start("building report", current="load predictions")
     baseline = load_preds(baseline_path)
     atelier = load_preds(atelier_path)
+    progress.step("building report", current="load savings log")
     savings = load_jsonl(savings_log)
+    progress.step("building report", current="compute metrics")
 
     all_ids = sorted(set(baseline) | set(atelier))
     n_baseline_patched = sum(1 for p in baseline.values() if p)
@@ -51,6 +57,7 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
     per_req = [e["pct"] for e in savings]
     avg_pct = mean(per_req) if per_req else 0.0
     n_reqs = len(savings)
+    progress.step("building report", current="write markdown")
 
     lines = [
         "# Atelier x SWE-bench Lite — Evaluation Report",
@@ -88,6 +95,8 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
     md = "\n".join(lines)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(md)
+    progress.step("building report", current=output.name)
+    progress.finish("report complete")
 
     # stdout summary
     print("\n" + "=" * 60)

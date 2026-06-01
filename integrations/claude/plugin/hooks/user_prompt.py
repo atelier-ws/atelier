@@ -63,6 +63,28 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
         return {}
 
 
+def _write_session_state(state: dict[str, Any]) -> None:
+    path = _session_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=path.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            json.dump(state, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(path)
+    except Exception:
+        logger.exception("Failed to write session state")
+        if tmp_path:
+            with contextlib.suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
+
+
 def _atelier_root() -> Path:
     root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
     if root:
@@ -134,6 +156,12 @@ def _append_prompt_event(session_id: str, prompt: str) -> None:
                 Path(tmp_path).unlink(missing_ok=True)
 
 
+def _persist_last_user_prompt(prompt: str) -> None:
+    state = _read_session_state()
+    state["last_user_prompt"] = prompt
+    _write_session_state(state)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -189,6 +217,7 @@ def main() -> int:
     prompt: str = payload.get("prompt", "") or ""
     if not prompt.strip():
         return 0
+    stored_prompt = prompt[:_MAX_PROMPT_BYTES]
 
     # Context-window check — inject a nudge when transcript is large.
     transcript_path: str = payload.get("transcript_path", "") or ""
@@ -199,6 +228,7 @@ def main() -> int:
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:
+        _persist_last_user_prompt(stored_prompt)
         from atelier.core.capabilities.autopilot.factory import run_and_emit
 
         run_and_emit("user_prompt", {"prompt": prompt})
@@ -209,7 +239,7 @@ def main() -> int:
         session_id = _active_session_id()
         if not session_id:
             return 0
-        _append_prompt_event(session_id, prompt)
+        _append_prompt_event(session_id, stored_prompt)
     except (OSError, TypeError, ValueError):
         pass  # fail-open
 

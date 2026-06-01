@@ -1,0 +1,165 @@
+{
+  "total": 5,
+  "commit_hit_rate": 1.0,
+  "mean_precision": 0.53,
+  "mean_recall": 0.8833333333333333,
+  "verdicts": [
+    {
+      "commit_sha": "ecc29d5",
+      "summary": "Skip bulky swarm dirty-state paths\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>",
+      "files": [
+        "src/atelier/infra/runtime/swarm_worktree.py",
+        "tests/infra/test_swarm_worktree.py"
+      ],
+      "affected_paths": [
+        "src/atelier/infra/runtime/swarm_worktree.py",
+        "tests/infra/test_swarm_worktree.py"
+      ],
+      "keywords": [
+        "swarm",
+        "worktree",
+        "runtime",
+        "test",
+        "infra",
+        "skip",
+        "bulky",
+        "dirty"
+      ],
+      "matched_commit": true,
+      "precision": 0.75,
+      "recall": 1.0,
+      "top_items": [
+        "commit:ecc29d5",
+        "src/atelier/infra/runtime/swarm_worktree.py",
+        "tests/infra/test_swarm_worktree.py",
+        "tests/infra/code_intel/git_history/test_walker_resume.py"
+      ]
+    },
+    {
+      "commit_sha": "74adadc",
+      "summary": "fix(quick-swarm): resolve swarm runtime paths from relative roots\n\n- resolve swarm run directories to absolute paths before child launch\n- add a regression test for relative root handling",
+      "files": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "tests/core/test_swarm_capability.py"
+      ],
+      "affected_paths": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "tests/core/test_swarm_capability.py"
+      ],
+      "keywords": [
+        "capability",
+        "swarm",
+        "test",
+        "core",
+        "fix",
+        "quick",
+        "resolve",
+        "runtime"
+      ],
+      "matched_commit": true,
+      "precision": 0.5,
+      "recall": 1.0,
+      "top_items": [
+        "commit:74adadc",
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "commit:8c6d0fc",
+        "commit:0e4d990"
+      ]
+    },
+    {
+      "commit_sha": "8c6d0fc",
+      "summary": "feat(quick-swarm): add adaptive swarm fan-out manifests\n\n- launch bounded waves below the max cap when scope is narrow\n- persist base snapshot and accepted commit manifests for exports",
+      "files": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "tests/core/test_swarm_capability.py"
+      ],
+      "affected_paths": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "tests/core/test_swarm_capability.py"
+      ],
+      "keywords": [
+        "capability",
+        "swarm",
+        "test",
+        "core",
+        "feat",
+        "quick",
+        "add",
+        "adaptive"
+      ],
+      "matched_commit": true,
+      "precision": 0.5,
+      "recall": 1.0,
+      "top_items": [
+        "commit:8c6d0fc",
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "commit:74adadc",
+        "commit:0e4d990"
+      ]
+    },
+    {
+      "commit_sha": "dd5b0ad",
+      "summary": "feat(quick-swarm): add compatible swarm state models\n\n- add adaptive fan-out and artifact metadata fields\n- preserve legacy swarm state loading defaults",
+      "files": [
+        "src/atelier/core/capabilities/swarm/models.py",
+        "tests/core/test_swarm_models.py"
+      ],
+      "affected_paths": [
+        "src/atelier/core/capabilities/swarm/models.py",
+        "tests/core/test_swarm_models.py"
+      ],
+      "keywords": [
+        "models",
+        "swarm",
+        "test",
+        "core",
+        "feat",
+        "quick",
+        "add",
+        "compatible"
+      ],
+      "matched_commit": true,
+      "precision": 0.5,
+      "recall": 0.6666666666666666,
+      "top_items": [
+        "commit:dd5b0ad",
+        "src/atelier/core/capabilities/swarm/models.py",
+        "tests/core/test_routing_models.py",
+        "commit:8c6d0fc"
+      ]
+    },
+    {
+      "commit_sha": "0e4d990",
+      "summary": "Improve swarm failure visibility\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>",
+      "files": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "src/atelier/core/capabilities/swarm/models.py",
+        "src/atelier/gateway/cli/commands/swarm.py"
+      ],
+      "affected_paths": [
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "src/atelier/core/capabilities/swarm/models.py"
+      ],
+      "keywords": [
+        "capability",
+        "swarm",
+        "models",
+        "commands",
+        "improve",
+        "failure",
+        "visibility",
+        "authored"
+      ],
+      "matched_commit": true,
+      "precision": 0.4,
+      "recall": 0.75,
+      "top_items": [
+        "commit:0e4d990",
+        "src/atelier/core/capabilities/swarm/capability.py",
+        "src/atelier/core/capabilities/failure_analysis/capability.py",
+        "commit:74adadc",
+        "commit:8c6d0fc"
+      ]
+    }
+  ]
+}

@@ -70,9 +70,10 @@ def _write_fixture_repo(root: Path) -> None:
 
 def _write_external_scip_fixture(repo_root: Path) -> None:
     from atelier.core.capabilities.code_context import CodeContextEngine
+    from atelier.infra.code_intel.scip.indexer import ScipIndexer
 
     engine = CodeContextEngine(repo_root)
-    artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
@@ -99,7 +100,9 @@ def _write_external_scip_fixture(repo_root: Path) -> None:
             }
         ],
     }
-    (artifact_dir / "external-python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    (artifact_dir / "external-python.scip").write_text(
+        json.dumps(payload, sort_keys=True), encoding="utf-8"
+    )
 
 
 def _record_trace(atelier_root: Path) -> str:
@@ -129,9 +132,17 @@ def run_external_scope_bench(work_dir: Path | None = None) -> ExternalScopeBench
 
     with _workspace_env(repo_root, atelier_root):
         mcp_server._reset_runtime_cache_for_testing()
-        repo_payload = tool_code({"op": "search", "repo_root": str(repo_root), "query": "get", "budget_tokens": 1200})
+        repo_payload = tool_code(
+            {"op": "search", "repo_root": str(repo_root), "query": "get", "budget_tokens": 1200}
+        )
         external_payload = tool_code(
-            {"op": "search", "repo_root": str(repo_root), "query": "get", "scope": "external", "budget_tokens": 1200}
+            {
+                "op": "search",
+                "repo_root": str(repo_root),
+                "query": "get",
+                "scope": "external",
+                "budget_tokens": 1200,
+            }
         )
         edit_payload = tool_smart_edit(
             {

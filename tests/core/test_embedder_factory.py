@@ -85,6 +85,18 @@ def test_make_code_embedder_falls_back_to_local_when_ollama_unavailable(
     make_code_embedder.cache_clear()
 
 
+def test_make_code_embedder_prefers_ollama_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    make_code_embedder.cache_clear()
+    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
+    monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: True)
+
+    embedder = make_code_embedder()
+
+    assert isinstance(embedder, OllamaEmbedder)
+    make_code_embedder.cache_clear()
+
+
 def test_ollama_embedder_query_prefixes_and_normalizes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

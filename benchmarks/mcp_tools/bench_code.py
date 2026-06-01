@@ -1,10 +1,10 @@
-"""pytest-based MCP code tool benchmark.
+"""pytest-based MCP public code-intel benchmark.
 
 Run:
     uv run pytest benchmarks/mcp_tools/bench_code.py -v -s
 
-Exercises all code tool operations benchmarked here (including explicit index build)
-against the real Atelier codebase.
+Exercises the public `symbols`, `node`, `callers`, `callees`, `usages`,
+`impact`, `explore`, and `pattern` MCP tools against the real Atelier codebase.
 The first run builds the SCIP index (~10-30 s); subsequent runs are cached.
 
 Baseline comparison: each case has a `baseline_tokens` estimate of what
@@ -41,9 +41,62 @@ def code_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def code_tool_fn() -> Any:
-    from atelier.gateway.adapters.mcp_server import tool_code
+    from atelier.gateway.adapters import mcp_server
 
-    return tool_code
+    def _call(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        tool_name = _tool_name_for_case_args(payload)
+        payload.pop("_tool", None)
+        if tool_name == "symbols":
+            return mcp_server.tool_symbols(payload)
+        if tool_name == "node":
+            return mcp_server.tool_node(
+                {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
+            )
+        if tool_name == "callers":
+            return mcp_server.tool_callers(
+                {
+                    "symbol": _symbol_arg(payload),
+                    "depth": int(payload.get("depth", 1)),
+                    "limit": int(payload.get("limit", 20)),
+                }
+            )
+        if tool_name == "callees":
+            return mcp_server.tool_callees(
+                {
+                    "symbol": _symbol_arg(payload),
+                    "depth": int(payload.get("depth", 1)),
+                    "limit": int(payload.get("limit", 20)),
+                }
+            )
+        if tool_name == "usages":
+            return mcp_server.tool_usages(
+                {
+                    "symbol": _symbol_arg(payload),
+                    "limit": int(payload.get("limit", 20)),
+                }
+            )
+        if tool_name == "impact":
+            return mcp_server.tool_impact({"query": _impact_query(payload)})
+        if tool_name == "explore":
+            return mcp_server.tool_explore(
+                {
+                    "query": str(payload["query"]),
+                    "seed_files": payload.get("seed_files"),
+                    "max_files": int(payload.get("max_files", 8)),
+                }
+            )
+        if tool_name == "pattern":
+            return mcp_server.tool_pattern(
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
+                }
+            )
+        raise ValueError(f"unsupported public code-intel tool: {tool_name}")
+
+    return _call
 
 
 @pytest.fixture(scope="session")
@@ -60,8 +113,7 @@ def code_bench_results(code_workspace: Path, code_tool_fn: Any) -> list[CaseResu
 
 @pytest.fixture(scope="session", autouse=True)
 def print_code_report(code_bench_results: list[CaseResult]) -> None:
-    report = ToolReport(tool_name="code", results=code_bench_results)
-    print(render_summary([report]))
+    print(render_summary(_group_reports(code_bench_results)))
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +126,43 @@ def _find(results: list[CaseResult], label: str) -> CaseResult:
         if r.case.label == label:
             return r
     raise KeyError(f"no case with label={label!r}")
+
+
+def _tool_name_for_case_args(args: dict[str, Any]) -> str:
+    explicit = args.get("_tool")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    op = str(args.get("op") or "")
+    if op in {"callers", "callees", "impact", "explore", "usages", "pattern", "node"}:
+        return op
+    return "symbols"
+
+
+def _tool_name_for_case(case: BenchCase) -> str:
+    return _tool_name_for_case_args(case.args)
+
+
+def _symbol_arg(args: dict[str, Any]) -> str:
+    for key in ("symbol", "qualified_name", "symbol_name", "symbol_id", "query"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    raise ValueError(f"missing symbol identifier in args: {args}")
+
+
+def _impact_query(args: dict[str, Any]) -> str:
+    for key in ("query", "path", "qualified_name", "symbol_name", "symbol_id"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    raise ValueError(f"missing impact query in args: {args}")
+
+
+def _group_reports(results: list[CaseResult]) -> list[ToolReport]:
+    grouped: dict[str, list[CaseResult]] = {}
+    for result in results:
+        grouped.setdefault(_tool_name_for_case(result.case), []).append(result)
+    return [ToolReport(tool_name=name, results=grouped[name]) for name in sorted(grouped)]
 
 
 # ---------------------------------------------------------------------------

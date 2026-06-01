@@ -29,6 +29,8 @@ class ContextChunk:
     channel: str = ""
     signature: str = ""
     snippet: str = ""
+    provenance: str = ""
+    commit_sha: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ContextChunk:
@@ -41,10 +43,12 @@ class ContextChunk:
             channel=str(data.get("channel", "")),
             signature=str(data.get("signature", "")),
             snippet=str(data.get("snippet", "")),
+            provenance=str(data.get("provenance", "")),
+            commit_sha=str(data.get("commit_sha", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "path": self.path,
             "symbol": self.symbol,
             "kind": self.kind,
@@ -54,6 +58,11 @@ class ContextChunk:
             "signature": self.signature,
             "snippet": self.snippet,
         }
+        if self.provenance:
+            payload["provenance"] = self.provenance
+        if self.commit_sha:
+            payload["commit_sha"] = self.commit_sha
+        return payload
 
 
 @dataclass

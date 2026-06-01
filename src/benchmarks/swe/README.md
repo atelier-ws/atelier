@@ -55,7 +55,7 @@ uv run atelier benchmark swe show-modes
 uv run atelier benchmark swe run --config benchmarks/swe/configs/lite_20.yaml
 
 # Output:
-#   benchmarks/swe/outputs/lite_20/<TIMESTAMP>/
+#   ../benchmarks/atelier/swe/lite_20/<TIMESTAMP>/
 #     config.snapshot.json
 #     metrics_<mode>.jsonl
 #     predictions_<mode>.jsonl   ← SWE-bench format
@@ -64,10 +64,10 @@ uv run atelier benchmark swe run --config benchmarks/swe/configs/lite_20.yaml
 #     report.json
 
 # Score predictions (mock evaluator if `swebench` not installed)
-uv run atelier benchmark swe evaluate --run-dir benchmarks/swe/outputs/lite_20/<TS> --mock
+uv run atelier benchmark swe evaluate --run-dir ../benchmarks/atelier/swe/lite_20/<TS> --mock
 
 # Re-render report from existing metrics
-uv run atelier benchmark swe report --run-dir benchmarks/swe/outputs/lite_20/<TS>
+uv run atelier benchmark swe report --run-dir ../benchmarks/atelier/swe/lite_20/<TS>
 ```
 
 ## Make targets
@@ -76,7 +76,7 @@ uv run atelier benchmark swe report --run-dir benchmarks/swe/outputs/lite_20/<TS
 make swe-bench-lite-20      # tiny smoke
 make swe-bench-lite-100     # full lite slice
 make swe-bench-verified-100 # verified slice (requires warm calibration)
-make swe-bench-report DIR=benchmarks/swe/outputs/lite_20/<TS>
+make swe-bench-report DIR=../benchmarks/atelier/swe/lite_20/<TS>
 ```
 
 ## Datasets
@@ -116,7 +116,7 @@ This is the schema accepted by
 
 ```bash
 uv pip install swebench
-uv run atelier benchmark swe evaluate --run-dir benchmarks/swe/outputs/lite_20/<TS>
+uv run atelier benchmark swe evaluate --run-dir ../benchmarks/atelier/swe/lite_20/<TS>
 ```
 
 If `swebench` is missing the command prints exact install instructions and

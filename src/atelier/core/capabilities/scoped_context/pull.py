@@ -7,6 +7,7 @@ with a keyword/affected-path boost, and packs within the subtask budget.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -16,13 +17,37 @@ from atelier.core.capabilities.context_reuse.dead_ends import DeadEndTracker
 from .models import ContextChunk, ScopedContext
 from .prune import apply_exclusions
 
-_ESSENTIAL_KEYS = ("path", "symbol", "kind")
+_ESSENTIAL_KEYS = ("path", "symbol", "kind", "provenance", "commit_sha")
 _OPTIONAL_DROP_ORDER = ("snippet", "signature", "qualified_name")
+_HISTORY_HINT_TOKENS = frozenset(
+    {
+        "commit",
+        "history",
+        "historical",
+        "prior",
+        "previous",
+        "regression",
+        "introduced",
+        "origin",
+        "root",
+        "cause",
+        "why",
+        "when",
+        "revert",
+    }
+)
+_HISTORY_HINT_PHRASES = (
+    "root cause",
+    "which commit",
+    "when did",
+    "why did",
+    "introduced by",
+    "history of",
+)
 
 
 def _candidate(rec: Any, channel: str, position: int) -> dict[str, Any]:
-    raw_score = getattr(rec, "score", None)
-    score = float(raw_score) if raw_score is not None else 1.0 / (1 + position)
+    score = 1.0 / (1 + position)
     return {
         "path": str(getattr(rec, "file_path", "") or ""),
         "symbol": str(getattr(rec, "symbol_name", "") or ""),
@@ -33,36 +58,106 @@ def _candidate(rec: Any, channel: str, position: int) -> dict[str, Any]:
         "snippet": str(getattr(rec, "snippet", "") or ""),
         "channel": channel,
         "score": score,
+        "provenance": str(getattr(rec, "provenance", "") or ""),
+        "commit_sha": str(getattr(rec, "commit_sha", "") or ""),
     }
 
 
-def _boost(cand: dict[str, Any], keywords: list[str], affected: list[str]) -> float:
+def _tokens(value: str) -> set[str]:
+    if not value:
+        return set()
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
+    return {token.lower() for token in re.findall(r"[A-Za-z0-9]+", normalized) if len(token) >= 2}
+
+
+def _boost(cand: dict[str, Any], query_tokens: set[str], affected: list[str]) -> float:
     score = float(cand.get("score", 0.0) or 0.0)
-    haystack = f"{cand.get('symbol', '')} {cand.get('qualified_name', '')}".lower()
-    if keywords and any(kw.lower() in haystack for kw in keywords if kw):
-        score += 0.5
+    path_tokens = _tokens(str(cand.get("path", "")))
+    text_tokens = _tokens(
+        f"{cand.get('symbol', '')} {cand.get('qualified_name', '')} {cand.get('signature', '')}"
+    )
+    path_overlap = len(query_tokens & path_tokens)
+    text_overlap = len(query_tokens & text_tokens)
+    if path_overlap:
+        score += min(1.2, 0.4 * path_overlap)
+    if text_overlap:
+        score += min(0.45, 0.15 * text_overlap)
     if affected and cand.get("path") in affected:
         score += 0.5
     return score
 
 
+def _history_intent(subtask: Any) -> bool:
+    text = " ".join([subtask.description, *list(subtask.keywords)]).lower()
+    if any(phrase in text for phrase in _HISTORY_HINT_PHRASES):
+        return True
+    return bool(_tokens(text) & _HISTORY_HINT_TOKENS)
+
+
 def _seed(subtask: Any, engine: Any) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     # Channel A: hybrid retrieval on the natural-language description.
-    for i, rec in enumerate(engine.search_symbols(subtask.description, limit=50, mode="auto", snippet="head")):
+    for i, rec in enumerate(
+        engine.search_symbols(
+            subtask.description,
+            limit=50,
+            mode="auto",
+            snippet="head",
+            provenance_filter="local",
+        )
+    ):
         candidates.append(_candidate(rec, "description", i))
     # Channel B: lexical retrieval on explicit keywords.
     if subtask.keywords:
         kw_query = " ".join(k for k in subtask.keywords if k)
         if kw_query:
-            for i, rec in enumerate(engine.search_symbols(kw_query, limit=20, mode="lexical", snippet="head")):
+            for i, rec in enumerate(
+                engine.search_symbols(
+                    kw_query,
+                    limit=20,
+                    mode="lexical",
+                    snippet="head",
+                    provenance_filter="local",
+                )
+            ):
                 candidates.append(_candidate(rec, "keyword", i))
     # Channel C: in-file symbols for explicitly affected paths.
     for path in subtask.affected_paths:
         for i, rec in enumerate(
-            engine.search_symbols(subtask.description, limit=10, mode="lexical", snippet="head", file_glob=path)
+            engine.search_symbols(
+                subtask.description,
+                limit=10,
+                mode="lexical",
+                snippet="head",
+                file_glob=path,
+                provenance_filter="local",
+            )
         ):
             candidates.append(_candidate(rec, "affected_path", i))
+    if _history_intent(subtask):
+        for i, rec in enumerate(
+            engine.search_symbols(
+                subtask.description,
+                limit=12,
+                mode="auto",
+                snippet="head",
+                provenance_filter="commit",
+            )
+        ):
+            candidates.append(_candidate(rec, "history", i))
+        if subtask.keywords:
+            kw_query = " ".join(k for k in subtask.keywords if k)
+            if kw_query:
+                for i, rec in enumerate(
+                    engine.search_symbols(
+                        kw_query,
+                        limit=8,
+                        mode="lexical",
+                        snippet="head",
+                        provenance_filter="commit",
+                    )
+                ):
+                    candidates.append(_candidate(rec, "history_keyword", i))
     return candidates
 
 
@@ -86,9 +181,10 @@ def pull(
     """Run the scoped pull and return a packed, debuggable :class:`ScopedContext`."""
     trace_id = uuid.uuid4().hex
     seeded = _dedup(_seed(subtask, engine))
+    query_tokens = _tokens(" ".join([subtask.description, *list(subtask.keywords)]))
     kept, excluded = apply_exclusions(seeded, excluded_paths=list(subtask.excluded_paths), dead_ends=dead_ends)
     for cand in kept:
-        cand["score"] = round(_boost(cand, list(subtask.keywords), list(subtask.affected_paths)), 6)
+        cand["score"] = round(_boost(cand, query_tokens, list(subtask.affected_paths)), 6)
     kept.sort(key=lambda c: float(c.get("score", 0.0)), reverse=True)
 
     packed, dropped, tokens = packer.pack(

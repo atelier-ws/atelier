@@ -8,7 +8,7 @@ Usage::
         [--model claude-sonnet-4-5] \\
         [--provider claude|ollama] \\
         [--rep 1] \\
-        [--out benchmarks/terminalbench/outputs] \\
+        [--out ../benchmarks/atelier/terminalbench/manual] \\
         [--dataset-name terminal-bench-core] \\
         [--dataset-version 0.1.1]
 
@@ -26,6 +26,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from atelier.gateway.cli.progress import ProgressReporter
 
 # ---------------------------------------------------------------------------
 # RunRecord — per-run row for JSONL aggregation
@@ -82,13 +84,13 @@ def write_records(rows: list[RunRecord], path: Path) -> Path:
 
     Args:
         rows: List of ``RunRecord`` instances to write.
-        path: Destination ``.jsonl`` file path (created/overwritten).
+        path: Destination ``.jsonl`` file path (created/appended).
 
     Returns:
         The path that was written.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
+    with path.open("a", encoding="utf-8") as fh:
         for row in rows:
             fh.write(row.to_jsonl() + "\n")
     return path
@@ -121,6 +123,11 @@ def write_transcript(result: Any, out_dir: Path) -> Path:
     return final_path
 
 
+def _default_output_dir() -> Path:
+    repo_root = Path.cwd().resolve()
+    return repo_root.parent / "benchmarks" / repo_root.name / "terminalbench" / "manual"
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -128,9 +135,6 @@ def write_transcript(result: Any, out_dir: Path) -> Path:
 
 def main() -> None:
     """CLI entry point: run a single (task, mode, rep) trial."""
-    from terminalbench.agent_adapter import run_terminalbench_trial
-    from terminalbench.reporter import render_run_summary
-
     parser = argparse.ArgumentParser(
         prog="terminalbench.runner",
         description="Run a single TerminalBench trial and write transcript JSON.",
@@ -159,11 +163,7 @@ def main() -> None:
         default=1,
         help="Repetition number, 1-based (default: 1)",
     )
-    parser.add_argument(
-        "--out",
-        default="benchmarks/terminalbench/outputs",
-        help="Output directory for transcripts and JSONL log",
-    )
+    parser.add_argument("--out", default=None, help="Output directory for transcripts and JSONL log")
     parser.add_argument(
         "--dataset-name",
         default="terminal-bench-core",
@@ -176,8 +176,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    out_dir = Path(args.out)
+    from terminalbench.agent_adapter import run_terminalbench_trial
+    from terminalbench.reporter import render_run_summary
+
+    out_dir = Path(args.out) if args.out is not None else _default_output_dir()
     print(f"Running {args.task} [{args.mode}] rep {args.rep} via {args.model}...")
+    progress = ProgressReporter("terminalbench", total=1)
+    progress.start("running trial", current=f"{args.task} {args.mode} rep {args.rep}")
 
     result = run_terminalbench_trial(
         task_id=args.task,
@@ -189,6 +194,8 @@ def main() -> None:
         dataset_name=args.dataset_name,
         dataset_version=args.dataset_version,
     )
+    progress.step("trial complete", current=f"{args.task} {args.mode} rep {args.rep}")
+    progress.finish("runner complete")
 
     transcript_path = write_transcript(result, out_dir)
 

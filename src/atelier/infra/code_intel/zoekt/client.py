@@ -39,9 +39,16 @@ class ZoektClient:
             "index_age_seconds": health.index_age_seconds,
         }
 
-    def search(self, query: str, *, num_matches: int = 50, file_glob: str | None = None) -> list[ZoektFileResult]:
+    def search(
+        self, query: str, *, num_matches: int = 50, file_glob: str | None = None
+    ) -> list[ZoektFileResult]:
         payload = self.server.raw_search({"Q": query})
-        files = payload.get("Result", {}).get("Files", [])
+        result_payload = payload.get("Result") or {}
+        if not isinstance(result_payload, dict):
+            result_payload = {}
+        files = result_payload.get("Files")
+        if not isinstance(files, list):
+            files = []
         results: list[ZoektFileResult] = []
         for item in files:
             if not isinstance(item, dict):
@@ -49,7 +56,9 @@ class ZoektClient:
             path = str(item.get("FileName") or "")
             if file_glob and not fnmatch(path, file_glob):
                 continue
-            raw_matches = item.get("LineMatches", [])
+            raw_matches = item.get("LineMatches")
+            if not isinstance(raw_matches, list):
+                raw_matches = []
             matches: list[ZoektClientMatch] = []
             for raw in raw_matches:
                 if not isinstance(raw, dict):
@@ -58,11 +67,17 @@ class ZoektClient:
                 line_start = int(raw.get("LineStart", 0))
                 encoded_line = str(raw.get("Line") or "")
                 try:
-                    line_text = base64.b64decode(encoded_line).decode("utf-8", errors="replace").rstrip("\n")
+                    line_text = (
+                        base64.b64decode(encoded_line)
+                        .decode("utf-8", errors="replace")
+                        .rstrip("\n")
+                    )
                 except (ValueError, TypeError):
                     line_text = ""
-                line_fragments = raw.get("LineFragments", [])
-                if not isinstance(line_fragments, list) or not line_fragments:
+                line_fragments = raw.get("LineFragments")
+                if not isinstance(line_fragments, list):
+                    line_fragments = []
+                if not line_fragments:
                     line_end = int(raw.get("LineEnd", line_start))
                     matches.append(
                         ZoektClientMatch(
@@ -76,7 +91,9 @@ class ZoektClient:
                 for fragment in line_fragments:
                     if not isinstance(fragment, dict):
                         continue
-                    byte_start = _int_value(fragment.get("Offset", fragment.get("LineOffset", line_start)))
+                    byte_start = _int_value(
+                        fragment.get("Offset", fragment.get("LineOffset", line_start))
+                    )
                     byte_end = byte_start + _int_value(fragment.get("MatchLength", 0))
                     matches.append(
                         ZoektClientMatch(

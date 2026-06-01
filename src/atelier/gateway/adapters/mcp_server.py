@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import uuid as _uuid_mod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from functools import wraps
 from hashlib import sha256
@@ -107,7 +107,9 @@ def mcp_tool(
         sig = inspect.signature(func)
         fields = {}
         for param_name, param in sig.parameters.items():
-            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            annotation = (
+                param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            )
             default = param.default if param.default is not inspect.Parameter.empty else ...
             fields[param_name] = (
                 annotation,
@@ -201,7 +203,11 @@ def _detect_agent() -> str:
         return "opencode"
     if os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
         return "cursor"
-    if os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or os.environ.get("HERMES_CLI"):
+    if (
+        os.environ.get("HERMES_HOME")
+        or os.environ.get("HERMES_SESSION_ID")
+        or os.environ.get("HERMES_CLI")
+    ):
         return "hermes"
     if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
         return "copilot"
@@ -555,6 +561,8 @@ def _reset_runtime_cache_for_testing() -> None:
     _last_plan_hash_by_session.clear()
     _last_plan_by_session.clear()
     _last_blocked_plan_hash_by_session.clear()
+    _code_engine_cache.clear()
+    _scoped_context_cache.clear()
 
 
 def _live_savings_events_path() -> Path:
@@ -602,10 +610,7 @@ def _workspace_session_state_file() -> Path:
 def _read_workspace_session_bridge() -> tuple[str, str]:
     """Read `(claude_session_id, model)` from workspace session_state.json."""
     try:
-        path = _workspace_session_state_file()
-        if not path.is_file():
-            return "", ""
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _read_workspace_session_state()
         if not isinstance(data, dict):
             return "", ""
         sid = str(data.get("session_id") or "").strip()
@@ -614,6 +619,27 @@ def _read_workspace_session_bridge() -> tuple[str, str]:
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return "", ""
+
+
+def _read_workspace_session_state() -> dict[str, Any]:
+    try:
+        path = _workspace_session_state_file()
+        if not path.is_file():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return {}
+
+
+def _write_workspace_session_state(state: dict[str, Any]) -> None:
+    try:
+        path = _workspace_session_state_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
 
 
 def _register_mcp_session() -> None:
@@ -809,7 +835,9 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         _log.debug("context savings ledger append failed", exc_info=True)
 
 
-def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
+def _append_workspace_savings(
+    tool_name: str, tokens_saved: int, calls_saved: int, rid: str = ""
+) -> None:
     """Backward-compat shim — delegates to _append_savings."""
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
 
@@ -1024,6 +1052,8 @@ def tool_get_context(
     task: str,
     domain: str | None = None,
     files: list[str] | None = None,
+    keywords: list[str] | None = None,
+    excluded_paths: list[str] | None = None,
     tools: list[str] | None = None,
     errors: list[str] | None = None,
     max_blocks: int = 5,
@@ -1045,6 +1075,11 @@ def tool_get_context(
         task:         Current task description (required). Drives block retrieval ranking.
         domain:       Optional domain tag (e.g. "python", "infra") to narrow retrieval.
         files:        File paths relevant to the task — boosts blocks associated with those files.
+                      In mode="pull", these become the scoped subtask's affected_paths.
+        keywords:     Optional explicit retrieval keywords. In mode="pull", these seed keyword retrieval.
+        excluded_paths:
+                      Optional path prefixes/globs to exclude. In mode="pull", these become
+                      the scoped subtask's excluded_paths.
         tools:        Tools you plan to use — helps rank procedure blocks that match.
         errors:       Recent error messages — triggers rescue-mode block retrieval.
         max_blocks:   Maximum number of ReasonBlocks to inject (default 5).
@@ -1073,19 +1108,24 @@ def tool_get_context(
             ),
         )
     if mode == "pull":
-        from atelier.core.capabilities.scoped_context import ScopedContextCapability, Subtask
+        from atelier.core.capabilities.scoped_context import Subtask
 
-        engine = _code_context_engine(".")
         subtask = Subtask(
             description=task,
             affected_paths=files or [],
+            keywords=keywords or [],
+            excluded_paths=excluded_paths or [],
             budget_tokens=token_budget or 4000,
         )
-        return ScopedContextCapability(engine).pull(subtask).to_dict()
+        return cast(dict[str, Any], _scoped_context_capability(".").pull(subtask).to_dict())
     if errors is None:
         errors = []
     if tools is None:
         tools = []
+    if keywords is None:
+        keywords = []
+    if excluded_paths is None:
+        excluded_paths = []
     if files is None:
         files = []
     rt = _runtime()
@@ -1101,6 +1141,8 @@ def tool_get_context(
             "task": task,
             "domain": domain,
             "files": files,
+            "keywords": keywords,
+            "excluded_paths": excluded_paths,
             "tools": tools,
             "errors": errors,
             "max_blocks": max_blocks,
@@ -1152,7 +1194,9 @@ def tool_get_context(
 
         context_text = result.get("context", "")
         bootstrap_text = (
-            result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
+            result.get("bootstrap", {}).get("context", "")
+            if isinstance(result.get("bootstrap"), dict)
+            else ""
         )
         _recall_count = len(result.get("recalled_passages", []))
 
@@ -1457,7 +1501,9 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
 )
 def tool_route(
     task: str = "",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
+    task_type: Literal[
+        "debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"
+    ] = "feature",
     budget: Literal["cheap", "balanced", "best"] = "balanced",
 ) -> dict[str, Any]:
     """Pick the best model for an upcoming task."""
@@ -1772,9 +1818,18 @@ def tool_record_trace(
     # Derive host label from agent string and environment
     def _derive_host(a: str) -> str:
         al = a.lower()
-        if "antigravity" in al or "agy" in al or os.environ.get("ANTIGRAVITY_CLI") or os.environ.get("AGY_CLI"):
+        if (
+            "antigravity" in al
+            or "agy" in al
+            or os.environ.get("ANTIGRAVITY_CLI")
+            or os.environ.get("AGY_CLI")
+        ):
             return "antigravity"
-        if "cursor" in al or os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
+        if (
+            "cursor" in al
+            or os.environ.get("CURSOR_SESSION_ID")
+            or os.environ.get("CURSOR_TRACE_ID")
+        ):
             return "cursor"
         if (
             "hermes" in al
@@ -1962,7 +2017,9 @@ def _compress_context(session_id: str | None = None) -> Any:
     led = _get_ledger()
     if session_id:
         led.session_id = session_id
-    state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
+    state = ContextCompressor().compress(
+        led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+    )
     compaction_savings = _session_compaction_savings_payload(
         led,
         state,
@@ -2012,7 +2069,9 @@ def _memory_upsert_block(
     clean_description = _redact_memory_input(description, "description")
     store = _memory_store()
     existing = store.get_block(agent_id, label)
-    version = expected_version if expected_version is not None else (existing.version if existing else 1)
+    version = (
+        expected_version if expected_version is not None else (existing.version if existing else 1)
+    )
     seed = existing or MemoryBlock(agent_id=agent_id, label=label, value=clean_value)
     block = MemoryBlock(
         id=seed.id,
@@ -2048,7 +2107,9 @@ def _memory_upsert_block(
         )
     elif decision.op == "DELETE" and target is not None:
         store.tombstone_block(target.id, deprecated_by_block_id=block.id, reason=decision.reason)
-        stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}", reason=decision.reason)
+        stored = store.upsert_block(
+            block, actor=actor or f"agent:{agent_id}", reason=decision.reason
+        )
     else:
         stored = store.upsert_block(block, actor=actor or f"agent:{agent_id}")
     return {
@@ -2324,7 +2385,9 @@ def tool_memory(
     top_k: Annotated[int, Field(description="Max results to return for recall.")] = 5,
     subject: Annotated[
         str | None,
-        Field(description="Fact subject for store_fact (for example: testing, workflow preference)."),
+        Field(
+            description="Fact subject for store_fact (for example: testing, workflow preference)."
+        ),
     ] = None,
     fact: Annotated[
         str | None,
@@ -2622,7 +2685,9 @@ def _resolve_snapshot_path(raw_path: str, repo_root: Path) -> tuple[str, Path]:
     return display, resolved
 
 
-def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path | None = None) -> dict[str, Path]:
+def _collect_touched_paths(
+    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None
+) -> dict[str, Path]:
     """Extract workspace-resolved file paths referenced in edit descriptors."""
     root = Path(repo_root or Path.cwd()).resolve()
     paths: dict[str, Path] = {}
@@ -2695,7 +2760,9 @@ def _validate_edit_descriptor_families(edits: list[dict[str, Any]]) -> str:
         raise ValueError("edits must include at least one descriptor")
     families = {_edit_descriptor_family(edit) for edit in edits}
     if len(families) > 1:
-        raise ValueError("cannot mix legacy op/path descriptors with rich edit descriptors in one call")
+        raise ValueError(
+            "cannot mix legacy op/path descriptors with rich edit descriptors in one call"
+        )
     return families.pop()
 
 
@@ -3021,7 +3088,8 @@ def _ledger_turn_count(led: RunLedger) -> int:
     turn_events = [
         event
         for event in led.events
-        if event.kind in {"agent_message", "reasoning", "test_result", "command_result", "tool_result"}
+        if event.kind
+        in {"agent_message", "reasoning", "test_result", "command_result", "tool_result"}
     ]
     if turn_events:
         return len(turn_events)
@@ -3056,9 +3124,14 @@ def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
     # Bypass the min-turns gate when utilisation is already very high - a small
     # number of dense turns (huge tool outputs, large file reads) can fill the
     # window just as fast as many small ones.
-    turns_gate_passed = turn_count > AUTO_COMPACT_MIN_TURNS or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
+    turns_gate_passed = (
+        turn_count > AUTO_COMPACT_MIN_TURNS or utilisation_pct >= AUTO_COMPACT_HIGH_UTIL_OVERRIDE
+    )
     should_auto_compact = (
-        not should_handover and utilisation_pct >= AUTO_COMPACT_THRESHOLD and turns_gate_passed and boundary
+        not should_handover
+        and utilisation_pct >= AUTO_COMPACT_THRESHOLD
+        and turns_gate_passed
+        and boundary
     )
     should_advise = utilisation_pct >= COMPACT_ADVISORY_THRESHOLD
 
@@ -3126,7 +3199,9 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         utilisation_pct = float(lifecycle["utilisation_pct"])
         should_compact = bool(lifecycle["should_compact"])
         should_handover = bool(lifecycle["should_handover"])
-        state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
+        state = ContextCompressor().compress(
+            led, preserve_last_n_turns=10, workspace_root=_workspace_root()
+        )
         compaction_savings = _session_compaction_savings_payload(
             led,
             state,
@@ -3316,6 +3391,8 @@ _code_engine_for_current_call: threading.local = threading.local()
 # MCP server performance (persistent process) and benchmark correctness.
 _code_engine_cache: dict[str, Any] = {}
 _code_engine_cache_lock: threading.Lock = threading.Lock()
+_scoped_context_cache: dict[str, Any] = {}
+_scoped_context_cache_lock: threading.Lock = threading.Lock()
 
 
 def _code_context_engine(repo_root: str = ".") -> Any:
@@ -3333,6 +3410,23 @@ def _code_context_engine(repo_root: str = ".") -> Any:
                 engine = CodeContextEngine(resolved)
                 _code_engine_cache[cache_key] = engine
     return engine
+
+
+def _scoped_context_capability(repo_root: str = ".") -> Any:
+    from atelier.core.capabilities.scoped_context import ScopedContextCapability
+
+    workspace = str(_workspace_root())
+    root = Path(repo_root)
+    resolved = (root if root.is_absolute() else Path(workspace) / root).resolve()
+    cache_key = str(resolved)
+    capability = _scoped_context_cache.get(cache_key)
+    if capability is None:
+        with _scoped_context_cache_lock:
+            capability = _scoped_context_cache.get(cache_key)
+            if capability is None:
+                capability = ScopedContextCapability(_code_context_engine(str(resolved)))
+                _scoped_context_cache[cache_key] = capability
+    return capability
 
 
 def _workspace_code_router(repo_root: str = ".") -> Any:
@@ -3413,21 +3507,27 @@ def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
 
     # Strip internal keys from the target object
     if isinstance(result.get("target"), dict):
-        result["target"] = {k: v for k, v in result["target"].items() if k not in _CODE_OP_ITEM_STRIP}
+        result["target"] = {
+            k: v for k, v in result["target"].items() if k not in _CODE_OP_ITEM_STRIP
+        }
 
     # Strip internal keys from list fields
     for field in _CODE_OP_ITEM_LIST_FIELDS:
         lst = result.get(field)
         if isinstance(lst, list):
             result[field] = [
-                {k: v for k, v in item.items() if k not in _CODE_OP_ITEM_STRIP} if isinstance(item, dict) else item
+                {k: v for k, v in item.items() if k not in _CODE_OP_ITEM_STRIP}
+                if isinstance(item, dict)
+                else item
                 for item in lst
             ]
 
     return result
 
 
-def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_compact: bool) -> dict[str, Any]:
+def _maybe_attach_code_rendered(
+    op: str, payload: dict[str, Any], *, render_compact: bool
+) -> dict[str, Any]:
     # Render first so the markdown uses all original fields (e.g. repo_id for cache_status heading).
     from atelier.core.capabilities.code_context.renderer import render_code_payload
 
@@ -3453,6 +3553,155 @@ def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_comp
             )
 
     return result
+
+
+_CODE_SEARCH_SUGGESTED_NEXT = (
+    {"op": "usages", "query": "{query}"},
+    {"op": "context", "query": "{query}"},
+)
+
+
+def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "kind": item.get("kind"),
+        "name": item.get("name") or item.get("symbol_name"),
+        "qualified_name": item.get("qualified_name"),
+        "path": item.get("path") or item.get("file_path"),
+        "line": item.get("line") or item.get("start_line"),
+        "end_line": item.get("end_line"),
+        "signature": item.get("signature"),
+        "score": item.get("score"),
+        "role": item.get("role") or "definition",
+    }
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def _code_search_suggested_next(query: str) -> list[dict[str, str]]:
+    return [
+        {key: value.format(query=query) for key, value in suggestion.items()}
+        for suggestion in _CODE_SEARCH_SUGGESTED_NEXT
+    ]
+
+
+def _code_search_target_view(payload: dict[str, Any], *, query: str) -> dict[str, Any]:
+    items = payload.get("items")
+    if isinstance(items, list):
+        payload["items"] = [
+            _code_search_target_item(item) if isinstance(item, dict) else item for item in items
+        ]
+    if payload.get("items"):
+        payload["has_more_context"] = True
+        payload["suggested_next"] = _code_search_suggested_next(query)
+    payload["view"] = "target"
+    return payload
+
+
+def _flatten_code_references(references: Any) -> list[dict[str, Any]]:
+    if isinstance(references, list):
+        return [dict(item) for item in references if isinstance(item, dict)]
+    if isinstance(references, dict):
+        flattened: list[dict[str, Any]] = []
+        for values in references.values():
+            if isinstance(values, list):
+                flattened.extend(dict(item) for item in values if isinstance(item, dict))
+        return flattened
+    return []
+
+
+def _code_search_graph_view(
+    engine: Any,
+    *,
+    query: str,
+    search_payload: dict[str, Any],
+    view: Literal["graph", "explain"],
+    limit: int,
+    depth: int,
+    budget_tokens: int,
+) -> dict[str, Any]:
+    items = search_payload.get("items")
+    primary = (
+        next((item for item in items if isinstance(item, dict)), None)
+        if isinstance(items, list)
+        else None
+    )
+    if primary is None:
+        return {
+            "target": None,
+            "related": {"imports": [], "usages": [], "callers": [], "callees": []},
+            "view": view,
+            "mode": search_payload.get("mode"),
+            "provenance": search_payload.get("provenance"),
+        }
+
+    target = _code_search_target_item(primary)
+    symbol_args = {
+        "query": query,
+        "symbol_id": primary.get("symbol_id") or primary.get("id"),
+        "qualified_name": primary.get("qualified_name"),
+        "symbol_name": primary.get("symbol_name") or primary.get("name"),
+        "file_path": primary.get("file_path") or primary.get("path"),
+    }
+    relation_budget = max(300, budget_tokens // 3)
+    usages = engine.tool_usages(
+        query=symbol_args["query"],
+        symbol_id=symbol_args["symbol_id"],
+        qualified_name=symbol_args["qualified_name"],
+        symbol_name=symbol_args["symbol_name"],
+        file_path=symbol_args["file_path"],
+        group_by="none",
+        snippet_lines=0,
+        limit=limit,
+        budget_tokens=relation_budget,
+        auto_index=False,
+    )
+    callers = engine.tool_callers(
+        query=symbol_args["query"],
+        symbol_id=symbol_args["symbol_id"],
+        qualified_name=symbol_args["qualified_name"],
+        symbol_name=symbol_args["symbol_name"],
+        file_path=symbol_args["file_path"],
+        depth=depth,
+        limit=limit,
+        budget_tokens=relation_budget,
+        auto_index=False,
+    )
+    callees = engine.tool_callees(
+        query=symbol_args["query"],
+        symbol_id=symbol_args["symbol_id"],
+        qualified_name=symbol_args["qualified_name"],
+        symbol_name=symbol_args["symbol_name"],
+        file_path=symbol_args["file_path"],
+        depth=depth,
+        limit=limit,
+        budget_tokens=relation_budget,
+        auto_index=False,
+    )
+    refs = _flatten_code_references(usages.get("references"))
+    imports = [ref for ref in refs if "import" in str(ref.get("edge_kind") or "")]
+    usage_refs = [ref for ref in refs if ref not in imports]
+    payload: dict[str, Any] = {
+        "target": target,
+        "related": {
+            "imports": imports,
+            "usages": usage_refs,
+            "callers": callers.get("related", []),
+            "callees": callees.get("related", []),
+        },
+        "view": view,
+        "mode": "lexical+graph" if view == "explain" else "graph",
+        "provenance": search_payload.get("provenance"),
+    }
+    if view == "explain":
+        payload["items"] = [
+            _code_search_target_item(item) if isinstance(item, dict) else item
+            for item in cast(list[Any], search_payload.get("items", []))
+        ]
+        payload["explanation"] = (
+            "items are primary search targets; related contains graph evidence from usages, "
+            "callers, and callees."
+        )
+        payload["suggested_next"] = _code_search_suggested_next(query)
+    return payload
 
 
 SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
@@ -3484,6 +3733,18 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "enum": ["auto", "lexical", "semantic", "hybrid"],
             "default": "auto",
             "description": "'auto': picks best mode. 'lexical': exact identifier match. 'semantic': description/intent match.",
+        },
+        "view": {
+            "type": "string",
+            "enum": ["target", "graph", "context", "explain"],
+            "default": "target",
+            "description": (
+                "Response shape for op='search'. "
+                "'target' returns primary definition/file matches only. "
+                "'graph' returns relationships for the best target. "
+                "'context' returns a broader code context pack. "
+                "'explain' returns targets plus ranking/graph evidence."
+            ),
         },
         "kind": {
             "type": "string",
@@ -3524,9 +3785,8 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 
 
 @mcp_tool(name="symbols", input_schema=SYMBOLS_TOOL_INPUT_SCHEMA)
-def tool_code(
+def tool_symbols(
     op: str = "search",
-    repo_root: str = ".",
     repo: str | None = None,
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
@@ -3535,6 +3795,7 @@ def tool_code(
     rewrite: str | None = None,
     limit: int = 20,
     mode: Literal["auto", "lexical", "semantic", "hybrid"] = "auto",
+    view: Literal["target", "graph", "context", "explain"] = "target",
     kind: str | None = None,
     language: str | None = None,
     snippet: Literal["none", "head", "full"] = "none",
@@ -3589,6 +3850,10 @@ def tool_code(
     Prefer over `grep` for symbol lookup — results are exact (not textual), indexed, and token-budgeted.
     Use `grep` for regex on arbitrary text. Use `search` for ranked file/snippet retrieval.
 
+    For `op="search"`, `view` controls response shape: `target` locates primary
+    definitions/files, `graph` returns relationships for the best target, `context`
+    returns a broader context pack, and `explain` combines targets with graph evidence.
+
     For call-graph, reference, and structural work use the dedicated tools:
     `node` (read a definition), `callers` / `callees` (call graph), `usages`
     (all references), `impact` (blast radius), `pattern` (AST search/rewrite),
@@ -3596,13 +3861,13 @@ def tool_code(
     """
     if op == "node":
         op = "symbol"
-    workspace_router = _workspace_code_router(repo_root)
+    workspace_router = _workspace_code_router()
     if repo is not None and not workspace_router.is_configured:
         raise ValueError("repo filter requires .atelier/workspace.toml")
     if repo is not None and op not in {"search", "symbol"}:
         raise ValueError("repo filter is only supported for workspace search and symbol operations")
 
-    engine = _code_context_engine(repo_root)
+    engine = _code_context_engine()
     _code_engine_for_current_call.value = engine
 
     if op == "index":
@@ -3623,6 +3888,19 @@ def tool_code(
     if op == "search":
         if not query:
             raise ValueError("query is required for code search")
+        if view == "context":
+            context_payload = engine.tool_context(
+                task=query,
+                seed_files=seed_files,
+                budget_tokens=budget_tokens,
+                max_symbols=max_symbols,
+            )
+            context_payload["view"] = "context"
+            return _maybe_attach_code_rendered(
+                "context",
+                cast(dict[str, Any], context_payload),
+                render_compact=render_compact,
+            )
         search_kwargs: dict[str, Any] = {
             "limit": limit,
             "mode": mode,
@@ -3641,26 +3919,42 @@ def tool_code(
         if provenance is not None:
             search_kwargs["provenance_filter"] = provenance
         if workspace_router.is_configured:
+            routed_payload = cast(
+                dict[str, Any],
+                workspace_router.route("search", repo=repo, query=query, **search_kwargs),
+            )
+            routed_payload = _code_search_target_view(routed_payload, query=query)
+            if view in {"graph", "explain"}:
+                routed_payload["view"] = view
             return _maybe_attach_code_rendered(
                 op,
-                cast(
-                    dict[str, Any],
-                    workspace_router.route("search", repo=repo, query=query, **search_kwargs),
-                ),
+                routed_payload,
                 render_compact=render_compact,
+            )
+        search_payload = cast(dict[str, Any], engine.tool_search(query, **search_kwargs))
+        if view == "target":
+            search_payload = _code_search_target_view(search_payload, query=query)
+        elif view in {"graph", "explain"}:
+            search_payload = _code_search_graph_view(
+                engine,
+                query=query,
+                search_payload=search_payload,
+                view=view,
+                limit=limit,
+                depth=depth,
+                budget_tokens=budget_tokens,
             )
         return _maybe_attach_code_rendered(
             op,
-            cast(
-                dict[str, Any],
-                engine.tool_search(query, **search_kwargs),
-            ),
+            search_payload,
             render_compact=render_compact,
         )
 
     if op == "blame":
         if not (query or symbol_id or qualified_name or symbol_name):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code blame")
+            raise ValueError(
+                "query, symbol_id, qualified_name, or symbol_name is required for code blame"
+            )
         return _maybe_attach_code_rendered(
             op,
             cast(
@@ -3794,7 +4088,9 @@ def tool_code(
 
     if op == "usages":
         if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
+            raise ValueError(
+                "query, symbol_id, qualified_name, or symbol_name is required for code usages"
+            )
         return _maybe_attach_code_rendered(
             op,
             cast(
@@ -3819,7 +4115,9 @@ def tool_code(
 
     if op == "callers":
         if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callers")
+            raise ValueError(
+                "query, symbol_id, qualified_name, or symbol_name is required for code callers"
+            )
         return _maybe_attach_code_rendered(
             op,
             cast(
@@ -3843,7 +4141,9 @@ def tool_code(
 
     if op == "callees":
         if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callees")
+            raise ValueError(
+                "query, symbol_id, qualified_name, or symbol_name is required for code callees"
+            )
         return _maybe_attach_code_rendered(
             op,
             cast(
@@ -3869,7 +4169,9 @@ def tool_code(
         if not new_name:
             raise ValueError("new_name is required for code rename")
         if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code rename")
+            raise ValueError(
+                "query, symbol_id, qualified_name, or symbol_name is required for code rename"
+            )
         from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
 
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
@@ -3967,9 +4269,9 @@ def tool_code(
     raise ValueError(f"unknown op: {op!r}")
 
 
-# Normalize "code:callers" → "callers" etc. so external benchmarks using the
+# Normalize "code:callers" → "callers" etc. so legacy callers using the
 # "code:" prefix alias convention still route correctly.
-_raw_tool_code_handler = TOOLS["symbols"]["handler"]
+_raw_tool_symbols_handler = TOOLS["symbols"]["handler"]
 
 
 # Result keys that represent batched discoveries — each item would have
@@ -3987,11 +4289,11 @@ _CODE_BATCH_KEYS: tuple[str, ...] = (
 )
 
 
-def _tool_code_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
+def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
     op = args.get("op")
     if isinstance(op, str) and op.startswith("code:"):
         args = {**args, "op": op[5:]}
-    result: dict[str, Any] = _raw_tool_code_handler(args)
+    result: dict[str, Any] = _raw_tool_symbols_handler(args)
     # Infer calls_saved for batched ops: each list-of-items result represents
     # N findings that would have cost N naive calls (grep + read + scan).
     if isinstance(result, dict) and "calls_saved" not in result:
@@ -4003,11 +4305,12 @@ def _tool_code_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-TOOLS["symbols"]["handler"] = _tool_code_alias_handler
-tool_code = _tool_code_alias_handler  # noqa: F811
+TOOLS["symbols"]["handler"] = _tool_symbols_alias_handler
+tool_symbols = _tool_symbols_alias_handler  # noqa: F811
+tool_code = _tool_symbols_alias_handler
 
 # ------------------------------------------------------------------ #
-# Dedicated code-intel tools — thin wrappers over the `code` op.     #
+# Dedicated code-intel tools — thin wrappers over the `symbols` op.  #
 # Dedicated names let LLMs pick the right tool without knowing the   #
 # op parameter; each has a focused schema and clear description.      #
 # ------------------------------------------------------------------ #
@@ -4045,7 +4348,7 @@ def tool_node(
         kwargs["path"] = path
     if line is not None:
         kwargs["line"] = line
-    return _tool_code_alias_handler(kwargs)
+    return _tool_symbols_alias_handler(kwargs)
 
 
 @mcp_tool(name="callers")
@@ -4060,7 +4363,9 @@ def tool_callers(
     Returns caller names, file paths, and line numbers grouped by file.
     depth=1: direct callers; depth=2: transitive callers.
     """
-    return _tool_code_alias_handler({"op": "callers", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+    return _tool_symbols_alias_handler(
+        {"op": "callers", **_parse_symbol(symbol), "depth": depth, "limit": limit}
+    )
 
 
 @mcp_tool(name="callees")
@@ -4075,7 +4380,9 @@ def tool_callees(
     Returns callee names, file paths, and call sites grouped by file.
     depth=1: direct callees; depth=2: transitive callees.
     """
-    return _tool_code_alias_handler({"op": "callees", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+    return _tool_symbols_alias_handler(
+        {"op": "callees", **_parse_symbol(symbol), "depth": depth, "limit": limit}
+    )
 
 
 @mcp_tool(name="impact")
@@ -4088,7 +4395,7 @@ def tool_impact(
     Pass a file path (e.g. 'src/auth.py') for file-level, or a symbol name/qualified path/scip-id for symbol-level.
     Returns: files grouped by reason (calls, imports, inherits, etc.).
     """
-    result = _tool_code_alias_handler({"op": "impact", "query": query})
+    result = _tool_symbols_alias_handler({"op": "impact", "query": query})
     if isinstance(result, dict) and "affected_files" in result:
         result["files"] = result.pop("affected_files")
     return result
@@ -4106,7 +4413,9 @@ def tool_explore(
     Returns: symbol definitions, source, and caller/callee summaries in one call.
     Use seed_files to bias search toward specific files.
     """
-    return _tool_code_alias_handler({"op": "explore", "query": query, "seed_files": seed_files, "max_files": max_files})
+    return _tool_symbols_alias_handler(
+        {"op": "explore", "query": query, "seed_files": seed_files, "max_files": max_files}
+    )
 
 
 @mcp_tool(name="usages")
@@ -4122,7 +4431,7 @@ def tool_usages(
     Pass an unqualified name ('run_command'), qualified path ('module.Class.method'),
     or a SCIP id from a prior result.
     """
-    return _tool_code_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
+    return _tool_symbols_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
 
 
 @mcp_tool(name="pattern")
@@ -4142,7 +4451,7 @@ def tool_pattern(
     changes without writing. Use `language` (e.g. 'python') and `file_glob` to
     scope the search.
     """
-    return _tool_code_alias_handler(
+    return _tool_symbols_alias_handler(
         {
             "op": "pattern",
             "pattern": pattern,
@@ -4196,7 +4505,9 @@ def _run_shell_tool(
             if not target_path.is_absolute():
                 target_path = (Path(effective_cwd) / target_path).resolve()
             read_handler: Callable[[dict[str, Any]], Any] = TOOLS["read"]["handler"]
-            rewritten = cast(dict[str, Any], read_handler({"path": str(target_path), "expand": True}))
+            rewritten = cast(
+                dict[str, Any], read_handler({"path": str(target_path), "expand": True})
+            )
             rewritten_stdout = str(rewritten.get("content") or "")
             return {
                 "stdout": rewritten_stdout,
@@ -4417,7 +4728,8 @@ def tool_grep(
         str | None,
         Field(
             description=(
-                "Language or file-type filter, such as `python`, `markdown`, or another " "supported type alias."
+                "Language or file-type filter, such as `python`, `markdown`, or another "
+                "supported type alias."
             )
         ),
     ] = None,
@@ -4442,7 +4754,11 @@ def tool_grep(
     ] = None,
     multiline: Annotated[
         bool,
-        Field(description=("Enable multiline regex matching so `.` spans newlines and `^` / `$` work per line.")),
+        Field(
+            description=(
+                "Enable multiline regex matching so `.` spans newlines and `^` / `$` work per line."
+            )
+        ),
     ] = False,
     summary: Annotated[
         bool | None,
@@ -4524,7 +4840,8 @@ def tool_grep(
                 "enum": ["chunks", "map"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`."
+                    "`chunks` returns ranked snippets per file, and `map` builds a repo map "
+                    "from `seed_files`."
                 ),
             },
             "max_files": {
@@ -4568,7 +4885,10 @@ def tool_smart_search(
     mode: Annotated[
         Literal["chunks", "map"],
         Field(
-            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`.")
+            description=(
+                "`chunks` returns ranked snippets per file, and `map` builds a repo map "
+                "from `seed_files`."
+            )
         ),
     ] = "chunks",
     max_files: Annotated[
@@ -4578,12 +4898,17 @@ def tool_smart_search(
     max_chars_per_file: Annotated[
         int,
         Field(
-            description=("Cap the returned characters per ranked file before the overall token " "budget is applied.")
+            description=(
+                "Cap the returned characters per ranked file before the overall token "
+                "budget is applied."
+            )
         ),
     ] = 2000,
     include_outline: Annotated[
         bool,
-        Field(description="Include outline metadata for ranked files when the backend can provide it."),
+        Field(
+            description="Include outline metadata for ranked files when the backend can provide it."
+        ),
     ] = True,
     seed_files: Annotated[
         list[str] | None,
@@ -4951,7 +5276,9 @@ def _record_context_budget_for_tool(
             if rendered_text_size is not None:
                 actual_output_tokens = max(0, rendered_text_size // 4)
             else:
-                actual_output_tokens = max(0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4)
+                actual_output_tokens = max(
+                    0, len(json.dumps(result, ensure_ascii=False, default=str)) // 4
+                )
 
         if compact_tool_tokens_saved > 0 and not isinstance(raw_lever_savings, dict):
             recorder.record_compact_tool_output(
@@ -4990,6 +5317,306 @@ def _task_text_from_args(args: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             parts.append(value.strip())
     return "\n".join(parts)
+
+
+def _workflow_state_from_workspace() -> dict[str, Any]:
+    workflow = _read_workspace_session_state().get("workflow")
+    return workflow if isinstance(workflow, dict) else {}
+
+
+def _route_outcome_calibration(tool_name: str, session_state: Mapping[str, Any]) -> dict[str, Any]:
+    from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
+
+    outcomes = load_outcomes_from_state(_workspace_session_state_file())
+    session_phase = str(session_state.get("session_phase") or "").strip()
+    followed: list[float] = []
+    unfollowed: list[float] = []
+    samples = 0
+    for entry in outcomes.get("route_outcomes", []):
+        if str(entry.get("tool") or "") != tool_name:
+            continue
+        scored_state = entry.get("scored_state")
+        if not isinstance(scored_state, dict):
+            continue
+        if session_phase and str(scored_state.get("session_phase") or "") != session_phase:
+            continue
+        outcome_window = entry.get("outcome_window")
+        if not isinstance(outcome_window, dict):
+            continue
+        raw_score = outcome_window.get("outcome_score")
+        if isinstance(raw_score, bool):
+            continue
+        if isinstance(raw_score, int | float):
+            score = float(raw_score)
+        elif isinstance(raw_score, str):
+            try:
+                score = float(raw_score.strip())
+            except ValueError:
+                continue
+        else:
+            continue
+        samples += 1
+        if bool(entry.get("recommendation_followed")):
+            followed.append(score)
+        else:
+            unfollowed.append(score)
+    if not followed or not unfollowed:
+        return {}
+    delta = round(sum(followed) / len(followed) - sum(unfollowed) / len(unfollowed), 4)
+    if delta <= 0.0:
+        return {"route_outcome_samples": samples}
+    return {
+        "route_outcome_score_delta": delta,
+        "route_outcome_samples": samples,
+    }
+
+
+def _route_enforcement_enabled() -> bool:
+    raw = os.environ.get("ATELIER_ENFORCE_ROUTE_MODEL")
+    if raw is None:
+        return False
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def _restore_legacy_route(workflow: dict[str, Any], current_step: str) -> tuple[Any | None, int]:
+    from atelier.core.capabilities.model_routing import ModelRecommendation
+
+    routing = workflow.get("routing")
+    if not isinstance(routing, dict):
+        return None, 0
+    if str(routing.get("step") or "") != current_step:
+        return None, 0
+    raw = routing.get("recommendation")
+    if not isinstance(raw, dict):
+        return None, 0
+    tier = str(raw.get("tier") or "").strip()
+    if tier not in {"cheap", "medium", "expensive"}:
+        return None, 0
+    typed_tier = cast(Literal["cheap", "medium", "expensive"], tier)
+    route_tier = str(raw.get("route_tier") or "")
+    if route_tier not in {
+        "deterministic",
+        "local_slm",
+        "cheap_llm",
+        "frontier_llm",
+        "human_review",
+    }:
+        route_tier = "frontier_llm" if tier == "expensive" else "cheap_llm"
+    typed_route_tier = cast(
+        Literal["deterministic", "local_slm", "cheap_llm", "frontier_llm", "human_review"],
+        route_tier,
+    )
+    baseline_tier_raw = str(raw.get("baseline_tier") or "").strip()
+    baseline_tier = (
+        cast(Literal["cheap", "medium", "expensive"], baseline_tier_raw)
+        if baseline_tier_raw in {"cheap", "medium", "expensive"}
+        else None
+    )
+    return (
+        ModelRecommendation(
+            tier=typed_tier,
+            route_tier=typed_route_tier,
+            model=str(raw.get("model") or ""),
+            reasons=[str(reason) for reason in raw.get("reasons") or []],
+            score=int(raw.get("score") or 0),
+            cache_affinity_model=str(raw.get("cache_affinity_model") or "") or None,
+            cache_cost_usd=float(raw.get("cache_cost_usd") or 0.0),
+            quality_gain_usd_estimated=float(raw.get("quality_gain_usd_estimated") or 0.0),
+            decision=str(raw.get("decision") or "baseline"),
+            baseline_tier=baseline_tier,
+            sticky_until_tool_calls=int(raw.get("sticky_until_tool_calls") or 0),
+        ),
+        max(0, int(routing.get("remaining_tool_calls") or 0)),
+    )
+
+
+def _persist_legacy_route(
+    workflow: dict[str, Any], payload: dict[str, Any], current_step: str
+) -> None:
+    if not current_step:
+        return
+    tier = str(payload.get("tier") or "").strip()
+    model = str(payload.get("model") or "").strip()
+    if tier not in {"cheap", "medium", "expensive"} or not model:
+        return
+    sticky_window = max(0, int(workflow.get("sticky_window") or 0))
+    remaining = max(0, int(payload.get("sticky_until_tool_calls") or 0))
+    if str(payload.get("decision") or "baseline") != "sticky":
+        remaining = sticky_window
+    workflow["routing"] = {
+        "step": current_step,
+        "remaining_tool_calls": remaining,
+        "recommendation": {
+            "tier": tier,
+            "route_tier": payload.get("route_tier"),
+            "model": model,
+            "reasons": list(payload.get("reasons") or []),
+            "score": int(payload.get("score") or 0),
+            "cache_affinity_model": payload.get("cache_affinity_model"),
+            "cache_cost_usd": float(payload.get("cache_cost_usd") or 0.0),
+            "quality_gain_usd_estimated": float(payload.get("quality_gain_usd_estimated") or 0.0),
+            "decision": str(payload.get("decision") or "baseline"),
+            "baseline_tier": payload.get("baseline_tier"),
+            "sticky_until_tool_calls": remaining,
+        },
+    }
+    state = _read_workspace_session_state()
+    state["workflow"] = workflow
+    _write_workspace_session_state(state)
+
+
+def _prepare_model_recommendation(
+    tool_name: str,
+    args: dict[str, Any],
+    led: RunLedger,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str]:
+    from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
+    from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
+    from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
+    from atelier.core.capabilities.model_routing import ModelRouter
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    session_state = _model_recommendation_state(led, args)
+    session_state.update(_route_outcome_calibration(tool_name, session_state))
+    workflow = _workflow_state_from_workspace()
+    current_step = str(session_state.get("workflow_step") or "")
+    prior_route, stickiness_remaining = _restore_legacy_route(workflow, current_step)
+    estimated_input_tokens = max(1_000, int(session_state.get("expected_input_tokens") or 0))
+    advisor = CrossVendorRouteAdvisor(_atelier_root())
+    try:
+        recommendation = advisor.recommend(
+            tool_name=tool_name,
+            task_text=_task_text_from_args(args),
+            session_state=session_state,
+        )
+        vs_model = recommendation["actual_model"] or "auto"
+        cost_saved_usd = 0.0
+        if recommendation["model"] != vs_model:
+            expensive_pricing = get_model_pricing(vs_model)
+            recommended_pricing = get_model_pricing(recommendation["model"])
+            cost_saved_usd = max(
+                0.0,
+                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+            )
+        payload = {
+            "at": datetime.now(UTC).isoformat(),
+            "kind": "model_recommendation",
+            "lever": "model_routing",
+            "session_id": led.session_id,
+            "agent": led.agent or _detect_agent(),
+            "tool_name": tool_name,
+            "tokens_saved": 0,
+            "cost_saved_usd": round(cost_saved_usd, 6),
+            "vs_model": vs_model,
+            "estimated_input_tokens": estimated_input_tokens,
+            **recommendation,
+        }
+    except (RouteConfigError, NoFeasibleRouteError) as exc:
+
+        def _record_route_decision(route_payload: dict[str, Any]) -> None:
+            led.record(
+                "route_decision",
+                f"{route_payload.get('decision', 'baseline')} route for {tool_name}",
+                route_payload,
+            )
+
+        legacy = ModelRouter().recommend(
+            tool_name,
+            _task_text_from_args(args),
+            session_state,
+            prior_route=prior_route,
+            stickiness_remaining=stickiness_remaining,
+            route_decision_sink=_record_route_decision,
+        )
+        if legacy is None:
+            raise NoFeasibleRouteError("bench-off") from None
+        vs_model = "auto"
+        cost_saved_usd = 0.0
+        if legacy.model != vs_model:
+            expensive_pricing = get_model_pricing(vs_model)
+            recommended_pricing = get_model_pricing(legacy.model)
+            cost_saved_usd = max(
+                0.0,
+                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
+                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
+            )
+        payload = {
+            "at": datetime.now(UTC).isoformat(),
+            "kind": "model_recommendation",
+            "lever": "model_routing",
+            "session_id": led.session_id,
+            "agent": led.agent or _detect_agent(),
+            "tool_name": tool_name,
+            "tokens_saved": 0,
+            "configured": False,
+            "cost_saved_usd": round(cost_saved_usd, 6),
+            "estimated_input_tokens": estimated_input_tokens,
+            "vs_model": vs_model,
+            "error": str(exc),
+            **legacy.to_dict(),
+        }
+    return payload, session_state, workflow, current_step
+
+
+def _finalize_model_recommendation(
+    payload: dict[str, Any],
+    *,
+    led: RunLedger,
+    tool_name: str,
+    session_state: Mapping[str, Any],
+    workflow: dict[str, Any],
+    current_step: str,
+    wrapper_applied: bool = False,
+    wrapper_model: str | None = None,
+) -> dict[str, Any]:
+    finalized = dict(payload)
+    finalized["route_enforcement_active"] = (
+        _route_enforcement_enabled() and finalized.get("configured") is not False
+    )
+    finalized["wrapper_applied"] = wrapper_applied
+    if wrapper_model:
+        finalized["wrapper_model"] = wrapper_model
+        finalized["executed_model_scope"] = "local_mcp_only"
+    if wrapper_applied:
+        finalized["recommendation_followed"] = True
+    led.record(
+        "model_recommendation",
+        f"recommend {finalized.get('model', 'unconfigured')} for {tool_name}",
+        finalized,
+    )
+    _append_live_savings_event(finalized)
+    _persist_legacy_route(workflow, finalized, current_step)
+
+    if finalized.get("configured") is not False:
+        from atelier.infra.runtime import outcome_capture
+
+        outcome_capture.schedule_route(
+            session_id=led.session_id,
+            tool=tool_name,
+            recommended_vendor=str(finalized.get("vendor") or ""),
+            recommended_tier=str(finalized.get("tier") or ""),
+            recommended_model=str(finalized.get("model") or ""),
+            actual_vendor=str(finalized.get("actual_vendor") or ""),
+            actual_model=str(finalized.get("actual_model") or ""),
+            recommendation_followed=bool(finalized.get("recommendation_followed")),
+            applied_lessons=[str(item) for item in finalized.get("applied_lessons") or []],
+            cost_cap_triggered=bool(finalized.get("cost_cap_triggered")),
+            cost_cap_limit_usd_per_session=(
+                float(finalized["cost_cap_limit_usd_per_session"])
+                if finalized.get("cost_cap_limit_usd_per_session") is not None
+                else None
+            ),
+            scored_state={
+                "turn_number": int(session_state.get("turn_number") or 0),
+                "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
+                "session_phase": str(session_state.get("session_phase") or "explore"),
+                "workflow_step": str(session_state.get("workflow_step") or ""),
+            },
+            writer=_make_outcome_writer(led),
+        )
+
+    return finalized
 
 
 def _latest_cache_affinity_model(led: RunLedger) -> str | None:
@@ -5057,128 +5684,27 @@ def _session_compaction_savings_payload(
     }
 
 
-def _emit_model_recommendation(tool_name: str, args: dict[str, Any], led: RunLedger) -> dict[str, Any]:
-    from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
-    from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
-    from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
-    from atelier.core.capabilities.model_routing import ModelRouter
-    from atelier.core.capabilities.pricing import get_model_pricing
-
-    session_state = _model_recommendation_state(led, args)
-    estimated_input_tokens = max(1_000, int(session_state.get("expected_input_tokens") or 0))
-    advisor = CrossVendorRouteAdvisor(_atelier_root())
-    try:
-        recommendation = advisor.recommend(
-            tool_name=tool_name,
-            task_text=_task_text_from_args(args),
-            session_state=session_state,
-        )
-        vs_model = recommendation["actual_model"] or "auto"
-        cost_saved_usd = 0.0
-        if recommendation["model"] != vs_model:
-            expensive_pricing = get_model_pricing(vs_model)
-            recommended_pricing = get_model_pricing(recommendation["model"])
-            cost_saved_usd = max(
-                0.0,
-                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
-                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
-            )
-        payload = {
-            "at": datetime.now(UTC).isoformat(),
-            "kind": "model_recommendation",
-            "lever": "model_routing",
-            "session_id": led.session_id,
-            "agent": led.agent or _detect_agent(),
-            "tool_name": tool_name,
-            "tokens_saved": 0,
-            "cost_saved_usd": round(cost_saved_usd, 6),
-            "vs_model": vs_model,
-            "estimated_input_tokens": estimated_input_tokens,
-            **recommendation,
-        }
-    except (RouteConfigError, NoFeasibleRouteError) as exc:
-
-        def _record_route_decision(route_payload: dict[str, Any]) -> None:
-            led.record(
-                "route_decision",
-                f"{route_payload.get('decision', 'baseline')} route for {tool_name}",
-                route_payload,
-            )
-
-        legacy = ModelRouter().recommend(
-            tool_name,
-            _task_text_from_args(args),
-            session_state,
-            route_decision_sink=_record_route_decision,
-        )
-        if legacy is None:
-            raise NoFeasibleRouteError("bench-off") from None
-        vs_model = "auto"
-        cost_saved_usd = 0.0
-        if legacy.model != vs_model:
-            expensive_pricing = get_model_pricing(vs_model)
-            recommended_pricing = get_model_pricing(legacy.model)
-            cost_saved_usd = max(
-                0.0,
-                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
-                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
-            )
-        payload = {
-            "at": datetime.now(UTC).isoformat(),
-            "kind": "model_recommendation",
-            "lever": "model_routing",
-            "session_id": led.session_id,
-            "agent": led.agent or _detect_agent(),
-            "tool_name": tool_name,
-            "tokens_saved": 0,
-            "configured": False,
-            "cost_saved_usd": round(cost_saved_usd, 6),
-            "estimated_input_tokens": estimated_input_tokens,
-            "vs_model": vs_model,
-            "error": str(exc),
-            **legacy.to_dict(),
-        }
-    led.record(
-        "model_recommendation",
-        f"recommend {payload.get('model', 'unconfigured')} for {tool_name}",
-        payload,
+def _emit_model_recommendation(
+    tool_name: str, args: dict[str, Any], led: RunLedger
+) -> dict[str, Any]:
+    payload, session_state, workflow, current_step = _prepare_model_recommendation(
+        tool_name, args, led
     )
-    _append_live_savings_event(payload)
-
-    if payload.get("configured") is not False:
-        from atelier.infra.runtime import outcome_capture
-
-        outcome_capture.schedule_route(
-            session_id=led.session_id,
-            tool=tool_name,
-            recommended_vendor=str(payload.get("vendor") or ""),
-            recommended_tier=str(payload.get("tier") or ""),
-            recommended_model=str(payload.get("model") or ""),
-            actual_vendor=str(payload.get("actual_vendor") or ""),
-            actual_model=str(payload.get("actual_model") or ""),
-            recommendation_followed=bool(payload.get("recommendation_followed")),
-            applied_lessons=[str(item) for item in payload.get("applied_lessons") or []],
-            cost_cap_triggered=bool(payload.get("cost_cap_triggered")),
-            cost_cap_limit_usd_per_session=(
-                float(payload["cost_cap_limit_usd_per_session"])
-                if payload.get("cost_cap_limit_usd_per_session") is not None
-                else None
-            ),
-            scored_state={
-                "turn_number": int(session_state.get("turn_number") or 0),
-                "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
-                "session_phase": "execution" if int(session_state.get("turn_number") or 0) > 5 else "exploration",
-            },
-            writer=_make_outcome_writer(led),
-        )
-
-    return payload
+    return _finalize_model_recommendation(
+        payload,
+        led=led,
+        tool_name=tool_name,
+        session_state=session_state,
+        workflow=workflow,
+        current_step=current_step,
+    )
 
 
 def _model_recommendation_state(led: RunLedger, args: dict[str, Any]) -> dict[str, Any]:
     tool_call_events = [e for e in led.events if e.kind == "tool_call"]
     recent_tool_calls = [e.payload.get("tool", "") for e in tool_call_events[-10:]]
     turn_number = len(tool_call_events)
+    workflow = _workflow_state_from_workspace()
     session_state: dict[str, Any] = {
         "prior_errors": len(led.errors_seen) + len(led.repeated_failures),
         "cache_affinity_model": _latest_cache_affinity_model(led),
@@ -5193,6 +5719,12 @@ def _model_recommendation_state(led: RunLedger, args: dict[str, Any]) -> dict[st
             6,
         ),
     }
+    workflow_step = str(workflow.get("current_step") or workflow.get("workflow_step") or "").strip()
+    if workflow_step:
+        session_state["workflow_step"] = workflow_step
+    session_phase = str(workflow.get("session_phase") or "").strip()
+    if session_phase:
+        session_state["session_phase"] = session_phase
     if "max_output_tokens" in args:
         session_state["max_output_tokens"] = args["max_output_tokens"]
     if "budget_tokens" in args:
@@ -5265,11 +5797,39 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     result = _clean_tool_result(result, name)
             else:
                 led = _get_ledger()
-                _emit_model_recommendation(name, args if isinstance(args, dict) else {}, led)
+                route_payload, route_state, route_workflow, route_step = (
+                    _prepare_model_recommendation(
+                        name,
+                        args if isinstance(args, dict) else {},
+                        led,
+                    )
+                )
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
-                _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
+                _tool_call_tokens_saved.value = (
+                    0  # reset before handler so stale values can't bleed through
+                )
                 _tool_call_rendered_text.value = None  # reset before handler
-                result = handler(args)
+                wrapper_model = (
+                    str(route_payload.get("model") or "")
+                    if _route_enforcement_enabled() and route_payload.get("configured") is not False
+                    else ""
+                )
+                from atelier.core.capabilities.pricing import active_model_override
+
+                try:
+                    with active_model_override(wrapper_model or None):
+                        result = handler(args)
+                finally:
+                    _finalize_model_recommendation(
+                        route_payload,
+                        led=led,
+                        tool_name=name,
+                        session_state=route_state,
+                        workflow=route_workflow,
+                        current_step=route_step,
+                        wrapper_applied=bool(wrapper_model),
+                        wrapper_model=wrapper_model or None,
+                    )
 
                 if isinstance(result, dict):
                     result = _clean_tool_result(result, name)
@@ -5286,10 +5846,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         rendered_text = _render_grep_md(result if isinstance(result, dict) else {})
                 elif name == "search":
                     with contextlib.suppress(Exception):
-                        rendered_text = _render_search_md(result if isinstance(result, dict) else {})
+                        rendered_text = _render_search_md(
+                            result if isinstance(result, dict) else {}
+                        )
                 elif name == "shell":
                     with contextlib.suppress(Exception):
-                        rendered_text = _render_shell_text(result if isinstance(result, dict) else {})
+                        rendered_text = _render_shell_text(
+                            result if isinstance(result, dict) else {}
+                        )
 
                 _record_context_budget_for_tool(
                     name,
@@ -5467,7 +6031,9 @@ def main() -> None:
         except (OSError, _subprocess.SubprocessError):
             _log.debug("git rev-parse workspace-root detection failed", exc_info=True)
     os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
-    os.environ.setdefault("ATELIER_LESSONS_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".lessons"))
+    os.environ.setdefault(
+        "ATELIER_LESSONS_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".lessons")
+    )
 
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:

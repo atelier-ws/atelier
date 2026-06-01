@@ -2468,6 +2468,23 @@ class CodeContextEngine:
         resolved_mode = resolve_search_mode(query, mode)
         candidate_files: set[str] | None = None
         rerank_limit = self._search_reranker.pre_rerank_limit(limit, mode=resolved_mode, scope=scope)
+        if scope == "repo" and provenance_filter == "commit":
+            hits = self._search_commit_chunks(query, limit=rerank_limit)
+            if file_glob:
+                hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
+            hits = [hit for hit in hits if not should_skip_relative_path(hit.file_path)]
+            if _is_precise_symbol_query(query):
+                exact_hits = _exact_symbol_hits(hits, query)
+                if exact_hits:
+                    hits = exact_hits
+            hits = self._search_reranker.rerank(
+                query,
+                hits,
+                mode=resolved_mode,
+                scope=scope,
+                source_loader=self._load_symbol_source_for_rerank,
+            )
+            return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
         if scope == "repo" and resolved_mode != "semantic":
             candidate_files = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
         if resolved_mode == "lexical":
@@ -6647,9 +6664,15 @@ class CodeContextEngine:
             self._lineage_rebuild_full = False
 
     def _walk_and_summarise(self, *, since_sha: str | None, full_rebuild: bool = False) -> None:
-        """Walk commits, summarise, embed, upsert to commit_chunks in batches of 50."""
+        """Walk commits, summarise, embed, upsert to commit_chunks in batches of 50.
+
+        Two-pass design: summarise all commits first (LLM), then embed all summaries
+        (vector model). This avoids contention when both operations share the same
+        backend (e.g. a local Ollama server that serialises requests).
+        """
         from atelier.infra.code_intel.git_history import require_pygit2
         from atelier.infra.code_intel.git_history.embedder import embed_summary
+        from atelier.infra.code_intel.git_history.models import CommitSummary
         from atelier.infra.code_intel.git_history.summarizer import (
             SummarizerError,
             summarize_commit,
@@ -6669,9 +6692,9 @@ class CodeContextEngine:
 
         pygit2 = require_pygit2()
         repo = pygit2.Repository(str(self.repo_root))
-        batch: list[tuple[Any, ...]] = []
-        rebuild_rows: list[tuple[Any, ...]] = []
 
+        # Pass 1: summarise all commits (LLM calls — no embedding yet)
+        summaries: list[CommitSummary] = []
         for record in iter_commit_records(self.repo_root, limit=500, since_sha=since_sha):
             try:
                 commit_obj = repo.revparse_single(record.sha)
@@ -6682,12 +6705,23 @@ class CodeContextEngine:
 
             try:
                 summary = summarize_commit(record, diff_text=diff_text)
-                embedding_blob = embed_summary(summary)
             except SummarizerError:
                 continue
             except Exception:
                 logging.exception("Recovered from broad exception handler")
                 continue
+            summaries.append(summary)
+
+        # Pass 2: embed + persist (vector calls — LLM is now idle)
+        batch: list[tuple[Any, ...]] = []
+        rebuild_rows: list[tuple[Any, ...]] = []
+
+        for summary in summaries:
+            try:
+                embedding_blob = embed_summary(summary)
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                embedding_blob = None
 
             row = (
                 summary.sha,
