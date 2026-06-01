@@ -180,6 +180,68 @@ def test_run_child_once_writes_structured_result(tmp_path: Path) -> None:
     assert state.base_snapshot_ref == state.integration_base_ref
 
 
+def test_run_child_once_marks_silent_noop_as_failed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    root = tmp_path / "atelier-root"
+    repo.mkdir()
+    _git(repo, "init")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(repo, "base")
+
+    spec = repo / "program.md"
+    spec.write_text("# program\n\nDo the thing.\n", encoding="utf-8")
+    state, state_path = initialize_swarm_run(
+        root=root,
+        repo_root=repo,
+        spec_path=spec,
+        child_command=[sys.executable, "-c", ""],
+        runs=1,
+        validation_commands=[],
+        keep_worktrees=True,
+        detached=False,
+    )
+
+    wave = SwarmWaveState(wave_index=1, child_ids=["wave-01-run-01"])
+    state.waves.append(wave)
+    manager = SwarmWorktreeManager(repo_root=repo, pool_root=Path(state.worktree_pool))
+    child_worktree = manager.create_worktree(
+        run_id=state.run_id,
+        child_id="wave-01-run-01",
+        ref=state.integration_base_ref,
+    )
+    child_dir = Path(root) / "swarm" / "runs" / state.run_id / "children" / "wave-01-run-01"
+    child_dir.mkdir(parents=True, exist_ok=True)
+    child = SwarmChildState(
+        child_id="wave-01-run-01",
+        label="candidate-1",
+        wave_index=1,
+        worktree_path=str(child_worktree),
+        atelier_root=str(child_dir / "atelier-root"),
+        run_dir=str(child_dir),
+        spec_path=str(spec),
+        result_path=str(child_dir / "result.json"),
+        stdout_path=str(child_dir / "stdout.log"),
+        stderr_path=str(child_dir / "stderr.log"),
+        metadata_path=str(child_dir / "meta.json"),
+        patch_path=str(child_dir / "candidate.patch"),
+    )
+    state.children.append(child)
+    load_swarm = load_swarm_state(state_path)
+    load_swarm.children = state.children
+    load_swarm.waves = state.waves
+    load_swarm.current_wave = 1
+    from atelier.core.capabilities.swarm import save_swarm_state
+
+    save_swarm_state(state_path, load_swarm)
+
+    result = run_child_once(state_path, "wave-01-run-01")
+
+    assert result.status == "failed"
+    assert result.files_changed == []
+    assert result.summary == "Child runner exited successfully without output or code changes."
+    assert result.error == "Child runner exited successfully without output or code changes."
+
+
 def test_plan_wave_runs_uses_max_for_open_ended_scope(tmp_path: Path) -> None:
     spec_path = tmp_path / "open-ended.md"
     spec_path.write_text(
