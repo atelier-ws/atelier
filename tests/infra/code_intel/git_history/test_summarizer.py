@@ -63,7 +63,10 @@ def test_summary_prompt_version_and_model_fields() -> None:
 
 def test_summarizer_error_on_empty_response() -> None:
     record = _make_record()
-    with patch("atelier.infra.code_intel.git_history.summarizer.chat", return_value=""), pytest.raises(SummarizerError):
+    with (
+        patch("atelier.infra.code_intel.git_history.summarizer.chat", return_value=""),
+        pytest.raises(SummarizerError),
+    ):
         summarize_commit(record)
 
 
@@ -94,3 +97,35 @@ def test_summarizer_uses_env_model(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert captured["model"] == "test-model-xyz"
     assert result.summary_model == "test-model-xyz"
+
+
+@pytest.mark.parametrize(
+    ("backend", "env_name", "env_value"),
+    [
+        ("ollama", "ATELIER_OLLAMA_MODEL", "local-ollama-model"),
+        ("openai", "ATELIER_OPENAI_MODEL", "openai-model"),
+        ("openai_compatible", "ATELIER_OPENAI_MODEL", "compat-model"),
+        ("litellm", "ATELIER_LITELLM_MODEL", "litellm-model"),
+    ],
+)
+def test_summarizer_uses_backend_default_model(
+    monkeypatch: pytest.MonkeyPatch,
+    backend: str,
+    env_name: str,
+    env_value: str,
+) -> None:
+    record = _make_record()
+    monkeypatch.delenv("ATELIER_LINEAGE_MODEL", raising=False)
+    monkeypatch.setenv("ATELIER_LLM_BACKEND", backend)
+    monkeypatch.setenv(env_name, env_value)
+    captured: dict[str, str] = {}
+
+    def fake_chat(messages: list[Any], *, model: str = "") -> str:
+        captured["model"] = model
+        return "A valid summary returned by the backend default model."
+
+    with patch("atelier.infra.code_intel.git_history.summarizer.chat", fake_chat):
+        result = summarize_commit(record)
+
+    assert captured["model"] == env_value
+    assert result.summary_model == env_value

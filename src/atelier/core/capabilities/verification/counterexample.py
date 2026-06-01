@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
+
+from atelier.core.capabilities.prompt_compilation import (
+    COUNTEREXAMPLE_METADATA_KEY,
+    BlockKind,
+    PromptBlock,
+    Stability,
+)
 
 
 @dataclass
@@ -37,6 +46,22 @@ class Counterexample:
             lines.append(f"  diagnostic: {self.diagnostic}")
         lines.append("</counterexample>")
         return "\n".join(lines)
+
+    def to_compiler_block(self) -> PromptBlock:
+        payload = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
+        digest = sha256(payload.encode("utf-8")).hexdigest()[:16]
+        return PromptBlock(
+            id=f"counterexample/{self.check}/{digest}",
+            kind=BlockKind.TOOL_RESULT,
+            content=self.to_prompt_block(),
+            stability=Stability.TURN,
+            cacheable=False,
+            metadata={
+                COUNTEREXAMPLE_METADATA_KEY: True,
+                "check": self.check,
+                "severity": self.severity,
+            },
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

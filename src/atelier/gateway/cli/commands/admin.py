@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import shutil
+import sqlite3
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
@@ -42,6 +46,280 @@ def _detect_git_root(search_path: Path) -> Path | None:
     return None
 
 
+def _ensure_gitignore(git_root: Path) -> list[str]:
+    """Add ``.atelier/`` to the project's ``.gitignore`` if not present.
+
+    Returns a list of entries added.
+    """
+    gitignore_path = git_root / ".gitignore"
+    existing = (
+        gitignore_path.read_text(encoding="utf-8").splitlines() if gitignore_path.exists() else []
+    )
+    added: list[str] = []
+    entries = [
+        "# Atelier runtime data",
+        ".atelier/",
+    ]
+    for entry in entries:
+        if entry not in existing:
+            existing.append(entry)
+            added.append(entry)
+    if added:
+        gitignore_path.write_text("\n".join(existing) + "\n", encoding="utf-8")
+    return added
+
+
+_ATELIER_CLAUDE_MD_TEMPLATE = """# CLAUDE.md — Atelier
+
+This file guides Claude Code when working in this repository. This project uses **Atelier** for code intelligence, context reuse, and agent reasoning.
+
+## Environment
+
+**All Python commands must use `uv run`** — this project uses `uv` for dependency management.
+
+```bash
+uv run python -c "..."          # one-off Python
+uv run pytest ...               # tests
+uv run mypy src                 # type-check
+uv run atelier ...              # Atelier CLI
+```
+
+## Common Commands
+
+```bash
+# Test
+uv run pytest -q                          # all tests
+uv run pytest -q -x -m "not slow"        # fast, stop on first failure
+uv run pytest tests/path/test_file.py -q # single file
+uv run pytest -q -k "test_name"          # single test by name
+
+# Lint / format / typecheck
+make lint           # ruff
+make format         # ruff --fix + black + prettier (frontend)
+make typecheck      # mypy --strict src
+
+# Full pre-commit gate
+make pre-commit     # format + lint + typecheck + docs + test
+
+# Docs governance
+make sync-agent-context   # regenerate host instruction files from docs/agent-os/
+make check-agent-context  # verify generated files are up to date
+```
+
+## Atelier Commands
+
+| Command | Description |
+|---|---|
+| ``uv run atelier init`` | Initialize project for Atelier (store, seed, index) |
+| ``uv run atelier init --project`` | Also set up .gitignore, CLAUDE.md, AGENTS.md, .mcp.json |
+| ``uv run atelier code index`` | Build or refresh code index |
+| ``uv run atelier search <query>`` | Semantic code search |
+| ``uv run atelier status`` | Show runtime status (runs dashboard) |
+| ``uv run atelier status --index`` | Show code index stats |
+| ``uv run atelier doctor`` | Run installation diagnostics |
+| ``uv run atelier reset`` | Reset code index (--all for full store reset) |
+
+## Architecture
+
+```
+gateway/  →  core/  →  infra/
+```
+
+- **`gateway/`** — agent-facing entry points: CLI, MCP server, SDK façade. Keep thin.
+- **`core/`** — domain logic: capabilities, models, orchestrator, API.
+- **`infra/`** — persistence and integrations: storage, code intelligence, embeddings.
+
+## Coding Guidelines
+
+Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution over speed; use judgment for trivial tasks.
+
+**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask; if multiple interpretations exist, present them; push back when a simpler approach exists.
+
+**2. Simplicity First** — minimum code that solves the problem; no speculative features, abstractions for single-use code, or error handling for impossible scenarios; if 200 lines could be 50, rewrite it.
+
+**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that *your* changes made unused.
+
+**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
+
+See [docs/agent-os/coding-guidelines.md](docs/agent-os/coding-guidelines.md) for the full reference.
+
+## Code Intelligence
+
+Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
+
+| Need | Tool |
+|---|---|
+| Find a symbol definition by name | `mcp__atelier__symbols` |
+| Read the full source of one symbol | `mcp__atelier__node` |
+| Who calls a function / what it calls | `mcp__atelier__callers` / `mcp__atelier__callees` |
+| All references to a symbol | `mcp__atelier__usages` |
+| Blast radius before refactoring | `mcp__atelier__impact` |
+| Match/rewrite code by AST shape | `mcp__atelier__pattern` |
+| Grouped source + relationships in one call | `mcp__atelier__explore` |
+
+## Agent Spawning Rules
+
+When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
+
+| Role | `subagent_type` | When |
+|---|---|---|
+| Code-review **finder** (read, search, grep — never edits) | `atelier:explore` | All Phase 1 / Angle A-G finder agents in `/code-review` |
+| Code-review **verifier** (applies rubric, never edits) | `atelier:review` | All Phase 2 verifier agents in `/code-review` |
+| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages |
+| Coding, edits, fixes | `atelier:code` | Any agent that writes or modifies files |
+| Repeated failure / rescue | `atelier:repair` | When the same approach fails twice |
+
+**Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
+
+## Validation by Change Surface
+
+| What changed | Minimum check |
+|---|---|
+| Python / CLI | ``make lint && make typecheck && make test`` |
+| MCP tool handlers | ``uv run pytest tests/gateway/test_mcp_tool_handlers.py -q`` |
+| Code-intel engine | ``uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck`` |
+| Frontend | ``cd frontend && npm run build && npm run test`` |
+| Documentation | ``make docs-check && make check-agent-context`` |
+"""
+
+
+_ATELIER_AGENTS_MD_TEMPLATE = """# Project Instructions — Atelier
+
+This project uses Atelier for code intelligence, context reuse, and agent reasoning.
+
+## Atelier commands
+
+| Command | Description |
+|---|---|
+| ``atelier init`` | Initialize project (gitignore, MCP config, host files) |
+| ``atelier code index`` | Build or refresh code index |
+| ``atelier search <query>`` | Semantic search across the codebase |
+| ``atelier status`` | Show runtime status |
+| ``atelier doctor`` | Run diagnostics |
+"""
+
+
+_ATELIER_MCP_JSON_TEMPLATE = """{
+  "mcpServers": {
+    "atelier": {
+      "command": "atelier-mcp",
+      "args": ["--host", "mcp"]
+    }
+  }
+  }
+  """
+
+
+def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
+    """Run project-scoped init steps inside a git repo.
+
+    Returns a dict of ``{section: [messages]}`` describing what was done.
+    """
+    results: dict[str, list[str]] = {}
+
+    # .gitignore
+    added = _ensure_gitignore(git_root)
+    if added:
+        results["gitignore"] = [
+            f"added to .gitignore: {', '.join(a for a in added if not a.startswith('#'))}"
+        ]
+    else:
+        results["gitignore"] = [".atelier/ already in .gitignore"]
+
+    # CLAUDE.md
+    claude_path = git_root / "CLAUDE.md"
+    if not claude_path.exists():
+        claude_path.write_text(_ATELIER_CLAUDE_MD_TEMPLATE.lstrip(), encoding="utf-8")
+        results["claude_md"] = ["created CLAUDE.md"]
+    else:
+        content = claude_path.read_text(encoding="utf-8")
+        # Detect whether the file already has any CLAUDE.md-style header or Atelier content
+        has_header = any(
+            marker in content
+            for marker in ("# CLAUDE.md", "# CLAUDE.md — Atelier", "# Atelier", "mcp__atelier__")
+        )
+        if not has_header:
+            claude_path.write_text(
+                content.rstrip() + "\n\n" + _ATELIER_CLAUDE_MD_TEMPLATE,
+                encoding="utf-8",
+            )
+            results["claude_md"] = ["appended Atelier guidance to CLAUDE.md"]
+        else:
+            results["claude_md"] = ["CLAUDE.md already has Atelier guidance"]
+
+    # AGENTS.md
+    agents_path = git_root / "AGENTS.md"
+    if not agents_path.exists():
+        agents_path.write_text(_ATELIER_AGENTS_MD_TEMPLATE.lstrip(), encoding="utf-8")
+        results["agents_md"] = ["created AGENTS.md"]
+    else:
+        content = agents_path.read_text(encoding="utf-8")
+        if "Atelier" not in content:
+            agents_path.write_text(
+                content.rstrip() + "\n\n" + _ATELIER_AGENTS_MD_TEMPLATE,
+                encoding="utf-8",
+            )
+            results["agents_md"] = ["appended Atelier guidance to AGENTS.md"]
+        else:
+            results["agents_md"] = ["AGENTS.md already has Atelier guidance"]
+
+    # .mcp.json
+    mcp_path = git_root / ".mcp.json"
+    if not mcp_path.exists():
+        mcp_path.write_text(_ATELIER_MCP_JSON_TEMPLATE.lstrip(), encoding="utf-8")
+        results["mcp_json"] = ["created .mcp.json"]
+    else:
+        try:
+            existing_mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
+            servers = existing_mcp.get("mcpServers", {})
+            if "atelier" in servers:
+                results["mcp_json"] = [".mcp.json already has atelier server"]
+            else:
+                atelier_config = json.loads(_ATELIER_MCP_JSON_TEMPLATE)
+                servers["atelier"] = atelier_config["mcpServers"]["atelier"]
+                mcp_path.write_text(
+                    json.dumps(existing_mcp, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                results["mcp_json"] = ["added atelier server to existing .mcp.json"]
+        except (json.JSONDecodeError, KeyError):
+            results["mcp_json"] = [".mcp.json exists but could not be updated (parse error)"]
+
+    return results
+
+
+def _code_index_db_path(repo_root: Path) -> Path:
+    """Return the default code index database path for a repo."""
+    from atelier.core.foundation.paths import default_store_root
+
+    workspace_hash = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    return default_store_root() / "workspaces" / workspace_hash / "code_context.sqlite"
+
+
+def _index_stats_pretty(repo_root: Path) -> list[str]:
+    """Return human-readable index stats lines for a repo."""
+    db_path = _code_index_db_path(repo_root)
+    if not db_path.exists():
+        return ["(no index — run `atelier code index` first)"]
+    lines: list[str] = []
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
+        index_version = int(row["value"]) if row else 0
+        file_count = conn.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"]
+        symbol_count = conn.execute("SELECT COUNT(*) AS n FROM symbols").fetchone()["n"]
+        import_count = conn.execute("SELECT COUNT(*) AS n FROM imports").fetchone()["n"]
+        conn.close()
+        lines.append(f"Index version: {index_version}")
+        lines.append(f"Files indexed: {file_count}")
+        lines.append(f"Symbols indexed: {symbol_count}")
+        lines.append(f"Imports indexed: {import_count}")
+    except sqlite3.Error as exc:
+        lines.append(f"Error reading index: {exc}")
+    return lines
+
+
 def _seed_resources() -> tuple[list[Path], list[Path]]:
     """Return (block_files, rubric_files) bundled with the package."""
     blocks_dir = resources.files("atelier") / "infra" / "seed_blocks"
@@ -77,7 +355,9 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
+            else timedelta(hours=amount)
+            if unit == "h"
+            else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 
@@ -87,7 +367,8 @@ def _parse_since_arg(value: str) -> datetime:
         pass
 
     raise click.ClickException(
-        f"Cannot parse --since value {value!r}. " "Use a duration like '7d', '24h', or a date like '2026-05-01'."
+        f"Cannot parse --since value {value!r}. "
+        "Use a duration like '7d', '24h', or a date like '2026-05-01'."
     )
 
 
@@ -100,8 +381,15 @@ def _parse_since_arg(value: str) -> datetime:
     default=True,
     help="Bootstrap the code index for the current git repo (default: on).",
 )
+@click.option(
+    "--project",
+    is_flag=True,
+    help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md, .mcp.json.",
+)
 @click.pass_context
-def init(ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, index: bool) -> None:
+def init(
+    ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, index: bool, project: bool
+) -> None:
     """Initialize the runtime store at --root."""
     if show_stacks:
         from atelier.core.capabilities.starter_packs import list_stacks
@@ -170,6 +458,142 @@ def init(ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, i
             )
         else:
             click.echo("code index skipped (no git repository detected in current directory)")
+    if project:
+        git_root = _detect_git_root(Path.cwd())
+        if git_root is not None:
+            click.echo("running project-scoped setup ...")
+            results = _project_init_setup(git_root)
+            for section, messages in results.items():
+                for msg in messages:
+                    click.echo(f"  [{section}] {msg}")
+        else:
+            click.echo("project init skipped (no git repository detected)")
+
+
+@click.command("doctor")
+@click.option("--json", "as_json", is_flag=True, help="Output JSON instead of text.")
+@click.pass_context
+def doctor_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Run diagnostics on the Atelier installation."""
+    checks: dict[str, Any] = {}
+
+    # Python version
+    py_ok = sys.version_info >= (3, 10)
+    checks["python"] = {
+        "ok": py_ok,
+        "version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+    }
+
+    # Git repo
+    git_root = _detect_git_root(Path.cwd())
+    checks["git_repo"] = {
+        "ok": git_root is not None,
+        "path": str(git_root) if git_root else None,
+    }
+
+    # Atelier store
+    root: Path = ctx.obj["root"]
+    store_ok = root.exists() and (root / "atelier.db").exists()
+    checks["store"] = {
+        "ok": store_ok,
+        "root": str(root),
+        "exists": root.exists(),
+    }
+
+    # Code index
+    if git_root:
+        index_path = _code_index_db_path(git_root)
+        index_ok = index_path.exists()
+        stats = _index_stats_pretty(git_root) if index_ok else []
+        checks["code_index"] = {
+            "ok": index_ok,
+            "path": str(index_path),
+            "stats": stats if stats else None,
+        }
+    else:
+        checks["code_index"] = {"ok": False, "path": None, "stats": None}
+
+    if as_json:
+        _emit(checks, as_json=True)
+        return
+
+    click.echo("Atelier diagnostics")
+    click.echo("==================")
+    for name, info in checks.items():
+        status = "✓" if info.get("ok") else "✗"
+        click.echo(f"  {status} {name}")
+        if info.get("version"):
+            click.echo(f"       version: {info['version']}")
+        if info.get("path"):
+            click.echo(f"       path: {info['path']}")
+        if info.get("root"):
+            click.echo(f"       root: {info['root']}")
+        if info.get("stats"):
+            for line in info["stats"]:
+                click.echo(f"       {line}")
+
+
+@click.command("reset")
+@click.option("--all", "all_flag", is_flag=True, help="Reset everything (store + index).")
+@click.option("-f", "--force", is_flag=True, help="Skip confirmation prompt.")
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without deleting.")
+@click.pass_context
+def reset_cmd(ctx: click.Context, all_flag: bool, force: bool, dry_run: bool) -> None:
+    """Reset runtime state — code index and optionally the store.
+
+    By default only the code index database is removed.
+    Use --all to also remove the entire store (blocks, rubrics, runs).
+    """
+    root: Path = ctx.obj["root"]
+    git_root = _detect_git_root(Path.cwd())
+
+    targets: dict[str, list[Path]] = {}
+
+    # Code index. When --all also wipes the store, the index DB lives under the
+    # store root (workspaces/), so the store removal already covers it; listing
+    # it separately would double-count. Only list it on its own when not --all
+    # or when it lives outside the store being removed.
+    if git_root:
+        index_path = _code_index_db_path(git_root)
+        index_under_store = False
+        if all_flag and root.exists():
+            try:
+                index_path.resolve().relative_to(root.resolve())
+                index_under_store = True
+            except ValueError:
+                index_under_store = False
+        if index_path.exists() and not index_under_store:
+            targets["code index"] = [index_path]
+
+    # Store (--all only)
+    if all_flag:
+        store_paths = list(root.iterdir()) if root.exists() else []
+        if store_paths:
+            targets["store"] = store_paths
+
+    if not targets:
+        click.echo("nothing to reset")
+        return
+
+    if dry_run:
+        click.echo("Would remove:")
+        for section, paths in targets.items():
+            click.echo(f"  {section}:")
+            for p in sorted(paths):
+                click.echo(f"    - {p}")
+        return
+
+    if not force:
+        summary = "; ".join(f"{k}: {len(v)} items" for k, v in targets.items())
+        click.confirm(f"Remove {summary}?", abort=True)
+
+    for section, paths in targets.items():
+        for p in paths:
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink(missing_ok=True)
+        click.echo(f"removed {section} ({len(paths)} items)")
 
 
 @click.command("uninstall")
@@ -286,12 +710,18 @@ def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: b
     else:
         auth_payload = payload.get("auth")
         auth = auth_payload if isinstance(auth_payload, dict) else {}
-        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        label = (
+            "anonymous trial"
+            if auth.get("isAnonymous")
+            else auth.get("email") or auth.get("userId")
+        )
         click.echo(f"logged in: {label}")
 
 
 @click.command("logout")
-@click.option("--no-trial", is_flag=True, help="Do not create a local anonymous trial after logout.")
+@click.option(
+    "--no-trial", is_flag=True, help="Do not create a local anonymous trial after logout."
+)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def logout_cmd(ctx: click.Context, no_trial: bool, as_json: bool) -> None:
@@ -310,7 +740,15 @@ def logout_cmd(ctx: click.Context, no_trial: bool, as_json: bool) -> None:
 @click.option("--line", "line_mode", is_flag=True, help="One-liner mode (good for status bars).")
 @click.option("-n", type=int, default=5, show_default=True, help="Number of recent runs to show.")
 @click.option("--session-id", default=None, help="Show detail for a specific run only.")
-@click.option("--auth", "auth_mode", is_flag=True, help="Show auth/subscription status instead of runs.")
+@click.option(
+    "--auth", "auth_mode", is_flag=True, help="Show auth/subscription status instead of runs."
+)
+@click.option(
+    "--index",
+    "index_mode",
+    is_flag=True,
+    help="Show code index stats for the current repo.",
+)
 @click.pass_context
 def status_cmd(
     ctx: click.Context,
@@ -319,14 +757,25 @@ def status_cmd(
     n: int,
     session_id: str | None,
     auth_mode: bool,
+    index_mode: bool,
 ) -> None:
-    """Show runs dashboard or auth status.
+    """Show runs dashboard, auth status, or code index stats.
 
     Default view: runs dashboard (overview of recent runs, totals, savings).
 
-    Use --auth to show the old auth/subscription status.
+    Use --auth to show auth/subscription status, --index for index stats.
     """
     root: Path = ctx.obj["root"]
+
+    if index_mode:
+        git_root = _detect_git_root(Path.cwd())
+        if git_root is None:
+            click.echo("not in a git repository")
+            return
+        lines = _index_stats_pretty(git_root)
+        for line in lines:
+            click.echo(line)
+        return
 
     if auth_mode:
         from atelier.core.capabilities.plugin_runtime import auth_status, load_plugin_settings
@@ -347,6 +796,7 @@ def status_cmd(
 
     if as_json:
         runs_dir = root / "runs"
+        target: Path | None
         if session_id:
             target = runs_dir / f"{session_id}.json"
         else:
@@ -482,7 +932,9 @@ def team_group() -> None:
 def team_init_cmd(ctx: click.Context, name: str, admin_email: str, as_json: bool) -> None:
     from atelier.core.capabilities.team import TeamWorkspaceManager
 
-    workspace = TeamWorkspaceManager(ctx.obj["root"]).init_workspace(name=name, admin_email=admin_email)
+    workspace = TeamWorkspaceManager(ctx.obj["root"]).init_workspace(
+        name=name, admin_email=admin_email
+    )
     payload = workspace.model_dump(mode="json")
     if as_json:
         _emit(payload, as_json=True)
@@ -492,7 +944,9 @@ def team_init_cmd(ctx: click.Context, name: str, admin_email: str, as_json: bool
 
 @team_group.command("invite")
 @click.argument("emails", nargs=-1)
-@click.option("--role", type=click.Choice(["member", "viewer", "admin"]), default="member", show_default=True)
+@click.option(
+    "--role", type=click.Choice(["member", "viewer", "admin"]), default="member", show_default=True
+)
 @click.option("--json", "as_json", is_flag=True, default=False)
 @click.pass_context
 def team_invite_cmd(ctx: click.Context, emails: tuple[str, ...], role: str, as_json: bool) -> None:
@@ -542,7 +996,9 @@ def team_role_cmd(ctx: click.Context, user_id: str, role: str, as_json: bool) ->
 
 
 @team_group.command("usage")
-@click.option("--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01.")
+@click.option(
+    "--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01."
+)
 @click.option("--json", "as_json", is_flag=True, default=False)
 @click.pass_context
 def team_usage_cmd(ctx: click.Context, since: str, as_json: bool) -> None:
@@ -550,7 +1006,9 @@ def team_usage_cmd(ctx: click.Context, since: str, as_json: bool) -> None:
 
     manager = TeamWorkspaceManager(ctx.obj["root"])
     manager.require_admin()
-    payload = summarize_workspace_usage(ctx.obj["root"], manager=manager, since=_parse_since_arg(since))
+    payload = summarize_workspace_usage(
+        ctx.obj["root"], manager=manager, since=_parse_since_arg(since)
+    )
     if as_json:
         _emit(payload, as_json=True)
         return
@@ -558,11 +1016,15 @@ def team_usage_cmd(ctx: click.Context, since: str, as_json: bool) -> None:
     click.echo(f"sessions: {payload['session_count']}")
     click.echo(f"total cost usd: {payload['total_cost_usd']:.6f}")
     for row in payload["users"]:
-        click.echo(f"{row['user_id']}\t{row['role']}\t{row['session_count']}\t{row['total_cost_usd']:.6f}")
+        click.echo(
+            f"{row['user_id']}\t{row['role']}\t{row['session_count']}\t{row['total_cost_usd']:.6f}"
+        )
 
 
 @team_group.command("audit")
-@click.option("--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01.")
+@click.option(
+    "--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01."
+)
 @click.option("--json", "as_json", is_flag=True, default=False)
 @click.pass_context
 def team_audit_cmd(ctx: click.Context, since: str, as_json: bool) -> None:
@@ -639,7 +1101,9 @@ def audit_group() -> None:
 
 
 @audit_group.command("export")
-@click.option("--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01.")
+@click.option(
+    "--since", default="30d", show_default=True, help="Time window like 30d, 24h, or 2026-05-01."
+)
 @click.option("--out", "out_dir", required=True, type=click.Path(path_type=Path))
 @click.option("--json", "as_json", is_flag=True, default=False)
 @click.pass_context
@@ -738,7 +1202,10 @@ def insights_cmd(
     if vendor and not as_json:
         vendor_key = vendor.capitalize()
         filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
-        click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}" f" of ${window.total_cost_usd:.2f} total")
+        click.echo(
+            f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}"
+            f" of ${window.total_cost_usd:.2f} total"
+        )
 
     display_window = window
     if group_by == "vendor" and not as_json:
@@ -786,6 +1253,7 @@ __all__ = [
     "audit_group",
     "deprecate",
     "detect_loop_cmd",
+    "doctor_cmd",
     "env_group",
     "governance_group",
     "init",
@@ -795,6 +1263,7 @@ __all__ = [
     "loop_report_cmd",
     "plugin_settings_group",
     "quarantine",
+    "reset_cmd",
     "share_cmd",
     "status_cmd",
     "team_group",

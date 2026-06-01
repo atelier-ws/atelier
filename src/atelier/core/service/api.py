@@ -20,21 +20,36 @@ import contextlib
 import json
 import logging
 import mimetypes
+import os
+import re
+import shlex
 import sqlite3
 import threading
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from atelier.core.capabilities.pricing import usage_cost_usd
 from atelier.core.capabilities.swarm import (
     build_swarm_apply_payload,
     build_swarm_export_payload,
+    build_swarm_spec_payload,
+    discover_repo_root,
+    initialize_swarm_run,
+    list_swarm_runner_profiles,
     list_swarm_runs,
     load_swarm_state,
     read_swarm_log,
     resolve_state_path,
+    resolve_swarm_child_command,
+    resolve_swarm_provider_command,
+    resolve_swarm_runner_metadata,
+    resolve_swarm_spec_path,
+    save_swarm_state,
+    spawn_swarm_coordinator,
     stop_swarm_run,
 )
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
@@ -88,6 +103,220 @@ _HOST_ORDER: tuple[str, ...] = (
     "cursor",
     "hermes",
 )
+
+_SWARM_FILE_SKIP_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "node_modules",
+    "dist",
+    "build",
+    "__pycache__",
+}
+
+
+class SwarmLaunchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_root: str
+    spec_path: str | None = None
+    spec_mode: Literal["existing", "inline"] = "existing"
+    spec_content: str | None = None
+    provider: Literal["cli", "openai", "litellm"] = "cli"
+    runner: str | None = "claude"
+    runner_model: str | None = None
+    model: str | None = None
+    runner_options: str = ""
+    runs: int = Field(default=3, ge=1)
+    continuous: bool = True
+    keep_worktrees: bool = True
+    effort: str = "high"
+    provider_api_key: str | None = None
+    provider_base_url: str | None = None
+    provider_env: dict[str, str] = Field(default_factory=dict)
+
+
+_SWARM_PROVIDER_ENV_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_SWARM_DEFAULT_SPEC_NAMES = ("PROGRAM.md", "program.md")
+_SWARM_PROVIDER_ENV_BLOCKLIST = {
+    "ATELIER_ROOT",
+    "ATELIER_WORKSPACE_ROOT",
+    "CLAUDE_WORKSPACE_ROOT",
+    "PATH",
+    "PYTHONPATH",
+}
+
+
+def _sanitize_swarm_provider_env(raw_env: dict[str, str] | None) -> dict[str, str]:
+    sanitized: dict[str, str] = {}
+    for raw_key, raw_value in (raw_env or {}).items():
+        key = str(raw_key or "").strip()
+        value = str(raw_value or "")
+        if not key:
+            continue
+        if not _SWARM_PROVIDER_ENV_KEY.fullmatch(key):
+            raise ValueError(f"invalid provider env key: {key!r}")
+        if key in _SWARM_PROVIDER_ENV_BLOCKLIST or key.startswith("ATELIER_SWARM_"):
+            raise ValueError(f"provider env key is reserved: {key}")
+        if "\x00" in value:
+            raise ValueError(f"provider env value contains NUL byte: {key}")
+        sanitized[key] = value
+    return sanitized
+
+
+def _build_swarm_provider_env(payload: SwarmLaunchRequest) -> dict[str, str]:
+    env = _sanitize_swarm_provider_env(payload.provider_env)
+    if payload.provider == "openai":
+        if payload.provider_api_key:
+            env["ATELIER_OPENAI_API_KEY"] = payload.provider_api_key
+        if payload.provider_base_url:
+            env["ATELIER_OPENAI_BASE_URL"] = payload.provider_base_url
+    return env
+
+
+def _default_swarm_spec_name(project_root: Path) -> str:
+    for name in _SWARM_DEFAULT_SPEC_NAMES:
+        if (project_root / name).is_file():
+            return name
+    return _SWARM_DEFAULT_SPEC_NAMES[0]
+
+
+def _swarm_candidate_project_roots(root: Path) -> list[Path]:
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+
+    def add_candidate(candidate: Path) -> None:
+        resolved = candidate.expanduser().resolve()
+        if resolved in seen or not resolved.exists() or not resolved.is_dir():
+            return
+        seen.add(resolved)
+        candidates.append(resolved)
+
+    with contextlib.suppress(RuntimeError):
+        add_candidate(discover_repo_root(Path.cwd()))
+    for state in list_swarm_runs(root):
+        with contextlib.suppress(OSError, RuntimeError):
+            add_candidate(Path(state.repo_root))
+    return candidates
+
+
+def _coerce_project_root(root: Path, project_root: str | None) -> Path:
+    candidates = _swarm_candidate_project_roots(root)
+    if project_root:
+        requested = Path(project_root).expanduser().resolve()
+        if requested in candidates:
+            return requested
+        try:
+            discovered = discover_repo_root(requested)
+        except RuntimeError as exc:
+            raise ValueError(f"unknown swarm project root: {project_root}") from exc
+        resolved = discovered.resolve()
+        if resolved != requested:
+            raise ValueError(f"project root must point at a repository root: {project_root}")
+        return resolved
+    if candidates:
+        return candidates[0]
+    raise ValueError("no swarm project roots available")
+
+
+def _iter_swarm_spec_candidates(project_root: Path, limit: int = 80) -> list[str]:
+    preferred = [
+        "PROGRAM.md",
+        "program.md",
+        "spec.md",
+        "SPEC.md",
+        "prompt.md",
+        "PROMPT.md",
+        "README.md",
+    ]
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def add_relative(path: Path) -> None:
+        relative = path.relative_to(project_root).as_posix()
+        if relative not in seen:
+            seen.add(relative)
+            ordered.append(relative)
+
+    for name in preferred:
+        candidate = project_root / name
+        if candidate.exists() and candidate.is_file():
+            add_relative(candidate)
+
+    for current_root, dirnames, filenames in os.walk(project_root):
+        current_path = Path(current_root)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in _SWARM_FILE_SKIP_DIRS and not name.startswith(".")
+        ]
+        for filename in sorted(filenames):
+            if filename.startswith("."):
+                continue
+            suffix = Path(filename).suffix.lower()
+            if suffix not in {".md", ".txt"}:
+                continue
+            candidate = current_path / filename
+            try:
+                size = candidate.stat().st_size
+            except OSError:
+                continue
+            if size > 128_000:
+                continue
+            add_relative(candidate)
+            if len(ordered) >= limit:
+                return ordered
+    return ordered
+
+
+def _read_swarm_preview(path: Path, limit: int = 4000) -> tuple[str, bool]:
+    content = path.read_text(encoding="utf-8")
+    return content[:limit], len(content) > limit
+
+
+def _resolve_swarm_spec_target(project_root: Path, spec_path: str | None) -> tuple[Path, str]:
+    default_spec = _default_swarm_spec_name(project_root)
+    requested = (spec_path or default_spec).strip() or default_spec
+    raw = Path(requested).expanduser()
+    candidate = raw.resolve() if raw.is_absolute() else (project_root / raw).resolve()
+    if not candidate.is_relative_to(project_root):
+        raise ValueError(f"swarm spec must stay under the selected project root: {project_root}")
+    if candidate.exists() and not candidate.is_file():
+        raise ValueError(f"swarm spec is not a file: {candidate}")
+    return candidate, candidate.relative_to(project_root).as_posix()
+
+
+def _load_swarm_spec_document(project_root: Path, spec_path: str | None) -> dict[str, Any]:
+    candidate, relative_path = _resolve_swarm_spec_target(project_root, spec_path)
+    exists = candidate.is_file()
+    content = candidate.read_text(encoding="utf-8") if exists else ""
+    return {
+        "path": relative_path,
+        "content": content,
+        "exists": exists,
+        "is_default": relative_path == _default_swarm_spec_name(project_root),
+    }
+
+
+def _materialize_swarm_spec(
+    *,
+    project_root: Path,
+    spec_path: str | None,
+    spec_mode: Literal["existing", "inline"],
+    spec_content: str | None,
+) -> tuple[Path, str, Literal["explicit", "default"], bool]:
+    if spec_mode == "inline" and spec_content is None:
+        raise ValueError("inline swarm specs require spec_content")
+    target, relative_path = _resolve_swarm_spec_target(project_root, spec_path)
+    if spec_content is not None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(spec_content, encoding="utf-8")
+    resolved_spec_path, spec_resolution, used_program_md = resolve_swarm_spec_path(
+        project_root=project_root,
+        spec_path=relative_path,
+    )
+    return resolved_spec_path, relative_path, spec_resolution, used_program_md
 
 
 def _extract_enum_params(input_schema: dict[str, Any]) -> list[dict[str, Any]]:
@@ -164,7 +393,9 @@ def _normalize_external_period(period: Any) -> str:
 def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) -> str | None:
     target_days = max(1, days)
     periods = {
-        _normalize_external_period(run.get("period")) for run in runs if _normalize_external_period(run.get("period"))
+        _normalize_external_period(run.get("period"))
+        for run in runs
+        if _normalize_external_period(run.get("period"))
     }
     if not periods:
         return None
@@ -179,7 +410,9 @@ def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) ->
     )
 
 
-def _select_external_run_for_days(runs: list[dict[str, Any]], *, days: int) -> dict[str, Any] | None:
+def _select_external_run_for_days(
+    runs: list[dict[str, Any]], *, days: int
+) -> dict[str, Any] | None:
     if not runs:
         return None
 
@@ -330,7 +563,9 @@ def _model_usage_cost(usage: dict[str, Any]) -> float:
     )
 
 
-def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") -> dict[str, Any] | None:
+def _normalize_trace_usage_entry(
+    raw_entry: Any, *, fallback_model: str = ""
+) -> dict[str, Any] | None:
     if not isinstance(raw_entry, dict):
         return None
 
@@ -432,7 +667,9 @@ def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
             bucket[field] += value
 
     usages = list(aggregated.values())
-    usages.sort(key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True)
+    usages.sort(
+        key=lambda usage: (_model_usage_cost(usage), _usage_total_tokens(usage)), reverse=True
+    )
     return usages
 
 
@@ -453,7 +690,11 @@ def _trace_session_model(
         return ""
 
     usages = model_usages if model_usages is not None else _trace_model_usages(payload)
-    usage_models = {str(usage.get("model") or "").strip() for usage in usages if str(usage.get("model") or "").strip()}
+    usage_models = {
+        str(usage.get("model") or "").strip()
+        for usage in usages
+        if str(usage.get("model") or "").strip()
+    }
     if len(usage_models) == 1:
         return next(iter(usage_models))
     if usage_models:
@@ -500,9 +741,15 @@ def _trace_cost_breakdown_from_payload(payload: dict[str, Any]) -> dict[str, flo
         if entry.get("kind") == "tool":
             continue
         model_id = str(entry.get("model") or "_default")
-        input_token_cost_usd += _llm_usage_cost(model_id, input_tokens=int(entry.get("input_tokens") or 0))
-        output_token_cost_usd += _llm_usage_cost(model_id, output_tokens=int(entry.get("output_tokens") or 0))
-        cache_read_cost_usd += _llm_usage_cost(model_id, cache_read_tokens=int(entry.get("cached_input_tokens") or 0))
+        input_token_cost_usd += _llm_usage_cost(
+            model_id, input_tokens=int(entry.get("input_tokens") or 0)
+        )
+        output_token_cost_usd += _llm_usage_cost(
+            model_id, output_tokens=int(entry.get("output_tokens") or 0)
+        )
+        cache_read_cost_usd += _llm_usage_cost(
+            model_id, cache_read_tokens=int(entry.get("cached_input_tokens") or 0)
+        )
         cache_write_cost_usd += _llm_usage_cost(
             model_id,
             cache_write_tokens=int(entry.get("cache_creation_input_tokens") or 0),
@@ -543,7 +790,9 @@ def _trace_models_used_from_payload(
     return {started_model: 1} if started_model else {}
 
 
-def _analytics_event_cost(model_id: str | None, event_type: str, input_tokens: int, output_tokens: int) -> float:
+def _analytics_event_cost(
+    model_id: str | None, event_type: str, input_tokens: int, output_tokens: int
+) -> float:
     if event_type == "prompt":
         return _llm_usage_cost(model_id, input_tokens=input_tokens)
     if event_type == "cached_prompt":
@@ -597,8 +846,12 @@ def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) ->
         for row in rows
         if row.get("event_type") in {"result", "thinking", "tool_call"}
     )
-    user_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string")
-    tool_calls = sum(int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call")
+    user_input_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "user_string"
+    )
+    tool_calls = sum(
+        int(row.get("call_count") or 1) for row in rows if row.get("event_type") == "tool_call"
+    )
     unique_tools = len(
         {
             str(row.get("tool_name") or "")
@@ -607,16 +860,28 @@ def _build_analytics_summary(rows: list[dict[str, Any]], *, days: int | None) ->
         }
     )
     cached_prompt_tokens = sum(
-        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "cached_prompt"
+        int(row.get("input_tokens") or 0)
+        for row in rows
+        if row.get("event_type") == "cached_prompt"
     )
-    model_response_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result")
+    model_response_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "result"
+    )
     model_thinking_tokens = sum(
         int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "thinking"
     )
-    tool_input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
-    tool_output_tokens = sum(int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call")
+    tool_input_tokens = sum(
+        int(row.get("input_tokens") or 0) for row in rows if row.get("event_type") == "tool_call"
+    )
+    tool_output_tokens = sum(
+        int(row.get("output_tokens") or 0) for row in rows if row.get("event_type") == "tool_call"
+    )
     total_cost = round(
-        sum(float(row.get("cost") or 0.0) for row in rows if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS),
+        sum(
+            float(row.get("cost") or 0.0)
+            for row in rows
+            if row.get("event_type") in _BILLABLE_ANALYTICS_EVENTS
+        ),
         6,
     )
     effective_days = max(1, days or 1)
@@ -810,7 +1075,9 @@ def _group_analytics_rows(events: list[dict[str, Any]], *, limit: int) -> list[d
         row["output_tokens"] += int(event.get("output_tokens") or 0)
         row["call_count"] += int(event.get("call_count") or 0)
         row["cost"] = round(float(row.get("cost") or 0.0) + float(event.get("cost") or 0.0), 8)
-        row["first_seen"] = min(str(row.get("first_seen") or ""), str(event.get("first_seen") or ""))
+        row["first_seen"] = min(
+            str(row.get("first_seen") or ""), str(event.get("first_seen") or "")
+        )
         row["last_seen"] = max(str(row.get("last_seen") or ""), str(event.get("last_seen") or ""))
         session_ids[key].add(str(event["trace_id"]))
 
@@ -834,7 +1101,9 @@ def _query_analytics_rows(
     start_day = None
     if days is not None:
         window_days = max(1, int(days))
-        start_day = (datetime.now().astimezone().date() - timedelta(days=window_days - 1)).isoformat()
+        start_day = (
+            datetime.now().astimezone().date() - timedelta(days=window_days - 1)
+        ).isoformat()
 
     params: list[Any] = []
 
@@ -933,7 +1202,9 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
             if isinstance(payload, dict):
                 compact = {
                     "sessions_benchmarked": payload.get("sessions_benchmarked", 0),
-                    "avg_native_freed_tokens_measured": payload.get("avg_native_freed_tokens_measured", 0),
+                    "avg_native_freed_tokens_measured": payload.get(
+                        "avg_native_freed_tokens_measured", 0
+                    ),
                     "avg_atelier_freed_tokens_est": payload.get("avg_atelier_freed_tokens_est", 0),
                     "avg_delta_tokens": payload.get("avg_delta_tokens", 0),
                     "atelier_vs_native_delta_pct": payload.get("atelier_vs_native_delta_pct", 0.0),
@@ -957,7 +1228,9 @@ def _latest_savings_benchmark(root: Path) -> dict[str, Any] | None:
                     "total_downtiered_turns": payload.get("total_downtiered_turns", 0),
                     "downtiered_pct": payload.get("downtiered_pct", 0.0),
                     "total_cost_saved_usd": payload.get("total_cost_saved_usd", 0.0),
-                    "avg_cost_saved_usd_per_session": payload.get("avg_cost_saved_usd_per_session", 0.0),
+                    "avg_cost_saved_usd_per_session": payload.get(
+                        "avg_cost_saved_usd_per_session", 0.0
+                    ),
                     "by_tier": payload.get("by_tier", {}),
                     "generated_at": payload.get("generated_at", ""),
                     "note": payload.get("note", ""),
@@ -1039,7 +1312,9 @@ def _tracked_saved_tokens(store: ContextStore, trace: Trace) -> tuple[int, int]:
         tracked_turns += int(row.tool_calls or 0)
         lever_keys = [str(key or "") for key in row.lever_savings]
         non_marker_keys = [key for key in lever_keys if not key.startswith("tool:")]
-        if non_marker_keys and all(key.startswith("compact_tool_output:") for key in non_marker_keys):
+        if non_marker_keys and all(
+            key.startswith("compact_tool_output:") for key in non_marker_keys
+        ):
             continue
         actual_tokens = (
             int(row.input_tokens or 0)
@@ -1087,7 +1362,9 @@ def _window_metrics(store: ContextStore, traces: list[Trace]) -> dict[str, Any]:
         "trace_count": count,
         "avg_tokens": round(sum(int(item["tokens"]) for item in entries) / count),
         "avg_cost_usd": round(sum(float(item["cost_usd"]) for item in entries) / count, 6),
-        "avg_cache_leverage": round(sum(float(item["cache_leverage"]) for item in entries) / count, 4),
+        "avg_cache_leverage": round(
+            sum(float(item["cache_leverage"]) for item in entries) / count, 4
+        ),
         "avg_saved_tokens": round(sum(int(item["saved_tokens"]) for item in entries) / count),
         "tracked_turns": sum(int(item["tracked_turns"]) for item in entries),
         "from": entries[0]["created_at"],
@@ -1151,7 +1428,9 @@ def _build_impact_validation(
                 "cache_leverage_pct": 0.0,
                 "saved_tokens_pct": 0.0,
             },
-            "notes": ["Need at least two traces in the selected window to compare before vs after behavior."],
+            "notes": [
+                "Need at least two traces in the selected window to compare before vs after behavior."
+            ],
         }
 
     midpoint = max(1, len(traces) // 2)
@@ -1160,8 +1439,12 @@ def _build_impact_validation(
 
     tokens_delta_pct = _pct_change(float(before["avg_tokens"]), float(after["avg_tokens"]))
     cost_delta_pct = _pct_change(float(before["avg_cost_usd"]), float(after["avg_cost_usd"]))
-    cache_delta_pct = _pct_change(float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"]))
-    saved_tokens_delta_pct = _pct_change(float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"]))
+    cache_delta_pct = _pct_change(
+        float(before["avg_cache_leverage"]), float(after["avg_cache_leverage"])
+    )
+    saved_tokens_delta_pct = _pct_change(
+        float(before["avg_saved_tokens"]), float(after["avg_saved_tokens"])
+    )
 
     notes: list[str] = []
     if after["avg_tokens"] < before["avg_tokens"]:
@@ -1358,7 +1641,9 @@ def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
         kind_row["cost_saved_usd"] = round(float(kind_row["cost_saved_usd"]), 6)
 
     top_paths = []
-    for path_row in sorted(by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True)[:5]:
+    for path_row in sorted(
+        by_path.values(), key=lambda row: int(row["tokens_saved"]), reverse=True
+    )[:5]:
         top_paths.append(
             {
                 "path": path_row["path"],
@@ -1457,7 +1742,9 @@ def _live_event_datetime(event: dict[str, Any]) -> datetime | None:
         return None
 
 
-def _recent_live_model_recommendations(live_events: list[dict[str, Any]], *, window_days: int) -> list[dict[str, Any]]:
+def _recent_live_model_recommendations(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> list[dict[str, Any]]:
     cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
     rows: list[dict[str, Any]] = []
     for event in live_events:
@@ -1480,14 +1767,18 @@ def _recent_live_model_recommendations(live_events: list[dict[str, Any]], *, win
                 "cost_saved_usd": round(_coerce_float(event.get("cost_saved_usd") or 0.0), 6),
                 "vs_model": event.get("vs_model") or "",
                 "estimated_input_tokens": _coerce_int(event.get("estimated_input_tokens") or 0),
-                "reasons": [str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)],
+                "reasons": [
+                    str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)
+                ],
             }
         )
     rows.sort(key=lambda row: str(row["at"]), reverse=True)
     return rows[:10]
 
 
-def _build_actual_routing_savings(live_events: list[dict[str, Any]], *, window_days: int) -> dict[str, Any]:
+def _build_actual_routing_savings(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> dict[str, Any]:
     cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
     calls_downtiered = 0
     total_cost_saved = 0.0
@@ -1544,7 +1835,9 @@ def _build_actual_routing_savings(live_events: list[dict[str, Any]], *, window_d
                 "model": model,
                 "cost_saved_usd": round(cost_saved_usd, 6),
                 "vs_model": str(event.get("vs_model") or ""),
-                "reasons": [str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)],
+                "reasons": [
+                    str(reason) for reason in event.get("reasons", []) if isinstance(reason, str)
+                ],
             }
         )
 
@@ -1583,7 +1876,9 @@ def _build_actual_routing_savings(live_events: list[dict[str, Any]], *, window_d
     }
 
 
-def _build_compact_session_history(live_events: list[dict[str, Any]], *, window_days: int) -> list[dict[str, Any]]:
+def _build_compact_session_history(
+    live_events: list[dict[str, Any]], *, window_days: int
+) -> list[dict[str, Any]]:
     cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
     rows: list[dict[str, Any]] = []
     for event in live_events:
@@ -1670,8 +1965,12 @@ def _build_model_routing_simulation(
         "simulated_cost_usd": round(total_simulated_cost, 6),
         "total_tokens_rerouted": rerouted_tokens,
         "heuristic": "Conservative routine-trace filter: success only, no errors, <=120K total tokens, <=4 tool calls, <=2 files touched.",
-        "candidates": sorted(candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True)[:8],
-        "live_recommendations": _recent_live_model_recommendations(live_events or [], window_days=window_days),
+        "candidates": sorted(
+            candidates, key=lambda row: float(row["estimated_cost_saved_usd"]), reverse=True
+        )[:8],
+        "live_recommendations": _recent_live_model_recommendations(
+            live_events or [], window_days=window_days
+        ),
         "actual_savings": _build_actual_routing_savings(live_events or [], window_days=window_days),
     }
 
@@ -1715,7 +2014,9 @@ def _savings_summary_payload(
             naive = actual + cache_read_tokens
             total_naive += naive
             total_actual += actual
-            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(0, naive - actual)
+            per_lever[_normalize_lever(str(call.get("operation", "unknown")))] += max(
+                0, naive - actual
+            )
             at_raw = str(call.get("at", ""))
             try:
                 at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
@@ -1774,20 +2075,25 @@ def _savings_summary_payload(
         source["cost_saved_usd"] += cost_saved_usd
         source["time_saved_ms"] += int(event.get("time_saved_ms", 0) or 0)
 
-    reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    reduction_pct = (
+        round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+    )
     sorted_levers = dict(sorted(per_lever.items(), key=lambda kv: kv[1], reverse=True))
     cost_summary = CostTracker(root).total_savings()
     saved_usd = round(float(cost_summary["saved_usd"]) + live_cost_saved, 6)
     would_have_cost = round(float(cost_summary["would_have_cost_usd"]) + live_cost_saved, 6)
     actually_cost = float(cost_summary["actually_cost_usd"])
     saved_pct = round(100.0 * saved_usd / would_have_cost, 2) if would_have_cost > 0 else 0.0
-    top_sources = sorted(source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True)
+    top_sources = sorted(
+        source_totals.values(), key=lambda row: float(row["cost_saved_usd"]), reverse=True
+    )
     for src in top_sources:
         src["cost_saved_usd"] = round(float(src["cost_saved_usd"]), 6)
     cost_only_sources = [
         dict(source)
         for source in top_sources
-        if int(source.get("tokens_saved", 0) or 0) <= 0 and float(source.get("cost_saved_usd", 0.0) or 0.0) > 0
+        if int(source.get("tokens_saved", 0) or 0) <= 0
+        and float(source.get("cost_saved_usd", 0.0) or 0.0) > 0
     ]
 
     if store is None:
@@ -1905,11 +2211,17 @@ def _savings_summary_payload(
         if not isinstance(lever_savings, dict):
             lever_savings = {}
         non_marker_keys = [
-            str(key) for key, value in lever_savings.items() if not str(key).startswith("tool:") and int(value or 0) > 0
+            str(key)
+            for key, value in lever_savings.items()
+            if not str(key).startswith("tool:") and int(value or 0) > 0
         ]
         compact_keys = [key for key in non_marker_keys if key.startswith("compact_tool_output:")]
         compact_only = bool(non_marker_keys) and len(compact_keys) == len(non_marker_keys)
-        lever_key = compact_keys[0] if compact_keys else (non_marker_keys[0] if non_marker_keys else "unattributed")
+        lever_key = (
+            compact_keys[0]
+            if compact_keys
+            else (non_marker_keys[0] if non_marker_keys else "unattributed")
+        )
         lever = (
             _normalize_lever(lever_key.split(":", 1)[1])
             if lever_key.startswith("compact_tool_output:")
@@ -1930,8 +2242,13 @@ def _savings_summary_payload(
 
         ledger = _load_run_ledger(session_id)
         matched_tool_name = _nearest_ledger_tool_name(ledger, int(row["turn_index"] or 0))
-        if not matched_tool_name and len([key for (sid, key) in live_by_session_tool if sid == session_id]) == 1:
-            matched_tool_name = next(key for (sid, key) in live_by_session_tool if sid == session_id)
+        if (
+            not matched_tool_name
+            and len([key for (sid, key) in live_by_session_tool if sid == session_id]) == 1
+        ):
+            matched_tool_name = next(
+                key for (sid, key) in live_by_session_tool if sid == session_id
+            )
         if not matched_tool_name:
             matched_tool_name = "unattributed"
 
@@ -2014,7 +2331,9 @@ def _savings_summary_payload(
         eligible_rows = [row for row in proof_rows if not row["compact_only"]]
         total_naive = sum(int(row["naive_tokens"]) for row in eligible_rows)
         total_actual = sum(int(row["actual_tokens"]) for row in eligible_rows)
-        reduction_pct = round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+        reduction_pct = (
+            round((1.0 - (total_actual / total_naive)) * 100.0, 1) if total_naive > 0 else 0.0
+        )
         per_lever_totals: defaultdict[str, int] = defaultdict(int)
         for row in eligible_rows:
             per_lever_totals[str(row["lever"])] += int(row["saved_tokens"])
@@ -2099,7 +2418,9 @@ def _savings_summary_payload(
             if not session["task"] and row["task"]:
                 session["task"] = row["task"]
             session["saved_tokens"] += int(row["saved_tokens"])
-            session["saved_cost_usd"] = round(float(session["saved_cost_usd"]) + float(row["saved_cost_usd"]), 6)
+            session["saved_cost_usd"] = round(
+                float(session["saved_cost_usd"]) + float(row["saved_cost_usd"]), 6
+            )
             session["items"].append(
                 {
                     "session_id": row["session_id"],
@@ -2115,23 +2436,35 @@ def _savings_summary_payload(
                     "created_at": row["created_at"],
                 }
             )
-        session_proof = sorted(session_map.values(), key=lambda row: (-row["saved_tokens"], row["session_id"]))
+        session_proof = sorted(
+            session_map.values(), key=lambda row: (-row["saved_tokens"], row["session_id"])
+        )
         for row in session_proof:
-            row["items"].sort(key=lambda item: (-int(item["saved_tokens"]), int(item["turn_index"])))
+            row["items"].sort(
+                key=lambda item: (-int(item["saved_tokens"]), int(item["turn_index"]))
+            )
 
         dominant_run = session_proof[0] if session_proof else None
         dominant_item = (
-            max(proof_rows, key=lambda row: (int(row["saved_tokens"]), row["created_at"])) if proof_rows else None
+            max(proof_rows, key=lambda row: (int(row["saved_tokens"]), row["created_at"]))
+            if proof_rows
+            else None
         )
         total_saved_proof_tokens = sum(int(row["saved_tokens"]) for row in proof_rows) or 1
         dominant_run_share = (
-            round((int(dominant_run["saved_tokens"]) / total_saved_proof_tokens) * 100.0, 1) if dominant_run else 0.0
+            round((int(dominant_run["saved_tokens"]) / total_saved_proof_tokens) * 100.0, 1)
+            if dominant_run
+            else 0.0
         )
         dominant_item_share = (
-            round((int(dominant_item["saved_tokens"]) / total_saved_proof_tokens) * 100.0, 1) if dominant_item else 0.0
+            round((int(dominant_item["saved_tokens"]) / total_saved_proof_tokens) * 100.0, 1)
+            if dominant_item
+            else 0.0
         )
         compact_output_row_count = sum(1 for row in proof_rows if row["compact_only"])
-        compact_output_saved_tokens = sum(int(row["saved_tokens"]) for row in proof_rows if row["compact_only"])
+        compact_output_saved_tokens = sum(
+            int(row["saved_tokens"]) for row in proof_rows if row["compact_only"]
+        )
         if compact_output_row_count > 0:
             headline_explanation = (
                 "This headline excludes compact-tool-output rows such as search_read naive-vs-compacted comparisons. "
@@ -2191,8 +2524,12 @@ def _savings_summary_payload(
                 "headline_explanation": headline_explanation,
                 "tracked_row_count": len(proof_rows),
                 "tracked_run_count": len({row["session_id"] for row in proof_rows}),
-                "trace_linked_run_count": len({row["session_id"] for row in proof_rows if row["trace_linked"]}),
-                "ledger_backed_run_count": len({row["session_id"] for row in proof_rows if row["ledger_backed"]}),
+                "trace_linked_run_count": len(
+                    {row["session_id"] for row in proof_rows if row["trace_linked"]}
+                ),
+                "ledger_backed_run_count": len(
+                    {row["session_id"] for row in proof_rows if row["ledger_backed"]}
+                ),
                 "live_event_count": len(live_events_window),
                 "coverage_gap_count": len(coverage_gaps),
                 "compact_output_row_count": compact_output_row_count,
@@ -2349,7 +2686,9 @@ def _optimization_lever_tokens(
     return total
 
 
-def _optimization_lever_cost(live_events: list[dict[str, Any]], *, lever: str, window_days: int) -> float:
+def _optimization_lever_cost(
+    live_events: list[dict[str, Any]], *, lever: str, window_days: int
+) -> float:
     cutoff = datetime.now(UTC) - timedelta(days=max(1, window_days))
     total = 0.0
     for event in live_events:
@@ -2390,7 +2729,9 @@ def _implemented_optimization_catalog(
         for key, value in (savings_payload.get("per_lever") or {}).items()
         if isinstance(key, str)
     }
-    top_sources = [item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)]
+    top_sources = [
+        item for item in (savings_payload.get("top_sources") or []) if isinstance(item, dict)
+    ]
 
     catalog = [
         {
@@ -2454,7 +2795,9 @@ def _implemented_optimization_catalog(
             "category": "context_lifecycle",
             "automation": "Advisory - compact tool fires on utilisation >= 80%",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("session_compaction",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("session_compaction",)
+            ),
             "observed_cost_saved_usd": _optimization_lever_cost(
                 live_events, lever="session_compaction", window_days=window_days
             ),
@@ -2479,7 +2822,9 @@ def _implemented_optimization_catalog(
             "category": "memory",
             "automation": "Automatic when memory recall paths are used",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("scoped_recall",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("scoped_recall",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Pulls narrower memory slices instead of replaying broad historical context.",
             "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
@@ -2490,7 +2835,9 @@ def _implemented_optimization_catalog(
             "category": "context_reuse",
             "automation": "Automatic when matching reasoning blocks are selected",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("reasonblock_inject",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
             "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
@@ -2501,7 +2848,9 @@ def _implemented_optimization_catalog(
             "category": "context_pruning",
             "automation": "Automatic when structured truncation paths are used",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("ast_truncation",)),
+            "observed_tokens_saved": _optimization_lever_tokens(
+                per_lever, exact=("ast_truncation",)
+            ),
             "applies_to": supported_hosts,
             "notes": "Keeps syntax-relevant structure while trimming low-value surrounding text.",
             "examples": _optimization_lever_examples(top_sources, exact=("ast_truncation",)),
@@ -2538,9 +2887,9 @@ def _implemented_optimization_catalog(
     for item in catalog:
         observed_tokens = item.get("observed_tokens_saved")
         observed_cost = _coerce_float(item.get("observed_cost_saved_usd") or 0.0)
-        if ((isinstance(observed_tokens, int) and observed_tokens > 0) or observed_cost > 0) and item[
-            "status"
-        ] == "active":
+        if (
+            (isinstance(observed_tokens, int) and observed_tokens > 0) or observed_cost > 0
+        ) and item["status"] == "active":
             item["status"] = "active_observed"
     return catalog
 
@@ -2600,7 +2949,9 @@ def _optimization_implementation_gaps() -> list[dict[str, Any]]:
     ]
 
 
-def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_days: int) -> dict[str, Any]:
+def _optimizations_summary_payload(
+    root: Path, store: ContextStore, *, window_days: int
+) -> dict[str, Any]:
     from atelier.core.capabilities.optimization import (
         load_current_policy,
         load_history,
@@ -2626,7 +2977,9 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     from atelier.core.foundation.paths import resolve_workspace_root
 
     project_root_candidate = resolve_workspace_root(root)
-    if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
+    if not (
+        (project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()
+    ):
         project_root_candidate = Path.cwd()
     from atelier.core.capabilities.optimization_audit import (
         build_context_audit,
@@ -2638,9 +2991,13 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         blocks_dir=getattr(store, "blocks_dir", None),
         rubrics_dir=getattr(store, "rubrics_dir", None),
     )
-    quality_score = build_session_quality_summary(traces, window_days=window_days, context_audit=context_audit)
+    quality_score = build_session_quality_summary(
+        traces, window_days=window_days, context_audit=context_audit
+    )
     runtime_coverage = _optimization_runtime_coverage()
-    implemented_levers = _implemented_optimization_catalog(savings, live_events, window_days=window_days)
+    implemented_levers = _implemented_optimization_catalog(
+        savings, live_events, window_days=window_days
+    )
     auto_optimizations = _build_auto_optimizations(savings, live_events, window_days=window_days)
     impact_validation = _build_impact_validation(store, recent_traces, window_days=window_days)
     reread_telemetry = _build_reread_telemetry(root, window_days=window_days)
@@ -2650,7 +3007,9 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     compact_session_history = _build_compact_session_history(live_events, window_days=window_days)
 
     # Fetch latest codeburn:optimize report
-    external_optimizations = store.list_external_analytics_runs(tool="codeburn:optimize", days=window_days, limit=1)
+    external_optimizations = store.list_external_analytics_runs(
+        tool="codeburn:optimize", days=window_days, limit=1
+    )
     latest_external = external_optimizations[0] if external_optimizations else None
 
     automatic_hosts = sum(1 for item in runtime_coverage if item["automatic_at_start"])
@@ -2659,7 +3018,10 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         1
         for item in implemented_levers
         if (
-            (isinstance(item.get("observed_tokens_saved"), int) and item["observed_tokens_saved"] > 0)
+            (
+                isinstance(item.get("observed_tokens_saved"), int)
+                and item["observed_tokens_saved"] > 0
+            )
             or _coerce_float(item.get("observed_cost_saved_usd") or 0.0) > 0
         )
     )
@@ -2804,7 +3166,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
 
             conn.row_factory = sqlite3.Row
-            for trace_row in conn.execute("SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)):
+            for trace_row in conn.execute(
+                "SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)
+            ):
                 try:
                     payload = json.loads(trace_row["payload"] or "{}")
                 except (TypeError, json.JSONDecodeError):
@@ -3100,12 +3464,20 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             else:
                 _files_normalized.append(redact(str(_item)))
         normalized["files_touched"] = _files_normalized
-        normalized["commands_run"] = redact_list([str(item) for item in normalized.get("commands_run") or []])
-        normalized["errors_seen"] = redact_list([str(item) for item in normalized.get("errors_seen") or []])
+        normalized["commands_run"] = redact_list(
+            [str(item) for item in normalized.get("commands_run") or []]
+        )
+        normalized["errors_seen"] = redact_list(
+            [str(item) for item in normalized.get("errors_seen") or []]
+        )
         normalized["diff_summary"] = redact(str(normalized.get("diff_summary") or ""))
         normalized["output_summary"] = redact(str(normalized.get("output_summary") or ""))
-        normalized["trace_confidence"] = _normalize_trace_confidence(normalized.get("trace_confidence"))
-        normalized["tools_called"] = _normalize_trace_tool_calls(list(normalized.get("tools_called") or []))
+        normalized["trace_confidence"] = _normalize_trace_confidence(
+            normalized.get("trace_confidence")
+        )
+        normalized["tools_called"] = _normalize_trace_tool_calls(
+            list(normalized.get("tools_called") or [])
+        )
         normalized["validation_results"] = _normalize_trace_validation_results(
             list(normalized.get("validation_results") or [])
         )
@@ -3115,7 +3487,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     @app.post("/v1/traces", tags=["traces"], dependencies=[Depends(verify_api_key)])
     def record_trace(payload: dict[str, Any]) -> dict[str, Any]:
         if "id" not in payload:
-            payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
+            payload["id"] = Trace.make_id(
+                payload.get("task", "untitled"), payload.get("agent", "agent")
+            )
         normalized_payload, event_recorded = _normalize_trace_payload(payload)
         trace = Trace.model_validate(normalized_payload)
         get_store().record_trace(trace)
@@ -3162,16 +3536,22 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             if manager is not None:
                 from atelier.core.capabilities.team import visible_memory_blocks
 
-                visible = visible_memory_blocks([block], manager=manager, user_id=user_id, shared_only=shared_only)
+                visible = visible_memory_blocks(
+                    [block], manager=manager, user_id=user_id, shared_only=shared_only
+                )
                 if not visible:
-                    raise HTTPException(status_code=403, detail="block is not visible to this workspace user")
+                    raise HTTPException(
+                        status_code=403, detail="block is not visible to this workspace user"
+                    )
                 block = visible[0]
             return block
         blocks = mem.list_blocks(agent_id, include_tombstoned=include_tombstoned, limit=limit)
         if manager is not None:
             from atelier.core.capabilities.team import visible_memory_blocks
 
-            blocks = visible_memory_blocks(blocks, manager=manager, user_id=user_id, shared_only=shared_only)
+            blocks = visible_memory_blocks(
+                blocks, manager=manager, user_id=user_id, shared_only=shared_only
+            )
         return blocks
 
     @app.post("/v1/memory/blocks", tags=["knowledge"], dependencies=[Depends(verify_api_key)])
@@ -3274,7 +3654,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 since_dt = datetime.fromisoformat(since_str).replace(tzinfo=UTC)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"invalid since: {since_str!r}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"invalid since: {since_str!r}"
+                ) from exc
         passages = mem.search_passages(
             agent_id,
             str(query),
@@ -3310,7 +3692,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def team_invite(payload: dict[str, Any]) -> Any:
         from atelier.core.capabilities.team import TeamPermissionError, TeamWorkspaceManager
 
-        emails = [str(item).strip().lower() for item in payload.get("emails") or [] if str(item).strip()]
+        emails = [
+            str(item).strip().lower() for item in payload.get("emails") or [] if str(item).strip()
+        ]
         if not emails:
             raise HTTPException(status_code=400, detail="emails are required")
         manager = TeamWorkspaceManager(store_path)
@@ -3403,7 +3787,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         policy = GovernancePolicy.model_validate(payload.get("policy") or {})
         saved = save_policy(store_path, policy)
         manager.append_audit_event(
-            TeamAuditEvent(action="governance.apply", actor_user_id=actor.user_id, details={"source": "api"})
+            TeamAuditEvent(
+                action="governance.apply", actor_user_id=actor.user_id, details={"source": "api"}
+            )
         )
         return saved
 
@@ -3557,7 +3943,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         days: int | None = Query(None),
     ) -> dict[str, Any]:
         rows = _query_analytics_rows(store.db_path, grouped=grouped, days=days, limit=limit)
-        filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
+        filtered = _filter_analytics_rows(
+            rows, agent=agent, model=model, category=category, search=search
+        )
         return _build_analytics_summary(filtered, days=days)
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
@@ -3571,7 +3959,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         top sessions, and tool-type distributions in one call.
         """
         db_path = store.db_path
-        start_day = (datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)).isoformat()
+        start_day = (
+            datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)
+        ).isoformat()
         host_filter = "AND COALESCE(host, agent) = ?" if host else ""
         sql = f"""
             SELECT
@@ -3885,7 +4275,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "input_tokens": s["input_tokens"],
                 "output_tokens": s["output_tokens"],
                 "cached_tokens": s["cached_tokens"],
-                "atelier_savings_usd": _session_savings.get(str(s.get("session_key") or s["id"]), 0.0),
+                "atelier_savings_usd": _session_savings.get(
+                    str(s.get("session_key") or s["id"]), 0.0
+                ),
             }
             for s in sorted(dashboard_sessions, key=lambda x: x["cost"], reverse=True)[:20]
         ]
@@ -3951,7 +4343,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 ),
                 "total_sessions": len(dashboard_sessions),
                 "total_atelier_savings_usd": _total_savings,
-                "savings_pct": (round(_total_savings / _total_cost_window * 100, 2) if _total_cost_window > 0 else 0.0),
+                "savings_pct": (
+                    round(_total_savings / _total_cost_window * 100, 2)
+                    if _total_cost_window > 0
+                    else 0.0
+                ),
             },
             "daily": daily_list,
             "hourly": hourly_list,
@@ -4437,7 +4833,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     # Raw artifacts                                                       #
     # ------------------------------------------------------------------ #
 
-    @app.get("/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)])
+    @app.get(
+        "/raw-artifacts/{artifact_id}", tags=["artifacts"], dependencies=[Depends(verify_api_key)]
+    )
     def get_raw_artifact(artifact_id: str) -> dict[str, Any]:
         """Return metadata for a stored raw artifact."""
         store_inst = get_store()
@@ -4563,11 +4961,17 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 for art_id in trace.raw_artifact_ids:
                     artifact = store_inst.get_raw_artifact(art_id)
                     if artifact:
-                        scope = "subagent" if "subagents/" in str(artifact.relative_path).replace("\\", "/") else "main"
+                        scope = (
+                            "subagent"
+                            if "subagents/" in str(artifact.relative_path).replace("\\", "/")
+                            else "main"
+                        )
                         if artifact.source_path:
                             source_file_key = (artifact.source_path, artifact.id)
                             if source_file_key not in seen_source_files:
-                                source_files.append({"path": artifact.source_path, "artifact_id": artifact.id})
+                                source_files.append(
+                                    {"path": artifact.source_path, "artifact_id": artifact.id}
+                                )
                                 seen_source_files.add(source_file_key)
                         try:
                             raw_content = store_inst.read_raw_artifact_content(artifact)
@@ -4618,7 +5022,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                                     "relative_path": artifact.relative_path,
                                     "source_path": artifact.source_path,
                                     "scope": scope,
-                                    "label": "main" if scope == "main" else Path(artifact.relative_path).stem,
+                                    "label": "main"
+                                    if scope == "main"
+                                    else Path(artifact.relative_path).stem,
                                 }
                             )
                             logger.error(
@@ -4688,7 +5094,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "cache_creation_input_tokens": trace.cache_creation_input_tokens,
                 "user_prompt_tokens": trace.user_prompt_tokens,
                 "model": trace.model,
-                "note": "Imported from session logs." if trace.raw_artifact_ids else "Live run trace.",
+                "note": "Imported from session logs."
+                if trace.raw_artifact_ids
+                else "Live run trace.",
                 "trace": trace.model_dump(mode="json"),
             }
 
@@ -4715,7 +5123,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     "description": _tool_description(spec),
                     "is_dev": bool(spec.get("is_dev")),
                     "mode": _tool_mode(spec),
-                    "enum_params": _extract_enum_params(cast(dict[str, Any], spec.get("inputSchema") or {})),
+                    "enum_params": _extract_enum_params(
+                        cast(dict[str, Any], spec.get("inputSchema") or {})
+                    ),
                 }
                 for name, spec in TOOLS.items()
                 if _tool_visible_to_llm(name, spec)
@@ -4745,7 +5155,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
             install_script = root / "scripts" / f"install_{host_id}.sh"
             label = _HOST_LABEL_OVERRIDES.get(host_id) or str(payload.get("name") or host_id)
-            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id) or str(payload.get("description") or "")
+            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id) or str(
+                payload.get("description") or ""
+            )
             if host_id == "hermes":
                 label = "Hermes Agent (global-only)"
             hosts.append(
@@ -4758,7 +5170,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     "last_seen": None,
                     "atelier_version": None,
                     "description": description or None,
-                    "install_command": (f"bash scripts/{install_script.name}" if install_script.exists() else None),
+                    "install_command": (
+                        f"bash scripts/{install_script.name}" if install_script.exists() else None
+                    ),
                 }
             )
         return hosts
@@ -4789,7 +5203,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                                 for line in content[3:end].split("\n"):
                                     if line.startswith("description:"):
                                         desc = line.split(":", 1)[1].strip()
-                        skills.append({"name": skill_dir.name, "description": desc, "content": content})
+                        skills.append(
+                            {"name": skill_dir.name, "description": desc, "content": content}
+                        )
         return skills
 
     @app.get("/skills/{name}", tags=["ops"], dependencies=[Depends(verify_api_key)])
@@ -4797,7 +5213,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.core.environment import skill_visible
 
         if not skill_visible(name):
-            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
+            raise HTTPException(
+                status_code=404, detail=f"Skill not available outside dev mode: {name}"
+            )
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"
         if not md.exists():
@@ -4901,7 +5319,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
     @app.get("/v1/optimizations/summary", tags=["metrics"], dependencies=[Depends(verify_api_key)])
     def optimizations_summary(window_days: int = Query(14)) -> dict[str, Any]:
-        return _optimizations_summary_payload(Path(cfg.atelier_root), get_store(), window_days=window_days)
+        return _optimizations_summary_payload(
+            Path(cfg.atelier_root), get_store(), window_days=window_days
+        )
 
     @app.get("/calls", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_calls(limit: int = Query(200)) -> list[dict[str, Any]]:
@@ -5065,7 +5485,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             artifact = store_inst.get_raw_artifact(art_id)
             if artifact is None:
                 continue
-            scope = "subagent" if "subagents/" in str(artifact.relative_path).replace("\\", "/") else "main"
+            scope = (
+                "subagent"
+                if "subagents/" in str(artifact.relative_path).replace("\\", "/")
+                else "main"
+            )
             if artifact.source_path:
                 source_file_key = (artifact.source_path, artifact.id)
                 if source_file_key not in seen_source_files:
@@ -5083,7 +5507,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     if artifact_session_id:
                         from atelier.core.foundation.paths import default_store_root
 
-                        attach_atelier_sidecar_savings(artifact_turns, artifact_session_id, default_store_root())
+                        attach_atelier_sidecar_savings(
+                            artifact_turns, artifact_session_id, default_store_root()
+                        )
                 artifact_label = "main"
                 if scope == "subagent":
                     artifact_label = (
@@ -5253,18 +5679,28 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
             model_id = str(turn.get("model") or "").strip()
             countable_model_id = (
-                model_id if model_id and model_id.lower() not in {"<synthetic>", "_default", "unknown"} else ""
+                model_id
+                if model_id and model_id.lower() not in {"<synthetic>", "_default", "unknown"}
+                else ""
             )
             if countable_model_id:
                 if reconstructed_started_model is None:
                     reconstructed_started_model = countable_model_id
-                reconstructed_models_used[countable_model_id] = reconstructed_models_used.get(countable_model_id, 0) + 1
+                reconstructed_models_used[countable_model_id] = (
+                    reconstructed_models_used.get(countable_model_id, 0) + 1
+                )
 
             turn_input_cost = _llm_usage_cost(model_id or "_default", input_tokens=turn_input)
             turn_output_cost = _llm_usage_cost(model_id or "_default", output_tokens=turn_output)
-            turn_cache_read_cost = _llm_usage_cost(model_id or "_default", cache_read_tokens=turn_cache_read)
-            turn_cache_write_cost = _llm_usage_cost(model_id or "_default", cache_write_tokens=turn_cache_write)
-            turn_total_cost = turn_input_cost + turn_output_cost + turn_cache_read_cost + turn_cache_write_cost
+            turn_cache_read_cost = _llm_usage_cost(
+                model_id or "_default", cache_read_tokens=turn_cache_read
+            )
+            turn_cache_write_cost = _llm_usage_cost(
+                model_id or "_default", cache_write_tokens=turn_cache_write
+            )
+            turn_total_cost = (
+                turn_input_cost + turn_output_cost + turn_cache_read_cost + turn_cache_write_cost
+            )
             turn["cost"] = round(turn_total_cost, 8)
 
             reconstructed_input_tokens += turn_input
@@ -5283,7 +5719,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
+                        else "shell"
+                        if turn.get("kind") == "shell_command"
+                        else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5305,8 +5743,12 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             cache_write_cost = 0.0
             for entry in usage_entries:
                 model_id = str(entry.get("model") or fallback_model or "_default")
-                input_cost += _llm_usage_cost(model_id, input_tokens=int(entry.get("input_tokens") or 0))
-                output_cost += _llm_usage_cost(model_id, output_tokens=int(entry.get("output_tokens") or 0))
+                input_cost += _llm_usage_cost(
+                    model_id, input_tokens=int(entry.get("input_tokens") or 0)
+                )
+                output_cost += _llm_usage_cost(
+                    model_id, output_tokens=int(entry.get("output_tokens") or 0)
+                )
                 cache_read_cost += _llm_usage_cost(
                     model_id, cache_read_tokens=int(entry.get("cached_input_tokens") or 0)
                 )
@@ -5339,7 +5781,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         trace_output_tokens = int(trace_payload.get("output_tokens") or 0)
         trace_cache_read_tokens = int(trace_payload.get("cached_input_tokens") or 0)
         trace_cache_write_tokens = int(trace_payload.get("cache_creation_input_tokens") or 0)
-        trace_total_turns = len([entry for entry in trace_usage_entries if entry.get("kind") != "tool"])
+        trace_total_turns = len(
+            [entry for entry in trace_usage_entries if entry.get("kind") != "tool"]
+        )
         if trace_total_turns <= 0 and (
             trace_input_tokens > 0
             or trace_output_tokens > 0
@@ -5361,11 +5805,21 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             or trace_cache_read_tokens > 0
             or trace_cache_write_tokens > 0
         ):
-            pricing_model = trace_started_model or reconstructed_started_model or trace.model or "_default"
-            trace_input_token_cost_usd = _llm_usage_cost(pricing_model, input_tokens=trace_input_tokens)
-            trace_output_token_cost_usd = _llm_usage_cost(pricing_model, output_tokens=trace_output_tokens)
-            trace_cache_read_cost_usd = _llm_usage_cost(pricing_model, cache_read_tokens=trace_cache_read_tokens)
-            trace_cache_write_cost_usd = _llm_usage_cost(pricing_model, cache_write_tokens=trace_cache_write_tokens)
+            pricing_model = (
+                trace_started_model or reconstructed_started_model or trace.model or "_default"
+            )
+            trace_input_token_cost_usd = _llm_usage_cost(
+                pricing_model, input_tokens=trace_input_tokens
+            )
+            trace_output_token_cost_usd = _llm_usage_cost(
+                pricing_model, output_tokens=trace_output_tokens
+            )
+            trace_cache_read_cost_usd = _llm_usage_cost(
+                pricing_model, cache_read_tokens=trace_cache_read_tokens
+            )
+            trace_cache_write_cost_usd = _llm_usage_cost(
+                pricing_model, cache_write_tokens=trace_cache_write_tokens
+            )
             trace_total_cost_usd = round(
                 trace_input_token_cost_usd
                 + trace_output_token_cost_usd
@@ -5374,12 +5828,16 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 8,
             )
 
-        authoritative_started_model = str(raw_usage_summary.get("started_model") or "").strip() or None
+        authoritative_started_model = (
+            str(raw_usage_summary.get("started_model") or "").strip() or None
+        )
         authoritative_models_used = dict(raw_usage_summary.get("models_used") or {})
         authoritative_input_tokens = int(raw_usage_summary.get("input_tokens") or 0)
         authoritative_output_tokens = int(raw_usage_summary.get("output_tokens") or 0)
         authoritative_cache_read_tokens = int(raw_usage_summary.get("cached_input_tokens") or 0)
-        authoritative_cache_write_tokens = int(raw_usage_summary.get("cache_creation_input_tokens") or 0)
+        authoritative_cache_write_tokens = int(
+            raw_usage_summary.get("cache_creation_input_tokens") or 0
+        )
         authoritative_total_turns = int(raw_usage_summary.get("total_turns") or 0)
         has_authoritative_usage = (
             authoritative_total_turns > 0
@@ -5398,7 +5856,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         )
 
         started_model = (
-            authoritative_started_model or reconstructed_started_model or trace_started_model or (trace.model or None)
+            authoritative_started_model
+            or reconstructed_started_model
+            or trace_started_model
+            or (trace.model or None)
         )
         models_used = authoritative_models_used or reconstructed_models_used or trace_models_used
         if not models_used and started_model:
@@ -5427,28 +5888,38 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
+            else trace_total_turns
+            if trace_total_turns > 0
+            else reconstructed_total_turns
         )
 
         input_token_cost_usd = (
             float(authoritative_cost_breakdown["input_token_cost_usd"])
             if has_authoritative_usage
-            else _prefer_positive_float(trace_input_token_cost_usd, reconstructed_input_token_cost_usd)
+            else _prefer_positive_float(
+                trace_input_token_cost_usd, reconstructed_input_token_cost_usd
+            )
         )
         output_token_cost_usd = (
             float(authoritative_cost_breakdown["output_token_cost_usd"])
             if has_authoritative_usage
-            else _prefer_positive_float(trace_output_token_cost_usd, reconstructed_output_token_cost_usd)
+            else _prefer_positive_float(
+                trace_output_token_cost_usd, reconstructed_output_token_cost_usd
+            )
         )
         cache_read_cost_usd = (
             float(authoritative_cost_breakdown["cache_read_cost_usd"])
             if has_authoritative_usage
-            else _prefer_positive_float(trace_cache_read_cost_usd, reconstructed_cache_read_cost_usd)
+            else _prefer_positive_float(
+                trace_cache_read_cost_usd, reconstructed_cache_read_cost_usd
+            )
         )
         cache_write_cost_usd = (
             float(authoritative_cost_breakdown["cache_write_cost_usd"])
             if has_authoritative_usage
-            else _prefer_positive_float(trace_cache_write_cost_usd, reconstructed_cache_write_cost_usd)
+            else _prefer_positive_float(
+                trace_cache_write_cost_usd, reconstructed_cache_write_cost_usd
+            )
         )
         total_cost_usd = (
             round(float(authoritative_cost_breakdown["total_cost_usd"]), 6)
@@ -5551,29 +6022,46 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def _build_session_payload(report: Any, trace: Trace | None = None) -> dict[str, Any]:
         active_trace = trace or _load_trace_for_session(report.session_id)
         estimated_payload = (
-            _build_imported_session_payload(report.session_id, active_trace) if active_trace is not None else None
+            _build_imported_session_payload(report.session_id, active_trace)
+            if active_trace is not None
+            else None
         )
 
-        models_used = dict(report.models_used) or dict((estimated_payload or {}).get("models_used", {}))
+        models_used = dict(report.models_used) or dict(
+            (estimated_payload or {}).get("models_used", {})
+        )
         started_model = report.started_model or (estimated_payload or {}).get("started_model")
 
         input_tokens = int(report.input_tokens or (estimated_payload or {}).get("input_tokens", 0))
-        output_tokens = int(report.output_tokens or (estimated_payload or {}).get("output_tokens", 0))
-        cache_read_tokens = int(report.cache_read_tokens or (estimated_payload or {}).get("cache_read_tokens", 0))
-        cache_write_tokens = int(report.cache_write_tokens or (estimated_payload or {}).get("cache_write_tokens", 0))
-        duration_seconds = float(report.duration_seconds or (estimated_payload or {}).get("duration_seconds", 0.0))
+        output_tokens = int(
+            report.output_tokens or (estimated_payload or {}).get("output_tokens", 0)
+        )
+        cache_read_tokens = int(
+            report.cache_read_tokens or (estimated_payload or {}).get("cache_read_tokens", 0)
+        )
+        cache_write_tokens = int(
+            report.cache_write_tokens or (estimated_payload or {}).get("cache_write_tokens", 0)
+        )
+        duration_seconds = float(
+            report.duration_seconds or (estimated_payload or {}).get("duration_seconds", 0.0)
+        )
         active_duration_seconds = float(
-            report.active_duration_seconds or (estimated_payload or {}).get("active_duration_seconds", 0.0)
+            report.active_duration_seconds
+            or (estimated_payload or {}).get("active_duration_seconds", 0.0)
         )
         total_cost_usd = float(report.total_cost_usd)
         input_token_cost_usd = float(report.input_token_cost_usd)
         output_token_cost_usd = float(report.output_token_cost_usd)
         cache_read_cost_usd = float(report.cache_read_cost_usd)
         cache_write_cost_usd = float(report.cache_write_cost_usd)
-        top_tools_by_cost = [{"tool": t, "calls": c, "cost_usd": v} for t, c, v in report.top_tools_by_cost]
+        top_tools_by_cost = [
+            {"tool": t, "calls": c, "cost_usd": v} for t, c, v in report.top_tools_by_cost
+        ]
 
         cost_status = (
-            "recorded" if (total_cost_usd > 0 or report.total_turns > 0 or bool(report.models_used)) else "unavailable"
+            "recorded"
+            if (total_cost_usd > 0 or report.total_turns > 0 or bool(report.models_used))
+            else "unavailable"
         )
 
         if estimated_payload is not None:
@@ -5592,7 +6080,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             if not models_used:
                 models_used = dict(estimated_payload.get("models_used", {}))
             estimated_active = float(estimated_payload.get("active_duration_seconds", 0.0))
-            if estimated_active > 0 and (active_duration_seconds <= 0 or active_duration_seconds >= duration_seconds):
+            if estimated_active > 0 and (
+                active_duration_seconds <= 0 or active_duration_seconds >= duration_seconds
+            ):
                 active_duration_seconds = estimated_active
 
         if not started_model and models_used:
@@ -5609,7 +6099,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "skills": report.skills,
             "telemetry": report.telemetry,
             "raw_artifact_ids": report.raw_artifact_ids,
-            "total_turns": report.total_turns or int((estimated_payload or {}).get("total_turns", 0)),
+            "total_turns": report.total_turns
+            or int((estimated_payload or {}).get("total_turns", 0)),
             "total_cost_usd": total_cost_usd,
             "total_atelier_savings_usd": report.total_atelier_savings_usd,
             "label": None,
@@ -5619,7 +6110,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cached_input_tokens": cache_read_tokens,
-            "tool_call_count": report.tool_call_count or int((estimated_payload or {}).get("tool_call_count", 0)),
+            "tool_call_count": report.tool_call_count
+            or int((estimated_payload or {}).get("tool_call_count", 0)),
             "input_token_cost_usd": input_token_cost_usd,
             "cache_write_cost_usd": cache_write_cost_usd,
             "cache_read_cost_usd": cache_read_cost_usd,
@@ -5666,7 +6158,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
                 report = build_report(snap, root)
                 payload = _build_session_payload(report)
-                payload["updated_at"] = datetime.fromtimestamp(f.stat().st_mtime, tz=UTC).isoformat()
+                payload["updated_at"] = datetime.fromtimestamp(
+                    f.stat().st_mtime, tz=UTC
+                ).isoformat()
                 results.append(payload)
                 seen_session_ids.add(payload["session_id"])
             except Exception:
@@ -5895,9 +6389,13 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         return {
             "route_decisions": len(route_scores),
-            "route_avg_score": round(sum(route_scores) / len(route_scores), 4) if route_scores else 0.0,
+            "route_avg_score": round(sum(route_scores) / len(route_scores), 4)
+            if route_scores
+            else 0.0,
             "compact_events": len(compact_scores),
-            "compact_avg_score": round(sum(compact_scores) / len(compact_scores), 4) if compact_scores else 0.0,
+            "compact_avg_score": round(sum(compact_scores) / len(compact_scores), 4)
+            if compact_scores
+            else 0.0,
             "sessions_with_high_extra_reads": list(set(high_extra_reads)),
         }
 
@@ -5964,11 +6462,192 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         try:
             markdown_content = md_path.read_text(encoding="utf-8")
-            json_data: dict[str, Any] = json.loads(json_path.read_text(encoding="utf-8")) if json_path.exists() else {}
+            json_data: dict[str, Any] = (
+                json.loads(json_path.read_text(encoding="utf-8")) if json_path.exists() else {}
+            )
         except (OSError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 
         return {"week": week, "markdown": markdown_content, "json": json_data}
+
+    @app.get("/v1/swarm/launch/options", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_launch_options(
+        project_root: str | None = Query(default=None),
+        spec_path: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        root = Path(cfg.atelier_root)
+        try:
+            selected_project_root = _coerce_project_root(root, project_root)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        file_options = _iter_swarm_spec_candidates(selected_project_root)
+        default_spec = _default_swarm_spec_name(selected_project_root)
+        selected_spec = (spec_path or default_spec).strip() or default_spec
+        if selected_spec not in file_options:
+            file_options.insert(0, selected_spec)
+        elif file_options and file_options[0] != selected_spec:
+            file_options = [selected_spec, *[item for item in file_options if item != selected_spec]]
+        spec_document = _load_swarm_spec_document(selected_project_root, selected_spec)
+
+        return {
+            "project_roots": [
+                {
+                    "path": str(candidate),
+                    "label": candidate.name or str(candidate),
+                    "full_path": str(candidate),
+                    "has_program_md": any(
+                        (candidate / name).is_file() for name in _SWARM_DEFAULT_SPEC_NAMES
+                    ),
+                }
+                for candidate in _swarm_candidate_project_roots(root)
+            ],
+            "selected_project_root": str(selected_project_root),
+            "files": [
+                {
+                    "path": relative_path,
+                    "is_default": relative_path == default_spec,
+                    "exists": (selected_project_root / relative_path).is_file(),
+                }
+                for relative_path in file_options
+            ],
+            "selected_spec_path": selected_spec,
+            "spec_document": spec_document,
+            "providers": [
+                {
+                    "id": "cli",
+                    "label": "CLI runner",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": None,
+                    "credential_hint": None,
+                },
+                {
+                    "id": "openai",
+                    "label": "OpenAI API",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": "gpt-4o-mini",
+                    "credential_hint": "Uses server env only: ATELIER_OPENAI_API_KEY / OPENAI_API_KEY (+ optional ATELIER_OPENAI_BASE_URL).",
+                },
+                {
+                    "id": "litellm",
+                    "label": "LiteLLM",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": "openai/gpt-4o-mini",
+                    "credential_hint": "Uses server env only via LiteLLM credentials; no secrets are stored in swarm state.",
+                },
+            ],
+            "runners": list_swarm_runner_profiles(),
+            "defaults": {
+                "provider": "cli",
+                "runner": "claude",
+                "runs": 3,
+                "continuous": True,
+                "keep_worktrees": True,
+                "effort": "high",
+            },
+            "notes": {
+                "default_spec": default_spec,
+                "default_spec_missing": not any(
+                    (selected_project_root / name).is_file()
+                    for name in _SWARM_DEFAULT_SPEC_NAMES
+                ),
+                "effort_behavior": "Effort is recorded in swarm metadata today; built-in CLI profiles do not auto-inject runner-specific effort flags.",
+                "provider_credentials": "Provider-backed swarm workers inherit credentials from the server environment. API keys and base URLs are never written into child commands or persisted swarm state.",
+            },
+        }
+
+    @app.post("/v1/swarm/runs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def post_swarm_run(payload: SwarmLaunchRequest) -> dict[str, Any]:
+        root = Path(cfg.atelier_root)
+        try:
+            provider_env = _build_swarm_provider_env(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            project_root = _coerce_project_root(root, payload.project_root)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            resolved_spec_path, resolved_spec_source, spec_resolution, used_program_md = (
+                _materialize_swarm_spec(
+                    project_root=project_root,
+                    spec_path=payload.spec_path,
+                    spec_mode=payload.spec_mode,
+                    spec_content=payload.spec_content,
+                )
+            )
+            if payload.provider == "cli":
+                runner_options = (
+                    shlex.split(payload.runner_options) if payload.runner_options.strip() else []
+                )
+                child_command = resolve_swarm_child_command(
+                    runner=payload.runner,
+                    runner_model=payload.runner_model,
+                    runner_args=runner_options,
+                    child_command=(),
+                    prompt_template=(
+                        "The authoritative task spec is stored at {spec}.\n\n"
+                        "<task_spec>\n"
+                        "{spec_contents}\n"
+                        "</task_spec>\n\n"
+                        "Work directly in the current repository, make only the requested "
+                        "changes, do not commit, and print a concise summary of what you "
+                        "changed or why you left it unchanged."
+                    ),
+                )
+                runner_name, runner_model = resolve_swarm_runner_metadata(
+                    runner=payload.runner,
+                    runner_model=payload.runner_model,
+                    child_command=child_command,
+                )
+            else:
+                child_command = resolve_swarm_provider_command(payload.provider)
+                runner_name = payload.provider
+                runner_model = payload.model or ""
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        state, state_path = initialize_swarm_run(
+            root=root,
+            repo_root=project_root,
+            spec_path=resolved_spec_path,
+            spec_source_path=resolved_spec_source,
+            spec_resolution=spec_resolution,
+            used_program_md=used_program_md,
+            runner_name=runner_name,
+            runner_model=runner_model,
+            child_command=child_command,
+            runs=payload.runs,
+            validation_commands=[],
+            keep_worktrees=payload.keep_worktrees,
+            detached=True,
+            continuous=payload.continuous,
+            launch_provider=payload.provider,
+            launch_effort=payload.effort,
+        )
+        if payload.provider != "cli":
+            state.limitations.append(
+                "Provider-backed swarm children only run bounded tool loops plus structural git-diff validation unless explicit validation commands are configured."
+            )
+        coordinator_pid, log_path = spawn_swarm_coordinator(
+            root,
+            project_root,
+            state_path,
+            env_overrides=provider_env,
+        )
+        state.coordinator_pid = coordinator_pid
+        state.coordinator_log_path = str(log_path)
+        save_swarm_state(state_path, state)
+        return {
+            "run_id": state.run_id,
+            "status": "running",
+            "state_path": str(state_path),
+            "coordinator_pid": coordinator_pid,
+            "log_path": str(log_path),
+        }
 
     @app.get("/v1/swarm/runs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
     def get_swarm_runs() -> list[dict[str, Any]]:
@@ -5977,20 +6656,30 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         payload: list[dict[str, Any]] = []
         for state in states:
             latest_wave = state.waves[-1] if state.waves else None
+            spec_payload = build_swarm_spec_payload(state)
             payload.append(
                 {
                     "run_id": state.run_id,
                     "status": state.status,
                     "mode": state.mode,
+                    "repo_root": state.repo_root,
+                    "repo_label": Path(state.repo_root).name,
                     "runner_name": state.runner_name,
                     "runner_model": state.runner_model,
+                    "launch_provider": state.launch_provider,
+                    "launch_effort": state.launch_effort,
                     "current_wave": state.current_wave,
                     "max_runs": state.max_runs or state.runs,
                     "planned_runs": latest_wave.planned_runs if latest_wave else 0,
-                    "planning_mode": latest_wave.planning_mode if latest_wave else state.planning_mode,
+                    "planning_mode": latest_wave.planning_mode
+                    if latest_wave
+                    else state.planning_mode,
                     "accepted_child_ids": state.accepted_child_ids,
-                    "primary_winner_child_id": state.primary_winner_child_id or state.winner_child_id,
-                    "failed_children": [child.child_id for child in state.children if child.status == "failed"],
+                    "primary_winner_child_id": state.primary_winner_child_id
+                    or state.winner_child_id,
+                    "failed_children": [
+                        child.child_id for child in state.children if child.status == "failed"
+                    ],
                     "running_children": [
                         {
                             "child_id": child.child_id,
@@ -6000,6 +6689,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         for child in state.children
                         if child.status == "running"
                     ],
+                    "spec_title": spec_payload["title"],
+                    "spec_excerpt": spec_payload["excerpt"],
+                    "spec_resolution": state.spec_resolution,
+                    "used_program_md": state.used_program_md,
                     "created_at": state.created_at,
                     "updated_at": state.updated_at,
                 }
@@ -6014,6 +6707,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         state = load_swarm_state(state_path)
         return {
             "run": state.model_dump(mode="json"),
+            "spec": build_swarm_spec_payload(state),
             "export": build_swarm_export_payload(state),
             "apply": build_swarm_apply_payload(state),
         }
@@ -6043,15 +6737,21 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "content": content,
         }
 
-    @app.get("/v1/swarm/runs/{run_id}/export", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    @app.get(
+        "/v1/swarm/runs/{run_id}/export", tags=["swarm"], dependencies=[Depends(verify_api_key)]
+    )
     def get_swarm_export(run_id: str) -> dict[str, Any]:
         state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
         if not state_path.exists():
             raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
         return build_swarm_export_payload(load_swarm_state(state_path))
 
-    @app.get("/v1/swarm/runs/{run_id}/apply", tags=["swarm"], dependencies=[Depends(verify_api_key)])
-    def get_swarm_apply(run_id: str, wave: int | None = None, child_id: str | None = None) -> dict[str, Any]:
+    @app.get(
+        "/v1/swarm/runs/{run_id}/apply", tags=["swarm"], dependencies=[Depends(verify_api_key)]
+    )
+    def get_swarm_apply(
+        run_id: str, wave: int | None = None, child_id: str | None = None
+    ) -> dict[str, Any]:
         state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
         if not state_path.exists():
             raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
@@ -6061,7 +6761,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         except RuntimeError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @app.post("/v1/swarm/runs/{run_id}/stop", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    @app.post(
+        "/v1/swarm/runs/{run_id}/stop", tags=["swarm"], dependencies=[Depends(verify_api_key)]
+    )
     def post_swarm_stop(run_id: str, cleanup: bool = False) -> dict[str, Any]:
         state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
         if not state_path.exists():

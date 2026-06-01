@@ -191,6 +191,7 @@ else
 fi
 run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/scripts' '$STAGING_DIR/'"
+run "cp -r '${SOURCE_PLUGIN_DIR}/workflows' '$STAGING_DIR/'"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
     run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills' --include-dev"
 else

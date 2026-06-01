@@ -51,6 +51,7 @@ memory = ["letta-client>=1.7.12"]
 memory-server = ["letta>=0.16.7"]
 smart = ["ollama>=0.4.0"]
 cloud = ["openai>=1.0"]
+litellm = ["litellm>=1.40"]
 repo-map = ["tree-sitter>=0.23", "tree-sitter-languages>=1.10; python_version < '3.13'", "networkx>=3.4"]
 api = [
     "fastapi>=0.110",

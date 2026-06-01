@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,9 @@ from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 
 
-def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> ReasonBlock:
+def _block(
+    bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object
+) -> ReasonBlock:
     base: dict[str, Any] = dict(
         id=bid,
         title=title,
@@ -195,3 +198,33 @@ def test_claim_job_dead_letters_orphan_once_attempts_exhausted(store: ContextSto
     assert store.claim_job() is None
     job = next(j for j in store.list_jobs(limit=10) if j["id"] == job_id)
     assert job["status"] == "dead"
+
+
+def test_job_queue_health_counts_stuck_running_and_dead(store: ContextStore) -> None:
+    running_job_id = store.enqueue_job("consolidate", {"n": 1}, max_attempts=2)
+    dead_job_id = store.enqueue_job("retry", {"n": 2}, max_attempts=1)
+
+    running_job = store.claim_job()
+    dead_job = store.claim_job()
+
+    assert running_job is not None
+    assert dead_job is not None
+    assert running_job["id"] == running_job_id
+    assert dead_job["id"] == dead_job_id
+    assert store.fail_job(dead_job_id, "boom") is True
+
+    stale_locked_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE jobs SET locked_at = ?, updated_at = ? WHERE id = ?",
+            (stale_locked_at, stale_locked_at, running_job_id),
+        )
+
+    assert store.job_queue_health() == {
+        "pending": 0,
+        "running": 1,
+        "failed": 0,
+        "dead": 1,
+        "stuck_running": 1,
+        "active": 1,
+    }
