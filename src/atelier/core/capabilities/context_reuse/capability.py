@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -21,7 +22,7 @@ from atelier.core.foundation.retriever import (
     score_block,
 )
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.storage.vector import (
     cosine_similarity,
     get_cached_embedding,
@@ -34,16 +35,19 @@ from .dead_ends import DeadEndTracker
 try:
     import networkx as nx
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     nx: Any = None  # type: ignore[no-redef]
 
 try:
     from river import stats
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     stats: Any = None  # type: ignore[no-redef]
 
 try:
     from datasketch import HNSW
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     HNSW: Any = None  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
@@ -81,6 +85,11 @@ _ADAPTIVE_MAX_MULTIPLIER = 1.10
 _VECTOR_DIM = 128
 _TRACE_ENV = "ATELIER_RETRIEVAL_TRACE"
 _BASE_RETRIEVER_MIN_SCORE = 0.0
+# Domain-only matches score ~0.35; a genuine domain+trigger/error match scores
+# ~0.43. The threshold sits between so weakly-related blocks are excluded while
+# real matches are injected. (0.80 was unreachable and starved all retrieval.)
+_MIN_CONTEXT_MATCH_SCORE = 0.40
+_MAX_CONTEXT_BLOCKS = 2
 _RETRIEVER_VERSION = 2
 
 
@@ -274,7 +283,7 @@ class ContextReuseCapability:
         self._root = Path(root)
         self._dead_ends = DeadEndTracker()
         self._adaptive_priors = _AdaptivePriorTracker()
-        self._embedder = make_embedder()
+        self._embedder = get_embedder()
         self._last_retrieval_trace: dict[str, Any] | None = None
         # Savings tracker for finalize() reporting
         self._avoided_failures = 0
@@ -331,6 +340,7 @@ class ContextReuseCapability:
         try:
             vectors = self._embedder.embed([query_text])
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             vectors = [[]]
 
         if vectors and vectors[0]:
@@ -356,6 +366,7 @@ class ContextReuseCapability:
             try:
                 embedded = self._embedder.embed([rendered for _block, rendered, _cache_key in uncached])
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 embedded = [[] for _ in uncached]
 
         for idx, (block, rendered, cache_key) in enumerate(uncached):
@@ -500,10 +511,10 @@ class ContextReuseCapability:
             token_budget=token_budget,
         )
         base_scores: dict[str, float] = {item.block.id: item.score for item in learned}
+        direct_match_scores = {block.id: score_block(block, ctx).score for block in all_blocks}
         base_ranked = sorted(base_scores.items(), key=lambda x: x[1], reverse=True)
         base_rank: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked)}
         base_rank_trace: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked, start=1)}
-
         # RRF fusion — merge three rank lists
         block_map: dict[str, ReasonBlock] = {b.id: b for b in all_blocks}
         rrf_scores: dict[str, float] = {}
@@ -545,11 +556,11 @@ class ContextReuseCapability:
                     recency_score=_recency_score(matched_block),
                     success_score=_bayesian_success(matched_block),
                     final_score=final,
+                    match_score=direct_match_scores.get(bid, 0.0),
                     rescue=is_rescue,
                     dead_ends=list(matched_block.dead_ends),
                 )
             )
-
         # Sort by final score before MMR selection
         results.sort(key=lambda r: r.final_score, reverse=True)
 
@@ -557,6 +568,8 @@ class ContextReuseCapability:
         self._apply_graph_propagation(results)
         self._apply_ann_reranking(results, query_vector=query_vector, block_vectors=block_vectors)
         results.sort(key=lambda r: r.final_score, reverse=True)
+        results = [r for r in results if r.match_score > _MIN_CONTEXT_MATCH_SCORE]
+        effective_limit = min(limit, _MAX_CONTEXT_BLOCKS)
 
         if dedup:
             results = deduplicate_by_reasonblock(results, lambda item: item.block)
@@ -564,8 +577,7 @@ class ContextReuseCapability:
         # MMR diversity selection — covers different procedures after exact near-dup filtering.
         selected: list[_HybridResult] = []
         candidates = list(results)
-        selection_pool_limit = len(results) if token_budget is not None else limit
-
+        selection_pool_limit = len(results) if token_budget is not None else effective_limit
         while candidates and len(selected) < selection_pool_limit:
             if not selected:
                 best = candidates.pop(0)
@@ -592,7 +604,7 @@ class ContextReuseCapability:
         selected = pack_by_reasonblock_token_budget(
             selected,
             lambda item: item.block,
-            limit=limit,
+            limit=effective_limit,
             token_budget=token_budget,
         )
 
@@ -601,7 +613,6 @@ class ContextReuseCapability:
             final_ids = [item.block.id for item in selected]
             final_rank = {block_id: rank for rank, block_id in enumerate(final_ids, start=1)}
             result_rank = {item.block.id: rank for rank, item in enumerate(results, start=1)}
-
             for item in results:
                 if item.block.id not in mmr_selected_ids:
                     trace_reasons.setdefault(item.block.id, set()).add("mmr_suppressed")
@@ -637,6 +648,7 @@ class ContextReuseCapability:
                         "base_rank": base_rank_value,
                         "bm25_score": round(float(bm25_score_lookup.get(block_id, 0.0)), 6),
                         "base_probe_score": round(float(base_probe_scores.get(block_id, 0.0)), 6),
+                        "match_score": round(float(direct_match_scores.get(block_id, 0.0)), 6),
                         "rrf": round(float(rrf_scores.get(block_id, 0.0)), 6),
                         "rrf_contributions": {
                             "bm25": round(
@@ -811,7 +823,7 @@ class ContextReuseCapability:
         return [
             ScoredBlock(
                 block=r.block,
-                score=r.final_score,
+                score=r.match_score,
                 breakdown={
                     "fts": r.fts_score,
                     "bm25": r.bm25_score,
@@ -820,6 +832,7 @@ class ContextReuseCapability:
                     "adaptive": r.adaptive_prior,
                     "graph": r.graph_score,
                     "ann": r.ann_score,
+                    "rank": r.final_score,
                 },
             )
             for r in ranked
@@ -859,7 +872,7 @@ class ContextReuseCapability:
                 "id": r.block.id,
                 "title": r.block.title,
                 "domain": r.block.domain,
-                "score": round(r.final_score, 3),
+                "score": round(r.match_score, 3),
                 "rescue": r.rescue,
             }
             if r.block.procedure:
@@ -953,6 +966,7 @@ class _HybridResult:
         "final_score",
         "fts_score",
         "graph_score",
+        "match_score",
         "recency_score",
         "rescue",
         "success_score",
@@ -967,6 +981,7 @@ class _HybridResult:
         recency_score: float,
         success_score: float,
         final_score: float,
+        match_score: float,
         rescue: bool,
         dead_ends: list[str],
     ) -> None:
@@ -976,6 +991,7 @@ class _HybridResult:
         self.recency_score = recency_score
         self.success_score = success_score
         self.final_score = final_score
+        self.match_score = match_score
         self.rescue = rescue
         self.dead_ends = dead_ends
         self.adaptive_prior = 0.5

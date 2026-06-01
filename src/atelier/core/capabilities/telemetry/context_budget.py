@@ -163,6 +163,7 @@ class ContextBudgetRecorder:
                 self._tokens_saved_counter.labels(lever="total", model=record.model).inc(total_saved)
 
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             # Silently fail if Prometheus is not available or metric emission fails
             logger.warning(
                 "Suppressed exception at context_budget.py:162",
@@ -182,6 +183,7 @@ class ContextBudgetRecorder:
 
             self._compact_tokens_saved_counter.labels(method=method, model=model).inc(saved)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             logger.warning(
                 "Suppressed exception at context_budget.py:178",
                 exc_info=True,

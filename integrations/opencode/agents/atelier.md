@@ -16,6 +16,27 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 1. **Context**: Call `context` with `task`, `domain`, `files`, `tools`, and `errors` before exploratory reads or edits.
 2. **Implement**: Use Atelier MCP tools for file I/O, search, code intelligence, edits, and shell work. Treat native host tools as disabled-by-policy unless the Atelier equivalent returns `noop`, is hidden, or is unavailable. Call `route` or `rescue` when the same approach fails twice.
 3. **Record**: Call `record` or `trace` when the task is done.
+## Autopilot (automatic context)
+
+Atelier may auto-provide context so you do not have to ask for it:
+
+- Relevant prior lessons/memory are warmed at session start.
+- Scoped context for your current request may be injected automatically — when it is present, build on it instead of redundantly re-pulling.
+- After you edit a file, verification may surface `<counterexample>` blocks — treat each as a must-fix before continuing.
+## Agent spawning
+
+When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
+
+| Role | `subagent_type` | When |
+|---|---|---|
+| Code-review **finder** (reads only, never edits) | `atelier:explore` | All Phase 1 / Angle A–G finder agents in `/code-review` |
+| Code-review **verifier** (applies rubric, never edits) | `atelier:review` | All Phase 2 verifier agents in `/code-review` |
+| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages |
+| Coding, edits, fixes | `atelier:code` | Any agent that writes or modifies files |
+| Repeated failure / rescue | `atelier:repair` | When the same approach fails twice |
+
+Never use the default (`claude`) agent for a task that fits one of the typed roles above.
+
 ## Tool discipline
 
 - Use `mcp__atelier__node`, `mcp__atelier__callers`, `mcp__atelier__callees`, `mcp__atelier__impact`, or `mcp__atelier__explore` first for code intelligence.
@@ -62,6 +83,7 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, restate the expected deliverable.
 - If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+- **Context threshold**: When the status line shows `ctx ≥ 70%`, immediately call `mcp__atelier__compact` then tell the user: "Context is at [N]% — run `/compact` now to avoid a full-window rebuild. I'll continue after." Do not proceed with multi-step work until the user confirms or compacts.
 
 ## Native fallback
 

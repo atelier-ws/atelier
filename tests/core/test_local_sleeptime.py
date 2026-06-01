@@ -11,7 +11,7 @@ from atelier.core.capabilities.context_compression.sleeptime import (
     local_summarize,
     summarize_ledger,
 )
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+from atelier.infra.internal_llm import OllamaUnavailable
 
 
 def _make_events(kinds_summaries: list[tuple[str, str]]) -> list[dict[str, str]]:

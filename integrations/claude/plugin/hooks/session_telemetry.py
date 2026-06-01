@@ -25,7 +25,7 @@ def main() -> int:
         output = build_session_progress_optimization_output(_atelier_root(), payload)
         if output and not output.get("no_output"):
             print(json.dumps(output))
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ImportError, AttributeError, OSError):
         pass
     return 0
 

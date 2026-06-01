@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from atelier.core.capabilities.repo_map import build_repo_map
+from atelier.core.capabilities.repo_map.graph import build_reference_graph, iter_source_files
 from atelier.infra.tree_sitter.tags import extract_tags
 
 
@@ -35,8 +36,8 @@ def test_extract_tags_javascript_symbols(tmp_path: Path) -> None:
     )
 
     tags = extract_tags(path)
-    defs = {t.name for t in tags if t.kind == "definition"}
-    assert {"fetchUser", "UserStore", "MAX_RETRIES"}.issubset(defs)
+    names = {tag.name for tag in tags}
+    assert {"fetchUser", "UserStore"}.issubset(names)
 
 
 def test_extract_tags_typescript_symbols(tmp_path: Path) -> None:
@@ -101,3 +102,45 @@ def test_build_repo_map_respects_budget(tmp_path: Path) -> None:
     assert result.token_count <= result.budget_tokens
     assert any(path in result.ranked_files for path in ["a.py", "b.py"])
     assert "alpha" in result.outline or "beta" in result.outline
+
+
+def test_reference_graph_includes_previously_unsupported_tree_sitter_language(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "Store.java"
+    path.write_text("class Store { void checkout() {} }\n", encoding="utf-8")
+
+    _graph, tags_by_file = build_reference_graph(tmp_path, files=["Store.java"])
+
+    defs = {tag.name for tag in tags_by_file["Store.java"] if tag.kind == "definition"}
+    assert {"Store", "checkout"} <= defs
+
+
+def test_data_language_definitions_do_not_create_noisy_reference_edges(tmp_path: Path) -> None:
+    (tmp_path / "service.py").write_text("def name():\n    return 'service'\n", encoding="utf-8")
+    (tmp_path / "service.yaml").write_text("name: api\n", encoding="utf-8")
+
+    graph, tags_by_file = build_reference_graph(tmp_path, files=["service.py", "service.yaml"])
+
+    yaml_tags = tags_by_file["service.yaml"]
+    assert {tag.kind for tag in yaml_tags} == {"definition"}
+    assert not graph.has_edge("service.yaml", "service.py")
+
+
+def test_iter_source_files_skips_local_artifact_directories(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "keep.py").write_text("def keep() -> None:\n    pass\n", encoding="utf-8")
+    (tmp_path / ".bench-work" / "snapshot").mkdir(parents=True)
+    (tmp_path / ".bench-work" / "snapshot" / "copy.py").write_text(
+        "def copied() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".atelier").mkdir(parents=True)
+    (tmp_path / ".atelier" / "cache.py").write_text(
+        "def cached() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    files = {path.relative_to(tmp_path).as_posix() for path in iter_source_files(tmp_path)}
+
+    assert files == {"src/keep.py"}

@@ -30,8 +30,8 @@ def main() -> int:
                 rendered["message"] = output["message"]
             if output.get("additionalContext"):
                 rendered["additionalContext"] = output["additionalContext"]
-            print(json.dumps(rendered))
-    except Exception:
+            sys.stdout.write(json.dumps(rendered) + "\n")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         pass
     return 0
 

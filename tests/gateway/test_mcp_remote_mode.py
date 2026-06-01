@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
@@ -84,7 +85,7 @@ def _wait_for_health(base_url: str, process: subprocess.Popen[str], timeout_s: f
             with urllib.request.urlopen(f"{base_url}/health", timeout=1.0) as response:
                 if response.status == 200:
                     return
-        except Exception as exc:
+        except (urllib.error.URLError, TimeoutError) as exc:
             last_error = str(exc)
         time.sleep(0.2)
     raise AssertionError(last_error)
@@ -101,7 +102,6 @@ def _live_service(root: Path) -> Any:
         **os.environ,
         "ATELIER_ROOT": str(root),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     process = subprocess.Popen(
         [

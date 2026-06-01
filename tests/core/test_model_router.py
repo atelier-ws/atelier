@@ -48,3 +48,13 @@ def test_model_router_expensive_default_is_current_opus() -> None:
     rec = ModelRouter().score("Agent", "design the architecture", {})
 
     assert rec.model == "claude-opus-4-7"
+
+
+def test_model_router_prefers_explicit_workflow_phase() -> None:
+    rec = ModelRouter().score(
+        "read",
+        "show the latest output",
+        {"prior_errors": 0, "workflow_step": "execution", "turn_number": 0, "recent_tool_calls": []},
+    )
+
+    assert any("explicit execution" in reason for reason in rec.reasons)

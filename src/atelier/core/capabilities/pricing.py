@@ -23,15 +23,19 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
+from collections.abc import Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, cast
 
 logger = logging.getLogger(__name__)
+_ACTIVE_MODEL_OVERRIDE: ContextVar[str | None] = ContextVar("atelier_active_model_override", default=None)
 
 
 def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[PricingTier, ...]]]:
@@ -73,6 +77,7 @@ def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[P
                 "thinking_tiers": (),
             }
     except Exception as e:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Failed to load pricing overrides from %s: %s", path, e)
 
     return overrides
@@ -124,6 +129,7 @@ def _load_litellm_model_cost() -> dict[str, object]:
         litellm = importlib.import_module("litellm")
         model_cost = getattr(litellm, "model_cost", {})
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return {}
     finally:
         if previous_litellm_log is None:
@@ -535,7 +541,24 @@ def active_model() -> str:
     Reads ``ATELIER_MODEL`` (set by the agent runtime or user config).
     Falls back to ``"_default"`` so ``get_model_pricing`` still works.
     """
+    override = _ACTIVE_MODEL_OVERRIDE.get()
+    if override:
+        return override
     return os.environ.get("ATELIER_MODEL", "_default")
+
+
+@contextlib.contextmanager
+def active_model_override(model_id: str | None) -> Iterator[None]:
+    """Temporarily override ``active_model()`` for the current execution context."""
+
+    if not model_id:
+        yield
+        return
+    token = _ACTIVE_MODEL_OVERRIDE.set(model_id)
+    try:
+        yield
+    finally:
+        _ACTIVE_MODEL_OVERRIDE.reset(token)
 
 
 def override_pricing(

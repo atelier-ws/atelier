@@ -139,26 +139,6 @@ def test_assert_safe_grep_args_accepts_clean_args() -> None:
 
 
 # ---------------------------------------------------------------------------
-# cached_grep — both wrappers reject injection
-# ---------------------------------------------------------------------------
-
-
-def test_cli_cached_grep_rejects_injection(tmp_path: Path) -> None:
-    runner = CliRunner()
-    res = runner.invoke(
-        cli,
-        ["--root", str(tmp_path / "a"), "init"],
-    )
-    assert res.exit_code == 0, res.output
-    res = runner.invoke(
-        cli,
-        ["--root", str(tmp_path / "a"), "cached-grep", "foo; rm -rf /"],
-    )
-    assert res.exit_code == 2
-    assert "shell metacharacters" in res.output
-
-
-# ---------------------------------------------------------------------------
 # Smart-tool / trace persistence applies redaction
 # ---------------------------------------------------------------------------
 

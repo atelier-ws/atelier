@@ -7,7 +7,6 @@ SOURCE_ROOT = Path("src/atelier")
 FORBIDDEN_PROVIDER_IMPORTS = {
     "anthropic",
     "google.generativeai",
-    "litellm",
     "mistralai",
 }
 # Allowed provider imports are restricted to a single file each.
@@ -20,8 +19,12 @@ FORBIDDEN_PROVIDER_IMPORTS = {
 #   it). Allowing httpx only in that same file keeps the boundary consistent
 #   without special-casing the transitive openai→httpx dependency at the SDK
 #   level. No other Atelier module should import httpx.
+# - "litellm": Atelier's internal-processing module only. Native multi-provider
+#   (Bedrock / Vertex / Azure) completion client, confined like the others so no
+#   model-client import lands on the user's hot path.
 ALLOWED_PROVIDER_IMPORTS = {
     "ollama": {Path("src/atelier/infra/internal_llm/ollama_client.py")},
+    "litellm": {Path("src/atelier/infra/internal_llm/litellm_client.py")},
     "openai": {
         Path("src/atelier/infra/embeddings/openai_embedder.py"),
         Path("src/atelier/infra/internal_llm/openai_client.py"),
@@ -55,6 +58,8 @@ def test_llm_provider_sdks_are_confined_to_infra_boundaries() -> None:
             violations.append(f"{path}: forbidden provider import {provider}")
         for provider, allowed_paths in ALLOWED_PROVIDER_IMPORTS.items():
             if provider in imports and path not in allowed_paths:
-                violations.append(f"{path}: {provider} import must stay in {sorted(allowed_paths)!r}")
+                violations.append(
+                    f"{path}: {provider} import must stay in {sorted(allowed_paths)!r}"
+                )
 
     assert not violations, "\n".join(violations)

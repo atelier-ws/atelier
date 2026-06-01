@@ -1,18 +1,22 @@
-"""Tests for make_embedder() factory and all embedder backends."""
+"""Tests for embedder factories and backend-specific helpers."""
 
 from __future__ import annotations
+
+import json
+from urllib.request import Request
 
 import pytest
 
 from atelier.infra.embeddings.base import Embedder
-from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.embeddings.factory import make_code_embedder, make_embedder
 from atelier.infra.embeddings.local import LocalEmbedder
 from atelier.infra.embeddings.null_embedder import NullEmbedder
+from atelier.infra.embeddings.ollama_embedder import OllamaEmbedder
 from atelier.infra.embeddings.openai_embedder import OpenAIEmbedder
 
 
 def test_make_embedder_returns_local_in_stripped_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without explicit pins, sqlite memory backend defaults to local embeddings."""
+    """Without explicit pins, defaults to LocalEmbedder (deterministic feature hashing, zero deps)."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ATELIER_LETTA_URL", raising=False)
     monkeypatch.delenv("ATELIER_EMBEDDER", raising=False)
@@ -65,3 +69,82 @@ def test_null_embedder_dim_and_name() -> None:
     e = NullEmbedder()
     assert e.dim == 0
     assert e.name == "null"
+
+
+def test_make_code_embedder_falls_back_to_local_when_ollama_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    make_code_embedder.cache_clear()
+    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
+    monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: False)
+
+    embedder = make_code_embedder()
+
+    assert isinstance(embedder, LocalEmbedder)
+    make_code_embedder.cache_clear()
+
+
+def test_make_code_embedder_prefers_ollama_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    make_code_embedder.cache_clear()
+    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
+    monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: True)
+
+    embedder = make_code_embedder()
+
+    assert isinstance(embedder, OllamaEmbedder)
+    make_code_embedder.cache_clear()
+
+
+def test_ollama_embedder_query_prefixes_and_normalizes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_payload: dict[str, object] = {}
+
+    def fake_request(self: OllamaEmbedder, request: Request) -> dict[str, object]:
+        del self
+        data = request.data
+        assert isinstance(data, bytes)
+        captured_payload.update(json.loads(data.decode("utf-8")))
+        return {"embeddings": [[3.0, 4.0]]}
+
+    monkeypatch.setattr(OllamaEmbedder, "_request_json", fake_request)
+    embedder = OllamaEmbedder(model="nomic-embed-text")
+
+    vector = embedder.embed_queries(["match this symbol"])[0]
+
+    assert captured_payload["input"] == ["search_query: match this symbol"]
+    assert vector == pytest.approx([0.6, 0.8])
+
+
+def test_ollama_embedder_document_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_payload: dict[str, object] = {}
+
+    def fake_request(self: OllamaEmbedder, request: Request) -> dict[str, object]:
+        del self
+        data = request.data
+        assert isinstance(data, bytes)
+        captured_payload.update(json.loads(data.decode("utf-8")))
+        return {"embeddings": [[1.0, 0.0]]}
+
+    monkeypatch.setattr(OllamaEmbedder, "_request_json", fake_request)
+    embedder = OllamaEmbedder(model="nomic-embed-text")
+
+    _ = embedder.embed_documents(["def issue_token(): ..."])
+
+    assert captured_payload["input"] == ["search_document: def issue_token(): ..."]
+
+
+def test_ollama_embedder_is_unavailable_when_model_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        OllamaEmbedder,
+        "_request_json",
+        lambda self, request: {"models": [{"name": "other-model:latest"}]},
+    )
+
+    embedder = OllamaEmbedder(model="nomic-embed-text")
+
+    assert embedder.is_available() is False

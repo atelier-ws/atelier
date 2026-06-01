@@ -16,6 +16,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from atelier.core.foundation.models import ReasonBlock
 from atelier.core.runtime import AtelierRuntimeCore, AtelierRuntimeV3
 from atelier.gateway.cli import cli
 
@@ -94,6 +95,68 @@ def test_context_reuse_inject_includes_rescue_chains(tmp_path: Path) -> None:
     )
     assert "rescue_chains" in payload
     assert isinstance(payload["rescue_chains"], list)
+
+
+def _high_match_block(block_id: str, title: str, trigger: str) -> ReasonBlock:
+    return ReasonBlock(
+        id=block_id,
+        title=title,
+        domain="state.change",
+        triggers=[trigger],
+        file_patterns=["products.py"],
+        tool_patterns=["edit_file"],
+        situation="A live state change needs a safe fix.",
+        procedure=[f"Apply the known {trigger} state-change procedure."],
+        failure_signals=["ConnectionError"],
+        success_count=10,
+    )
+
+
+def test_context_reuse_filters_to_strong_top_two(tmp_path: Path) -> None:
+    rt, _ = _make_rt(tmp_path)
+    for idx, trigger in enumerate(["deploy", "rollback", "configuration"], start=1):
+        rt.store.upsert_block(_high_match_block(f"strong-{idx}", f"Strong {idx}", trigger), write_markdown=False)
+    rt.store.upsert_block(
+        ReasonBlock(
+            id="weak-context",
+            title="Weak context",
+            domain="state.change",
+            situation="Only shares the domain.",
+            procedure=["This should not be injected."],
+        ),
+        write_markdown=False,
+    )
+
+    payload = rt.context_reuse.inject_runtime_context(
+        task="deploy rollback configuration",
+        domain="state.change",
+        files=["products.py"],
+        tools=["edit_file"],
+        errors=["ConnectionError"],
+        max_blocks=5,
+    )
+
+    assert len(payload["procedures"]) == 2
+    assert all(proc["score"] > 0.8 for proc in payload["procedures"])
+    assert "weak-context" not in {proc["id"] for proc in payload["procedures"]}
+
+
+def test_context_reuse_returns_empty_when_no_strong_match(tmp_path: Path) -> None:
+    rt, _ = _make_rt(tmp_path)
+    rt.store.upsert_block(
+        ReasonBlock(
+            id="weak-only",
+            title="Weak only",
+            domain="weak.only",
+            situation="Only shares the domain.",
+            procedure=["This should not be injected."],
+        ),
+        write_markdown=False,
+    )
+
+    context = rt.get_context(task="unrelated task", domain="weak.only", recall=False)
+
+    assert context == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -520,7 +583,7 @@ def test_runtime_loop_report_no_ledger(tmp_path: Path) -> None:
         report = rt.loop_report(session_id=None)
         # If there's no ledger, it may return an error dict or raise
         assert isinstance(report, dict)
-    except Exception:
+    except FileNotFoundError:
         pass  # raising is acceptable when no ledger exists
 
 
@@ -529,7 +592,7 @@ def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
     try:
         report = rt.context_report(session_id=None)
         assert isinstance(report, dict)
-    except Exception:
+    except FileNotFoundError:
         pass  # raising is acceptable when no ledger exists
 
 
@@ -538,48 +601,11 @@ def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_cli_symbol_search_no_crash(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "symbol-search", "somefunc"])
-    # Should exit 0 or print "(no matches)"
-    assert res.exit_code == 0
-
-
-def test_cli_module_summary(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    target = tmp_path / "mod.py"
-    target.write_text("def foo(): pass\n", encoding="utf-8")
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "module-summary", str(target)])
-    assert res.exit_code == 0
-    assert "path:" in res.output
-
-
 def test_cli_tool_report_no_crash(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _init_root(root)
     runner = CliRunner()
     res = runner.invoke(cli, ["--root", str(root), "tool-report"])
-    assert res.exit_code == 0
-
-
-def test_cli_diff_context_nonexistent_file(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "diff-context", "nonexistent.py"])
-    # Should not crash even for unknown files
-    assert res.exit_code == 0
-
-
-def test_cli_test_context_nonexistent_file(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "test-context", "nonexistent.py"])
     assert res.exit_code == 0
 
 

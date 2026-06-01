@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict
 
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.embeddings.base import Embedder
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, chat
+from atelier.infra.internal_llm import chat
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable as InternalLLMError
 from atelier.infra.storage.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ def _emit_arbitration_metric(op: str) -> None:
             )
         _emit_arbitration_metric.counter.labels(op=op).inc()  # type: ignore[attr-defined]
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at arbiter.py:41",
             exc_info=True,
@@ -61,6 +63,7 @@ def _similar_blocks(new_fact: MemoryBlock, store: MemoryStore, *, k: int) -> lis
     try:
         blocks = store.list_blocks(new_fact.agent_id, include_tombstoned=False, limit=500)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return []
     query_tokens = _tokens(new_fact.value + " " + new_fact.label)
     scored: list[tuple[float, MemoryBlock]] = []
@@ -112,11 +115,14 @@ def arbitrate(
                     "role": "system",
                     "content": "Decide how to merge a new memory fact. Return strict JSON only.",
                 },
-                {"role": "user", "content": json.dumps(prompt, sort_keys=True)},
+                {
+                    "role": "user",
+                    "content": json.dumps(prompt, sort_keys=True, separators=(",", ":")),
+                },
             ],
             json_schema=schema,
         )
-    except OllamaUnavailable:
+    except InternalLLMError:
         return _decision(op="ADD", reason="arbitration unavailable")
 
     if not isinstance(response, dict):
@@ -127,6 +133,7 @@ def arbitrate(
         _emit_arbitration_metric(decision.op)
         return decision
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _log.warning("invalid arbitration response: %s", exc)
         return _decision(op="ADD", reason="invalid arbitration response")
 

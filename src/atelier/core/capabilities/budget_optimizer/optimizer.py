@@ -32,6 +32,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,6 +44,7 @@ try:
 
     _HAS_ORTOOLS = True
 except Exception:  # pragma: no cover
+    logging.exception("Recovered from broad exception handler")
     _cp_model = None  # type: ignore[assignment]
     _HAS_ORTOOLS = False
 
