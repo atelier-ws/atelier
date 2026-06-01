@@ -12,6 +12,13 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from atelier.core.capabilities.swarm.models import (
+    SwarmAcceptedCommit,
+    SwarmArtifactRef,
+    SwarmChildState,
+    SwarmRunState,
+    SwarmWaveState,
+)
 from atelier.core.environment import (
     DEV_LLM_TOOLS,
     NON_DEV_LLM_TOOLS,
@@ -1207,3 +1214,160 @@ def test_cli_service_config_command(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "api_key_configured" in data
     # api_key value must NOT appear in output
     assert "test-secret-key" not in result.output
+
+
+def test_swarm_runs_endpoint_lists_live_activity(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    running_child = SwarmChildState(
+        child_id="wave-01-run-01",
+        label="candidate-1",
+        wave_index=1,
+        status="running",
+        worktree_path=str(tmp_path / "worktree"),
+        atelier_root=str(tmp_path / "atelier-root"),
+        run_dir=str(tmp_path / "run"),
+        spec_path=str(tmp_path / "program.md"),
+        result_path=str(tmp_path / "result.json"),
+        stdout_path=str(tmp_path / "stdout.log"),
+        stderr_path=str(tmp_path / "stderr.log"),
+        metadata_path=str(tmp_path / "meta.json"),
+        current_activity="Running validation",
+    )
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="running",
+        mode="continuous",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        runner_model="sonnet",
+        child_command=["echo", "hi"],
+        runs=4,
+        max_runs=4,
+        current_wave=1,
+        primary_winner_child_id="wave-01-run-02",
+        accepted_child_ids=["wave-01-run-02"],
+        waves=[
+            SwarmWaveState(
+                wave_index=1,
+                max_runs=4,
+                planned_runs=2,
+                planning_mode="bounded",
+                child_ids=["wave-01-run-01", "wave-01-run-02"],
+                accepted_child_ids=["wave-01-run-02"],
+                primary_winner_child_id="wave-01-run-02",
+            )
+        ],
+        children=[running_child],
+    )
+    monkeypatch.setattr("atelier.core.service.api.list_swarm_runs", lambda _root: [state])
+
+    response = app_no_auth.get("/v1/swarm/runs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["run_id"] == "swarm-123"
+    assert payload[0]["planned_runs"] == 2
+    assert payload[0]["max_runs"] == 4
+    assert payload[0]["running_children"][0]["activity"] == "Running validation"
+
+
+def test_swarm_run_detail_returns_export_and_apply_payloads(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    artifact = SwarmArtifactRef(
+        kind="wave-manifest",
+        label="Wave 1 manifest",
+        path=str(tmp_path / "wave-01-manifest.json"),
+        exists=True,
+    )
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        artifact_root=str(tmp_path / "artifacts"),
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=2,
+        max_runs=2,
+        accepted_commits=[
+            SwarmAcceptedCommit(
+                order=1,
+                child_id="wave-01-run-01",
+                commit_ref="abc1234",
+                patch_path=str(tmp_path / "candidate.patch"),
+                artifacts=[artifact],
+            )
+        ],
+        export_artifacts=[artifact],
+        transplant_commands=["git cherry-pick abc1234"],
+    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
+    monkeypatch.setattr("atelier.core.service.api.load_swarm_state", lambda _path: state)
+
+    response = app_no_auth.get("/v1/swarm/runs/swarm-123")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run"]["run_id"] == "swarm-123"
+    assert payload["export"]["accepted_commits"][0]["commit_ref"] == "abc1234"
+    assert payload["apply"]["commands"][0] == "git cherry-pick abc1234"
+
+
+def test_swarm_logs_and_stop_endpoints(
+    app_no_auth: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="stopped",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=1,
+        max_runs=1,
+        stop_reason="Stopped by user.",
+    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
+    monkeypatch.setattr("atelier.core.service.api.read_swarm_log", lambda *_args, **_kwargs: "child heartbeat")
+    monkeypatch.setattr("atelier.core.service.api.stop_swarm_run", lambda **_kwargs: state)
+
+    logs_response = app_no_auth.get("/v1/swarm/runs/swarm-123/logs", params={"child_id": "wave-01-run-01"})
+    stop_response = app_no_auth.post("/v1/swarm/runs/swarm-123/stop")
+
+    assert logs_response.status_code == 200
+    assert logs_response.json()["content"] == "child heartbeat"
+    assert stop_response.status_code == 200
+    assert stop_response.json()["status"] == "stopped"

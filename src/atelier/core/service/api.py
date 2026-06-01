@@ -28,6 +28,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from atelier.core.capabilities.pricing import usage_cost_usd
+from atelier.core.capabilities.swarm import (
+    build_swarm_apply_payload,
+    build_swarm_export_payload,
+    list_swarm_runs,
+    load_swarm_state,
+    read_swarm_log,
+    resolve_state_path,
+    stop_swarm_run,
+)
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
@@ -5960,6 +5969,105 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 
         return {"week": week, "markdown": markdown_content, "json": json_data}
+
+    @app.get("/v1/swarm/runs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_runs() -> list[dict[str, Any]]:
+        root = Path(cfg.atelier_root)
+        states = list_swarm_runs(root)
+        payload: list[dict[str, Any]] = []
+        for state in states:
+            latest_wave = state.waves[-1] if state.waves else None
+            payload.append(
+                {
+                    "run_id": state.run_id,
+                    "status": state.status,
+                    "mode": state.mode,
+                    "runner_name": state.runner_name,
+                    "runner_model": state.runner_model,
+                    "current_wave": state.current_wave,
+                    "max_runs": state.max_runs or state.runs,
+                    "planned_runs": latest_wave.planned_runs if latest_wave else 0,
+                    "planning_mode": latest_wave.planning_mode if latest_wave else state.planning_mode,
+                    "accepted_child_ids": state.accepted_child_ids,
+                    "primary_winner_child_id": state.primary_winner_child_id or state.winner_child_id,
+                    "failed_children": [child.child_id for child in state.children if child.status == "failed"],
+                    "running_children": [
+                        {
+                            "child_id": child.child_id,
+                            "activity": child.current_activity,
+                            "last_output_at": child.last_output_at,
+                        }
+                        for child in state.children
+                        if child.status == "running"
+                    ],
+                    "created_at": state.created_at,
+                    "updated_at": state.updated_at,
+                }
+            )
+        return payload
+
+    @app.get("/v1/swarm/runs/{run_id}", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_run(run_id: str) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = load_swarm_state(state_path)
+        return {
+            "run": state.model_dump(mode="json"),
+            "export": build_swarm_export_payload(state),
+            "apply": build_swarm_apply_payload(state),
+        }
+
+    @app.get("/v1/swarm/runs/{run_id}/logs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_logs(
+        run_id: str,
+        child_id: str | None = None,
+        stderr: bool = False,
+        tail: int = 40,
+    ) -> dict[str, Any]:
+        try:
+            content = read_swarm_log(
+                Path(cfg.atelier_root),
+                run_id,
+                child_id=child_id,
+                stderr=stderr,
+                tail=tail,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "run_id": run_id,
+            "child_id": child_id,
+            "stderr": stderr,
+            "tail": tail,
+            "content": content,
+        }
+
+    @app.get("/v1/swarm/runs/{run_id}/export", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_export(run_id: str) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        return build_swarm_export_payload(load_swarm_state(state_path))
+
+    @app.get("/v1/swarm/runs/{run_id}/apply", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_apply(run_id: str, wave: int | None = None, child_id: str | None = None) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = load_swarm_state(state_path)
+        try:
+            return build_swarm_apply_payload(state, wave_index=wave, child_id=child_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/swarm/runs/{run_id}/stop", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def post_swarm_stop(run_id: str, cleanup: bool = False) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = stop_swarm_run(root=Path(cfg.atelier_root), state_path=state_path, cleanup=cleanup)
+        return state.model_dump(mode="json")
 
     return app
 

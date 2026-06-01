@@ -3,6 +3,8 @@
 from atelier.core.capabilities.swarm.capability import (
     apply_wave_candidates,
     build_child_env,
+    build_swarm_apply_payload,
+    build_swarm_export_payload,
     cleanup_swarm_run,
     discover_repo_root,
     format_swarm_summary,
@@ -34,6 +36,8 @@ __all__ = [
     "SwarmWaveState",
     "apply_wave_candidates",
     "build_child_env",
+    "build_swarm_apply_payload",
+    "build_swarm_export_payload",
     "cleanup_swarm_run",
     "discover_repo_root",
     "format_swarm_summary",
