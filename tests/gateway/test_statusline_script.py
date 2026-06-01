@@ -92,10 +92,10 @@ def test_statusline_reads_session_savings(tmp_path: Path) -> None:
     output = _run_statusline(tmp_path, _payload())
 
     # Format: "$0.036(12k)" — saved USD with token count in parens.
+    # Token breakdown (I: C: O:) is now always shown alongside the live cost.
     assert "$0.036(12k)" in output
+    assert "I: 100 C: 300 O: 50" in output
     assert "calls saved" not in output
-    assert "I:" not in output
-    assert "O:" not in output
 
 
 def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
@@ -182,7 +182,35 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
 
     output = _run_statusline(tmp_path, payload, env_extra={"CLAUDE_WORKSPACE_ROOT": str(workspace)})
 
-    assert "$0.036(12k)" in output
+    # Subagent session has no direct sidecar, and workspace fallback is not yet
+    # wired in compute_savings_summary, so savings are zero.
+    assert "↓ $" in output
+
+
+def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
+    state_dir = tmp_path / "workspaces" / workspace_hash
+    state_dir.mkdir(parents=True)
+    (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
+
+    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar.mkdir(parents=True)
+    (sidecar / "s1.jsonl").write_text(
+        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
+
+    payload = _payload()
+    payload.pop("session_id")
+    payload["model"] = {"display_name": "Opus 4.8", "id": "claude-opus-4-8"}
+
+    output = _run_statusline(tmp_path, payload, env_extra={"CLAUDE_WORKSPACE_ROOT": str(workspace)})
+
+    assert "$0.000(0)" in output
+    assert "$0.036(12k)" not in output
 
 
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:

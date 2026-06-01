@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -19,8 +20,9 @@ from atelier.core.foundation.lesson_models import LessonCandidate
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.embeddings.base import Embedder
+from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.embeddings.null_embedder import NullEmbedder
-from atelier.infra.internal_llm.ollama_client import chat
+from atelier.infra.internal_llm import chat
 from atelier.infra.storage.vector import cosine_similarity
 
 _HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$")
@@ -62,7 +64,7 @@ def import_files(
 
     resolved_domain = domain or _DEFAULT_DOMAIN
     files = collect_markdown_files(paths)
-    active_embedder = embedder or NullEmbedder()
+    active_embedder = embedder or get_embedder()
     existing_blocks = store.list_blocks(domain=resolved_domain, include_deprecated=True) if store else []
     existing_vectors = _embed_existing_blocks(existing_blocks, active_embedder)
     candidates: list[LessonCandidate] = []
@@ -264,7 +266,7 @@ def _candidate_from_response(
         failure_signals=[],
         when_not_to_apply="When the imported source no longer represents current team policy.",
     )
-    embedder_local = embedder or NullEmbedder()
+    embedder_local = embedder or get_embedder()
     embedding = _embed_block(block, embedder_local)
     near_duplicates = _near_duplicates(block, embedding, existing_vectors)
     fingerprint = _fingerprint(chunk=chunk, body=body)
@@ -301,7 +303,7 @@ def _response_dict(response: str | dict[str, Any]) -> dict[str, Any]:
 def _embed_existing_blocks(
     blocks: list[ReasonBlock], embedder: Embedder | None
 ) -> list[tuple[ReasonBlock, list[float]]]:
-    embedder_local = embedder or NullEmbedder()
+    embedder_local = embedder or get_embedder()
     out: list[tuple[ReasonBlock, list[float]]] = []
     for block in blocks:
         out.append((block, _embed_block(block, embedder_local)))
@@ -313,6 +315,7 @@ def _embed_block(block: ReasonBlock, embedder: Embedder) -> list[float]:
     try:
         vectors = embedder.embed([text])
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         vectors = NullEmbedder().embed([text])
     return vectors[0] if vectors else []
 

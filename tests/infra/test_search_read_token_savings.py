@@ -1,7 +1,7 @@
 """Token-savings infra test for search_read (WP-21).
 
-Acceptance criterion: on a fixture corpus with ≥20 hit-files, the combined
-tool returns ≤ 30 % of the tokens that ``grep + read each file`` would have.
+Acceptance criterion: savings are computed against Claude Code's built-in
+Grep content output, not against ``grep + read every matched file in full``.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import textwrap
 from pathlib import Path
 
 from atelier.core.capabilities.tool_supervision.search_read import (
+    _count_tokens,
     _naive_token_count,
     _run_grep,
     search_read,
@@ -101,17 +102,16 @@ def _build_corpus(root: Path, n_files: int = 20) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_search_read_token_reduction_ge_70_percent(tmp_path: Path) -> None:
-    """search_read must return ≤ 30 % of tokens of naive grep+read approach."""
+def test_search_read_token_savings_use_claude_grep_content_baseline(tmp_path: Path) -> None:
+    """search_read must not use full matched-file reads as its baseline."""
     corpus = tmp_path / "corpus"
     _build_corpus(corpus, n_files=20)
 
-    # --- naive token count ---
     grep_output = _run_grep(_SEARCH_PATTERN, str(corpus))
     file_contents: dict[str, str] = {str(p): p.read_text(encoding="utf-8") for p in sorted(corpus.glob("*.py"))}
     naive_tokens = _naive_token_count(grep_output, file_contents)
+    inflated_full_read_tokens = _count_tokens(grep_output + "".join(file_contents.values()))
 
-    # --- search_read token count ---
     result = search_read(
         query=_SEARCH_PATTERN,
         path=str(corpus),
@@ -122,21 +122,14 @@ def test_search_read_token_reduction_ge_70_percent(tmp_path: Path) -> None:
 
     smart_tokens = result.total_tokens
 
-    # Sanity: we must actually get matches
     assert len(result.matches) >= 10, f"expected ≥10 hit files, got {len(result.matches)}"
-
-    # Core acceptance criterion: ≤ 30 % of naive
-    ratio = smart_tokens / naive_tokens if naive_tokens > 0 else 0.0
-    assert ratio <= 0.30, (
-        f"search_read used {ratio:.1%} of naive tokens ({smart_tokens} vs {naive_tokens}); " f"must be ≤ 30 %"
-    )
-
-    # Also verify the reported savings metric is consistent
-    assert result.tokens_saved_vs_naive >= naive_tokens - smart_tokens - 1  # allow rounding
+    assert naive_tokens == _count_tokens(grep_output)
+    assert inflated_full_read_tokens > naive_tokens
+    assert result.tokens_saved_vs_naive == max(0, naive_tokens - smart_tokens)
 
 
 def test_search_read_token_savings_field_populated(tmp_path: Path) -> None:
-    """tokens_saved_vs_naive must be a positive integer for a real corpus."""
+    """tokens_saved_vs_naive must be a non-negative integer for a real corpus."""
     corpus = tmp_path / "small_corpus"
     _build_corpus(corpus, n_files=5)
 
@@ -163,14 +156,16 @@ def test_search_read_result_deterministic_across_calls(tmp_path: Path) -> None:
     assert r1 == r2, "search_read is not deterministic for identical inputs"
 
 
-def test_naive_token_count_matches_expected_scale(tmp_path: Path) -> None:
-    """Verify naive counting is actually much larger than search_read output."""
+def test_naive_token_count_matches_claude_grep_content_output(tmp_path: Path) -> None:
+    """Verify naive counting does not include full matched-file contents."""
     corpus = tmp_path / "scale_corpus"
     _build_corpus(corpus, n_files=20)
 
     grep_output = _run_grep(_SEARCH_PATTERN, str(corpus))
     file_contents = {str(p): p.read_text(encoding="utf-8") for p in sorted(corpus.glob("*.py"))}
     naive_tokens = _naive_token_count(grep_output, file_contents)
+    grep_tokens = _count_tokens(grep_output)
+    inflated_full_read_tokens = _count_tokens(grep_output + "".join(file_contents.values()))
 
-    # Each file is ~50+ lines; 20 files → naive should be several thousand tokens
-    assert naive_tokens > 2000, f"naive token count unexpectedly low: {naive_tokens}"
+    assert naive_tokens == grep_tokens
+    assert inflated_full_read_tokens > naive_tokens

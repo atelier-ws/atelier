@@ -28,7 +28,7 @@ def _write_session_state(session_id: str, cwd: str | None = None) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     try:
         state: dict = json.loads(p.read_text("utf-8")) if p.exists() else {}
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         state = {}
     state["session_id"] = session_id
     p.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -55,8 +55,8 @@ def main() -> int:
         )
         stdout = output.get("stdout") if isinstance(output, dict) else None
         if stdout:
-            print(json.dumps(stdout))
-    except Exception:
+            sys.stdout.write(json.dumps(stdout) + "\n")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0
 

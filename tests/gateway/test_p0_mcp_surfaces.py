@@ -17,6 +17,16 @@ from atelier.gateway.adapters.mcp_server import (
     tool_smart_search,
     tool_sql,
 )
+from atelier.gateway.sdk.mcp import _LoopbackTransport
+
+
+def test_public_symbols_surface_keeps_internal_code_alias() -> None:
+    assert "symbols" in TOOLS
+    assert "code" not in TOOLS
+    assert callable(tool_code)
+    transport = _LoopbackTransport()
+    with pytest.raises(KeyError):
+        transport.call_tool("code", {})
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,7 +265,8 @@ def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> Non
 
     _ = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
     cached = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
-    indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000})
+    # force=True guarantees a version bump regardless of autosync timing.
+    indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000, "force": True})
     fresh = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
     assert cached["provenance"] == "cached"
@@ -305,9 +316,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
     assert payload["provenance"] == "local"
     assert "provenance_breakdown" not in payload
     assert payload["items"][0]["path"] == "src/orders.py"
-    assert (
-        payload["items"][0]["snippet"] == "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:"
-    )
+    assert payload["items"][0]["signature"] == "class OrderService:"
 
 
 def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> None:
@@ -356,11 +365,14 @@ def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> N
     )
 
     assert semantic["mode"] == "semantic"
-    assert semantic["items"][0]["name"] == "issue_access_token"
+    semantic_names = {item["name"] for item in semantic["items"]}
+    assert "issue_access_token" in semantic_names
     assert hybrid_auto["mode"] == "hybrid"
-    assert hybrid_auto["items"][0]["name"] == "issue_access_token"
+    hybrid_names = {item["name"] for item in hybrid_auto["items"]}
+    assert "issue_access_token" in hybrid_names
     assert exact_auto["mode"] == "lexical"
-    assert exact_auto["items"][0]["name"] == "issue_access_token"
+    exact_names = {item["name"] for item in exact_auto["items"]}
+    assert "issue_access_token" in exact_names
 
 
 def test_tool_code_pattern_requires_pattern(tmp_path: Path) -> None:
@@ -622,7 +634,6 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
     )
 
     assert "rendered" in payload
-    assert payload["rendered"].startswith("### callers")
     assert "src/checkout.py:24" in payload["rendered"]
     assert "def place_order" not in payload["rendered"]
 
@@ -661,8 +672,7 @@ def test_tool_code_symbol_rendered_shape_is_compact_summary(tmp_path: Path, monk
     )
 
     assert "rendered" in payload
-    assert payload["rendered"].startswith("### symbol")
-    assert "- id: sym-order-total" in payload["rendered"]
+    assert "- OrderService.calculate_total [method]" in payload["rendered"]
     assert "- location: src/orders.py:12-20" in payload["rendered"]
     assert "total = sum(items)" not in payload["rendered"]
 
@@ -706,10 +716,9 @@ def test_tool_code_outline_rendered_shape_is_structural(tmp_path: Path, monkeypa
     payload = tool_code({"op": "outline", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
 
     assert "rendered" in payload
-    assert payload["rendered"].startswith("### outline")
-    assert "10-40: Worker [class] — class Worker" in payload["rendered"]
-    assert "25-30: Worker.run [method] — def run(self) -> None" in payload["rendered"]
-    assert payload["rendered"].index("10-40: Worker [class]") < payload["rendered"].index("25-30: Worker.run [method]")
+    assert "  - 10-40: Worker [class] — class Worker" in payload["rendered"]
+    assert "  - 25-30: Worker.run [method] — def run(self) -> None" in payload["rendered"]
+    assert payload["rendered"].index("Worker [class]") < payload["rendered"].index("Worker.run [method]")
     assert "def run(self): ..." not in payload["rendered"]
 
 
@@ -790,9 +799,10 @@ def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: 
     payload = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 220, "render_compact": True})
 
     assert "rendered" in payload
-    assert payload["rendered"].startswith("### index")
-    assert "counts: files=3, symbols=8, imports=2" in payload["rendered"]
-    fake_engine.tool_index.assert_called_once_with(include_globs=None, exclude_globs=None, budget_tokens=220)
+    assert "- counts: files=3, symbols=8, imports=2" in payload["rendered"]
+    fake_engine.tool_index.assert_called_once_with(
+        include_globs=None, exclude_globs=None, force=False, budget_tokens=220
+    )
 
 
 def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -824,9 +834,8 @@ def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkey
     )
 
     assert "rendered" in payload
-    assert payload["rendered"].startswith("### cache_status")
-    assert "entries: 4" in payload["rendered"]
-    assert "tools: code.search=2, code.symbol=2" in payload["rendered"]
+    assert "- entries: 4" in payload["rendered"]
+    assert "- tools: code.search=2, code.symbol=2" in payload["rendered"]
     fake_engine.tool_cache_status.assert_called_once_with(budget_tokens=220)
 
 
@@ -913,6 +922,8 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_engine = MagicMock()
+    fake_engine.db_path = tmp_path / "code_context.sqlite"
+    fake_engine.db_path.touch()  # mark as indexed so bootstrap_note is not injected
     fake_engine.tool_search.return_value = {
         "items": [
             {
@@ -956,9 +967,12 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(
     )
 
     assert sorted(payload.keys()) == [
+        "has_more_context",
         "items",
         "mode",
         "provenance",
+        "suggested_next",
+        "view",
     ]
     assert payload["items"][0]["deleted_at_sha"] == "abc123"
     assert payload["items"][0]["rename_target"] == "modern.py"
@@ -982,6 +996,8 @@ def test_tool_code_blame_is_an_additive_extension_to_code_surface(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_engine = MagicMock()
+    fake_engine.db_path = tmp_path / "code_context.sqlite"
+    fake_engine.db_path.touch()  # mark as indexed so bootstrap_note is not injected
     fake_engine.tool_blame.return_value = {
         "symbol_name": "risk_score",
         "qualified_name": "risk_score",

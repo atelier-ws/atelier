@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from benchmarks.mcp_tools.harness import CaseResult, ToolReport
+from benchmarks.mcp_tools.harness import ToolReport
 
 _GREEN = "\033[32m"
 _RED = "\033[31m"
@@ -28,12 +28,13 @@ def render_tool_report(report: ToolReport) -> str:
     # Header
     status_color = _GREEN if report.failed == 0 else _RED
     lines.append(
-        f"\n{_BOLD}{_CYAN}● {report.tool_name}{_RESET}  "
-        f"{status_color}{report.passed}/{report.total} passed{_RESET}"
+        f"\n{_BOLD}{_CYAN}● {report.tool_name}{_RESET}  " f"{status_color}{report.passed}/{report.total} passed{_RESET}"
     )
-    lines.append(f"  {_DIM}avg savings {report.avg_savings_pct:.0f}%  "
-                 f"total tokens saved {report.total_saved_tokens:,}  "
-                 f"effective tokens {report.total_effective_tokens:,.0f}{_RESET}")
+    lines.append(
+        f"  {_DIM}avg savings {report.avg_savings_pct:.0f}%  "
+        f"total tokens saved {report.total_saved_tokens:,}  "
+        f"effective tokens {report.total_effective_tokens:,.0f}{_RESET}"
+    )
     lines.append("")
 
     # Column headers
@@ -42,9 +43,7 @@ def render_tool_report(report: ToolReport) -> str:
         f"  {'op':<{col_w}} {'status':<8} {'atelier':>8} {'baseline':>9} "
         f"{'input':>9} {'saved':>7} {'saving%':>8} {'effective':>10}  {'ms':>5}"
     )
-    lines.append(
-        f"  {'-' * col_w} {'-' * 7} {'-' * 8} {'-' * 9} {'-' * 9} {'-' * 7} {'-' * 8} {'-' * 10}  {'-' * 5}"
-    )
+    lines.append(f"  {'-' * col_w} {'-' * 7} {'-' * 8} {'-' * 9} {'-' * 9} {'-' * 7} {'-' * 8} {'-' * 10}  {'-' * 5}")
 
     for r in report.results:
         status = _pass_fail(r.passed)
@@ -63,9 +62,7 @@ def render_tool_report(report: ToolReport) -> str:
         if r.baseline_commands:
             lines.append(f"  {_DIM}    cmds: {len(r.baseline_commands)} fallback commands{_RESET}")
         if r.spill_probe_hits > 0:
-            lines.append(
-                f"  {_DIM}    spill-probe: hits={r.spill_probe_hits} tokens={r.spill_probe_tokens:,}{_RESET}"
-            )
+            lines.append(f"  {_DIM}    spill-probe: hits={r.spill_probe_hits} tokens={r.spill_probe_tokens:,}{_RESET}")
 
     return "\n".join(lines)
 

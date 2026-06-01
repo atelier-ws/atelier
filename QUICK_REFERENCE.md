@@ -2,7 +2,7 @@
 
 **For developers.** Print this page. Keep it nearby while coding with Atelier.
 
-_For agents/automation, see [AGENT_README.md](AGENT_README.md) instead._
+_For agents/automation, see [AGENTS.md](AGENTS.md) instead._
 
 ---
 
@@ -123,6 +123,12 @@ shell              Compact supervised shell command execution
 > Atelier augmentations. Host-native Read, MultiEdit, shell `rg`/`grep`, and search remain the
 > raw-access fallback. Disable Atelier cache with `ATELIER_CACHE_DISABLED=1`.
 
+## Language Intelligence
+
+- **Dedicated outlines:** Python, TypeScript, JavaScript, Go, Rust, Java, Ruby, C, C++, C#, Kotlin, PHP, Swift, Scala, Bash, SQL, YAML, TOML, and JSON.
+- **Generic/full fallback:** Markdown, unknown text, and any dedicated outline that does not beat the 25% savings guard.
+- **SCIP semantic indexing:** Python and TypeScript/JavaScript are installer-managed when npm is available; Go, Ruby, C, and C++ are checksum-gated lazy/bootstrap candidates; Rust and Java require user-managed toolchains.
+
 ## 🎯 High-Risk Domains (require rubric gate)
 
 ```
@@ -229,7 +235,7 @@ rubric_failures_caught     Pre-success checks that failed
 ## 📚 Documentation Structure
 
 ```
-AGENT_README.md (684 lines)
+AGENTS.md (agent entrypoint)
 ├─ Sections 1–10: Original Atelier design + workflows + installation
 ├─ Section 11: MCP Tools (13 total) + availability matrix
 ├─ Section 12: Atelier Skills (11 total) + invocation syntax

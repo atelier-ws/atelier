@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -39,7 +42,7 @@ Failure to follow these constraints will result in immediate termination.
         print(json.dumps(output))
 
     except Exception:
-        pass
+        logger.exception("PreToolUse hook failed for Agent subagent")
 
     sys.exit(0)
 

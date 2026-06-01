@@ -14,7 +14,7 @@ Each spec is structured for an autonomous coding agent or contributor to execute
 
 ## Phase 1 — 2-week MVP
 
-These ship together as the launch. See [ROADMAP.md](../product/ROADMAP.md) for context.
+These ship together as the launch. See [ROADMAP.md](../roadmap.md) for context.
 
 | Spec | Status |
 |------|--------|

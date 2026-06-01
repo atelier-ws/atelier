@@ -139,11 +139,12 @@ def build_bootstrap_plan(repo_root: str | Path) -> BootstrapPlan:
     agent_id = bootstrap_agent_id(repo_id)
     labels = expected_bootstrap_labels(repo_id)
 
+    _BLOCK_LIMIT = 7900  # leave headroom below MemoryBlock.limit_chars (8000)
     block_values = {
-        labels[0]: _render_architecture_sketch(repo_map, files),
-        labels[1]: _render_entry_points(repo_map.get("ranked_files", []), files),
-        labels[2]: _render_hot_symbols(repo_map.get("ranked_files", []), files),
-        labels[3]: _render_language_mix(root, repo_id),
+        labels[0]: _render_architecture_sketch(repo_map, files)[:_BLOCK_LIMIT],
+        labels[1]: _render_entry_points(repo_map.get("ranked_files", []), files)[:_BLOCK_LIMIT],
+        labels[2]: _render_hot_symbols(repo_map.get("ranked_files", []), files)[:_BLOCK_LIMIT],
+        labels[3]: _render_language_mix(root, repo_id)[:_BLOCK_LIMIT],
     }
     signature = hashlib.sha256(
         json.dumps(block_values, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -315,7 +316,7 @@ def _render_language_mix(repo_root: Path, repo_id: str) -> str:
     languages = Counter((detect_language(path) or "unknown") for path in files)
     scip = ScipIndexer(repo_root, repo_id)
     artifacts = [artifact.path.name for artifact in scip.discover_artifacts()]
-    binaries = sorted(scip.available_binaries())
+    statuses = scip.availability_statuses()
     lines = ["languages:"]
     for language, count in sorted(languages.items(), key=lambda item: (-item[1], item[0])):
         lines.append(f"- {language}: {count} files")
@@ -329,8 +330,10 @@ def _render_language_mix(repo_root: Path, repo_id: str) -> str:
         lines.append("- none discovered")
     lines.append("")
     lines.append("available scip binaries:")
-    if binaries:
-        lines.extend(f"- {name}" for name in binaries)
+    if statuses:
+        for name, status in statuses.items():
+            detail = status.binary.name if status.binary is not None else status.message
+            lines.append(f"- {name}: {status.status} ({detail})")
     else:
         lines.append("- none discovered")
     return "\n".join(lines).strip()

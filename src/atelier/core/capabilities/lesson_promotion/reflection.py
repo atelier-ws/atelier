@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 
 from atelier.core.foundation.models import Trace
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, summarize
+from atelier.infra.internal_llm import summarize
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable as InternalLLMError
 
 _log = logging.getLogger(__name__)
 
@@ -43,8 +44,8 @@ def draft_lesson_body(cluster_traces: list[Trace]) -> str:
     text = _REFLECTION_PROMPT + "\n\n---\n\n".join(_trace_excerpt(trace) for trace in cluster_traces)
     try:
         body = summarize(text, max_tokens=220)
-    except OllamaUnavailable:
-        _log.info("Ollama unavailable for lesson reflection; using deterministic fallback")
+    except InternalLLMError:
+        _log.info("Internal LLM unavailable for lesson reflection; using deterministic fallback")
         return fallback_lesson_body(cluster_traces)
     return body.strip() or fallback_lesson_body(cluster_traces)
 

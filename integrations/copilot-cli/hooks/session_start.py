@@ -24,7 +24,7 @@ def _workspace_savings_path(workspace: str) -> Path:
 def main() -> None:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except json.JSONDecodeError:
         payload = {}
 
     workspace = (
@@ -38,7 +38,7 @@ def main() -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("")
-    except Exception:
+    except OSError:
         pass
 
 

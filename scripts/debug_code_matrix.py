@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -27,19 +28,51 @@ def _contains_expected_terms(payload: Any, expected_terms: list[str]) -> bool:
 def _default_ops() -> list[tuple[str, dict[str, Any], list[str]]]:
     return [
         ("cache_status", {"op": "cache_status", "budget_tokens": 2000}, ["cache"]),
-        ("index", {"op": "index", "include_globs": ["src/**/*.py", "tests/**/*.py"], "budget_tokens": 3000}, ["files_indexed"]),
+        (
+            "index",
+            {
+                "op": "index",
+                "include_globs": ["src/**/*.py", "tests/**/*.py"],
+                "budget_tokens": 3000,
+            },
+            ["files_indexed"],
+        ),
         (
             "search",
-            {"op": "search", "query": "classify_command", "mode": "lexical", "limit": 10, "budget_tokens": 3000},
+            {
+                "op": "search",
+                "query": "classify_command",
+                "mode": "lexical",
+                "limit": 10,
+                "budget_tokens": 3000,
+            },
             ["classify_command"],
         ),
-        ("symbol", {"op": "symbol", "symbol_name": "classify_command", "budget_tokens": 3000}, ["classify_command"]),
+        (
+            "symbol",
+            {"op": "symbol", "symbol_name": "classify_command", "budget_tokens": 3000},
+            ["classify_command"],
+        ),
         (
             "outline",
-            {"op": "outline", "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py", "budget_tokens": 3000},
+            {
+                "op": "outline",
+                "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                "budget_tokens": 3000,
+            },
             ["symbol_count"],
         ),
-        ("pattern", {"op": "pattern", "pattern": "@mcp_tool($$$)", "language": "python", "limit": 20, "budget_tokens": 3000}, ["mcp_tool"]),
+        (
+            "pattern",
+            {
+                "op": "pattern",
+                "pattern": "@mcp_tool($$$)",
+                "language": "python",
+                "limit": 20,
+                "budget_tokens": 3000,
+            },
+            ["mcp_tool"],
+        ),
         (
             "callers",
             {
@@ -69,7 +102,11 @@ def _default_ops() -> list[tuple[str, dict[str, Any], list[str]]]:
         ),
         (
             "impact",
-            {"op": "impact", "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py", "budget_tokens": 3000},
+            {
+                "op": "impact",
+                "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                "budget_tokens": 3000,
+            },
             ["importers"],
         ),
         (
@@ -83,6 +120,9 @@ def _default_ops() -> list[tuple[str, dict[str, Any], list[str]]]:
             ["entry_points"],
         ),
     ]
+
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> int:
@@ -104,7 +144,8 @@ def main() -> int:
         raw_output: Any
         try:
             raw_output = tool_code(payload)
-        except Exception as exc:  # propagate failure information for baseline freeze
+        except Exception as exc:
+            logger.exception("tool_code failed for operation %s", operation)
             raw_output = {}
             error = f"{type(exc).__name__}: {exc}"
         elapsed_ms = (perf_counter() - t0) * 1000.0

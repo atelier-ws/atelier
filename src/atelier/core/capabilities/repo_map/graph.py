@@ -10,7 +10,31 @@ import networkx as nx
 
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
-_SKIP_PARTS = {".git", "node_modules", "dist", "build", "__pycache__", ".venv"}
+_SKIP_PARTS = {
+    ".git",
+    ".atelier",
+    ".bench-work",
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+    "dist",
+    "build",
+    "__pycache__",
+}
+
+
+def should_skip_relative_path(path: str) -> bool:
+    return any(part in _SKIP_PARTS for part in Path(path).parts)
+
+
+def should_skip_path(path: Path, *, repo_root: Path | None = None) -> bool:
+    try:
+        rel = path.relative_to(repo_root) if repo_root is not None else path
+    except ValueError:
+        rel = path
+    return should_skip_relative_path(rel.as_posix())
 
 
 def iter_source_files(repo_root: Path, include_globs: list[str] | None = None) -> list[Path]:
@@ -33,7 +57,16 @@ def iter_source_files(repo_root: Path, include_globs: list[str] | None = None) -
 def _iter_git_visible_source_files(repo_root: Path, patterns: list[str]) -> list[Path]:
     try:
         completed = subprocess.run(
-            ["git", "-C", str(repo_root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -52,7 +85,7 @@ def _iter_git_visible_source_files(repo_root: Path, patterns: list[str]) -> list
         path = (repo_root / rel).resolve()
         if not path.is_file():
             continue
-        if any(part in _SKIP_PARTS for part in path.parts):
+        if should_skip_path(path, repo_root=repo_root):
             continue
         if detect_language(path) is None:
             continue
@@ -66,7 +99,7 @@ def _iter_glob_source_files(repo_root: Path, patterns: list[str]) -> list[Path]:
         for path in repo_root.glob(pattern):
             if not path.is_file():
                 continue
-            if any(part in _SKIP_PARTS for part in path.parts):
+            if should_skip_path(path, repo_root=repo_root):
                 continue
             if detect_language(path) is None:
                 continue
@@ -108,4 +141,9 @@ def build_reference_graph(
     return graph, tags_by_file
 
 
-__all__ = ["build_reference_graph", "iter_source_files"]
+__all__ = [
+    "build_reference_graph",
+    "iter_source_files",
+    "should_skip_path",
+    "should_skip_relative_path",
+]

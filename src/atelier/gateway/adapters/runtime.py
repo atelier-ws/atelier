@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from atelier.core.foundation.extractor import CandidateBlock, extract_candidate
+from atelier.core.foundation.extractor import CandidateBlock
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
@@ -35,6 +35,7 @@ from atelier.core.foundation.models import (
     ValidationResult,
 )
 from atelier.core.foundation.paths import default_store_root
+from atelier.core.foundation.reflector import reflect
 from atelier.core.foundation.renderer import render_context_for_agent
 from atelier.core.foundation.retriever import (
     ScoredBlock,
@@ -295,7 +296,9 @@ class RuntimeSession:
         for cmd in self.state.commands_run:
             if cmd in output_map:
                 rc, out, err = output_map[cmd]
-                commands_enriched.append(CommandRecord(command=cmd, exit_code=rc, stdout=out, stderr=err))
+                commands_enriched.append(
+                    CommandRecord(command=cmd, exit_code=rc, stdout=out, stderr=err)
+                )
             else:
                 commands_enriched.append(cmd)
 
@@ -311,7 +314,9 @@ class RuntimeSession:
             files_touched=files_enriched,
             tools_called=list(tool_call_merged.values()),
             commands_run=commands_enriched,
-            errors_seen=redact_list([sig for _, ok, sig in self.state.command_results if not ok and sig]),
+            errors_seen=redact_list(
+                [sig for _, ok, sig in self.state.command_results if not ok and sig]
+            ),
             diff_summary=redact(diff_summary),
             output_summary=redact(output_summary),
             validation_results=validation_results or [],
@@ -329,7 +334,7 @@ class RuntimeSession:
         trace = self.store.get_trace(self.trace_id)
         if trace is None:
             return None
-        return extract_candidate(trace)
+        return reflect(trace)
 
 
 # --------------------------------------------------------------------------- #
@@ -369,7 +374,9 @@ class ContextRuntime:
         finally:
             # Make sure something is recorded even if the agent crashed.
             if session.trace_id is None:
-                if time.time() - session.started_at <= 30 and any(not ok for _, ok, _ in session.state.command_results):
+                if time.time() - session.started_at <= 30 and any(
+                    not ok for _, ok, _ in session.state.command_results
+                ):
                     from atelier.core.service.telemetry import emit_product
 
                     emit_product(

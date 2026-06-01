@@ -9,6 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from atelier.infra.code_intel.languages import language_for_path
+
 from .indexer import FileIndex
 from .models import FileOutline, SemanticSummary
 from .python_ast import analyze_python, stub_function_bodies
@@ -18,6 +20,7 @@ from .typescript_ast import analyze_typescript
 from .typescript_ast import outline as typescript_outline
 
 _logger = logging.getLogger(__name__)
+_CLAUDE_READ_LINE_LIMIT = 2000
 
 
 @lru_cache(maxsize=1)
@@ -34,6 +37,7 @@ def _tiktoken_encoder() -> Any:
 
         return tiktoken.get_encoding("cl100k_base")
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         _logger.warning("tiktoken unavailable, falling back to chars/4 heuristic: %s", exc)
         return None
 
@@ -48,9 +52,18 @@ def _count_tokens(text: str) -> int:
     return len(enc.encode(text, disallowed_special=()))
 
 
+def _claude_read_baseline_text(source: str) -> str:
+    """Approximate the text Claude Code's built-in Read would return."""
+    lines = source.splitlines()
+    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
+        return source
+    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
+
+
 try:
     from git import Repo
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     Repo: Any = None  # type: ignore[no-redef]
 
 
@@ -79,47 +92,12 @@ class SemanticFileMemoryCapability:
 
     @staticmethod
     def _language_for(path: Path) -> str:
-        suffix = path.suffix.lower()
-        return {
-            ".py": "python",
-            ".pyi": "python",
-            ".ts": "typescript",
-            ".tsx": "typescript",
-            ".js": "javascript",
-            ".jsx": "javascript",
-            ".mjs": "javascript",
-            ".cjs": "javascript",
-            ".sql": "sql",
-            ".md": "markdown",
-            ".markdown": "markdown",
-            # Languages handled by the generic outline fallback (regex-based).
-            # Per-language tree-sitter outlines are queued in
-            # docs/plans/active/savings-honest-ab/README.md.
-            ".go": "go",
-            ".rs": "rust",
-            ".java": "java",
-            ".kt": "kotlin",
-            ".kts": "kotlin",
-            ".scala": "scala",
-            ".rb": "ruby",
-            ".cs": "csharp",
-            ".cpp": "cpp",
-            ".cc": "cpp",
-            ".cxx": "cpp",
-            ".hpp": "cpp",
-            ".hh": "cpp",
-            ".c": "c",
-            ".h": "c",
-            ".swift": "swift",
-            ".php": "php",
-            ".sh": "shell",
-            ".bash": "shell",
-            ".zsh": "shell",
-            ".yaml": "yaml",
-            ".yml": "yaml",
-            ".toml": "toml",
-            ".json": "json",
-        }.get(suffix, "text")
+        # Delegate to the canonical registry (DLS-LANG-03/04). Unknown
+        # extensions resolve to None at the registry boundary; callers here
+        # map that to "text". Shell extensions (.sh/.bash/.zsh) now resolve to
+        # "bash", reaching the live tree-sitter grammar.
+        lang = language_for_path(path)
+        return lang.name if lang is not None else "text"
 
     # ------------------------------------------------------------------
     # Core summarisation
@@ -196,8 +174,8 @@ class SemanticFileMemoryCapability:
         return min(start, total_lines), min(end, total_lines)
 
     @staticmethod
-    def _token_savings(full_text: str, returned_text: str) -> int:
-        full_tokens = max(1, _count_tokens(full_text))
+    def _token_savings(baseline_text: str, returned_text: str) -> int:
+        full_tokens = max(1, _count_tokens(baseline_text))
         returned_tokens = max(1, _count_tokens(returned_text))
         return max(0, full_tokens - returned_tokens)
 
@@ -332,18 +310,19 @@ class SemanticFileMemoryCapability:
         if range_spec:
             start, end = self._parse_range_spec(range_spec, len(lines))
             content = "\n".join(lines[start - 1 : end])
+            baseline = _claude_read_baseline_text(source)
             result.update(
                 {
                     "mode": "range",
                     "range": f"{start}-{end}",
                     "content": content,
-                    "tokens_saved": self._token_savings(source, content),
+                    "tokens_saved": self._token_savings(baseline, content),
                 }
             )
             return result
 
-        # Per-language AST outline (python / typescript / javascript)
-        if not expand and effective_loc > outline_threshold and language in {"python", "typescript", "javascript"}:
+        # Per-language AST outline (python only — TS/JS now go through tree-sitter below)
+        if not expand and effective_loc > outline_threshold and language == "python":
             outline = self._outline_for(
                 file_path,
                 source,
@@ -351,14 +330,20 @@ class SemanticFileMemoryCapability:
                 effective_loc=effective_loc,
             )
             outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False)
-            result.update(
-                {
-                    "mode": "outline",
-                    "outline": outline.model_dump(mode="json"),
-                    "tokens_saved": self._token_savings(source, outline_json),
-                }
-            )
-            return result
+            # Same 25% guard as tree-sitter branch: don't ship a fake savings
+            # event if the outline is larger than the source (e.g. parse failed
+            # and returned an empty FileOutline, or source has invalid syntax).
+            if len(outline_json) <= int(len(source) * 0.75):
+                baseline = _claude_read_baseline_text(source)
+                result.update(
+                    {
+                        "mode": "outline",
+                        "outline": outline.model_dump(mode="json"),
+                        "tokens_saved": self._token_savings(baseline, outline_json),
+                    }
+                )
+                return result
+            # Guard failed — fall through to tree-sitter / generic / full.
 
         # Tree-sitter outline for languages with a per-grammar config.
         # Same 25% guard as generic: if the structural extraction doesn't
@@ -371,6 +356,7 @@ class SemanticFileMemoryCapability:
             if language in SUPPORTED_LANGUAGES:
                 ts_text = ts_outline_text(language, source)
                 if ts_text and len(ts_text) <= int(len(source) * 0.75):
+                    baseline = _claude_read_baseline_text(source)
                     result.update(
                         {
                             "mode": "outline",
@@ -379,7 +365,7 @@ class SemanticFileMemoryCapability:
                                 "language": language,
                                 "text": ts_text,
                             },
-                            "tokens_saved": self._token_savings(source, ts_text),
+                            "tokens_saved": self._token_savings(baseline, ts_text),
                         }
                     )
                     return result
@@ -390,20 +376,22 @@ class SemanticFileMemoryCapability:
         if not expand and effective_loc > outline_threshold and language != "text":
             outline_text = self._generic_outline_text(source, language)
             if outline_text and len(outline_text) <= int(len(source) * 0.75):
+                baseline = _claude_read_baseline_text(source)
                 result.update(
                     {
                         "mode": "outline",
                         "outline": {"kind": "generic", "language": language, "text": outline_text},
-                        "tokens_saved": self._token_savings(source, outline_text),
+                        "tokens_saved": self._token_savings(baseline, outline_text),
                     }
                 )
                 return result
 
+        baseline = _claude_read_baseline_text(source)
         result.update(
             {
                 "mode": "full",
                 "content": source,
-                "tokens_saved": self._token_savings(source, source),
+                "tokens_saved": self._token_savings(baseline, source),
             }
         )
         return result
@@ -624,4 +612,5 @@ class SemanticFileMemoryCapability:
             commit = commits[0]
             return str(commit.hexsha), commit.authored_datetime.isoformat()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return "", ""

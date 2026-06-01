@@ -8,9 +8,9 @@
 
 | Mode                          | What it installs                        | When to use                               |
 | ----------------------------- | --------------------------------------- | ----------------------------------------- |
-| **Marketplace** (recommended) | Full plugin via `claude plugin install` | Normal install — agents + skills + MCP    |
+| **Marketplace** (recommended) | Full plugin via `claude plugin install` | Normal install — agents + skills + workflows + MCP    |
 | **Dev** (no install)          | Plugin loaded via `--plugin-dir` flag   | Testing plugin changes without install    |
-| **MCP-only** (fallback)       | `.mcp.json` entry only, no plugin       | Claude < 2.1 or when plugin install fails |
+| **MCP-only** (fallback)       | `.mcp.json` entry only, no plugin       | Claude < 2.1.154 or when plugin install fails |
 
 ---
 
@@ -95,7 +95,7 @@ bash scripts/install_claude.sh --print-only
 | Marketplace entry   | `~/.claude/settings.json` (known_marketplaces)        | same marketplace entry                    |
 | MCP server config   | Claude user MCP scope (`claude mcp add --scope user`) | `<workspace>/.mcp.json`                   |
 | Workspace env       | not written                                           | `<workspace>/.claude/settings.local.json` |
-| Skills/agents/hooks | bundled in `integrations/claude/plugin/`              | bundled in the same plugin                |
+| Skills/agents/hooks/workflows | bundled in `integrations/claude/plugin/`     | bundled in the same plugin                |
 
 ---
 
@@ -132,6 +132,30 @@ Select from the `/agents` list in Claude Code:
 | `atelier:review`  | Verifier — plan checks + rubric gate         |
 | `atelier:repair`  | Repair specialist — rescue repeated failures |
 | `atelier:research`| External research with citations             |
+
+## Dynamic Workflows
+
+Dynamic workflows require **Claude Code v2.1.154 or later** and are still in
+research preview.
+
+The Atelier Claude plugin now bundles workflow scripts under
+`integrations/claude/plugin/workflows/`. The first packaged workflow is
+`code-audit.js`, a reusable multi-lens audit that fans out security,
+performance, and test-review passes before consolidating the findings into one
+report. It also now bundles `gate-benchmark.js`, which drives the repo's live
+benchmark/reporting surfaces and returns a strict `PASS` / `FAIL` /
+`INSUFFICIENT_DATA` gate verdict instead of relying on deleted A/B infra.
+
+Use `/workflows` in Claude Code to inspect available workflow runs and saved
+scripts. Keep long-running workflow permissions broad enough for read/search
+operations, or the run may pause on approval prompts. `bash
+scripts/verify_claude.sh` also checks that the packaged `workflows/` surface,
+`code-audit.js`, and the workflow README are present before you rely on runtime
+discovery. The packaged workflow fixture
+`workflows/fixtures/code-audit-review-fixture.json` measures the intended
+adversarial cross-check win over a single-pass review so the pattern stays
+regression-tested even while Claude's workflow runtime remains a preview
+surface.
 
 ## V2 Tools — Memory and Context Savings
 

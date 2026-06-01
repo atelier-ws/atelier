@@ -60,9 +60,17 @@ The code-intelligence subsystem routes agent queries by shape through a layered 
 precomputed once,                          │ Symbol Graveyard DB         │
 queried in µs                              │ deleted · renamed · blame   │
 (scip-python ·                             │ churn · temporal filters    │
- scip-typescript ·                         └─────────────────────────────┘
- scip-go · scip-rust ·
- scip-java · …)
+ scip-typescript installer-managed ·       └─────────────────────────────┘
+ scip-go/scip-ruby/scip-clang lazy ·
+ rust-analyzer/scip-java user toolchain)
+
+SCIP provisioning tiers:
+
+| Tier | Languages | Runtime behavior |
+|------|-----------|------------------|
+| Install-time | Python, TypeScript, JavaScript | `scip-python` and `scip-typescript` install into Atelier's managed Node prefix when npm is available. |
+| Lazy checksum-gated | Go, Ruby, C, C++ | Bootstrap is fail-closed unless a checksum allowlist entry is present; env overrides and managed dirs are searched before system `PATH`. |
+| User toolchain | Rust, Java | Detected and reported with install hints; Atelier does not auto-install heavy Rust/JDK toolchains. |
 
    Cross-language edges (M17, partial):
 ┌───────────────────────────────────────┐

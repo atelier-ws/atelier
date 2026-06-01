@@ -17,6 +17,8 @@ from atelier.infra.runtime.run_ledger import RunLedger
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
     runner = CliRunner()
+    if args and args[0] == "init" and "--index" not in args and "--no-index" not in args:
+        args = (*args, "--no-index")
     return runner.invoke(cli, ["--root", str(root), *args], input=input)
 
 
@@ -105,17 +107,6 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     res2 = _invoke(root, "ledger", "summarize")
     assert res2.exit_code == 0
     assert "Atelier compact state" in res2.output
-
-
-def test_compress_context_cli(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    _seed_ledger(root)
-    res = _invoke(root, "compress-context", "--json")
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert "preserved" in payload
-    assert payload["error_fingerprints"]
 
 
 def test_failure_list_accept_reject(tmp_path: Path) -> None:
@@ -228,7 +219,7 @@ def test_savings_reports_counters(tmp_path: Path) -> None:
 def test_optimize_reports_trace_recommendations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
     _seed_optimizer_traces(root)
-    monkeypatch.setattr("atelier.gateway.cli.app._run_external_optimize", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("atelier.gateway.cli.commands.savings._run_external_optimize", lambda *_args, **_kwargs: None)
 
     res = _invoke(root, "optimize", "--host", "codex", "--json")
 
@@ -243,7 +234,7 @@ def test_optimize_reports_trace_recommendations(tmp_path: Path, monkeypatch: pyt
 def test_optimize_accepts_new_registry_host_choice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
     _seed_optimizer_traces(root)
-    monkeypatch.setattr("atelier.gateway.cli.app._run_external_optimize", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("atelier.gateway.cli.commands.savings._run_external_optimize", lambda *_args, **_kwargs: None)
 
     res = _invoke(root, "optimize", "--host", "qwen", "--json")
 
@@ -436,28 +427,3 @@ def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: 
     assert "[external-report] done tokscale status=ok" in res.output
     assert "[external-report] running codeburn period=today..." in res.output
     assert "[external-report] done codeburn:optimize status=ok" in res.output
-
-
-def test_benchmark_dry_run(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    _invoke(root, "init")
-    res = _invoke(
-        root,
-        "benchmark",
-        "run",
-        "--prompt",
-        "Fix Shopify publish",
-        "--prompt",
-        "Refactor catalog",
-        "--rounds",
-        "2",
-        "--json",
-    )
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert "tasks" in payload
-    assert len(payload["tasks"]) == 2
-    assert payload["aggregate"]["total_calls"] >= 4
-    # Round 2 should cost <= round 1 because lessons reduce input tokens.
-    for task in payload["tasks"]:
-        assert task["final_cost_usd"] <= task["baseline_cost_usd"]

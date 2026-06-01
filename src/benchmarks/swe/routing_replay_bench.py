@@ -38,6 +38,7 @@ Limitations
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import time
@@ -47,6 +48,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Model / tier mapping
@@ -208,6 +211,7 @@ def _call_haiku(
     except subprocess.TimeoutExpired:
         return "", "timeout", 0, 0
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         return "", str(exc)[:200], 0, 0
 
 
@@ -220,8 +224,8 @@ def _parse_tool_response(raw: str) -> tuple[str, dict[str, Any]]:
             obj = json.loads(attempt)
             if isinstance(obj, dict) and "tool" in obj:
                 return str(obj.get("tool", "")), dict(obj.get("input") or {})
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError):
+            logger.debug("tool-response json parse skipped", exc_info=True)
     return "", {}
 
 
@@ -369,8 +373,10 @@ def _run_session(
                 try:
                     raw_events.append(json.loads(raw))
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     continue
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return None
 
     last_fp: tuple[int, int, int, int] | None = None
@@ -413,8 +419,8 @@ def _run_session(
         tool_input = dict(tool_uses[0].get("input") or {})
 
         rec = router.score(tool_name, "", {})
-        if _TIER_RANK[rec.tier] >= _TIER_RANK[actual_tier]:
-            continue  # not downtiered
+        if rec is None or _TIER_RANK[rec.tier] >= _TIER_RANK[actual_tier]:
+            continue  # not downtiered (or bench-off)
 
         turns_found += 1
         if max_turns is not None and len(turn_results) >= max_turns:

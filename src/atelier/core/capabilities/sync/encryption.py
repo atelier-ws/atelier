@@ -73,7 +73,7 @@ def decrypt_bytes(envelope: dict[str, Any], passphrase: str, *, aad: bytes | Non
     key = _derive_key(passphrase, salt)
     aesgcm = AESGCM(key)
     try:
-        return aesgcm.decrypt(nonce, ciphertext, aad)
+        return bytes(aesgcm.decrypt(nonce, ciphertext, aad))
     except InvalidTag as exc:
         raise InvalidPassphraseError(
             "Sync decryption failed. The passphrase is incorrect or the blob is corrupt."

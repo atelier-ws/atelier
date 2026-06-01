@@ -36,7 +36,7 @@ class BenchConfig(BaseModel):
     max_cost_usd: float = Field(default=2.0, ge=0)
     timeout_seconds: int = Field(default=600, ge=1)
 
-    output_dir: str = "benchmarks/swe/outputs"
+    output_dir: str = "../benchmarks/atelier/swe/manual"
     use_service: bool = False
     use_remote_mcp: bool = False
     warm_reasonblocks_path: str | None = None
