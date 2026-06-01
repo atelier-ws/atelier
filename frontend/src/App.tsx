@@ -11,6 +11,7 @@ import {
   Database,
   FileText,
   Flag,
+  GitBranch,
   Hexagon,
   LayoutGrid,
   Play,
@@ -30,6 +31,7 @@ import Reports from "./pages/Reports";
 import Watchdogs from "./pages/Watchdogs";
 import Analytics from "./pages/Analytics";
 import Optimizations from "./pages/Optimizations";
+import Swarm from "./pages/Swarm";
 import {
   acknowledgeTelemetry,
   getTelemetryConfig,
@@ -51,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/memory", label: "Memory", icon: Database },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/optimizations", label: "Optimizations", icon: Zap },
+  { to: "/swarm", label: "Swarm", icon: GitBranch },
 ];
 
 interface MenuSection {
@@ -352,6 +355,7 @@ export default function App() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/external" element={<Navigate to="/overview" replace />} />
             <Route path="/optimizations" element={<Optimizations />} />
+            <Route path="/swarm" element={<Swarm />} />
           </Routes>
         </div>
       </main>
