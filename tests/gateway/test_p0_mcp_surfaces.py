@@ -17,6 +17,16 @@ from atelier.gateway.adapters.mcp_server import (
     tool_smart_search,
     tool_sql,
 )
+from atelier.gateway.sdk.mcp import _LoopbackTransport
+
+
+def test_public_symbols_surface_keeps_internal_code_alias() -> None:
+    assert "symbols" in TOOLS
+    assert "code" not in TOOLS
+    assert callable(tool_code)
+    transport = _LoopbackTransport()
+    with pytest.raises(KeyError):
+        transport.call_tool("code", {})
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -306,9 +316,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
     assert payload["provenance"] == "local"
     assert "provenance_breakdown" not in payload
     assert payload["items"][0]["path"] == "src/orders.py"
-    assert (
-        payload["items"][0]["snippet"] == "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:"
-    )
+    assert payload["items"][0]["signature"] == "class OrderService:"
 
 
 def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> None:
@@ -959,9 +967,12 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(
     )
 
     assert sorted(payload.keys()) == [
+        "has_more_context",
         "items",
         "mode",
         "provenance",
+        "suggested_next",
+        "view",
     ]
     assert payload["items"][0]["deleted_at_sha"] == "abc123"
     assert payload["items"][0]["rename_target"] == "modern.py"
