@@ -98,7 +98,7 @@
 | Multi-stage reranking | adaptive priors + graph propagation + ANN rerank + RRF | 🟡 have (heuristic, **no cross-encoder**) | `context_reuse/capability.py:715,726,760` |
 | Checkpoints / rollback | `infra/runtime/checkpoint.py` | ✅ have | — |
 | Loop detection / rescue | `loop_detection/rescue.py` | ✅ **ahead** (Augment undocumented) | — |
-| Cost optimization (minify/compact/outline) | proven 84% cheaper end-to-end | ✅ **ahead** (measured) | `benchmarks/mcp_tools/bench_cost.py` |
+| Cost optimization (minify/compact/outline) | claimed 84% cheaper end-to-end | ❌ **unproven** — simulated benchmark removed | (was `bench_cost.py`, deleted; no measured number) |
 | Real-time index | `scip/watcher.py` = signature/mtime refresh-on-access | 🟡 **gap** — not continuous/seconds-fresh/branch-aware | `scip/watcher.py` (bounded refresh, not inotify push) |
 | Custom code-trained embeddings + hard negatives | generic (`nomic-embed-text`/local) | 🔴 gap (months of R&D) | `infra/embeddings/` |
 | **Speculative/forecasted retrieval (SpecAgent)** | reactive retrieval only | 🔴 **gap — novel lever** | — |
@@ -128,10 +128,10 @@
 4. **Code-trained embeddings + hard-negative mining** — *high impact, high
    effort (R&D).* The deepest retrieval-quality lever; needs a labelled corpus
    + training. Defer unless retrieval precision plateaus.
-5. **Eval maturity** — *enabler.* M1/M2 benchmarks are still stubs
-   (`tests/benchmarks/context_quality/M1_lineage.py`, `M2_routing.py`); the
+5. **Eval maturity** — *enabler.* M1 runs against a real engine, but the M2
+   routing benchmark was removed as circular; the
    Prism-style LLM-judge multi-turn eval and a frontier-model A/B are the way to
-   *prove* world-class. Cost A/B already green (84%).
+   *prove* world-class. No measured cost A/B exists yet.
 6. **Enterprise/security surface** — *commercial, not quality.* SOC2, RBAC,
    SCIM, CMEK, proof-of-possession, on-prem. Tracked in commercial-wedge.
 
@@ -140,7 +140,7 @@
 - **Vendor-neutral** substrate (Claude/Codex/Gemini via MCP) — Augment is a
   closed product.
 - **Loop detection / rescue** — no documented Augment equivalent.
-- **Measured cost optimization** (84% cheaper) — concrete, reproducible.
+- **Cost optimization** (minify/compact/outline) — a real lever, but the "84% cheaper" headline was simulated (`bench_cost.py`, removed) and is not yet measured end-to-end.
 - **Local-first** — no mandatory cloud index.
 - **Cross-vendor memory + lesson promotion** — durable, portable learning.
 

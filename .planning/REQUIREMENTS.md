@@ -123,7 +123,7 @@
 
 - [x] **CQEVAL-01**: `tests/benchmarks/context_quality/` suite exists with benchmark modules for M1–M4 and a README describing the internal eval protocol
 - [x] **CQEVAL-02**: M1 benchmark (`M1_lineage.py`): ≥7/10 commit history queries answered correctly (baseline ≤2/10 expected)
-- [x] **CQEVAL-03**: M2 benchmark (`M2_routing.py`): ≥10% cost reduction on 50 replayed session traces with no quality-tier regressions
+- [ ] **CQEVAL-03**: M2 cost-reduction benchmark removed (was `M2_routing.py`, circular — `_trace()` injected the GAIN values that forced the ≥10% result); real version tracked by WCA-PROOF-01
 - [ ] **CQEVAL-04**: M3 benchmark (`M3_verification.py`): ≥60% self-correction rate on 20 seeded type-error edits (baseline ≤15% expected)
 - [ ] **CQEVAL-05**: M4 benchmark (`M4_scoped.py`): precision ≥0.6 and recall ≥0.85 on 20 multi-file edits from this repo's history
 
@@ -239,7 +239,7 @@
 - [ ] **WCA-PROOF-01**: M2 routing benchmark de-circularized: drives decisions from recorded traces, not hardcoded GAIN inputs
 - [ ] **WCA-PROOF-02**: TerminalBench A/B results committed to `docs/plans/world-class-atelier/results/` for ≥10 tasks × 5 reps
 - [ ] **WCA-PROOF-03**: Self-repo evaluation suite (30 multi-file tasks) stands up with test-pass/fail gate
-- [ ] **WCA-PROOF-04**: Modeled headlines in `bench_cost.py` and public README replaced with measured empirical deltas
+- [ ] **WCA-PROOF-04**: Public README "84% cheaper" headline replaced with a measured empirical delta (simulated `bench_cost.py` removed; no measured number exists yet)
 
 ### RERANK: Cross-Encoder Reranker
 
@@ -337,7 +337,7 @@
 | CACHE-03 | Phase 12 | Complete |
 | CACHE-04 | Phase 12 | Complete |
 | CACHE-05 | Phase 12 | Complete |
-| CQEVAL-03 | Phase 12 | Complete |
+| CQEVAL-03 | Phase 12 | Removed (circular benchmark) |
 | LINEAR-01 | Phase 13 | Complete |
 | LINEAR-02 | Phase 13 | Complete |
 | LINEAR-03 | Phase 13 | Complete |
@@ -415,6 +415,8 @@
 | REL-01–04 | Phase 35 | REL-01 Done; REL-02–04 Pending |
 | HARV-01–04 | Phase 36 | Pending |
 | FLOW-01–04 | Phase 37 | Pending |
+| OPT-01–06 | Phase 38 | Pending |
+| NI-01–02 | Phase 27 / Phase 29 | Pending |
 
 **Coverage:**
 - v0.1 requirements: 47 total | Mapped: 47 | Unmapped: 0 ✓
@@ -445,6 +447,20 @@
 - [ ] **FLOW-03**: Package workflows for discovery (plugin `workflows/` or documented `.claude/workflows/`) with tool-allowlist guidance; requires Claude Code ≥ v2.1.154
 - [ ] **FLOW-04**: Demonstrate the adversarial cross-check improves over single-pass review on a fixture (measured)
 
+### v0.6 Addendum — Autonomous Optimization Agent (Phase 38)
+
+- [ ] **OPT-01**: `atelier optimize run` manual CLI — one-shot diagnose over recent traces + savings, prints candidate optimizations with projected savings; `--open-pr` opens a PR via `pr_bot` only when the non-inferiority gate (NI) passes
+- [ ] **OPT-02**: A `JOB_OPTIMIZE` daemon job is registered and run on the servicectl tick (crash-safe via the Phase-35 reaper), gated on an enabled flag that defaults OFF
+- [ ] **OPT-03**: `scripts/install.sh` prompts the user (respecting `ATELIER_NON_INTERACTIVE`) whether to enable automatic background optimization, records the choice (e.g. `~/.atelier/auto_optimize_enabled`), and configures the daemon; default OFF unless opted in
+- [ ] **OPT-04**: Every proposed change is gated by the non-inferiority A/B benchmark (NI-01/02); a PR/issue is opened ONLY when it saves ≥ a target effective-token threshold AND pass-rate Δ 95% CI lower bound ≥ −ε
+- [ ] **OPT-05**: Proposals + verdicts are surfaced in telemetry; no auto-merge — a human approves
+- [ ] **OPT-06**: Safety defaults — auto-run is opt-in/OFF by default, honors `ATELIER_NO_SERVICECTL`, and the manual CLI always works regardless of the auto setting
+
+### v0.6 Addendum — Quality Non-Inferiority Gate (folded into Phases 27 & 29)
+
+- [ ] **NI-01**: Add `non_inferiority(k_on, n_on, k_off, n_off, margin)` (Newcombe/Wilson difference-of-proportions CI) to `benchmarks/ab/aggregate.py`
+- [ ] **NI-02**: The A/B report emits a single per-run verdict — "effective tokens saved X%, pass-rate non-inferior (Δ CI lower bound ≥ −ε)" PASS/FAIL — consumed by the published benchmark (Phase 27) and by GATE checks (GATE-EMB, OPT-04)
+
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-29 — Phases 36 (HARVEST+) and 37 (FLOW) requirements added*
+*Last updated: 2026-05-30 — Phase 38 (AUTO-OPT) + non-inferiority gate (NI-01/02) requirements added*

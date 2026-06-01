@@ -3,7 +3,7 @@
 Supports any server that implements the OpenAI Chat Completions API:
 - OpenAI directly (default)
 - OpenRouter (https://openrouter.ai/api/v1) — free model tier available
-- opencode or any local OpenAI-compatible server (e.g., vllm, llama.cpp)
+- opencode or any local OpenAI-compatible server (e.g., vllm, some local LLMs)
 
 Environment variables
 ---------------------
@@ -11,13 +11,6 @@ ATELIER_LLM_BACKEND=openai     activate this client (or "openai_compatible")
 ATELIER_OPENAI_BASE_URL        custom base URL; defaults to OpenAI's endpoint
 ATELIER_OPENAI_API_KEY         API key; falls back to OPENAI_API_KEY
 ATELIER_OPENAI_MODEL           model name; defaults to "gpt-4o-mini"
-
-OpenRouter example
-------------------
-  ATELIER_LLM_BACKEND=openai
-  ATELIER_OPENAI_BASE_URL=https://openrouter.ai/api/v1
-  ATELIER_OPENAI_API_KEY=<your-openrouter-key>
-  ATELIER_OPENAI_MODEL=meta-llama/llama-3-8b-instruct:free
 """
 
 from __future__ import annotations
@@ -26,9 +19,7 @@ import json
 import os
 from typing import Any
 
-
-class OpenAIClientUnavailable(RuntimeError):
-    """Raised when the openai package or API endpoint is unavailable."""
+from atelier.infra.internal_llm.exceptions import OpenAIClientUnavailable
 
 
 def _openai_module() -> Any:
@@ -42,11 +33,7 @@ def _openai_module() -> Any:
 def _resolve_client() -> Any:
     openai = _openai_module()
     base_url = os.environ.get("ATELIER_OPENAI_BASE_URL") or None
-    api_key = (
-        os.environ.get("ATELIER_OPENAI_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or "no-key"  # local servers (llama.cpp, opencode) don't require a real key
-    )
+    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or "no-key"
     return openai.OpenAI(api_key=api_key, base_url=base_url)
 
 

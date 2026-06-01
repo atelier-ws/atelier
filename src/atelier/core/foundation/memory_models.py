@@ -100,7 +100,7 @@ class RunMemoryFrame(BaseModel):
     summarized_events: list[str]
     tokens_pre_summary: int
     tokens_post_summary: int
-    compaction_strategy: Literal["none", "tfidf", "ollama_summarizer", "letta_summarizer"]
+    compaction_strategy: Literal["none", "tfidf", "llm_summarizer", "letta_summarizer"]
     workspace_path: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 

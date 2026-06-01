@@ -101,6 +101,7 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 | Phase 35 | 🔧 In progress | Background Reliability & Memory GC (REL-01–04; REL-01 ✅ reaper done + tested) |
 | Phase 36 | ⏳ Not started | Parallel-Session Harvest Coverage (HARV-01–04) |
 | Phase 37 | ⏳ Not started | Ship Atelier Dynamic Workflows (FLOW-01–04) |
+| Phase 38 | ⏳ Not started | Autonomous Optimization Agent (OPT-01–06; manual CLI + opt-in auto-run at install) |
 
 ## Key Decisions Log
 
@@ -123,6 +124,8 @@ Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focu
 | Phase-aware "Stem" workflows (v0.6) | Reuse prompt cache across explore→plan→execute in a single conversation | Cache reuse across phases is the primary token-efficiency lever (Vix-style) |
 | Background job-queue reaper (REL-01, DONE) | `claim_job` reclaims orphaned `running` jobs past a lease TTL; dead-letter on max attempts | A crashed/interrupted controller left a consolidate job stuck `running` 4 days, jamming all lesson consolidation; no reaper/lease existed |
 | Memory GC scope (REL-02/03) | Auto-quarantine failing blocks + extend stale sweep to active blocks; fix dead `since` param | Nothing GCs old/irrelevant ReasonBlocks today — only 7-day retrieval decay demotes them; the store grows unbounded |
+| Quality non-inferiority gate (NI-01/02) | A/B report proves "tokens saved X% AND pass-rate Δ CI lower bound ≥ −ε" as a single PASS/FAIL verdict | GitHub's published savings loop never proved quality held; Atelier's A/B already has per-arm Wilson CI — add the difference-of-proportions CI to make non-degradation a formal claim |
+| Autonomous optimization agent (Phase 38) | Scheduled `JOB_OPTIMIZE` + `atelier optimize run` CLI; PR opened only when the NI gate passes; auto-run is opt-in at install (default OFF) | GitHub runs autonomous optimizer agents; Atelier has the optimizer + PR bot but only as manual CLI, nothing scheduled — wire the loop, gated on quality |
 
 ## Watch Points
 

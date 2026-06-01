@@ -10,7 +10,13 @@ import sys
 from pathlib import Path
 
 import yaml
-from render_mode_surfaces import build_mode_outputs
+
+# Allow running from repo root as well as from scripts/
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from render_mode_surfaces import build_mode_outputs  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 

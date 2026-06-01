@@ -120,13 +120,11 @@ def test_live_services_can_run_in_parallel_with_isolated_roots(tmp_path: Path) -
         **os.environ,
         "ATELIER_ROOT": str(root1),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     env2 = {
         **os.environ,
         "ATELIER_ROOT": str(root2),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     process1 = subprocess.Popen(
         [

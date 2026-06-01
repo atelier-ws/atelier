@@ -154,7 +154,7 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
     "matched_on",
 ]
 _SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score", "commit_sha"])
-_LINEAGE_INDEX_VERSION = 1
+_LINEAGE_INDEX_VERSION = 2
 _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
@@ -598,6 +598,7 @@ class CodeContextEngine:
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
         self._lineage_thread: threading.Thread | None = None
+        self._lineage_rebuild_full = False
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
         )
@@ -618,10 +619,28 @@ class CodeContextEngine:
         Args:
             include_globs: Glob patterns to include (default source-code patterns).
             exclude_globs: Glob patterns to exclude.
-            force: If True, delete and rebuild the full index.
+            force: If True (default), wipe and rebuild the full index. Pass
+                ``force=False`` for an incremental update (skip unchanged files).
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
+        with self._autosync_lock:
+            return self._index_repo_unsafe(
+                include_globs=include_globs,
+                exclude_globs=exclude_globs,
+                force=force,
+                progress_callback=progress_callback,
+            )
+
+    def _index_repo_unsafe(
+        self,
+        *,
+        include_globs: list[str] | None = None,
+        exclude_globs: list[str] | None = None,
+        force: bool = True,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> IndexStats:
+        """Unlocked inner — callers must hold ``self._autosync_lock``."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         files = [
             path
@@ -821,7 +840,7 @@ class CodeContextEngine:
         *,
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
-        force: bool = True,
+        force: bool = False,  # incremental by default; pass force=True to full-rebuild
         budget_tokens: int = 4000,
     ) -> dict[str, Any]:
         effective_budget_tokens = self._effective_budget_tokens("index", budget_tokens)
@@ -3859,9 +3878,9 @@ class CodeContextEngine:
     ) -> None:
         raw_id = f"{self.repo_id}:{rel}:{symbol.qualified_name}:{symbol.start_byte}:{content_hash}"
         symbol_id = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:24]
-        conn.execute(
+        cursor = conn.execute(
             """
-            INSERT INTO symbols(
+            INSERT OR IGNORE INTO symbols(
                 symbol_id, repo_id, file_path, language, symbol_name, qualified_name, kind,
                 signature, start_byte, end_byte, start_line, end_line, parent_symbol,
                 doc_summary, content_hash
@@ -3886,11 +3905,19 @@ class CodeContextEngine:
                 content_hash,
             ),
         )
-        source = self._read_file_slice(rel, symbol.start_byte, symbol.end_byte)
-        conn.execute(
-            "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
-            (symbol_id, symbol.name, symbol.qualified_name, symbol.signature, rel, source[:20_000]),
-        )
+        if cursor.rowcount > 0:
+            source = self._read_file_slice(rel, symbol.start_byte, symbol.end_byte)
+            conn.execute(
+                "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    symbol_id,
+                    symbol.name,
+                    symbol.qualified_name,
+                    symbol.signature,
+                    rel,
+                    source[:20_000],
+                ),
+            )
 
     def _ensure_indexed(self) -> None:
         with self._autosync_lock:
@@ -6480,6 +6507,21 @@ class CodeContextEngine:
             return str(value)
         return None
 
+    def _lineage_embedder_metadata(self) -> tuple[str, int]:
+        from atelier.infra.code_intel.git_history.embedder import embedder_name, embedding_dim
+
+        return embedder_name(), embedding_dim()
+
+    def _persist_lineage_embedder_metadata(self, conn: sqlite3.Connection, *, name: str, dim: int) -> None:
+        conn.executemany(
+            "INSERT INTO engine_state(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [
+                ("commit_lineage_embedder_name", name),
+                ("commit_lineage_embedder_dim", str(dim)),
+            ],
+        )
+
     def _ensure_lineage_ready(self) -> None:
         """Start background lineage bootstrap if commit_chunks is empty or stale.
 
@@ -6490,11 +6532,21 @@ class CodeContextEngine:
         current_head = self._safe_current_head_sha()
         if current_head is None:
             return
+        current_embedder_name, current_embedder_dim = self._lineage_embedder_metadata()
         needs_update = False
+        full_rebuild = False
         with contextlib.suppress(Exception), contextlib.closing(self._connect()) as conn:
             self._init_schema(conn)
             head_row = conn.execute("SELECT value FROM engine_state WHERE key = 'commit_lineage_head'").fetchone()
             previous_head = str(head_row["value"]) if head_row is not None else None
+            embedder_name_row = conn.execute(
+                "SELECT value FROM engine_state WHERE key = 'commit_lineage_embedder_name'"
+            ).fetchone()
+            stored_embedder_name = str(embedder_name_row["value"]) if embedder_name_row is not None else None
+            embedder_dim_row = conn.execute(
+                "SELECT value FROM engine_state WHERE key = 'commit_lineage_embedder_dim'"
+            ).fetchone()
+            stored_embedder_dim = int(embedder_dim_row["value"]) if embedder_dim_row is not None else None
             count_row = conn.execute("SELECT COUNT(*) AS n FROM commit_chunks").fetchone()
             chunk_count = int(count_row["n"]) if count_row is not None else 0
             stale_row = conn.execute(
@@ -6502,10 +6554,18 @@ class CodeContextEngine:
                 (_LINEAGE_INDEX_VERSION,),
             ).fetchone()
             has_stale = stale_row is not None and int(stale_row["n"]) > 0
-            if previous_head != current_head or chunk_count == 0 or has_stale:
+            metadata_changed = (
+                stored_embedder_name != current_embedder_name or stored_embedder_dim != current_embedder_dim
+            )
+            has_lineage_state = (
+                previous_head is not None or stored_embedder_name is not None or stored_embedder_dim is not None
+            )
+            full_rebuild = chunk_count > 0 and has_lineage_state and (has_stale or metadata_changed)
+            if full_rebuild or previous_head != current_head or chunk_count == 0:
                 needs_update = True
         if not needs_update:
             return
+        self._lineage_rebuild_full = full_rebuild
         self._lineage_thread = threading.Thread(
             target=self._lineage_bootstrap_worker,
             name=f"atelier-lineage-{self.repo_id[:8]}",
@@ -6521,15 +6581,21 @@ class CodeContextEngine:
                 watermark_row = conn.execute(
                     "SELECT value FROM engine_state WHERE key = 'commit_lineage_watermark'"
                 ).fetchone()
-                since_sha = str(watermark_row["value"]) if watermark_row is not None else None
-            self._walk_and_summarise(since_sha=since_sha)
+                since_sha = (
+                    None
+                    if self._lineage_rebuild_full
+                    else (str(watermark_row["value"]) if watermark_row is not None else None)
+                )
+            self._walk_and_summarise(since_sha=since_sha, full_rebuild=self._lineage_rebuild_full)
         except Exception:
             logging.exception("Recovered from broad exception handler")
             logger.debug(
                 "lineage bootstrap failed", exc_info=True
             )  # fail-open — lineage is additive, never blocks search
+        finally:
+            self._lineage_rebuild_full = False
 
-    def _walk_and_summarise(self, *, since_sha: str | None) -> None:
+    def _walk_and_summarise(self, *, since_sha: str | None, full_rebuild: bool = False) -> None:
         """Walk commits, summarise, embed, upsert to commit_chunks in batches of 50."""
         from atelier.infra.code_intel.git_history import require_pygit2
         from atelier.infra.code_intel.git_history.embedder import embed_summary
@@ -6553,6 +6619,7 @@ class CodeContextEngine:
         pygit2 = require_pygit2()
         repo = pygit2.Repository(str(self.repo_root))
         batch: list[tuple[Any, ...]] = []
+        rebuild_rows: list[tuple[Any, ...]] = []
 
         for record in iter_commit_records(self.repo_root, limit=500, since_sha=since_sha):
             try:
@@ -6571,35 +6638,66 @@ class CodeContextEngine:
                 logging.exception("Recovered from broad exception handler")
                 continue
 
-            batch.append(
-                (
-                    summary.sha,
-                    summary.author_date,
-                    json.dumps(summary.files_touched),
-                    None,  # symbols_touched — deferred to follow-up phase
-                    summary.summary,
-                    summary.summary_model,
-                    embedding_blob,
-                    _LINEAGE_INDEX_VERSION,
-                )
+            row = (
+                summary.sha,
+                summary.author_date,
+                json.dumps(summary.files_touched),
+                None,  # symbols_touched — deferred to follow-up phase
+                summary.summary,
+                summary.summary_model,
+                embedding_blob,
+                _LINEAGE_INDEX_VERSION,
             )
+            if full_rebuild:
+                rebuild_rows.append(row)
+                continue
+
+            batch.append(row)
 
             if len(batch) >= 50:
                 self._flush_commit_batch(batch, watermark_sha=batch[-1][0])
                 batch.clear()
 
-        if batch:
+        if full_rebuild:
+            watermark_sha = rebuild_rows[-1][0] if rebuild_rows else None
+            self._replace_commit_chunks(rebuild_rows, watermark_sha=watermark_sha)
+        elif batch:
             self._flush_commit_batch(batch, watermark_sha=batch[-1][0])
 
         current_head = self._safe_current_head_sha()
         if current_head:
+            current_embedder_name, current_embedder_dim = self._lineage_embedder_metadata()
             with contextlib.closing(self._connect()) as conn:
+                self._persist_lineage_embedder_metadata(conn, name=current_embedder_name, dim=current_embedder_dim)
                 conn.execute(
                     "INSERT INTO engine_state(key, value) VALUES (?, ?)"
                     " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     ("commit_lineage_head", current_head),
                 )
                 conn.commit()
+
+    def _replace_commit_chunks(self, rows: list[tuple[Any, ...]], *, watermark_sha: str | None) -> None:
+        """Atomically replace commit lineage rows after a full rebuild completes."""
+        with contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            conn.execute("DELETE FROM commit_chunks")
+            if rows:
+                conn.executemany(
+                    """INSERT OR REPLACE INTO commit_chunks
+                       (commit_sha, author_date, files_touched, symbols_touched,
+                        summary, summary_model, embedding, index_version)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    rows,
+                )
+            if watermark_sha is None:
+                conn.execute("DELETE FROM engine_state WHERE key = 'commit_lineage_watermark'")
+            else:
+                conn.execute(
+                    "INSERT INTO engine_state(key, value) VALUES (?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    ("commit_lineage_watermark", watermark_sha),
+                )
+            conn.commit()
 
     def _flush_commit_batch(self, batch: list[tuple[Any, ...]], *, watermark_sha: str) -> None:
         """Upsert a batch of commit chunks and advance the resume watermark."""

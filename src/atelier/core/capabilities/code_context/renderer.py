@@ -46,12 +46,8 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
 
 def _render_search(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
-    header: list[str] = ["### search"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        header.append(f"- provenance: {provenance}")
     if not isinstance(items, list):
-        return "\n".join([*header, "- no matches"])
+        return "no matches"
     rows: list[str] = []
     sorted_items = sorted(
         (item for item in items if isinstance(item, Mapping)),
@@ -70,9 +66,7 @@ def _render_search(payload: Mapping[str, Any]) -> str:
             rows.append(f"- {file_path}:{line} — {name} [{kind}]")
         else:
             rows.append(f"- {file_path} — {name} [{kind}]")
-    if not rows:
-        rows.append("- no matches")
-    return "\n".join(header + rows)
+    return "\n".join(rows) if rows else "no matches"
 
 
 def _render_symbol(payload: Mapping[str, Any]) -> str:
@@ -83,29 +77,21 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
     symbol = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or symbol_id or "?")
     kind = str(payload.get("kind") or "?")
     signature = str(payload.get("signature") or "").strip()
-    lines = ["### symbol", f"- {symbol} [{kind}]"]
-    if symbol_id:
-        lines.append(f"- id: {symbol_id}")
+    lines = [f"- {symbol} [{kind}]"]
     if start_line > 0 and end_line >= start_line:
         lines.append(f"- location: {file_path}:{start_line}-{end_line}")
     else:
         lines.append(f"- location: {file_path}")
     if signature:
         lines.append(f"- signature: {signature}")
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     return "\n".join(lines)
 
 
 def _render_outline(payload: Mapping[str, Any]) -> str:
     files = payload.get("files")
     if not isinstance(files, Mapping):
-        return "### outline\n- no symbols"
-    lines = ["### outline"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
+        return "no symbols"
+    lines: list[str] = []
     for file_path in sorted(str(key) for key in files):
         entries = files.get(file_path)
         if not isinstance(entries, list):
@@ -132,9 +118,7 @@ def _render_outline(payload: Mapping[str, Any]) -> str:
             if signature:
                 summary = f"{summary} — {signature}"
             lines.append(summary)
-    if len(lines) == 1:
-        lines.append("- no symbols")
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "no symbols"
 
 
 def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
@@ -147,25 +131,7 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
         t_line = int(target.get("line") or target.get("start_line") or 0)
         if t_file and t_line > 0:
             target_loc = f" ({t_file}:{t_line})"
-    lines = [f"### {op}", f"- target: {target_name}{target_loc}"]
-    # Add per-op metadata
-    provenance = str(payload.get("provenance") or "").strip()
-    data_status = str(payload.get("data_status") or "").strip()
-    if op in {"callers", "callees"}:
-        if provenance:
-            lines.append(f"- provenance: {provenance}")
-        if data_status:
-            lines.append(f"- data_status: {data_status}")
-        if op == "callees":
-            snapshot = payload.get("snapshot")
-            if isinstance(snapshot, Mapping):
-                direction = str(snapshot.get("direction") or "").strip()
-                if direction:
-                    lines.append(f"- snapshot.direction: {direction}")
-    if op == "usages":
-        group_by = str(payload.get("group_by") or "").strip()
-        if group_by:
-            lines.append(f"- group_by: {group_by}")
+    lines = [f"- target: {target_name}{target_loc}"]
     meta_line_count = len(lines)
     if op == "usages":
         refs = _flatten_usages(payload.get("references"))
@@ -173,12 +139,10 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
             file_path = str(ref.get("path") or ref.get("file_path") or "?")
             line = int(ref.get("line") or 0)
             caller = str(ref.get("caller") or ref.get("enclosing_qualified_name") or "").strip()
-            ref_provenance = str(ref.get("provenance") or "").strip()
-            prov_suffix = f" [{ref_provenance}]" if ref_provenance else ""
             if caller:
-                lines.append(f"- {file_path}:{line} — {caller}{prov_suffix}")
+                lines.append(f"- {file_path}:{line} — {caller}")
             else:
-                lines.append(f"- {file_path}:{line}{prov_suffix}")
+                lines.append(f"- {file_path}:{line}")
         if len(lines) == meta_line_count:
             lines.append("- no references")
         return "\n".join(lines)
@@ -254,16 +218,7 @@ def _render_impact(payload: Mapping[str, Any]) -> str:
                 target_label = f"symbol {(target.get('query') or '?')!s}"
         else:
             target_label = str(target.get("path") or payload.get("file_path") or "?")
-    lines = ["### impact", f"- target: {target_label}"]
-    actual_target_type = str(payload.get("target_type") or "").strip()
-    if not actual_target_type and isinstance(target, Mapping):
-        actual_target_type = str(target.get("type") or "").strip()
-    if actual_target_type:
-        lines.append(f"- target_type: {actual_target_type}")
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
-    lines.append(f"- risk: {(payload.get('risk_level') or 'unknown')!s}")
+    lines = [f"- target: {target_label}", f"- risk: {(payload.get('risk_level') or 'unknown')!s}"]
     grouped: dict[str, list[str]] = defaultdict(list)
     for label, key in (
         ("direct", "direct_importers"),
@@ -310,7 +265,6 @@ def _render_status(payload: Mapping[str, Any]) -> str:
     entry_count = int(cache.get("entry_count") or 0) if isinstance(cache, Mapping) else 0
     freshness_status = str(freshness.get("status") or "unknown") if isinstance(freshness, Mapping) else "unknown"
     lines = [
-        "### status",
         f"- repo: {(payload.get('repo_root') or payload.get('repo_id') or '?')!s}",
         f"- index: files={files_indexed}, symbols={symbols_indexed}",
         f"- cache_entries: {entry_count}",
@@ -331,16 +285,13 @@ def _render_index(payload: Mapping[str, Any]) -> str:
     symbols_indexed = int(payload.get("symbols_indexed") or 0)
     imports_indexed = int(payload.get("imports_indexed") or 0)
     index_version = int(payload.get("index_version") or 0)
-    provenance = str(payload.get("provenance") or "").strip()
-    lines = [
-        "### index",
-        f"- repo: {(payload.get('repo_id') or '?')!s}",
-        f"- version: {index_version}",
-        f"- counts: files={files_indexed}, symbols={symbols_indexed}, imports={imports_indexed}",
-    ]
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
-    return "\n".join(lines)
+    return "\n".join(
+        [
+            f"- repo: {(payload.get('repo_id') or '?')!s}",
+            f"- version: {index_version}",
+            f"- counts: files={files_indexed}, symbols={symbols_indexed}, imports={imports_indexed}",
+        ]
+    )
 
 
 def _render_cache_status(payload: Mapping[str, Any]) -> str:
@@ -357,7 +308,6 @@ def _render_cache_status(payload: Mapping[str, Any]) -> str:
             if len(entries) > 4:
                 tool_summary = f"{tool_summary}, +{len(entries) - 4} more"
     lines = [
-        "### cache_status",
         f"- repo: {(payload.get('repo_id') or '?')!s}",
         f"- index_version: {index_version}",
         f"- entries: {entry_count}",
@@ -369,48 +319,30 @@ def _render_cache_status(payload: Mapping[str, Any]) -> str:
 
 
 def _render_context(payload: Mapping[str, Any]) -> str:
-    task = str(payload.get("task") or "")
-    budget_tokens = int(payload.get("budget_tokens") or 0)
-    token_count = int(payload.get("token_count") or 0)
-    lines = ["### context", f"- task: {task}", f"- budget: {budget_tokens}", f"- packed_tokens: {token_count}"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     entry_points = _normalize_context_symbols(payload.get("entry_points"), fallback=payload.get("symbols"))
     related_symbols = _normalize_context_symbols(payload.get("related_symbols"), fallback=[])
     code_blocks = _normalize_code_blocks(payload.get("code_blocks"))
     import_neighbors = payload.get("import_neighbors")
+    lines: list[str] = []
 
-    lines.append("#### entry_points")
-    if entry_points:
-        for row in entry_points[:_CONTEXT_ENTRY_CAP]:
-            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
-    else:
-        lines.append("- none")
+    for row in (entry_points or [])[:_CONTEXT_ENTRY_CAP]:
+        lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
 
-    lines.append("#### related_symbols")
     if related_symbols:
         for row in related_symbols[:_CONTEXT_RELATED_CAP]:
             lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
     elif isinstance(import_neighbors, list) and import_neighbors:
         for item in sorted(str(value) for value in import_neighbors[:_CONTEXT_RELATED_CAP]):
             lines.append(f"- {item}")
-    else:
-        lines.append("- none")
 
-    lines.append("#### code_blocks")
     if code_blocks:
         for block in code_blocks[:_CONTEXT_CODE_BLOCK_CAP]:
-            language = block["language"]
             lines.append(
                 f"- {block['qualified_name']} ({block['file_path']}:{block['start_line']}-{block['end_line']})"
             )
-            lines.append(f"```{language}")
             lines.append(str(block["source"]).rstrip())
-            lines.append("```")
-    else:
-        lines.append("- none")
-    return "\n".join(lines)
+
+    return "\n".join(lines) if lines else "no context"
 
 
 def _normalize_context_symbols(items: Any, *, fallback: Any) -> list[dict[str, Any]]:
@@ -481,57 +413,35 @@ def _normalize_code_blocks(items: Any) -> list[dict[str, Any]]:
 
 def _render_explore(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
-    lines = ["### explore"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     if not isinstance(items, list) or not items:
-        lines.append("- no results")
-        return "\n".join(lines)
+        return "no results"
+    lines: list[str] = []
     for item in items:
         if not isinstance(item, Mapping):
             continue
         file_path = str(item.get("file_path") or "?")
         name = str(item.get("qualified_name") or item.get("symbol_name") or "")
         source = str(item.get("source") or "").strip()
-        language = str(item.get("language") or "")
-        if name:
-            lines.append(f"### {file_path} — {name}")
-        else:
-            lines.append(f"### {file_path}")
+        lines.append(f"{file_path} — {name}" if name else file_path)
         if source:
-            lines.append(f"```{language}")
             lines.append(source)
-            lines.append("```")
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "no results"
 
 
 def _render_files(payload: Mapping[str, Any]) -> str:
     files = payload.get("files")
-    lines = ["### files"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     if isinstance(files, list):
-        for entry in files:
-            lines.append(f"- {entry}")
-    elif isinstance(files, Mapping):
-        for path in sorted(str(key) for key in files):
-            lines.append(f"- {path}")
-    else:
-        lines.append("- no files")
-    return "\n".join(lines)
+        return "\n".join(f"- {entry}" for entry in files) if files else "no files"
+    if isinstance(files, Mapping):
+        return "\n".join(f"- {path}" for path in sorted(str(key) for key in files)) if files else "no files"
+    return "no files"
 
 
 def _render_routes(payload: Mapping[str, Any]) -> str:
     routes = payload.get("routes")
-    lines = ["### routes"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     if not isinstance(routes, list) or not routes:
-        lines.append("- no routes")
-        return "\n".join(lines)
+        return "no routes"
+    lines: list[str] = []
     for route in routes:
         if not isinstance(route, Mapping):
             continue
@@ -543,4 +453,4 @@ def _render_routes(payload: Mapping[str, Any]) -> str:
         loc = f" ({file_path}:{line})" if file_path and line > 0 else (f" ({file_path})" if file_path else "")
         handler_part = f" — {handler}" if handler else ""
         lines.append(f"- {method} {path}{handler_part}{loc}")
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "no routes"

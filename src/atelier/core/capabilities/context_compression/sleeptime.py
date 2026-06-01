@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, summarize
+from atelier.infra.internal_llm import InternalLLMError, summarize
 from atelier.infra.storage.factory import _memory_backend
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class SleeptimeChunk(BaseModel):
 
 
 class SleeptimeUnavailable(RuntimeError):
-    """Raised when neither Ollama nor Letta can summarize evicted events."""
+    """Raised when neither the internal LLM nor Letta can summarize evicted events."""
 
 
 def summarize_ledger(
@@ -43,7 +43,7 @@ def summarize_ledger(
                 paraphrase=summary.strip(),
             )
         ]
-    except OllamaUnavailable:
+    except InternalLLMError:
         logger.warning(
             "Suppressed exception at sleeptime.py:43",
             exc_info=True,
@@ -64,9 +64,9 @@ def summarize_ledger(
             chunks = LettaAdapter().summarize_run(dropped_events)
             return [SleeptimeChunk(**chunk) for chunk in chunks]
     except Exception as exc:
-        raise SleeptimeUnavailable("Ollama and Letta sleeptime summarizers are unavailable") from exc
+        raise SleeptimeUnavailable("Internal LLM and Letta sleeptime summarizers are unavailable") from exc
 
-    raise SleeptimeUnavailable("Ollama and Letta sleeptime summarizers are unavailable")
+    raise SleeptimeUnavailable("Internal LLM and Letta sleeptime summarizers are unavailable")
 
 
 def local_summarize(
