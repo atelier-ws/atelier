@@ -4,15 +4,21 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from atelier.core.capabilities.swarm.models import SwarmChildState, SwarmRunState
-from atelier.gateway.cli import cli
+from atelier.core.capabilities.swarm.models import (
+    SwarmAcceptedCommit,
+    SwarmArtifactRef,
+    SwarmChildState,
+    SwarmRunState,
+    SwarmWaveState,
+)
+from atelier.gateway.cli.commands.swarm import swarm_group
 
 
 def test_swarm_start_requires_child_command(tmp_path: Path) -> None:
     runner = CliRunner()
     spec = tmp_path / "program.md"
     spec.write_text("# spec\n", encoding="utf-8")
-    result = runner.invoke(cli, ["swarm", "start", str(spec)])
+    result = runner.invoke(swarm_group, ["start", str(spec)], obj={"root": tmp_path})
     assert result.exit_code != 0
 
 
@@ -28,6 +34,7 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
         repo_root=str(tmp_path),
         base_worktree=str(tmp_path),
         base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
         worktree_pool=str(tmp_path / "pool"),
         integration_worktree=str(tmp_path / "pool" / "integration"),
         integration_base_ref="HEAD",
@@ -37,9 +44,22 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
         runner_model="sonnet",
         child_command=["echo", "hi"],
         runs=1,
+        max_runs=3,
         current_wave=2,
         winner_child_id="wave-02-run-01",
+        primary_winner_child_id="wave-02-run-01",
         accepted_child_ids=["wave-01-run-01", "wave-02-run-01"],
+        waves=[
+            SwarmWaveState(
+                wave_index=2,
+                max_runs=3,
+                planned_runs=2,
+                planning_mode="bounded",
+                child_ids=["wave-02-run-01"],
+                accepted_child_ids=["wave-02-run-01"],
+                primary_winner_child_id="wave-02-run-01",
+            )
+        ],
         children=[
             SwarmChildState(
                 child_id="wave-02-run-01",
@@ -72,11 +92,8 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
     )
 
     result = runner.invoke(
-        cli,
+        swarm_group,
         [
-            "--root",
-            str(root),
-            "swarm",
             "start",
             str(spec),
             "--continuous",
@@ -84,11 +101,13 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
             "echo",
             "hi",
         ],
+        obj={"root": root},
     )
 
     assert result.exit_code == 0
-    assert "latest_winner: wave-02-run-01" in result.output
+    assert "primary_winner: wave-02-run-01" in result.output
     assert "mode: continuous" in result.output
+    assert "planned=2/3" in result.output
 
 
 def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path) -> None:
@@ -112,6 +131,7 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
         runner_model="sonnet",
         child_command=["claude", "-p", "stub"],
         runs=1,
+        max_runs=1,
         children=[],
     )
 
@@ -133,11 +153,8 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
     )
 
     result = runner.invoke(
-        cli,
+        swarm_group,
         [
-            "--root",
-            str(root),
-            "swarm",
             "start",
             str(spec),
             "--runner",
@@ -149,6 +166,7 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
             "--runner-arg",
             "runner-note",
         ],
+        obj={"root": root},
     )
 
     assert result.exit_code == 0
@@ -175,9 +193,8 @@ def test_swarm_start_rejects_runner_and_raw_command(tmp_path: Path) -> None:
     spec.write_text("# spec\n", encoding="utf-8")
 
     result = runner.invoke(
-        cli,
+        swarm_group,
         [
-            "swarm",
             "start",
             str(spec),
             "--runner",
@@ -186,6 +203,7 @@ def test_swarm_start_rejects_runner_and_raw_command(tmp_path: Path) -> None:
             "echo",
             "hi",
         ],
+        obj={"root": tmp_path},
     )
 
     assert result.exit_code != 0
@@ -214,6 +232,7 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
         runner_model="sonnet",
         child_command=["echo", "hi"],
         runs=0,
+        max_runs=0,
         children=[
             SwarmChildState(
                 child_id="wave-01-run-01",
@@ -234,7 +253,7 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
     )
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.load_swarm_state", lambda _path: state)
 
-    result = runner.invoke(cli, ["--root", str(root), "swarm", "status", run_id])
+    result = runner.invoke(swarm_group, ["status", run_id], obj={"root": root})
 
     assert result.exit_code == 0
     assert "run_id: swarm-123" in result.output
@@ -263,8 +282,19 @@ def test_swarm_list_prints_known_runs(monkeypatch: object, tmp_path: Path) -> No
         runner_model="qwen3.6",
         child_command=["echo", "hi"],
         runs=2,
+        max_runs=4,
         current_wave=3,
         accepted_child_ids=["wave-01-run-01"],
+        waves=[
+            SwarmWaveState(
+                wave_index=3,
+                max_runs=4,
+                planned_runs=2,
+                planning_mode="bounded",
+                child_ids=["wave-03-run-01"],
+                accepted_child_ids=[],
+            )
+        ],
         children=[
             SwarmChildState(
                 child_id="wave-03-run-01",
@@ -284,12 +314,13 @@ def test_swarm_list_prints_known_runs(monkeypatch: object, tmp_path: Path) -> No
     )
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.list_swarm_runs", lambda _root: [state])
 
-    result = runner.invoke(cli, ["--root", str(root), "swarm", "list"])
+    result = runner.invoke(swarm_group, ["list"], obj={"root": root})
 
     assert result.exit_code == 0
     assert "swarm-123" in result.output
     assert "ollama-claude" in result.output
     assert "qwen3.6" in result.output
+    assert "  2/4" in result.output
 
 
 def test_swarm_logs_reads_child_output(monkeypatch: object, tmp_path: Path) -> None:
@@ -301,17 +332,110 @@ def test_swarm_logs_reads_child_output(monkeypatch: object, tmp_path: Path) -> N
     )
 
     result = runner.invoke(
-        cli,
+        swarm_group,
         [
-            "--root",
-            str(root),
-            "swarm",
             "logs",
             "swarm-123",
             "--child-id",
             "wave-01-run-01",
         ],
+        obj={"root": root},
     )
 
     assert result.exit_code == 0
     assert "compacting json" in result.output
+
+
+def test_swarm_export_prints_artifacts(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / "atelier-root"
+    run_id = "swarm-123"
+    state_path = root / "swarm" / "runs" / run_id / "state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("{}", encoding="utf-8")
+    artifact = SwarmArtifactRef(
+        kind="wave-manifest",
+        label="Wave 1 manifest",
+        path=str(root / "swarm" / "runs" / run_id / "artifacts" / "waves" / "wave-01-manifest.json"),
+        exists=True,
+    )
+    state = SwarmRunState(
+        run_id=run_id,
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        artifact_root=str(root / "swarm" / "runs" / run_id / "artifacts"),
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=2,
+        max_runs=2,
+        accepted_commits=[
+            SwarmAcceptedCommit(
+                order=1,
+                child_id="wave-01-run-01",
+                commit_ref="abc1234",
+                patch_path="/tmp/candidate.patch",
+            )
+        ],
+        export_artifacts=[artifact],
+        transplant_commands=["git cherry-pick abc1234"],
+    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.load_swarm_state", lambda _path: state)
+
+    result = runner.invoke(swarm_group, ["export", run_id], obj={"root": root})
+
+    assert result.exit_code == 0
+    assert "base_snapshot_ref: base-snapshot" in result.output
+    assert "git cherry-pick abc1234" in result.output
+    assert "wave-manifest" in result.output
+
+
+def test_swarm_apply_prints_transplant_commands(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / "atelier-root"
+    run_id = "swarm-123"
+    state_path = root / "swarm" / "runs" / run_id / "state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("{}", encoding="utf-8")
+    state = SwarmRunState(
+        run_id=run_id,
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        base_snapshot_ref="base-snapshot",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="accepted-head",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="claude",
+        child_command=["echo", "hi"],
+        runs=2,
+        max_runs=2,
+    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.load_swarm_state", lambda _path: state)
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.swarm.build_swarm_apply_payload",
+        lambda _state, wave_index=None, child_id=None: {
+            "selected_commits": [{"child_id": child_id or "wave-01-run-01"}],
+            "commands": ["git cherry-pick abc1234"],
+        },
+    )
+
+    result = runner.invoke(
+        swarm_group,
+        ["apply", run_id, "--child-id", "wave-01-run-01"],
+        obj={"root": root},
+    )
+
+    assert result.exit_code == 0
+    assert "selected_commits: 1" in result.output
+    assert "git cherry-pick abc1234" in result.output
