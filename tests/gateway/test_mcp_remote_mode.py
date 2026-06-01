@@ -102,7 +102,6 @@ def _live_service(root: Path) -> Any:
         **os.environ,
         "ATELIER_ROOT": str(root),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     process = subprocess.Popen(
         [

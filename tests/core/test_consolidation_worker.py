@@ -7,7 +7,7 @@ import pytest
 from atelier.core.capabilities.consolidation import consolidate
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+from atelier.infra.internal_llm import InternalLLMError
 
 
 def _block(block_id: str, title: str) -> ReasonBlock:
@@ -30,7 +30,7 @@ def test_consolidate_writes_duplicate_candidate(tmp_path: Path, monkeypatch: pyt
 
     def unavailable(messages: object, json_schema: object | None = None) -> None:
         _ = (messages, json_schema)
-        raise OllamaUnavailable("offline")
+        raise InternalLLMError("offline")
 
     monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
 
@@ -51,7 +51,7 @@ def test_consolidate_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.
     store.upsert_block(_block("rb-two", "Checkout retry webhook timeout"), write_markdown=False)
     monkeypatch.setattr(
         "atelier.core.capabilities.consolidation.worker.chat",
-        lambda messages, json_schema=None: (_ for _ in ()).throw(OllamaUnavailable("offline")),
+        lambda messages, json_schema=None: (_ for _ in ()).throw(InternalLLMError("offline")),
     )
 
     report = consolidate(store, dry_run=True)

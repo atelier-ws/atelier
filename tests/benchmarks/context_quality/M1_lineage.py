@@ -169,7 +169,7 @@ def run_benchmark(repo_root: pathlib.Path | None = None) -> dict[str, Any]:
                 provenance_filter="commit",
             )
             correct = _grade_result(results, q.expected_sha, q.keywords)
-        except Exception:
+        except Exception:  # noqa: BLE001 — safety net: count as incorrect rather than crash benchmark
             correct = False
             results = []
         pass_count += int(correct)
@@ -207,7 +207,7 @@ def test_m1_lineage_pass_rate() -> None:
         remotes = subprocess.check_output(["git", "remote", "-v"], cwd=repo_root, text=True, timeout=5)
         if "atelier" not in remotes.lower() and "leanchain" not in remotes.lower():
             pytest.skip("Not running in the atelier repo — skip M1 benchmark")
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         pytest.skip("git remote check failed — skip M1 benchmark")
 
     results = run_benchmark(repo_root)

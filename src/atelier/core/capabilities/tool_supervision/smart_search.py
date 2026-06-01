@@ -18,7 +18,8 @@ from atelier.core.capabilities.repo_map.graph import build_reference_graph
 from atelier.core.capabilities.repo_map.pagerank import personalized_pagerank
 from atelier.core.capabilities.tool_supervision.search_read import search_read, search_read_to_dict
 from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
-from atelier.infra.storage.vector import cosine_similarity, generate_embedding
+from atelier.infra.embeddings.factory import get_embedder
+from atelier.infra.storage.vector import cosine_similarity
 
 SearchMode = Literal["chunks", "full", "map"]
 
@@ -131,21 +132,45 @@ def _fts_rank(repo_root: Path, search_path: Path, query: str, *, max_files: int)
 def _semantic_rank(repo_root: Path, paths: list[str], query: str) -> dict[str, float]:
     if not paths:
         return {}
+    embedder = get_embedder()
+    if embedder.dim <= 0:
+        return {}
+
+    # Embed query
     try:
-        query_vector = generate_embedding(query)
+        _qvecs = embedder.embed([query])
+        if not _qvecs or not _qvecs[0]:
+            return {}
+        query_vector = _qvecs[0]
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return {}
-    scores: dict[str, float] = {}
+
+    # Read all files in one pass, tracking which paths succeeded
+    valid_paths: list[str] = []
+    contents: list[str] = []
     for path in paths:
-        file_path = repo_root / path
         try:
-            content = file_path.read_text(encoding="utf-8", errors="replace")[:20_000]
-            vector = generate_embedding(content)
+            content = (repo_root / path).read_text(encoding="utf-8", errors="replace")[:20_000]
+            valid_paths.append(path)
+            contents.append(content)
         except Exception:
             logging.exception("Recovered from broad exception handler")
-            continue
-        scores[path] = max(0.0, cosine_similarity(query_vector, vector))
+
+    if not contents:
+        return {}
+
+    # Batch-embed all file contents in a single call (one round-trip for network backends)
+    try:
+        file_vecs = embedder.embed(contents)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return {}
+
+    scores: dict[str, float] = {}
+    for path, vec in zip(valid_paths, file_vecs, strict=False):
+        if vec:
+            scores[path] = max(0.0, cosine_similarity(query_vector, vec))
     return scores
 
 

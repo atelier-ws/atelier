@@ -77,30 +77,24 @@ Atelier persists observable execution state rather than hidden reasoning.
 | -------------------------- | ----------------------------------------------------- |
 | `atelier runs ...`         | Record, list, and inspect run data.                   |
 | `atelier ledger ...`       | Manage run ledgers and session state.                 |
-| `atelier compress-context` | Summarize a run ledger into a smaller state packet.   |
-| `atelier context-report`   | Emit compression and provenance details for a run.    |
-| `atelier diff-context`     | Show git diff context for the specified source files. |
 
 Examples:
 
 ```bash
 atelier runs list
 atelier ledger list
-atelier compress-context --help
 ```
 
 ## Retrieval, Search, and Code-Aware Helpers
 
-These commands expose the runtime's code retrieval and cached search utilities.
+Code retrieval, file reads, grep/search, and symbol lookup are exposed as
+Atelier **MCP tools** (`read`, `grep`, `search`, `symbols`, `node`, `callers`,
+`callees`, `usages`, `impact`, `explore`, `pattern`) rather than standalone CLI
+commands. Invoke them through your agent host or via `atelier tools call <name>`.
 
 | Command                  | Purpose                                                 |
 | ------------------------ | ------------------------------------------------------- |
-| `atelier search-read`    | Combined search and read workflow.                      |
-| `atelier cached-grep`    | Cache-aware grep for repeated queries.                  |
-| `atelier code ...`       | Code indexing, retrieval, and repo-map operations.      |
-| `atelier symbol-search`  | Search semantically cached symbols across the codebase. |
-| `atelier module-summary` | Generate concise module summaries.                      |
-| `atelier test-context`   | Find tests related to one or more source files.         |
+| `atelier code index`     | Build or refresh the SCIP code index for a repository.  |
 | `atelier tool-mode ...`  | Configure smart tool replacement/shadow/suggest modes.  |
 | `atelier tool-report`    | Report tool usage, savings, and redundancy patterns.    |
 | `atelier optimize`       | Show session cost optimization recommendations.         |
@@ -108,9 +102,8 @@ These commands expose the runtime's code retrieval and cached search utilities.
 Examples:
 
 ```bash
-atelier search-read "trace schema"
-atelier module-summary src/atelier/gateway/adapters/cli.py
-atelier test-context src/atelier/core/runtime.py
+atelier code index --repo-root .
+atelier tools call grep --args '{"path":".","content_regex":"TODO"}'
 ```
 
 ## Knowledge, Lessons, and Failure Workflows

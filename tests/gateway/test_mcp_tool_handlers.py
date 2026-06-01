@@ -52,6 +52,8 @@ EXPECTED_TOOLS = {
     "callers",
     "callees",
     "impact",
+    "usages",
+    "pattern",
     "explore",
 }
 
@@ -1393,7 +1395,10 @@ def test_code_context_call_graph_surface_is_additive(store_root: Path, tmp_path:
 
     callers = _result(_call("symbols", {"op": "callers", "repo_root": str(tmp_path), "query": "alpha"}))
     callees = _result(
-        _call("symbols", {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True})
+        _call(
+            "symbols",
+            {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True},
+        )
     )
 
     assert "provenance: scip" in callers
@@ -1604,7 +1609,12 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
         ),
     )
 
-    result = _result(_call("symbols", {"op": "pattern", "repo_root": str(tmp_path), "pattern": "requests.get($URL)"}))
+    result = _result(
+        _call(
+            "symbols",
+            {"op": "pattern", "repo_root": str(tmp_path), "pattern": "requests.get($URL)"},
+        )
+    )
 
     assert result["error"] == "tool_unavailable"
     assert result["expected_binary"] == "ast-grep"
