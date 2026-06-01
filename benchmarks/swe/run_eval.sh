@@ -6,18 +6,14 @@
 #
 # SLICE  : Python slice, e.g. "0:5" (default: "0:5")
 #
-# Outputs:
-#   benchmarks/swe/outputs/baseline/   — mini-SWE-agent output, no compression
-#   benchmarks/swe/outputs/atelier/    — mini-SWE-agent output, Atelier proxy
-#   benchmarks/swe/outputs/baseline_preds.json
-#   benchmarks/swe/outputs/atelier_preds.json
-#   benchmarks/swe/outputs/proxy_savings.jsonl
-#   benchmarks/swe/outputs/report.md
+# Outputs default outside the repo:
+#   ../benchmarks/atelier/swe/manual/
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SLICE="${1:-0:5}"
-OUTDIR="$REPO_ROOT/benchmarks/swe/outputs"
+BENCH_ROOT="$(dirname "$REPO_ROOT")/benchmarks/$(basename "$REPO_ROOT")"
+OUTDIR="${ATELIER_BENCHMARK_ROOT:-$BENCH_ROOT}/swe/manual"
 PROXY_LOG="$OUTDIR/proxy_savings.jsonl"
 PROXY_PID_FILE="$OUTDIR/proxy.pid"
 PROXY_PID=""

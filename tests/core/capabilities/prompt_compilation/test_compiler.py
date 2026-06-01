@@ -11,7 +11,12 @@ from atelier.core.capabilities.prompt_compilation.compiler import (
     BudgetTooSmall,
     compile_prompt,
 )
-from atelier.core.capabilities.prompt_compilation.models import BlockKind, PromptBlock, Stability
+from atelier.core.capabilities.prompt_compilation.models import (
+    COUNTEREXAMPLE_METADATA_KEY,
+    BlockKind,
+    PromptBlock,
+    Stability,
+)
 
 
 def _block(
@@ -120,7 +125,10 @@ def test_prefix_hash_matches_golden_sha256() -> None:
     ]
     compiled = compile_prompt(blocks)
     assert compiled.prefix_end_index == 1
-    assert compiled.stable_prefix_hash == "7628695eb2a0a8545a423f23551f8dc0eb8c06bcc967d7ab6a5c899fa23f1e4c"
+    assert (
+        compiled.stable_prefix_hash
+        == "7628695eb2a0a8545a423f23551f8dc0eb8c06bcc967d7ab6a5c899fa23f1e4c"
+    )
 
 
 def test_prefix_end_index_when_no_stable_blocks() -> None:
@@ -210,3 +218,44 @@ def test_user_task_never_dropped() -> None:
     task_tokens = blocks[0].token_estimate
     with pytest.raises(BudgetTooSmall):
         compile_prompt(blocks, tail_budget_tokens=max(1, task_tokens - 1))
+
+
+def test_compile_prompt_accepts_turn_tool_result_counterexample() -> None:
+    counterexample = _block(
+        id="counterexample/typecheck/ok",
+        kind=BlockKind.TOOL_RESULT,
+        content='<counterexample check="typecheck"></counterexample>',
+        stability=Stability.TURN,
+        metadata={COUNTEREXAMPLE_METADATA_KEY: True},
+    )
+
+    compiled = compile_prompt([counterexample])
+
+    assert compiled.blocks == (counterexample,)
+
+
+def test_compile_prompt_rejects_counterexample_with_wrong_kind() -> None:
+    counterexample = PromptBlock(
+        id="counterexample/typecheck/bad-kind",
+        kind=BlockKind.SYSTEM,
+        content='<counterexample check="typecheck"></counterexample>',
+        stability=Stability.STATIC,
+        metadata={COUNTEREXAMPLE_METADATA_KEY: True},
+    )
+
+    with pytest.raises(ValueError, match="kind=tool_result"):
+        compile_prompt([counterexample])
+
+
+def test_compile_prompt_rejects_counterexample_with_wrong_stability() -> None:
+    counterexample = PromptBlock(
+        id="counterexample/typecheck/bad-stability",
+        kind=BlockKind.TOOL_RESULT,
+        content='<counterexample check="typecheck"></counterexample>',
+        stability=Stability.BRANCH,
+        metadata={COUNTEREXAMPLE_METADATA_KEY: True},
+        stability_override_reason="test invalid counterexample stability",
+    )
+
+    with pytest.raises(ValueError, match="stability=turn"):
+        compile_prompt([counterexample])

@@ -23,11 +23,17 @@ Adding a new language is editing ``_LANG_CONFIG``:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
-from functools import cache
 from typing import Any
 
 _logger = logging.getLogger(__name__)
+
+
+# Thread-local storage for tree-sitter parsers.
+# The Rust _native::Parser is !Send, so it must never be shared across threads.
+# Each thread gets its own parser instances via thread-local caching.
+_get_parser_local = threading.local()
 
 
 @dataclass(frozen=True)
@@ -89,7 +95,9 @@ _LANG_CONFIG: dict[str, LangCfg] = {
         ),
         container=frozenset({"impl_item", "trait_item", "mod_item"}),
         member=frozenset({"function_item", "function_signature_item", "const_item"}),
-        body_kinds=frozenset({"block", "declaration_list", "field_declaration_list", "enum_variant_list"}),
+        body_kinds=frozenset(
+            {"block", "declaration_list", "field_declaration_list", "enum_variant_list"}
+        ),
     ),
     "java": LangCfg(
         keep_full=frozenset({"package_declaration", "import_declaration"}),
@@ -311,8 +319,12 @@ _LANG_CONFIG: dict[str, LangCfg] = {
     # sql — unwrap the `statement` wrapper; signature-trim table/function bodies.
     "sql": LangCfg(
         unwrap=frozenset({"statement"}),
-        keep_signature=frozenset({"create_table", "create_view", "create_index", "create_function", "alter_table"}),
-        body_kinds=frozenset({"column_definitions", "function_body", "create_query", "index_fields"}),
+        keep_signature=frozenset(
+            {"create_table", "create_view", "create_index", "create_function", "alter_table"}
+        ),
+        body_kinds=frozenset(
+            {"column_definitions", "function_body", "create_query", "index_fields"}
+        ),
     ),
     # yaml — descend 3 wrapper levels, keep top-level mapping keys' first line only.
     "yaml": LangCfg(
@@ -383,14 +395,19 @@ _NON_DEFINITION_KEEP_FULL_KINDS: frozenset[str] = frozenset(
 )
 
 
-@cache
 def _get_parser(lang: str) -> Any:
     try:
         from tree_sitter_language_pack import get_parser
 
         cfg = _LANG_CONFIG.get(lang)
         name = (cfg.parser_name if cfg else "") or lang
-        return get_parser(name)
+        # Thread-local cache: the Rust Parser is !Send so it must never
+        # be shared across threads (would panic at runtime).
+        cache = _get_parser_local.__dict__
+        key = f"_parser_{name}"
+        if key not in cache:
+            cache[key] = get_parser(name)
+        return cache[key]
     except Exception as exc:
         logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parser unavailable for %s: %s", lang, exc)
@@ -413,7 +430,13 @@ def definition_node_kinds(language: str) -> frozenset[str]:
     if cfg is None:
         return frozenset()
     keep_full_definitions = cfg.keep_full - _NON_DEFINITION_KEEP_FULL_KINDS
-    return frozenset(keep_full_definitions | cfg.keep_signature | cfg.container | cfg.member | cfg.keep_first_line)
+    return frozenset(
+        keep_full_definitions
+        | cfg.keep_signature
+        | cfg.container
+        | cfg.member
+        | cfg.keep_first_line
+    )
 
 
 def transparent_node_kinds(language: str) -> frozenset[str]:
@@ -458,7 +481,9 @@ def _signature_slice(source: bytes, node: Any, body_kinds: frozenset[str]) -> by
     return source[start:end].rstrip()
 
 
-def _extract_member_signatures(container: Any, source: bytes, cfg: LangCfg, indent: str = "    ") -> list[bytes]:
+def _extract_member_signatures(
+    container: Any, source: bytes, cfg: LangCfg, indent: str = "    "
+) -> list[bytes]:
     """Walk into a container and collect signature lines for its members."""
     out: list[bytes] = []
     # Find the body child (class_body, declaration_list, etc.) and iterate its children.

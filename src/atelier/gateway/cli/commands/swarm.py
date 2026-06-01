@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,109 +14,35 @@ from atelier.core.capabilities.swarm import (
     format_swarm_summary,
     initialize_swarm_run,
     launch_swarm_children,
+    list_swarm_runner_profiles,
     list_swarm_runs,
     load_swarm_state,
     read_swarm_log,
     resolve_state_path,
+    resolve_swarm_child_command,
+    resolve_swarm_runner_metadata,
+    resolve_swarm_spec_path,
     run_child_once,
+    run_provider_swarm_worker,
     save_swarm_state,
+    spawn_swarm_coordinator,
     stop_swarm_run,
 )
 from atelier.gateway.cli.commands._shared import _emit
 
 DEFAULT_RUNNER_PROMPT = (
-    "Read the task spec at {spec}. Work directly in the current repository, "
-    "make only the requested changes, do not commit, and print a concise "
-    "summary of what you changed or why you left it unchanged."
+    "The authoritative task spec is stored at {spec}.\n\n"
+    "<task_spec>\n"
+    "{spec_contents}\n"
+    "</task_spec>\n\n"
+    "Work directly in the current repository, make only the requested changes, "
+    "do not commit, and print a concise summary of what you changed or why you "
+    "left it unchanged."
 )
 
 RUNNER_CHOICES = click.Choice(
-    ["claude", "codex", "copilot", "opencode", "ollama-claude"],
-    case_sensitive=False,
+    [profile["id"] for profile in list_swarm_runner_profiles()], case_sensitive=False
 )
-
-
-def _resolve_child_command(
-    *,
-    runner: str | None,
-    runner_model: str | None,
-    runner_args: tuple[str, ...],
-    child_command: tuple[str, ...],
-) -> list[str]:
-    if runner and child_command:
-        raise click.ClickException("choose either --runner or a raw child command after '--', not both")
-    if child_command:
-        return list(child_command)
-    if not runner:
-        raise click.ClickException("pass a raw child command after '--' or select a built-in --runner")
-
-    profile = runner.lower()
-    if profile == "claude":
-        command = ["claude"]
-        if runner_model:
-            command.extend(["--model", runner_model])
-        command.extend(["--dangerously-skip-permissions", *runner_args, "-p", DEFAULT_RUNNER_PROMPT])
-        return command
-    if profile == "codex":
-        command = ["codex", "exec"]
-        if runner_model:
-            command.extend(["-m", runner_model])
-        command.extend(
-            [
-                "--dangerously-bypass-approvals-and-sandbox",
-                *runner_args,
-                DEFAULT_RUNNER_PROMPT,
-            ]
-        )
-        return command
-    if profile == "copilot":
-        command = ["copilot"]
-        if runner_model:
-            command.extend(["--model", runner_model])
-        command.extend(["--allow-all", *runner_args, "-p", DEFAULT_RUNNER_PROMPT])
-        return command
-    if profile == "opencode":
-        command = ["opencode", "run"]
-        if runner_model:
-            command.extend(["-m", runner_model])
-        command.extend(
-            [
-                "--dangerously-skip-permissions",
-                *runner_args,
-                DEFAULT_RUNNER_PROMPT,
-            ]
-        )
-        return command
-    if profile == "ollama-claude":
-        command = ["ollama", "launch", "claude"]
-        if runner_model:
-            command.extend(["--model", runner_model])
-        command.extend(
-            [
-                "--",
-                "-p",
-                DEFAULT_RUNNER_PROMPT,
-                "--dangerously-skip-permissions",
-                *runner_args,
-            ]
-        )
-        return command
-    raise click.ClickException(f"unsupported runner profile: {runner}")
-
-
-def _resolve_runner_metadata(
-    *, runner: str | None, runner_model: str | None, child_command: list[str]
-) -> tuple[str, str]:
-    if runner:
-        return runner.lower(), runner_model or ""
-    if not child_command:
-        return "custom", ""
-    inferred_model = ""
-    for index, token in enumerate(child_command[:-1]):
-        if token in {"--model", "-m"} and index + 1 < len(child_command):
-            inferred_model = child_command[index + 1]
-            break
-    return child_command[0], inferred_model
 
 
 @click.group("swarm")
@@ -150,7 +74,9 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
         model_label = (state.runner_model or "-")[:18]
         latest_wave = state.waves[-1] if state.waves else None
         planned = latest_wave.planned_runs if latest_wave is not None else 0
-        max_runs = latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
+        max_runs = (
+            latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
+        )
         lines.append(
             f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>8} {failed:<4} {running:<4} {planned:>3}/{max_runs:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
@@ -158,7 +84,7 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
 
 
 @swarm_group.command("start")
-@click.argument("spec_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("spec_path", required=False, type=click.Path(dir_okay=False, path_type=Path))
 @click.option(
     "--runs",
     default=3,
@@ -208,7 +134,7 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
 @click.pass_context
 def swarm_start(
     ctx: click.Context,
-    spec_path: Path,
+    spec_path: Path | None,
     runs: int,
     validation_commands: tuple[str, ...],
     detach: bool,
@@ -231,21 +157,32 @@ def swarm_start(
         raise click.ClickException("--runs must be >= 1")
     repo_root = discover_repo_root(Path.cwd())
     root = Path(ctx.obj["root"])
-    resolved_child_command = _resolve_child_command(
-        runner=runner,
-        runner_model=runner_model,
-        runner_args=runner_args,
-        child_command=child_command,
-    )
-    resolved_runner_name, resolved_runner_model = _resolve_runner_metadata(
-        runner=runner,
-        runner_model=runner_model,
-        child_command=resolved_child_command,
-    )
+    try:
+        resolved_spec_path, spec_resolution, used_program_md = resolve_swarm_spec_path(
+            project_root=repo_root,
+            spec_path=spec_path,
+        )
+        resolved_child_command = resolve_swarm_child_command(
+            runner=runner,
+            runner_model=runner_model,
+            runner_args=runner_args,
+            child_command=child_command,
+            prompt_template=DEFAULT_RUNNER_PROMPT,
+        )
+        resolved_runner_name, resolved_runner_model = resolve_swarm_runner_metadata(
+            runner=runner,
+            runner_model=runner_model,
+            child_command=resolved_child_command,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
     state, state_path = initialize_swarm_run(
         root=root,
         repo_root=repo_root,
-        spec_path=spec_path,
+        spec_path=resolved_spec_path,
+        spec_source_path=str(spec_path) if spec_path is not None else str(resolved_spec_path),
+        spec_resolution=spec_resolution,
+        used_program_md=used_program_md,
         runner_name=resolved_runner_name,
         runner_model=resolved_runner_model,
         child_command=resolved_child_command,
@@ -254,42 +191,26 @@ def swarm_start(
         keep_worktrees=not cleanup,
         detached=detach,
         continuous=continuous,
+        launch_provider="cli",
     )
     if detach:
-        log_path = state_path.parent / "coordinator.log"
-        with log_path.open("w", encoding="utf-8") as handle:
-            proc = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "atelier.gateway.cli",
-                    "--root",
-                    str(root),
-                    "swarm",
-                    "_run",
-                    "--state",
-                    str(state_path),
-                ],
-                cwd=repo_root,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                text=True,
-                start_new_session=True,
-            )
-        state.coordinator_pid = proc.pid
+        coordinator_pid, log_path = spawn_swarm_coordinator(root, repo_root, state_path)
+        state.coordinator_pid = coordinator_pid
         state.coordinator_log_path = str(log_path)
         save_swarm_state(state_path, state)
         payload = {
             "run_id": state.run_id,
             "status": "running",
             "state_path": str(state_path),
-            "coordinator_pid": proc.pid,
+            "coordinator_pid": coordinator_pid,
             "log_path": str(log_path),
         }
         if as_json:
             _emit(payload, as_json=True)
             return
-        click.echo(f"run_id: {state.run_id}\nstatus: running\ncoordinator_pid: {proc.pid}\nstate_path: {state_path}")
+        click.echo(
+            f"run_id: {state.run_id}\nstatus: running\ncoordinator_pid: {coordinator_pid}\nstate_path: {state_path}"
+        )
         return
 
     completed = launch_swarm_children(root, state_path)
@@ -341,7 +262,9 @@ def swarm_export(ctx: click.Context, run_id: str, as_json: bool) -> None:
         lines.append(f"base_snapshot_artifact: {state.base_snapshot_artifact.path}")
     lines.append("accepted_commits:")
     for accepted in state.accepted_commits:
-        lines.append(f"  - {accepted.child_id}: {accepted.commit_ref} patch={accepted.patch_path or '-'}")
+        lines.append(
+            f"  - {accepted.child_id}: {accepted.commit_ref} patch={accepted.patch_path or '-'}"
+        )
     lines.append("artifacts:")
     for artifact in state.export_artifacts:
         lines.append(f"  - {artifact.kind}: {artifact.path}")
@@ -468,6 +391,13 @@ def swarm_child_run(state_path: Path, child_id: str) -> None:
 
     child = run_child_once(state_path, child_id)
     _emit(child.model_dump(mode="json"), as_json=True)
+
+
+@swarm_group.command("_provider-worker", hidden=True)
+def swarm_provider_worker() -> None:
+    """Execute the provider-backed hidden swarm worker."""
+
+    raise SystemExit(run_provider_swarm_worker())
 
 
 __all__ = ["swarm_group"]

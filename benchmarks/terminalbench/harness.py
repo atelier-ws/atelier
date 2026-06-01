@@ -26,7 +26,7 @@ class RunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tasks_path: str = "benchmarks/terminalbench/tasks.yaml"
-    output_dir: str = "benchmarks/terminalbench/outputs"
+    output_dir: str = "../benchmarks/atelier/terminalbench/manual"
     attempts_per_task: int = Field(default=1, ge=1)
     timeout_seconds: int = Field(default=1800, ge=60)
     dataset_name: str = "terminal-bench-core"

@@ -63,6 +63,10 @@ class StoreProtocol(Protocol):
         """Update status field; return True if a row was updated."""
         ...
 
+    def delete_block(self, block_id: str) -> bool:
+        """Hard-delete a ReasonBlock; return True if a row was removed."""
+        ...
+
     def increment_usage(
         self,
         block_id: str,

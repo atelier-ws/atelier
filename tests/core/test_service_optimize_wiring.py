@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from atelier.core.capabilities.optimization.policy import AutomationConfig
+from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS, JOB_OPTIMIZE
+from atelier.core.service.telemetry.schema import validate_event_props
+from atelier.core.service.worker import Worker
+from atelier.infra.runtime.servicectl_lifecycle import _servicectl_tick
+
+
+def test_worker_optimize_handler_uses_shared_runner(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_cycle(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr("atelier.core.capabilities.optimization.run_optimization_cycle", _fake_cycle)
+    worker = Worker(store=type("Store", (), {"root": tmp_path / ".atelier"})())
+
+    result = worker._dispatch[JOB_OPTIMIZE]({"days": 3, "host": "claude", "source": "servicectl"})
+
+    assert result == {"ok": True}
+    assert captured["days"] == 3
+    assert captured["host"] == "claude"
+    assert captured["open_pr"] is False
+    assert captured["source"] == "servicectl"
+
+
+def test_servicectl_tick_enqueues_optimize_only_once_per_interval(monkeypatch, tmp_path: Path) -> None:
+    class _Store:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+            self.jobs: list[dict[str, object]] = []
+
+        def init(self) -> None:
+            return None
+
+        def job_queue_health(self) -> dict[str, int]:
+            active = sum(1 for job in self.jobs if job["status"] in {"pending", "running", "failed"})
+            return {"pending": active, "running": 0, "failed": 0, "active": active}
+
+        def list_jobs(self, *, job_type: str, limit: int) -> list[dict[str, object]]:
+            return [job for job in self.jobs if job["job_type"] == job_type][:limit]
+
+        def enqueue_job(self, job_type: str, payload: dict[str, object]) -> str:
+            job_id = f"{job_type}-{len(self.jobs) + 1}"
+            self.jobs.append({"id": job_id, "job_type": job_type, "status": "pending", "payload": payload})
+            return job_id
+
+    store = _Store(tmp_path / ".atelier")
+
+    class _Worker:
+        def __init__(self, store) -> None:
+            self.store = store
+
+        def run_once(self):
+            return None
+
+    monkeypatch.setattr("atelier.infra.storage.factory.create_store", lambda root: store)
+    monkeypatch.setattr("atelier.core.service.worker.Worker", _Worker)
+    monkeypatch.setattr(
+        "atelier.core.capabilities.optimization.load_automation_config",
+        lambda root: AutomationConfig(enabled=True),
+    )
+    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_refresh_host_status", lambda root: {})
+    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_import_sessions", lambda store: {})
+
+    first = _servicectl_tick(
+        tmp_path / ".atelier",
+        maintenance_interval_seconds=60,
+        session_import_interval_seconds=-1,
+        external_analytics_interval_seconds=-1,
+        external_analytics_periods=(),
+    )
+    second = _servicectl_tick(
+        tmp_path / ".atelier",
+        maintenance_interval_seconds=60,
+        session_import_interval_seconds=-1,
+        external_analytics_interval_seconds=-1,
+        external_analytics_periods=(),
+    )
+
+    assert any(job["job_type"] == JOB_CONSOLIDATE_BLOCKS for job in store.jobs)
+    assert sum(1 for job in store.jobs if job["job_type"] == JOB_OPTIMIZE) == 1
+    assert any(job_id.startswith(JOB_OPTIMIZE) for job_id in first["enqueued_jobs"])
+    assert not any(job_id.startswith(JOB_OPTIMIZE) for job_id in second["enqueued_jobs"])
+
+
+def test_optimization_telemetry_schema_accepts_new_events() -> None:
+    filtered, dropped = validate_event_props(
+        "optimization_proposal_evaluated",
+        {
+            "source": "cli",
+            "repo_id": "sha256:abc",
+            "has_recommendation": True,
+            "projected_tokens_saved": 1234,
+            "projected_weekly_savings_usd": 4.5,
+            "benchmark_evidence_present": True,
+            "ni_passed": False,
+            "open_pr_requested": True,
+        },
+    )
+    assert dropped == []
+    assert filtered is not None
+    assert filtered["projected_tokens_saved"] == 1234

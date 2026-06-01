@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 from dataclasses import replace
 from typing import Any
@@ -26,14 +27,28 @@ class ScopedContextCapability:
         self._packer = BudgetPacker()
         self._cache: dict[str, ScopedContext] = {}
 
-    @staticmethod
-    def _key(subtask: Subtask) -> str:
+    def _index_version(self) -> int:
+        current_index_version = getattr(self._engine, "_current_index_version", None)
+        if callable(current_index_version):
+            with contextlib.suppress(Exception):
+                return int(current_index_version())
+
+        tool_status = getattr(self._engine, "tool_status", None)
+        if callable(tool_status):
+            with contextlib.suppress(Exception):
+                payload = tool_status(auto_index=False, budget_tokens=200)
+                if isinstance(payload, dict):
+                    return int(payload.get("index_version") or 0)
+        return 0
+
+    def _key(self, subtask: Subtask) -> str:
         parts = [
             subtask.description,
             "|".join(subtask.affected_paths),
             "|".join(subtask.keywords),
             "|".join(subtask.excluded_paths),
             str(subtask.budget_tokens),
+            str(self._index_version()),
         ]
         return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 

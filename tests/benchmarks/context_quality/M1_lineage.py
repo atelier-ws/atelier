@@ -125,7 +125,15 @@ def _get_engine(repo_root: pathlib.Path) -> Any:
     atelier_root = pathlib.Path(os.environ.get("ATELIER_ROOT") or pathlib.Path.home() / ".atelier")
     db_path = atelier_root / "repos" / repo_id / "code.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    return CodeContextEngine(repo_root=repo_root, repo_id=repo_id, db_path=db_path)
+    previous_autosync = os.environ.get("ATELIER_CODE_AUTOSYNC")
+    os.environ["ATELIER_CODE_AUTOSYNC"] = "0"
+    try:
+        return CodeContextEngine(repo_root=repo_root, db_path=db_path)
+    finally:
+        if previous_autosync is None:
+            os.environ.pop("ATELIER_CODE_AUTOSYNC", None)
+        else:
+            os.environ["ATELIER_CODE_AUTOSYNC"] = previous_autosync
 
 
 def run_benchmark(repo_root: pathlib.Path | None = None) -> dict[str, Any]:

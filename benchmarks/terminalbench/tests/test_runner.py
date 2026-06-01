@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("terminalbench.agent_adapter")
+pytest.importorskip("terminalbench.runner")
+
 from terminalbench.agent_adapter import AdapterResult
 from terminalbench.runner import RunRecord, write_records, write_transcript
 
@@ -164,6 +167,16 @@ def test_write_records_multiple_rows(tmp_path: Path) -> None:
     assert len(lines) == 3
     task_ids = {json.loads(ln)["task_id"] for ln in lines}
     assert task_ids == {"hello-world", "fix-git", "csv-to-parquet"}
+
+
+def test_write_records_appends_to_existing_jsonl(tmp_path: Path) -> None:
+    dest = tmp_path / "runs.jsonl"
+    write_records([_make_run_record(task_id="hello-world")], dest)
+    write_records([_make_run_record(task_id="fix-git")], dest)
+
+    lines = [ln for ln in dest.read_text().splitlines() if ln.strip()]
+    assert len(lines) == 2
+    assert [json.loads(line)["task_id"] for line in lines] == ["hello-world", "fix-git"]
 
 
 # ---------------------------------------------------------------------------

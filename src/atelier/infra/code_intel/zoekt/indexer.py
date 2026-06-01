@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import time
 
+from atelier.core.capabilities.repo_map.graph import should_skip_path
+
 _TEXT_SUFFIXES = {
     ".py",
     ".ts",
@@ -24,7 +26,6 @@ _TEXT_SUFFIXES = {
     ".css",
     ".html",
 }
-_SKIP_PARTS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,9 @@ class ZoektIndexer:
             return snapshot.total_lines
         if target.is_file():
             return snapshot.path_lines.get(prefix, 0)
-        return sum(lines for path, lines in snapshot.path_lines.items() if path.startswith(f"{prefix}/"))
+        return sum(
+            lines for path, lines in snapshot.path_lines.items() if path.startswith(f"{prefix}/")
+        )
 
     def index_age_seconds(self) -> int:
         snapshot = self.ensure_snapshot()
@@ -73,8 +76,7 @@ class ZoektIndexer:
             if not path.is_file():
                 continue
             rel = path.relative_to(self.repo_root).as_posix()
-            rel_parts = path.relative_to(self.repo_root).parts
-            if any(part in _SKIP_PARTS for part in rel_parts):
+            if should_skip_path(path, repo_root=self.repo_root):
                 continue
             if path.suffix.lower() not in _TEXT_SUFFIXES:
                 continue

@@ -260,7 +260,6 @@ dependencies = [
     { name = "litellm" },
     { name = "mypy" },
     { name = "networkx" },
-    { name = "ollama" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
@@ -298,13 +297,13 @@ requires-dist = [
     { name = "letta", marker = "extra == 'memory-server'", specifier = ">=0.16.7" },
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
     { name = "litellm", specifier = ">=1.83.14" },
+    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", specifier = ">=1.20.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "networkx", specifier = ">=3.4" },
     { name = "networkx", marker = "extra == 'repo-map'", specifier = ">=3.4" },
     { name = "numpy", marker = "extra == 'vector'", specifier = ">=1.26" },
-    { name = "ollama", specifier = ">=0.6.2" },
     { name = "ollama", marker = "extra == 'smart'", specifier = ">=0.4.0" },
     { name = "openai", marker = "extra == 'cloud'", specifier = ">=1.0" },
     { name = "opentelemetry-api", specifier = ">=1.27" },
@@ -344,7 +343,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "repo-map", "api", "postgres", "vector", "parsers", "rename", "telemetry", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "litellm", "repo-map", "api", "postgres", "vector", "parsers", "rename", "telemetry", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2203,19 +2202,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/50/0753655aa844c99cd9e018aacf76f130f1bd81d881bb74bc0aef5d73a8ba/numpy-2.4.6-cp314-cp314t-win32.whl", hash = "sha256:260a5d70215b61ab4fadf5c7baacd64821842975eea312125ed3c39a6391b063", size = 6156982, upload-time = "2026-05-18T23:36:40.817Z" },
     { url = "https://files.pythonhosted.org/packages/b2/d4/7c67becf668f973cb490cec3e98dfd799d866f9c989a54d355672cfa0db6/numpy-2.4.6-cp314-cp314t-win_amd64.whl", hash = "sha256:81a1cca95ed5bb92aa8b10dd2cdc9a0d3853a50fad926c28b5d7e8ea54389627", size = 12638908, upload-time = "2026-05-18T23:36:43.996Z" },
     { url = "https://files.pythonhosted.org/packages/43/bb/e1c71a4295b1b1d1393d50dbb4f2a36283c6859d9d3892e84f00ec5a91d5/numpy-2.4.6-cp314-cp314t-win_arm64.whl", hash = "sha256:0c9136e14ed34a9e343a31c533d78a9813a69a3148332bce5e9821cb2f996e66", size = 10565867, upload-time = "2026-05-18T23:36:47.114Z" },
-]
-
-[[package]]
-name = "ollama"
-version = "0.6.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/72/5f12423b6b39ca8430fbe56f77fcf4ef60f63067c7c4a2e30e200ed9ec16/ollama-0.6.2.tar.gz", hash = "sha256:936d55daa684f474364c098611c933626f8d6c7d67065c5b7ae0c477b508b07f", size = 53145, upload-time = "2026-04-29T21:21:15.018Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/ab/d6722beeb2d10f7a3b9ff49375708904fde18f82b5609a0bc4aeb5996a4d/ollama-0.6.2-py3-none-any.whl", hash = "sha256:3ad7daab28e5a973445c36a73882a3ef698c2ebb00e21e308652741577509f7d", size = 15115, upload-time = "2026-04-29T21:21:13.794Z" },
 ]
 
 [[package]]

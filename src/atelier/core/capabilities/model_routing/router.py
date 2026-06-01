@@ -98,6 +98,15 @@ _EXPENSIVE_VERBS_RE = re.compile(
 )
 _SMALL_OUTPUT_RE = re.compile(r"\b(<\s*500|under\s+500|brief|short|concise|one[- ]line)\b", re.IGNORECASE)
 _OPEN_OUTPUT_RE = re.compile(r"\b(open[- ]ended|comprehensive|full|deep|thorough|all files|entire)\b", re.IGNORECASE)
+_EXPLICIT_SESSION_PHASE_SCORE: dict[str, tuple[int, str]] = {
+    "explore": (0, "explore"),
+    "exploration": (0, "exploration"),
+    "transition": (1, "transition"),
+    "planning": (1, "planning"),
+    "plan": (1, "plan"),
+    "execute": (2, "execute"),
+    "execution": (2, "execution"),
+}
 
 
 @dataclass(frozen=True)
@@ -384,6 +393,13 @@ class ModelRouter:
           Sonnet/Opus needed — model must track accumulated context about specific
           files and paths it already read, not re-discover them.
         """
+        explicit = _clean_string(state.get("session_phase")) or _clean_string(state.get("workflow_step"))
+        if explicit:
+            normalized = explicit.lower().replace("-", "_")
+            mapped = _EXPLICIT_SESSION_PHASE_SCORE.get(normalized)
+            if mapped is not None:
+                return mapped[0], f"session_phase: explicit {mapped[1]}"
+
         turn_number = _safe_int(state.get("turn_number"))
         recent: list[str] = []
         raw = state.get("recent_tool_calls")
@@ -470,12 +486,17 @@ def _estimated_quality_gain_usd(
     baseline: ModelRecommendation,
     state: Mapping[str, Any],
 ) -> float:
+    tier_rank: dict[ModelTier, int] = {"cheap": 0, "medium": 1, "expensive": 2}
+    rank_delta = max(0, tier_rank[baseline.tier] - tier_rank[prior_route.tier])
     explicit = _safe_float(state.get("quality_gain_usd_estimated"))
     if explicit is not None:
         return explicit
 
-    tier_rank: dict[ModelTier, int] = {"cheap": 0, "medium": 1, "expensive": 2}
-    rank_delta = max(0, tier_rank[baseline.tier] - tier_rank[prior_route.tier])
+    calibrated_delta = _safe_float(state.get("route_outcome_score_delta"))
+    if calibrated_delta is not None and calibrated_delta > 0.0 and rank_delta > 0:
+        expected_input_tokens = max(1_000, _safe_int(state.get("expected_input_tokens")) or 0)
+        return round(rank_delta * calibrated_delta * (expected_input_tokens / 1_000_000), 8)
+
     return round(rank_delta * 0.001, 8)
 
 

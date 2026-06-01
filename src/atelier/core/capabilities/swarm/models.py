@@ -32,6 +32,10 @@ SwarmChildStatus = Literal["pending", "running", "success", "failed", "stopped"]
 SwarmRunMode = Literal["single", "continuous"]
 SwarmWaveStatus = Literal["running", "applied", "no-improvement", "stopped"]
 SwarmPlanningMode = Literal["adaptive", "bounded", "open-ended"]
+SwarmEvaluatorBackend = Literal["auto", "disabled", "ollama", "openai", "litellm"]
+SwarmDecisionVerdict = Literal["accept", "reject", "defer"]
+SwarmEvaluationStatus = Literal["pending", "completed", "fallback", "failed"]
+SwarmConvergenceVerdict = Literal["continue", "converged", "stagnating", "blocked"]
 
 
 class SwarmValidationCheck(BaseModel):
@@ -76,6 +80,35 @@ class SwarmAcceptedCommit(BaseModel):
     apply_commands: list[str] = Field(default_factory=list)
 
 
+class SwarmWaveDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    child_id: str
+    verdict: SwarmDecisionVerdict = "defer"
+    rationale: str = ""
+    conflicts_with: list[str] = Field(default_factory=list)
+    duplicates: list[str] = Field(default_factory=list)
+
+
+class SwarmWaveEvaluation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: SwarmEvaluationStatus = "pending"
+    evaluator_backend: SwarmEvaluatorBackend = "auto"
+    evaluator_model: str = ""
+    summary: str = ""
+    verdict: SwarmConvergenceVerdict = "continue"
+    candidate_order: list[str] = Field(default_factory=list)
+    accepted_child_ids: list[str] = Field(default_factory=list)
+    rejected_child_ids: list[str] = Field(default_factory=list)
+    deferred_child_ids: list[str] = Field(default_factory=list)
+    decisions: list[SwarmWaveDecision] = Field(default_factory=list)
+    next_wave_directives: list[str] = Field(default_factory=list)
+    error: str = ""
+    artifact: SwarmArtifactRef | None = None
+    finished_at: datetime | None = None
+
+
 class SwarmWaveState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -91,6 +124,10 @@ class SwarmWaveState(BaseModel):
     primary_winner_child_id: str | None = None
     accepted_commits: list[SwarmAcceptedCommit] = Field(default_factory=list)
     rejected_child_notes: dict[str, str] = Field(default_factory=dict)
+    evaluation: SwarmWaveEvaluation | None = None
+    integration_validation_results: list[SwarmValidationCheck] = Field(default_factory=list)
+    synthesized_spec_path: str = ""
+    synthesized_spec_artifact: SwarmArtifactRef | None = None
     manifest_artifact: SwarmArtifactRef | None = None
     summary: str = ""
     started_at: datetime = Field(default_factory=utcnow)
@@ -114,6 +151,10 @@ class SwarmWaveState(BaseModel):
             )
         payload.setdefault("accepted_commits", [])
         payload.setdefault("rejected_child_notes", {})
+        payload.setdefault("evaluation", None)
+        payload.setdefault("integration_validation_results", [])
+        payload.setdefault("synthesized_spec_path", "")
+        payload.setdefault("synthesized_spec_artifact", None)
         payload.setdefault("planning_reason", "")
         payload.setdefault("planning_mode", "adaptive")
         return payload
@@ -178,10 +219,16 @@ class SwarmRunState(BaseModel):
     export_artifacts: list[SwarmArtifactRef] = Field(default_factory=list)
     accepted_commits: list[SwarmAcceptedCommit] = Field(default_factory=list)
     transplant_commands: list[str] = Field(default_factory=list)
-    spec_source_path: str
     copied_spec_path: str
+    spec_source_path: str = ""
+    spec_resolution: Literal["explicit", "default"] = "explicit"
+    used_program_md: bool = False
     runner_name: str = "custom"
     runner_model: str = ""
+    launch_provider: Literal["cli", "openai", "litellm"] = "cli"
+    launch_effort: str = ""
+    evaluator_backend: SwarmEvaluatorBackend = "auto"
+    evaluator_model: str = ""
     child_command: list[str]
     validation_commands: list[str] = Field(default_factory=list)
     runs: int = 0
@@ -198,6 +245,13 @@ class SwarmRunState(BaseModel):
     winner_child_id: str | None = None
     primary_winner_child_id: str | None = None
     accepted_child_ids: list[str] = Field(default_factory=list)
+    convergence_status: SwarmConvergenceVerdict = "continue"
+    convergence_summary: str = ""
+    next_wave_directives: list[str] = Field(default_factory=list)
+    consecutive_no_progress_waves: int = 0
+    max_no_progress_waves: int = 3
+    consecutive_evaluator_failures: int = 0
+    max_evaluator_failures: int = 3
     ranking_notes: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     dirty_paths: list[str] = Field(default_factory=list)
@@ -228,5 +282,14 @@ class SwarmRunState(BaseModel):
             payload["primary_winner_child_id"] = payload.get("winner_child_id")
         if not payload.get("winner_child_id"):
             payload["winner_child_id"] = payload.get("primary_winner_child_id")
+        payload.setdefault("evaluator_backend", "auto")
+        payload.setdefault("evaluator_model", "")
+        payload.setdefault("convergence_status", "continue")
+        payload.setdefault("convergence_summary", "")
+        payload.setdefault("next_wave_directives", [])
+        payload.setdefault("consecutive_no_progress_waves", 0)
+        payload.setdefault("max_no_progress_waves", 3)
+        payload.setdefault("consecutive_evaluator_failures", 0)
+        payload.setdefault("max_evaluator_failures", 3)
         payload.setdefault("dirty_paths", [])
         return payload

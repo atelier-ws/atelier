@@ -133,6 +133,11 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
     state = _read_servicectl_state(root)
     pid = _read_servicectl_pid(root)
     running = bool(pid is not None and _pid_is_running(pid))
+    from atelier.infra.storage.factory import create_store
+
+    store = create_store(root)
+    store.init()
+    job_queue_health = store.job_queue_health()
     return {
         "running": running,
         "pid": pid,
@@ -148,6 +153,7 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
         "last_external_analytics_at": state.get("last_external_analytics_at"),
         "last_exit_reason": state.get("last_exit_reason"),
         "started_at": state.get("started_at"),
+        "job_queue_health": job_queue_health,
     }
 
 
@@ -207,7 +213,9 @@ def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     counts: dict[str, int] = {}
-    importers: list[tuple[str, Any]] = [(host, importer_cls(store)) for host, importer_cls in iter_importer_classes()]
+    importers: list[tuple[str, Any]] = [
+        (host, importer_cls(store)) for host, importer_cls in iter_importer_classes()
+    ]
     all_imported_ids = []
     for host, importer in importers:
         try:
@@ -264,7 +272,9 @@ def _servicectl_collect_external_analytics(
 
     persisted: list[dict[str, Any]] = []
     for period in _normalize_external_analytics_periods(periods):
-        batch = run_external_reports(tool="all", period=period, cwd=Path.cwd(), include_optimize=True)
+        batch = run_external_reports(
+            tool="all", period=period, cwd=Path.cwd(), include_optimize=True
+        )
         persisted.extend(persist_external_reports(store, batch, source="servicectl"))
     return persisted
 
@@ -323,7 +333,9 @@ def _servicectl_check_and_apply_updates(root: Path) -> bool:
             subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
         elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
             logger.info("Auto-update: update applied (launchd). Triggering stack restart...")
-            subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
+            subprocess.run(
+                ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False
+            )
 
         logger.info("Auto-update: update applied successfully. Exiting for restart.")
         return True
@@ -344,7 +356,8 @@ def _servicectl_tick(
     auto_update: bool = False,
     auto_update_interval_seconds: int = 3600,
 ) -> dict[str, Any]:
-    from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
+    from atelier.core.capabilities.optimization import load_automation_config
+    from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS, JOB_OPTIMIZE
     from atelier.core.service.worker import Worker
     from atelier.infra.storage.factory import create_store
 
@@ -354,7 +367,9 @@ def _servicectl_tick(
     store = create_store(root)
     store.init()
     worker = Worker(store=store)
-    normalized_external_analytics_periods = _normalize_external_analytics_periods(external_analytics_periods)
+    normalized_external_analytics_periods = _normalize_external_analytics_periods(
+        external_analytics_periods
+    )
 
     # Refresh host agent detection status for the Docker service
     with suppress(Exception):
@@ -375,19 +390,26 @@ def _servicectl_tick(
             except ValueError:
                 last_update_at = None
 
-        if last_update_at is None or (now - last_update_at).total_seconds() >= auto_update_interval_seconds:
+        if (
+            last_update_at is None
+            or (now - last_update_at).total_seconds() >= auto_update_interval_seconds
+        ):
             if _servicectl_check_and_apply_updates(root):
                 # Process will exit if update was applied (Restart=always will pick it up)
                 sys.exit(0)
             periodic[AUTO_UPDATE_KEY] = now.isoformat()
 
-    last_enqueue_raw = periodic.get(JOB_CONSOLIDATE_BLOCKS)
-    last_enqueue_at: datetime | None = None
-    if isinstance(last_enqueue_raw, str):
+    def _periodic_timestamp(key: str) -> datetime | None:
+        raw = periodic.get(key)
+        if not isinstance(raw, str):
+            return None
         try:
-            last_enqueue_at = datetime.fromisoformat(last_enqueue_raw)
+            return datetime.fromisoformat(raw)
         except ValueError:
-            last_enqueue_at = None
+            return None
+
+    last_enqueue_at = _periodic_timestamp(JOB_CONSOLIDATE_BLOCKS)
+    last_optimize_enqueue_at = _periodic_timestamp(JOB_OPTIMIZE)
 
     last_session_import_raw = periodic.get(SESSION_IMPORT_KEY)
     last_session_import_at: datetime | None = None
@@ -410,7 +432,9 @@ def _servicectl_tick(
     elif session_import_interval_seconds == 0 or last_session_import_at is None:
         import_due = True
     else:
-        import_due = (now - last_session_import_at).total_seconds() >= session_import_interval_seconds
+        import_due = (
+            now - last_session_import_at
+        ).total_seconds() >= session_import_interval_seconds
     imported_sessions: dict[str, int] = {}
     if import_due:
         imported_sessions = _servicectl_import_sessions(store)
@@ -433,6 +457,7 @@ def _servicectl_tick(
             )
         periodic[EXTERNAL_ANALYTICS_KEY] = now.isoformat()
 
+    job_queue_health_before = store.job_queue_health()
     enqueued: list[str] = []
     if maintenance_interval_seconds <= 0 or last_enqueue_at is None:
         due = True
@@ -453,6 +478,26 @@ def _servicectl_tick(
             enqueued.append(job_id)
             periodic[JOB_CONSOLIDATE_BLOCKS] = now.isoformat()
 
+    automation = load_automation_config(root)
+    if automation.enabled:
+        if maintenance_interval_seconds <= 0 or last_optimize_enqueue_at is None:
+            optimize_due = True
+        else:
+            optimize_due = (now - last_optimize_enqueue_at).total_seconds() >= maintenance_interval_seconds
+        if optimize_due:
+            active_optimize_jobs = [
+                job
+                for job in store.list_jobs(job_type=JOB_OPTIMIZE, limit=200)
+                if job["status"] in {"pending", "running", "failed"}
+            ]
+            if not active_optimize_jobs:
+                job_id = store.enqueue_job(
+                    JOB_OPTIMIZE,
+                    {"days": 7, "host": None, "source": "servicectl"},
+                )
+                enqueued.append(job_id)
+                periodic[JOB_OPTIMIZE] = now.isoformat()
+
     processed: list[str] = []
     while len(processed) < 20:
         job_id = worker.run_once()
@@ -464,18 +509,24 @@ def _servicectl_tick(
         "last_tick_at": now.isoformat(),
         "last_processed_jobs": processed,
         "last_enqueued_jobs": enqueued,
-        "last_imported_sessions": imported_sessions if import_due else state.get("last_imported_sessions", {}),
+        "last_imported_sessions": imported_sessions
+        if import_due
+        else state.get("last_imported_sessions", {}),
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
         "last_external_analytics_runs": (
-            external_analytics_runs if external_analytics_due else state.get("last_external_analytics_runs", [])
+            external_analytics_runs
+            if external_analytics_due
+            else state.get("last_external_analytics_runs", [])
         ),
         "last_external_analytics_periods": list(normalized_external_analytics_periods),
         "last_external_analytics_at": periodic.get(EXTERNAL_ANALYTICS_KEY),
         "last_exit_reason": state.get("last_exit_reason"),
         "periodic_jobs": periodic,
         "started_at": state.get("started_at"),
+        "job_queue_health": store.job_queue_health(),
     }
     _write_servicectl_state(root, payload)
+    job_queue_health = payload["job_queue_health"]
     return {
         "enqueued_jobs": enqueued,
         "processed_jobs": processed,
@@ -484,8 +535,8 @@ def _servicectl_tick(
         "external_analytics_runs": external_analytics_runs,
         "external_analytics_periods": list(normalized_external_analytics_periods),
         "external_analytics_ran": external_analytics_due,
-        "pending_jobs": len(
-            [job for job in store.list_jobs(limit=200) if job["status"] in {"pending", "running", "failed"}]
-        ),
+        "job_queue_health_before": job_queue_health_before,
+        "job_queue_health": job_queue_health,
+        "pending_jobs": job_queue_health["active"],
         "tick_at": now.isoformat(),
     }

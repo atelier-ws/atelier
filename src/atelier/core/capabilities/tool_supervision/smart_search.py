@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from atelier.core.capabilities.repo_map import build_repo_map
-from atelier.core.capabilities.repo_map.graph import build_reference_graph
+from atelier.core.capabilities.repo_map.graph import (
+    build_reference_graph,
+    should_skip_path,
+)
 from atelier.core.capabilities.repo_map.pagerank import personalized_pagerank
 from atelier.core.capabilities.tool_supervision.search_read import search_read, search_read_to_dict
 from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
@@ -27,7 +30,6 @@ _CLAUDE_GREP_FILE_LIMIT = 100
 _CLAUDE_READ_LINE_LIMIT = 2000
 _SHELL_METACHARS_RE = re.compile(r"[;&|`$<>()\n\r]")
 _LEADING_DASH_RE = re.compile(r"^-")
-_SKIP_PARTS = {".git", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
 _TEXT_SUFFIXES = {
     ".py",
     ".ts",
@@ -77,7 +79,7 @@ def _iter_text_files(root: Path, *, limit: int = 500) -> list[Path]:
             break
         if not item.is_file():
             continue
-        if any(part in _SKIP_PARTS for part in item.parts):
+        if should_skip_path(item, repo_root=root):
             continue
         if item.suffix.lower() not in _TEXT_SUFFIXES:
             continue
@@ -95,7 +97,9 @@ def _safe_fts_query(query: str) -> str:
     return " OR ".join(terms[:8])
 
 
-def _fts_rank(repo_root: Path, search_path: Path, query: str, *, max_files: int) -> dict[str, float]:
+def _fts_rank(
+    repo_root: Path, search_path: Path, query: str, *, max_files: int
+) -> dict[str, float]:
     fts_query = _safe_fts_query(query)
     if not fts_query:
         return {}
@@ -111,7 +115,11 @@ def _fts_rank(repo_root: Path, search_path: Path, query: str, *, max_files: int)
                 content = file_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            rel = str(file_path.relative_to(repo_root)) if file_path.is_relative_to(repo_root) else str(file_path)
+            rel = (
+                str(file_path.relative_to(repo_root))
+                if file_path.is_relative_to(repo_root)
+                else str(file_path)
+            )
             conn.execute("INSERT INTO docs(path, content) VALUES(?, ?)", (rel, content[:200_000]))
         rows = conn.execute(
             "SELECT path, bm25(docs) AS rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?",
@@ -278,7 +286,11 @@ def _claude_read_baseline_text(text: str) -> str:
 def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode = "chunks") -> int:
     """Bytes in the closest Claude Code built-in baseline for these matches."""
     if mode != "full":
-        paths = [str(match.get("path", "")) for match in matches[:_CLAUDE_GREP_FILE_LIMIT] if match.get("path")]
+        paths = [
+            str(match.get("path", ""))
+            for match in matches[:_CLAUDE_GREP_FILE_LIMIT]
+            if match.get("path")
+        ]
         return len("\n".join(paths))
 
     total = 0
@@ -345,7 +357,9 @@ def smart_search(
         cache = _load_cache(repo_root)
         cached = cache.get(cache_key)
         if isinstance(cached, dict):
-            cached_matches = [match for match in cached.get("matches", []) if isinstance(match, dict)]
+            cached_matches = [
+                match for match in cached.get("matches", []) if isinstance(match, dict)
+            ]
             return {
                 "matches": cached_matches[:max_files],
                 "mode": mode,
@@ -382,7 +396,9 @@ def smart_search(
             for match in matches[:max_files]:
                 raw_path = str(match.get("path", ""))
                 try:
-                    content = Path(raw_path).read_text(encoding="utf-8", errors="replace")[:max_chars_per_file]
+                    content = Path(raw_path).read_text(encoding="utf-8", errors="replace")[
+                        :max_chars_per_file
+                    ]
                 except OSError:
                     content = ""
                 full_matches.append({**match, "content": content, "snippets": []})
@@ -403,12 +419,20 @@ def smart_search(
             cache[cache_key] = response
             _save_cache(repo_root, cache)
         return response
-    paths = [str(match.get("path", "")) for match in payload.get("matches", []) if isinstance(match, dict)]
+    paths = [
+        str(match.get("path", ""))
+        for match in payload.get("matches", [])
+        if isinstance(match, dict)
+    ]
     rel_paths = [
-        str(Path(item).resolve().relative_to(repo_root)) if Path(item).resolve().is_relative_to(repo_root) else item
+        str(Path(item).resolve().relative_to(repo_root))
+        if Path(item).resolve().is_relative_to(repo_root)
+        else item
         for item in paths
     ]
-    fts_scores = _normalize_scores(_fts_rank(repo_root, search_path, query, max_files=max_files * 2))
+    fts_scores = _normalize_scores(
+        _fts_rank(repo_root, search_path, query, max_files=max_files * 2)
+    )
     semantic_scores = _normalize_scores(_semantic_rank(repo_root, rel_paths, query))
     graph_scores = _normalize_scores(_graph_rank(repo_root, seeds or rel_paths[:1]))
 
@@ -421,7 +445,9 @@ def smart_search(
         snippet_score = 0.0
         snippets = match.get("snippets")
         if isinstance(snippets, list) and snippets:
-            snippet_score = max(float(item.get("score", 0.0)) for item in snippets if isinstance(item, dict))
+            snippet_score = max(
+                float(item.get("score", 0.0)) for item in snippets if isinstance(item, dict)
+            )
         return (
             snippet_score
             + 0.35 * fts_scores.get(rel, fts_scores.get(raw_path, 0.0))
@@ -436,7 +462,9 @@ def smart_search(
         for match in matches[:max_files]:
             raw_path = str(match.get("path", ""))
             try:
-                content = Path(raw_path).read_text(encoding="utf-8", errors="replace")[:max_chars_per_file]
+                content = Path(raw_path).read_text(encoding="utf-8", errors="replace")[
+                    :max_chars_per_file
+                ]
             except OSError:
                 content = ""
             fm.append({**match, "content": content, "snippets": []})

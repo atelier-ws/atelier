@@ -1,3 +1,0 @@
-instances_by_exit_status:
-    AuthenticationError:
-    - sqlfluff__sqlfluff-1625

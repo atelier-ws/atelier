@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+
+from atelier.infra.code_intel.git_history import embedder as history_embedder_module
 from atelier.infra.code_intel.git_history.embedder import (
     decode_embedding,
     embed_summary,
     embedding_dim,
 )
 from atelier.infra.code_intel.git_history.models import CommitSummary
+from atelier.infra.embeddings.factory import get_code_embedder, make_code_embedder
+from atelier.infra.embeddings.ollama_embedder import OllamaEmbedder
 
 
 def _make_summary(**kwargs) -> CommitSummary:  # type: ignore[no-untyped-def]
@@ -22,18 +27,25 @@ def _make_summary(**kwargs) -> CommitSummary:  # type: ignore[no-untyped-def]
     return CommitSummary(**{**defaults, **kwargs})
 
 
-def test_embed_returns_1536_bytes() -> None:
+@pytest.fixture(autouse=True)
+def _pin_local_code_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    monkeypatch.delenv("ATELIER_CODE_EMBED_MODEL", raising=False)
+    history_embedder_module._embedder = None
+    make_code_embedder.cache_clear()
+
+
+def test_embed_returns_bytes_for_current_code_embedder_dim() -> None:
     summary = _make_summary()
     blob = embed_summary(summary)
-    # 384 float32 values x 4 bytes each = 1536 bytes
-    assert len(blob) == 384 * 4
+    assert len(blob) == embedding_dim() * 4
 
 
 def test_decode_roundtrip() -> None:
     summary = _make_summary()
     blob = embed_summary(summary)
     decoded = decode_embedding(blob)
-    assert len(decoded) == 384
+    assert len(decoded) == embedding_dim()
     # Values should be reasonable floats
     assert all(isinstance(v, float) for v in decoded)
 
@@ -47,5 +59,11 @@ def test_embed_includes_files_in_text() -> None:
     assert blob1 != blob2
 
 
-def test_embedding_dim_constant() -> None:
-    assert embedding_dim() == 384
+def test_embedding_dim_matches_code_embedder() -> None:
+    assert embedding_dim() == get_code_embedder().dim
+
+
+def test_ollama_embedder_uses_env_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("ATELIER_OLLAMA_EMBED_TIMEOUT_SECONDS", "42")
+    embedder = OllamaEmbedder()
+    assert embedder._timeout_seconds == 42.0

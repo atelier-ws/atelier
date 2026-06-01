@@ -1,176 +1,72 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.5
-milestone_name: Quality & Benchmark Lift
+milestone: v0.6
+milestone_name: World-Class Atelier
 status: executing
-last_updated: "2026-05-29T22:13:17.531Z"
-last_activity: 2026-05-29
+last_updated: 2026-06-01T23:10:00Z
+last_activity: 2026-06-01
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 12
-  percent: 50
+  total_phases: 11
+  completed_phases: 8
+  blocked_phases: 1
+  pending_external_validation: 1
+  percent: 73
 ---
 
 # Project State
 
-**Project:** Atelier Public Benchmarks
-**Milestone:** v0.5 — Quality & Benchmark Lift
-**Updated:** 2026-05-29
-**Status:** Ready to execute
+**Project:** Atelier Public Benchmarks  
+**Milestone:** v0.6 - World-Class Atelier  
+**Updated:** 2026-06-01  
+**Status:** Executing
 
-## Current Phase
+## Current Focus
 
-**Current: Phase 25 — CLI Decomposition**
+**Current:** Phase 29 proof expansion
 
-Next action: `/gsd-execute-phase 25`
+The implementation work for the active benchmark surfaces is already landed. The remaining work is now concentrated in Phase 29 proof expansion plus the external artifact gate for Phase 36:
 
-Milestone v0.5 is defined from `docs/plans/quality-and-benchmark-lift/`. It focuses on coding-quality gates, silent exception burn-down, stdout/logging hygiene, CLI decomposition, expanded A/B suites, and reproducible public benchmark results.
+- **Phase 15**: real-history M4 proof landed at `docs/plans/world-class-atelier/results/m4-repo-history.json` with commit hit rate `1.0`, precision `0.53`, and recall `0.8833`.
+- **Phase 29**: benchmark/proof execution is running separately; wait for real routing + TerminalBench artifacts.
+- **Phase 34**: stays queued behind the proof artifacts above.
+- **Phase 36**: remains blocked until real Claude parallel-session/workflow artifacts exist.
 
-## Roadmap Progress
+## Milestone Snapshot
 
-### v0.1 (Complete)
+### Shipped milestone
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 1 | ✅ Complete | Bench-mode toggle (MODE-01–08) |
-| Phase 2 | ✅ Complete | TerminalBench adapter (TB-01–05) |
-| Phase 3 | ✅ Complete | A/B runner (AB-01–06) |
-| Phase 4 | ✅ Complete | Report generator (RPT-01–06) |
-| Phase 5 | ✅ Complete | Publication pipeline (PUB-01–05) |
-| Phase 6 | ✅ Complete | Long-session suite + CLI (LS-01–04, CLI-01–06) |
-| Phase 7 | ✅ Complete | PR-replay benchmarks (PR-01–06) |
+- **v0.5 - Quality & Benchmark Lift**: complete and archived to `.planning/milestones/v0.5-ROADMAP.md` and `.planning/milestones/v0.5-REQUIREMENTS.md`.
 
-### v0.2 (Context Lineage Complete; Remaining Scope Superseded)
+### Active milestone
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 8 | ✅ Complete | Context Lineage (LINEAGE-01–06, CQEVAL-01–02) |
-| Phase 9 | ↪ Superseded | Cache-Aware Routing moved to Phase 12 |
-| Phase 10 | ↪ Superseded | Counterexample Loop moved to Phase 14 |
-| Phase 11 | ↪ Superseded | Scoped Pull Context moved to Phase 15 |
+| Phase | Status | Notes |
+| --- | --- | --- |
+| 28 | Complete | World-class embedder landed |
+| 29 | External validation | Implementation landed; benchmark execution owned separately |
+| 30 | Complete | Reranker landed |
+| 31 | Complete | STEM landed |
+| 32 | Complete | Route+ landed |
+| 33 | Complete | Branch-aware indexing landed |
+| 34 | Not started | Wait for proof artifacts from Phase 29 |
+| 35 | Complete | Reliability hardening landed |
+| 36 | Blocked | Missing real Claude artifacts |
+| 37 | Complete | Dynamic workflows landed |
+| 38 | Complete | Auto-optimize + proof gate landed |
 
-### v0.3 (Context Quality Execution)
+## Carry-over Validation
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 12 | ✅ Complete | Cache-Aware Routing (CACHE-01–05, CQEVAL-03) |
-| Phase 13 | ✅ Complete | Phase-Linear Cache-Reuse Agent (LINEAR-01–05, TBEVAL-01) |
-| Phase 14 | ⏳ Not started | Counterexample Loop (COUNTER-01–05, CQEVAL-04) |
-| Phase 15 | ⏳ Not started | Scoped Pull Context + Proof Gate (SCOPED-01–06, CQEVAL-05, TBEVAL-02) |
+| Phase | Status | What remains |
+| --- | --- | --- |
+| 15 | Complete | `docs/plans/world-class-atelier/results/m4-repo-history.json` meets the real-history M4 target |
+| 29 | External validation | Real routing proof artifact, TerminalBench aggregate, public measured delta |
 
-### v0.4 (Ready)
+## Active Blockers
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 16 | ✅ Complete | Canonical Language Registry (DLS-LANG-01–04) |
-| Phase 17 | ✅ Complete | Tree-sitter Outline Coverage (DLS-OUTLINE-01–05) |
-| Phase 18 | ✅ Complete | Tree-sitter Repo-map Tags (DLS-TAGS-01–04) |
-| Phase 19 | ✅ Complete | Expanded SCIP Registry and Lazy Indexing (DLS-SCIP-01–04) |
-| Phase 20 | ✅ Complete | Runtime SCIP Indexer Provisioning (DLS-PROV-01–05) |
-| Phase 21 | ✅ Complete | Validation, Benchmarks, and Docs (DLS-VAL-01–04) |
+1. **Phase 29 proof artifacts**: configured-routing traces, priced wire-savings evidence, and broader TerminalBench/self-repo results are still outstanding.
+2. **Harvest artifacts**: Phase 36 cannot advance without real Claude parallel-session/workflow transcript artifacts.
 
-### v0.5 (Active)
+## Cleanup Notes
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 22 | ✅ Complete | Lint and Coverage Gates (QBL-GATE-01–05) |
-| Phase 23 | ✅ Complete | Silent Exception Audit (QBL-EXC-01–04) |
-| Phase 24 | ✅ Complete | Stdout to Logging (QBL-LOG-01–04) |
-| Phase 25 | ⏳ Not started | CLI Decomposition (QBL-CLI-01–04) |
-| Phase 26 | ⏳ Not started | A/B Suite Expansion (QBL-AB-01–04) |
-| Phase 27 | ⏳ Not started | Public Benchmark Results (QBL-RES-01–04) |
-
-### v0.6 (World-Class Atelier - Ready)
-
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 28 | ⏳ Not started | Neural Code Embeddings (WCA-EMB-01–06) |
-| Phase 29 | ⏳ Not started | Empirical Proof Program (WCA-PROOF-01–04) |
-| Phase 30 | ⏳ Not started | Cross-encoder Reranker (WCA-RERANK-01–03) |
-| Phase 31 | ⏳ Not started | Phase-aware Workflow (WCA-STEM-01–04) |
-| Phase 32 | ⏳ Not started | Calibrated & Enforcing Routing (WCA-ROUTE-01–02) |
-| Phase 33 | ⏳ Not started | Continuous Indexing (WCA-INDEX-01–03) |
-| Phase 34 | ⏳ Not started | Speculative Retrieval (WCA-SPEC-01–03) |
-
-### v0.6 Addendum (Operational Hardening)
-
-| Phase | Status | Goal |
-|-------|--------|------|
-| Phase 35 | 🔧 In progress | Background Reliability & Memory GC (REL-01–04; REL-01 ✅ reaper done + tested) |
-| Phase 36 | ⏳ Not started | Parallel-Session Harvest Coverage (HARV-01–04) |
-| Phase 37 | ⏳ Not started | Ship Atelier Dynamic Workflows (FLOW-01–04) |
-| Phase 38 | ⏳ Not started | Autonomous Optimization Agent (OPT-01–06; manual CLI + opt-in auto-run at install) |
-
-## Key Decisions Log
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Python version for benchmarks | Isolated 3.12 workspace (`benchmarks/pyproject.toml`) | TerminalBench requires ≥3.12; main project on 3.11 |
-| Token counting | API `usage` field only | tiktoken cl100k_base has 10-30% error on Claude |
-| CI method | Wilson score (inline math) | Normal approx invalid at N=5; scipy not available |
-| parse_stream_jsonl return keys | Mapped names (cost_usd, latency_ms) not raw JSON names | CRITICAL spec in prompt; run_terminalbench_trial uses same names |
-| AtelierClaudeAgent._env | Minimal dict only — NOT full os.environ | T-02-04 threat: prevents host dev contamination (ATELIER_DEV_MODE excluded) |
-| Judge model for PR-replay | Non-Claude (GPT-4o or Gemini) | Avoid self-judging bias |
-| State leakage prevention | Separate `ATELIER_ROOT` per arm | Shared filesystem state contaminates off-arm |
-| Phase-linear cache reuse | Survey→Plan continuity + minified reads | Reduce cost/latency without model downgrade |
-| v0.3 autonomy | Execute end-to-end without approval gates unless blocked by conflicting user changes | User requested autonomous execution and local proof benchmarks |
-| Canonical language names | Use tree-sitter parser names as the shared key set across code-intel surfaces | Fixes shell/bash drift and prevents future spelling mismatches |
-| SCIP provisioning tiers | Install cheap Python/TypeScript indexers, lazy-fetch medium indexers, detect/document heavy toolchain indexers | Semantic intel should work out of the box where practical without forcing large toolchains |
-| Quality lift starts with gates before burn-down | Enable BLE001/T20 with per-file ignores first so new debt fails while existing debt is fixed phase-by-phase | Prevents backsliding while keeping the milestone reviewable |
-| Public benchmark claims must be regression-gated | README savings claims need runnable A/B suites and CI thresholds before they are credible | Makes public claims reproducible and auditable |
-| Neural Code Embeddings (v0.6) | Use `nomic-embed-text/code` via Ollama/local-HF instead of feature hashing | Hashing is lexical-only; neural embeddings are required for true semantic recall |
-| Phase-aware "Stem" workflows (v0.6) | Reuse prompt cache across explore→plan→execute in a single conversation | Cache reuse across phases is the primary token-efficiency lever (Eval-style) |
-| Background job-queue reaper (REL-01, DONE) | `claim_job` reclaims orphaned `running` jobs past a lease TTL; dead-letter on max attempts | A crashed/interrupted controller left a consolidate job stuck `running` 4 days, jamming all lesson consolidation; no reaper/lease existed |
-| Memory GC scope (REL-02/03) | Auto-quarantine failing blocks + extend stale sweep to active blocks; fix dead `since` param | Nothing GCs old/irrelevant ReasonBlocks today — only 7-day retrieval decay demotes them; the store grows unbounded |
-| Quality non-inferiority gate (NI-01/02) | A/B report proves "tokens saved X% AND pass-rate Δ CI lower bound ≥ −ε" as a single PASS/FAIL verdict | GitHub's published savings loop never proved quality held; Atelier's A/B already has per-arm Wilson CI — add the difference-of-proportions CI to make non-degradation a formal claim |
-| Autonomous optimization agent (Phase 38) | Scheduled `JOB_OPTIMIZE` + `atelier optimize run` CLI; PR opened only when the NI gate passes; auto-run is opt-in at install (default OFF) | GitHub runs autonomous optimizer agents; Atelier has the optimizer + PR bot but only as manual CLI, nothing scheduled — wire the loop, gated on quality |
-
-## Watch Points
-
-- **`benchmarks/benchmarking.py`** — hardcoded fiction constants; DO NOT USE for published numbers
-- **`ATELIER_DEV_MODE`** — ensure it cannot re-enable features in off-arm
-- **Docusaurus `blog: false`** in `docs-site/docusaurus.config.ts` — must fix in Phase 5
-- **Module-level singletons** in `mcp_server.py` (`_current_ledger`, `_realtime_ctx`) — subprocess isolation required
-- **Uncommitted implementation changes** — source files already have modifications; inspect before editing and avoid overwriting user work
-- **TerminalBench target** — v0.3 final proof should target ≥90% pass rate while cheaper and faster; if local proof fails, loop back into implementation
-- **Language registry drift** — do not add new extension maps, parser-key maps, or SCIP language maps outside the canonical registry
-- **SCIP binary installation size** — keep heavy toolchains opt-in/detected; avoid silently installing Rust/Java/C++ ecosystems
-
-## Open Questions
-
-- [ ] Which 10 specific TerminalBench task IDs to pin in `tasks.yaml` (review tbench.ai/tasks for <30min tasks)
-- [ ] Non-Claude judge model choice: GPT-4o vs Gemini 1.5 Pro (Phase 7)
-- [ ] Confirm exact tree-sitter-language-pack parser names for `yaml`, `toml`, `json`, `sql`, and C# canonical spelling during Phase 16/17 implementation
-- [ ] Confirm checksum source and allowlist format for Tier-2 SCIP lazy downloads during Phase 20 implementation
-
-## Planning Artifacts
-
-| File | Purpose |
-|------|---------|
-| `.planning/PROJECT.md` | Requirements, decisions, constraints |
-| `.planning/REQUIREMENTS.md` | Cumulative requirements; v0.4 DLS requirements active |
-| `.planning/ROADMAP.md` | 21-phase cumulative execution plan; v0.4 phases 16–21 active |
-| `.planning/config.json` | YOLO mode, quality model, all agents on |
-| `docs/plans/dedicated-language-support/` | Source design plan for v0.4 |
-| `docs/plans/quality-and-benchmark-lift/` | Source design plan for v0.5 |
-| `.planning/research/SUMMARY.md` | Synthesized research findings |
-| `.planning/research/STACK.md` | Stack research (TerminalBench, claude -p schema) |
-| `.planning/research/FEATURES.md` | Feature research (PR-replay, long-session) |
-| `.planning/research/ARCHITECTURE.md` | Architecture patterns, resumability |
-| `.planning/research/PITFALLS.md` | 18 pitfalls with severity tiers |
-| `.planning/codebase/` | 7 codebase analysis documents |
-
-## Current Position
-
-Phase: 25 (cli-decomposition) — EXECUTING
-Plan: 4 of 7 (25-01 complete)
-Previous milestone: v0.4 (Dedicated Language Support) — COMPLETE
-Plans: 23-01..03, 24-01..03 complete; 25-01 complete (help-tree guard + commands substrate, commit 5bbcec0); 25-02..07 planned (sequential waves 2–7)
-Status: Ready to execute
-Last activity: 2026-05-29
-
-### Blockers
-
-- 25-03 baseline blocked: working-tree app.py has unstaged broken WIP (orphaned ')' ~line 1378 from a botched 413-line deletion of unrelated search/context/rescue/route/proof commands). 'uv run atelier --help' fails with SyntaxError before any 25-03 edits. Per baseline_blocker_handling + 'do not reconstruct' constraint, execution halted. Daemon/systemd WIP block IS findable.
+- Do not reopen Phase 15 unless the recorded M4 proof regresses.
+- `v0.5` planning detail is archived; keep new planning focused on `v0.6` and later.
+- Start the next milestone only after `v0.6` proof closure or an explicit supersession decision.

@@ -149,6 +149,22 @@ def test_route_decision_sink_called_for_cache_aware_recommend() -> None:
     assert events[0]["baseline_tier"] == "expensive"
 
 
+def test_trace_calibrated_quality_gain_uses_outcome_delta() -> None:
+    rec = ModelRouter().recommend(
+        "Agent",
+        "design an end-to-end migration plan",
+        {"prior_errors": 3, "route_outcome_score_delta": 0.5, "expected_input_tokens": 200_000},
+        prior_plan=_plan("a", 200_000),
+        current_plan=_plan("b", 100_000),
+        prior_route=_prior_route(),
+        pricing=_pricing(cache_write=0.5),
+    )
+
+    assert rec is not None
+    assert rec.decision == "quality_gain"
+    assert rec.quality_gain_usd_estimated == 0.2
+
+
 def test_route_decision_sink_failure_is_swallowed() -> None:
     def fail(_: dict[str, object]) -> None:
         raise RuntimeError("sink down")

@@ -11,7 +11,7 @@ Usage::
     uv run python benchmarks/swe/atelier_proxy.py \\
         --upstream http://localhost:11434/v1 \\
         --port 11435 \\
-        --log benchmarks/swe/outputs/proxy_savings.jsonl
+        --log ../benchmarks/atelier/swe/proxy_savings.jsonl
 
 The proxy reports cumulative savings on shutdown (CTRL+C).
 """

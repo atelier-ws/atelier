@@ -19,12 +19,20 @@ from atelier.infra.code_intel.scip.external_artifacts import (
     classify_scip_artifact,
     discover_external_scip_artifacts,
 )
+from atelier.infra.code_intel.scip.watcher import resolve_git_repo_state
+
+
+def scip_cache_base_root(repo_root: Path, repo_id: str) -> Path:
+    """Return the repo-local base cache directory used for synthetic SCIP artifacts."""
+
+    return repo_root / ".atelier" / "cache" / "scip" / repo_id
 
 
 def default_scip_cache_root(repo_root: Path, repo_id: str) -> Path:
-    """Return the repo-local cache directory used for synthetic SCIP artifacts."""
+    """Return the active branch-specific cache directory for synthetic SCIP artifacts."""
 
-    return repo_root / ".atelier" / "cache" / "scip" / repo_id
+    branch_key = resolve_git_repo_state(repo_root).branch_key
+    return scip_cache_base_root(repo_root, repo_id) / branch_key
 
 
 ScipIndexStatus = Literal[
@@ -58,7 +66,17 @@ class ScipIndexer:
     def __init__(self, repo_root: Path, repo_id: str, *, cache_root: Path | None = None) -> None:
         self.repo_root = repo_root.resolve()
         self.repo_id = repo_id
-        self.cache_root = (cache_root or default_scip_cache_root(self.repo_root, repo_id)).resolve()
+        self._cache_root_override = cache_root.resolve() if cache_root is not None else None
+
+    @property
+    def base_cache_root(self) -> Path:
+        return scip_cache_base_root(self.repo_root, self.repo_id).resolve()
+
+    @property
+    def cache_root(self) -> Path:
+        if self._cache_root_override is not None:
+            return self._cache_root_override
+        return default_scip_cache_root(self.repo_root, self.repo_id).resolve()
 
     def discover_artifacts(self) -> list[DiscoveredScipArtifact]:
         """Return existing `.scip` artifacts under the allowed repo-local cache roots."""
@@ -97,17 +115,25 @@ class ScipIndexer:
 
         spec = scip_binary_spec(language)
         if spec is None:
-            return ScipIndexResult(language=language, status="unsupported", message="unsupported language")
+            return ScipIndexResult(
+                language=language, status="unsupported", message="unsupported language"
+            )
         bootstrap = ensure_scip_binary(language)
         if bootstrap.binary is None:
             if bootstrap.status == "bootstrap_unavailable":
-                return ScipIndexResult(language=language, status="bootstrap_unavailable", message=bootstrap.message)
+                return ScipIndexResult(
+                    language=language, status="bootstrap_unavailable", message=bootstrap.message
+                )
             if bootstrap.status == "user_toolchain_required":
                 return ScipIndexResult(
-                    language=language, status="user_toolchain_required", message=bootstrap.install_hint
+                    language=language,
+                    status="user_toolchain_required",
+                    message=bootstrap.install_hint,
                 )
             return ScipIndexResult(
-                language=language, status="missing_binary", message=bootstrap.message or "SCIP binary not found"
+                language=language,
+                status="missing_binary",
+                message=bootstrap.message or "SCIP binary not found",
             )
         binary = bootstrap.binary
         missing_context = spec.missing_context_files(self.repo_root)
@@ -133,7 +159,9 @@ class ScipIndexer:
                 timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired:
-            return ScipIndexResult(language=language, status="timeout", command=command, message="indexer timed out")
+            return ScipIndexResult(
+                language=language, status="timeout", command=command, message="indexer timed out"
+            )
 
         if completed.returncode != 0:
             return ScipIndexResult(
@@ -166,4 +194,10 @@ class ScipIndexer:
         )
 
 
-__all__ = ["ScipIndexResult", "ScipIndexStatus", "ScipIndexer", "default_scip_cache_root"]
+__all__ = [
+    "ScipIndexResult",
+    "ScipIndexStatus",
+    "ScipIndexer",
+    "default_scip_cache_root",
+    "scip_cache_base_root",
+]

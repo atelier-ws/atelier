@@ -24,7 +24,12 @@ import Overview from "./pages/Overview";
 import Sessions from "./pages/Sessions";
 import Learnings from "./pages/Learnings";
 import Savings from "./pages/Savings";
-import System, { SystemAgents, SystemHosts, SystemMcp, SystemSkills } from "./pages/System";
+import System, {
+  SystemAgents,
+  SystemHosts,
+  SystemMcp,
+  SystemSkills,
+} from "./pages/System";
 import Telemetry from "./pages/Telemetry";
 import Memory from "./pages/Memory";
 import Reports from "./pages/Reports";
@@ -77,7 +82,7 @@ const MENU_SECTIONS: MenuSection[] = [
 
 function TelemetryDisclosure() {
   const [config, setConfig] = useState<TelemetryConfig | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
     getTelemetryConfig()
@@ -177,7 +182,7 @@ function GearMenu({ devMode }: { devMode?: boolean }) {
                 )}
               </NavLink>
             );
-            })}
+          })}
         </div>
       )}
     </div>
@@ -332,10 +337,16 @@ export default function App() {
               }
             />
             <Route path="/savings" element={<Savings />} />
-            <Route path="/insights" element={<Navigate to="/overview" replace />} />
+            <Route
+              path="/insights"
+              element={<Navigate to="/overview" replace />}
+            />
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/memory" element={<Memory />} />
-            <Route path="/outcomes" element={<Navigate to="/overview" replace />} />
+            <Route
+              path="/outcomes"
+              element={<Navigate to="/overview" replace />}
+            />
             <Route path="/reports" element={<Reports />} />
             <Route path="/system" element={<System />} />
             <Route path="/system/hosts" element={<SystemHosts />} />
@@ -353,7 +364,10 @@ export default function App() {
               }
             />
             <Route path="/analytics" element={<Analytics />} />
-            <Route path="/external" element={<Navigate to="/overview" replace />} />
+            <Route
+              path="/external"
+              element={<Navigate to="/overview" replace />}
+            />
             <Route path="/optimizations" element={<Optimizations />} />
             <Route path="/swarm" element={<Swarm />} />
           </Routes>
