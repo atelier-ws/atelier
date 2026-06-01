@@ -23,6 +23,85 @@ from atelier.core.capabilities.swarm import (
 )
 from atelier.gateway.cli.commands._shared import _emit
 
+DEFAULT_RUNNER_PROMPT = (
+    "Read the task spec at {spec}. Work directly in the current repository, "
+    "make only the requested changes, do not commit, and print a concise "
+    "summary of what you changed or why you left it unchanged."
+)
+
+RUNNER_CHOICES = click.Choice(
+    ["claude", "codex", "copilot", "opencode", "ollama-claude"],
+    case_sensitive=False,
+)
+
+
+def _resolve_child_command(
+    *,
+    runner: str | None,
+    runner_model: str | None,
+    runner_args: tuple[str, ...],
+    child_command: tuple[str, ...],
+) -> list[str]:
+    if runner and child_command:
+        raise click.ClickException("choose either --runner or a raw child command after '--', not both")
+    if child_command:
+        return list(child_command)
+    if not runner:
+        raise click.ClickException("pass a raw child command after '--' or select a built-in --runner")
+
+    profile = runner.lower()
+    if profile == "claude":
+        command = ["claude"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(["--dangerously-skip-permissions", *runner_args, "-p", DEFAULT_RUNNER_PROMPT])
+        return command
+    if profile == "codex":
+        command = ["codex", "exec"]
+        if runner_model:
+            command.extend(["-m", runner_model])
+        command.extend(
+            [
+                "--dangerously-bypass-approvals-and-sandbox",
+                *runner_args,
+                DEFAULT_RUNNER_PROMPT,
+            ]
+        )
+        return command
+    if profile == "copilot":
+        command = ["copilot"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(["--allow-all", *runner_args, "-p", DEFAULT_RUNNER_PROMPT])
+        return command
+    if profile == "opencode":
+        command = ["opencode", "run"]
+        if runner_model:
+            command.extend(["-m", runner_model])
+        command.extend(
+            [
+                "--dangerously-skip-permissions",
+                *runner_args,
+                DEFAULT_RUNNER_PROMPT,
+            ]
+        )
+        return command
+    if profile == "ollama-claude":
+        command = ["ollama", "launch", "claude"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(
+            [
+                "--",
+                "-p",
+                DEFAULT_RUNNER_PROMPT,
+                "--dangerously-skip-permissions",
+                *runner_args,
+            ]
+        )
+        return command
+    raise click.ClickException(f"unsupported runner profile: {runner}")
+
 
 @click.group("swarm")
 def swarm_group() -> None:
@@ -74,6 +153,21 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
     help="Keep launching new waves until a wave produces no accepted improvements or the swarm is explicitly stopped.",
 )
 @click.option(
+    "--runner",
+    type=RUNNER_CHOICES,
+    help="Built-in child runner profile instead of passing a raw command after '--'.",
+)
+@click.option(
+    "--runner-model",
+    help="Model name for the selected runner profile (for example claude-opus-4-8 or qwen3.6).",
+)
+@click.option(
+    "--runner-arg",
+    "runner_args",
+    multiple=True,
+    help="Extra argument to append to the selected runner profile.",
+)
+@click.option(
     "--cleanup/--keep-worktrees",
     default=False,
     show_default=True,
@@ -89,27 +183,35 @@ def swarm_start(
     validation_commands: tuple[str, ...],
     detach: bool,
     continuous: bool,
+    runner: str | None,
+    runner_model: str | None,
+    runner_args: tuple[str, ...],
     cleanup: bool,
     as_json: bool,
     child_command: tuple[str, ...],
 ) -> None:
     """Create isolated git worktrees and launch one child wrapper per attempt.
 
-    Pass the child agent command after ``--``. The command receives a per-child
+    Pass a raw child agent command after ``--`` or choose a built-in
+    ``--runner`` profile. The child command receives a per-child
     ``ATELIER_ROOT``, workspace root, and ``ATELIER_SWARM_SPEC_PATH``.
     """
 
     if runs < 1:
         raise click.ClickException("--runs must be >= 1")
-    if not child_command:
-        raise click.ClickException("pass the child agent command after '--'")
     repo_root = discover_repo_root(Path.cwd())
     root = Path(ctx.obj["root"])
+    resolved_child_command = _resolve_child_command(
+        runner=runner,
+        runner_model=runner_model,
+        runner_args=runner_args,
+        child_command=child_command,
+    )
     state, state_path = initialize_swarm_run(
         root=root,
         repo_root=repo_root,
         spec_path=spec_path,
-        child_command=list(child_command),
+        child_command=resolved_child_command,
         runs=runs,
         validation_commands=list(validation_commands),
         keep_worktrees=not cleanup,
