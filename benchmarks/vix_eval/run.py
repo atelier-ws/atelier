@@ -123,9 +123,7 @@ def prepare_workspace(task: Task) -> Path:
         url, commit = task.source[1], task.source[2]
         subprocess.run(["git", "clone", "--quiet", url, str(ws)], check=True, timeout=900)
         if commit:
-            subprocess.run(
-                ["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120
-            )
+            subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120)
     else:
         raise ValueError(f"unknown source kind {kind}")
     return ws
@@ -155,9 +153,7 @@ def _parse_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -
     try:
         d = json.loads(stdout)
     except json.JSONDecodeError:
-        return ArmResult(
-            task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path)
-        )
+        return ArmResult(task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path))
     u = d.get("usage", {}) or {}
     return ArmResult(
         task=task,
@@ -212,9 +208,7 @@ def run_arm(task: Task, arm: str, rep: int, model: str, out_dir: Path, timeout: 
         if arm == "atelier":
             cmd += ["--mcp-config", json.dumps(ATELIER_MCP)]
             (ws / "CLAUDE.md").write_text(ATELIER_CLAUDE_MD)
-            env["CLAUDE_CONFIG_DIR"] = str(
-                _make_baseline_config()
-            )  # clean base + atelier mcp via flag
+            env["CLAUDE_CONFIG_DIR"] = str(_make_baseline_config())  # clean base + atelier mcp via flag
         else:
             cmd += ["--mcp-config", json.dumps(EMPTY_MCP)]
             env["CLAUDE_CONFIG_DIR"] = str(_make_baseline_config())
@@ -262,18 +256,14 @@ def report(results: list[ArmResult]) -> str:
         d = (a - b) / b * 100 if b else 0.0
         bs = f"{b:,.4f}" if isinstance(b, float) else f"{b:,}"
         as_ = f"{a:,.4f}" if isinstance(a, float) else f"{a:,}"
-        return (
-            f"{label:<16}{bs:>14}{as_:>14}{d:>+11.1f}%" if pct else f"{label:<16}{bs:>14}{as_:>14}"
-        )
+        return f"{label:<16}{bs:>14}{as_:>14}{d:>+11.1f}%" if pct else f"{label:<16}{bs:>14}{as_:>14}"
 
     lines.append(row("cost_usd", base["cost_usd"], atel["cost_usd"]))
     lines.append(row("duration_ms", float(base["duration_ms"]), float(atel["duration_ms"])))
     lines.append(row("input_tokens", float(base["input_tokens"]), float(atel["input_tokens"])))
     lines.append(row("output_tokens", float(base["output_tokens"]), float(atel["output_tokens"])))
     cost_save = (1 - atel["cost_usd"] / base["cost_usd"]) * 100 if base["cost_usd"] else 0.0
-    time_save = (
-        (1 - atel["duration_ms"] / base["duration_ms"]) * 100 if base["duration_ms"] else 0.0
-    )
+    time_save = (1 - atel["duration_ms"] / base["duration_ms"]) * 100 if base["duration_ms"] else 0.0
     lines += [
         "",
         f"Cost saving : {cost_save:+.1f}%  (Vix target ~47-50%)",
@@ -302,9 +292,7 @@ def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
                 "duration_api_ms": sum(result.duration_api_ms for result in arm_results),
                 "input_tokens": sum(result.input_tokens for result in arm_results),
                 "cache_read_tokens": sum(result.cache_read_tokens for result in arm_results),
-                "cache_creation_tokens": sum(
-                    result.cache_creation_tokens for result in arm_results
-                ),
+                "cache_creation_tokens": sum(result.cache_creation_tokens for result in arm_results),
                 "output_tokens": sum(result.output_tokens for result in arm_results),
             }
         )
@@ -317,6 +305,19 @@ def _write_csv(path: Path, rows: list[dict[str, object]], fieldnames: list[str])
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _result_key(result: ArmResult) -> tuple[str, str, int]:
+    return (result.task, result.arm, result.rep)
+
+
+def _load_existing_results(run_dir: Path) -> list[ArmResult]:
+    results_path = run_dir / "results.jsonl"
+    if not results_path.exists():
+        return []
+    return [
+        ArmResult(**json.loads(line)) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
@@ -369,16 +370,13 @@ def main() -> int:
     p.add_argument("--model", default="sonnet")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--out", type=Path, default=None, help="directory for run artifacts")
+    p.add_argument("--resume", action="store_true", help="append to existing out dir and skip done runs")
     p.add_argument("--report", default=None, help="path to a results dir to re-report")
     args = p.parse_args()
 
     if args.report:
         rdir = Path(args.report)
-        report_results = [
-            ArmResult(**json.loads(line))
-            for line in (rdir / "results.jsonl").read_text().splitlines()
-            if line.strip()
-        ]
+        report_results = _load_existing_results(rdir)
         write_csv_artifacts(rdir, report_results)
         print(report(report_results))
         return 0
@@ -386,12 +384,18 @@ def main() -> int:
     task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
     run_dir = args.out if args.out is not None else RESULTS_ROOT / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
-    results: list[ArmResult] = []
-    jl = (run_dir / "results.jsonl").open("w")
+    results = _load_existing_results(run_dir) if args.resume else []
+    completed = {_result_key(result) for result in results}
+    jl_mode = "a" if args.resume else "w"
+    jl = (run_dir / "results.jsonl").open(jl_mode, encoding="utf-8")
     for tid in task_ids:
         task = BY_ID[tid]
         for rep in range(args.reps):
             for arm in args.arms:
+                key = (tid, arm, rep)
+                if key in completed:
+                    print(f"[skip] {tid} {arm} rep{rep} already recorded", flush=True)
+                    continue
                 print(f"[run] {tid} {arm} rep{rep} (model={args.model}) ...", flush=True)
                 t0 = time.time()
                 try:
@@ -421,6 +425,7 @@ def main() -> int:
                     flush=True,
                 )
                 results.append(res)
+                completed.add(_result_key(res))
                 jl.write(json.dumps(asdict(res)) + "\n")
                 jl.flush()
     jl.close()

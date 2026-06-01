@@ -11,11 +11,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
 DEFAULT_CASE_QUOTAS: dict[str, int] = {
-    "exact_symbol": 300,
-    "exact_search": 300,
-    "substring_search": 200,
-    "file_outline": 150,
-    "nohit_search": 50,
+    "exact_symbol": 100,
+    "exact_search": 100,
+    "substring_search": 100,
+    "file_outline": 100,
+    "nohit_search": 100,
 }
 
 
@@ -79,10 +79,7 @@ class _SymbolCollector(ast.NodeVisitor):
 
 def _repo_python_files(repo_root: Path) -> list[Path]:
     src_root = repo_root / "src" / "atelier"
-    if src_root.exists():
-        roots = [src_root]
-    else:
-        roots = [repo_root]
+    roots = [src_root] if src_root.exists() else [repo_root]
     files: list[Path] = []
     for root in roots:
         files.extend(sorted(path for path in root.rglob("*.py") if path.is_file()))
@@ -169,8 +166,7 @@ def generate_case_manifest(
             continue
         if required.get(family, quota) < quota:
             raise ValueError(
-                f"not enough repository facts to satisfy {family}: "
-                f"need {quota}, have {required.get(family, 0)}"
+                f"not enough repository facts to satisfy {family}: " f"need {quota}, have {required.get(family, 0)}"
             )
 
     cases: list[ExternalBenchCase] = []
@@ -189,7 +185,7 @@ def generate_case_manifest(
             )
         )
 
-    exact_search_offset = len(cases)
+    len(cases)
     for index, symbol in enumerate(unique_symbols[: case_quotas["exact_search"]], start=1):
         cases.append(
             ExternalBenchCase(
