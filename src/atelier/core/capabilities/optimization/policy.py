@@ -88,6 +88,49 @@ class Policy:
         }
 
 
+@dataclass(frozen=True)
+class BenchmarkEvidence:
+    runs_path: str | None = None
+    baseline_cost_usd: float | None = None
+    candidate_cost_usd: float | None = None
+    margin: float = 0.05
+    confidence: float = 0.95
+
+    def configured(self) -> bool:
+        return (
+            bool(self.runs_path)
+            and self.baseline_cost_usd is not None
+            and self.candidate_cost_usd is not None
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runs_path": self.runs_path,
+            "baseline_cost_usd": self.baseline_cost_usd,
+            "candidate_cost_usd": self.candidate_cost_usd,
+            "margin": self.margin,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
+class AutomationConfig:
+    enabled: bool = False
+    minimum_projected_tokens_saved: int = 1000
+    benchmark_evidence: BenchmarkEvidence = BenchmarkEvidence()
+    last_proposal_fingerprint: str | None = None
+    last_proposal_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "minimum_projected_tokens_saved": self.minimum_projected_tokens_saved,
+            "benchmark_evidence": self.benchmark_evidence.to_dict(),
+            "last_proposal_fingerprint": self.last_proposal_fingerprint,
+            "last_proposal_at": self.last_proposal_at,
+        }
+
+
 def _base_compaction(
     *,
     prompt_cache_reorder: bool = True,
@@ -196,6 +239,13 @@ def load_optimization_config(root: Path) -> dict[str, Any]:
     return cast(dict[str, Any], loaded)
 
 
+def _write_optimization_config(root: Path, config: dict[str, Any]) -> Path:
+    path = optimization_config_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return path
+
+
 def _tier(value: object, fallback: ModelTier) -> ModelTier:
     if value in {"cheap", "medium", "expensive"}:
         return cast(ModelTier, value)
@@ -223,25 +273,39 @@ def _float(value: object, fallback: float) -> float:
     return fallback
 
 
+def _optional_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float | str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _string_list(value: object, fallback: tuple[str, ...] | list[str]) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return list(value)
     return list(fallback)
 
 
+def _mapping(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def policy_from_config(data: dict[str, Any]) -> Policy:
-    optimization = data.get("optimization")
-    optimization_map = optimization if isinstance(optimization, dict) else {}
+    optimization_map = _mapping(data.get("optimization"))
     preset_value = str(optimization_map.get("preset", data.get("preset", "balanced")))
     try:
         base = preset_policy(preset_value)
     except ValueError:
         base = identify_policy(preset_policy("balanced"), name="Custom", preset="custom")
 
-    routing_data = data.get("routing")
-    routing_map = routing_data if isinstance(routing_data, dict) else {}
-    compaction_data = data.get("compaction")
-    compaction_map = compaction_data if isinstance(compaction_data, dict) else {}
+    routing_map = _mapping(data.get("routing"))
+    compaction_map = _mapping(data.get("compaction"))
 
     routing = RoutingPolicy(
         policy=str(routing_map.get("policy", base.routing.policy)),
@@ -284,25 +348,63 @@ def load_current_policy(root: Path) -> Policy:
 
 def save_policy(root: Path, policy: Policy) -> Path:
     config = load_optimization_config(root)
-    optimization = config.get("optimization")
-    optimization_map = dict(optimization) if isinstance(optimization, dict) else {}
-    shadow_consent_at = optimization_map.get("shadow_consent_at")
-    data: dict[str, Any] = {
-        "optimization": {
+    optimization_map = _mapping(config.get("optimization"))
+    optimization_map.update(
+        {
             "name": policy.name,
             "preset": policy.preset,
             "quality_floor": policy.quality_floor,
             "confidence_required": policy.confidence_required,
-        },
-        "routing": policy.routing.to_dict(),
-        "compaction": policy.compaction.to_dict(),
-    }
-    if isinstance(shadow_consent_at, str):
-        data["optimization"]["shadow_consent_at"] = shadow_consent_at
-    path = optimization_config_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return path
+        }
+    )
+    config["optimization"] = optimization_map
+    config["routing"] = policy.routing.to_dict()
+    config["compaction"] = policy.compaction.to_dict()
+    return _write_optimization_config(root, config)
+
+
+def automation_from_config(data: dict[str, Any]) -> AutomationConfig:
+    optimization_map = _mapping(data.get("optimization"))
+    automation_map = _mapping(optimization_map.get("automation"))
+    evidence_map = _mapping(automation_map.get("benchmark_evidence"))
+    threshold = int(
+        _float(
+            automation_map.get("minimum_projected_tokens_saved"),
+            1000.0,
+        )
+    )
+    return AutomationConfig(
+        enabled=_bool(automation_map.get("enabled"), False),
+        minimum_projected_tokens_saved=max(0, threshold),
+        benchmark_evidence=BenchmarkEvidence(
+            runs_path=str(evidence_map.get("runs_path")).strip() or None,
+            baseline_cost_usd=_optional_float(evidence_map.get("baseline_cost_usd")),
+            candidate_cost_usd=_optional_float(evidence_map.get("candidate_cost_usd")),
+            margin=max(0.0, _float(evidence_map.get("margin"), 0.05)),
+            confidence=_float(evidence_map.get("confidence"), 0.95),
+        ),
+        last_proposal_fingerprint=(
+            str(automation_map.get("last_proposal_fingerprint")).strip() or None
+        ),
+        last_proposal_at=str(automation_map.get("last_proposal_at")).strip() or None,
+    )
+
+
+def load_automation_config(root: Path) -> AutomationConfig:
+    config = load_optimization_config(root)
+    if not config:
+        return AutomationConfig()
+    return automation_from_config(config)
+
+
+def save_automation_config(root: Path, automation: AutomationConfig) -> Path:
+    config = load_optimization_config(root)
+    optimization_map = _mapping(config.get("optimization"))
+    automation_map = _mapping(optimization_map.get("automation"))
+    automation_map.update(automation.to_dict())
+    optimization_map["automation"] = automation_map
+    config["optimization"] = optimization_map
+    return _write_optimization_config(root, config)
 
 
 def shadow_consent_at(root: Path) -> str | None:
@@ -315,24 +417,20 @@ def shadow_consent_at(root: Path) -> str | None:
 
 def record_shadow_consent(root: Path, when: datetime | None = None) -> str:
     config = load_optimization_config(root)
-    optimization = config.get("optimization")
-    optimization_map = dict(optimization) if isinstance(optimization, dict) else {}
+    optimization_map = _mapping(config.get("optimization"))
     accepted_at = (when or datetime.now(UTC)).isoformat()
     optimization_map["shadow_consent_at"] = accepted_at
     config["optimization"] = optimization_map
-    path = optimization_config_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    _write_optimization_config(root, config)
     return accepted_at
 
 
 def forget_shadow_consent(root: Path) -> bool:
     config = load_optimization_config(root)
-    optimization = config.get("optimization")
-    if not isinstance(optimization, dict) or "shadow_consent_at" not in optimization:
+    optimization_map = _mapping(config.get("optimization"))
+    if "shadow_consent_at" not in optimization_map:
         return False
-    optimization_map = dict(optimization)
     del optimization_map["shadow_consent_at"]
     config["optimization"] = optimization_map
-    optimization_config_path(root).write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    _write_optimization_config(root, config)
     return True

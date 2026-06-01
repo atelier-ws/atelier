@@ -2,7 +2,7 @@
 
 Uses the internal_llm.chat() abstraction so Ollama and OpenAI backends
 both work without change. Model is configurable via ATELIER_LINEAGE_MODEL
-env var; defaults to "claude-haiku-4-5".
+env var; otherwise it falls back to the active backend's default model.
 """
 
 from __future__ import annotations
@@ -33,8 +33,22 @@ class SummarizerError(Exception):
     """Raised when the LLM call fails or returns an unusable response."""
 
 
+def _backend_default_model() -> str:
+    backend = os.environ.get("ATELIER_LLM_BACKEND", "none").lower().strip()
+    if backend == "ollama":
+        return os.environ.get("ATELIER_OLLAMA_MODEL", "").strip() or "qwen3.6:27b"
+    if backend in {"openai", "openai_compatible"}:
+        return os.environ.get("ATELIER_OPENAI_MODEL", "").strip() or "gpt-4o-mini"
+    if backend == "litellm":
+        return os.environ.get("ATELIER_LITELLM_MODEL", "").strip() or "gpt-4o-mini"
+    return _DEFAULT_MODEL
+
+
 def _resolve_model() -> str:
-    return os.environ.get(_ENV_MODEL_KEY, _DEFAULT_MODEL).strip() or _DEFAULT_MODEL
+    configured = os.environ.get(_ENV_MODEL_KEY, "").strip()
+    if configured:
+        return configured
+    return _backend_default_model()
 
 
 def summarize_commit(
@@ -50,7 +64,7 @@ def summarize_commit(
         diff_text: Raw unified diff text. Truncated to ~8000 chars before
             sending to the model. Pass "" when diff is unavailable.
         model: Override model name. Defaults to ATELIER_LINEAGE_MODEL env var
-            or "claude-haiku-4-5".
+            or the active backend's default model.
 
     Returns:
         CommitSummary with prompt_version="v1".

@@ -104,11 +104,15 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
                 click.echo(f"{k}: {v}")
 
 
-def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:
+def _legacy_optimize_report(
+    ctx: click.Context, host: str | None, days: int, limit: int
+) -> dict[str, Any]:
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
     store = _load_store(ctx.obj["root"])
-    return build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
+    return build_trace_optimization_report(
+        store.list_traces(limit=5000), days=days, host=host, limit=limit
+    )
 
 
 def _run_external_optimize(ctx: click.Context, days: int) -> dict[str, Any] | None:
@@ -136,7 +140,35 @@ def _advisor_result(ctx: click.Context, host: str | None, days: int) -> Any:
 
     store = _load_store(ctx.obj["root"])
     current_policy = load_current_policy(ctx.obj["root"])
-    return optimize_from_traces(store.list_traces(limit=5000), current_policy=current_policy, days=days, host=host)
+    return optimize_from_traces(
+        store.list_traces(limit=5000), current_policy=current_policy, days=days, host=host
+    )
+
+
+def _benchmark_evidence_from_options(
+    *,
+    runs_path: Path | None,
+    baseline_cost_usd: float | None,
+    candidate_cost_usd: float | None,
+    margin: float,
+    confidence: float,
+) -> Any:
+    from atelier.core.capabilities.optimization import BenchmarkEvidence
+
+    provided = [runs_path is not None, baseline_cost_usd is not None, candidate_cost_usd is not None]
+    if not any(provided):
+        return None
+    if not all(provided):
+        raise click.ClickException(
+            "--runs, --baseline-cost-usd, and --candidate-cost-usd must be provided together"
+        )
+    return BenchmarkEvidence(
+        runs_path=str(runs_path),
+        baseline_cost_usd=baseline_cost_usd,
+        candidate_cost_usd=candidate_cost_usd,
+        margin=margin,
+        confidence=confidence,
+    )
 
 
 @click.group("optimize", invoke_without_command=True)
@@ -149,7 +181,9 @@ def _advisor_result(ctx: click.Context, host: str | None, days: int) -> Any:
 @click.option("--limit", default=6, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool) -> None:
+def optimize_group(
+    ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool
+) -> None:
     """Show and apply Optimization Advisor recommendations."""
     if ctx.invoked_subcommand is not None:
         return
@@ -249,6 +283,210 @@ def optimize_apply(
     else:
         click.echo(f"Applied optimization policy: {policy.name} ({policy.preset})")
         click.echo(f"Saved: {path}")
+
+
+@optimize_group.command("run")
+@click.option("--host", type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)), default=None)
+@click.option("--days", default=7, show_default=True, type=int)
+@click.option(
+    "--runs",
+    "runs_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="TerminalBench runs.jsonl file or a directory that contains it.",
+)
+@click.option("--baseline-cost-usd", type=float, default=None)
+@click.option("--candidate-cost-usd", type=float, default=None)
+@click.option("--margin", default=0.05, show_default=True, type=float)
+@click.option("--confidence", default=0.95, show_default=True, type=float)
+@click.option(
+    "--proposal-tokens-threshold",
+    type=int,
+    default=None,
+    help="Minimum projected token savings required before writing a proposal artifact.",
+)
+@click.option("--open-pr", is_flag=True, help="Open a draft PR after the proposal artifact is written.")
+@click.option("--dry-run", is_flag=True, help="Preview PR preparation without git or GitHub side effects.")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_run(
+    ctx: click.Context,
+    host: str | None,
+    days: int,
+    runs_path: Path | None,
+    baseline_cost_usd: float | None,
+    candidate_cost_usd: float | None,
+    margin: float,
+    confidence: float,
+    proposal_tokens_threshold: int | None,
+    open_pr: bool,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Run the optimization advisor intentionally and evaluate proposal readiness."""
+    from atelier.core.capabilities.optimization import run_optimization_cycle
+
+    evidence = _benchmark_evidence_from_options(
+        runs_path=runs_path,
+        baseline_cost_usd=baseline_cost_usd,
+        candidate_cost_usd=candidate_cost_usd,
+        margin=margin,
+        confidence=confidence,
+    )
+    try:
+        payload = run_optimization_cycle(
+            store_root=ctx.obj["root"],
+            host=host,
+            days=max(1, days),
+            source="cli",
+            open_pr=open_pr,
+            dry_run=dry_run,
+            proposal_tokens_threshold=proposal_tokens_threshold,
+            benchmark_evidence=evidence,
+            store=_load_store(ctx.obj["root"]),
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    action = str(payload.get("proposal", {}).get("action", ""))
+    if open_pr and action not in {"pr_opened", "pr_dry_run"}:
+        raise click.ClickException(f"open-pr blocked: {action}")
+
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+
+    advisor = payload["advisor"]
+    current_policy = advisor.get("current_policy") or {}
+    click.echo(f"Repo root: {payload['repo_root']}")
+    click.echo(f"Current preset: {current_policy.get('preset', '-')}")
+    click.echo(
+        f"Projected weekly savings: ${float(advisor.get('weekly_savings_usd', 0.0) or 0.0):.2f}  "
+        f"confidence={float(advisor.get('confidence', 0.0) or 0.0):.2f}"
+    )
+    click.echo(f"Proposal action: {action}")
+    artifact_path = payload.get("proposal", {}).get("artifact_path")
+    if artifact_path:
+        click.echo(f"Proposal artifact: {artifact_path}")
+    pr_info = payload.get("proposal", {}).get("open_pr")
+    if isinstance(pr_info, dict) and pr_info:
+        click.echo(f"PR branch: {pr_info.get('branch', '-')}")
+        if pr_info.get("url"):
+            click.echo(f"PR URL: {pr_info['url']}")
+
+
+@optimize_group.group("auto")
+def optimize_auto() -> None:
+    """Inspect or persist autonomous optimization automation settings."""
+
+
+@optimize_auto.command("status")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_auto_status(ctx: click.Context, as_json: bool) -> None:
+    """Show the persisted optimize automation configuration."""
+    from atelier.core.capabilities.optimization import load_automation_config
+    from atelier.core.capabilities.optimization.policy import optimization_config_path
+
+    automation = load_automation_config(ctx.obj["root"]).to_dict()
+    payload = {
+        "automation": automation,
+        "path": str(optimization_config_path(ctx.obj["root"])),
+    }
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"Auto optimize: {'enabled' if automation['enabled'] else 'disabled'}")
+    click.echo(f"Config: {payload['path']}")
+
+
+@optimize_auto.command("enable")
+@click.option(
+    "--runs",
+    "runs_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Optional TerminalBench runs.jsonl file or directory for NI gating.",
+)
+@click.option("--baseline-cost-usd", type=float, default=None)
+@click.option("--candidate-cost-usd", type=float, default=None)
+@click.option("--margin", default=0.05, show_default=True, type=float)
+@click.option("--confidence", default=0.95, show_default=True, type=float)
+@click.option("--proposal-tokens-threshold", type=int, default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_auto_enable(
+    ctx: click.Context,
+    runs_path: Path | None,
+    baseline_cost_usd: float | None,
+    candidate_cost_usd: float | None,
+    margin: float,
+    confidence: float,
+    proposal_tokens_threshold: int | None,
+    as_json: bool,
+) -> None:
+    """Enable periodic optimize jobs using the shared persisted config."""
+    from atelier.core.capabilities.optimization import (
+        AutomationConfig,
+        load_automation_config,
+        save_automation_config,
+    )
+    from atelier.core.capabilities.optimization.policy import optimization_config_path
+
+    evidence = _benchmark_evidence_from_options(
+        runs_path=runs_path,
+        baseline_cost_usd=baseline_cost_usd,
+        candidate_cost_usd=candidate_cost_usd,
+        margin=margin,
+        confidence=confidence,
+    )
+    current = load_automation_config(ctx.obj["root"])
+    updated = AutomationConfig(
+        enabled=True,
+        minimum_projected_tokens_saved=(
+            current.minimum_projected_tokens_saved
+            if proposal_tokens_threshold is None
+            else max(0, proposal_tokens_threshold)
+        ),
+        benchmark_evidence=evidence or current.benchmark_evidence,
+        last_proposal_fingerprint=current.last_proposal_fingerprint,
+        last_proposal_at=current.last_proposal_at,
+    )
+    path = save_automation_config(ctx.obj["root"], updated)
+    payload = {"automation": updated.to_dict(), "path": str(path or optimization_config_path(ctx.obj["root"]))}
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo("Auto optimize enabled.")
+    click.echo(f"Saved: {payload['path']}")
+
+
+@optimize_auto.command("disable")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def optimize_auto_disable(ctx: click.Context, as_json: bool) -> None:
+    """Disable periodic optimize jobs without discarding saved evidence."""
+    from atelier.core.capabilities.optimization import (
+        AutomationConfig,
+        load_automation_config,
+        save_automation_config,
+    )
+
+    current = load_automation_config(ctx.obj["root"])
+    updated = AutomationConfig(
+        enabled=False,
+        minimum_projected_tokens_saved=current.minimum_projected_tokens_saved,
+        benchmark_evidence=current.benchmark_evidence,
+        last_proposal_fingerprint=current.last_proposal_fingerprint,
+        last_proposal_at=current.last_proposal_at,
+    )
+    path = save_automation_config(ctx.obj["root"], updated)
+    payload = {"automation": updated.to_dict(), "path": str(path)}
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo("Auto optimize disabled.")
+    click.echo(f"Saved: {payload['path']}")
 
 
 @optimize_group.group("shadow", invoke_without_command=True)
@@ -411,6 +649,62 @@ def optimize_history(ctx: click.Context, limit: int, as_json: bool) -> None:
         click.echo(f"{recorded_at}  confidence={confidence}  weekly_savings=${savings:.2f}")
 
 
+@optimize_group.command("gate")
+@click.option(
+    "--runs",
+    "runs_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="TerminalBench runs.jsonl file or a directory that contains it.",
+)
+@click.option("--baseline-cost-usd", required=True, type=float)
+@click.option("--candidate-cost-usd", required=True, type=float)
+@click.option("--margin", default=0.05, show_default=True, type=float)
+@click.option("--confidence", default=0.95, show_default=True, type=float)
+@click.option("--json", "as_json", is_flag=True)
+def optimize_gate(
+    runs_path: Path,
+    baseline_cost_usd: float,
+    candidate_cost_usd: float,
+    margin: float,
+    confidence: float,
+    as_json: bool,
+) -> None:
+    """Evaluate the TerminalBench + cost non-inferiority gate."""
+    from atelier.core.capabilities.optimization import evaluate_non_inferiority_from_runs
+
+    try:
+        verdict = evaluate_non_inferiority_from_runs(
+            runs_path,
+            baseline_cost_usd=baseline_cost_usd,
+            candidate_cost_usd=candidate_cost_usd,
+            margin=margin,
+            confidence=confidence,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    payload = verdict.to_dict()
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+
+    click.echo(f"Non-inferiority gate: {'PASS' if verdict.passed else 'FAIL'}")
+    click.echo(
+        f"Pass-rate delta (on-off): {verdict.pass_rate_delta:+.4f}  "
+        f"CI lower bound: {verdict.delta_lower_bound:+.4f}  "
+        f"margin: -{verdict.margin:.4f}"
+    )
+    click.echo(
+        f"Estimated cost delta (candidate-baseline): ${verdict.estimated_cost_delta_usd:+.4f}  "
+        f"savings: ${verdict.estimated_cost_savings_usd:.4f}"
+    )
+    if verdict.reasons:
+        click.echo("Reasons:")
+        for reason in verdict.reasons:
+            click.echo(f"- {reason}")
+
+
 @click.command("external-status")
 @click.option("--json", "as_json", is_flag=True)
 def external_status_cmd(as_json: bool) -> None:
@@ -461,7 +755,9 @@ def external_status_cmd(as_json: bool) -> None:
 )
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: bool, as_json: bool) -> None:
+def external_report_cmd(
+    ctx: click.Context, tool: str, period: str, persist: bool, as_json: bool
+) -> None:
     """Run upstream JSON reports from supported external analyzers."""
     from atelier.gateway.integrations.external_analytics import (
         persist_external_reports,
@@ -471,7 +767,9 @@ def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: boo
 
     if as_json:
         try:
-            payload = run_external_reports(tool=tool, period=period, cwd=Path.cwd(), include_optimize=True)
+            payload = run_external_reports(
+                tool=tool, period=period, cwd=Path.cwd(), include_optimize=True
+            )
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
 

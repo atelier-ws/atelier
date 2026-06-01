@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -323,7 +324,9 @@ def test_stack_start_spawns_native_runner(tmp_path: Path, monkeypatch: pytest.Mo
             self.pid = 2468
 
     monkeypatch.setattr("atelier.gateway.cli.commands.stack.subprocess.Popen", FakePopen)
-    monkeypatch.setattr("atelier.gateway.cli.commands.stack._pid_is_running", lambda pid: pid == 2468)
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.stack._pid_is_running", lambda pid: pid == 2468
+    )
 
     res = _invoke(tmp_path / "a", "stack", "start", "--with-docs")
 
@@ -339,7 +342,9 @@ def test_stack_start_spawns_native_runner(tmp_path: Path, monkeypatch: pytest.Mo
     assert "docs are no longer part of the managed stack" in res.output
 
 
-def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_background_install_writes_native_stack_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "a"
     unit_dir = tmp_path / "systemd-user"
     commands: list[list[str]] = []
@@ -405,7 +410,9 @@ def test_background_install_skips_activation_when_user_systemd_bus_is_unavailabl
     assert not any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
-def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_background_install_writes_openmemory_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "a"
     unit_dir = tmp_path / "systemd-user"
     commands: list[list[str]] = []
@@ -439,7 +446,9 @@ def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: 
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
-def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stop_stack_processes_kills_process_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "a"
     stack_dir = root / "stack"
     stack_dir.mkdir(parents=True)
@@ -460,7 +469,9 @@ def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: 
         "atelier.infra.runtime.stack_lifecycle.os.killpg",
         _mock_killpg,
     )
-    monkeypatch.setattr("atelier.infra.runtime.stack_lifecycle._pid_is_running", lambda pid: pid not in killed)
+    monkeypatch.setattr(
+        "atelier.infra.runtime.stack_lifecycle._pid_is_running", lambda pid: pid not in killed
+    )
 
     from atelier.infra.runtime.stack_lifecycle import _stop_stack_processes
 
@@ -548,7 +559,9 @@ def test_servicectl_start_writes_pidfile(tmp_path: Path, monkeypatch: pytest.Mon
             self.pid = 4321
 
     monkeypatch.setattr("atelier.gateway.cli.commands.servicectl.subprocess.Popen", FakePopen)
-    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._pid_is_running", lambda pid: pid == 4321)
+    monkeypatch.setattr(
+        "atelier.infra.runtime.servicectl_lifecycle._pid_is_running", lambda pid: pid == 4321
+    )
 
     res = _invoke(
         root,
@@ -581,7 +594,11 @@ def test_servicectl_tick_imports_only_new_or_updated_sessions(
     root = tmp_path / "a"
     _invoke(root, "init")
 
-    codex_file = tmp_path / "codex" / "rollout-2026-05-09T12-00-00-11111111-2222-3333-4444-555555555555.jsonl"
+    codex_file = (
+        tmp_path
+        / "codex"
+        / "rollout-2026-05-09T12-00-00-11111111-2222-3333-4444-555555555555.jsonl"
+    )
     codex_file.parent.mkdir(parents=True, exist_ok=True)
     codex_file.write_text(
         "\n".join(
@@ -740,6 +757,68 @@ def test_servicectl_tick_collects_external_analytics(
     runs = store.list_external_analytics_runs(limit=10)
     assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
     assert all(item["source"] == "servicectl" for item in runs)
+
+
+@pytest.mark.slow
+def test_servicectl_surfaces_job_queue_health(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "a"
+    _invoke(root, "init")
+
+    store = ContextStore(root)
+    running_job_id = store.enqueue_job("consolidate", {"n": 1}, max_attempts=2)
+    dead_job_id = store.enqueue_job("retry", {"n": 2}, max_attempts=1)
+
+    running_job = store.claim_job()
+    dead_job = store.claim_job()
+
+    assert running_job is not None
+    assert dead_job is not None
+    assert running_job["id"] == running_job_id
+    assert dead_job["id"] == dead_job_id
+    assert store.fail_job(dead_job_id, "boom") is True
+
+    stale_locked_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE jobs SET locked_at = ?, updated_at = ? WHERE id = ?",
+            (stale_locked_at, stale_locked_at, running_job_id),
+        )
+
+    expected_health = {
+        "pending": 0,
+        "running": 1,
+        "failed": 0,
+        "dead": 1,
+        "stuck_running": 1,
+        "active": 1,
+    }
+
+    status_before = _invoke(root, "servicectl", "status", "--json")
+    assert status_before.exit_code == 0, status_before.output
+    status_before_payload = json.loads(status_before.output)
+    assert status_before_payload["job_queue_health"] == expected_health
+
+    tick = _invoke(
+        root,
+        "servicectl",
+        "tick",
+        "--maintenance-interval-seconds",
+        "-1",
+        "--session-import-interval-seconds",
+        "-1",
+        "--json",
+    )
+    assert tick.exit_code == 0, tick.output
+    tick_payload = json.loads(tick.output)
+    assert tick_payload["job_queue_health_before"] == expected_health
+    assert tick_payload["pending_jobs"] == tick_payload["job_queue_health"]["active"]
+
+    status_after = _invoke(root, "servicectl", "status", "--json")
+    assert status_after.exit_code == 0, status_after.output
+    status_after_payload = json.loads(status_after.output)
+    assert status_after_payload["job_queue_health"] == tick_payload["job_queue_health"]
 
 
 @pytest.mark.slow

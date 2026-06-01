@@ -129,6 +129,10 @@ atelier swarm logs <run_id> --child-id wave-03-run-01
 atelier swarm stop <run_id> --cleanup
 ```
 
+If you omit the swarm spec path, Atelier resolves `program.md` relative to the
+selected project root. The command fails clearly if that file is missing or if a
+supplied spec path escapes the project root.
+
 Built-in runner profiles:
 
 | Runner | Command shape |
@@ -152,7 +156,9 @@ How patch acceptance works:
 Current limitation: the coordinator owns the isolation/runtime/merge harness,
 but the actual child agent command is still supplied after `--` so you can plug
 in Claude/Codex/Copilot or another runner that speaks Atelier MCP inside that
-isolated environment.
+isolated environment. The current harness does **not** provide first-class
+OpenAI or LiteLLM child execution; the dashboard only exposes the real CLI
+runner path today.
 
 ## Retrieval, Search, and Code-Aware Helpers
 

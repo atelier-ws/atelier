@@ -74,7 +74,8 @@ def service_start(host: str | None, port: int | None, reload: bool) -> None:
     except ImportError as exc:
         if "cannot import name 'main'" in str(exc):
             raise click.ClickException(
-                "The service API 'main' entrypoint is missing. " "Ensure your 'atelier' installation is up to date."
+                "The service API 'main' entrypoint is missing. "
+                "Ensure your 'atelier' installation is up to date."
             ) from exc
         raise click.ClickException(
             "Could not start the service API. Ensure all dependencies are installed: uv sync --extra api"
@@ -183,7 +184,9 @@ def worker_enqueue(
 @click.option("--limit", default=20, type=int, show_default=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def worker_list(ctx: click.Context, status: str | None, job_type: str | None, limit: int, as_json: bool) -> None:
+def worker_list(
+    ctx: click.Context, status: str | None, job_type: str | None, limit: int, as_json: bool
+) -> None:
     """List queued and processed jobs."""
     from atelier.infra.storage.factory import create_store
 
@@ -405,6 +408,16 @@ def servicectl_status(ctx: click.Context, as_json: bool) -> None:
         click.echo(f"last_tick_at: {payload['last_tick_at']}")
     if payload["last_processed_jobs"]:
         click.echo("last_processed_jobs: " + ", ".join(payload["last_processed_jobs"]))
+    health = payload.get("job_queue_health") or {}
+    if health:
+        click.echo(
+            "job_queue_health: "
+            f"pending={health.get('pending', 0)} "
+            f"running={health.get('running', 0)} "
+            f"failed={health.get('failed', 0)} "
+            f"dead={health.get('dead', 0)} "
+            f"stuck_running={health.get('stuck_running', 0)}"
+        )
 
 
 @servicectl_group.command("run", hidden=True)
@@ -458,9 +471,13 @@ def servicectl_run(
 
 
 @click.command("logs")
-@click.argument("service", type=click.Choice(["stack", "controller", "letta", "openmemory", "zoekt", "mcp"]))
+@click.argument(
+    "service", type=click.Choice(["stack", "controller", "letta", "openmemory", "zoekt", "mcp"])
+)
 @click.option("-f", "--follow", is_flag=True, help="Follow log output.")
-@click.option("-n", "--lines", default=80, show_default=True, type=int, help="Number of lines to show.")
+@click.option(
+    "-n", "--lines", default=80, show_default=True, type=int, help="Number of lines to show."
+)
 @click.pass_context
 def logs_cmd(ctx: click.Context, service: str, follow: bool, lines: int) -> None:
     """Show logs for an Atelier service.
