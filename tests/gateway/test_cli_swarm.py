@@ -89,6 +89,101 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
     assert "mode: continuous" in result.output
 
 
+def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    spec = tmp_path / "program.md"
+    spec.write_text("# spec\n", encoding="utf-8")
+    root = tmp_path / "atelier-root"
+    captured: dict[str, object] = {}
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path=str(spec),
+        copied_spec_path=str(spec),
+        child_command=["claude", "-p", "stub"],
+        runs=1,
+        children=[],
+    )
+
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
+
+    def _initialize(**kwargs: object) -> tuple[SwarmRunState, Path]:
+        captured["child_command"] = kwargs["child_command"]
+        return state, tmp_path / "state.json"
+
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.swarm.initialize_swarm_run",
+        _initialize,
+    )
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.swarm.launch_swarm_children",
+        lambda _root, _state: state,
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "swarm",
+            "start",
+            str(spec),
+            "--runner",
+            "ollama-claude",
+            "--runner-model",
+            "qwen3.6",
+            "--runner-arg",
+            "--append-system-prompt",
+            "--runner-arg",
+            "runner-note",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["child_command"] == [
+        "ollama",
+        "launch",
+        "claude",
+        "--model",
+        "qwen3.6",
+        "--",
+        "-p",
+        "Read the task spec at {spec}. Work directly in the current repository, make only the requested changes, do not commit, and print a concise summary of what you changed or why you left it unchanged.",
+        "--dangerously-skip-permissions",
+        "--append-system-prompt",
+        "runner-note",
+    ]
+
+
+def test_swarm_start_rejects_runner_and_raw_command(tmp_path: Path) -> None:
+    runner = CliRunner()
+    spec = tmp_path / "program.md"
+    spec.write_text("# spec\n", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        [
+            "swarm",
+            "start",
+            str(spec),
+            "--runner",
+            "claude",
+            "--",
+            "echo",
+            "hi",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "choose either --runner or a raw child command" in result.output
+
+
 def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / "atelier-root"
