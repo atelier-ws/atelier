@@ -95,9 +95,10 @@ improvements onto a coordinator-owned integration base.
 
 ```bash
 atelier swarm start program.md --runs 3 --continuous \
+  --runner ollama-claude \
+  --runner-model qwen3.6 \
   --validate "make lint" \
-  --validate "uv run pytest tests/gateway/test_cli_swarm.py -q" \
-  -- claude-code run --spec {spec}
+  --validate "uv run pytest tests/gateway/test_cli_swarm.py -q"
 ```
 
 What the harness guarantees today:
@@ -127,6 +128,19 @@ atelier swarm status <run_id>
 atelier swarm logs <run_id> --child-id wave-03-run-01
 atelier swarm stop <run_id> --cleanup
 ```
+
+Built-in runner profiles:
+
+| Runner | Command shape |
+| --- | --- |
+| `claude` | `claude --model <model> -p "<prompt>"` |
+| `codex` | `codex exec -m <model> "<prompt>"` |
+| `copilot` | `copilot --model <model> -p "<prompt>" --allow-all` |
+| `opencode` | `opencode run -m <provider/model> "<prompt>"` |
+| `ollama-claude` | `ollama launch claude --model <model> -- -p "<prompt>"` |
+
+You can still bypass profiles entirely and pass any raw child command after `--`
+for custom API wrappers or other CLIs.
 
 How patch acceptance works:
 
