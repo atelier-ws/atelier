@@ -11,6 +11,7 @@ from atelier.core.capabilities.swarm import (
     rank_children,
     run_child_once,
 )
+from atelier.core.capabilities.swarm.capability import _plan_wave_runs
 from atelier.core.capabilities.swarm.models import (
     SwarmChildState,
     SwarmRunState,
@@ -164,6 +165,68 @@ def test_run_child_once_writes_structured_result(tmp_path: Path) -> None:
     assert any("child.txt" in line for line in result.files_changed)
     assert result.validation_results[0].passed
     assert Path(result.result_path).exists()
+    assert state.base_snapshot_artifact is not None
+    assert Path(state.base_snapshot_artifact.path).exists()
+    assert state.base_snapshot_ref == state.integration_base_ref
+
+
+def test_plan_wave_runs_uses_max_for_open_ended_scope(tmp_path: Path) -> None:
+    spec_path = tmp_path / "open-ended.md"
+    spec_path.write_text(
+        "\n".join(
+            [
+                "# Adaptive swarm",
+                "- build backend API",
+                "- add frontend dashboard",
+                "- wire export/apply UX",
+                "- inspect multiple files: src/a.py frontend/src/App.tsx docs/spec.md",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    state = SwarmRunState(
+        run_id="swarm-open",
+        repo_root=str(tmp_path / "repo"),
+        base_worktree=str(tmp_path / "repo"),
+        base_ref="HEAD",
+        base_snapshot_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        spec_source_path=str(spec_path),
+        copied_spec_path=str(spec_path),
+        child_command=["echo", "hi"],
+        runs=4,
+        max_runs=4,
+    )
+
+    planning_mode, planned_runs, planning_reason = _plan_wave_runs(state, 1)
+
+    assert planning_mode == "open-ended"
+    assert planned_runs == 4
+    assert "Open-ended search space" in planning_reason
+
+
+def test_plan_wave_runs_launches_fewer_for_bounded_scope(tmp_path: Path) -> None:
+    spec_path = tmp_path / "bounded.md"
+    spec_path.write_text("# Fix typo\n\nRename one file and update a small fix.\n", encoding="utf-8")
+    state = SwarmRunState(
+        run_id="swarm-bounded",
+        repo_root=str(tmp_path / "repo"),
+        base_worktree=str(tmp_path / "repo"),
+        base_ref="HEAD",
+        base_snapshot_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        spec_source_path=str(spec_path),
+        copied_spec_path=str(spec_path),
+        child_command=["echo", "hi"],
+        runs=5,
+        max_runs=5,
+    )
+
+    planning_mode, planned_runs, planning_reason = _plan_wave_runs(state, 1)
+
+    assert planning_mode == "bounded"
+    assert planned_runs == 2
+    assert "Bounded search space" in planning_reason
 
 
 def test_rank_children_prefers_successful_validated_candidate() -> None:
@@ -298,3 +361,11 @@ def test_apply_wave_candidates_merges_disjoint_and_rejects_conflict(
     assert (integration / "a.txt").read_text(encoding="utf-8") == "improvement-a\n"
     assert (integration / "b.txt").read_text(encoding="utf-8") == "improvement-b\n"
     assert state.integration_base_ref == read_head_ref(integration)
+    assert wave.primary_winner_child_id == "wave-01-run-01"
+    assert len(wave.accepted_commits) == 2
+    assert len(state.accepted_commits) == 2
+    assert state.transplant_commands[0].startswith("git cherry-pick ")
+    accepted_manifest = Path(state.copied_spec_path).parent / "artifacts" / "accepted-commits.json"
+    wave_manifest = Path(state.copied_spec_path).parent / "artifacts" / "waves" / "wave-01-manifest.json"
+    assert accepted_manifest.exists()
+    assert wave_manifest.exists()
