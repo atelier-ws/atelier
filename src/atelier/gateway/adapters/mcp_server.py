@@ -2387,15 +2387,10 @@ def _render_read_md(result: dict[str, Any]) -> str | None:
     if mode == "directory":
         entries = result.get("entries")
         if isinstance(entries, list):
-            lines = [f"### {path} (directory)"]
-            for entry in entries:
-                lines.append(f"- {entry}")
-            return "\n".join(lines)
+            return "\n".join(entries)
         return None
-    if mode in {"full", "range"}:
-        content = str(result.get("content") or "")
-        range_label = f" ({result.get('range')})" if result.get("range") else ""
-        return f"### {path}{range_label}\n```{language}\n{content}\n```"
+    if mode in {"range", "full"}:
+        return str(result.get("content") or "")
     if mode == "outline":
         outline = result.get("outline")
         if isinstance(outline, dict):
@@ -2405,27 +2400,23 @@ def _render_read_md(result: dict[str, Any]) -> str | None:
 
 
 def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -> str:
-    lines = [f"### {path} (outline)"]
     # Treesitter/generic: has pre-formatted `text` field
     text = str(outline.get("text") or "").strip()
     if text:
-        kind = str(outline.get("kind") or outline.get("language") or language)
-        lines.append(f"```{kind}")
-        lines.append(text)
-        lines.append("```")
-        return "\n".join(lines)
+        return text
     # AST outline: has `symbols`, `imports`, `hint` fields
+    lines: list[str] = []
     hint = str(outline.get("hint") or "").strip()
     if hint:
-        lines.append(f"- hint: {hint}")
+        lines.append(f"hint: {hint}")
     imports_list = outline.get("imports")
     if isinstance(imports_list, list) and imports_list:
-        lines.append("#### imports")
+        lines.append("imports:")
         for imp in imports_list:
             lines.append(f"- {imp}")
     symbols_list = outline.get("symbols")
     if isinstance(symbols_list, list) and symbols_list:
-        lines.append("#### symbols")
+        lines.append("symbols:")
         for sym in symbols_list:
             if not isinstance(sym, dict):
                 continue
@@ -2435,9 +2426,7 @@ def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -
             end = int(sym.get("end_line") or 0)
             loc = f"{start}-{end}" if end > start else str(start)
             lines.append(f"- {loc}: {name} [{kind}]")
-    if len(lines) == 1:
-        lines.append("- (no outline)")
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "(no outline)"
 
 
 def _render_grep_md(result: dict[str, Any]) -> str | None:
@@ -2445,24 +2434,18 @@ def _render_grep_md(result: dict[str, Any]) -> str | None:
     if mode == "ranked_file_map":
         matches = result.get("matches")
         if not isinstance(matches, list) or not matches:
-            return "### grep\n- no matches"
+            return "no matches"
         lines: list[str] = []
-        meta = result.get("_meta")
-        if isinstance(meta, dict):
-            file_count = int(meta.get("fileMatchCount") or 0)
-            lines.append(f"- meta: files={file_count}")
         for match in matches:
             if not isinstance(match, dict):
                 continue
             file_path = str(match.get("file") or "?")
-            match_count = int(match.get("match_count") or 0)
-            count_label = f"{match_count} match" if match_count == 1 else f"{match_count} matches"
-            lines.append(f"### {file_path} ({count_label})")
+            lines.append(file_path)
             ranges = match.get("ranges")
             if isinstance(ranges, list):
                 for r in ranges:
                     lines.append(f"- lines {r}")
-        return "\n".join(lines) if lines else "### grep\n- no matches"
+        return "\n".join(lines) if lines else "no matches"
     # Non-ranked modes: content is pre-formatted text blocks
     content = result.get("content")
     if isinstance(content, list):
@@ -2481,26 +2464,21 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
     mode = str(result.get("mode") or "chunks")
     if mode == "map":
         ranked_files = result.get("ranked_files")
-        lines = ["### search"]
-        if isinstance(ranked_files, list):
-            lines.append("- ranked_files:")
-            for f in ranked_files[:30]:
-                lines.append(f"  - {f}")
-        else:
-            lines.append("- (map result)")
-        return "\n".join(lines)
+        if isinstance(ranked_files, list) and ranked_files:
+            return "\n".join(ranked_files[:30])
+        return "no matches"
     matches = result.get("matches")
     if not isinstance(matches, list) or not matches:
-        return "### search\n- no matches"
-    lines = ["### search"]
+        return "no matches"
+    lines: list[str] = []
     for match in matches:
         if not isinstance(match, dict):
             continue
         path = str(match.get("path") or "?")
-        lines.append(f"### {path}")
+        lines.append(path)
         content = str(match.get("content") or "").strip()
         if content:
-            lines.append(f"```\n{content}\n```")
+            lines.append(content)
         else:
             snippets = match.get("snippets")
             if isinstance(snippets, list):
@@ -2508,7 +2486,7 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
                     if isinstance(snip, dict):
                         snip_content = str(snip.get("content") or "").strip()
                         if snip_content:
-                            lines.append(f"```\n{snip_content}\n```")
+                            lines.append(snip_content)
     return "\n".join(lines)
 
 
@@ -3332,14 +3310,29 @@ def _memory_summary(session_id: str) -> dict[str, Any]:
 # for cold-start bootstrap-note injection without touching every return branch.
 _code_engine_for_current_call: threading.local = threading.local()
 
+# Process-level engine cache keyed by resolved repo path.
+# Reusing the same engine across tool calls avoids re-opening the SQLite DB
+# and restarting autosync threads on every invocation — critical for both
+# MCP server performance (persistent process) and benchmark correctness.
+_code_engine_cache: dict[str, Any] = {}
+_code_engine_cache_lock: threading.Lock = threading.Lock()
+
 
 def _code_context_engine(repo_root: str = ".") -> Any:
     from atelier.core.capabilities.code_context import CodeContextEngine
 
     workspace = str(_workspace_root())
     root = Path(repo_root)
-    resolved = root if root.is_absolute() else Path(workspace) / root
-    return CodeContextEngine(resolved)
+    resolved = (root if root.is_absolute() else Path(workspace) / root).resolve()
+    cache_key = str(resolved)
+    engine = _code_engine_cache.get(cache_key)
+    if engine is None:
+        with _code_engine_cache_lock:
+            engine = _code_engine_cache.get(cache_key)  # re-check under lock
+            if engine is None:
+                engine = CodeContextEngine(resolved)
+                _code_engine_cache[cache_key] = engine
+    return engine
 
 
 def _workspace_code_router(repo_root: str = ".") -> Any:
@@ -3589,6 +3582,7 @@ def tool_code(
     ) = None,
     render_compact: bool = False,
     provenance: str | None = None,
+    force: bool = False,  # op=index only: True = full rebuild, False = incremental (default)
 ) -> dict[str, Any]:
     """Search the SCIP code index for symbols by name or description.
 
@@ -3619,6 +3613,7 @@ def tool_code(
                 engine.tool_index(
                     include_globs=include_globs,
                     exclude_globs=exclude_globs,
+                    force=force,
                     budget_tokens=budget_tokens,
                 ),
             ),

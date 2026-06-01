@@ -1,5 +1,8 @@
+import logging
 import os
 import re
+
+logger = logging.getLogger(__name__)
 
 dir_path = "/home/pankaj/Projects/leanchain/atelier/integrations"
 extensions = (".md", ".py", ".sh", ".json", ".yaml")
@@ -36,5 +39,6 @@ for root, _, files in os.walk(dir_path):
                     print(f"Updated {path}")
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(new_content)
-            except Exception as e:
+            except (OSError, UnicodeError) as e:
+                logger.warning("Skipping %s: %s", path, e)
                 print(f"Skipping {path}: {e}")

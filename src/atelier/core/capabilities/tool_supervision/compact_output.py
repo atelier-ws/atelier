@@ -7,7 +7,7 @@ Key design choices:
 - Char-based threshold (1800 chars) instead of token-based — predictable and fast
 - Asymmetric head/tail split: head gets more budget (start has command, first error,
   context; tail has final result/status — middle is usually repetitive output)
-- Ollama summarization is opt-in only; head+tail alone achieves the benchmark savings
+- LLM summarization is opt-in only; head+tail alone achieves the benchmark savings
 - keep_recent_tool_messages exempts the last N messages from compression, matching
   the RB spec (agent must see its active step at full fidelity)
 """
@@ -22,9 +22,9 @@ from typing import Literal
 import tiktoken
 from pydantic import BaseModel, ConfigDict
 
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, summarize
+from atelier.infra.internal_llm import InternalLLMError, summarize
 
-CompactMethod = Literal["passthrough", "deterministic_truncate", "ollama_summary"]
+CompactMethod = Literal["passthrough", "deterministic_truncate", "llm_summary"]
 ContentType = Literal["file", "grep", "bash", "tool_output", "unknown"]
 
 # Validated threshold from ReasonBlocks SWE-bench benchmark
@@ -199,12 +199,12 @@ def compact(
     budget_tokens: int = 500,
     *,
     recovery_hint: str | None = None,
-    enable_ollama: bool = False,
+    enable_llm: bool = False,
 ) -> CompactResult:
     """Compact tool output using char-based threshold + head/tail compression.
 
     Uses a char-based threshold (1800 chars by default) rather than token-based
-    for consistency with the validated ReasonBlocks approach. Ollama summarization
+    for consistency with the validated ReasonBlocks approach. LLM summarization
     is opt-in only — head+tail alone achieves the benchmark -51.8% token savings.
 
     Args:
@@ -212,8 +212,8 @@ def compact(
         content_type:  One of file, grep, bash, tool_output, unknown.
         budget_tokens: Target token budget for the compacted result.
         recovery_hint: How to get the full output if needed.
-        enable_ollama: If True, attempt LLM summarization for large outputs
-                       when Ollama is available. Adds latency; off by default.
+        enable_llm:    If True, attempt LLM summarization for large outputs
+                       when Internal LLM is available. Adds latency; off by default.
     """
     original_tokens = _count_tokens(content)
     hint = recovery_hint or "Re-run the original tool call or request the full output by path/range."
@@ -232,12 +232,12 @@ def compact(
     method: CompactMethod = "deterministic_truncate"
     compacted = deterministic_truncate(content, content_type, budget_tokens)
 
-    if enable_ollama and original_tokens > 2000 and content_type != "grep":
+    if enable_llm and original_tokens > 2000 and content_type != "grep":
         try:
             prompt = f"Recovery hint: {hint}\n\nOutput to summarize:\n{content}"
             compacted = summarize(prompt, max_tokens=budget_tokens)
-            method = "ollama_summary"
-        except OllamaUnavailable:
+            method = "llm_summary"
+        except InternalLLMError:
             method = "deterministic_truncate"
 
     compacted_tokens = _count_tokens(compacted)

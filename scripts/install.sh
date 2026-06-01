@@ -26,6 +26,7 @@
 #   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #   ATELIER_NON_INTERACTIVE If set to 1, disable all interactive prompts
+#   ATELIER_INSTALL_CLEAN_PROCESSES If set to 0, do not stop old Atelier processes before reinstall
 #   ATELIER_ZOEKT_AUTO_INSTALL If set to 1, non-interactive runs install local zoekt binaries when missing (default: 1)
 #   ATELIER_INSTALL_LOG_FILE Optional install log path (default: /tmp/atelier-install.<ts>.<pid>.log)
 #   --workspace DIR    Install host/project MCP artifacts into DIR instead of user-global config
@@ -94,6 +95,7 @@ ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
+ATELIER_INSTALL_CLEAN_PROCESSES="${ATELIER_INSTALL_CLEAN_PROCESSES:-1}"
 export ATELIER_VERBOSE
 ATELIER_ZOEKT_AUTO_INSTALL="${ATELIER_ZOEKT_AUTO_INSTALL:-1}"
 ATELIER_INSTALL_LOG_FILE="${ATELIER_INSTALL_LOG_FILE:-}"
@@ -1349,6 +1351,7 @@ install_console_scripts() {
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        stop_existing_atelier_processes
         printf '[dry-run] uv tool uninstall atelier (if present)\n'
         printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
         printf ' %q' "$package_spec"
@@ -1357,6 +1360,7 @@ install_console_scripts() {
     fi
 
     mkdir -p "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+    stop_existing_atelier_processes
     # Gracefully remove old installation first — uv tool install --force
     # sometimes fails with "Directory not empty" on Linux when the tool
     # is in use.  Uninstall is idempotent and avoids the atomic-swap path.
@@ -1378,6 +1382,55 @@ export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"
+    fi
+}
+
+stop_existing_atelier_processes() {
+    [[ "$ATELIER_INSTALL_CLEAN_PROCESSES" == "1" ]] || return 0
+
+    local current_pid="$$"
+    local parent_pid="${PPID:-}"
+    local pids=()
+    local pid args
+
+    while read -r pid args; do
+        [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
+        [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
+
+        case "$args" in
+            *"atelier-mcp.real"*|\
+            *"atelier-mcp --host"*|\
+            *"/atelier-mcp "*|\
+            *" atelier-mcp "*|\
+            *"/atelier --root "*servicectl*|\
+            *" atelier --root "*servicectl*|\
+            *"/atelier servicectl "*|\
+            *" atelier servicectl "*|\
+            *"/atelier stack run"*|\
+            *" atelier stack run"*)
+                pids+=("$pid")
+                ;;
+        esac
+    done < <(ps -eo pid=,args= 2>/dev/null || true)
+
+    [[ ${#pids[@]} -gt 0 ]] || return 0
+
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        printf '[dry-run] stop stale Atelier processes: %s\n' "${pids[*]}"
+        return 0
+    fi
+
+    verbose "Stopping stale Atelier processes before reinstall: ${pids[*]}"
+    kill -TERM "${pids[@]}" 2>/dev/null || true
+    sleep 1
+    local alive=()
+    for pid in "${pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            alive+=("$pid")
+        fi
+    done
+    if [[ ${#alive[@]} -gt 0 ]]; then
+        kill -KILL "${alive[@]}" 2>/dev/null || true
     fi
 }
 

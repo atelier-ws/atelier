@@ -9,21 +9,21 @@ from datetime import UTC, datetime, timedelta
 
 from atelier.core.foundation.models import ConsolidationCandidate, ReasonBlock
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, chat
+from atelier.infra.internal_llm import InternalLLMError, chat
 
 
 @dataclass(frozen=True)
 class ConsolidationReport:
     duplicates: int
     stale: int
-    ollama_suggestions: int
+    llm_suggestions: int
     written: int
 
     def to_dict(self) -> dict[str, int]:
         return {
             "duplicates": self.duplicates,
             "stale": self.stale,
-            "ollama_suggestions": self.ollama_suggestions,
+            "llm_suggestions": self.llm_suggestions,
             "written": self.written,
         }
 
@@ -53,7 +53,7 @@ def _draft_merge(blocks: list[ReasonBlock]) -> tuple[str | None, bool]:
             ],
             json_schema={"type": "object"},
         )
-    except OllamaUnavailable:
+    except InternalLLMError:
         return None, False
     if isinstance(response, dict) and response.get("duplicate") is not False:
         return str(response.get("proposed_body", "") or "").strip() or None, True
@@ -71,7 +71,7 @@ def consolidate(
     blocks = store.list_blocks(include_deprecated=False)
     candidates: list[ConsolidationCandidate] = []
     used: set[str] = set()
-    ollama_suggestions = 0
+    llm_suggestions = 0
 
     for idx, block in enumerate(blocks):
         if block.id in used:
@@ -86,16 +86,16 @@ def consolidate(
             continue
         for item in cluster:
             used.add(item.id)
-        proposed_body, used_ollama = _draft_merge(cluster)
-        if used_ollama:
-            ollama_suggestions += 1
+        proposed_body, used_llm = _draft_merge(cluster)
+        if used_llm:
+            llm_suggestions += 1
         candidates.append(
             ConsolidationCandidate(
                 kind="duplicate_cluster",
                 affected_block_ids=[item.id for item in cluster],
                 proposed_action="merge",
                 proposed_body=proposed_body,
-                evidence={"method": "ollama" if used_ollama else "deterministic_only"},
+                evidence={"method": "internal_llm" if used_llm else "deterministic_only"},
             )
         )
 
@@ -122,7 +122,7 @@ def consolidate(
     return ConsolidationReport(
         duplicates=duplicate_count,
         stale=stale_count,
-        ollama_suggestions=ollama_suggestions,
+        llm_suggestions=llm_suggestions,
         written=0 if dry_run else len(candidates),
     )
 

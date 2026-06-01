@@ -40,7 +40,6 @@ dependencies = [
     "pydantic-settings>=2.14.0",
     "python-multipart>=0.0.27",
     "sqlalchemy>=2.0.49",
-    "ollama>=0.6.2",
     "diff-match-patch>=2.1",
     "tree-sitter-language-pack>=1.8.1",
     "pexpect>=4.9.0",

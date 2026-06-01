@@ -20,11 +20,30 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import logging
 import os
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+# Route hook logs to a file so tracebacks never leak to Claude Code's
+# hook stderr pipeline. Fall back to NullHandler if the path can't be opened.
+_log_path = (
+    Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
+    / "stop_hook.log"
+)
+try:
+    _log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(_log_path),
+        level=logging.ERROR,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+except (OSError, ValueError):
+    logging.root.addHandler(logging.NullHandler())
+
+logger = logging.getLogger(__name__)
 
 # Tools that indicate real code work (not just discussion / exploration).
 # Sessions that only used Read, Bash (read-only), Glob, WebFetch, etc. are
@@ -61,6 +80,7 @@ def _load_state() -> dict[str, Any]:
         result = json.loads(sp.read_text("utf-8"))
         return result if isinstance(result, dict) else {}
     except Exception:
+        logger.exception("Failed to load session state")
         return {}
 
 
@@ -91,6 +111,7 @@ def _write_token_event(stats: dict[str, Any]) -> None:
     try:
         data = json.loads(run_file.read_text("utf-8"))
     except Exception:
+        logger.exception("Failed to load run file in _write_token_event")
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -129,6 +150,7 @@ def _write_token_event(stats: dict[str, Any]) -> None:
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
     except Exception:
+        logger.exception("Failed to write token event")
         if tmp_path:
             with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
@@ -245,6 +267,7 @@ def _extract_session_title(transcript_path: str) -> str | None:
                 try:
                     entry = json.loads(raw)
                 except Exception:
+                    logger.exception("Failed to parse transcript entry in _extract_session_title")
                     continue
 
                 if entry.get("type") != "user":
@@ -278,6 +301,7 @@ def _extract_session_title(transcript_path: str) -> str | None:
 
                 return clean[:500]
     except Exception:
+        logger.exception("Failed to extract session title")
         return None
     return None
 
@@ -303,6 +327,7 @@ def _extract_user_prompts(transcript_path: str) -> list[str]:
                 try:
                     entry = json.loads(raw)
                 except Exception:
+                    logger.exception("Failed to parse transcript entry in _extract_user_prompts")
                     continue
 
                 if entry.get("type") != "user":
@@ -331,6 +356,7 @@ def _extract_user_prompts(transcript_path: str) -> list[str]:
 
                 prompts.append(clean[:_MAX_PROMPT])
     except Exception:
+        logger.exception("Failed to extract user prompts")
         pass
     return prompts
 
@@ -355,6 +381,7 @@ def _write_session_enrichment(
     try:
         data = json.loads(run_file.read_text("utf-8"))
     except Exception:
+        logger.exception("Failed to load run file in _write_session_enrichment")
         return
 
     # Update top-level task with session_title when the agent left it blank
@@ -391,6 +418,7 @@ def _write_session_enrichment(
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
     except Exception:
+        logger.exception("Failed to write session enrichment")
         if tmp_path:
             with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
@@ -405,6 +433,7 @@ def _load_session_aggregate(session_id: str) -> dict[str, Any]:
         aggregate = aggregate_session_stats(_atelier_root(), session_id=session_id)
         return aggregate if isinstance(aggregate, dict) else {}
     except Exception:
+        logger.exception("Failed to load session aggregate")
         return {}
 
 
@@ -491,6 +520,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
             "estimated": False,
         }
     except Exception:
+        logger.exception("Failed to load session savings")
         return zero
 
 
@@ -607,6 +637,7 @@ def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except Exception:
+        logger.exception("Failed to parse main payload")
         payload = {}
 
     session_id: str = payload.get("session_id", "") or ""

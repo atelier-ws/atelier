@@ -33,7 +33,7 @@ EXTERNAL_PERIODS ?= today week month
 # install: ## Install Atelier (use ARGS="--local" to install from current dir)
 install: ## Install Atelier (use ARGS="--local" to install from current dir)
 	@# This target calls scripts/install.sh
-	bash scripts/install.sh --local
+	bash scripts/install.sh --local $(ARGS)
 
 uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
 	@bash scripts/uninstall.sh $${ARGS:-}
