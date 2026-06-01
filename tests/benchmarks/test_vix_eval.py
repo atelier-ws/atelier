@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import importlib
+import json
 import sys
 import types
 from pathlib import Path
@@ -26,6 +27,7 @@ def _load(module_name: str) -> ModuleType:
 
 
 VIX = _load("benchmarks.vix_eval.run")
+TASKS = _load("benchmarks.vix_eval.tasks")
 
 
 def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
@@ -79,3 +81,97 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
     assert {row["arm"] for row in summary_rows} == {"baseline", "atelier"}
     atelier_row = next(row for row in summary_rows if row["arm"] == "atelier")
     assert atelier_row["cost_usd"] == "0.75"
+
+
+def test_task_prompt_prefers_variant_prompt_when_prompt_md_missing(tmp_path: Path, monkeypatch) -> None:
+    vix_dir = tmp_path / "vix-eval"
+    task_dir = vix_dir / "tasks" / "task2_variant"
+    task_dir.mkdir(parents=True)
+    (task_dir / "prompt_medium.md").write_text("medium prompt", encoding="utf-8")
+    (task_dir / "prompt_hard.md").write_text("hard prompt", encoding="utf-8")
+    monkeypatch.setenv("VIX_EVAL_DIR", str(vix_dir))
+
+    task = TASKS.Task("task2", "swift", ("empty",), 1, "task2_variant")
+
+    assert task.prompt() == "hard prompt"
+
+
+def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    existing = VIX.ArmResult(
+        task="task-1",
+        arm="baseline",
+        rep=0,
+        ok=True,
+        cost_usd=1.0,
+        duration_ms=10,
+        duration_api_ms=9,
+        num_turns=1,
+        input_tokens=11,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        output_tokens=7,
+        models=["sonnet"],
+        is_error=False,
+        result_excerpt="ok",
+        flow_path="baseline.flow",
+    )
+    (run_dir / "results.jsonl").write_text(json.dumps(existing.__dict__) + "\n", encoding="utf-8")
+
+    task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
+    monkeypatch.setattr(VIX, "TASKS", [task])
+    monkeypatch.setattr(VIX, "BY_ID", {task.id: task})
+
+    calls: list[tuple[str, str, int]] = []
+
+    def fake_run_arm(
+        task_obj: TASKS.Task,
+        arm: str,
+        rep: int,
+        model: str,
+        out_dir: Path,
+        timeout: int,
+    ) -> VIX.ArmResult:
+        del model, out_dir, timeout
+        calls.append((task_obj.id, arm, rep))
+        return VIX.ArmResult(
+            task=task_obj.id,
+            arm=arm,
+            rep=rep,
+            ok=True,
+            cost_usd=0.5,
+            duration_ms=5,
+            duration_api_ms=4,
+            num_turns=1,
+            input_tokens=6,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            output_tokens=3,
+            models=["sonnet"],
+            is_error=False,
+            result_excerpt="ok",
+            flow_path=f"{arm}.flow",
+        )
+
+    monkeypatch.setattr(VIX, "run_arm", fake_run_arm)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run.py",
+            "--tasks",
+            "task-1",
+            "--arms",
+            "baseline",
+            "atelier",
+            "--reps",
+            "1",
+            "--out",
+            str(run_dir),
+            "--resume",
+        ],
+    )
+
+    assert VIX.main() == 0
+    assert calls == [("task-1", "atelier", 0)]

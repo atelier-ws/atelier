@@ -73,6 +73,75 @@ def test_generate_case_manifest_respects_small_quotas(tmp_path: Path) -> None:
     assert len({case.case_id for case in cases}) == len(cases)
 
 
+def test_score_case_accepts_substring_query_evidence() -> None:
+    _ensure_benchmarks_package()
+    cases_module = _load_module(
+        "benchmarks.mcp_tools.external_matrix_cases",
+        ROOT / "benchmarks" / "mcp_tools" / "external_matrix_cases.py",
+    )
+    runner_module = _load_module(
+        "benchmarks.mcp_tools.bench_external_matrix",
+        ROOT / "benchmarks" / "mcp_tools" / "bench_external_matrix.py",
+    )
+    case = cases_module.ExternalBenchCase(
+        case_id="substring-search-0001",
+        family="substring_search",
+        query="activity",
+        expected_paths=("src/atelier/core/capabilities/swarm/capability.py",),
+        expected_names=("_update_child_activity",),
+    )
+
+    assert (
+        runner_module.score_case(
+            case,
+            "src/atelier/core/capabilities/swarm/capability.py activity",
+        )
+        == 1.0
+    )
+
+
+def test_summarize_results_adds_atelier_comparison_columns() -> None:
+    _ensure_benchmarks_package()
+    runner_module = _load_module(
+        "benchmarks.mcp_tools.bench_external_matrix",
+        ROOT / "benchmarks" / "mcp_tools" / "bench_external_matrix.py",
+    )
+    rows = [
+        runner_module.CaseBenchResult(
+            case_id="case-1",
+            family="substring_search",
+            tool="atelier",
+            status="ok",
+            correctness=1.0,
+            median_ms=50,
+            p95_ms=50,
+            median_tokens=100,
+            runs=1,
+            query="activity",
+        ),
+        runner_module.CaseBenchResult(
+            case_id="case-1",
+            family="substring_search",
+            tool="other",
+            status="ok",
+            correctness=0.5,
+            median_ms=100,
+            p95_ms=100,
+            median_tokens=400,
+            runs=1,
+            query="activity",
+        ),
+    ]
+
+    summary = runner_module.summarize_results(rows)
+    other = next(row for row in summary if row["tool"] == "other")
+
+    assert other["atelier_score_result"] == "atelier better"
+    assert other["atelier_score_vs_provider_pct"] == "+100.0%"
+    assert other["atelier_latency_vs_provider_pct"] == "+50.0%"
+    assert other["atelier_tokens_vs_provider_pct"] == "+75.0%"
+
+
 def test_balanced_case_subset_round_robins_families() -> None:
     _ensure_benchmarks_package()
     cases_module = _load_module(
