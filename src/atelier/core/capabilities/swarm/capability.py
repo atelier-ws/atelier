@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import mimetypes
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -16,7 +18,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from atelier.core.capabilities.swarm.models import (
+    SwarmAcceptedCommit,
+    SwarmArtifactRef,
     SwarmChildState,
+    SwarmPlanningMode,
     SwarmRunState,
     SwarmValidationCheck,
     SwarmWaveState,
@@ -80,6 +85,239 @@ def swarm_run_dir(root: Path, run_id: str) -> Path:
 
 def resolve_state_path(root: Path, run_id: str) -> Path:
     return swarm_run_dir(root, run_id) / "state.json"
+
+
+def _run_artifact_root(state: SwarmRunState) -> Path:
+    if state.artifact_root:
+        return Path(state.artifact_root)
+    return Path(state.copied_spec_path).resolve().parent / "artifacts"
+
+
+def _artifact_relative_path(run_dir: Path, path: Path) -> str:
+    with contextlib.suppress(ValueError):
+        return str(path.relative_to(run_dir))
+    return str(path)
+
+
+def _artifact_ref(
+    run_dir: Path,
+    path: Path,
+    *,
+    kind: str,
+    label: str,
+    metadata: dict[str, object] | None = None,
+) -> SwarmArtifactRef:
+    mime_type, _ = mimetypes.guess_type(path.name)
+    exists = path.exists()
+    return SwarmArtifactRef(
+        artifact_id=f"{kind}:{_artifact_relative_path(run_dir, path)}",
+        kind=kind,
+        label=label,
+        path=str(path),
+        relative_path=_artifact_relative_path(run_dir, path),
+        mime_type=mime_type or ("application/json" if path.suffix == ".json" else "text/plain"),
+        size_bytes=path.stat().st_size if exists else 0,
+        exists=exists,
+        metadata=metadata or {},
+    )
+
+
+def _upsert_run_artifact(state: SwarmRunState, artifact: SwarmArtifactRef) -> None:
+    for index, existing in enumerate(state.export_artifacts):
+        if existing.path == artifact.path:
+            state.export_artifacts[index] = artifact
+            return
+    state.export_artifacts.append(artifact)
+
+
+def _spec_text(state: SwarmRunState) -> str:
+    spec_path = Path(state.copied_spec_path)
+    if not spec_path.exists():
+        return ""
+    return spec_path.read_text(encoding="utf-8", errors="replace")
+
+
+def _plan_wave_runs(state: SwarmRunState, wave_index: int) -> tuple[SwarmPlanningMode, int, str]:
+    max_runs = max(state.max_runs or state.runs or 1, 1)
+    if max_runs == 1:
+        return "bounded", 1, "max_runs is 1, so the coordinator launches a single child."
+
+    spec_text = _spec_text(state)
+    lowered = spec_text.lower()
+    file_hints = {
+        match
+        for match in re.findall(
+            r"[\w./-]+\.(?:py|ts|tsx|js|jsx|json|md|sql|sh|yaml|yml|toml|css|scss)",
+            spec_text,
+        )
+    }
+    bullet_count = sum(1 for line in spec_text.splitlines() if re.match(r"\s*(?:[-*]|\d+\.)\s+", line))
+    open_signals = [
+        signal
+        for signal in (
+            "end-to-end",
+            "dashboard",
+            "frontend",
+            "backend",
+            "api",
+            "ux",
+            "open-ended",
+            "explore",
+            "across",
+            "multiple",
+            "service endpoints",
+            "integration/export",
+        )
+        if signal in lowered
+    ]
+    bounded_signals = [
+        signal
+        for signal in (
+            "rename",
+            "one file",
+            "single file",
+            "small fix",
+            "typo",
+            "bounded",
+            "narrow",
+        )
+        if signal in lowered
+    ]
+    previous_wave_accepts = len(state.waves[-1].accepted_child_ids) if state.waves else 0
+    is_open_ended = bool(open_signals) or len(file_hints) >= 3 or bullet_count >= 4
+    if wave_index > 1 and previous_wave_accepts > 1:
+        is_open_ended = True
+    if bounded_signals and not open_signals and len(file_hints) <= 2 and bullet_count <= 3:
+        is_open_ended = False
+
+    if is_open_ended:
+        reason = (
+            f"Open-ended search space detected from {len(file_hints)} file hints, "
+            f"{bullet_count} task bullets, and signals: {', '.join(open_signals) or 'broad scope'}."
+        )
+        return "open-ended", max_runs, reason
+
+    planned = min(max_runs, 2)
+    if wave_index > 1 and previous_wave_accepts <= 1:
+        planned = 1
+    reason = (
+        f"Bounded search space detected from {len(file_hints)} file hints, "
+        f"{bullet_count} task bullets, and signals: {', '.join(bounded_signals) or 'narrow scope'}."
+    )
+    return "bounded", planned, reason
+
+
+def _write_artifact_payload(
+    run_dir: Path,
+    relative_path: str,
+    payload: dict[str, object],
+    *,
+    kind: str,
+    label: str,
+    metadata: dict[str, object] | None = None,
+) -> SwarmArtifactRef:
+    artifact_path = run_dir / relative_path
+    _write_json(artifact_path, payload)
+    return _artifact_ref(run_dir, artifact_path, kind=kind, label=label, metadata=metadata)
+
+
+def _refresh_transplant_commands(state: SwarmRunState) -> None:
+    commit_refs = [item.commit_ref for item in state.accepted_commits if item.commit_ref]
+    commands: list[str] = []
+    if commit_refs:
+        commands.append(f"git cherry-pick {' '.join(commit_refs)}")
+    for accepted in state.accepted_commits:
+        if accepted.patch_path:
+            commands.append(f"git apply {shlex.quote(accepted.patch_path)}")
+    state.transplant_commands = commands
+
+
+def _write_run_base_snapshot_manifest(state: SwarmRunState, run_dir: Path) -> None:
+    state.base_snapshot_ref = state.base_snapshot_ref or state.integration_base_ref or state.base_ref
+    artifact = _write_artifact_payload(
+        run_dir,
+        "artifacts/base-snapshot.json",
+        {
+            "run_id": state.run_id,
+            "base_ref": state.base_ref,
+            "base_snapshot_ref": state.base_snapshot_ref,
+            "integration_base_ref": state.integration_base_ref,
+            "dirty_paths": state.dirty_paths,
+            "dirty_state_applied": bool(state.dirty_paths),
+            "semantics": "base_snapshot_ref is the exact integration snapshot the swarm launched from, including synced dirty state when present.",
+        },
+        kind="base-snapshot",
+        label="Base snapshot manifest",
+        metadata={
+            "base_ref": state.base_ref,
+            "base_snapshot_ref": state.base_snapshot_ref,
+            "dirty_state_applied": bool(state.dirty_paths),
+        },
+    )
+    state.base_snapshot_artifact = artifact
+    _upsert_run_artifact(state, artifact)
+
+
+def _write_wave_manifest(state: SwarmRunState, wave: SwarmWaveState) -> None:
+    run_dir = Path(state.copied_spec_path).resolve().parent
+    rejected_outcomes = [
+        {
+            "child_id": child.child_id,
+            "status": child.status,
+            "summary": child.summary,
+            "error": child.error,
+            "acceptance_note": child.acceptance_note,
+        }
+        for child in _children_for_wave(state, wave.wave_index)
+        if child.child_id in wave.rejected_child_ids
+    ]
+    artifact = _write_artifact_payload(
+        run_dir,
+        f"artifacts/waves/wave-{wave.wave_index:02d}-manifest.json",
+        {
+            "run_id": state.run_id,
+            "wave_index": wave.wave_index,
+            "status": wave.status,
+            "max_runs": wave.max_runs,
+            "planned_runs": wave.planned_runs,
+            "planning_mode": wave.planning_mode,
+            "planning_reason": wave.planning_reason,
+            "primary_winner_child_id": wave.primary_winner_child_id,
+            "accepted_child_ids": wave.accepted_child_ids,
+            "accepted_commits": [item.model_dump(mode="json") for item in wave.accepted_commits],
+            "rejected_outcomes": rejected_outcomes,
+            "summary": wave.summary,
+        },
+        kind="wave-manifest",
+        label=f"Wave {wave.wave_index} manifest",
+        metadata={
+            "wave_index": wave.wave_index,
+            "accepted_count": len(wave.accepted_commits),
+            "rejected_count": len(rejected_outcomes),
+        },
+    )
+    wave.manifest_artifact = artifact
+    _upsert_run_artifact(state, artifact)
+
+
+def _write_run_acceptance_manifest(state: SwarmRunState) -> None:
+    run_dir = Path(state.copied_spec_path).resolve().parent
+    artifact = _write_artifact_payload(
+        run_dir,
+        "artifacts/accepted-commits.json",
+        {
+            "run_id": state.run_id,
+            "base_snapshot_ref": state.base_snapshot_ref,
+            "integration_base_ref": state.integration_base_ref,
+            "accepted_child_ids": state.accepted_child_ids,
+            "accepted_commits": [item.model_dump(mode="json") for item in state.accepted_commits],
+            "transplant_commands": state.transplant_commands,
+        },
+        kind="accepted-commits",
+        label="Accepted commit manifest",
+        metadata={"accepted_count": len(state.accepted_commits)},
+    )
+    _upsert_run_artifact(state, artifact)
 
 
 def _child_run_dir(root: Path, run_id: str, child_id: str) -> Path:
@@ -448,6 +686,7 @@ def initialize_swarm_run(
         integration_worktree,
         "[swarm] base snapshot",
     )
+    artifact_root = run_dir / "artifacts"
     state = SwarmRunState(
         run_id=run_id,
         status="pending",
@@ -455,9 +694,11 @@ def initialize_swarm_run(
         repo_root=str(repo_root),
         base_worktree=str(repo_root),
         base_ref=read_head_ref(repo_root),
+        base_snapshot_ref=integration_base_ref,
         worktree_pool=str(worktree_pool),
         integration_worktree=str(integration_worktree),
         integration_base_ref=integration_base_ref,
+        artifact_root=str(artifact_root),
         spec_source_path=str(spec_path),
         copied_spec_path=str(spec_copy),
         runner_name=runner_name,
@@ -465,6 +706,7 @@ def initialize_swarm_run(
         child_command=list(child_command),
         validation_commands=list(validation_commands),
         runs=runs,
+        max_runs=runs,
         keep_worktrees=keep_worktrees,
         detached=detached,
         dirty_paths=dirty_paths,
@@ -472,8 +714,10 @@ def initialize_swarm_run(
             "Each child gets an isolated git worktree and ATELIER_ROOT.",
             "The agent command must consume the provided worktree/spec env vars to use Atelier MCP/runtime inside each child.",
             "Accepted child patches are merged onto an integration worktree in score order; later waves branch from that accepted base.",
+            "max_runs is the per-wave cap; planned_runs records how many children the coordinator actually launched in that wave.",
         ],
     )
+    _write_run_base_snapshot_manifest(state, run_dir)
     state_path = resolve_state_path(root, run_id)
     save_swarm_state(state_path, state)
     return state, state_path
@@ -502,9 +746,20 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
         repo_root=Path(state.repo_root),
         pool_root=Path(state.worktree_pool),
     )
-    wave = SwarmWaveState(wave_index=wave_index)
+    planning_mode, planned_runs, planning_reason = _plan_wave_runs(state, wave_index)
+    state.max_runs = max(state.max_runs or state.runs or 1, 1)
+    state.runs = state.max_runs
+    state.planning_mode = planning_mode
+    state.fan_out_reason = planning_reason
+    wave = SwarmWaveState(
+        wave_index=wave_index,
+        max_runs=state.max_runs,
+        planned_runs=planned_runs,
+        planning_mode=planning_mode,
+        planning_reason=planning_reason,
+    )
     spec_copy = Path(state.copied_spec_path)
-    for index in range(1, state.runs + 1):
+    for index in range(1, wave.planned_runs + 1):
         child_id = f"wave-{wave_index:02d}-run-{index:02d}"
         child_dir = _child_run_dir(root, state.run_id, child_id)
         child_dir.mkdir(parents=True, exist_ok=True)
@@ -667,32 +922,39 @@ def apply_wave_candidates(
     ranked = rank_children(wave_children)
     accepted: list[str] = []
     rejected: list[str] = []
+    accepted_commits: list[SwarmAcceptedCommit] = []
+    run_dir = Path(state.copied_spec_path).resolve().parent
 
     for child in ranked:
         if child.status != "success":
             child.accepted = False
             child.acceptance_note = "Child command did not succeed."
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         if not child.files_changed:
             child.accepted = False
             child.acceptance_note = "Child produced no code changes."
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         if any(not check.passed for check in child.validation_results):
             child.accepted = False
             child.acceptance_note = "Validation failed."
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         patch_path = _write_child_patch(child)
         if patch_path is None:
             child.accepted = False
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         if not _can_apply_patch(integration, patch_path):
             child.accepted = False
             child.acceptance_note = "Patch conflicted with the already accepted integration state."
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         try:
             _apply_patch_to_worktree(integration, patch_path)
@@ -701,6 +963,7 @@ def apply_wave_candidates(
             child.accepted = False
             child.acceptance_note = "Patch conflicted with the already accepted integration state."
             rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
         child.accepted = True
         child.acceptance_note = "Applied to integration base."
@@ -708,23 +971,65 @@ def apply_wave_candidates(
             integration,
             f"[swarm] wave {wave.wave_index:02d} accept {child.child_id}",
         )
+        patch_artifact = _artifact_ref(
+            run_dir,
+            patch_path,
+            kind="patch",
+            label=f"{child.child_id} patch",
+            metadata={
+                "wave_index": wave.wave_index,
+                "child_id": child.child_id,
+                "commit_ref": state.integration_base_ref,
+            },
+        )
+        apply_commands = [
+            f"git cherry-pick {state.integration_base_ref}",
+            f"git apply {shlex.quote(str(patch_path))}",
+        ]
+        accepted_commit = SwarmAcceptedCommit(
+            order=len(state.accepted_commits) + len(accepted_commits) + 1,
+            child_id=child.child_id,
+            commit_ref=state.integration_base_ref,
+            summary=child.summary,
+            files_changed=list(child.files_changed),
+            patch_path=str(patch_path),
+            score=child.score,
+            artifacts=[patch_artifact],
+            apply_commands=apply_commands,
+        )
+        child.accepted_commit_ref = accepted_commit.commit_ref
+        child.accepted_order = accepted_commit.order
+        child.export_artifacts = [patch_artifact]
+        child.apply_commands = apply_commands
+        accepted_commits.append(accepted_commit)
+        _upsert_run_artifact(state, patch_artifact)
         accepted.append(child.child_id)
 
     wave.accepted_child_ids = accepted
     wave.rejected_child_ids = rejected
+    wave.accepted_commits = accepted_commits
+    wave.primary_winner_child_id = accepted[0] if accepted else None
     wave.finished_at = _utcnow()
     if accepted:
         for child_id in accepted:
             if child_id not in state.accepted_child_ids:
                 state.accepted_child_ids.append(child_id)
+        state.accepted_commits.extend(accepted_commits)
+        state.primary_winner_child_id = accepted[0]
         state.winner_child_id = accepted[0]
         winner = next(child for child in ranked if child.child_id == accepted[0])
         state.ranking_notes = winner.score_breakdown
         wave.status = "applied"
         wave.summary = f"Accepted {len(accepted)} child patch(es)."
+        _refresh_transplant_commands(state)
+        _write_wave_manifest(state, wave)
+        _write_run_acceptance_manifest(state)
         return True
     wave.status = "no-improvement"
     wave.summary = "No child patch was accepted in this wave."
+    _refresh_transplant_commands(state)
+    _write_wave_manifest(state, wave)
+    _write_run_acceptance_manifest(state)
     return False
 
 
