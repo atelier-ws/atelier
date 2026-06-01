@@ -80,3 +80,32 @@ def test_summarize_rows_adds_total_row() -> None:
     assert summary[0]["cases"] == 2
     assert summary[-1]["tool"] == "TOTAL"
     assert summary[-1]["passed"] == 1
+
+
+def test_repo_workspace_root_uses_cached_snapshot(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    snapshot_root = tmp_path / "snapshot"
+    calls: list[tuple[Path, Path, str, str]] = []
+
+    monkeypatch.setattr(EXPORTER, "_REPO_SNAPSHOT_ROOT", None)
+    monkeypatch.setattr(EXPORTER, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(EXPORTER, "default_benchmark_root", lambda root: root.parent / "benchmarks")
+    monkeypatch.setattr(EXPORTER, "repo_cache_key", lambda root: "abc123")
+
+    def fake_prepare(repo: Path, cache_root: Path, *, name: str, cache_key: str) -> Path:
+        calls.append((repo, cache_root, name, cache_key))
+        return snapshot_root
+
+    monkeypatch.setattr(EXPORTER, "prepare_cached_repo_snapshot", fake_prepare)
+
+    assert EXPORTER._repo_workspace_root() == snapshot_root
+    assert EXPORTER._repo_workspace_root() == snapshot_root
+    assert calls == [
+        (
+            repo_root,
+            repo_root.parent / "benchmarks" / "mcp-cache" / "snapshots",
+            "public-mcp-repo",
+            "abc123",
+        )
+    ]

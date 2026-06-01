@@ -7,8 +7,10 @@ from click.testing import CliRunner
 from atelier.core.capabilities.swarm.capability import (
     _expand_command_tokens,
     build_child_env,
+    launch_swarm_children,
     resolve_swarm_child_command,
     resolve_swarm_provider_command,
+    save_swarm_state,
 )
 from atelier.core.capabilities.swarm.models import (
     SwarmAcceptedCommit,
@@ -49,9 +51,7 @@ def test_swarm_start_defaults_to_program_md(monkeypatch: object, tmp_path: Path)
         runs=1,
         max_runs=1,
     )
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
     monkeypatch.setattr(
         "atelier.gateway.cli.commands.swarm.initialize_swarm_run",
         lambda **kwargs: (captured.update(kwargs) or state, tmp_path / "state.json"),
@@ -75,9 +75,7 @@ def test_swarm_start_defaults_to_program_md(monkeypatch: object, tmp_path: Path)
 
 def test_swarm_start_missing_default_program_md_fails(monkeypatch: object, tmp_path: Path) -> None:
     runner = CliRunner()
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
         swarm_group,
@@ -93,9 +91,7 @@ def test_swarm_start_rejects_spec_outside_repo(monkeypatch: object, tmp_path: Pa
     runner = CliRunner()
     outside = tmp_path.parent / "outside-program.md"
     outside.write_text("# spec\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
         swarm_group,
@@ -166,9 +162,7 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
         ],
     )
 
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
     monkeypatch.setattr(
         "atelier.gateway.cli.commands.swarm.initialize_swarm_run",
         lambda **_: (state, tmp_path / "state.json"),
@@ -222,9 +216,7 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
         children=[],
     )
 
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     def _initialize(**kwargs: object) -> tuple[SwarmRunState, Path]:
         captured["child_command"] = kwargs["child_command"]
@@ -275,6 +267,70 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
     ]
     assert captured["runner_name"] == "ollama-claude"
     assert captured["runner_model"] == "qwen3.6"
+
+
+def test_swarm_start_forwards_evaluator_controls(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    spec = tmp_path / "program.md"
+    spec.write_text("# spec\n", encoding="utf-8")
+    root = tmp_path / "atelier-root"
+    captured: dict[str, object] = {}
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="success",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path=str(spec),
+        copied_spec_path=str(spec),
+        runner_name="copilot",
+        runner_model="gpt-5.4",
+        child_command=["copilot", "agent", "run"],
+        runs=2,
+        max_runs=2,
+    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
+
+    def _initialize(**kwargs: object) -> tuple[SwarmRunState, Path]:
+        captured.update(kwargs)
+        return state, tmp_path / "state.json"
+
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.initialize_swarm_run", _initialize)
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.swarm.launch_swarm_children",
+        lambda _root, _state: state,
+    )
+
+    result = runner.invoke(
+        swarm_group,
+        [
+            "start",
+            str(spec),
+            "--runner",
+            "copilot",
+            "--runner-model",
+            "gpt-5.4",
+            "--continuous",
+            "--evaluator-backend",
+            "ollama",
+            "--evaluator-model",
+            "claude-opus-4.8",
+            "--max-idle-waves",
+            "5",
+            "--max-evaluator-failures",
+            "4",
+        ],
+        obj={"root": root},
+    )
+
+    assert result.exit_code == 0
+    assert captured["evaluator_backend"] == "ollama"
+    assert captured["evaluator_model"] == "claude-opus-4.8"
+    assert captured["max_no_progress_waves"] == 5
+    assert captured["max_evaluator_failures"] == 4
 
 
 def test_resolve_swarm_child_command_uses_claude_print_mode() -> None:
@@ -328,15 +384,11 @@ def test_expand_command_tokens_inlines_spec_contents(tmp_path: Path) -> None:
     ]
 
 
-def test_swarm_start_rejects_runner_and_raw_command(
-    monkeypatch: object, tmp_path: Path
-) -> None:
+def test_swarm_start_rejects_runner_and_raw_command(monkeypatch: object, tmp_path: Path) -> None:
     runner = CliRunner()
     spec = tmp_path / "program.md"
     spec.write_text("# spec\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path
-    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
         swarm_group,
@@ -427,9 +479,14 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
         copied_spec_path=str(tmp_path / "program.md"),
         runner_name="claude",
         runner_model="sonnet",
+        evaluator_backend="ollama",
+        evaluator_model="claude-opus-4.8",
         child_command=["echo", "hi"],
         runs=0,
         max_runs=0,
+        convergence_status="stagnating",
+        convergence_summary="Only duplicate patch ideas remain.",
+        next_wave_directives=["Probe runtime metadata trimming."],
         children=[
             SwarmChildState(
                 child_id="wave-01-run-01",
@@ -456,8 +513,77 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
     assert "run_id: swarm-123" in result.output
     assert "runner: claude" in result.output
     assert "runner_model: sonnet" in result.output
+    assert "evaluator_backend: ollama" in result.output
+    assert "convergence_status: stagnating" in result.output
+    assert "Only duplicate patch ideas remain." in result.output
     assert "failed_children:" in result.output
     assert "selected model is invalid" in result.output
+
+
+def test_launch_swarm_children_continues_until_idle_budget(monkeypatch: object, tmp_path: Path) -> None:
+    root = tmp_path / "atelier-root"
+    state_path = tmp_path / "state.json"
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="pending",
+        mode="continuous",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        runner_name="copilot",
+        runner_model="gpt-5.4",
+        child_command=["copilot", "agent", "run"],
+        runs=2,
+        max_runs=2,
+        keep_worktrees=True,
+        max_no_progress_waves=2,
+    )
+    save_swarm_state(state_path, state)
+
+    def _prepare(state: SwarmRunState, _root: Path, wave_index: int) -> SwarmWaveState:
+        wave = SwarmWaveState(wave_index=wave_index, max_runs=2, planned_runs=2)
+        state.current_wave = wave_index
+        state.waves.append(wave)
+        return wave
+
+    def _run_wave(_root: Path, run_state_path: Path, _wave_index: int) -> SwarmRunState:
+        return SwarmRunState.model_validate_json(run_state_path.read_text(encoding="utf-8"))
+
+    call_count = {"count": 0}
+
+    def _apply(state: SwarmRunState, _children: list[SwarmChildState], wave: SwarmWaveState) -> bool:
+        call_count["count"] += 1
+        state.convergence_status = "stagnating"
+        state.convergence_summary = "No materially new ideas this wave."
+        state.consecutive_no_progress_waves = call_count["count"]
+        wave.status = "no-improvement"
+        wave.summary = state.convergence_summary
+        return False
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.swarm.capability._prepare_wave",
+        _prepare,
+    )
+    monkeypatch.setattr(
+        "atelier.core.capabilities.swarm.capability._run_wave_children",
+        _run_wave,
+    )
+    monkeypatch.setattr(
+        "atelier.core.capabilities.swarm.capability.apply_wave_candidates",
+        _apply,
+    )
+
+    completed = launch_swarm_children(root, state_path)
+
+    assert call_count["count"] == 2
+    assert completed.status == "success"
+    assert "stagnating" in completed.stop_reason.lower()
+    assert completed.current_wave == 2
 
 
 def test_swarm_list_prints_known_runs(monkeypatch: object, tmp_path: Path) -> None:
@@ -553,9 +679,7 @@ def test_swarm_export_prints_artifacts(monkeypatch: object, tmp_path: Path) -> N
     artifact = SwarmArtifactRef(
         kind="wave-manifest",
         label="Wave 1 manifest",
-        path=str(
-            root / "swarm" / "runs" / run_id / "artifacts" / "waves" / "wave-01-manifest.json"
-        ),
+        path=str(root / "swarm" / "runs" / run_id / "artifacts" / "waves" / "wave-01-manifest.json"),
         exists=True,
     )
     state = SwarmRunState(
