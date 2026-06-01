@@ -68,19 +68,19 @@ def _write_call_graph_fixture_repo(root: Path) -> None:
     (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "src" / "app.py").write_text(
-        "from src.alpha import alpha\n\n" "def handle() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef handle() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
     (root / "src" / "alpha.py").write_text(
-        "from src.beta import beta\n\n" "def alpha() -> int:\n" "    return beta()\n",
+        "from src.beta import beta\n\ndef alpha() -> int:\n    return beta()\n",
         encoding="utf-8",
     )
     (root / "src" / "beta.py").write_text(
-        "from src.gamma import gamma\n\n" "def beta() -> int:\n" "    return gamma()\n",
+        "from src.gamma import gamma\n\ndef beta() -> int:\n    return gamma()\n",
         encoding="utf-8",
     )
     (root / "src" / "gamma.py").write_text(
-        "from src.alpha import alpha\n\n" "def gamma() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef gamma() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
 
@@ -235,15 +235,15 @@ def _write_cross_lang_fixture_repo(root: Path) -> None:
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "plugins" / "__init__.py").write_text("", encoding="utf-8")
     (root / "plugins" / "worker.py").write_text(
-        "def plugin_entry() -> str:\n" "    return 'worker'\n",
+        "def plugin_entry() -> str:\n    return 'worker'\n",
         encoding="utf-8",
     )
     (root / "scripts" / "worker.py").write_text(
-        "def main() -> int:\n" "    return 1\n",
+        "def main() -> int:\n    return 1\n",
         encoding="utf-8",
     )
     (root / "src" / "local_worker.py").write_text(
-        "from scripts.worker import main\n\n" "def call_local() -> int:\n" "    return main()\n",
+        "from scripts.worker import main\n\ndef call_local() -> int:\n    return main()\n",
         encoding="utf-8",
     )
     (root / "src" / "bootstrap.py").write_text(
@@ -304,7 +304,7 @@ def _init_git_fixture_repo(repo_root: Path) -> None:
 def _write_deleted_history_fixture(repo_root: Path) -> str:
     _init_git_fixture_repo(repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
@@ -320,13 +320,13 @@ def _write_deleted_history_fixture(repo_root: Path) -> str:
 def _write_rename_history_fixture(repo_root: Path) -> str:
     _init_git_fixture_repo(repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
     _git(["mv", "legacy.py", "modern.py"], repo_root)
     (repo_root / "modern.py").write_text(
-        "class ModernCheckout:\n" "    def process(self) -> int:\n" "        return 2\n",
+        "class ModernCheckout:\n    def process(self) -> int:\n        return 2\n",
         encoding="utf-8",
     )
     return _commit_all(
@@ -342,7 +342,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
     now = datetime.now(tz=UTC)
     service_path = repo_root / "service.py"
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 1\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 1\n    return value\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -353,7 +353,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         author_date=(now - timedelta(days=240)).isoformat(),
     )
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 3\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 3\n    return value\n",
         encoding="utf-8",
     )
     indexed_sha = _commit_all(
@@ -364,7 +364,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         author_date=(now - timedelta(days=30)).isoformat(),
     )
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 5\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 5\n    return value\n",
         encoding="utf-8",
     )
     head_sha = _commit_all(
@@ -422,7 +422,7 @@ def _write_scip_fixture_for_symbol(
 def _write_live_temporal_fixture(repo_root: Path) -> None:
     _init_git_fixture_repo(repo_root)
     (repo_root / "archived.py").write_text(
-        "def archived_worker() -> int:\n" "    return 1\n",
+        "def archived_worker() -> int:\n    return 1\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -433,7 +433,7 @@ def _write_live_temporal_fixture(repo_root: Path) -> None:
         author_date="2025-01-01T00:00:00+00:00",
     )
     (repo_root / "recent.py").write_text(
-        "def active_worker() -> int:\n" "    return 2\n",
+        "def active_worker() -> int:\n    return 2\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -626,7 +626,9 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     assert cached["cache_hit"] is True
 
-    indexed = engine.tool_index(budget_tokens=4000)
+    # force=True guarantees a version bump even if no files changed;
+    # this tests the cache-invalidation mechanism, not incremental detection.
+    indexed = engine.tool_index(force=True, budget_tokens=4000)
     fresh = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
 
     assert indexed["index_version"] >= 2
@@ -634,7 +636,9 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     assert fresh["provenance"] == "local"
 
 
-def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(tmp_path: Path) -> None:
+def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     delete_sha = _write_deleted_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -651,7 +655,9 @@ def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_c
     assert second["provenance"] == "cached"
 
 
-def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(tmp_path: Path) -> None:
+def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     rename_sha = _write_rename_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -681,7 +687,11 @@ def test_tool_search_deleted_scope_applies_temporal_and_touched_by_filters_and_w
         budget_tokens=4000,
     )
     unfiltered = engine.tool_search(
-        "LegacyCheckout", scope="deleted", touched_by="history@example.com", limit=5, budget_tokens=4000
+        "LegacyCheckout",
+        scope="deleted",
+        touched_by="history@example.com",
+        limit=5,
+        budget_tokens=4000,
     )
     additive = engine.tool_search(
         "LegacyCheckout",
@@ -708,7 +718,13 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
     def fake_search(
-        self: object, query: str, *, limit: int, since_ts: int | None, touched_by: str | None, language: str | None
+        self: object,
+        query: str,
+        *,
+        limit: int,
+        since_ts: int | None,
+        touched_by: str | None,
+        language: str | None,
     ) -> list[dict[str, object]]:
         _ = (self, query, limit, since_ts, touched_by, language)
         return [
@@ -736,7 +752,9 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(
     assert payload["provenance"] == "graveyard"
 
 
-def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(tmp_path: Path) -> None:
+def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     indexed_sha, head_sha = _write_blame_fixture(repo_root)
     _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=indexed_sha)
@@ -815,7 +833,9 @@ def test_code_context_repo_scope_excludes_external_hits_by_default(tmp_path: Pat
     assert repo_hits == []
 
 
-def test_code_context_external_scope_returns_external_hits_and_origin_metadata(tmp_path: Path) -> None:
+def test_code_context_external_scope_returns_external_hits_and_origin_metadata(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -919,7 +939,9 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     assert cached_search["provenance"] == "cached"
 
 
-def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp_path: Path) -> None:
+def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -927,7 +949,10 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
 
     assert payload["target"]["qualified_name"] == "OrderService"
     assert payload["group_by"] == "file"
-    assert payload["references"]["src/checkout.py"][0]["provenance"] in {"treesitter", "local_index"}
+    assert payload["references"]["src/checkout.py"][0]["provenance"] in {
+        "treesitter",
+        "local_index",
+    }
     assert payload["reference_count"] >= 1
     if "provenance_breakdown" in payload:
         assert (
@@ -939,7 +964,9 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
     assert all("snippet" not in item for item in flattened)
 
 
-def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(tmp_path: Path) -> None:
+def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(
+    tmp_path: Path,
+) -> None:
     _write_cross_lang_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -954,7 +981,9 @@ def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_field
     assert payload["cross_lang_refs"][0]["confidence"] >= 0.7
 
 
-def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(tmp_path: Path) -> None:
+def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(
+    tmp_path: Path,
+) -> None:
     _write_cross_lang_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -963,7 +992,10 @@ def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(tm
     payload = engine.tool_usages(symbol_name="main", file_path="scripts/worker.py", budget_tokens=4000)
 
     assert payload["target"]["qualified_name"] == "main"
-    assert payload["references"]["src/local_worker.py"][0]["provenance"] in {"treesitter", "local_index"}
+    assert payload["references"]["src/local_worker.py"][0]["provenance"] in {
+        "treesitter",
+        "local_index",
+    }
     assert payload["references"]["src/bootstrap.py"][0]["provenance"] == "cross_lang"
     assert payload["references"]["src/bootstrap.py"][0]["edge_kind"] == "subprocess"
     assert payload["references"]["src/bootstrap.py"][0]["confidence"] >= 0.7
@@ -994,11 +1026,11 @@ def test_tool_usages_aggregates_results_for_ambiguous_name(tmp_path: Path) -> No
 def test_tool_callers_and_callees_aggregate_results_for_ambiguous_name(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text(
-        "def helper() -> int:\n" "    return 1\n\n" "def run() -> int:\n" "    return helper()\n",
+        "def helper() -> int:\n    return 1\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "b.py").write_text(
-        "def helper() -> int:\n" "    return 2\n\n" "def run() -> int:\n" "    return helper()\n",
+        "def helper() -> int:\n    return 2\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1022,11 +1054,11 @@ def test_tool_callees_resolves_indexed_targets_for_ambiguous_callee_name(tmp_pat
     (tmp_path / "src" / "a_helpers.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
     (tmp_path / "src" / "b_helpers.py").write_text("def helper() -> int:\n    return 2\n", encoding="utf-8")
     (tmp_path / "src" / "a.py").write_text(
-        "from src.a_helpers import helper\n\n" "def run() -> int:\n" "    return helper()\n",
+        "from src.a_helpers import helper\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "b.py").write_text(
-        "from src.b_helpers import helper\n\n" "def run() -> int:\n" "    return helper()\n",
+        "from src.b_helpers import helper\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1060,7 +1092,9 @@ def test_tool_callers_and_callees_traverse_depth_and_handle_cycles(tmp_path: Pat
     assert all(edge["depth"] in {1, 2} for edge in callees["edges"])
 
 
-def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(tmp_path: Path) -> None:
+def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(
+    tmp_path: Path,
+) -> None:
     _write_call_graph_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -1091,7 +1125,9 @@ def test_tool_callees_snapshot_is_opt_in_and_returns_metadata(tmp_path: Path) ->
     assert snapshot_payload["snapshot"]["edge_count"] == snapshot_payload["edge_count"]
 
 
-def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp_path: Path) -> None:
+def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
         "class OrderService:\n"
@@ -1155,7 +1191,10 @@ def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeyp
     assert len(payload["items"]) == 1
 
 
-def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(tmp_path: Path) -> None:
+def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     query = "create login token for authenticated user"
@@ -1185,7 +1224,9 @@ def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Pat
     assert payload["mode"] == "lexical"
 
 
-def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_matches(tmp_path: Path) -> None:
+def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_matches(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -1202,7 +1243,7 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "src" / "order_service_factory.py").write_text(
-        "class OrderServiceFactory:\n" "    pass\n",
+        "class OrderServiceFactory:\n    pass\n",
         encoding="utf-8",
     )
     (tmp_path / "tests" / "test_order_service_factory.py").write_text(
@@ -1222,7 +1263,9 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
     assert test_query_hits[0].file_path == "tests/test_order_service_factory.py"
 
 
-def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(tmp_path: Path) -> None:
+def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -1235,7 +1278,8 @@ def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(tmp
     assert exact_hits[0].symbol_name == "OrderService"
 
 
-def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path) -> None:
+def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     query = "create login token for authenticated user"
@@ -1293,7 +1337,9 @@ def test_tool_index_returns_compact_summary_fields(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
-    payload = engine.tool_index(budget_tokens=4000)
+    # force=True guarantees a full rebuild so files_indexed reflects actual file count
+    # regardless of any prior autosync activity.
+    payload = engine.tool_index(force=True, budget_tokens=4000)
 
     assert payload["repo_id"] == engine.repo_id
     assert payload["index_version"] >= 1
@@ -1620,7 +1666,7 @@ def test_incremental_index_updates_changed_and_removed_files(tmp_path: Path) -> 
 def test_search_symbols_filters_with_zoekt_candidate_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
     (tmp_path / "src" / "other.py").write_text(
-        "class OrderFactory:\n" "    pass\n",
+        "class OrderFactory:\n    pass\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")

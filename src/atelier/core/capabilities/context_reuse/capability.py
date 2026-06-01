@@ -22,7 +22,7 @@ from atelier.core.foundation.retriever import (
     score_block,
 )
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.storage.vector import (
     cosine_similarity,
     get_cached_embedding,
@@ -283,7 +283,7 @@ class ContextReuseCapability:
         self._root = Path(root)
         self._dead_ends = DeadEndTracker()
         self._adaptive_priors = _AdaptivePriorTracker()
-        self._embedder = make_embedder()
+        self._embedder = get_embedder()
         self._last_retrieval_trace: dict[str, Any] | None = None
         # Savings tracker for finalize() reporting
         self._avoided_failures = 0

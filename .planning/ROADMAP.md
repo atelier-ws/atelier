@@ -1408,6 +1408,37 @@ Plans:
 
 ---
 
-*v0.6 roadmap appended: 2026-05-29*
+### Phase 38: AUTO-OPT — Autonomous Optimization Agent
+
+**Goal**: Close GitHub's gap — a scheduled agent that audits token usage, diagnoses optimizations, and proposes fixes — but gate every proposal behind the non-inferiority benchmark so savings never ship at the cost of quality. Available both as a manual CLI command and as an opt-in background run configured at install time.
+**Depends on**: Phase 35 (crash-safe job queue), and the non-inferiority gate NI-01/NI-02 (folded into Phases 27/29).
+**Requirements**: OPT-01, OPT-02, OPT-03, OPT-04, OPT-05, OPT-06
+
+**Context / findings (verified 2026-05-30)**:
+
+- GitHub's published agentic token-savings loop (InfoQ, 2026-05) reports 43–62% effective-token reductions but provides **no** quality-validation methodology.
+- Atelier already has the measurement layer (`savings_summary.py`, `telemetry/`, servicectl `external_analytics`) running on the daemon, a deterministic optimizer (`optimization/optimizer.py:optimize_from_traces`), and a PR bot (`lesson_promotion/pr_bot.py`). But the optimizer and PR bot are **manual CLI only** — there is no `optimize` job in `KNOWN_JOB_TYPES` and the servicectl tick never runs them. The autonomous audit→diagnose→propose→PR loop does not exist yet.
+
+**Key modules**:
+
+- `src/atelier/core/capabilities/optimization/optimizer.py` (`optimize_from_traces`)
+- `src/atelier/core/capabilities/lesson_promotion/pr_bot.py`
+- `src/atelier/core/service/jobs.py` (register `JOB_OPTIMIZE`)
+- `src/atelier/gateway/cli/app.py` (`atelier optimize` command + servicectl tick wiring)
+- `scripts/install.sh` (install-time opt-in prompt; respects `ATELIER_NON_INTERACTIVE`)
+- `benchmarks/ab/` (non-inferiority gate, NI-01/NI-02)
+
+**Success Criteria**:
+
+  1. Manual CLI: `atelier optimize run` does a one-shot diagnose over recent traces + savings and prints candidate optimizations with projected savings; `--open-pr` opens a PR via `pr_bot` only when the non-inferiority gate passes.
+  2. A `JOB_OPTIMIZE` daemon job is registered (crash-safe via the Phase-35 reaper) and runs on the servicectl tick, gated on an enabled flag that defaults OFF.
+  3. `install.sh` prompts the user (respecting `ATELIER_NON_INTERACTIVE`) whether to enable automatic background optimization, records the choice (e.g. `~/.atelier/auto_optimize_enabled`), and configures the daemon accordingly; default is OFF unless the user opts in.
+  4. Every proposed change is gated by the non-inferiority A/B benchmark (NI-01/NI-02): a PR/issue is opened ONLY when it saves ≥ a target effective-token threshold AND the pass-rate Δ 95% CI lower bound ≥ −ε.
+  5. Proposals + verdicts are surfaced in telemetry; there is no auto-merge — a human approves.
+  6. Safety: auto-run is opt-in and OFF by default, honors `ATELIER_NO_SERVICECTL`, and the manual CLI always works regardless of the auto setting.
+
+---
+
+*v0.6 roadmap appended: 2026-05-29 (Phase 38 added 2026-05-30)*
 *Milestone target: v0.6 World-Class Atelier*
-*Build order: Phase 28 → Phase 29 → (Phase 30, Phase 31, Phase 32, Phase 33) → Phase 34; Phases 35 (REL), 36 (HARVEST+), 37 (FLOW) run independently as reliability / integration hardening*
+*Build order: Phase 28 → Phase 29 → (Phase 30, Phase 31, Phase 32, Phase 33) → Phase 34; Phases 35 (REL), 36 (HARVEST+), 37 (FLOW), 38 (AUTO-OPT, opt-in) run independently as reliability / integration hardening*

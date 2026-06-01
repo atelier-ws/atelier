@@ -154,7 +154,7 @@ class AtelierRuntimeCore:
         if recall:
             from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
             from atelier.core.foundation.redaction import redact
-            from atelier.infra.embeddings.factory import make_embedder
+            from atelier.infra.embeddings.factory import get_embedder
             from atelier.infra.storage.factory import make_memory_store
 
             memory_store = make_memory_store(self.root)
@@ -175,7 +175,7 @@ class AtelierRuntimeCore:
             )
             fact_blocks = fact_blocks[:5]
 
-            capability = ArchivalRecallCapability(memory_store, make_embedder(), redactor=redact)
+            capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
             passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
             scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
             if not scoped_passages:

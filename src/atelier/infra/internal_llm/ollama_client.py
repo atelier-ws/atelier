@@ -6,9 +6,7 @@ import json
 import os
 from typing import Any
 
-
-class OllamaUnavailable(RuntimeError):
-    """Raised when the optional Ollama dependency or server is unavailable."""
+from atelier.infra.internal_llm.exceptions import OllamaUnavailable
 
 
 def _ollama_module() -> Any:
@@ -25,7 +23,7 @@ def _resolve_model(model: str | None) -> str:
         return model
     if configured:
         return configured
-    return "nemotron-cascade-2:latest"
+    return "qwen3.6:27b"
 
 
 def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) -> str:
@@ -43,6 +41,8 @@ def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) ->
             options={"num_predict": max_tokens},
         )
     except Exception as exc:  # pragma: no cover - depends on local server
+        if isinstance(exc, OllamaUnavailable):
+            raise
         raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     if isinstance(response, dict):
         return str(response.get("response", ""))
@@ -77,6 +77,8 @@ def chat(
         except Exception as exc:  # pragma: no cover - depends on local server
             raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     except Exception as exc:  # pragma: no cover - depends on local server
+        if isinstance(exc, OllamaUnavailable):
+            raise
         raise OllamaUnavailable(f"Ollama server unavailable: {exc}") from exc
     message = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", {})
     content = message.get("content", "") if isinstance(message, dict) else getattr(message, "content", "")
