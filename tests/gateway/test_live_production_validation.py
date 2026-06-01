@@ -21,6 +21,7 @@ import pytest
 from atelier.core.capabilities.context_compression.sleeptime import summarize_ledger
 from atelier.core.capabilities.tool_supervision.compact_output import compact
 from atelier.infra.internal_llm import ollama_client
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
 pytestmark = pytest.mark.slow
@@ -222,7 +223,7 @@ def test_real_ollama_model_backed_paths() -> None:
             )
             assert chunks
             assert chunks[0].paraphrase.strip()
-        except ollama_client.OllamaUnavailable as exc:
+        except OllamaUnavailable as exc:
             pytest.skip(f"Ollama unavailable: {exc}")
     finally:
         os.environ.pop("ATELIER_OLLAMA_MODEL", None)

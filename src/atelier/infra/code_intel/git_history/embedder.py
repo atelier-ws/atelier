@@ -1,42 +1,33 @@
-"""Embedding helper for Context Lineage commit summaries.
-
-Uses LocalEmbedder (384-dim) — the SAME embedder as SemanticSearchRanker —
-so commit and symbol embeddings are directly comparable in ranking.
-
-CRITICAL: Do NOT use make_embedder() or generate_embedding() from
-infra/storage/vector.py — those may use ATELIER_EMBEDDING_DIM (default
-1536) which is a different dimension. Always instantiate LocalEmbedder
-directly.
-"""
+"""Embedding helper for Context Lineage commit summaries."""
 
 from __future__ import annotations
 
 import struct
 
 from atelier.infra.code_intel.git_history.models import CommitSummary
-from atelier.infra.embeddings.local import LocalEmbedder
+from atelier.infra.embeddings.base import Embedder
+from atelier.infra.embeddings.factory import embed_documents, get_code_embedder
 
-_DIM = 384
-_EMBEDDER: LocalEmbedder | None = None
-
-
-def _get_embedder() -> LocalEmbedder:
-    global _EMBEDDER
-    if _EMBEDDER is None:
-        _EMBEDDER = LocalEmbedder()
-    return _EMBEDDER
+_embedder: Embedder | None = None
 
 
-def embed_summary(summary: CommitSummary) -> bytes:
-    """Embed the summary text + top-10 files into a 384-dim float32 BLOB.
+def _get_embedder() -> Embedder:
+    global _embedder
+    if _embedder is None:
+        _embedder = get_code_embedder()
+    return _embedder
 
-    Text format: "{summary}\\n{space-joined files[:10]}"
-    Storage: struct.pack(f'{dim}f', *vector) — little-endian float32.
-    """
-    text = f"{summary.summary}\n{' '.join(summary.files_touched[:10])}"
+
+def embed_summary(summary: CommitSummary) -> bytes | None:
+    """Embed the summary text + top-10 files into a float32 BLOB."""
     embedder = _get_embedder()
-    vectors = embedder.embed([text])
+    if embedder.dim <= 0:
+        return None
+    text = f"{summary.summary}\n{' '.join(summary.files_touched[:10])}"
+    vectors = embed_documents(embedder, [text])
     vec = vectors[0]
+    if not vec:
+        return None
     return struct.pack(f"{len(vec)}f", *vec)
 
 
@@ -47,8 +38,13 @@ def decode_embedding(blob: bytes) -> list[float]:
 
 
 def embedding_dim() -> int:
-    """Return the expected embedding dimension (384)."""
-    return _DIM
+    """Return the current embedder dimension."""
+    return _get_embedder().dim
 
 
-__all__ = ["decode_embedding", "embed_summary", "embedding_dim"]
+def embedder_name() -> str:
+    """Return the current embedder cache/identity string."""
+    return _get_embedder().name
+
+
+__all__ = ["decode_embedding", "embed_summary", "embedder_name", "embedding_dim"]

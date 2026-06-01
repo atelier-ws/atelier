@@ -449,18 +449,32 @@ def compute_savings_summary(
     )
 
     # Fallback: subagent sessions have no sidecar — look for parent session in transcript.
+    # Discriminator: a *subagent* transcript has NO entries whose sessionId matches
+    # the current session_id (all lines reference the parent session).  A main
+    # session (post-compact, post-clear, fresh) has at least one own entry;
+    # skipping those prevents borrowing stale savings from a prior session whose
+    # sessionId happens to appear early in a resumed/compacted transcript.
     if priced_tokens == 0 and unpriced_tokens == 0 and calls == 0:
         # Extract parent session_id from subagent transcript if possible
         parent_id = None
         for cand in claude_transcript_candidates(session_id):
             try:
+                candidate_parent: str | None = None
+                has_own_entries = False
                 with cand.open(encoding="utf-8") as f:
                     for line in f:
                         entry = json.loads(line)
-                        if entry.get("sessionId") and entry.get("sessionId") != session_id:
-                            parent_id = entry["sessionId"]
+                        entry_sid = entry.get("sessionId")
+                        if not entry_sid:
+                            continue
+                        if entry_sid == session_id:
+                            # Found an entry owned by this session — it's a main
+                            # session, not a subagent. Bail immediately.
+                            has_own_entries = True
                             break
-                if parent_id:
+                        candidate_parent = entry_sid
+                if not has_own_entries and candidate_parent:
+                    parent_id = candidate_parent
                     break
             except Exception:
                 logging.exception("Recovered from broad exception handler")

@@ -67,6 +67,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
         return
     from atelier.core.capabilities.plugin_runtime import build_savings_report
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
+
     runs = _ledger_dir(ctx.obj["root"])
     bad_plans_blocked = 0
     rescue_events = 0

@@ -353,6 +353,7 @@ dev = [
     { name = "mypy", specifier = ">=1.20.2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.5" },
     { name = "types-pyyaml" },

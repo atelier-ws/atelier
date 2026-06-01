@@ -211,7 +211,6 @@ CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
                 "Glob",
                 "mcp__atelier__context",
                 "mcp__atelier__read",
-                "mcp__atelier__search",
                 "mcp__atelier__verify",
                 "mcp__atelier__trace",
                 "mcp__atelier__memory",

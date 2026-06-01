@@ -1,7 +1,7 @@
 ---
 name: review
 description: Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.
-tools: ["Read", "mcp__atelier__search", "mcp__atelier__node", "mcp__atelier__usages", "mcp__atelier__callers", "mcp__atelier__impact", "Glob", "mcp__atelier__context", "mcp__atelier__read", "mcp__atelier__search", "mcp__atelier__verify", "mcp__atelier__trace", "mcp__atelier__memory"]
+tools: ["Read", "mcp__atelier__search", "mcp__atelier__node", "mcp__atelier__usages", "mcp__atelier__callers", "mcp__atelier__impact", "Glob", "mcp__atelier__context", "mcp__atelier__read", "mcp__atelier__verify", "mcp__atelier__trace", "mcp__atelier__memory"]
 color: yellow
 ---
 

@@ -185,7 +185,7 @@ def import_style_guide_cmd(
 ) -> None:
     """Draft lesson candidates from Markdown style guides."""
     from atelier.core.capabilities.style_import import import_files
-    from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+    from atelier.infra.internal_llm import OllamaUnavailable
 
     if not paths:
         raise click.ClickException("at least one Markdown file or directory is required")
@@ -213,12 +213,12 @@ def block_group() -> None:
     """ReasonBlock curation commands."""
 
 
-@block_group.command("list")
+@block_group.command("list")  # type: ignore[untyped-decorator]
 @click.option("--domain", default=None)
 @click.option("--include-deprecated", is_flag=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def block_list(ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool) -> None:  # type: ignore
+def block_list(ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool) -> None:
     """List ReasonBlocks."""
     store = _load_store(ctx.obj["root"])
     blocks = store.list_blocks(domain=domain, include_deprecated=include_deprecated)
@@ -233,10 +233,10 @@ def block_list(ctx: click.Context, domain: str | None, include_deprecated: bool,
         click.echo(f"{b.id}\t{b.domain}\t{b.title}")
 
 
-@block_group.command("add")
+@block_group.command("add")  # type: ignore[untyped-decorator]
 @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.pass_context
-def block_add(ctx: click.Context, path: Path) -> None:  # type: ignore
+def block_add(ctx: click.Context, path: Path) -> None:
     """Import a ReasonBlock from a YAML file."""
     store = _load_store(ctx.obj["root"])
     data = _load_yaml(path)
@@ -247,12 +247,12 @@ def block_add(ctx: click.Context, path: Path) -> None:  # type: ignore
     click.echo(f"upserted {block.id}")
 
 
-@block_group.command("extract")
+@block_group.command("extract")  # type: ignore[untyped-decorator]
 @click.argument("trace_id")
 @click.option("--save", is_flag=True, help="Persist the candidate block.")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def block_extract(ctx: click.Context, trace_id: str, save: bool, as_json: bool) -> None:  # type: ignore
+def block_extract(ctx: click.Context, trace_id: str, save: bool, as_json: bool) -> None:
     """Extract a candidate ReasonBlock from a trace."""
     store = _load_store(ctx.obj["root"])
     trace = store.get_trace(trace_id)
