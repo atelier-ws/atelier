@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from atelier.core.capabilities.tool_supervision.compact_output import compact
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+from atelier.infra.internal_llm import InternalLLMError
 
 
 def test_compact_passthrough_under_threshold() -> None:
@@ -32,23 +32,23 @@ def test_compact_groups_grep_output_deterministically() -> None:
     assert result.compacted_tokens < result.original_tokens
 
 
-def test_compact_uses_ollama_when_enable_ollama_set(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compact_uses_llm_when_enable_llm_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "atelier.core.capabilities.tool_supervision.compact_output.summarize",
-        lambda prompt, max_tokens=500: "ollama compacted",
+        lambda prompt, max_tokens=500: "llm compacted",
     )
-    result = compact("alpha " * 2500, content_type="bash", enable_ollama=True)
-    assert result.method == "ollama_summary"
-    assert result.compacted == "ollama compacted"
+    result = compact("alpha " * 2500, content_type="bash", enable_llm=True)
+    assert result.method == "llm_summary"
+    assert result.compacted == "llm compacted"
 
 
-def test_compact_does_not_use_ollama_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ollama should NOT be tried unless enable_ollama=True — head/tail is enough."""
+def test_compact_does_not_use_llm_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM should NOT be tried unless enable_llm=True — head/tail is enough."""
     called = []
 
     def _should_not_be_called(prompt: str, max_tokens: int = 500) -> str:
         called.append(prompt)
-        return "ollama compacted"
+        return "llm compacted"
 
     monkeypatch.setattr(
         "atelier.core.capabilities.tool_supervision.compact_output.summarize",
@@ -56,21 +56,21 @@ def test_compact_does_not_use_ollama_by_default(monkeypatch: pytest.MonkeyPatch)
     )
     result = compact("alpha " * 2500, content_type="bash")
     assert result.method == "deterministic_truncate"
-    assert not called, "Ollama should not be called without enable_ollama=True"
+    assert not called, "LLM should not be called without enable_llm=True"
 
 
-def test_compact_large_output_falls_back_when_ollama_unavailable(
+def test_compact_large_output_falls_back_when_llm_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def unavailable(prompt: str, max_tokens: int = 500) -> str:
         _ = (prompt, max_tokens)
-        raise OllamaUnavailable("offline")
+        raise InternalLLMError("offline")
 
     monkeypatch.setattr(
         "atelier.core.capabilities.tool_supervision.compact_output.summarize",
         unavailable,
     )
-    result = compact("alpha " * 2500, content_type="unknown", budget_tokens=100, enable_ollama=True)
+    result = compact("alpha " * 2500, content_type="unknown", budget_tokens=100, enable_llm=True)
     assert result.method == "deterministic_truncate"
     assert result.compacted_tokens < result.original_tokens
 

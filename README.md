@@ -1,24 +1,10 @@
 # Atelier — Open-Source Context Runtime for Coding Agents
 
 <p align="center">
-  <a href="https://github.com/atelier-runtime/atelier/stargazers"><img src="https://img.shields.io/github/stars/atelier-runtime/atelier?style=for-the-badge" alt="GitHub stars" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/network/members"><img src="https://img.shields.io/github/forks/atelier-runtime/atelier?style=for-the-badge" alt="GitHub forks" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/watchers"><img src="https://img.shields.io/github/watchers/atelier-runtime/atelier?style=for-the-badge" alt="GitHub watchers" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/issues"><img src="https://img.shields.io/github/issues/atelier-runtime/atelier?style=for-the-badge" alt="GitHub issues" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/pulls"><img src="https://img.shields.io/github/issues-pr/atelier-runtime/atelier?style=for-the-badge" alt="GitHub pull requests" /></a>
   <a href="https://github.com/atelier-runtime/atelier/blob/main/LICENSE"><img src="https://img.shields.io/github/license/atelier-runtime/atelier?style=for-the-badge" alt="License" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/github/repo-size/atelier-runtime/atelier?style=for-the-badge" alt="Repository size" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/github/languages/code-size/atelier-runtime/atelier?style=for-the-badge" alt="Code size" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/github/languages/count/atelier-runtime/atelier?style=for-the-badge" alt="Language count" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/github/languages/top/atelier-runtime/atelier?style=for-the-badge" alt="Top language" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/commits/main"><img src="https://img.shields.io/github/last-commit/atelier-runtime/atelier?style=for-the-badge" alt="Last commit" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/graphs/commit-activity"><img src="https://img.shields.io/github/commit-activity/m/atelier-runtime/atelier?style=for-the-badge" alt="Monthly commit activity" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/graphs/contributors"><img src="https://img.shields.io/github/contributors/atelier-runtime/atelier?style=for-the-badge" alt="Contributors" /></a>
+  <a href="https://github.com/atelier-runtime/atelier/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/atelier-runtime/atelier/tests.yml?style=for-the-badge&label=tests" alt="Tests" /></a>
   <a href="https://github.com/atelier-runtime/atelier/releases"><img src="https://img.shields.io/github/v/release/atelier-runtime/atelier?style=for-the-badge" alt="Latest release" /></a>
   <a href="https://github.com/atelier-runtime/atelier/releases"><img src="https://img.shields.io/github/downloads/atelier-runtime/atelier/total?style=for-the-badge" alt="Total downloads" /></a>
-  <a href="https://github.com/atelier-runtime/atelier/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge" alt="PRs welcome" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/badge/Maintained-yes-success?style=for-the-badge" alt="Maintained" /></a>
-  <a href="https://github.com/atelier-runtime/atelier"><img src="https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red?style=for-the-badge" alt="Open source" /></a>
 </p>
 
 **MCP server + SDK middleware that gives every coding agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, OpenAI SDK, Gemini ADK, and any MCP host.**
@@ -62,21 +48,21 @@ Telemetry is on by default; disable with `atelier telemetry off` or `ATELIER_TEL
 
 Atelier reduces token spend at every layer of the agent loop — context loading, tool calls, model selection, and recovery. The savings stack:
 
-| Mechanism | What it does | Typical savings |
-| --- | --- | --- |
-| **Context Reuse (ReasonBlocks)** | Retrieves known procedures instead of letting the agent rediscover them from scratch each session. | Avoids 1–3 rounds of exploration per repeat task. |
-| **Context Compression** | Summarises long-running ledgers into compact reusable state so the context window stays small. | Cuts session prompt size as conversations grow. |
-| **Failure Rescue** | Surfaces targeted procedures the moment a known error pattern reappears — no retry-and-discover loop. | Eliminates duplicate debugging cycles. |
-| **Loop Detection & Watchdogs** | Detects thrashing, second-guessing, and repeated failures, then halts or rescues before the agent burns context. | Stops runaway loops that quietly drain budget. |
-| **Model Routing** | Sends each task to the right model (Haiku/Sonnet/Opus or cross-vendor) based on complexity, budget, and quality policy. Includes counterfactual pricing simulation. | Routes simple work to cheap models, hard work to capable ones. |
-| **Tool Supervision** | Cached reads, memoized searches, batch edits with rollback, injection-guarded grep — fewer redundant tool calls. | Removes duplicate filesystem and search work. |
-| **Outline-mode reads** | `mcp__atelier__read` returns signatures/structure instead of full bodies for files over ~200 LOC. | Large file reads are compressed substantially; see the benchmark harness and calibration store for current measured ratios by language. |
-| **Token-budgeted search/grep** | `search` and `grep` pack results to fit an explicit token budget, ranking by relevance instead of dumping raw output. | Bounded output — no accidental 50K-token grep results. |
-| **SCIP-indexed code intel** | Symbol lookup, callers, callees, impact, and routes come from a pre-built SCIP index, not repeated `grep`/`cat` passes. | Up to ~100× fewer tokens for symbol-level questions vs. textual search. |
-| **Specialized sub-agents** | Read-only `explore` runs on Haiku; heavier work routes to Sonnet/Opus only when needed. | Cheaper model for the majority of navigation/lookup work. |
-| **Prefix-cache diagnostics** | Middleware tracks cache-hit ratio across LangChain, OpenAI Agents, Anthropic, and Gemini, surfacing prompts that bust the cache. | Helps keep Anthropic's 5-min prompt cache warm. |
-| **Lesson Promotion & cost-cap bindings** | Promotes recurrent patterns into cost-capped routing policies tuned from observed behaviour. | Continuous spend reduction as the runtime learns. |
-| **Savings dashboard** | The frontend's Savings page (and `atelier background status`) reports token and dollar savings per session and cumulatively. | Makes the savings measurable, per session and total. |
+| Mechanism                                | What it does                                                                                                                                                        | Typical savings                                                                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Context Reuse (ReasonBlocks)**         | Retrieves known procedures instead of letting the agent rediscover them from scratch each session.                                                                  | Avoids 1–3 rounds of exploration per repeat task.                                                                                       |
+| **Context Compression**                  | Summarises long-running ledgers into compact reusable state so the context window stays small.                                                                      | Cuts session prompt size as conversations grow.                                                                                         |
+| **Failure Rescue**                       | Surfaces targeted procedures the moment a known error pattern reappears — no retry-and-discover loop.                                                               | Eliminates duplicate debugging cycles.                                                                                                  |
+| **Loop Detection & Watchdogs**           | Detects thrashing, second-guessing, and repeated failures, then halts or rescues before the agent burns context.                                                    | Stops runaway loops that quietly drain budget.                                                                                          |
+| **Model Routing**                        | Sends each task to the right model (Haiku/Sonnet/Opus or cross-vendor) based on complexity, budget, and quality policy. Includes counterfactual pricing simulation. | Routes simple work to cheap models, hard work to capable ones.                                                                          |
+| **Tool Supervision**                     | Cached reads, memoized searches, batch edits with rollback, injection-guarded grep — fewer redundant tool calls.                                                    | Removes duplicate filesystem and search work.                                                                                           |
+| **Outline-mode reads**                   | `mcp__atelier__read` returns signatures/structure instead of full bodies for files over ~200 LOC.                                                                   | Large file reads are compressed substantially; see the benchmark harness and calibration store for current measured ratios by language. |
+| **Token-budgeted search/grep**           | `search` and `grep` pack results to fit an explicit token budget, ranking by relevance instead of dumping raw output.                                               | Bounded output — no accidental 50K-token grep results.                                                                                  |
+| **SCIP-indexed code intel**              | Symbol lookup, callers, callees, impact, and routes come from a pre-built SCIP index, not repeated `grep`/`cat` passes.                                             | Up to ~100× fewer tokens for symbol-level questions vs. textual search.                                                                 |
+| **Specialized sub-agents**               | Read-only `explore`/`review`/`research` are tool-scoped (no edit access); the spawning agent picks the model per task (cheap for lookups, stronger for precision work).                                | Right-sized model + least-privilege tools per delegated task.                                                                           |
+| **Prefix-cache diagnostics**             | Middleware tracks cache-hit ratio across LangChain, OpenAI Agents, Anthropic, and Gemini, surfacing prompts that bust the cache.                                    | Helps keep Anthropic's 5-min prompt cache warm.                                                                                         |
+| **Lesson Promotion & cost-cap bindings** | Promotes recurrent patterns into cost-capped routing policies tuned from observed behaviour.                                                                        | Continuous spend reduction as the runtime learns.                                                                                       |
+| **Savings dashboard**                    | The frontend's Savings page (and `atelier background status`) reports token and dollar savings per session and cumulatively.                                        | Makes the savings measurable, per session and total.                                                                                    |
 
 All savings are recorded into the run ledger and exposed via `atelier` CLI, MCP, and the optional UI — so cost reduction is observable, not just claimed.
 
@@ -136,9 +122,15 @@ atelier tools call route --args '{
 ### Memory & Recall
 
 - **Archival recall** — per-agent memory passages with embedding search
-- **Semantic file memory** — indexed file content search via tree-sitter AST parsing
-- **Symbol recall** — SCIP-indexed symbol search across the workspace
+- **Semantic file memory** — token-aware outlines for Python, TypeScript, JavaScript, Go, Rust, Java, Ruby, C/C++, C#, Kotlin, PHP, Swift, Scala, Bash, SQL, YAML, TOML, JSON, Markdown, and generic text fallback
+- **Symbol recall** — SCIP-indexed symbol search across Python, TypeScript/JavaScript, Go, Rust, Java, Ruby, C, and C++ when the matching indexer is available
 - **Cross-vendor memory** — adapters for Claude, Codex CLI, and Gemini memory systems
+
+### Language Support
+
+Atelier uses one canonical language registry across detection, smart reads, repo-map tags, and SCIP indexing. Tree-sitter outlines and tags cover common code languages plus Bash, SQL, YAML, TOML, and JSON; small files can still fall back to generic/full reads when a dedicated outline does not clear the 25% savings guard.
+
+SCIP provisioning is tiered: `scip-python` and `scip-typescript` install into Atelier's managed Node prefix when npm is available; Go/Ruby/Clang indexers are checksum-gated lazy bootstrap candidates; Rust and Java are detected from user-managed toolchains.
 
 ### Loop Detection & Watchdogs
 
@@ -197,13 +189,13 @@ Per-host install guides:
 
 Atelier ships a fixed set of five specialised sub-agents across every supported host (Claude Code, opencode, Antigravity). They share one task loop, one ledger, and one set of MCP tools — only the toolset and model assignment differ.
 
-| Agent | Purpose | Default model | Tooling |
-| --- | --- | --- | --- |
-| **`code`** | Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop. | Inherits parent | All tools (Atelier MCP preferred over native I/O) |
-| **`explore`** | Read-only codebase explorer. Finds files, symbols, and patterns. Never edits. | Haiku | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,search,read,memory}` |
-| **`repair`** | Repair specialist for repeated failures. Captures the failing signal, calls `rescue`, applies the fix, and records a postmortem. | Inherits parent | All tools |
-| **`research`** | External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations. | Inherits parent | `WebFetch`, `WebSearch`, `mcp__atelier__{context,search,read,memory}` |
-| **`review`** | Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files. | Inherits parent | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,read,search,verify,trace,memory}` |
+| Agent          | Purpose                                                                                                                          | Default model   | Tooling                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------- |
+| **`code`**     | Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop.                                  | Inherits parent | All tools (Atelier MCP preferred over native I/O)                                 |
+| **`explore`**  | Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.                                                    | Inherits parent | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,search,read,grep,node,symbols,usages,explore,memory}` |
+| **`repair`**   | Repair specialist for repeated failures. Captures the failing signal, calls `rescue`, applies the fix, and records a postmortem. | Inherits parent | All tools                                                                         |
+| **`research`** | External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.  | Inherits parent | `WebFetch`, `WebSearch`, `mcp__atelier__{context,search,read,memory}`             |
+| **`review`**   | Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.                      | Inherits parent | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,read,search,verify,trace,memory}` |
 
 Agent source-of-truth definitions live under `docs/agent-os/modes/`. Host-specific files are generated by `scripts/render_mode_surfaces.py` into:
 
@@ -267,12 +259,12 @@ Atelier Runtime
 
 ### Storage Layout
 
-| Path                        | Contents                                               |
-| --------------------------- | ------------------------------------------------------ |
-| `~/.atelier/atelier.db`     | SQLite store for blocks, traces, rubrics, jobs, memory |
-| `<workspace>/.lessons/blocks/*.md` | Markdown mirror of ReasonBlocks |
-| `~/.atelier/traces/*.json`  | JSON mirror of recorded traces                         |
-| `<workspace>/.lessons/rubrics/*.yaml` | YAML mirror of rubrics |
+| Path                                  | Contents                                               |
+| ------------------------------------- | ------------------------------------------------------ |
+| `~/.atelier/atelier.db`               | SQLite store for blocks, traces, rubrics, jobs, memory |
+| `<workspace>/.lessons/blocks/*.md`    | Markdown mirror of ReasonBlocks                        |
+| `~/.atelier/traces/*.json`            | JSON mirror of recorded traces                         |
+| `<workspace>/.lessons/rubrics/*.yaml` | YAML mirror of rubrics                                 |
 
 ## Optional UI Stack
 

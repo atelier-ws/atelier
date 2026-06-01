@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 import tempfile
 from datetime import UTC, datetime
@@ -128,6 +129,7 @@ def sync_up(root: Path, *, passphrase: str | None = None) -> dict[str, Any]:
             backend.save_index(remote_index)
             uploaded.append(key)
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             failed.append({"key": key, "error": str(exc)})
     status = load_sync_status(root)
     status.update(
@@ -209,6 +211,7 @@ def sync_status(root: Path) -> dict[str, Any]:
     try:
         config = load_sync_config(root)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         status.setdefault("configured", False)
         return status
     try:

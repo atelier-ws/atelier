@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -109,6 +110,21 @@ class AtelierRuntimeCore:
             token_budget=token_budget,
             dedup=dedup,
         )
+        should_return_payload = include_telemetry or agent_id is not None
+        if not scored:
+            if not should_return_payload:
+                return ""
+            payload: dict[str, Any] = {
+                "context": "",
+                "recalled_passages": [],
+                "tokens_breakdown": {"reasonblocks": 0, "bootstrap": 0, "memory": 0, "total": 0},
+                "bootstrap": {"status": "cold", "repo_id": None, "blocks": []},
+            }
+            if include_telemetry:
+                payload["tokens_used"] = 0
+                payload["tokens_saved_vs_naive"] = 0
+            return payload
+
         reasonblock_context = render_context_for_agent([item.block for item in scored])
         bootstrap_context = ""
         bootstrap_blocks: list[dict[str, Any]] = []
@@ -116,7 +132,6 @@ class AtelierRuntimeCore:
         bootstrap_state = "cold"
         memory_context = ""
         recalled_passages: list[dict[str, str | float]] = []
-
         try:
             from atelier.core.capabilities.code_context import CodeContextEngine
             from atelier.core.service.bootstrap_context import (
@@ -131,6 +146,7 @@ class AtelierRuntimeCore:
             bootstrap_state = bootstrap_status(memory_store, bootstrap_repo_id)
             bootstrap_context, bootstrap_blocks = render_bootstrap_context(memory_store, bootstrap_repo_id)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             bootstrap_context = ""
             bootstrap_blocks = []
             bootstrap_repo_id = None
@@ -138,7 +154,7 @@ class AtelierRuntimeCore:
         if recall:
             from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
             from atelier.core.foundation.redaction import redact
-            from atelier.infra.embeddings.factory import make_embedder
+            from atelier.infra.embeddings.factory import get_embedder
             from atelier.infra.storage.factory import make_memory_store
 
             memory_store = make_memory_store(self.root)
@@ -159,7 +175,7 @@ class AtelierRuntimeCore:
             )
             fact_blocks = fact_blocks[:5]
 
-            capability = ArchivalRecallCapability(memory_store, make_embedder(), redactor=redact)
+            capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
             passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
             scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
             if not scoped_passages:
@@ -176,11 +192,9 @@ class AtelierRuntimeCore:
         reasonblock_tokens = count_tokens(reasonblock_context)
         bootstrap_tokens = count_tokens(bootstrap_context) if bootstrap_context else 0
         memory_tokens = count_tokens(memory_context) if memory_context else 0
-        should_return_payload = include_telemetry or agent_id is not None
         if not should_return_payload:
             return context
-
-        payload: dict[str, Any] = {
+        payload = {
             "context": context,
             "recalled_passages": recalled_passages,
             "tokens_breakdown": {
@@ -469,8 +483,8 @@ class AtelierRuntimeCore:
             if path:
                 suggestion = {
                     "tool": "read",
-                    "args": {"path": path, "max_lines": 120},
-                    "reason": "Use AST-aware smart read with token metrics.",
+                    "args": {"file_path": path},
+                    "reason": "Use AST-aware smart read with automatic outline mode.",
                 }
         elif text.startswith("find "):
             query = text.replace("find", "", 1).strip()
@@ -849,6 +863,7 @@ class AtelierRuntimeCore:
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             pos = text.lower().find(query_lower)
             if pos < 0:

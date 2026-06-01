@@ -7,6 +7,7 @@ Reads:
 
 Outputs a Markdown report + prints a compact summary to stdout.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -14,12 +15,14 @@ import json
 from pathlib import Path
 from statistics import mean
 
+from atelier.gateway.cli.progress import ProgressReporter
+
 
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    lines = [l.strip() for l in path.read_text().splitlines() if l.strip()]
-    return [json.loads(l) for l in lines]
+    lines = [line.strip() for line in path.read_text().splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
 
 
 def load_preds(path: Path) -> dict[str, str]:
@@ -30,23 +33,21 @@ def load_preds(path: Path) -> dict[str, str]:
 
 
 def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: Path) -> None:
+    progress = ProgressReporter("swe", total=4)
+    progress.start("building report", current="load predictions")
     baseline = load_preds(baseline_path)
     atelier = load_preds(atelier_path)
+    progress.step("building report", current="load savings log")
     savings = load_jsonl(savings_log)
+    progress.step("building report", current="compute metrics")
 
     all_ids = sorted(set(baseline) | set(atelier))
     n_baseline_patched = sum(1 for p in baseline.values() if p)
     n_atelier_patched = sum(1 for p in atelier.values() if p)
 
     # Patch similarity (identical / non-empty)
-    identical = sum(
-        1 for iid in all_ids
-        if baseline.get(iid) and baseline.get(iid) == atelier.get(iid)
-    )
-    both_patched = sum(
-        1 for iid in all_ids
-        if baseline.get(iid) and atelier.get(iid)
-    )
+    identical = sum(1 for iid in all_ids if baseline.get(iid) and baseline.get(iid) == atelier.get(iid))
+    both_patched = sum(1 for iid in all_ids if baseline.get(iid) and atelier.get(iid))
 
     # Token savings from proxy log
     total_before = sum(e["before_tokens"] for e in savings)
@@ -56,13 +57,14 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
     per_req = [e["pct"] for e in savings]
     avg_pct = mean(per_req) if per_req else 0.0
     n_reqs = len(savings)
+    progress.step("building report", current="write markdown")
 
     lines = [
-        "# Atelier × SWE-bench Lite — Evaluation Report",
+        "# Atelier x SWE-bench Lite — Evaluation Report",
         "",
         "## Patch Coverage",
-        f"| Run | Instances | With Patch |",
-        f"|-----|-----------|------------|",
+        "| Run | Instances | With Patch |",
+        "|-----|-----------|------------|",
         f"| Baseline (no compression) | {len(baseline)} | {n_baseline_patched} |",
         f"| Atelier (compressed) | {len(atelier)} | {n_atelier_patched} |",
         "",
@@ -72,8 +74,8 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
         + (f" ({100*identical//max(1,both_patched)}%)" if both_patched else ""),
         "",
         "## Token Savings (Atelier proxy log)",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| LLM requests intercepted | {n_reqs} |",
         f"| Tokens before compression | {total_before:,} |",
         f"| Tokens after compression | {total_after:,} |",
@@ -93,10 +95,12 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
     md = "\n".join(lines)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(md)
+    progress.step("building report", current=output.name)
+    progress.finish("report complete")
 
     # stdout summary
     print("\n" + "=" * 60)
-    print("ATELIER × SWE-BENCH REPORT")
+    print("ATELIER x SWE-BENCH REPORT")
     print("=" * 60)
     print(f"  Instances         : {len(all_ids)}")
     print(f"  Baseline patches  : {n_baseline_patched}")

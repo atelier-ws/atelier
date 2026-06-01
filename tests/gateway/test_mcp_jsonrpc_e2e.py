@@ -160,7 +160,6 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("ATELIER_EMBEDDER", "null")
     monkeypatch.setenv("ATELIER_DEV_MODE", "1")
 
     mcp_server._current_ledger = None
@@ -285,7 +284,6 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
         "ATELIER_ROOT": str(mcp_env / ".atelier"),
         "CLAUDE_WORKSPACE_ROOT": str(mcp_env),
         "CLAUDE_CONFIG_DIR": str(mcp_env / ".claude"),
-        "ATELIER_EMBEDDER": "null",
     }
     result = subprocess.run(
         [

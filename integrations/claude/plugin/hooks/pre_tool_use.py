@@ -37,7 +37,7 @@ def _is_dev_mode() -> bool:
         from atelier.core.environment import is_dev_mode
 
         return is_dev_mode()
-    except Exception:
+    except (ImportError, AttributeError, ValueError):
         return False
 
 
@@ -62,7 +62,7 @@ def _is_risky(path: str) -> bool:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         return 0  # fail-open: never break the agent on hook parse error
 
     if not _is_dev_mode():

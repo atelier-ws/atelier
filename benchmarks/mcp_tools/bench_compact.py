@@ -25,9 +25,49 @@ def bench_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def compact_tool_fn(bench_workspace: Path) -> Any:
-    from atelier.gateway.adapters.mcp_server import tool_compact
+    from atelier.gateway.adapters import mcp_server
+    from atelier.infra.runtime.run_ledger import RunLedger
 
-    return tool_compact
+    def _call(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        seed = dict(payload.pop("_seed", {}) or {})
+        session_id = str(payload.get("session_id") or seed.get("session_id") or "bench-compact")
+        previous = mcp_server._current_ledger
+        ledger = RunLedger(session_id=session_id, agent="benchmark", root=bench_workspace)
+        ledger.task = str(seed.get("task") or "")
+        ledger.token_count = int(seed.get("token_count") or 0)
+        ledger.current_plan = list(seed.get("current_plan") or [])
+        ledger.files_touched = list(seed.get("files_touched") or [])
+        ledger.tools_called = list(seed.get("tools_called") or [])
+        ledger.commands_run = list(seed.get("commands_run") or [])
+        ledger.tests_run = list(seed.get("tests_run") or [])
+        ledger.errors_seen = list(seed.get("errors_seen") or [])
+        ledger.repeated_failures = list(seed.get("repeated_failures") or [])
+        ledger.verified_facts = list(seed.get("verified_facts") or [])
+        ledger.open_questions = list(seed.get("open_questions") or [])
+        ledger.active_reasonblocks = list(seed.get("active_reasonblocks") or [])
+        for event in seed.get("tool_events") or []:
+            if isinstance(event, dict):
+                ledger.record_tool_call(
+                    str(event.get("tool") or "tool"),
+                    args=dict(event.get("args") or {}),
+                    output=str(event.get("output") or ""),
+                )
+        for event in seed.get("command_events") or []:
+            if isinstance(event, dict):
+                ledger.record_command(
+                    str(event.get("command") or ""),
+                    ok=bool(event.get("ok")),
+                    stdout=str(event.get("stdout") or ""),
+                    stderr=str(event.get("stderr") or ""),
+                )
+        mcp_server._current_ledger = ledger
+        try:
+            return mcp_server.tool_compact(payload)
+        finally:
+            mcp_server._current_ledger = previous
+
+    return _call
 
 
 @pytest.fixture(scope="session")

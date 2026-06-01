@@ -327,8 +327,8 @@ def test_savings_summary_uses_context_budget_for_live_run_totals(
     assert data["top_sources"][0]["tokens_saved"] == 400
     assert data["cost_basis"] == "context_budget"
     assert data["actually_cost_usd"] == pytest.approx(0.009, abs=1e-6)
-    assert data["would_have_cost_usd"] == pytest.approx(0.012, abs=1e-6)
-    assert data["saved_usd"] == pytest.approx(0.003, abs=1e-6)
+    assert data["would_have_cost_usd"] == pytest.approx(0.0102, abs=1e-6)
+    assert data["saved_usd"] == pytest.approx(0.0012, abs=1e-6)
     assert data["tool_aggregates"] == [
         {
             "tool_name": "edit",
@@ -339,8 +339,8 @@ def test_savings_summary_uses_context_budget_for_live_run_totals(
             "naive_tokens": 1000,
             "saved_tokens": 400,
             "actual_cost_usd": 0.009,
-            "baseline_cost_usd": 0.012,
-            "saved_cost_usd": 0.003,
+            "baseline_cost_usd": 0.0102,
+            "saved_cost_usd": 0.0012,
             "live_calls_saved": 2,
             "live_time_saved_ms": 50_000,
             "live_saved_usd": 1.66278,
@@ -370,7 +370,7 @@ def test_savings_summary_uses_context_budget_for_live_run_totals(
             "agent": "codex",
             "task": "tracked savings proof",
             "saved_tokens": 400,
-            "saved_cost_usd": 0.003,
+            "saved_cost_usd": 0.0012,
         },
         "dominant_item": {
             "session_id": "run-live-1",
@@ -456,8 +456,8 @@ def test_savings_summary_excludes_compact_tool_output_rows_from_headline(
             "naive_tokens": 1000,
             "saved_tokens": 400,
             "actual_cost_usd": 0.009,
-            "baseline_cost_usd": 0.012,
-            "saved_cost_usd": 0.003,
+            "baseline_cost_usd": 0.0102,
+            "saved_cost_usd": 0.0012,
             "live_calls_saved": 2,
             "live_time_saved_ms": 50_000,
             "live_saved_usd": 1.66278,
@@ -488,7 +488,7 @@ def test_savings_summary_excludes_compact_tool_output_rows_from_headline(
             "agent": "codex",
             "task": "tracked savings proof",
             "saved_tokens": 400,
-            "saved_cost_usd": 0.003,
+            "saved_cost_usd": 0.0012,
         },
         "dominant_item": {
             "session_id": "run-compact-1",
@@ -724,7 +724,35 @@ def test_savings_summary_empty_state(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 def test_record_context_budget_avoids_double_counting_tool_delta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pass
+    from atelier.gateway.adapters import mcp_server
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    recorded: list[dict[str, object]] = []
+
+    class Recorder:
+        def record(self, **kwargs: object) -> None:
+            recorded.append(kwargs)
+
+        def record_compact_tool_output(self, **kwargs: object) -> None:
+            raise AssertionError("regular tool savings should use record()")
+
+    monkeypatch.setattr(mcp_server, "_get_context_budget_recorder", lambda: Recorder())
+    monkeypatch.setattr(mcp_server, "_record_smart_state_savings", lambda **_kwargs: None)
+
+    ledger = RunLedger(session_id="run-no-double-count", agent="codex")
+    ledger.record("tool_result", "search result", {"tool": "search"})
+
+    mcp_server._record_context_budget_for_tool(
+        "search",
+        {"query": "needle"},
+        ledger,
+        {"tokens_saved": 100, "total_tokens": 25},
+    )
+
+    assert len(recorded) == 1
+    lever_savings = recorded[0]["lever_savings"]
+    assert lever_savings == {"search_read": 100, "tool:search": 0}
+    assert sum(value for value in lever_savings.values() if value > 0) == 100
 
 
 # NOTE: tests that asserted _record_context_budget_for_tool wrote events to

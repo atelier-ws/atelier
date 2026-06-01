@@ -10,8 +10,12 @@ from typing import Literal
 
 from atelier.core.capabilities.code_context.models import SymbolRecord
 from atelier.core.foundation.paths import default_store_root
-from atelier.infra.embeddings.local import LocalEmbedder
-from atelier.infra.embeddings.null_embedder import NullEmbedder
+from atelier.infra.embeddings.base import Embedder
+from atelier.infra.embeddings.factory import (
+    embed_documents,
+    embed_queries,
+    get_code_embedder,
+)
 from atelier.infra.storage.vector import (
     cosine_similarity,
     get_cached_embedding,
@@ -78,19 +82,19 @@ def render_embedding_text(symbol: SymbolRecord, *, source_text: str | None = Non
 
 
 class SemanticSearchRanker:
-    """Deterministic local semantic ranking with cached vectors."""
+    """Semantic ranking for symbol search using the code-specific embedder path."""
 
     def __init__(
         self,
         repo_root: str | Path,
         *,
         store_root: str | Path | None = None,
-        embedder: LocalEmbedder | NullEmbedder | None = None,
+        embedder: Embedder | None = None,
         rrf_k: int = _DEFAULT_RRF_K,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.store_root = Path(store_root) if store_root is not None else default_store_root()
-        self.embedder = embedder or LocalEmbedder()
+        self.embedder = embedder if embedder is not None else get_code_embedder()
         self.rrf_k = rrf_k
 
     def semantic_search(
@@ -162,19 +166,28 @@ class SemanticSearchRanker:
 
     def _embed_query(self, query: str) -> list[float]:
         cache_key = vector_cache_key("code-search-query", f"{self.embedder.name}:{query.strip().lower()}")
-        return self._embed_text(query, cache_key=cache_key)
+        return self._embed_text(query, cache_key=cache_key, embed_many=embed_queries)
 
     def _embed_symbol(self, symbol: SymbolRecord, embedding_text: str) -> list[float]:
         cache_key = vector_cache_key(symbol.symbol_id, f"{self.embedder.name}:{symbol.content_hash}:{embedding_text}")
-        return self._embed_text(embedding_text, cache_key=cache_key)
+        return self._embed_text(embedding_text, cache_key=cache_key, embed_many=embed_documents)
 
-    def _embed_text(self, text: str, *, cache_key: str) -> list[float]:
+    def _embed_text(
+        self,
+        text: str,
+        *,
+        cache_key: str,
+        embed_many: Callable[[Embedder, list[str]], list[list[float]]],
+    ) -> list[float]:
         if self.embedder.dim <= 0:
             return []
         cached = get_cached_embedding(self.store_root, cache_key=cache_key, embedder_name=self.embedder.name)
         if cached is not None:
             return cached
-        vector = [float(value) for value in self.embedder.embed([text])[0]]
+        vectors = embed_many(self.embedder, [text])
+        if not vectors:
+            return []
+        vector = [float(value) for value in vectors[0]]
         put_cached_embedding(self.store_root, cache_key=cache_key, embedder_name=self.embedder.name, vector=vector)
         return vector
 

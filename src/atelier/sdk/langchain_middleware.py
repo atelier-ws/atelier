@@ -22,6 +22,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,8 @@ from atelier.infra.runtime.run_ledger import RunLedger
 
 if TYPE_CHECKING:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 def _inject_cache_control(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -170,7 +173,8 @@ class LangChainMiddleware:
             if not cache_read_tokens:
                 cache_read_tokens = token_usage.get("cache_read_input_tokens", 0)
         except Exception:
-            pass
+            logging.exception("Recovered from broad exception handler")
+            logger.debug("langchain token capture failed", exc_info=True)
 
         # Compute prefix hash from current prompt blocks
         try:
@@ -193,7 +197,8 @@ class LangChainMiddleware:
                 prefix_hash = plan.prefix_hash
                 self._prior_prefix_hash = prefix_hash
         except Exception:
-            pass
+            logging.exception("Recovered from broad exception handler")
+            logger.debug("langchain prefix-cache capture failed", exc_info=True)
 
         self._ledger.record_call(
             operation="chat",

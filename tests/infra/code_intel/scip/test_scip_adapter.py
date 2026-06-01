@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,7 @@ from atelier.core.capabilities.code_context.engine import CodeContextEngine
 from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.code_intel.scip.reader import ScipArtifactError, ScipArtifactReader
+from atelier.infra.code_intel.scip.watcher import ScipArtifactWatcher
 
 FIXTURE_INDEX_SHA = "1234567890abcdef1234567890abcdef12345678"
 
@@ -48,7 +50,7 @@ def _write_scip_fixture(
 ) -> Path:
     symbol_source = source or (engine.repo_root / "src" / "orders.py").read_text(encoding="utf-8")
     checkout_source = (engine.repo_root / "src" / "checkout.py").read_text(encoding="utf-8")
-    artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir = ScipIndexer(engine.repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path: Path = artifact_dir / artifact_name
     payload: dict[str, object] = {
@@ -295,7 +297,9 @@ def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None
     _write_scip_fixture(engine)
 
     hits = engine.search_symbols("OrderService", limit=5)
-    symbol = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+    symbol = engine.tool_symbol(
+        qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000
+    )
 
     assert hits
     assert hits[0].symbol_id == "scip-order-service"
@@ -422,6 +426,111 @@ def test_scip_reader_rejects_missing_or_malformed_index_sha_metadata(tmp_path: P
         reader.load(artifact_path)
 
 
+def test_scip_artifact_watcher_treats_branch_switch_as_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    signatures: dict[str, str] = {}
+    branch = {"name": "main", "sha": "a" * 40}
+
+    def fake_state(repo_root: Path) -> SimpleNamespace:
+        head_ref = f"refs/heads/{branch['name']}"
+        return SimpleNamespace(
+            git_dir=repo_root / ".git",
+            common_dir=repo_root / ".git",
+            head_path=repo_root / ".git" / "HEAD",
+            head_ref=head_ref,
+            head_sha=branch["sha"],
+            ref_path=repo_root / ".git" / head_ref,
+            packed_refs_path=repo_root / ".git" / "packed-refs",
+            branch_key=f"{branch['name']}-key",
+        )
+
+    def state_sync(key: str, signature: str) -> bool:
+        previous = signatures.get(key)
+        signatures[key] = signature
+        return previous is not None and previous != signature
+
+    monkeypatch.setattr("atelier.infra.code_intel.scip.watcher.resolve_git_repo_state", fake_state)
+    watcher = ScipArtifactWatcher(
+        repo_root=tmp_path,
+        cache_root=lambda: (
+            tmp_path / ".atelier" / "cache" / "scip" / "repo" / f"{branch['name']}-key"
+        ),
+        state_sync=state_sync,
+    )
+    first_path = tmp_path / ".atelier" / "cache" / "scip" / "repo" / "main-key" / "python.scip"
+    first_path.parent.mkdir(parents=True, exist_ok=True)
+    first_path.write_text("first", encoding="utf-8")
+
+    assert watcher.refresh([first_path]) is False
+
+    branch["name"] = "feature"
+    branch["sha"] = "b" * 40
+    second_path = tmp_path / ".atelier" / "cache" / "scip" / "repo" / "feature-key" / "python.scip"
+    second_path.parent.mkdir(parents=True, exist_ok=True)
+    second_path.write_text("first", encoding="utf-8")
+
+    assert watcher.refresh([second_path]) is True
+
+
+def test_scip_provider_switches_branch_scoped_artifacts_without_reinstantiation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fixture_repo(tmp_path)
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+    branch = {"name": "main", "sha": "a" * 40}
+
+    def fake_state(repo_root: Path) -> SimpleNamespace:
+        head_ref = f"refs/heads/{branch['name']}"
+        return SimpleNamespace(
+            git_dir=repo_root / ".git",
+            common_dir=repo_root / ".git",
+            head_path=repo_root / ".git" / "HEAD",
+            head_ref=head_ref,
+            head_sha=branch["sha"],
+            ref_path=repo_root / ".git" / head_ref,
+            packed_refs_path=repo_root / ".git" / "packed-refs",
+            branch_key=f"{branch['name']}-key",
+        )
+
+    monkeypatch.setattr("atelier.infra.code_intel.scip.indexer.resolve_git_repo_state", fake_state)
+    monkeypatch.setattr("atelier.infra.code_intel.scip.watcher.resolve_git_repo_state", fake_state)
+    _write_scip_fixture(
+        engine,
+        symbol_id="scip-main-service",
+        symbol_name="MainService",
+        qualified_name="MainService",
+    )
+    provider = engine.intel_store.providers[0]
+
+    provider.refresh()
+    main_hits = provider.search_symbols("MainService", limit=5)
+
+    branch["name"] = "feature"
+    branch["sha"] = "b" * 40
+    _write_scip_fixture(
+        engine,
+        symbol_id="scip-feature-service",
+        symbol_name="FeatureService",
+        qualified_name="FeatureService",
+        source="class FeatureService:\n    pass\n",
+    )
+
+    provider.refresh()
+    feature_hits = provider.search_symbols("FeatureService", limit=5)
+
+    assert [hit.symbol_name for hit in main_hits] == ["MainService"]
+    assert [hit.symbol_name for hit in feature_hits] == ["FeatureService"]
+    assert provider.search_symbols("MainService", limit=5) == []
+
+
 @pytest.mark.skip(
     reason="SCIP routing for engine.tool_usages() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
 )
@@ -525,7 +634,9 @@ def test_scip_provider_falls_back_when_artifact_is_invalid(tmp_path: Path) -> No
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
-    artifact_path = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id / "python.scip"
+    artifact_path = (
+        engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id / "python.scip"
+    )
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text("{not json", encoding="utf-8")
 
@@ -547,7 +658,9 @@ def test_scip_refresh_invalidates_cached_search(tmp_path: Path) -> None:
 
     first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
+    artifact_path.write_text(
+        artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8"
+    )
     fresh = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
 
     assert first["cache_hit"] is False
@@ -568,7 +681,9 @@ def test_scip_refresh_invalidates_cached_search_for_new_engine_instance(tmp_path
     artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1")
 
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
+    artifact_path.write_text(
+        artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8"
+    )
     fresh_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     fresh = fresh_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
 
@@ -576,3 +691,38 @@ def test_scip_refresh_invalidates_cached_search_for_new_engine_instance(tmp_path
     assert fresh["cache_hit"] is False
     assert fresh["provenance"] == "scip"
     assert fresh["items"][0]["symbol_id"] == "scip-v2"
+
+
+def test_scip_env_var_contract_preserved_after_registry_migration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SCIP env-var names stay byte-identical and agree with the registry.
+
+    Regression for DLS-LANG-04: `discover_scip_binary` now sources the indexer
+    binary name from the canonical registry's `scip_indexer`, but the operator
+    env-var names must remain unchanged, and the registry indexer identity must
+    agree with the env-var map.
+    """
+    from atelier.infra.code_intel.languages import language_by_name
+    from atelier.infra.code_intel.scip.binaries import discover_scip_binary
+
+    # Registry agreement: canonical scip_indexer identities.
+    assert language_by_name("python").scip_indexer == "scip-python"
+    assert language_by_name("typescript").scip_indexer == "scip-typescript"
+    assert language_by_name("javascript").scip_indexer == "scip-typescript"
+
+    # Make a fake executable that env vars can point at.
+    fake_bin = tmp_path / "fake-scip-indexer"
+    fake_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    fake_bin.chmod(0o755)
+
+    # python resolves via ATELIER_SCIP_PYTHON_BIN (byte-identical name).
+    monkeypatch.delenv("ATELIER_SCIP_TYPESCRIPT_BIN", raising=False)
+    monkeypatch.setenv("ATELIER_SCIP_PYTHON_BIN", str(fake_bin))
+    assert discover_scip_binary("python") == fake_bin.resolve()
+
+    # typescript + javascript both resolve via ATELIER_SCIP_TYPESCRIPT_BIN.
+    monkeypatch.delenv("ATELIER_SCIP_PYTHON_BIN", raising=False)
+    monkeypatch.setenv("ATELIER_SCIP_TYPESCRIPT_BIN", str(fake_bin))
+    assert discover_scip_binary("typescript") == fake_bin.resolve()
+    assert discover_scip_binary("javascript") == fake_bin.resolve()

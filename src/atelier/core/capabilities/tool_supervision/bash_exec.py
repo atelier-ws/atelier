@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shlex
 import subprocess
@@ -220,6 +221,7 @@ def run_command(
         raw_stdout = ""
         raw_stderr = f"Command timed out after {timeout}s"
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         exit_code = -1
         raw_stdout = ""
         raw_stderr = str(exc)

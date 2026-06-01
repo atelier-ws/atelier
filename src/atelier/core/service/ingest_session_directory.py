@@ -59,6 +59,7 @@ def ingest_session_file(file_path: str, store: Any = None) -> dict[str, Any]:
             raw_content=raw_content,
         )
     except Exception as exc:  # pylint: disable=broad-except
+        logging.exception("Recovered from broad exception handler")
         return {
             "status": "error",
             "message": f"Failed to reconstruct ledger from session file: {exc}",
@@ -154,9 +155,11 @@ class SessionDirectoryWatcher:
                     # Wait for the next poll interval or until stopped
                     self._stop_event.wait(self.poll_interval)
                 except Exception as exc:  # pylint: disable=broad-except
+                    logging.exception("Recovered from broad exception handler")
                     logger.error("Unexpected error in directory watcher loop: %s", exc)
                     time.sleep(self.poll_interval)  # Wait before retrying
         except Exception as exc:  # pylint: disable=broad-except
+            logging.exception("Recovered from broad exception handler")
             logger.error("Directory watcher failed: %s", exc)
         finally:
             logger.info("Directory watcher loop ended for: %s", self.directory_path)
@@ -184,6 +187,7 @@ def ingest_session_directory(directory_path: str, store: Any = None, poll_interv
             "watcher": watcher,  # Return the watcher so caller can stop it later if needed
         }
     except Exception as exc:  # pylint: disable=broad-except
+        logging.exception("Recovered from broad exception handler")
         logger.error("Failed to start directory watcher: %s", exc)
         return {
             "status": "error",

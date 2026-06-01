@@ -359,7 +359,8 @@ class PostgresStore:
     ) -> None:
         if _psycopg is None:
             raise RuntimeError(
-                "psycopg (v3) is required for Postgres storage. " "Install it with: uv add 'psycopg[binary]'"
+                "psycopg (v3) is required for Postgres storage. "
+                "Install it with: uv add 'psycopg[binary]'"
             )
 
         self._url = database_url or os.environ.get("ATELIER_DATABASE_URL", "")
@@ -368,7 +369,9 @@ class PostgresStore:
 
         _vs_env = os.environ.get("ATELIER_VECTOR_SEARCH_ENABLED", "false").lower()
         self._vector_search = (
-            vector_search_enabled if vector_search_enabled is not None else _vs_env in ("1", "true", "yes")
+            vector_search_enabled
+            if vector_search_enabled is not None
+            else _vs_env in ("1", "true", "yes")
         )
         self._embedding_dim = embedding_dim or int(os.environ.get("ATELIER_EMBEDDING_DIM", "1536"))
 
@@ -409,6 +412,7 @@ class PostgresStore:
                     active_conn.commit()
                 return True
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 if owns_connection:
                     active_conn.rollback()
                 return False
@@ -453,6 +457,7 @@ class PostgresStore:
                 "vector_search": self._vector_search,
             }
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             return {"ok": False, "backend": "postgres", "error": str(exc)}
 
     # ----- reasonblocks ---------------------------------------------------- #
@@ -571,6 +576,13 @@ class PostgresStore:
                 "UPDATE reasonblocks SET status = %s, updated_at = %s WHERE slug = %s",
                 (status, now, block_id),
             )
+            conn.commit()
+        return (result.rowcount or 0) > 0
+
+    def delete_block(self, block_id: str) -> bool:
+        """Hard-delete a ReasonBlock; return True if a row was removed."""
+        with self._connect() as conn:
+            result = conn.execute("DELETE FROM reasonblocks WHERE slug = %s", (block_id,))
             conn.commit()
         return (result.rowcount or 0) > 0
 
@@ -847,7 +859,47 @@ class PostgresStore:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_job(row) for row in rows]
 
-    # ----- external analytics -------------------------------------------- #
+    def job_queue_health(self) -> dict[str, int]:
+        lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
+        lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
+        lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+                    COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running,
+                    COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
+                    COALESCE(SUM(CASE WHEN status = 'dead' THEN 1 ELSE 0 END), 0) AS dead,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN status = 'running' AND locked_at IS NOT NULL AND locked_at < %s THEN 1
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS stuck_running
+                FROM jobs
+                """,
+                (lease_cutoff,),
+            ).fetchone()
+            conn.commit()
+        pending = int(row["pending"]) if row is not None else 0
+        running = int(row["running"]) if row is not None else 0
+        failed = int(row["failed"]) if row is not None else 0
+        dead = int(row["dead"]) if row is not None else 0
+        stuck_running = int(row["stuck_running"]) if row is not None else 0
+        return {
+            "pending": pending,
+            "running": running,
+            "failed": failed,
+            "dead": dead,
+            "stuck_running": stuck_running,
+            "active": pending + running + failed,
+        }
+
+    # ----- External analytics -------------------------------------------- #
 
     def record_external_analytics_run(
         self,
@@ -1010,19 +1062,35 @@ class PostgresStore:
             domain=d["domain"],
             situation=d["situation"],
             status=d["status"],
-            task_types=(json.loads(d["task_types"]) if isinstance(d["task_types"], str) else d["task_types"]),
+            task_types=(
+                json.loads(d["task_types"]) if isinstance(d["task_types"], str) else d["task_types"]
+            ),
             triggers=json.loads(d["triggers"]) if isinstance(d["triggers"], str) else d["triggers"],
             file_patterns=(
-                json.loads(d["file_patterns"]) if isinstance(d["file_patterns"], str) else d["file_patterns"]
+                json.loads(d["file_patterns"])
+                if isinstance(d["file_patterns"], str)
+                else d["file_patterns"]
             ),
             tool_patterns=(
-                json.loads(d["tool_patterns"]) if isinstance(d["tool_patterns"], str) else d["tool_patterns"]
+                json.loads(d["tool_patterns"])
+                if isinstance(d["tool_patterns"], str)
+                else d["tool_patterns"]
             ),
-            dead_ends=(json.loads(d["dead_ends"]) if isinstance(d["dead_ends"], str) else d["dead_ends"]),
-            procedure=(json.loads(d["procedure"]) if isinstance(d["procedure"], str) else d["procedure"]),
-            verification=(json.loads(d["verification"]) if isinstance(d["verification"], str) else d["verification"]),
+            dead_ends=(
+                json.loads(d["dead_ends"]) if isinstance(d["dead_ends"], str) else d["dead_ends"]
+            ),
+            procedure=(
+                json.loads(d["procedure"]) if isinstance(d["procedure"], str) else d["procedure"]
+            ),
+            verification=(
+                json.loads(d["verification"])
+                if isinstance(d["verification"], str)
+                else d["verification"]
+            ),
             failure_signals=(
-                json.loads(d["failure_signals"]) if isinstance(d["failure_signals"], str) else d["failure_signals"]
+                json.loads(d["failure_signals"])
+                if isinstance(d["failure_signals"], str)
+                else d["failure_signals"]
             ),
             when_not_to_apply=d.get("when_not_to_apply") or "",
             usage_count=d.get("usage_count", 0),
@@ -1149,7 +1217,9 @@ class PostgresStore:
                 else d.get("block_if_missing", [])
             ),
             warning_checks=(
-                json.loads(d["warning_checks"]) if isinstance(d["warning_checks"], str) else d.get("warning_checks", [])
+                json.loads(d["warning_checks"])
+                if isinstance(d["warning_checks"], str)
+                else d.get("warning_checks", [])
             ),
             escalation_conditions=(
                 json.loads(d["escalation_conditions"])
@@ -1206,7 +1276,9 @@ class PostgresStore:
 
     # ----- run_ledger convenience ------------------------------------------ #
 
-    def upsert_run_ledger(self, session_id: str, task: str, state: dict[str, Any], domain: str | None = None) -> None:
+    def upsert_run_ledger(
+        self, session_id: str, task: str, state: dict[str, Any], domain: str | None = None
+    ) -> None:
         """Upsert a run_ledger row."""
         now = datetime.now(UTC).isoformat()
         with self._connect() as conn:
@@ -1231,7 +1303,9 @@ class PostgresStore:
     def get_run_ledger(self, session_id: str) -> dict[str, Any] | None:
         """Return a run_ledger row as a dict, or None."""
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM run_ledgers WHERE session_id = %s", (session_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM run_ledgers WHERE session_id = %s", (session_id,)
+            ).fetchone()
         if row is None:
             return None
         d = dict(row)

@@ -61,18 +61,15 @@ def main() -> None:
             task="Fix failing unit test: test_user_login asserts 200 but gets 403",
             files=["tests/test_auth.py", "auth/views.py"],
         )
-        print(f"[context] {len(ctx.context)} chars of reasoning context")
         assert isinstance(ctx.context, str)
 
         # ── 2. Rescue on failure ─────────────────────────────────────────
-        recovery = adapter.rescue_on_failure(
+        adapter.rescue_on_failure(
             task="Fix failing test",
             error="AssertionError: expected 200 got 403",
             recent_actions=["Read test file", "Modified views.py"],
             domain="Agent.swe",
         )
-        print(f"[rescue] hint={recovery.rescue_result and recovery.rescue_result.rescue!r:.80}")
-
         # ── 3. Record run ────────────────────────────────────────────────
         adapter.record_run(
             task="Fix failing test: test_user_login",

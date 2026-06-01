@@ -11,6 +11,7 @@ Dependency graph:
 from .capability import PromptCompilerCapability
 from .compiler import BudgetTooSmall, CompiledPrompt, compile_prompt
 from .models import (
+    COUNTEREXAMPLE_METADATA_KEY,
     DEFAULT_STABILITY,
     BlockKind,
     PromptBlock,
@@ -18,6 +19,7 @@ from .models import (
 )
 
 __all__ = [
+    "COUNTEREXAMPLE_METADATA_KEY",
     "DEFAULT_STABILITY",
     "BlockKind",
     "BudgetTooSmall",

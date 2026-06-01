@@ -15,6 +15,7 @@ from atelier.core.capabilities.code_context.budget import BudgetPacker
 from atelier.core.capabilities.code_context.models import SymbolRecord, TextMatch
 from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
 from atelier.infra.code_intel.cross_lang.runner import CrossLangRunner
+from atelier.infra.code_intel.scip.indexer import ScipIndexer
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -37,7 +38,9 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "tests" / "test_checkout.py").write_text(
-        "from src.checkout import checkout\n\n" "def test_checkout() -> None:\n" "    assert checkout([1, 2]) == 3\n",
+        "from src.checkout import checkout\n\n"
+        "def test_checkout() -> None:\n"
+        "    assert checkout([1, 2]) == 3\n",
         encoding="utf-8",
     )
 
@@ -68,25 +71,27 @@ def _write_call_graph_fixture_repo(root: Path) -> None:
     (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "src" / "app.py").write_text(
-        "from src.alpha import alpha\n\n" "def handle() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef handle() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
     (root / "src" / "alpha.py").write_text(
-        "from src.beta import beta\n\n" "def alpha() -> int:\n" "    return beta()\n",
+        "from src.beta import beta\n\ndef alpha() -> int:\n    return beta()\n",
         encoding="utf-8",
     )
     (root / "src" / "beta.py").write_text(
-        "from src.gamma import gamma\n\n" "def beta() -> int:\n" "    return gamma()\n",
+        "from src.gamma import gamma\n\ndef beta() -> int:\n    return gamma()\n",
         encoding="utf-8",
     )
     (root / "src" / "gamma.py").write_text(
-        "from src.alpha import alpha\n\n" "def gamma() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef gamma() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
 
 
-def _write_call_graph_scip_fixture(engine: CodeContextEngine, *, include_call_graph: bool = True) -> None:
-    artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+def _write_call_graph_scip_fixture(
+    engine: CodeContextEngine, *, include_call_graph: bool = True
+) -> None:
+    artifact_dir = ScipIndexer(engine.repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
@@ -235,15 +240,15 @@ def _write_cross_lang_fixture_repo(root: Path) -> None:
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "plugins" / "__init__.py").write_text("", encoding="utf-8")
     (root / "plugins" / "worker.py").write_text(
-        "def plugin_entry() -> str:\n" "    return 'worker'\n",
+        "def plugin_entry() -> str:\n    return 'worker'\n",
         encoding="utf-8",
     )
     (root / "scripts" / "worker.py").write_text(
-        "def main() -> int:\n" "    return 1\n",
+        "def main() -> int:\n    return 1\n",
         encoding="utf-8",
     )
     (root / "src" / "local_worker.py").write_text(
-        "from scripts.worker import main\n\n" "def call_local() -> int:\n" "    return main()\n",
+        "from scripts.worker import main\n\ndef call_local() -> int:\n    return main()\n",
         encoding="utf-8",
     )
     (root / "src" / "bootstrap.py").write_text(
@@ -304,7 +309,7 @@ def _init_git_fixture_repo(repo_root: Path) -> None:
 def _write_deleted_history_fixture(repo_root: Path) -> str:
     _init_git_fixture_repo(repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
@@ -320,13 +325,13 @@ def _write_deleted_history_fixture(repo_root: Path) -> str:
 def _write_rename_history_fixture(repo_root: Path) -> str:
     _init_git_fixture_repo(repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol", author_date="2024-01-01T00:00:00+00:00")
     _git(["mv", "legacy.py", "modern.py"], repo_root)
     (repo_root / "modern.py").write_text(
-        "class ModernCheckout:\n" "    def process(self) -> int:\n" "        return 2\n",
+        "class ModernCheckout:\n    def process(self) -> int:\n        return 2\n",
         encoding="utf-8",
     )
     return _commit_all(
@@ -342,7 +347,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
     now = datetime.now(tz=UTC)
     service_path = repo_root / "service.py"
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 1\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 1\n    return value\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -353,7 +358,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         author_date=(now - timedelta(days=240)).isoformat(),
     )
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 3\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 3\n    return value\n",
         encoding="utf-8",
     )
     indexed_sha = _commit_all(
@@ -364,7 +369,7 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         author_date=(now - timedelta(days=30)).isoformat(),
     )
     service_path.write_text(
-        "def risk_score() -> int:\n" "    value = 5\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 5\n    return value\n",
         encoding="utf-8",
     )
     head_sha = _commit_all(
@@ -389,7 +394,7 @@ def _write_scip_fixture_for_symbol(
 ) -> None:
     engine = CodeContextEngine(repo_root)
     symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
-    artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
@@ -406,7 +411,9 @@ def _write_scip_fixture_for_symbol(
                 "qname": qualified_name or symbol_name,
                 "kind": "function",
                 "signature": f"def {symbol_name}() -> int:",
-                "start_b": symbol_source.index(f"def {symbol_name}") if f"def {symbol_name}" in symbol_source else 0,
+                "start_b": symbol_source.index(f"def {symbol_name}")
+                if f"def {symbol_name}" in symbol_source
+                else 0,
                 "end_b": len(symbol_source.encode("utf-8")),
                 "line": 1,
                 "end_line": len(symbol_source.splitlines()),
@@ -422,7 +429,7 @@ def _write_scip_fixture_for_symbol(
 def _write_live_temporal_fixture(repo_root: Path) -> None:
     _init_git_fixture_repo(repo_root)
     (repo_root / "archived.py").write_text(
-        "def archived_worker() -> int:\n" "    return 1\n",
+        "def archived_worker() -> int:\n    return 1\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -433,7 +440,7 @@ def _write_live_temporal_fixture(repo_root: Path) -> None:
         author_date="2025-01-01T00:00:00+00:00",
     )
     (repo_root / "recent.py").write_text(
-        "def active_worker() -> int:\n" "    return 2\n",
+        "def active_worker() -> int:\n    return 2\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -472,7 +479,10 @@ def test_code_context_outline_context_pack_and_impact(tmp_path: Path) -> None:
 
     outline = engine.file_outline(file_path="src/orders.py")
     assert "src/orders.py" in outline["files"]
-    assert any(item["qualified_name"] == "OrderService.calculate_total" for item in outline["files"]["src/orders.py"])
+    assert any(
+        item["qualified_name"] == "OrderService.calculate_total"
+        for item in outline["files"]["src/orders.py"]
+    )
 
     pack = engine.context_pack(
         task="change OrderService calculate_total",
@@ -489,7 +499,9 @@ def test_code_context_outline_context_pack_and_impact(tmp_path: Path) -> None:
     assert impact.risk_level in {"medium", "high", "critical"}
 
 
-def test_context_pack_caps_symbols_and_filters_import_noise(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_context_pack_caps_symbols_and_filters_import_noise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text("def a0():\n    return 0\n", encoding="utf-8")
     (tmp_path / "src" / "b.py").write_text("def b0():\n    return 0\n", encoding="utf-8")
@@ -528,10 +540,14 @@ def test_context_pack_caps_symbols_and_filters_import_noise(tmp_path: Path, monk
     monkeypatch.setattr(engine, "repo_map", lambda **kwargs: {"outline": "repo map outline"})
     monkeypatch.setattr(engine, "search_symbols", lambda *args, **kwargs: symbols)
     monkeypatch.setattr(engine, "_symbols_for_files", lambda *args, **kwargs: symbols)
-    monkeypatch.setattr(engine, "_import_neighbors", lambda *args, **kwargs: ["src/a.py", "src/b.py", "src/c.py"])
+    monkeypatch.setattr(
+        engine, "_import_neighbors", lambda *args, **kwargs: ["src/a.py", "src/b.py", "src/c.py"]
+    )
     monkeypatch.setattr(engine, "get_symbol", lambda **kwargs: {"source": "def x():\n    return 1"})
 
-    pack = engine.context_pack(task="compact context", seed_files=["src/a.py"], budget_tokens=5000, max_symbols=20)
+    pack = engine.context_pack(
+        task="compact context", seed_files=["src/a.py"], budget_tokens=5000, max_symbols=20
+    )
 
     assert len(pack.symbols) == 3
     assert {symbol.kind for symbol in pack.symbols} == {"function"}
@@ -626,7 +642,9 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     assert cached["cache_hit"] is True
 
-    indexed = engine.tool_index(budget_tokens=4000)
+    # force=True guarantees a version bump even if no files changed;
+    # this tests the cache-invalidation mechanism, not incremental detection.
+    indexed = engine.tool_index(force=True, budget_tokens=4000)
     fresh = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
 
     assert indexed["index_version"] >= 2
@@ -634,7 +652,9 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     assert fresh["provenance"] == "local"
 
 
-def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(tmp_path: Path) -> None:
+def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     delete_sha = _write_deleted_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -651,7 +671,9 @@ def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_c
     assert second["provenance"] == "cached"
 
 
-def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(tmp_path: Path) -> None:
+def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     rename_sha = _write_rename_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -681,7 +703,11 @@ def test_tool_search_deleted_scope_applies_temporal_and_touched_by_filters_and_w
         budget_tokens=4000,
     )
     unfiltered = engine.tool_search(
-        "LegacyCheckout", scope="deleted", touched_by="history@example.com", limit=5, budget_tokens=4000
+        "LegacyCheckout",
+        scope="deleted",
+        touched_by="history@example.com",
+        limit=5,
+        budget_tokens=4000,
     )
     additive = engine.tool_search(
         "LegacyCheckout",
@@ -708,7 +734,13 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
     def fake_search(
-        self: object, query: str, *, limit: int, since_ts: int | None, touched_by: str | None, language: str | None
+        self: object,
+        query: str,
+        *,
+        limit: int,
+        since_ts: int | None,
+        touched_by: str | None,
+        language: str | None,
     ) -> list[dict[str, object]]:
         _ = (self, query, limit, since_ts, touched_by, language)
         return [
@@ -736,10 +768,14 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(
     assert payload["provenance"] == "graveyard"
 
 
-def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(tmp_path: Path) -> None:
+def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     indexed_sha, head_sha = _write_blame_fixture(repo_root)
-    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=indexed_sha)
+    _write_scip_fixture_for_symbol(
+        repo_root, file_path="service.py", symbol_name="risk_score", index_sha=indexed_sha
+    )
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
 
     payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
@@ -754,7 +790,9 @@ def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(tmp
 def test_tool_blame_returns_ownership_metadata_with_optional_churn(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     _indexed_sha, head_sha = _write_blame_fixture(repo_root)
-    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=head_sha)
+    _write_scip_fixture_for_symbol(
+        repo_root, file_path="service.py", symbol_name="risk_score", index_sha=head_sha
+    )
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
 
     payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
@@ -815,7 +853,9 @@ def test_code_context_repo_scope_excludes_external_hits_by_default(tmp_path: Pat
     assert repo_hits == []
 
 
-def test_code_context_external_scope_returns_external_hits_and_origin_metadata(tmp_path: Path) -> None:
+def test_code_context_external_scope_returns_external_hits_and_origin_metadata(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -902,7 +942,9 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
     search_payload = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    symbol_payload = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+    symbol_payload = engine.tool_symbol(
+        qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000
+    )
     context_payload = engine.tool_context(
         task="change OrderService calculate_total",
         seed_files=["src/orders.py"],
@@ -919,7 +961,9 @@ def test_provenance_local_default(tmp_path: Path) -> None:
     assert cached_search["provenance"] == "cached"
 
 
-def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp_path: Path) -> None:
+def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -927,11 +971,15 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
 
     assert payload["target"]["qualified_name"] == "OrderService"
     assert payload["group_by"] == "file"
-    assert payload["references"]["src/checkout.py"][0]["provenance"] in {"treesitter", "local_index"}
+    assert payload["references"]["src/checkout.py"][0]["provenance"] in {
+        "treesitter",
+        "local_index",
+    }
     assert payload["reference_count"] >= 1
     if "provenance_breakdown" in payload:
         assert (
-            payload["provenance_breakdown"].get("treesitter", 0) + payload["provenance_breakdown"].get("local_index", 0)
+            payload["provenance_breakdown"].get("treesitter", 0)
+            + payload["provenance_breakdown"].get("local_index", 0)
             >= 1
         )
     assert payload["cache_hit"] is False
@@ -939,13 +987,19 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(tmp
     assert all("snippet" not in item for item in flattened)
 
 
-def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(tmp_path: Path) -> None:
+def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_fields(
+    tmp_path: Path,
+) -> None:
     _write_cross_lang_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
-    CrossLangRunner(repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection).resolve_all()
+    CrossLangRunner(
+        repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection
+    ).resolve_all()
 
-    payload = engine.tool_symbol(qualified_name="load_plugin", file_path="src/bootstrap.py", budget_tokens=4000)
+    payload = engine.tool_symbol(
+        qualified_name="load_plugin", file_path="src/bootstrap.py", budget_tokens=4000
+    )
 
     assert payload["qualified_name"] == "load_plugin"
     assert payload["name"] == "load_plugin"
@@ -954,21 +1008,31 @@ def test_tool_symbol_adds_cross_lang_refs_without_dropping_existing_symbol_field
     assert payload["cross_lang_refs"][0]["confidence"] >= 0.7
 
 
-def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(tmp_path: Path) -> None:
+def test_tool_usages_appends_cross_lang_references_and_preserves_local_groups(
+    tmp_path: Path,
+) -> None:
     _write_cross_lang_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
-    CrossLangRunner(repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection).resolve_all()
+    CrossLangRunner(
+        repo_root=tmp_path, repo_id=engine.repo_id, connection_factory=engine.connection
+    ).resolve_all()
 
-    payload = engine.tool_usages(symbol_name="main", file_path="scripts/worker.py", budget_tokens=4000)
+    payload = engine.tool_usages(
+        symbol_name="main", file_path="scripts/worker.py", budget_tokens=4000
+    )
 
     assert payload["target"]["qualified_name"] == "main"
-    assert payload["references"]["src/local_worker.py"][0]["provenance"] in {"treesitter", "local_index"}
+    assert payload["references"]["src/local_worker.py"][0]["provenance"] in {
+        "treesitter",
+        "local_index",
+    }
     assert payload["references"]["src/bootstrap.py"][0]["provenance"] == "cross_lang"
     assert payload["references"]["src/bootstrap.py"][0]["edge_kind"] == "subprocess"
     assert payload["references"]["src/bootstrap.py"][0]["confidence"] >= 0.7
     assert (
-        payload["provenance_breakdown"].get("treesitter", 0) + payload["provenance_breakdown"].get("local_index", 0)
+        payload["provenance_breakdown"].get("treesitter", 0)
+        + payload["provenance_breakdown"].get("local_index", 0)
         >= 1
     )
     assert payload["provenance_breakdown"]["cross_lang"] >= 1
@@ -978,8 +1042,12 @@ def test_tool_usages_aggregates_results_for_ambiguous_name(tmp_path: Path) -> No
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
     (tmp_path / "src" / "b.py").write_text("def helper() -> int:\n    return 2\n", encoding="utf-8")
-    (tmp_path / "src" / "use_a.py").write_text("from src.a import helper\n\nvalue = helper()\n", encoding="utf-8")
-    (tmp_path / "src" / "use_b.py").write_text("from src.b import helper\n\nvalue = helper()\n", encoding="utf-8")
+    (tmp_path / "src" / "use_a.py").write_text(
+        "from src.a import helper\n\nvalue = helper()\n", encoding="utf-8"
+    )
+    (tmp_path / "src" / "use_b.py").write_text(
+        "from src.b import helper\n\nvalue = helper()\n", encoding="utf-8"
+    )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
     payload = engine.tool_usages(query="helper", budget_tokens=4000)
@@ -994,11 +1062,11 @@ def test_tool_usages_aggregates_results_for_ambiguous_name(tmp_path: Path) -> No
 def test_tool_callers_and_callees_aggregate_results_for_ambiguous_name(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text(
-        "def helper() -> int:\n" "    return 1\n\n" "def run() -> int:\n" "    return helper()\n",
+        "def helper() -> int:\n    return 1\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "b.py").write_text(
-        "def helper() -> int:\n" "    return 2\n\n" "def run() -> int:\n" "    return helper()\n",
+        "def helper() -> int:\n    return 2\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1019,14 +1087,18 @@ def test_tool_callers_and_callees_aggregate_results_for_ambiguous_name(tmp_path:
 
 def test_tool_callees_resolves_indexed_targets_for_ambiguous_callee_name(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "a_helpers.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
-    (tmp_path / "src" / "b_helpers.py").write_text("def helper() -> int:\n    return 2\n", encoding="utf-8")
+    (tmp_path / "src" / "a_helpers.py").write_text(
+        "def helper() -> int:\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "src" / "b_helpers.py").write_text(
+        "def helper() -> int:\n    return 2\n", encoding="utf-8"
+    )
     (tmp_path / "src" / "a.py").write_text(
-        "from src.a_helpers import helper\n\n" "def run() -> int:\n" "    return helper()\n",
+        "from src.a_helpers import helper\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "b.py").write_text(
-        "from src.b_helpers import helper\n\n" "def run() -> int:\n" "    return helper()\n",
+        "from src.b_helpers import helper\n\ndef run() -> int:\n    return helper()\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1060,7 +1132,9 @@ def test_tool_callers_and_callees_traverse_depth_and_handle_cycles(tmp_path: Pat
     assert all(edge["depth"] in {1, 2} for edge in callees["edges"])
 
 
-def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(tmp_path: Path) -> None:
+def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(
+    tmp_path: Path,
+) -> None:
     _write_call_graph_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -1091,7 +1165,9 @@ def test_tool_callees_snapshot_is_opt_in_and_returns_metadata(tmp_path: Path) ->
     assert snapshot_payload["snapshot"]["edge_count"] == snapshot_payload["edge_count"]
 
 
-def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(tmp_path: Path) -> None:
+def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
         "class OrderService:\n"
@@ -1130,7 +1206,9 @@ def test_tool_search_high_limit_forces_location_only_compaction(tmp_path: Path) 
     assert all("snippet" not in item for item in payload["items"])
 
 
-def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tool_search_deduplicates_items_before_rendering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     symbol = SymbolRecord(
@@ -1155,7 +1233,10 @@ def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeyp
     assert len(payload["items"]) == 1
 
 
-def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(tmp_path: Path) -> None:
+def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     query = "create login token for authenticated user"
@@ -1185,7 +1266,9 @@ def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Pat
     assert payload["mode"] == "lexical"
 
 
-def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_matches(tmp_path: Path) -> None:
+def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_matches(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -1202,11 +1285,14 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "src" / "order_service_factory.py").write_text(
-        "class OrderServiceFactory:\n" "    pass\n",
+        "class OrderServiceFactory:\n    pass\n",
         encoding="utf-8",
     )
     (tmp_path / "tests" / "test_order_service_factory.py").write_text(
-        "class OrderServiceFactory:\n" "    pass\n\n" "def test_order_service_factory() -> None:\n" "    assert True\n",
+        "class OrderServiceFactory:\n"
+        "    pass\n\n"
+        "def test_order_service_factory() -> None:\n"
+        "    assert True\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1222,7 +1308,53 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
     assert test_query_hits[0].file_path == "tests/test_order_service_factory.py"
 
 
-def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(tmp_path: Path) -> None:
+def test_tool_search_skips_artifact_snapshot_hits(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "live.py").write_text(
+        "def classify_command(command: str) -> str:\n    return command\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".bench-work" / "snapshot" / "src").mkdir(parents=True)
+    (tmp_path / ".bench-work" / "snapshot" / "src" / "live.py").write_text(
+        "def classify_command(command: str) -> str:\n    return command\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_search("classify_command", limit=10, mode="lexical", budget_tokens=4000)
+
+    assert [item["path"] for item in payload["items"]] == ["src/live.py"]
+
+
+def test_tool_search_exact_identifier_query_returns_only_exact_symbol_hits(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "live.py").write_text(
+        "def classify_command(command: str) -> str:\n    return command\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "helpers.py").write_text(
+        "def run_command(command: str) -> str:\n"
+        "    return classify_command(command)\n\n"
+        "def classify_command_wrapper(command: str) -> str:\n"
+        "    return classify_command(command)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "debug.py").write_text(
+        "TARGET = 'classify_command'\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_search("classify_command", limit=10, mode="lexical", budget_tokens=4000)
+
+    assert [item["path"] for item in payload["items"]] == ["src/live.py"]
+    assert [item["name"] for item in payload["items"]] == ["classify_command"]
+
+
+def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(
+    tmp_path: Path,
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -1235,7 +1367,10 @@ def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(tmp
     assert exact_hits[0].symbol_name == "OrderService"
 
 
-def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path) -> None:
+def test_tool_search_cache_keys_are_mode_aware(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     query = "create login token for authenticated user"
@@ -1284,7 +1419,9 @@ def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(
     assert status_after["entries_by_tool"] == {"code.symbol": 1}
 
     fresh_search = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    cached_symbol = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
+    cached_symbol = engine.tool_symbol(
+        qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000
+    )
     assert fresh_search["cache_hit"] is False
     assert cached_symbol["cache_hit"] is True
 
@@ -1293,7 +1430,9 @@ def test_tool_index_returns_compact_summary_fields(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
-    payload = engine.tool_index(budget_tokens=4000)
+    # force=True guarantees a full rebuild so files_indexed reflects actual file count
+    # regardless of any prior autosync activity.
+    payload = engine.tool_index(force=True, budget_tokens=4000)
 
     assert payload["repo_id"] == engine.repo_id
     assert payload["index_version"] >= 1
@@ -1441,14 +1580,17 @@ def test_tool_routes_extracts_framework_endpoints(tmp_path: Path) -> None:
     assert payload["route_count"] >= 6
     routes = payload["routes"]
     assert any(
-        route["framework"] == "fastapi" and route["method"] == "GET" and route["route"] == "/health" for route in routes
+        route["framework"] == "fastapi" and route["method"] == "GET" and route["route"] == "/health"
+        for route in routes
     )
     assert any(route["framework"] == "express" and route["route"] == "/ping" for route in routes)
     assert any(route["framework"] == "django" and route["route"] == "admin/" for route in routes)
     assert any(route["framework"] == "django" and route["route"] == "^legacy/$" for route in routes)
     assert any(route["framework"] == "flask" and route["route"] == "/healthz" for route in routes)
     assert any(
-        route["framework"] == "express" and route["method"] == "POST" and route["route"] == "/orders"
+        route["framework"] == "express"
+        and route["method"] == "POST"
+        and route["route"] == "/orders"
         for route in routes
     )
 
@@ -1499,7 +1641,9 @@ def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
     assert cached["cache_hit"] is True
 
 
-def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_autosync_incremental_reindex_updates_index_after_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC", "1")
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
@@ -1532,7 +1676,9 @@ def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, m
     assert any(event["event"] == "reindex" for event in status["autosync"]["history"])
 
 
-def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_autosync_worker_reindexes_without_search_trigger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_POLL_MS", "1000")
@@ -1566,7 +1712,9 @@ def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkey
     if engine._current_index_version() <= version_before:
         engine.index_repo(force=False)
 
-    found = engine.search_symbols("BackgroundSyncedService", mode="lexical", limit=5, auto_index=False)
+    found = engine.search_symbols(
+        "BackgroundSyncedService", mode="lexical", limit=5, auto_index=False
+    )
     assert found
     assert found[0].symbol_name == "BackgroundSyncedService"
 
@@ -1617,10 +1765,12 @@ def test_incremental_index_updates_changed_and_removed_files(tmp_path: Path) -> 
     assert int(row["n"]) == 0
 
 
-def test_search_symbols_filters_with_zoekt_candidate_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_symbols_filters_with_zoekt_candidate_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     (tmp_path / "src" / "other.py").write_text(
-        "class OrderFactory:\n" "    pass\n",
+        "class OrderFactory:\n    pass\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1633,7 +1783,9 @@ def test_search_symbols_filters_with_zoekt_candidate_files(tmp_path: Path, monke
     assert all(hit.file_path == "src/orders.py" for hit in hits)
 
 
-def test_context_pack_uses_zoekt_anchor_files_as_seeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_context_pack_uses_zoekt_anchor_files_as_seeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
@@ -1649,12 +1801,16 @@ def test_context_pack_uses_zoekt_anchor_files_as_seeds(tmp_path: Path, monkeypat
     monkeypatch.setattr(engine, "search_symbols", lambda *args, **kwargs: [])
     monkeypatch.setattr(engine, "_import_neighbors", lambda *args, **kwargs: [])
 
-    _ = engine.context_pack(task="Order service changes", seed_files=[], budget_tokens=2000, max_symbols=4)
+    _ = engine.context_pack(
+        task="Order service changes", seed_files=[], budget_tokens=2000, max_symbols=4
+    )
 
     assert "src/orders.py" in captured_seed_files
 
 
-def test_usages_prefers_zoekt_fallback_before_text_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_usages_prefers_zoekt_fallback_before_text_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -1663,7 +1819,9 @@ def test_usages_prefers_zoekt_fallback_before_text_search(tmp_path: Path, monkey
         engine,
         "_zoekt_text_matches",
         lambda *args, **kwargs: [
-            TextMatch(file_path="src/orders.py", line=1, column=1, text="def helper() -> OrderService:")
+            TextMatch(
+                file_path="src/orders.py", line=1, column=1, text="def helper() -> OrderService:"
+            )
         ],
     )
 
@@ -1676,7 +1834,9 @@ def test_usages_prefers_zoekt_fallback_before_text_search(tmp_path: Path, monkey
     refs = payload.get("references", {})
     flat = [item for group in refs.values() for item in group] if isinstance(refs, dict) else refs
     assert flat
-    assert any(str(item.get("provenance")) == "zoekt_text" for item in flat if isinstance(item, dict))
+    assert any(
+        str(item.get("provenance")) == "zoekt_text" for item in flat if isinstance(item, dict)
+    )
 
 
 def test_low_token_defaults_stay_lighter_for_search_and_pattern(
@@ -1694,7 +1854,10 @@ def test_low_token_defaults_stay_lighter_for_search_and_pattern(
         encoding="utf-8",
     )
     (tmp_path / "src" / "http.py").write_text(
-        "\n".join(f"def fetch_{index}(url: str) -> object:\n    return requests.get(url)\n" for index in range(30)),
+        "\n".join(
+            f"def fetch_{index}(url: str) -> object:\n    return requests.get(url)\n"
+            for index in range(30)
+        ),
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1752,13 +1915,17 @@ def test_tiny_budget_overflow_does_not_attach_spill_metadata(tmp_path: Path) -> 
 
     full_payload = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=4000)
     near_budget = max(1, int(full_payload["total_tokens"]) - 1)
-    near_payload = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=near_budget)
+    near_payload = engine.tool_search(
+        "OrderService", limit=5, snippet="full", budget_tokens=near_budget
+    )
 
     assert near_payload["total_tokens"] <= near_budget
     assert "overflow" not in near_payload
 
 
-def test_overflow_metadata_and_artifact_payload_are_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_overflow_metadata_and_artifact_payload_are_compact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(
         "atelier.core.capabilities.code_context.engine.default_store_root",
         lambda: tmp_path / ".atelier-store",
@@ -1779,11 +1946,15 @@ def test_overflow_metadata_and_artifact_payload_are_compact(tmp_path: Path, monk
     full_total = int(full_payload["total_tokens"])
     tight_payload: dict[str, object] | None = None
     for tight_budget in range(1000, max(1001, full_total), 200):
-        candidate = engine.tool_search("fetch_", limit=80, snippet="full", budget_tokens=tight_budget)
+        candidate = engine.tool_search(
+            "fetch_", limit=80, snippet="full", budget_tokens=tight_budget
+        )
         if isinstance(candidate.get("overflow"), dict):
             tight_payload = candidate
             break
-    assert tight_payload is not None, "expected at least one budget to trigger overflow spill metadata"
+    assert tight_payload is not None, (
+        "expected at least one budget to trigger overflow spill metadata"
+    )
 
     overflow = tight_payload.get("overflow")
     assert isinstance(overflow, dict)

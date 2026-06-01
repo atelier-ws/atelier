@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import time
@@ -21,6 +22,7 @@ from .store import SupervisionStore
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
 
     def retry(*_args: Any, **_kwargs: Any) -> Any:  # type: ignore[no-redef]
         def _decorate(fn: Any) -> Any:
@@ -38,11 +40,13 @@ except Exception:  # pragma: no cover - optional dependency fallback
 try:
     from prometheus_client import Counter, Histogram
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     Counter: Any = None  # type: ignore[no-redef]
     Histogram: Any = None  # type: ignore[no-redef]
 try:
     import pybreaker
 except Exception:  # pragma: no cover - optional dependency fallback
+    logging.exception("Recovered from broad exception handler")
     pybreaker: Any = None  # type: ignore[no-redef]
 
 # Token-cost estimates per tool type (in tokens per call)
@@ -99,6 +103,7 @@ def _content_hash(payload: dict[str, Any]) -> str:
     try:
         canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         canonical = str(payload)
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
@@ -300,6 +305,7 @@ class ToolSupervisionCapability:
                 check=False,
             )
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return ""
         return result.stdout.strip() if result.returncode == 0 else ""
 
@@ -314,6 +320,7 @@ class ToolSupervisionCapability:
         try:
             breaker.call(_raise_failure)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return
 
     def _record_pybreaker_success(self, tool: str) -> None:
@@ -323,6 +330,7 @@ class ToolSupervisionCapability:
         try:
             breaker.close()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return
 
     # ------------------------------------------------------------------
@@ -425,6 +433,7 @@ class ToolSupervisionCapability:
                 )
                 diffs.append({"path": path, "diff": result.stdout[:4000]})
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 diffs.append({"path": path, "diff": "", "error": str(exc)})
         return {"diffs": diffs}
 
@@ -442,6 +451,7 @@ class ToolSupervisionCapability:
                     test_fns = re.findall(r"^def (test_\w+)", src, re.M)
                     ctx["test_files"] = test_fns[:20]
                 except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     ctx["test_files"] = []
             test_contexts.append(ctx)
         return {"test_contexts": test_contexts}
