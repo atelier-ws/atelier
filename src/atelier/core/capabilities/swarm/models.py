@@ -277,7 +277,10 @@ class SwarmRunState(BaseModel):
         payload.setdefault("transplant_commands", [])
         payload.setdefault("fan_out_reason", "")
         payload.setdefault("planning_mode", "adaptive")
-        payload.setdefault("base_snapshot_ref", payload.get("integration_base_ref") or payload.get("base_ref") or "")
+        payload.setdefault(
+            "base_snapshot_ref",
+            payload.get("integration_base_ref") or payload.get("base_ref") or "",
+        )
         if not payload.get("primary_winner_child_id"):
             payload["primary_winner_child_id"] = payload.get("winner_child_id")
         if not payload.get("winner_child_id"):

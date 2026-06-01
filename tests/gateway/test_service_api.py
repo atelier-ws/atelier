@@ -92,9 +92,7 @@ def test_overview_accessible_no_auth(app_no_auth: TestClient) -> None:
     assert "total_blocks" in data
 
 
-def test_mcp_status_matches_non_dev_tool_visibility(
-    store: SQLiteStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
     monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     app = create_app(store_root=store.root)
@@ -121,9 +119,7 @@ def test_mcp_status_matches_non_dev_tool_visibility(
     assert "mode" in enum_param_names
 
 
-def test_hosts_endpoint_lists_supported_integrations(
-    store: SQLiteStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_hosts_endpoint_lists_supported_integrations(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
     app = create_app(store_root=store.root)
     route = next(route for route in app.routes if getattr(route, "path", "") == "/hosts")
@@ -271,9 +267,7 @@ def test_trace_record_accepts_legacy_run_id(app_no_auth: TestClient, store: SQLi
     assert trace.session_id == "legacy-run-001"
 
 
-def test_trace_record_normalizes_legacy_strength_confidence(
-    app_no_auth: TestClient, store: SQLiteStore
-) -> None:
+def test_trace_record_normalizes_legacy_strength_confidence(app_no_auth: TestClient, store: SQLiteStore) -> None:
     resp = app_no_auth.post(
         "/v1/traces",
         json={
@@ -292,9 +286,7 @@ def test_trace_record_normalizes_legacy_strength_confidence(
     assert trace.trace_confidence == "manual"
 
 
-def test_trace_record_accepts_mcp_context_fields_and_learnings(
-    app_no_auth: TestClient, store: SQLiteStore
-) -> None:
+def test_trace_record_accepts_mcp_context_fields_and_learnings(app_no_auth: TestClient, store: SQLiteStore) -> None:
     resp = app_no_auth.post(
         "/v1/traces",
         json={
@@ -390,9 +382,7 @@ def test_external_analytics_endpoints_return_summary_and_detail(
     assert external_resp.status_code == 200
     external_data = external_resp.json()
     assert external_data["totals"]["runs_total"] == 2
-    assert (
-        external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
-    )
+    assert external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
 
     dashboard_resp = app_no_auth.get("/analytics/dashboard")
     assert dashboard_resp.status_code == 200
@@ -494,9 +484,7 @@ def test_dashboard_external_uses_period_matched_codeburn_snapshot(
     assert dashboard_resp.status_code == 200
 
     dashboard = dashboard_resp.json()
-    codeburn_snapshot = next(
-        item for item in dashboard["external"]["latest"] if item["tool"] == "codeburn"
-    )
+    codeburn_snapshot = next(item for item in dashboard["external"]["latest"] if item["tool"] == "codeburn")
     assert codeburn_snapshot["period"] == "today"
     assert dashboard["external"]["by_provider"] == [
         {
@@ -806,9 +794,7 @@ def test_dashboard_returns_hourly_usage_buckets(
     assert hourly[expected_hour]["sessions"] == 1
 
 
-def test_analytics_summary_uses_backend_pricing(
-    app_no_auth: TestClient, store: SQLiteStore
-) -> None:
+def test_analytics_summary_uses_backend_pricing(app_no_auth: TestClient, store: SQLiteStore) -> None:
     from atelier.core.capabilities.pricing import usage_cost_usd
     from atelier.core.foundation.models import ToolCall, Trace
 
@@ -833,9 +819,7 @@ def test_analytics_summary_uses_backend_pricing(
     assert resp.status_code == 200
     summary = resp.json()
 
-    assert summary["total_cost"] == usage_cost_usd(
-        "claude-sonnet-4-5", input_tokens=120, output_tokens=40
-    )
+    assert summary["total_cost"] == usage_cost_usd("claude-sonnet-4-5", input_tokens=120, output_tokens=40)
     assert summary["tool_calls"] == 2
     assert summary["unique_tools"] == 1
 
@@ -1269,10 +1253,17 @@ def test_swarm_runs_endpoint_lists_live_activity(
         copied_spec_path=str(program),
         runner_name="claude",
         runner_model="sonnet",
+        evaluator_backend="ollama",
+        evaluator_model="claude-opus-4.8",
         child_command=["echo", "hi"],
         runs=4,
         max_runs=4,
         current_wave=1,
+        convergence_status="continue",
+        convergence_summary="Keep exploring independent optimization directions.",
+        next_wave_directives=["Trim redundant trace metadata."],
+        max_no_progress_waves=3,
+        consecutive_no_progress_waves=1,
         primary_winner_child_id="wave-01-run-02",
         accepted_child_ids=["wave-01-run-02"],
         used_program_md=True,
@@ -1301,6 +1292,9 @@ def test_swarm_runs_endpoint_lists_live_activity(
     assert payload[0]["running_children"][0]["activity"] == "Running validation"
     assert payload[0]["spec_title"] == "Prompt title"
     assert payload[0]["used_program_md"] is True
+    assert payload[0]["evaluator_backend"] == "ollama"
+    assert payload[0]["convergence_status"] == "continue"
+    assert payload[0]["next_wave_directives"] == ["Trim redundant trace metadata."]
 
 
 def test_swarm_launch_options_endpoint_returns_projects_and_editor_state(
@@ -1385,6 +1379,9 @@ def test_swarm_run_create_endpoint_uses_default_program_md(
     assert captured["spec_resolution"] in {"default", "explicit"}
     assert captured["used_program_md"] is True
     assert captured["launch_provider"] == "cli"
+    assert captured["evaluator_backend"] == "auto"
+    assert captured["max_no_progress_waves"] == 3
+    assert captured["max_evaluator_failures"] == 3
 
 
 def test_swarm_run_create_endpoint_supports_provider_worker_and_inline_spec(
@@ -1435,6 +1432,10 @@ def test_swarm_run_create_endpoint_supports_provider_worker_and_inline_spec(
             "spec_content": "Prompt title\n\nDo the thing.\n",
             "provider": "openai",
             "model": "gpt-4o-mini",
+            "evaluator_backend": "litellm",
+            "evaluator_model": "claude-opus-4.8",
+            "max_idle_waves": 5,
+            "max_evaluator_failures": 4,
             "provider_api_key": "sk-test-key",
             "provider_base_url": "https://openrouter.example/v1",
             "runs": 2,
@@ -1450,6 +1451,10 @@ def test_swarm_run_create_endpoint_supports_provider_worker_and_inline_spec(
     assert captured["runner_model"] == "gpt-4o-mini"
     assert captured["spec_source_path"] == "PROGRAM.md"
     assert captured["launch_provider"] == "openai"
+    assert captured["evaluator_backend"] == "litellm"
+    assert captured["evaluator_model"] == "claude-opus-4.8"
+    assert captured["max_no_progress_waves"] == 5
+    assert captured["max_evaluator_failures"] == 4
     assert "_provider-worker" in captured["child_command"]
     assert "gpt-4o-mini" not in " ".join(captured["child_command"])
     assert captured_spawn["env_overrides"] == {
@@ -1502,9 +1507,7 @@ def test_swarm_run_detail_returns_export_and_apply_payloads(
         export_artifacts=[artifact],
         transplant_commands=["git cherry-pick abc1234"],
     )
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path
-    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
     monkeypatch.setattr("atelier.core.service.api.load_swarm_state", lambda _path: state)
 
     response = app_no_auth.get("/v1/swarm/runs/swarm-123")
@@ -1541,17 +1544,11 @@ def test_swarm_logs_and_stop_endpoints(
         max_runs=1,
         stop_reason="Stopped by user.",
     )
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path
-    )
-    monkeypatch.setattr(
-        "atelier.core.service.api.read_swarm_log", lambda *_args, **_kwargs: "child heartbeat"
-    )
+    monkeypatch.setattr("atelier.core.service.api.resolve_state_path", lambda _root, _run_id: state_path)
+    monkeypatch.setattr("atelier.core.service.api.read_swarm_log", lambda *_args, **_kwargs: "child heartbeat")
     monkeypatch.setattr("atelier.core.service.api.stop_swarm_run", lambda **_kwargs: state)
 
-    logs_response = app_no_auth.get(
-        "/v1/swarm/runs/swarm-123/logs", params={"child_id": "wave-01-run-01"}
-    )
+    logs_response = app_no_auth.get("/v1/swarm/runs/swarm-123/logs", params={"child_id": "wave-01-run-01"})
     stop_response = app_no_auth.post("/v1/swarm/runs/swarm-123/stop")
 
     assert logs_response.status_code == 200

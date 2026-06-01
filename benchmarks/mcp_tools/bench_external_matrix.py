@@ -116,11 +116,18 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
 }
 
 TOOL_SUPPORT: dict[str, set[str]] = {
-    tool: {cast(str, row["family"]) for row in rows if bool(row["benchmarked"])}
-    for tool, rows in SURFACE_AUDIT.items()
+    tool: {cast(str, row["family"]) for row in rows if bool(row["benchmarked"])} for tool, rows in SURFACE_AUDIT.items()
 }
 
 CACHE_SCHEMA = "provider-cache-v1"
+DEFAULT_PROVIDER_TOOLS = (
+    "atelier",
+    "atelier-zoekt",
+    "serena",
+    "codegraph",
+    "code-index-mcp",
+    "jcodemunch-mcp",
+)
 
 
 def _provider_cache_marker(snapshot_root: Path, tool_name: str) -> Path:
@@ -207,15 +214,14 @@ class AtelierRunner(_RunnerBase):
     tool_name = "atelier"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
         self.cache_key = cache_key
         self.snapshot_root: Path | None = None
         self.tool_code: Any | None = None
+        self.zoekt_supervisor: Any | None = None
 
     def start(self) -> None:
         if str(self.repo_root) not in sys.path:
@@ -231,11 +237,57 @@ class AtelierRunner(_RunnerBase):
         runtime_root = Path(tempfile.mkdtemp(prefix="atelier-matrix-root-", dir=tool_workspace))
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
         from atelier.gateway.adapters.mcp_server import tool_code
+        from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 
         self.tool_code = tool_code
+        self.zoekt_supervisor = get_zoekt_supervisor(self.snapshot_root)
+
+    def _run_compact_zoekt_case(self, case: ExternalBenchCase) -> tuple[str, str]:
+        assert self.snapshot_root is not None and self.zoekt_supervisor is not None
+        search_path = self.snapshot_root / "src" / "atelier"
+        request = {
+            "query": case.query,
+            "search_path": str(search_path),
+            "max_files": 8,
+            "max_chars_per_file": 160,
+            "include_outline": False,
+            "renderer": "compact",
+        }
+        result = self.zoekt_supervisor.search(
+            query=case.query,
+            search_path=search_path,
+            max_files=request["max_files"],
+            max_chars_per_file=request["max_chars_per_file"],
+            include_outline=request["include_outline"],
+        )
+        compact_matches = []
+        for match in result.matches[: request["max_files"]]:
+            snippets = []
+            for snippet in match.snippets[:1]:
+                text = " ".join(snippet.text.split())
+                snippets.append(
+                    {
+                        "line_start": snippet.line_start,
+                        "line_end": snippet.line_end,
+                        "text": text[:160],
+                    }
+                )
+            compact_matches.append(
+                {
+                    "path": str(Path(match.path).relative_to(self.snapshot_root)),
+                    "lang": match.lang,
+                    "snippets": snippets,
+                }
+            )
+        return json.dumps(request, ensure_ascii=False), json.dumps(
+            {"matches": compact_matches, "provenance": "atelier-zoekt", "view": "compact"},
+            ensure_ascii=False,
+        )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.tool_code is not None
+        if case.family == "substring_search":
+            return self._run_compact_zoekt_case(case)
         if case.family == "exact_symbol":
             request = {
                 "op": "symbol",
@@ -269,9 +321,7 @@ class AtelierZoektRunner(_RunnerBase):
     tool_name = "atelier-zoekt"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
@@ -290,9 +340,7 @@ class AtelierZoektRunner(_RunnerBase):
             cache_root=self.cache_root,
             cache_key=self.cache_key,
         )
-        runtime_root = Path(
-            tempfile.mkdtemp(prefix="atelier-zoekt-matrix-root-", dir=tool_workspace)
-        )
+        runtime_root = Path(tempfile.mkdtemp(prefix="atelier-zoekt-matrix-root-", dir=tool_workspace))
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
         from atelier.infra.code_intel.zoekt.adapter import (
             get_zoekt_supervisor,
@@ -318,18 +366,14 @@ class AtelierZoektRunner(_RunnerBase):
             max_chars_per_file=request["max_chars_per_file"],
             include_outline=request["include_outline"],
         )
-        return json.dumps(request, ensure_ascii=False), json.dumps(
-            asdict(result), ensure_ascii=False
-        )
+        return json.dumps(request, ensure_ascii=False), json.dumps(asdict(result), ensure_ascii=False)
 
 
 class SerenaMatrixRunner(_RunnerBase):
     tool_name = "serena"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
@@ -345,9 +389,7 @@ class SerenaMatrixRunner(_RunnerBase):
             cache_root=self.cache_root,
             cache_key=self.cache_key,
         )
-        self.runner = SerenaRunner(
-            project_root=snapshot_root, home_dir=tool_workspace / "serena-home"
-        )
+        self.runner = SerenaRunner(project_root=snapshot_root, home_dir=tool_workspace / "serena-home")
         self.runner.bootstrap()
         self.runner.start()
 
@@ -387,9 +429,7 @@ class CodeGraphRunner(_RunnerBase):
     tool_name = "codegraph"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
@@ -409,9 +449,7 @@ class CodeGraphRunner(_RunnerBase):
             lock_root = self.cache_root or self.snapshot_root.parent
             with cache_lock(lock_root / f"{self.tool_name}-{self.cache_key}.lock"):
                 if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
-                    init = run_cmd(
-                        ["codegraph", "init", "-i", str(self.snapshot_root)], timeout=1800
-                    )
+                    init = run_cmd(["codegraph", "init", "-i", str(self.snapshot_root)], timeout=1800)
                     if init.returncode != 0:
                         raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
                     _write_provider_cache_marker(self.snapshot_root, self.tool_name, self.cache_key)
@@ -575,9 +613,7 @@ class CocoindexRunner(_RunnerBase):
     tool_name = "cocoindex-code"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
@@ -597,6 +633,7 @@ class CocoindexRunner(_RunnerBase):
             lock_root = self.cache_root or self.snapshot_root.parent
             with cache_lock(lock_root / f"{self.tool_name}-{self.cache_key}.lock"):
                 if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
+                    run_cmd(["ccc", "daemon", "stop"], cwd=self.snapshot_root, timeout=60)
                     init = run_cmd(["ccc", "init", "--force"], cwd=self.snapshot_root, timeout=300)
                     if init.returncode != 0:
                         raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
@@ -613,11 +650,14 @@ class CocoindexRunner(_RunnerBase):
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
         return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
 
+    def stop(self) -> None:
+        if self.snapshot_root is None:
+            return
+        run_cmd(["ccc", "daemon", "stop"], cwd=self.snapshot_root, timeout=60)
+
 
 class _JsonRpcLineClient:
-    def __init__(
-        self, command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
-    ) -> None:
+    def __init__(self, command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
         self.command = command
         self.cwd = cwd
         self.env = env
@@ -667,8 +707,7 @@ class _JsonRpcLineClient:
     def notify(self, method: str, params: dict[str, Any]) -> None:
         assert self.proc is not None and self.proc.stdin is not None
         self.proc.stdin.write(
-            json.dumps({"jsonrpc": "2.0", "method": method, "params": params}, ensure_ascii=False)
-            + "\n"
+            json.dumps({"jsonrpc": "2.0", "method": method, "params": params}, ensure_ascii=False) + "\n"
         )
         self.proc.stdin.flush()
 
@@ -704,9 +743,7 @@ class JCodeMunchRunner(_RunnerBase):
     tool_name = "jcodemunch-mcp"
     supported_families = TOOL_SUPPORT[tool_name]
 
-    def __init__(
-        self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str
-    ) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
         self.repo_root = repo_root
         self.workspace_root = workspace_root
         self.cache_root = cache_root
@@ -747,9 +784,7 @@ class JCodeMunchRunner(_RunnerBase):
 
     def _tool_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         assert self.client is not None
-        response = self.client.call(
-            "tools/call", {"name": name, "arguments": arguments}, timeout=300
-        )
+        response = self.client.call("tools/call", {"name": name, "arguments": arguments}, timeout=300)
         result = response.get("result")
         if not isinstance(result, dict):
             raise RuntimeError(f"unexpected jcodemunch response: {response}")
@@ -815,9 +850,7 @@ def write_surface_audit(path: Path) -> None:
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _balanced_case_subset(
-    cases: list[ExternalBenchCase], max_cases: int | None
-) -> list[ExternalBenchCase]:
+def _balanced_case_subset(cases: list[ExternalBenchCase], max_cases: int | None) -> list[ExternalBenchCase]:
     if max_cases is None or max_cases >= len(cases):
         return cases
     buckets: dict[str, list[ExternalBenchCase]] = defaultdict(list)
@@ -866,6 +899,12 @@ def score_case(case: ExternalBenchCase, output: str) -> float:
     if case.family == "file_outline":
         expected_names = case.expected_names[:2]
         return 1.0 if _payload_contains_all(output, expected_names) else 0.0
+    if case.family == "substring_search":
+        has_expected_path = _payload_contains_all(output, case.expected_paths[:1])
+        has_query_or_name = _payload_contains_all(output, [case.query]) or _payload_contains_all(
+            output, case.expected_names[:1]
+        )
+        return 1.0 if has_expected_path and has_query_or_name else 0.0
     expected = [*case.expected_paths[:1], *case.expected_names[:1]]
     return 1.0 if _payload_contains_all(output, expected) else 0.0
 
@@ -884,15 +923,11 @@ def _runner_specs(
         ),
         (
             "atelier-zoekt",
-            AtelierZoektRunner(
-                repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key
-            ),
+            AtelierZoektRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
             "serena",
-            SerenaMatrixRunner(
-                repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key
-            ),
+            SerenaMatrixRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
             "codegraph",
@@ -933,9 +968,7 @@ def run_case_matrix(
     cache_key = repo_cache_key(repo_root)
     runner_specs = [
         (tool_name, runner)
-        for tool_name, runner in _runner_specs(
-            repo_root, workspace_root, code_index_repo, cache_root, cache_key
-        )
+        for tool_name, runner in _runner_specs(repo_root, workspace_root, code_index_repo, cache_root, cache_key)
         if tool_name in selected_tools
     ]
     units_per_case = max(iterations, 1)
@@ -1000,10 +1033,7 @@ def run_case_matrix(
                     for iteration in range(iterations):
                         progress.phase(
                             "running provider case",
-                            current=(
-                                f"{tool_name} {case.family}/{case.case_id} "
-                                f"iter {iteration + 1}/{iterations}"
-                            ),
+                            current=(f"{tool_name} {case.family}/{case.case_id} " f"iter {iteration + 1}/{iterations}"),
                         )
                         t0 = time.perf_counter()
                         last_input, last_output = runner.run_case(case)
@@ -1012,10 +1042,7 @@ def run_case_matrix(
                         scores.append(score_case(case, last_output))
                         progress.step(
                             "running provider case",
-                            current=(
-                                f"{tool_name} {case.family}/{case.case_id} "
-                                f"iter {iteration + 1}/{iterations}"
-                            ),
+                            current=(f"{tool_name} {case.family}/{case.case_id} " f"iter {iteration + 1}/{iterations}"),
                         )
                     results.append(
                         CaseBenchResult(
@@ -1063,6 +1090,72 @@ def run_case_matrix(
     return results
 
 
+def _atelier_better_pct(
+    *,
+    atelier_value: float,
+    provider_value: float,
+    higher_is_better: bool,
+) -> str:
+    if provider_value == 0:
+        if atelier_value == provider_value:
+            return "+0.0%"
+        atelier_is_better = atelier_value > provider_value if higher_is_better else atelier_value < provider_value
+        return "+inf%" if atelier_is_better else "-inf%"
+    if higher_is_better:
+        pct = ((atelier_value - provider_value) / abs(provider_value)) * 100
+    else:
+        pct = ((provider_value - atelier_value) / abs(provider_value)) * 100
+    return f"{pct:+.1f}%"
+
+
+def _comparison_label(atelier_score: float, provider_score: float) -> str:
+    if atelier_score > provider_score:
+        return "atelier better"
+    if atelier_score < provider_score:
+        return "atelier worse"
+    return "equal"
+
+
+def _add_atelier_comparisons(summary: list[dict[str, object]]) -> None:
+    baselines = {row["family"]: row for row in summary if row["tool"] == "atelier"}
+    for row in summary:
+        baseline = baselines.get(row["family"])
+        if baseline is None or int(cast(int, row["ok_cases"])) == 0:
+            row["atelier_score_result"] = "n/a"
+            row["atelier_score_vs_provider_pct"] = "n/a"
+            row["atelier_latency_vs_provider_pct"] = "n/a"
+            row["atelier_tokens_vs_provider_pct"] = "n/a"
+            continue
+        if row["tool"] == "atelier":
+            row["atelier_score_result"] = "baseline"
+            row["atelier_score_vs_provider_pct"] = "+0.0%"
+            row["atelier_latency_vs_provider_pct"] = "+0.0%"
+            row["atelier_tokens_vs_provider_pct"] = "+0.0%"
+            continue
+        atelier_score = float(cast(float, baseline["avg_correctness"]))
+        provider_score = float(cast(float, row["avg_correctness"]))
+        atelier_ms = float(cast(float, baseline["median_ms"]))
+        provider_ms = float(cast(float, row["median_ms"]))
+        atelier_tokens = float(cast(int, baseline["median_tokens"]))
+        provider_tokens = float(cast(int, row["median_tokens"]))
+        row["atelier_score_result"] = _comparison_label(atelier_score, provider_score)
+        row["atelier_score_vs_provider_pct"] = _atelier_better_pct(
+            atelier_value=atelier_score,
+            provider_value=provider_score,
+            higher_is_better=True,
+        )
+        row["atelier_latency_vs_provider_pct"] = _atelier_better_pct(
+            atelier_value=atelier_ms,
+            provider_value=provider_ms,
+            higher_is_better=False,
+        )
+        row["atelier_tokens_vs_provider_pct"] = _atelier_better_pct(
+            atelier_value=atelier_tokens,
+            provider_value=provider_tokens,
+            higher_is_better=False,
+        )
+
+
 def summarize_results(results: list[CaseBenchResult]) -> list[dict[str, object]]:
     grouped: dict[tuple[str, str], list[CaseBenchResult]] = defaultdict(list)
     for result in results:
@@ -1088,25 +1181,26 @@ def summarize_results(results: list[CaseBenchResult]) -> list[dict[str, object]]
                     statistics.median(row.median_ms for row in ok_rows) if ok_rows else 0.0,
                     2,
                 ),
-                "median_tokens": int(
-                    statistics.median(row.median_tokens for row in ok_rows) if ok_rows else 0
-                ),
+                "median_tokens": int(statistics.median(row.median_tokens for row in ok_rows) if ok_rows else 0),
             }
         )
+    _add_atelier_comparisons(summary)
     return summary
 
 
 def render_summary_table(summary: list[dict[str, object]]) -> str:
     lines = [
-        "| Tool | Family | Cases | OK | Unsupported | Failed | Avg correctness | Median ms | Median tokens |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Tool | Family | Cases | OK | Unsupported | Failed | Avg correctness | Median ms | Median tokens | Atelier score | Atelier score % | Atelier latency % | Atelier tokens % |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|",
     ]
     for row in summary:
         lines.append(
             f"| {row['tool']} | {row['family']} | {row['cases']} | {row['ok_cases']} | "
             f"{row['unsupported_cases']} | {row['failed_cases']} | "
             f"{float(cast(float, row['avg_correctness'])):.2f} | "
-            f"{float(cast(float, row['median_ms'])):.1f} | {int(cast(int, row['median_tokens']))} |"
+            f"{float(cast(float, row['median_ms'])):.1f} | {int(cast(int, row['median_tokens']))} | "
+            f"{row['atelier_score_result']} | {row['atelier_score_vs_provider_pct']} | "
+            f"{row['atelier_latency_vs_provider_pct']} | {row['atelier_tokens_vs_provider_pct']} |"
         )
     return "\n".join(lines)
 
@@ -1156,6 +1250,10 @@ def write_summary_csv(summary: list[dict[str, object]], path: Path) -> None:
                 "avg_correctness",
                 "median_ms",
                 "median_tokens",
+                "atelier_score_result",
+                "atelier_score_vs_provider_pct",
+                "atelier_latency_vs_provider_pct",
+                "atelier_tokens_vs_provider_pct",
             ],
         )
         writer.writeheader()
@@ -1219,9 +1317,7 @@ def _run_parallel_tool_matrix(
         commands.append((tool_name, tool_cmd, tool_json_out))
 
     progress = ProgressReporter("providers", total=len(commands))
-    progress.start(
-        "starting parallel provider benchmark", current=f"{len(commands)} tools x {jobs} jobs"
-    )
+    progress.start("starting parallel provider benchmark", current=f"{len(commands)} tools x {jobs} jobs")
 
     def _run_child(tool_name: str, command: list[str], json_path: Path) -> tuple[str, Path]:
         completed = subprocess.run(
@@ -1290,9 +1386,9 @@ def main() -> None:
         default=workspace_root_default / "bench_external_matrix.latest.csv",
     )
     parser.add_argument("--iterations", type=int, default=1)
-    parser.add_argument("--max-cases", type=int, default=None)
+    parser.add_argument("--max-cases", type=int, default=100)
     parser.add_argument("--jobs", type=int, default=0)
-    parser.add_argument("--tools", default=",".join(SURFACE_AUDIT))
+    parser.add_argument("--tools", default=",".join(DEFAULT_PROVIDER_TOOLS))
     parser.add_argument(
         "--families",
         default=",".join(DEFAULT_CASE_QUOTAS),
@@ -1303,17 +1399,13 @@ def main() -> None:
 
     repo_root = args.repo_root.resolve()
     workspace_root = args.workspace_root.resolve()
-    cache_root = (
-        args.cache_root.resolve() if args.cache_root is not None else workspace_root / "_cache"
-    )
+    cache_root = args.cache_root.resolve() if args.cache_root is not None else workspace_root / "_cache"
     manifest_path = args.manifest_path.resolve()
     audit_path = args.audit_path.resolve()
     json_out = args.json_out.resolve()
     csv_out = args.csv_out.resolve()
     code_index_repo = (
-        args.code_index_repo.resolve()
-        if args.code_index_repo is not None
-        else cache_root / "code-index-mcp"
+        args.code_index_repo.resolve() if args.code_index_repo is not None else cache_root / "code-index-mcp"
     )
 
     if args.install:
@@ -1330,11 +1422,10 @@ def main() -> None:
         print(f"Wrote tool surface audit to {audit_path}")
         return
 
-    selected_families = {
-        family.strip() for family in str(args.families).split(",") if family.strip()
-    }
+    selected_families = {family.strip() for family in str(args.families).split(",") if family.strip()}
+    max_cases = args.max_cases if args.max_cases > 0 else None
     filtered_cases = [case for case in cases if case.family in selected_families]
-    selected_cases = _balanced_case_subset(filtered_cases, args.max_cases)
+    selected_cases = _balanced_case_subset(filtered_cases, max_cases)
     selected_tools = {tool.strip() for tool in str(args.tools).split(",") if tool.strip()}
     resolved_jobs = args.jobs
     if resolved_jobs <= 0:
@@ -1349,7 +1440,7 @@ def main() -> None:
             audit_path=audit_path,
             code_index_repo=code_index_repo,
             iterations=args.iterations,
-            max_cases=args.max_cases,
+            max_cases=max_cases,
             selected_tools=selected_tools,
             selected_families=selected_families,
             jobs=resolved_jobs,

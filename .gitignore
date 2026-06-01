@@ -283,3 +283,4 @@ exports/
 .mcp-vector-search/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+/reports/

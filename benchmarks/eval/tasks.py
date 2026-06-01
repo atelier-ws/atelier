@@ -12,9 +12,7 @@ from pathlib import Path
 from typing import Literal, TypeAlias
 
 TaskSource: TypeAlias = (  # noqa: UP040
-    tuple[Literal["empty"]]
-    | tuple[Literal["repo"], str, str | None]
-    | tuple[Literal["workspace"], str]
+    tuple[Literal["empty"]] | tuple[Literal["repo"], str, str | None] | tuple[Literal["workspace"], str]
 )
 
 
@@ -36,8 +34,25 @@ class Task:
     weight: int  # 1=cheap (no clone) .. 3=heavy (large repo clone+build)
     task_dir: str  # folder name under eval-eval/tasks/
 
+    def prompt_path(self) -> Path:
+        task_root = eval_dir() / "tasks" / self.task_dir
+        candidates = (
+            "prompt.md",
+            "prompt_hard.md",
+            "prompt_medium.md",
+            "prompt_trivial.md",
+        )
+        for name in candidates:
+            path = task_root / name
+            if path.exists():
+                return path
+        variant_prompts = sorted(task_root.glob("prompt_*.md"))
+        if variant_prompts:
+            return variant_prompts[0]
+        return task_root / "prompt.md"
+
     def prompt(self) -> str:
-        p = eval_dir() / "tasks" / self.task_dir / "prompt.md"
+        p = self.prompt_path()
         text = p.read_text(encoding="utf-8").strip() if p.exists() else ""
         return text
 

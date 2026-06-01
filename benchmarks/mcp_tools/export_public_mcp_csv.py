@@ -30,7 +30,11 @@ from benchmarks.mcp_tools._env import configure_benchmark_runtime
 from benchmarks.mcp_tools.bench_code import _impact_query, _symbol_arg, _tool_name_for_case_args
 from benchmarks.mcp_tools.bench_context import _preseed_bootstrap
 from benchmarks.mcp_tools.bench_edit import _run_edit_case
-from benchmarks.mcp_tools.bench_external_indexers import default_benchmark_root
+from benchmarks.mcp_tools.bench_external_indexers import (
+    default_benchmark_root,
+    prepare_cached_repo_snapshot,
+    repo_cache_key,
+)
 from benchmarks.mcp_tools.bench_rescue import run_rescue_suite
 from benchmarks.mcp_tools.bench_route import _setup_env as _setup_route_env
 from benchmarks.mcp_tools.bench_shell import _patch_paths as _patch_shell_paths
@@ -56,6 +60,24 @@ from benchmarks.mcp_tools.reporter import render_summary
 
 def _repo_root() -> Path:
     return ROOT
+
+
+_REPO_SNAPSHOT_ROOT: Path | None = None
+
+
+def _repo_workspace_root() -> Path:
+    global _REPO_SNAPSHOT_ROOT
+    if _REPO_SNAPSHOT_ROOT is not None:
+        return _REPO_SNAPSHOT_ROOT
+    repo_root = _repo_root()
+    cache_root = default_benchmark_root(repo_root) / "mcp-cache" / "snapshots"
+    _REPO_SNAPSHOT_ROOT = prepare_cached_repo_snapshot(
+        repo_root,
+        cache_root,
+        name="public-mcp-repo",
+        cache_key=repo_cache_key(repo_root),
+    )
+    return _REPO_SNAPSHOT_ROOT
 
 
 def _runtime_root(artifact_root: Path, tool_name: str) -> Path:
@@ -103,7 +125,7 @@ def _run_read_suite(artifact_root: Path, progress: ProgressReporter | None = Non
         _runtime_root(artifact_root, "read"),
         READ_CASES,
         tool_smart_read,
-        workspace_root=_repo_root(),
+        workspace_root=_repo_workspace_root(),
         progress=progress,
     )
 
@@ -116,7 +138,7 @@ def _run_search_suite(artifact_root: Path, progress: ProgressReporter | None = N
         _runtime_root(artifact_root, "search"),
         SEARCH_CASES,
         tool_smart_search,
-        workspace_root=_repo_root(),
+        workspace_root=_repo_workspace_root(),
         progress=progress,
     )
 
@@ -129,7 +151,7 @@ def _run_grep_suite(artifact_root: Path, progress: ProgressReporter | None = Non
         _runtime_root(artifact_root, "grep"),
         GREP_CASES,
         tool_grep,
-        workspace_root=_repo_root(),
+        workspace_root=_repo_workspace_root(),
         progress=progress,
     )
 
@@ -138,7 +160,7 @@ def _run_context_suite(artifact_root: Path, progress: ProgressReporter | None = 
     from atelier.gateway.adapters.mcp_server import tool_get_context
 
     root = _runtime_root(artifact_root, "context")
-    _reset_runtime(root, workspace_root=_repo_root())
+    _reset_runtime(root, workspace_root=_repo_workspace_root())
     results: list[CaseResult] = []
     cold_start = [case for case in CONTEXT_CASES if case.label == "context/cold-start"]
     remaining = [case for case in CONTEXT_CASES if case.label != "context/cold-start"]
@@ -224,8 +246,7 @@ def _run_sql_suite(artifact_root: Path, progress: ProgressReporter | None = None
     if db_path.exists():
         db_path.unlink()
     conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
+    conn.executescript("""
         CREATE TABLE users (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -234,8 +255,7 @@ def _run_sql_suite(artifact_root: Path, progress: ProgressReporter | None = None
         INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
         INSERT INTO users VALUES (2, 'Bob', 'bob@example.com');
         INSERT INTO users VALUES (3, 'Carol', 'carol@example.com');
-        """
-    )
+        """)
     conn.commit()
     conn.close()
     from atelier.gateway.adapters.mcp_server import tool_sql
@@ -280,7 +300,7 @@ def _run_code_suite_cases(
     progress: ProgressReporter | None = None,
 ) -> ToolReport:
     root = _runtime_root(artifact_root, tool_name)
-    _reset_runtime(root, workspace_root=_repo_root())
+    _reset_runtime(root, workspace_root=_repo_workspace_root())
     from atelier.gateway.adapters import mcp_server
 
     def tool_fn(args: dict[str, Any]) -> Any:
@@ -310,9 +330,7 @@ def _run_code_suite_cases(
                 }
             )
         if tool_name == "usages":
-            return mcp_server.tool_usages(
-                {"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))}
-            )
+            return mcp_server.tool_usages({"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))})
         if tool_name == "impact":
             return mcp_server.tool_impact({"query": _impact_query(payload)})
         if tool_name == "explore":
@@ -360,9 +378,7 @@ def _code_suite_runner(tool_name: str) -> Callable[[Path, ProgressReporter], Too
     return runner
 
 
-def _run_code_suite(
-    artifact_root: Path, progress: ProgressReporter | None = None
-) -> list[ToolReport]:
+def _run_code_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> list[ToolReport]:
     return [
         _run_code_suite_cases(tool_name, CODE_TOOL_CASES[tool_name], artifact_root, progress)
         for tool_name in sorted(CODE_TOOL_CASES)
@@ -431,9 +447,7 @@ def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = No
     sentinel.write_text("sentinel_content line1\nsentinel_content line2\n", encoding="utf-8")
     src = workspace / "src"
     src.mkdir(exist_ok=True)
-    (src / "module.py").write_text(
-        "# module with needle_token\ndef needle_token():\n    return 42\n", encoding="utf-8"
-    )
+    (src / "module.py").write_text("# module with needle_token\ndef needle_token():\n    return 42\n", encoding="utf-8")
     from atelier.gateway.adapters.mcp_server import tool_shell
 
     results: list[CaseResult] = []
@@ -475,9 +489,7 @@ def _flatten_reports(reports: list[ToolReport]) -> list[dict[str, Any]]:
                     "spill_probe_hits": result.spill_probe_hits,
                     "failure": result.failure,
                     "args_json": json.dumps(result.case.args, ensure_ascii=False, sort_keys=True),
-                    "response_json": json.dumps(
-                        result.response, ensure_ascii=False, sort_keys=True
-                    ),
+                    "response_json": json.dumps(result.response, ensure_ascii=False, sort_keys=True),
                 }
             )
     return rows
@@ -549,9 +561,7 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         total_saved_tokens = sum(_to_int(row.get("tokens_saved")) for row in tool_rows)
         total_effective_tokens = sum(_to_float(row.get("effective_tokens")) for row in tool_rows)
         savings_values = [
-            _to_float(row.get("savings_pct"))
-            for row in tool_rows
-            if _to_int(row.get("baseline_tokens")) > 0
+            _to_float(row.get("savings_pct")) for row in tool_rows if _to_int(row.get("baseline_tokens")) > 0
         ]
         summary_rows.append(
             {
@@ -562,9 +572,7 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "total_saved_tokens": total_saved_tokens,
                 "total_effective_tokens": round(total_effective_tokens, 2),
                 "avg_effective_tokens": round(total_effective_tokens / cases, 2) if cases else 0.0,
-                "avg_savings_pct": round(sum(savings_values) / len(savings_values), 2)
-                if savings_values
-                else 0.0,
+                "avg_savings_pct": round(sum(savings_values) / len(savings_values), 2) if savings_values else 0.0,
             }
         )
         total_cases += cases
@@ -582,9 +590,9 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "total_saved_tokens": total_saved,
             "total_effective_tokens": round(total_effective, 2),
             "avg_effective_tokens": round(total_effective / total_cases, 2) if total_cases else 0.0,
-            "avg_savings_pct": round(sum(all_savings_values) / len(all_savings_values), 2)
-            if all_savings_values
-            else 0.0,
+            "avg_savings_pct": (
+                round(sum(all_savings_values) / len(all_savings_values), 2) if all_savings_values else 0.0
+            ),
         }
     )
     return summary_rows
@@ -618,12 +626,8 @@ def _suite_aliases() -> dict[str, list[str]]:
     return {"code": sorted(CODE_TOOL_CASES)}
 
 
-def _suite_specs() -> list[
-    tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]
-]:
-    specs: list[
-        tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]
-    ] = [
+def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
+    specs: list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]] = [
         ("context", len(CONTEXT_CASES), _run_context_suite),
         ("route", len(ROUTE_CASES), _run_route_suite),
         (
@@ -690,9 +694,7 @@ def _plan_suite_shards(
     return [names for _total, names in shards if names]
 
 
-def run_public_surface(
-    artifact_root: Path, *, suite_names: list[str] | None = None
-) -> list[ToolReport]:
+def run_public_surface(artifact_root: Path, *, suite_names: list[str] | None = None) -> list[ToolReport]:
     selected_specs = _select_suite_specs(suite_names)
     progress = ProgressReporter("mcp", total=sum(size for _name, size, _runner in selected_specs))
     progress.start("starting public MCP benchmark", current=str(artifact_root))
@@ -814,9 +816,7 @@ def main() -> int:
     suite_names = [name.strip() for name in str(args.suites).split(",") if name.strip()] or None
     resolved_jobs = _resolve_jobs(args.jobs, suite_names)
     if resolved_jobs > 1:
-        rows = _run_parallel_surface(
-            artifact_root, csv_out, suite_names=suite_names, jobs=resolved_jobs
-        )
+        rows = _run_parallel_surface(artifact_root, csv_out, suite_names=suite_names, jobs=resolved_jobs)
         _write_summary_csv(csv_out.with_name("summary.csv"), _summarize_rows(rows))
         print(f"Parallel MCP benchmark complete: {len(rows)} rows across {resolved_jobs} job(s)")
         print(f"CSV written to {csv_out}")

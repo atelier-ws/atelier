@@ -17,9 +17,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 import click
@@ -49,12 +51,14 @@ _EXTERNAL_REPORT_ALL_TOOLS = (
 )
 
 
-@click.command("savings")
+@click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
 @click.pass_context
 def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
+    if ctx.invoked_subcommand is not None:
+        return
     if line:
         from atelier.core.capabilities.savings_summary import savings_line
 
@@ -104,15 +108,114 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
                 click.echo(f"{k}: {v}")
 
 
-def _legacy_optimize_report(
-    ctx: click.Context, host: str | None, days: int, limit: int
-) -> dict[str, Any]:
+@savings_cmd.command("wire")
+@click.argument("captures", nargs=-1, required=False)
+@click.option(
+    "--input-price",
+    type=float,
+    default=3.0,
+    show_default=True,
+    help="Input token price per 1M tokens.",
+)
+@click.option(
+    "--output-price",
+    type=float,
+    default=15.0,
+    show_default=True,
+    help="Output token price per 1M tokens.",
+)
+@click.option(
+    "--cache-read",
+    type=float,
+    default=0.30,
+    show_default=True,
+    help="Cache-read token price per 1M tokens.",
+)
+@click.option(
+    "--cache-write",
+    type=float,
+    default=3.75,
+    show_default=True,
+    help="Cache-write token price per 1M tokens.",
+)
+@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+def savings_wire_cmd(
+    captures: tuple[str, ...],
+    input_price: float,
+    output_price: float,
+    cache_read: float,
+    cache_write: float,
+    out: Path | None,
+) -> None:
+    """Compare provider-billed usage from mitmproxy .flow captures."""
+    if not captures:
+        raise click.ClickException(
+            "Provide captures as LABEL=PATH. Example: " "atelier savings wire baseline=off.flow atelier=on.flow"
+        )
+    repo_root = Path.cwd().resolve()
+    run_dir = _wire_report_dir(out)
+    report_path = run_dir / "report.txt"
+    report = _run_capture(
+        [
+            *_python_cmd(repo_root),
+            "-m",
+            "benchmarks.wire_savings.report",
+            *captures,
+            "--in",
+            str(input_price),
+            "--out",
+            str(output_price),
+            "--cache-read",
+            str(cache_read),
+            "--cache-write",
+            str(cache_write),
+        ],
+        cwd=repo_root,
+        label="wire savings report",
+    )
+    report_path.write_text(report, encoding="utf-8")
+    click.echo(f"Report: {report_path}")
+
+
+def _wire_report_dir(out: Path | None) -> Path:
+    if out is not None:
+        path = out.resolve()
+    else:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        path = Path.cwd().resolve() / "reports" / "savings" / "wire" / timestamp
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _python_cmd(repo_root: Path) -> list[str]:
+    if which("uv") and (repo_root / "pyproject.toml").is_file():
+        return ["uv", "run", "--project", str(repo_root), "python"]
+    return [sys.executable]
+
+
+def _run_capture(cmd: list[str], *, cwd: Path, label: str) -> str:
+    click.echo("Running: " + " ".join(cmd))
+    completed = subprocess.run(
+        cmd,
+        check=False,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if completed.stdout:
+        click.echo(completed.stdout.rstrip())
+    if completed.stderr:
+        click.echo(completed.stderr.rstrip(), err=True)
+    if completed.returncode != 0:
+        raise click.ClickException(f"{label} failed with exit {completed.returncode}")
+    return completed.stdout
+
+
+def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
     store = _load_store(ctx.obj["root"])
-    return build_trace_optimization_report(
-        store.list_traces(limit=5000), days=days, host=host, limit=limit
-    )
+    return build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
 
 
 def _run_external_optimize(ctx: click.Context, days: int) -> dict[str, Any] | None:
@@ -140,9 +243,7 @@ def _advisor_result(ctx: click.Context, host: str | None, days: int) -> Any:
 
     store = _load_store(ctx.obj["root"])
     current_policy = load_current_policy(ctx.obj["root"])
-    return optimize_from_traces(
-        store.list_traces(limit=5000), current_policy=current_policy, days=days, host=host
-    )
+    return optimize_from_traces(store.list_traces(limit=5000), current_policy=current_policy, days=days, host=host)
 
 
 def _benchmark_evidence_from_options(
@@ -159,9 +260,7 @@ def _benchmark_evidence_from_options(
     if not any(provided):
         return None
     if not all(provided):
-        raise click.ClickException(
-            "--runs, --baseline-cost-usd, and --candidate-cost-usd must be provided together"
-        )
+        raise click.ClickException("--runs, --baseline-cost-usd, and --candidate-cost-usd must be provided together")
     return BenchmarkEvidence(
         runs_path=str(runs_path),
         baseline_cost_usd=baseline_cost_usd,
@@ -181,9 +280,7 @@ def _benchmark_evidence_from_options(
 @click.option("--limit", default=6, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def optimize_group(
-    ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool
-) -> None:
+def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, as_json: bool) -> None:
     """Show and apply Optimization Advisor recommendations."""
     if ctx.invoked_subcommand is not None:
         return
@@ -755,9 +852,7 @@ def external_status_cmd(as_json: bool) -> None:
 )
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def external_report_cmd(
-    ctx: click.Context, tool: str, period: str, persist: bool, as_json: bool
-) -> None:
+def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: bool, as_json: bool) -> None:
     """Run upstream JSON reports from supported external analyzers."""
     from atelier.gateway.integrations.external_analytics import (
         persist_external_reports,
@@ -767,9 +862,7 @@ def external_report_cmd(
 
     if as_json:
         try:
-            payload = run_external_reports(
-                tool=tool, period=period, cwd=Path.cwd(), include_optimize=True
-            )
+            payload = run_external_reports(tool=tool, period=period, cwd=Path.cwd(), include_optimize=True)
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
 

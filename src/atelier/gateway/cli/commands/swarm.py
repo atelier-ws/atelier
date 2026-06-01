@@ -28,6 +28,7 @@ from atelier.core.capabilities.swarm import (
     spawn_swarm_coordinator,
     stop_swarm_run,
 )
+from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend
 from atelier.gateway.cli.commands._shared import _emit
 
 DEFAULT_RUNNER_PROMPT = (
@@ -40,9 +41,7 @@ DEFAULT_RUNNER_PROMPT = (
     "left it unchanged."
 )
 
-RUNNER_CHOICES = click.Choice(
-    [profile["id"] for profile in list_swarm_runner_profiles()], case_sensitive=False
-)
+RUNNER_CHOICES = click.Choice([profile["id"] for profile in list_swarm_runner_profiles()], case_sensitive=False)
 
 
 @click.group("swarm")
@@ -74,9 +73,7 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
         model_label = (state.runner_model or "-")[:18]
         latest_wave = state.waves[-1] if state.waves else None
         planned = latest_wave.planned_runs if latest_wave is not None else 0
-        max_runs = (
-            latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
-        )
+        max_runs = latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
         lines.append(
             f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>8} {failed:<4} {running:<4} {planned:>3}/{max_runs:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
@@ -109,6 +106,31 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
     help="Keep launching new waves until a wave produces no accepted improvements or the swarm is explicitly stopped.",
 )
 @click.option(
+    "--evaluator-backend",
+    type=click.Choice(["auto", "disabled", "ollama", "openai", "litellm"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Backend used by the semantic evaluator that judges wave outcomes.",
+)
+@click.option(
+    "--evaluator-model",
+    help="Optional model override for the semantic evaluator.",
+)
+@click.option(
+    "--max-idle-waves",
+    default=3,
+    show_default=True,
+    type=int,
+    help="How many consecutive no-improvement waves continuous mode tolerates before stopping.",
+)
+@click.option(
+    "--max-evaluator-failures",
+    default=3,
+    show_default=True,
+    type=int,
+    help="How many consecutive evaluator failures continuous mode tolerates before stopping.",
+)
+@click.option(
     "--runner",
     type=RUNNER_CHOICES,
     help="Built-in child runner profile instead of passing a raw command after '--'.",
@@ -139,6 +161,10 @@ def swarm_start(
     validation_commands: tuple[str, ...],
     detach: bool,
     continuous: bool,
+    evaluator_backend: str,
+    evaluator_model: str | None,
+    max_idle_waves: int,
+    max_evaluator_failures: int,
     runner: str | None,
     runner_model: str | None,
     runner_args: tuple[str, ...],
@@ -155,6 +181,10 @@ def swarm_start(
 
     if runs < 1:
         raise click.ClickException("--runs must be >= 1")
+    if max_idle_waves < 1:
+        raise click.ClickException("--max-idle-waves must be >= 1")
+    if max_evaluator_failures < 1:
+        raise click.ClickException("--max-evaluator-failures must be >= 1")
     repo_root = discover_repo_root(Path.cwd())
     root = Path(ctx.obj["root"])
     try:
@@ -192,6 +222,10 @@ def swarm_start(
         detached=detach,
         continuous=continuous,
         launch_provider="cli",
+        evaluator_backend=cast(SwarmEvaluatorBackend, evaluator_backend),
+        evaluator_model=evaluator_model or "",
+        max_no_progress_waves=max_idle_waves,
+        max_evaluator_failures=max_evaluator_failures,
     )
     if detach:
         coordinator_pid, log_path = spawn_swarm_coordinator(root, repo_root, state_path)
@@ -262,9 +296,7 @@ def swarm_export(ctx: click.Context, run_id: str, as_json: bool) -> None:
         lines.append(f"base_snapshot_artifact: {state.base_snapshot_artifact.path}")
     lines.append("accepted_commits:")
     for accepted in state.accepted_commits:
-        lines.append(
-            f"  - {accepted.child_id}: {accepted.commit_ref} patch={accepted.patch_path or '-'}"
-        )
+        lines.append(f"  - {accepted.child_id}: {accepted.commit_ref} patch={accepted.patch_path or '-'}")
     lines.append("artifacts:")
     for artifact in state.export_artifacts:
         lines.append(f"  - {artifact.kind}: {artifact.path}")
