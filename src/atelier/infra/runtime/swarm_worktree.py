@@ -72,10 +72,10 @@ class SwarmWorktreeManager:
         self.repo_root = Path(repo_root).resolve()
         self.pool_root = Path(pool_root).resolve()
 
-    def create_worktree(self, *, run_id: str, child_id: str) -> Path:
+    def create_worktree(self, *, run_id: str, child_id: str, ref: str = "HEAD") -> Path:
         path = self.pool_root / child_id
         path.parent.mkdir(parents=True, exist_ok=True)
-        _git(self.repo_root, "worktree", "add", "--detach", str(path), "HEAD")
+        _git(self.repo_root, "worktree", "add", "--detach", str(path), ref)
         return path
 
     def sync_dirty_state(self, *, base_worktree: Path, child_worktree: Path) -> None:

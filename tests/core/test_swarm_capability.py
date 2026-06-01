@@ -5,12 +5,19 @@ import sys
 from pathlib import Path
 
 from atelier.core.capabilities.swarm import (
+    apply_wave_candidates,
     initialize_swarm_run,
     load_swarm_state,
     rank_children,
     run_child_once,
 )
-from atelier.core.capabilities.swarm.models import SwarmChildState, SwarmValidationCheck
+from atelier.core.capabilities.swarm.models import (
+    SwarmChildState,
+    SwarmRunState,
+    SwarmValidationCheck,
+    SwarmWaveState,
+)
+from atelier.infra.runtime.swarm_worktree import SwarmWorktreeManager, read_head_ref
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -43,6 +50,45 @@ def _commit_all(repo: Path, message: str) -> None:
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def _passing_validation() -> list[SwarmValidationCheck]:
+    return [
+        SwarmValidationCheck(
+            name="lint",
+            command="make lint",
+            passed=True,
+            exit_code=0,
+        )
+    ]
+
+
+def _make_child(
+    tmp_path: Path,
+    *,
+    child_id: str,
+    worktree_path: Path,
+    changed_file: str,
+) -> SwarmChildState:
+    run_dir = tmp_path / child_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return SwarmChildState(
+        child_id=child_id,
+        label=child_id,
+        wave_index=1,
+        status="success",
+        worktree_path=str(worktree_path),
+        atelier_root=str(run_dir / "atelier-root"),
+        run_dir=str(run_dir),
+        spec_path=str(run_dir / "program.md"),
+        result_path=str(run_dir / "result.json"),
+        stdout_path=str(run_dir / "stdout.log"),
+        stderr_path=str(run_dir / "stderr.log"),
+        metadata_path=str(run_dir / "meta.json"),
+        patch_path=str(run_dir / "candidate.patch"),
+        files_changed=[f"M {changed_file}"],
+        validation_results=_passing_validation(),
+    )
 
 
 def test_run_child_once_writes_structured_result(tmp_path: Path) -> None:
@@ -78,16 +124,46 @@ def test_run_child_once_writes_structured_result(tmp_path: Path) -> None:
         detached=False,
     )
 
-    result = run_child_once(state_path, "run-01")
+    wave = SwarmWaveState(wave_index=1, child_ids=["wave-01-run-01"])
+    state.waves.append(wave)
+    manager = SwarmWorktreeManager(repo_root=repo, pool_root=Path(state.worktree_pool))
+    child_worktree = manager.create_worktree(
+        run_id=state.run_id,
+        child_id="wave-01-run-01",
+        ref=state.integration_base_ref,
+    )
+    child_dir = Path(root) / "swarm" / "runs" / state.run_id / "children" / "wave-01-run-01"
+    child_dir.mkdir(parents=True, exist_ok=True)
+    child = SwarmChildState(
+        child_id="wave-01-run-01",
+        label="candidate-1",
+        wave_index=1,
+        worktree_path=str(child_worktree),
+        atelier_root=str(child_dir / "atelier-root"),
+        run_dir=str(child_dir),
+        spec_path=str(spec),
+        result_path=str(child_dir / "result.json"),
+        stdout_path=str(child_dir / "stdout.log"),
+        stderr_path=str(child_dir / "stderr.log"),
+        metadata_path=str(child_dir / "meta.json"),
+        patch_path=str(child_dir / "candidate.patch"),
+    )
+    state.children.append(child)
+    load_swarm = load_swarm_state(state_path)
+    load_swarm.children = state.children
+    load_swarm.waves = state.waves
+    load_swarm.current_wave = 1
+    from atelier.core.capabilities.swarm import save_swarm_state
+
+    save_swarm_state(state_path, load_swarm)
+
+    result = run_child_once(state_path, "wave-01-run-01")
 
     assert result.status == "success"
     assert result.summary == "candidate finished"
     assert any("child.txt" in line for line in result.files_changed)
     assert result.validation_results[0].passed
     assert Path(result.result_path).exists()
-
-    persisted = load_swarm_state(state_path)
-    assert persisted.run_id == state.run_id
 
 
 def test_rank_children_prefers_successful_validated_candidate() -> None:
@@ -104,14 +180,7 @@ def test_rank_children_prefers_successful_validated_candidate() -> None:
         stderr_path="/workspace/stderr",
         metadata_path="/workspace/meta",
         files_changed=["M file.py"],
-        validation_results=[
-            SwarmValidationCheck(
-                name="lint",
-                command="make lint",
-                passed=True,
-                exit_code=0,
-            )
-        ],
+        validation_results=_passing_validation(),
     )
     loser = winner.model_copy(
         update={
@@ -136,3 +205,96 @@ def test_rank_children_prefers_successful_validated_candidate() -> None:
     assert ranked[0].score is not None
     assert ranked[1].score is not None
     assert ranked[0].score > ranked[1].score
+
+
+def test_apply_wave_candidates_merges_disjoint_and_rejects_conflict(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    (repo / "a.txt").write_text("base-a\n", encoding="utf-8")
+    (repo / "b.txt").write_text("base-b\n", encoding="utf-8")
+    _commit_all(repo, "base")
+
+    manager = SwarmWorktreeManager(repo_root=repo, pool_root=tmp_path / "pool")
+    integration = manager.create_worktree(
+        run_id="swarm-test",
+        child_id="integration",
+        ref="HEAD",
+    )
+
+    child_one_path = manager.create_worktree(
+        run_id="swarm-test",
+        child_id="wave-01-run-01",
+        ref=read_head_ref(integration),
+    )
+    (child_one_path / "a.txt").write_text("improvement-a\n", encoding="utf-8")
+
+    child_two_path = manager.create_worktree(
+        run_id="swarm-test",
+        child_id="wave-01-run-02",
+        ref=read_head_ref(integration),
+    )
+    (child_two_path / "b.txt").write_text("improvement-b\n", encoding="utf-8")
+
+    child_three_path = manager.create_worktree(
+        run_id="swarm-test",
+        child_id="wave-01-run-03",
+        ref=read_head_ref(integration),
+    )
+    (child_three_path / "a.txt").write_text("conflicting-a\n", encoding="utf-8")
+
+    children = [
+        _make_child(
+            tmp_path,
+            child_id="wave-01-run-01",
+            worktree_path=child_one_path,
+            changed_file="a.txt",
+        ),
+        _make_child(
+            tmp_path,
+            child_id="wave-01-run-02",
+            worktree_path=child_two_path,
+            changed_file="b.txt",
+        ),
+        _make_child(
+            tmp_path,
+            child_id="wave-01-run-03",
+            worktree_path=child_three_path,
+            changed_file="a.txt",
+        ),
+    ]
+    state = SwarmRunState(
+        run_id="swarm-test",
+        status="running",
+        mode="continuous",
+        repo_root=str(repo),
+        base_worktree=str(repo),
+        base_ref=read_head_ref(repo),
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(integration),
+        integration_base_ref=read_head_ref(integration),
+        spec_source_path=str(repo / "program.md"),
+        copied_spec_path=str(repo / "program.md"),
+        child_command=["echo", "hi"],
+        runs=3,
+        children=children,
+    )
+    wave = SwarmWaveState(
+        wave_index=1,
+        child_ids=[child.child_id for child in children],
+    )
+
+    accepted_any = apply_wave_candidates(state, children, wave)
+
+    assert accepted_any is True
+    assert wave.accepted_child_ids == ["wave-01-run-01", "wave-01-run-02"]
+    assert "wave-01-run-03" in wave.rejected_child_ids
+    assert children[0].accepted is True
+    assert children[1].accepted is True
+    assert children[2].accepted is False
+    assert "conflicted" in children[2].acceptance_note.lower()
+    assert (integration / "a.txt").read_text(encoding="utf-8") == "improvement-a\n"
+    assert (integration / "b.txt").read_text(encoding="utf-8") == "improvement-b\n"
+    assert state.integration_base_ref == read_head_ref(integration)
