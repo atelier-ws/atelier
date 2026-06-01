@@ -1,14 +1,17 @@
 """Atelier swarm capability."""
 
 from atelier.core.capabilities.swarm.capability import (
+    apply_wave_candidates,
     build_child_env,
     cleanup_swarm_run,
     discover_repo_root,
     format_swarm_summary,
     initialize_swarm_run,
     launch_swarm_children,
+    list_swarm_runs,
     load_swarm_state,
     rank_children,
+    read_swarm_log,
     resolve_state_path,
     run_child_once,
     save_swarm_state,
@@ -17,22 +20,29 @@ from atelier.core.capabilities.swarm.capability import (
 )
 from atelier.core.capabilities.swarm.models import (
     SwarmChildState,
+    SwarmRunMode,
     SwarmRunState,
     SwarmValidationCheck,
+    SwarmWaveState,
 )
 
 __all__ = [
     "SwarmChildState",
+    "SwarmRunMode",
     "SwarmRunState",
     "SwarmValidationCheck",
+    "SwarmWaveState",
+    "apply_wave_candidates",
     "build_child_env",
     "cleanup_swarm_run",
     "discover_repo_root",
     "format_swarm_summary",
     "initialize_swarm_run",
     "launch_swarm_children",
+    "list_swarm_runs",
     "load_swarm_state",
     "rank_children",
+    "read_swarm_log",
     "resolve_state_path",
     "run_child_once",
     "save_swarm_state",

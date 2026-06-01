@@ -24,21 +24,27 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
     state = SwarmRunState(
         run_id="swarm-123",
         status="success",
+        mode="continuous",
         repo_root=str(tmp_path),
         base_worktree=str(tmp_path),
         base_ref="HEAD",
         worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
         spec_source_path=str(spec),
         copied_spec_path=str(spec),
         child_command=["echo", "hi"],
         runs=1,
-        winner_child_id="run-01",
+        current_wave=2,
+        winner_child_id="wave-02-run-01",
+        accepted_child_ids=["wave-01-run-01", "wave-02-run-01"],
         children=[
             SwarmChildState(
-                child_id="run-01",
+                child_id="wave-02-run-01",
                 label="candidate-1",
+                wave_index=2,
                 status="success",
-                worktree_path=str(tmp_path / "pool" / "run-01"),
+                worktree_path=str(tmp_path / "pool" / "wave-02-run-01"),
                 atelier_root=str(root / "child"),
                 run_dir=str(root / "runs" / "run-01"),
                 spec_path=str(spec),
@@ -48,6 +54,7 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
                 metadata_path=str(root / "runs" / "run-01" / "meta.json"),
                 summary="best candidate",
                 score=110.0,
+                accepted=True,
             )
         ],
     )
@@ -64,11 +71,22 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
 
     result = runner.invoke(
         cli,
-        ["--root", str(root), "swarm", "start", str(spec), "--", "echo", "hi"],
+        [
+            "--root",
+            str(root),
+            "swarm",
+            "start",
+            str(spec),
+            "--continuous",
+            "--",
+            "echo",
+            "hi",
+        ],
     )
 
     assert result.exit_code == 0
-    assert "winner: run-01" in result.output
+    assert "latest_winner: wave-02-run-01" in result.output
+    assert "mode: continuous" in result.output
 
 
 def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
@@ -85,6 +103,8 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
         base_worktree=str(tmp_path),
         base_ref="HEAD",
         worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
         spec_source_path=str(tmp_path / "program.md"),
         copied_spec_path=str(tmp_path / "program.md"),
         child_command=["echo", "hi"],
@@ -97,3 +117,73 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "run_id: swarm-123" in result.output
+
+
+def test_swarm_list_prints_known_runs(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / "atelier-root"
+    state = SwarmRunState(
+        run_id="swarm-123",
+        status="running",
+        mode="continuous",
+        repo_root=str(tmp_path),
+        base_worktree=str(tmp_path),
+        base_ref="HEAD",
+        worktree_pool=str(tmp_path / "pool"),
+        integration_worktree=str(tmp_path / "pool" / "integration"),
+        integration_base_ref="HEAD",
+        spec_source_path=str(tmp_path / "program.md"),
+        copied_spec_path=str(tmp_path / "program.md"),
+        child_command=["echo", "hi"],
+        runs=2,
+        current_wave=3,
+        accepted_child_ids=["wave-01-run-01"],
+        children=[
+            SwarmChildState(
+                child_id="wave-03-run-01",
+                label="candidate-1",
+                wave_index=3,
+                status="running",
+                worktree_path=str(tmp_path / "pool" / "wave-03-run-01"),
+                atelier_root=str(root / "child"),
+                run_dir=str(root / "runs" / "run-01"),
+                spec_path=str(tmp_path / "program.md"),
+                result_path=str(root / "runs" / "run-01" / "result.json"),
+                stdout_path=str(root / "runs" / "run-01" / "stdout.log"),
+                stderr_path=str(root / "runs" / "run-01" / "stderr.log"),
+                metadata_path=str(root / "runs" / "run-01" / "meta.json"),
+            )
+        ],
+    )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.list_swarm_runs", lambda _root: [state])
+
+    result = runner.invoke(cli, ["--root", str(root), "swarm", "list"])
+
+    assert result.exit_code == 0
+    assert "swarm-123" in result.output
+    assert "continuous" in result.output
+
+
+def test_swarm_logs_reads_child_output(monkeypatch: object, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / "atelier-root"
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.swarm.read_swarm_log",
+        lambda *_args, **_kwargs: "child is compacting json",
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "swarm",
+            "logs",
+            "swarm-123",
+            "--child-id",
+            "wave-01-run-01",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "compacting json" in result.output

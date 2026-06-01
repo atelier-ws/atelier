@@ -13,7 +13,9 @@ from atelier.core.capabilities.swarm import (
     format_swarm_summary,
     initialize_swarm_run,
     launch_swarm_children,
+    list_swarm_runs,
     load_swarm_state,
+    read_swarm_log,
     resolve_state_path,
     run_child_once,
     save_swarm_state,
@@ -25,6 +27,31 @@ from atelier.gateway.cli.commands._shared import _emit
 @click.group("swarm")
 def swarm_group() -> None:
     """Coordinate isolated child attempts in separate git worktrees."""
+
+
+@swarm_group.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable output.")
+@click.pass_context
+def swarm_list(ctx: click.Context, as_json: bool) -> None:
+    """Show all known swarm runs under the current Atelier root."""
+
+    states = list_swarm_runs(Path(ctx.obj["root"]))
+    if as_json:
+        _emit([state.model_dump(mode="json") for state in states], as_json=True)
+        return
+    if not states:
+        click.echo("No swarm runs found.")
+        return
+    lines = [
+        "run_id                           status    mode        wave  accepted  running  created_at",
+        "-------------------------------------------------------------------------------------------",
+    ]
+    for state in states:
+        running = sum(1 for child in state.children if child.status == "running")
+        lines.append(
+            f"{state.run_id:<32} {state.status:<9} {state.mode:<11} {state.current_wave:<5} {len(state.accepted_child_ids):<9} {running:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+    click.echo("\n".join(lines))
 
 
 @swarm_group.command("start")
@@ -42,6 +69,11 @@ def swarm_group() -> None:
     help="Launch the coordinator in the background and return immediately.",
 )
 @click.option(
+    "--continuous",
+    is_flag=True,
+    help="Keep launching new waves until a wave produces no accepted improvements or the swarm is explicitly stopped.",
+)
+@click.option(
     "--cleanup/--keep-worktrees",
     default=False,
     show_default=True,
@@ -56,6 +88,7 @@ def swarm_start(
     runs: int,
     validation_commands: tuple[str, ...],
     detach: bool,
+    continuous: bool,
     cleanup: bool,
     as_json: bool,
     child_command: tuple[str, ...],
@@ -81,6 +114,7 @@ def swarm_start(
         validation_commands=list(validation_commands),
         keep_worktrees=not cleanup,
         detached=detach,
+        continuous=continuous,
     )
     if detach:
         log_path = state_path.parent / "coordinator.log"
@@ -104,6 +138,7 @@ def swarm_start(
                 start_new_session=True,
             )
         state.coordinator_pid = proc.pid
+        state.coordinator_log_path = str(log_path)
         save_swarm_state(state_path, state)
         payload = {
             "run_id": state.run_id,
@@ -163,6 +198,34 @@ def swarm_stop(ctx: click.Context, run_id: str, cleanup: bool, as_json: bool) ->
         _emit(state.model_dump(mode="json"), as_json=True)
         return
     click.echo(format_swarm_summary(state))
+
+
+@swarm_group.command("logs")
+@click.argument("run_id")
+@click.option("--child-id", help="Show a specific child log instead of the coordinator log.")
+@click.option("--stderr", is_flag=True, help="Read stderr instead of stdout for child logs.")
+@click.option("--tail", default=40, show_default=True, type=int, help="Number of lines to print.")
+@click.pass_context
+def swarm_logs(
+    ctx: click.Context,
+    run_id: str,
+    child_id: str | None,
+    stderr: bool,
+    tail: int,
+) -> None:
+    """Tail coordinator or child logs for a swarm run."""
+
+    try:
+        content = read_swarm_log(
+            Path(ctx.obj["root"]),
+            run_id,
+            child_id=child_id,
+            stderr=stderr,
+            tail=tail,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(content)
 
 
 @swarm_group.command("_run", hidden=True)
