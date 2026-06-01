@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import mimetypes
 import os
@@ -16,14 +17,19 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Literal
 
 from atelier.core.capabilities.swarm.models import (
     SwarmAcceptedCommit,
     SwarmArtifactRef,
     SwarmChildState,
+    SwarmConvergenceVerdict,
+    SwarmEvaluatorBackend,
     SwarmPlanningMode,
     SwarmRunState,
     SwarmValidationCheck,
+    SwarmWaveDecision,
+    SwarmWaveEvaluation,
     SwarmWaveState,
 )
 from atelier.infra.runtime.run_ledger import RunLedger
@@ -38,6 +44,82 @@ from atelier.infra.storage.factory import create_store
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+_PROVIDER_WORKER_STEP_BUDGETS: dict[str, int] = {
+    "low": 6,
+    "medium": 10,
+    "high": 14,
+}
+_PROVIDER_WORKER_TIME_BUDGETS: dict[str, int] = {
+    "low": 120,
+    "medium": 240,
+    "high": 420,
+}
+_PROVIDER_WORKER_ACTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["context", "search", "read", "edit", "finish"],
+        },
+        "task": {"type": "string"},
+        "files": {"type": "array", "items": {"type": "string"}},
+        "query": {"type": "string"},
+        "path": {"type": "string"},
+        "range": {"type": "string"},
+        "expand": {"type": "boolean"},
+        "edits": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "old_string": {"type": "string"},
+                    "new_string": {"type": "string"},
+                    "overwrite": {"type": "boolean"},
+                },
+                "required": ["file_path", "new_string"],
+            },
+        },
+        "summary": {"type": "string"},
+    },
+    "required": ["action"],
+}
+_SWARM_EVALUATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "summary": {"type": "string"},
+        "verdict": {
+            "type": "string",
+            "enum": ["continue", "converged", "stagnating", "blocked"],
+        },
+        "candidate_order": {"type": "array", "items": {"type": "string"}},
+        "decisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "child_id": {"type": "string"},
+                    "verdict": {
+                        "type": "string",
+                        "enum": ["accept", "reject", "defer"],
+                    },
+                    "rationale": {"type": "string"},
+                    "conflicts_with": {"type": "array", "items": {"type": "string"}},
+                    "duplicates": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["child_id", "verdict", "rationale"],
+            },
+        },
+        "next_wave_directives": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary", "verdict", "candidate_order", "decisions", "next_wave_directives"],
+}
 
 
 def _write_json(path: Path, data: dict[str, object]) -> None:
@@ -122,6 +204,203 @@ def _artifact_ref(
     )
 
 
+SWARM_RUNNER_PROFILES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "claude",
+        "label": "Claude Code",
+        "supports_model": True,
+        "model_placeholder": "claude-sonnet-4.5",
+        "options_help": "Extra CLI flags appended before the generated swarm prompt.",
+    },
+    {
+        "id": "codex",
+        "label": "Codex CLI",
+        "supports_model": True,
+        "model_placeholder": "gpt-5",
+        "options_help": "Extra `codex exec` flags appended before the generated swarm prompt.",
+    },
+    {
+        "id": "copilot",
+        "label": "Copilot CLI",
+        "supports_model": True,
+        "model_placeholder": "gpt-5.5",
+        "options_help": "Extra Copilot CLI flags appended before the generated swarm prompt.",
+    },
+    {
+        "id": "opencode",
+        "label": "OpenCode",
+        "supports_model": True,
+        "model_placeholder": "provider/model",
+        "options_help": "Extra `opencode run` flags appended before the generated swarm prompt.",
+    },
+    {
+        "id": "ollama-claude",
+        "label": "Ollama Claude bridge",
+        "supports_model": True,
+        "model_placeholder": "qwen3.6",
+        "options_help": "Extra flags passed through `ollama launch claude -- ...`.",
+    },
+)
+
+
+def list_swarm_runner_profiles() -> list[dict[str, Any]]:
+    return [dict(profile) for profile in SWARM_RUNNER_PROFILES]
+
+
+def resolve_swarm_spec_path(
+    *,
+    project_root: Path,
+    spec_path: Path | str | None,
+) -> tuple[Path, Literal["explicit", "default"], bool]:
+    resolved_root = Path(project_root).expanduser().resolve()
+    if spec_path is None or not str(spec_path).strip():
+        candidate = resolved_root / "PROGRAM.md"
+        if not candidate.exists():
+            candidate = resolved_root / "program.md"
+        if not candidate.exists():
+            raise RuntimeError(f"default swarm spec not found: {candidate}")
+        if not candidate.is_file():
+            raise RuntimeError(f"default swarm spec is not a file: {candidate}")
+        return candidate, "default", True
+
+    raw_path = Path(spec_path).expanduser()
+    candidate = (
+        (resolved_root / raw_path).resolve() if not raw_path.is_absolute() else raw_path.resolve()
+    )
+    if not candidate.is_relative_to(resolved_root):
+        raise RuntimeError(f"swarm spec must stay under the selected project root: {resolved_root}")
+    if not candidate.exists():
+        raise RuntimeError(f"swarm spec not found: {candidate}")
+    if not candidate.is_file():
+        raise RuntimeError(f"swarm spec is not a file: {candidate}")
+    return candidate, "explicit", candidate.name in {"program.md", "PROGRAM.md"}
+
+
+def resolve_swarm_child_command(
+    *,
+    runner: str | None,
+    runner_model: str | None,
+    runner_args: list[str] | tuple[str, ...],
+    child_command: list[str] | tuple[str, ...],
+    prompt_template: str,
+) -> list[str]:
+    if runner and child_command:
+        raise ValueError("choose either a built-in runner or a raw child command, not both")
+    if child_command:
+        return list(child_command)
+    if not runner:
+        raise ValueError("pass a raw child command or select a built-in runner")
+
+    profile = runner.lower()
+    extra_args = list(runner_args)
+    if profile == "claude":
+        command = ["claude"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(
+            [
+                "--dangerously-skip-permissions",
+                "--print",
+                *extra_args,
+                prompt_template,
+            ]
+        )
+        return command
+    if profile == "codex":
+        command = ["codex", "exec"]
+        if runner_model:
+            command.extend(["-m", runner_model])
+        command.extend(
+            [
+                "--dangerously-bypass-approvals-and-sandbox",
+                *extra_args,
+                prompt_template,
+            ]
+        )
+        return command
+    if profile == "copilot":
+        command = ["copilot"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(["--allow-all", *extra_args, "-p", prompt_template])
+        return command
+    if profile == "opencode":
+        command = ["opencode", "run"]
+        if runner_model:
+            command.extend(["-m", runner_model])
+        command.extend(
+            [
+                "--dangerously-skip-permissions",
+                *extra_args,
+                prompt_template,
+            ]
+        )
+        return command
+    if profile == "ollama-claude":
+        command = ["ollama", "launch", "claude", "--yes"]
+        if runner_model:
+            command.extend(["--model", runner_model])
+        command.extend(
+            [
+                "--",
+                "--dangerously-skip-permissions",
+                "--print",
+                *extra_args,
+                prompt_template,
+            ]
+        )
+        return command
+    raise ValueError(f"unsupported runner profile: {runner}")
+
+
+def resolve_swarm_runner_metadata(
+    *,
+    runner: str | None,
+    runner_model: str | None,
+    child_command: list[str] | tuple[str, ...],
+) -> tuple[str, str]:
+    if runner:
+        return runner.lower(), runner_model or ""
+    if not child_command:
+        return "custom", ""
+    inferred_model = ""
+    child_tokens = list(child_command)
+    for index, token in enumerate(child_tokens[:-1]):
+        if token in {"--model", "-m"} and index + 1 < len(child_tokens):
+            inferred_model = child_tokens[index + 1]
+            break
+    return child_tokens[0], inferred_model
+
+
+def resolve_swarm_provider_command(provider: Literal["openai", "litellm"]) -> list[str]:
+    if provider not in {"openai", "litellm"}:
+        raise ValueError(f"unsupported provider-backed swarm worker: {provider}")
+    return [
+        *_python_cli_invocation(),
+        "--root",
+        "{atelier_root}",
+        "swarm",
+        "_provider-worker",
+    ]
+
+
+def build_swarm_spec_payload(state: SwarmRunState) -> dict[str, Any]:
+    content = _spec_text(state)
+    excerpt = content[:4000]
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    title = lines[0] if lines else Path(state.copied_spec_path).name
+    return {
+        "source_path": state.spec_source_path or state.copied_spec_path,
+        "copied_path": state.copied_spec_path,
+        "resolution": state.spec_resolution,
+        "used_program_md": state.used_program_md,
+        "title": title[:160],
+        "excerpt": excerpt,
+        "truncated": len(content) > len(excerpt),
+        "content": content,
+    }
+
+
 def _upsert_run_artifact(state: SwarmRunState, artifact: SwarmArtifactRef) -> None:
     for index, existing in enumerate(state.export_artifacts):
         if existing.path == artifact.path:
@@ -135,6 +414,302 @@ def _spec_text(state: SwarmRunState) -> str:
     if not spec_path.exists():
         return ""
     return spec_path.read_text(encoding="utf-8", errors="replace")
+
+
+def _trim_text(text: str, *, limit: int) -> str:
+    normalized = text.strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}\n...[truncated]..."
+
+
+def _current_internal_llm_backend() -> str:
+    return os.environ.get("ATELIER_LLM_BACKEND", "none").strip().lower()
+
+
+def _resolve_evaluator_backend(state: SwarmRunState) -> SwarmEvaluatorBackend | None:
+    backend = state.evaluator_backend
+    if backend == "disabled":
+        return None
+    if backend != "auto":
+        return backend
+    active = _current_internal_llm_backend()
+    if active in {"ollama", "openai", "litellm"}:
+        return active
+    if state.launch_provider in {"openai", "litellm"}:
+        return state.launch_provider
+    return None
+
+
+def _patch_digest(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _patch_preview(path: Path, *, limit: int = 2400) -> str:
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = [
+        line
+        for line in text.splitlines()
+        if not line.startswith(("index ", "new file mode ", "deleted file mode "))
+    ]
+    return _trim_text("\n".join(lines), limit=limit)
+
+
+def _normalize_changed_file(entry: str) -> str:
+    path_text = entry[3:] if len(entry) > 3 else entry
+    if " -> " in path_text:
+        path_text = path_text.split(" -> ", 1)[1]
+    return path_text.strip()
+
+
+def _validation_summary(validation_results: list[SwarmValidationCheck]) -> list[dict[str, object]]:
+    return [
+        {
+            "name": item.name,
+            "passed": item.passed,
+            "detail": _trim_text(item.detail, limit=180),
+        }
+        for item in validation_results[:8]
+    ]
+
+
+def _build_relation_hints(children: list[SwarmChildState]) -> list[dict[str, object]]:
+    hints: list[dict[str, object]] = []
+    patch_digests: dict[str, str] = {}
+    file_sets: dict[str, set[str]] = {}
+    for child in children:
+        patch_digests[child.child_id] = _patch_digest(Path(child.patch_path))
+        file_sets[child.child_id] = {
+            _normalize_changed_file(path) for path in child.files_changed if _normalize_changed_file(path)
+        }
+    for index, left in enumerate(children):
+        for right in children[index + 1 :]:
+            left_digest = patch_digests[left.child_id]
+            right_digest = patch_digests[right.child_id]
+            if left_digest and left_digest == right_digest:
+                hints.append(
+                    {
+                        "child_ids": [left.child_id, right.child_id],
+                        "relation": "duplicate",
+                        "reason": "Patch content is identical.",
+                    }
+                )
+                continue
+            overlap = sorted(file_sets[left.child_id] & file_sets[right.child_id])
+            if overlap:
+                hints.append(
+                    {
+                        "child_ids": [left.child_id, right.child_id],
+                        "relation": "possible_conflict",
+                        "reason": f"Both candidates modify overlapping files: {', '.join(overlap[:8])}",
+                    }
+                )
+            else:
+                hints.append(
+                    {
+                        "child_ids": [left.child_id, right.child_id],
+                        "relation": "likely_independent",
+                        "reason": "Candidates modify disjoint files.",
+                    }
+                )
+    return hints[:24]
+
+
+def _build_wave_evidence_payload(
+    state: SwarmRunState,
+    wave: SwarmWaveState,
+    children: list[SwarmChildState],
+) -> dict[str, object]:
+    accepted_history = [
+        {
+            "child_id": item.child_id,
+            "summary": _trim_text(item.summary, limit=240),
+            "files_changed": item.files_changed[:10],
+            "commit_ref": item.commit_ref,
+        }
+        for item in state.accepted_commits[-8:]
+    ]
+    child_payload: list[dict[str, object]] = []
+    for child in children:
+        child_payload.append(
+            {
+                "child_id": child.child_id,
+                "status": child.status,
+                "summary": _trim_text(child.summary or child.error or "No summary emitted.", limit=320),
+                "files_changed": [_normalize_changed_file(path) for path in child.files_changed[:12]],
+                "validation": _validation_summary(child.validation_results),
+                "score": child.score,
+                "score_breakdown": child.score_breakdown[:6],
+                "duration_seconds": round(child.duration_seconds, 3),
+                "cost_usd": round(child.cost_usd, 6),
+                "patch_preview": _patch_preview(Path(child.patch_path)),
+            }
+        )
+    return {
+        "run_id": state.run_id,
+        "wave_index": wave.wave_index,
+        "base_task_spec": _trim_text(_spec_text(state), limit=5000),
+        "accepted_history": accepted_history,
+        "previous_convergence_summary": _trim_text(state.convergence_summary, limit=320),
+        "previous_directives": state.next_wave_directives[:8],
+        "candidate_relation_hints": _build_relation_hints(children),
+        "children": child_payload,
+    }
+
+
+def _fallback_wave_evaluation(
+    state: SwarmRunState,
+    children: list[SwarmChildState],
+    *,
+    error: str = "",
+) -> SwarmWaveEvaluation:
+    ranked = rank_children(children)
+    accepted: list[str] = []
+    rejected: list[str] = []
+    decisions: list[SwarmWaveDecision] = []
+    for child in ranked:
+        eligible = (
+            child.status == "success"
+            and bool(child.files_changed)
+            and not any(not check.passed for check in child.validation_results)
+        )
+        if eligible:
+            accepted.append(child.child_id)
+            verdict = "accept"
+            rationale = "Fallback accepted this candidate because it succeeded, changed files, and passed child validation."
+        else:
+            rejected.append(child.child_id)
+            verdict = "reject"
+            rationale = "Fallback rejected this candidate because it failed, made no changes, or failed child validation."
+        decisions.append(
+            SwarmWaveDecision(
+                child_id=child.child_id,
+                verdict=verdict,
+                rationale=rationale,
+            )
+        )
+    return SwarmWaveEvaluation(
+        status="fallback",
+        evaluator_backend=state.evaluator_backend,
+        evaluator_model=state.evaluator_model,
+        summary="Used deterministic fallback evaluation because semantic evaluation was unavailable.",
+        verdict="continue" if accepted else "stagnating",
+        candidate_order=[child.child_id for child in ranked],
+        accepted_child_ids=accepted,
+        rejected_child_ids=rejected,
+        decisions=decisions,
+        next_wave_directives=[],
+        error=error,
+        finished_at=_utcnow(),
+    )
+
+
+def _evaluate_wave(
+    state: SwarmRunState,
+    wave: SwarmWaveState,
+    children: list[SwarmChildState],
+) -> SwarmWaveEvaluation:
+    backend = _resolve_evaluator_backend(state)
+    if backend is None:
+        return _fallback_wave_evaluation(state, children, error="Evaluator backend disabled.")
+
+    from atelier.infra import internal_llm
+
+    evidence = _build_wave_evidence_payload(state, wave, children)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the swarm evaluator. Judge candidate changes semantically for integration into the shared base. "
+                "Accept multiple candidates only when they are compatible and independently valuable. Reject weaker duplicates "
+                "or conflicting alternatives. Use 'defer' for promising but incomplete ideas that should guide later waves. "
+                "Hard gates like child validation and patch application are enforced separately, so focus on semantic value, "
+                "independence, duplication, contradiction, and what the next wave should explore."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(evidence, ensure_ascii=False),
+        },
+    ]
+    env_key = "ATELIER_LLM_BACKEND"
+    previous_backend = os.environ.get(env_key)
+    os.environ[env_key] = backend
+    try:
+        response = internal_llm.chat(
+            messages,
+            model=state.evaluator_model or None,
+            json_schema=_SWARM_EVALUATION_SCHEMA,
+        )
+    except internal_llm.InternalLLMError as exc:
+        if previous_backend is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = previous_backend
+        return _fallback_wave_evaluation(state, children, error=str(exc))
+    if previous_backend is None:
+        os.environ.pop(env_key, None)
+    else:
+        os.environ[env_key] = previous_backend
+
+    if not isinstance(response, dict):
+        return _fallback_wave_evaluation(state, children, error="Evaluator returned a non-object response.")
+
+    decisions_payload = response.get("decisions")
+    candidate_order = response.get("candidate_order")
+    next_wave_directives = response.get("next_wave_directives")
+    if not isinstance(decisions_payload, list) or not isinstance(candidate_order, list):
+        return _fallback_wave_evaluation(state, children, error="Evaluator returned an invalid decision structure.")
+
+    decisions: list[SwarmWaveDecision] = []
+    accepted: list[str] = []
+    rejected: list[str] = []
+    deferred: list[str] = []
+    for item in decisions_payload:
+        if not isinstance(item, dict) or "child_id" not in item:
+            continue
+        decision = SwarmWaveDecision(
+            child_id=str(item["child_id"]),
+            verdict=str(item.get("verdict") or "defer"),
+            rationale=_trim_text(str(item.get("rationale") or ""), limit=240),
+            conflicts_with=[str(value) for value in item.get("conflicts_with") or []][:8],
+            duplicates=[str(value) for value in item.get("duplicates") or []][:8],
+        )
+        decisions.append(decision)
+        if decision.verdict == "accept":
+            accepted.append(decision.child_id)
+        elif decision.verdict == "reject":
+            rejected.append(decision.child_id)
+        else:
+            deferred.append(decision.child_id)
+    summary = _trim_text(str(response.get("summary") or ""), limit=400)
+    verdict_value = str(response.get("verdict") or "continue")
+    verdict: SwarmConvergenceVerdict = (
+        verdict_value if verdict_value in {"continue", "converged", "stagnating", "blocked"} else "continue"
+    )
+    directives = [
+        _trim_text(str(item), limit=240)
+        for item in (next_wave_directives if isinstance(next_wave_directives, list) else [])
+        if str(item).strip()
+    ][:8]
+    return SwarmWaveEvaluation(
+        status="completed",
+        evaluator_backend=backend,
+        evaluator_model=state.evaluator_model,
+        summary=summary,
+        verdict=verdict,
+        candidate_order=[str(item) for item in candidate_order][: len(children)],
+        accepted_child_ids=accepted,
+        rejected_child_ids=rejected,
+        deferred_child_ids=deferred,
+        decisions=decisions,
+        next_wave_directives=directives,
+        finished_at=_utcnow(),
+    )
 
 
 def _plan_wave_runs(state: SwarmRunState, wave_index: int) -> tuple[SwarmPlanningMode, int, str]:
@@ -151,7 +726,9 @@ def _plan_wave_runs(state: SwarmRunState, wave_index: int) -> tuple[SwarmPlannin
             spec_text,
         )
     }
-    bullet_count = sum(1 for line in spec_text.splitlines() if re.match(r"\s*(?:[-*]|\d+\.)\s+", line))
+    bullet_count = sum(
+        1 for line in spec_text.splitlines() if re.match(r"\s*(?:[-*]|\d+\.)\s+", line)
+    )
     open_signals = [
         signal
         for signal in (
@@ -233,7 +810,9 @@ def _refresh_transplant_commands(state: SwarmRunState) -> None:
 
 
 def _write_run_base_snapshot_manifest(state: SwarmRunState, run_dir: Path) -> None:
-    state.base_snapshot_ref = state.base_snapshot_ref or state.integration_base_ref or state.base_ref
+    state.base_snapshot_ref = (
+        state.base_snapshot_ref or state.integration_base_ref or state.base_ref
+    )
     artifact = _write_artifact_payload(
         run_dir,
         "artifacts/base-snapshot.json",
@@ -255,6 +834,78 @@ def _write_run_base_snapshot_manifest(state: SwarmRunState, run_dir: Path) -> No
         },
     )
     state.base_snapshot_artifact = artifact
+    _upsert_run_artifact(state, artifact)
+
+
+def _compose_wave_spec_text(
+    state: SwarmRunState,
+    wave: SwarmWaveState,
+    *,
+    child_index: int | None,
+    planned_runs: int,
+) -> str:
+    base_spec = _spec_text(state).strip()
+    lines = [base_spec, "", "## Swarm convergence context", f"- Wave: {wave.wave_index} of a continuous swarm run."]
+    if state.accepted_commits:
+        lines.append("- Accepted improvements already integrated into the current base:")
+        for accepted in state.accepted_commits[-5:]:
+            summary = accepted.summary or accepted.child_id
+            lines.append(f"  - {accepted.child_id}: {summary}")
+    else:
+        lines.append("- No prior improvements have been accepted yet.")
+    if state.convergence_summary:
+        lines.append(f"- Latest evaluator summary: {state.convergence_summary}")
+    directives = state.next_wave_directives[:]
+    if directives:
+        if child_index is None:
+            lines.append("- Evaluator-proposed directions for this wave:")
+            for item in directives[:6]:
+                lines.append(f"  - {item}")
+        else:
+            focus = directives[(child_index - 1) % len(directives)]
+            lines.append(f"- Primary focus for this child: {focus}")
+            secondary = [item for item in directives if item != focus][:3]
+            if secondary:
+                lines.append("- Secondary directions to consider if they compose cleanly:")
+                for item in secondary:
+                    lines.append(f"  - {item}")
+    else:
+        lines.append("- Primary focus for this child: explore the best remaining improvement opportunity without duplicating already accepted work.")
+    lines.extend(
+        [
+            (
+                f"- This is candidate {child_index} of {planned_runs}; bias toward a distinct angle rather than repeating another likely attempt."
+                if child_index is not None
+                else f"- The coordinator will launch up to {planned_runs} candidates from this wave spec."
+            ),
+            "- Prefer independent improvements that can stack with already accepted changes.",
+            "- If you detect a conflict with accepted work, choose a compatible alternative rather than reverting the base.",
+        ]
+    )
+    return "\n".join(line for line in lines if line is not None).strip() + "\n"
+
+
+def _write_wave_evaluation_manifest(state: SwarmRunState, wave: SwarmWaveState) -> None:
+    if wave.evaluation is None:
+        return
+    run_dir = Path(state.copied_spec_path).resolve().parent
+    artifact = _write_artifact_payload(
+        run_dir,
+        f"artifacts/waves/wave-{wave.wave_index:02d}-evaluation.json",
+        {
+            "run_id": state.run_id,
+            "wave_index": wave.wave_index,
+            "evaluation": wave.evaluation.model_dump(mode="json"),
+        },
+        kind="wave-evaluation",
+        label=f"Wave {wave.wave_index} evaluation",
+        metadata={
+            "wave_index": wave.wave_index,
+            "verdict": wave.evaluation.verdict,
+            "accepted_count": len(wave.evaluation.accepted_child_ids),
+        },
+    )
+    wave.evaluation.artifact = artifact
     _upsert_run_artifact(state, artifact)
 
 
@@ -286,6 +937,13 @@ def _write_wave_manifest(state: SwarmRunState, wave: SwarmWaveState) -> None:
             "accepted_child_ids": wave.accepted_child_ids,
             "accepted_commits": [item.model_dump(mode="json") for item in wave.accepted_commits],
             "rejected_outcomes": rejected_outcomes,
+            "evaluation": (
+                wave.evaluation.model_dump(mode="json") if wave.evaluation is not None else None
+            ),
+            "integration_validation_results": [
+                item.model_dump(mode="json") for item in wave.integration_validation_results
+            ],
+            "synthesized_spec_path": wave.synthesized_spec_path,
             "summary": wave.summary,
         },
         kind="wave-manifest",
@@ -412,10 +1070,15 @@ def _collect_cost_and_tokens(atelier_root: Path) -> tuple[int, float]:
 
 
 def _expand_command_tokens(child: SwarmChildState, command: list[str]) -> list[str]:
+    spec_contents = Path(child.spec_path).read_text(encoding="utf-8").strip()
     replacements = {
         "{spec}": child.spec_path,
+        "{spec_contents}": spec_contents,
         "{worktree}": child.worktree_path,
         "{child_id}": child.child_id,
+        "{atelier_root}": child.atelier_root,
+        "{result_path}": child.result_path,
+        "{metadata_path}": child.metadata_path,
     }
     expanded: list[str] = []
     for token in command:
@@ -464,10 +1127,16 @@ def _score_child(child: SwarmChildState) -> tuple[float, list[str]]:
         reasons.append("-60 failed child run")
     validation_passes = sum(1 for item in child.validation_results if item.passed)
     validation_failures = sum(1 for item in child.validation_results if not item.passed)
+    only_structural_validation = bool(child.validation_results) and all(
+        item.name.startswith("structural-") for item in child.validation_results
+    )
     if validation_passes:
-        delta = validation_passes * 15.0
+        delta = validation_passes * (3.0 if only_structural_validation else 15.0)
         score += delta
-        reasons.append(f"+{delta:.1f} validation checks passed")
+        if only_structural_validation:
+            reasons.append(f"+{delta:.1f} structural validation checks passed")
+        else:
+            reasons.append(f"+{delta:.1f} validation checks passed")
     if validation_failures:
         delta = validation_failures * 25.0
         score -= delta
@@ -620,6 +1289,348 @@ def _python_cli_invocation() -> list[str]:
     return [sys.executable, "-m", "atelier.gateway.cli"]
 
 
+def _workspace_relative_path(workspace_root: Path, raw_path: str) -> Path:
+    candidate = Path(raw_path.strip())
+    if not raw_path.strip():
+        raise ValueError("path is required")
+    if candidate.is_absolute():
+        raise ValueError("paths must be workspace-relative")
+    resolved = (workspace_root / candidate).resolve()
+    if not resolved.is_relative_to(workspace_root):
+        raise ValueError(f"path escapes the swarm worktree: {raw_path}")
+    return resolved
+
+
+def _validate_worker_files(
+    workspace_root: Path, files: object, *, allow_missing: bool = True
+) -> list[str]:
+    if files is None:
+        return []
+    if not isinstance(files, list):
+        raise ValueError("files must be a list of relative paths")
+    validated: list[str] = []
+    for item in files[:8]:
+        if not isinstance(item, str):
+            raise ValueError("files entries must be strings")
+        resolved = _workspace_relative_path(workspace_root, item)
+        if resolved.exists() or allow_missing:
+            validated.append(resolved.relative_to(workspace_root).as_posix())
+    return validated
+
+
+def _validate_provider_worker_action(
+    workspace_root: Path,
+    payload: object,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("worker action must be a JSON object")
+    action = str(payload.get("action") or "").strip().lower()
+    if action not in {"context", "search", "read", "edit", "finish"}:
+        raise ValueError(f"unsupported worker action: {action or '(missing)'}")
+    if action == "context":
+        task = str(payload.get("task") or "").strip()
+        if not task:
+            raise ValueError("context action requires task")
+        files = _validate_worker_files(workspace_root, payload.get("files"))
+        return {"action": action, "task": task, "files": files}
+    if action == "search":
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            raise ValueError("search action requires query")
+        path_text = str(payload.get("path") or ".").strip() or "."
+        search_path = _workspace_relative_path(workspace_root, path_text).relative_to(
+            workspace_root
+        ).as_posix()
+        return {"action": action, "query": query, "path": search_path}
+    if action == "read":
+        path_text = str(payload.get("path") or "").strip()
+        if not path_text:
+            raise ValueError("read action requires path")
+        file_path = _workspace_relative_path(workspace_root, path_text)
+        if not file_path.exists() or not file_path.is_file():
+            raise ValueError(f"file not found: {path_text}")
+        normalized: dict[str, Any] = {
+            "action": action,
+            "path": file_path.relative_to(workspace_root).as_posix(),
+            "expand": bool(payload.get("expand")),
+        }
+        if payload.get("range"):
+            normalized["range"] = str(payload["range"])
+        return normalized
+    if action == "edit":
+        edits = payload.get("edits")
+        if not isinstance(edits, list) or not edits:
+            raise ValueError("edit action requires at least one edit")
+        normalized_edits: list[dict[str, Any]] = []
+        for item in edits[:8]:
+            if not isinstance(item, dict):
+                raise ValueError("edit entries must be objects")
+            file_path_text = str(item.get("file_path") or "").strip()
+            new_string = item.get("new_string")
+            if not file_path_text or not isinstance(new_string, str):
+                raise ValueError("each edit requires file_path and new_string")
+            resolved_path = _workspace_relative_path(workspace_root, file_path_text)
+            normalized_edit: dict[str, Any] = {
+                "file_path": resolved_path.relative_to(workspace_root).as_posix(),
+                "new_string": new_string,
+            }
+            if "old_string" in item:
+                old_string = item.get("old_string")
+                if not isinstance(old_string, str):
+                    raise ValueError("old_string must be a string when provided")
+                normalized_edit["old_string"] = old_string
+            if item.get("overwrite"):
+                normalized_edit["overwrite"] = True
+            normalized_edits.append(normalized_edit)
+        return {"action": action, "edits": normalized_edits}
+    summary = str(payload.get("summary") or "").strip()
+    if not summary:
+        raise ValueError("finish action requires summary")
+    return {"action": action, "summary": summary[:800]}
+
+
+def _redact_tool_payload(payload: object) -> object:
+    if isinstance(payload, dict):
+        redacted: dict[str, object] = {}
+        for key, value in payload.items():
+            if "path" in key.lower() and isinstance(value, str):
+                with contextlib.suppress(Exception):
+                    value = Path(value).name
+            redacted[key] = _redact_tool_payload(value)
+        return redacted
+    if isinstance(payload, list):
+        return [_redact_tool_payload(item) for item in payload[:12]]
+    if isinstance(payload, str) and len(payload) > 6000:
+        return f"{payload[:6000]}\n...[truncated]..."
+    return payload
+
+
+def _render_worker_observation(name: str, payload: object) -> str:
+    return json.dumps({"tool": name, "result": _redact_tool_payload(payload)}, ensure_ascii=False)
+
+
+def _run_structural_validation(
+    *,
+    workspace_root: Path,
+    run_dir: Path,
+    env: dict[str, str],
+) -> SwarmValidationCheck:
+    stdout_path = run_dir / "structural-diff-check.stdout.log"
+    stderr_path = run_dir / "structural-diff-check.stderr.log"
+    started = time.perf_counter()
+    with (
+        stdout_path.open("w", encoding="utf-8") as stdout_handle,
+        stderr_path.open("w", encoding="utf-8") as stderr_handle,
+    ):
+        proc = subprocess.run(
+            ["git", "diff", "--check"],
+            cwd=workspace_root,
+            env=env,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    duration = round(time.perf_counter() - started, 3)
+    detail = "pass" if proc.returncode == 0 else "git diff --check reported formatting or merge issues"
+    return SwarmValidationCheck(
+        name="structural-diff-check",
+        command="git diff --check",
+        passed=proc.returncode == 0,
+        exit_code=proc.returncode,
+        detail=detail,
+        stdout_path=str(stdout_path),
+        stderr_path=str(stderr_path),
+        duration_seconds=duration,
+    )
+
+
+def run_provider_swarm_worker() -> int:
+    from atelier.gateway.sdk import mcp as gateway_mcp
+    from atelier.infra import internal_llm
+
+    workspace_root = Path(
+        os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.getcwd()
+    ).resolve()
+    spec_path = Path(os.environ["ATELIER_SWARM_SPEC_PATH"]).resolve()
+    metadata_path = Path(os.environ["ATELIER_SWARM_METADATA_PATH"]).resolve()
+    provider = os.environ.get("ATELIER_SWARM_PROVIDER", "").strip().lower()
+    model = os.environ.get("ATELIER_SWARM_MODEL", "").strip() or None
+    step_budget = _coerce_int(os.environ.get("ATELIER_SWARM_STEP_BUDGET"), 10)
+    time_budget = _coerce_int(os.environ.get("ATELIER_SWARM_TIME_BUDGET_SECONDS"), 240)
+    if provider not in {"openai", "litellm"}:
+        raise RuntimeError(f"provider-backed swarm worker requires openai/litellm, got {provider!r}")
+
+    spec_text = spec_path.read_text(encoding="utf-8", errors="replace")
+    client = gateway_mcp.MCPClient(root=Path(os.environ["ATELIER_ROOT"]).resolve())
+    messages: list[dict[str, str]] = [
+        {
+            "role": "system",
+            "content": (
+                "You are a bounded swarm child working inside a single git worktree. "
+                "Return exactly one JSON object matching the schema. Use only relative paths. "
+                "Allowed actions: context, search, read, edit, finish. "
+                "Edits must use the rich edit format with file_path/new_string and optional old_string or overwrite. "
+                "Stop as soon as the requested work is complete."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Implement the spec from {spec_path.name} inside this repository.\n"
+                f"Provider: {provider}\n"
+                f"Model: {model or '(provider default)'}\n"
+                f"Step budget: {step_budget}\n"
+                f"Time budget seconds: {time_budget}\n\n"
+                f"SPEC:\n{spec_text}"
+            ),
+        },
+    ]
+
+    started = time.monotonic()
+    invalid_actions = 0
+    summary = ""
+    final_error = ""
+    validation_results: list[SwarmValidationCheck] = []
+
+    for _step in range(1, max(step_budget, 1) + 1):
+        if time.monotonic() - started >= max(time_budget, 30):
+            final_error = f"Worker timed out after {time_budget}s."
+            break
+        try:
+            response = internal_llm.chat(
+                messages,
+                model=model,
+                json_schema=_PROVIDER_WORKER_ACTION_SCHEMA,
+            )
+            action = _validate_provider_worker_action(workspace_root, response)
+        except (internal_llm.InternalLLMError, ValueError, KeyError) as exc:
+            invalid_actions += 1
+            if invalid_actions >= 3:
+                final_error = str(exc)
+                break
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Previous response was invalid: {exc}. "
+                        "Return a corrected JSON object only."
+                    ),
+                }
+            )
+            continue
+
+        invalid_actions = 0
+        messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+
+        if action["action"] == "finish":
+            summary = action["summary"]
+            break
+
+        try:
+            if action["action"] == "context":
+                result = client.get_context(
+                    task=action["task"],
+                    domain="swarm",
+                    files=action.get("files") or None,
+                    tools=["context", "search", "read", "edit"],
+                    max_blocks=6,
+                    token_budget=2200,
+                ).model_dump(mode="json")
+            elif action["action"] == "search":
+                result = client.smart_search(
+                    query=action["query"],
+                    path=action["path"],
+                    limit=8,
+                )
+            elif action["action"] == "read":
+                result = client.transport.call_tool(
+                    "read",
+                    {
+                        "path": action["path"],
+                        "expand": bool(action.get("expand")),
+                        **({"range": action["range"]} if action.get("range") else {}),
+                    },
+                )
+            else:
+                result = client.transport.call_tool(
+                    "edit",
+                    {
+                        "edits": action["edits"],
+                        "atomic": True,
+                        "post_edit_hooks": False,
+                    },
+                )
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:  # pragma: no cover - defensive path
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Tool execution failed: {exc}. Continue with another valid action.",
+                }
+            )
+            continue
+
+        messages.append(
+            {
+                "role": "user",
+                "content": _render_worker_observation(action["action"], result),
+            }
+        )
+
+    validation_results.append(
+        _run_structural_validation(workspace_root=workspace_root, run_dir=metadata_path.parent, env=dict(os.environ))
+    )
+    if not summary and not final_error:
+        summary = "Completed provider-backed swarm worker without an explicit finish summary."
+
+    payload: dict[str, object] = {
+        "summary": summary,
+        "error": final_error,
+        "validation_results": [item.model_dump(mode="json") for item in validation_results],
+    }
+    _write_json(metadata_path, payload)
+
+    status_line = summary or final_error or "Provider-backed swarm worker finished."
+    print(status_line)
+    for check in validation_results:
+        print(f"{check.name}: {'pass' if check.passed else 'fail'}")
+    return 0 if not final_error else 1
+
+
+def spawn_swarm_coordinator(
+    root: Path,
+    repo_root: Path,
+    state_path: Path,
+    env_overrides: dict[str, str] | None = None,
+) -> tuple[int, Path]:
+    log_path = state_path.parent / "coordinator.log"
+    env = dict(os.environ)
+    if env_overrides:
+        env.update(env_overrides)
+    with log_path.open("w", encoding="utf-8") as handle:
+        proc = subprocess.Popen(
+            [
+                *_python_cli_invocation(),
+                "--root",
+                str(root),
+                "swarm",
+                "_run",
+                "--state",
+                str(state_path),
+            ],
+            cwd=repo_root,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+            env=env,
+        )
+    return proc.pid, log_path
+
+
 def list_swarm_runs(root: Path) -> list[SwarmRunState]:
     runs_root = Path(root) / "swarm" / "runs"
     if not runs_root.exists():
@@ -641,7 +1652,9 @@ def read_swarm_log(
 ) -> str:
     state = load_swarm_state(resolve_state_path(root, run_id))
     if child_id is None:
-        log_path = Path(state.coordinator_log_path or swarm_run_dir(root, run_id) / "coordinator.log")
+        log_path = Path(
+            state.coordinator_log_path or swarm_run_dir(root, run_id) / "coordinator.log"
+        )
     else:
         child = next((item for item in state.children if item.child_id == child_id), None)
         if child is None:
@@ -663,7 +1676,9 @@ def build_swarm_export_payload(state: SwarmRunState) -> dict[str, object]:
         "integration_base_ref": state.integration_base_ref,
         "artifact_root": state.artifact_root,
         "base_snapshot_artifact": (
-            state.base_snapshot_artifact.model_dump(mode="json") if state.base_snapshot_artifact is not None else None
+            state.base_snapshot_artifact.model_dump(mode="json")
+            if state.base_snapshot_artifact is not None
+            else None
         ),
         "accepted_child_ids": list(state.accepted_child_ids),
         "accepted_commits": [item.model_dump(mode="json") for item in state.accepted_commits],
@@ -678,7 +1693,9 @@ def build_swarm_export_payload(state: SwarmRunState) -> dict[str, object]:
                 "accepted_child_ids": list(wave.accepted_child_ids),
                 "rejected_child_ids": list(wave.rejected_child_ids),
                 "manifest_artifact": (
-                    wave.manifest_artifact.model_dump(mode="json") if wave.manifest_artifact is not None else None
+                    wave.manifest_artifact.model_dump(mode="json")
+                    if wave.manifest_artifact is not None
+                    else None
                 ),
             }
             for wave in state.waves
@@ -704,7 +1721,9 @@ def build_swarm_apply_payload(
     commands: list[str] = []
     if cherry_pick_refs:
         commands.append(f"git cherry-pick {' '.join(cherry_pick_refs)}")
-    commands.extend(f"git apply {shlex.quote(item.patch_path)}" for item in selected_commits if item.patch_path)
+    commands.extend(
+        f"git apply {shlex.quote(item.patch_path)}" for item in selected_commits if item.patch_path
+    )
     return {
         "run_id": state.run_id,
         "wave_index": wave_index,
@@ -713,7 +1732,11 @@ def build_swarm_apply_payload(
         "integration_base_ref": state.integration_base_ref,
         "selected_commits": [item.model_dump(mode="json") for item in selected_commits],
         "commands": commands,
-        "artifacts": [artifact.model_dump(mode="json") for item in selected_commits for artifact in item.artifacts],
+        "artifacts": [
+            artifact.model_dump(mode="json")
+            for item in selected_commits
+            for artifact in item.artifacts
+        ],
     }
 
 
@@ -724,6 +1747,11 @@ def initialize_swarm_run(
     spec_path: Path,
     runner_name: str = "custom",
     runner_model: str = "",
+    spec_source_path: str = "",
+    spec_resolution: Literal["explicit", "default"] = "explicit",
+    used_program_md: bool = False,
+    launch_provider: Literal["cli", "openai", "litellm"] = "cli",
+    launch_effort: str = "",
     child_command: list[str],
     runs: int,
     validation_commands: list[str],
@@ -736,7 +1764,7 @@ def initialize_swarm_run(
     spec_path = Path(spec_path).resolve()
     run_id = f"swarm-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
     run_dir = swarm_run_dir(root, run_id)
-    spec_copy = run_dir / "program.md"
+    spec_copy = run_dir / "PROGRAM.md"
     spec_copy.parent.mkdir(parents=True, exist_ok=True)
     spec_copy.write_text(spec_path.read_text(encoding="utf-8"), encoding="utf-8")
     worktree_pool = repo_root.parent / f"{repo_root.name}-swarm-worktrees" / run_id
@@ -765,10 +1793,14 @@ def initialize_swarm_run(
         integration_worktree=str(integration_worktree),
         integration_base_ref=integration_base_ref,
         artifact_root=str(artifact_root),
-        spec_source_path=str(spec_path),
+        spec_source_path=str(spec_source_path or spec_path),
         copied_spec_path=str(spec_copy),
+        spec_resolution=spec_resolution,
+        used_program_md=used_program_md,
         runner_name=runner_name,
         runner_model=runner_model,
+        launch_provider=launch_provider,
+        launch_effort=launch_effort,
         child_command=list(child_command),
         validation_commands=list(validation_commands),
         runs=runs,
@@ -790,6 +1822,9 @@ def initialize_swarm_run(
 
 
 def build_child_env(child: SwarmChildState, state: SwarmRunState) -> dict[str, str]:
+    effort = (state.launch_effort or "high").lower().strip()
+    step_budget = _PROVIDER_WORKER_STEP_BUDGETS.get(effort, _PROVIDER_WORKER_STEP_BUDGETS["high"])
+    time_budget = _PROVIDER_WORKER_TIME_BUDGETS.get(effort, _PROVIDER_WORKER_TIME_BUDGETS["high"])
     env = dict(os.environ)
     env.update(
         {
@@ -802,8 +1837,21 @@ def build_child_env(child: SwarmChildState, state: SwarmRunState) -> dict[str, s
             "ATELIER_SWARM_RESULT_PATH": child.result_path,
             "ATELIER_SWARM_METADATA_PATH": child.metadata_path,
             "ATELIER_SWARM_BASE_REF": state.integration_base_ref,
+            "ATELIER_SWARM_PROVIDER": state.launch_provider,
+            "ATELIER_SWARM_MODEL": state.runner_model,
+            "ATELIER_SWARM_EFFORT": effort,
+            "ATELIER_SWARM_STEP_BUDGET": str(step_budget),
+            "ATELIER_SWARM_TIME_BUDGET_SECONDS": str(time_budget),
         }
     )
+    if state.launch_provider == "openai":
+        env["ATELIER_LLM_BACKEND"] = "openai"
+        if state.runner_model:
+            env["ATELIER_OPENAI_MODEL"] = state.runner_model
+    elif state.launch_provider == "litellm":
+        env["ATELIER_LLM_BACKEND"] = "litellm"
+        if state.runner_model:
+            env["ATELIER_LITELLM_MODEL"] = state.runner_model
     return env
 
 
@@ -825,6 +1873,22 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
         planning_reason=planning_reason,
     )
     spec_copy = Path(state.copied_spec_path)
+    run_dir = Path(state.copied_spec_path).resolve().parent
+    synthesized_spec_path = run_dir / "artifacts" / "waves" / f"wave-{wave.wave_index:02d}-PROGRAM.md"
+    synthesized_spec_path.parent.mkdir(parents=True, exist_ok=True)
+    synthesized_spec_path.write_text(
+        _compose_wave_spec_text(state, wave, child_index=None, planned_runs=wave.planned_runs),
+        encoding="utf-8",
+    )
+    wave.synthesized_spec_path = str(synthesized_spec_path)
+    wave.synthesized_spec_artifact = _artifact_ref(
+        run_dir,
+        synthesized_spec_path,
+        kind="wave-spec",
+        label=f"Wave {wave.wave_index} synthesized PROGRAM.md",
+        metadata={"wave_index": wave.wave_index},
+    )
+    _upsert_run_artifact(state, wave.synthesized_spec_artifact)
     for index in range(1, wave.planned_runs + 1):
         child_id = f"wave-{wave_index:02d}-run-{index:02d}"
         child_dir = _child_run_dir(root, state.run_id, child_id)
@@ -834,9 +1898,14 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
             child_id=child_id,
             ref=state.integration_base_ref,
         )
-        child_spec_path = worktree_path / ".atelier-swarm" / "program.md"
+        child_spec_path = worktree_path / ".atelier-swarm" / "PROGRAM.md"
         child_spec_path.parent.mkdir(parents=True, exist_ok=True)
-        child_spec_path.write_text(spec_copy.read_text(encoding="utf-8"), encoding="utf-8")
+        child_spec_path.write_text(
+            _compose_wave_spec_text(state, wave, child_index=index, planned_runs=wave.planned_runs)
+            if state.mode == "continuous"
+            else spec_copy.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
         child_root = child_dir / "atelier-root"
         store = create_store(child_root)
         store.init()
@@ -979,6 +2048,57 @@ def _recreate_integration_worktree(state: SwarmRunState) -> Path:
     return recreated
 
 
+def _run_integration_validation(
+    *,
+    state: SwarmRunState,
+    wave: SwarmWaveState,
+    child: SwarmChildState,
+    integration: Path,
+) -> list[SwarmValidationCheck]:
+    validation_dir = (
+        Path(state.copied_spec_path).resolve().parent
+        / "artifacts"
+        / "waves"
+        / f"wave-{wave.wave_index:02d}"
+        / child.child_id
+    )
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    env = build_child_env(child, state)
+    results = [_run_structural_validation(workspace_root=integration, run_dir=validation_dir, env=env)]
+    for ordinal, command in enumerate(state.validation_commands, start=1):
+        log_base = validation_dir / f"integration-validation-{ordinal:02d}"
+        stdout_path = log_base.with_suffix(".stdout.log")
+        stderr_path = log_base.with_suffix(".stderr.log")
+        started = time.perf_counter()
+        with (
+            stdout_path.open("w", encoding="utf-8") as stdout_handle,
+            stderr_path.open("w", encoding="utf-8") as stderr_handle,
+        ):
+            proc = subprocess.run(
+                command,
+                cwd=integration,
+                env=env,
+                shell=True,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+                text=True,
+                check=False,
+            )
+        results.append(
+            SwarmValidationCheck(
+                name=f"integration-validation-{ordinal}",
+                command=command,
+                passed=proc.returncode == 0,
+                exit_code=proc.returncode,
+                detail="pass" if proc.returncode == 0 else "failed",
+                stdout_path=str(stdout_path),
+                stderr_path=str(stderr_path),
+                duration_seconds=round(time.perf_counter() - started, 3),
+            )
+        )
+    return results
+
+
 def apply_wave_candidates(
     state: SwarmRunState,
     wave_children: list[SwarmChildState],
@@ -986,12 +2106,37 @@ def apply_wave_candidates(
 ) -> bool:
     integration = Path(state.integration_worktree)
     ranked = rank_children(wave_children)
+    evaluation = _evaluate_wave(state, wave, ranked)
+    wave.evaluation = evaluation
     accepted: list[str] = []
     rejected: list[str] = []
     accepted_commits: list[SwarmAcceptedCommit] = []
     run_dir = Path(state.copied_spec_path).resolve().parent
-
+    decision_map = {item.child_id: item for item in evaluation.decisions}
+    ranked_map = {child.child_id: child for child in ranked}
+    ordered_ids: list[str] = []
+    for child_id in evaluation.candidate_order:
+        if child_id in ranked_map and child_id not in ordered_ids:
+            ordered_ids.append(child_id)
     for child in ranked:
+        if child.child_id not in ordered_ids:
+            ordered_ids.append(child.child_id)
+
+    for child_id in ordered_ids:
+        child = ranked_map[child_id]
+        decision = decision_map.get(child.child_id)
+        if decision is not None and decision.verdict == "reject":
+            child.accepted = False
+            child.acceptance_note = decision.rationale or "Evaluator rejected this candidate."
+            rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
+            continue
+        if decision is not None and decision.verdict == "defer":
+            child.accepted = False
+            child.acceptance_note = decision.rationale or "Deferred for a later wave."
+            rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
+            continue
         if child.status != "success":
             child.accepted = False
             child.acceptance_note = "Child command did not succeed."
@@ -1031,8 +2176,26 @@ def apply_wave_candidates(
             rejected.append(child.child_id)
             wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
+        previous_base_ref = state.integration_base_ref
+        integration_validation = _run_integration_validation(
+            state=state,
+            wave=wave,
+            child=child,
+            integration=integration,
+        )
+        wave.integration_validation_results.extend(integration_validation)
+        if any(not check.passed for check in integration_validation):
+            state.integration_base_ref = previous_base_ref
+            integration = _recreate_integration_worktree(state)
+            child.accepted = False
+            child.acceptance_note = "Rejected after integration validation failed."
+            rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
+            continue
         child.accepted = True
-        child.acceptance_note = "Applied to integration base."
+        child.acceptance_note = (
+            decision.rationale if decision is not None and decision.rationale else "Applied to integration base."
+        )
         state.integration_base_ref = _ensure_snapshot_commit(
             integration,
             f"[swarm] wave {wave.wave_index:02d} accept {child.child_id}",
@@ -1076,6 +2239,13 @@ def apply_wave_candidates(
     wave.accepted_commits = accepted_commits
     wave.primary_winner_child_id = accepted[0] if accepted else None
     wave.finished_at = _utcnow()
+    state.convergence_status = evaluation.verdict
+    state.convergence_summary = evaluation.summary
+    state.next_wave_directives = list(evaluation.next_wave_directives)
+    if evaluation.status == "completed":
+        state.consecutive_evaluator_failures = 0
+    else:
+        state.consecutive_evaluator_failures += 1
     if accepted:
         for child_id in accepted:
             if child_id not in state.accepted_child_ids:
@@ -1085,15 +2255,19 @@ def apply_wave_candidates(
         state.winner_child_id = accepted[0]
         winner = next(child for child in ranked if child.child_id == accepted[0])
         state.ranking_notes = winner.score_breakdown
+        state.consecutive_no_progress_waves = 0
         wave.status = "applied"
-        wave.summary = f"Accepted {len(accepted)} child patch(es)."
+        wave.summary = evaluation.summary or f"Accepted {len(accepted)} child patch(es)."
         _refresh_transplant_commands(state)
+        _write_wave_evaluation_manifest(state, wave)
         _write_wave_manifest(state, wave)
         _write_run_acceptance_manifest(state)
         return True
+    state.consecutive_no_progress_waves += 1
     wave.status = "no-improvement"
-    wave.summary = "No child patch was accepted in this wave."
+    wave.summary = evaluation.summary or "No child patch was accepted in this wave."
     _refresh_transplant_commands(state)
+    _write_wave_evaluation_manifest(state, wave)
     _write_wave_manifest(state, wave)
     _write_run_acceptance_manifest(state)
     return False
@@ -1267,7 +2441,9 @@ def run_child_once(state_path: Path, child_id: str) -> SwarmChildState:
                     validation_results,
                     metadata.get("validation_results"),
                 ),
-                "summary": str(metadata.get("summary") or _summarize_output(stdout_path, stderr_path)),
+                "summary": str(
+                    metadata.get("summary") or _summarize_output(stdout_path, stderr_path)
+                ),
                 "error": str(metadata.get("error") or ""),
                 "token_count": _coerce_int(metadata.get("token_count"), token_count),
                 "cost_usd": _coerce_float(metadata.get("cost_usd"), cost_usd),

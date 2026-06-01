@@ -32,9 +32,24 @@ def bench_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def memory_tool_fn(bench_workspace: Path) -> Any:
-    from atelier.gateway.adapters.mcp_server import tool_memory
+    from atelier.gateway.adapters import mcp_server
 
-    return tool_memory
+    def _call(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        archive_text = payload.pop("_archive_text", None)
+        archive_source_ref = payload.pop("_archive_source_ref", "")
+        archive_tags = payload.pop("_archive_tags", None)
+        if isinstance(archive_text, str) and archive_text:
+            mcp_server._memory_archive(
+                agent_id=payload.get("agent_id"),
+                text=archive_text,
+                source="benchmark",
+                source_ref=str(archive_source_ref),
+                tags=list(archive_tags or []),
+            )
+        return mcp_server.tool_memory(payload)
+
+    return _call
 
 
 @pytest.fixture(scope="session")

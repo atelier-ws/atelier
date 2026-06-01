@@ -94,8 +94,12 @@ export interface SwarmRunListItem {
   run_id: string;
   status: string;
   mode: string;
+  repo_root: string;
+  repo_label: string;
   runner_name: string;
   runner_model?: string | null;
+  launch_provider?: string | null;
+  launch_effort?: string | null;
   current_wave: number;
   max_runs: number;
   planned_runs: number;
@@ -104,6 +108,10 @@ export interface SwarmRunListItem {
   primary_winner_child_id?: string | null;
   failed_children: string[];
   running_children: SwarmRunningChild[];
+  spec_title?: string | null;
+  spec_excerpt?: string | null;
+  spec_resolution?: string | null;
+  used_program_md?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -125,8 +133,11 @@ export interface SwarmRunStateView {
   run_id: string;
   status: string;
   mode: string;
+  repo_root?: string | null;
   runner_name: string;
   runner_model?: string | null;
+  launch_provider?: string | null;
+  launch_effort?: string | null;
   base_ref: string;
   base_snapshot_ref?: string | null;
   integration_base_ref?: string | null;
@@ -175,6 +186,16 @@ export interface SwarmApplyPayload {
 
 export interface SwarmRunDetailResponse {
   run: SwarmRunStateView;
+  spec: {
+    source_path: string;
+    copied_path: string;
+    resolution?: string | null;
+    used_program_md?: boolean | null;
+    title: string;
+    excerpt: string;
+    truncated: boolean;
+    content: string;
+  };
   export: SwarmExportPayload;
   apply: SwarmApplyPayload;
 }
@@ -185,6 +206,92 @@ export interface SwarmLogResponse {
   stderr: boolean;
   tail: number;
   content: string;
+}
+
+export interface SwarmLaunchProviderOption {
+  id: string;
+  label: string;
+  supported: boolean;
+  reason?: string | null;
+  model_placeholder?: string | null;
+  credential_hint?: string | null;
+}
+
+export interface SwarmLaunchRunnerOption {
+  id: string;
+  label: string;
+  supports_model: boolean;
+  model_placeholder?: string | null;
+  options_help?: string | null;
+}
+
+export interface SwarmLaunchProjectOption {
+  path: string;
+  label: string;
+  full_path: string;
+  has_program_md: boolean;
+}
+
+export interface SwarmLaunchFileOption {
+  path: string;
+  is_default: boolean;
+  exists: boolean;
+}
+
+export interface SwarmLaunchOptionsResponse {
+  project_roots: SwarmLaunchProjectOption[];
+  selected_project_root: string;
+  files: SwarmLaunchFileOption[];
+  selected_spec_path?: string | null;
+  spec_document?: {
+    path: string;
+    content: string;
+    exists: boolean;
+    is_default: boolean;
+  } | null;
+  providers: SwarmLaunchProviderOption[];
+  runners: SwarmLaunchRunnerOption[];
+  defaults: {
+    provider: string;
+    runner: string;
+    runs: number;
+    continuous: boolean;
+    keep_worktrees: boolean;
+    effort: string;
+  };
+  notes: {
+    default_spec: string;
+    default_spec_missing: boolean;
+    effort_behavior: string;
+    provider_credentials?: string | null;
+  };
+}
+
+export interface SwarmLaunchRequest {
+  project_root: string;
+  spec_path?: string | null;
+  spec_mode?: "existing" | "inline";
+  spec_content?: string | null;
+  provider: string;
+  runner?: string | null;
+  runner_model?: string | null;
+  model?: string | null;
+  runner_options?: string;
+  runs: number;
+  continuous: boolean;
+  keep_worktrees: boolean;
+  effort: string;
+  provider_api_key?: string | null;
+  provider_base_url?: string | null;
+  provider_env?: Record<string, string>;
+}
+
+export interface SwarmLaunchResponse {
+  run_id: string;
+  status: string;
+  state_path: string;
+  coordinator_pid: number;
+  log_path: string;
 }
 
 export interface PlanRecord {
@@ -1564,6 +1671,17 @@ export const api = {
     get<OptimizationsSummary>(
       `/v1/optimizations/summary?window_days=${windowDays}`
     ),
+  swarmLaunchOptions: (projectRoot?: string, specPath?: string) => {
+    const params = new URLSearchParams();
+    if (projectRoot) params.set("project_root", projectRoot);
+    if (specPath) params.set("spec_path", specPath);
+    const query = params.toString();
+    return get<SwarmLaunchOptionsResponse>(
+      `/v1/swarm/launch/options${query ? `?${query}` : ""}`
+    );
+  },
+  launchSwarmRun: (payload: SwarmLaunchRequest) =>
+    post<SwarmLaunchResponse>("/v1/swarm/runs", payload),
   swarmRuns: () => get<SwarmRunListItem[]>("/v1/swarm/runs"),
   swarmRun: (runId: string) =>
     get<SwarmRunDetailResponse>(`/v1/swarm/runs/${runId}`),

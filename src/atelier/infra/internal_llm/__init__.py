@@ -6,8 +6,10 @@ Backend selection via ``ATELIER_LLM_BACKEND`` environment variable:
 - ``ollama``            — local Ollama server
 - ``openai``            — OpenAI API or any OpenAI-compatible endpoint
 - ``openai_compatible`` — alias for ``openai``
+- ``litellm``           — native multi-provider (Bedrock, Vertex/Gemini, Azure)
 
-See ``openai_client.py`` for OpenRouter / opencode / local vllm configuration.
+See ``openai_client.py`` for OpenRouter / opencode / local vllm configuration,
+and ``litellm_client.py`` for AWS / Azure / GCP cloud-native model access.
 """
 
 from __future__ import annotations
@@ -15,7 +17,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from atelier.infra.internal_llm.exceptions import InternalLLMError, OllamaUnavailable
+from atelier.infra.internal_llm.exceptions import (
+    InternalLLMError,
+    LiteLLMUnavailable,
+    OllamaUnavailable,
+)
 
 
 def _backend() -> str:
@@ -38,6 +44,11 @@ def chat(
     try:
         if backend in ("openai", "openai_compatible"):
             from atelier.infra.internal_llm.openai_client import chat as _chat
+
+            return _chat(messages, model=model, json_schema=json_schema)
+
+        if backend == "litellm":
+            from atelier.infra.internal_llm.litellm_client import chat as _chat
 
             return _chat(messages, model=model, json_schema=json_schema)
 
@@ -64,6 +75,11 @@ def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) ->
 
             return _summarize(text, model=model, max_tokens=max_tokens)
 
+        if backend == "litellm":
+            from atelier.infra.internal_llm.litellm_client import summarize as _summarize
+
+            return _summarize(text, model=model, max_tokens=max_tokens)
+
         from atelier.infra.internal_llm.ollama_client import summarize as _summarize
 
         return _summarize(text, model=model, max_tokens=max_tokens)
@@ -73,4 +89,4 @@ def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) ->
         raise InternalLLMError(f"Internal LLM ({backend}) failed: {exc}") from exc
 
 
-__all__ = ["InternalLLMError", "OllamaUnavailable", "chat", "summarize"]
+__all__ = ["InternalLLMError", "LiteLLMUnavailable", "OllamaUnavailable", "chat", "summarize"]

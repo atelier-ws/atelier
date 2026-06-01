@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atelier.core.capabilities.tool_supervision.smart_search import (
     _CLAUDE_READ_LINE_LIMIT,
+    _iter_text_files,
     _naive_bytes_for_matches,
 )
 
@@ -28,3 +29,14 @@ def test_smart_search_full_baseline_caps_claude_read_output(tmp_path: Path) -> N
 
     assert baseline < full_size
     assert baseline == len("\n".join(lines[:_CLAUDE_READ_LINE_LIMIT]))
+
+
+def test_iter_text_files_skips_local_artifact_directories(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "keep.py").write_text("needle = 1\n", encoding="utf-8")
+    (tmp_path / ".bench-work" / "snapshot").mkdir(parents=True)
+    (tmp_path / ".bench-work" / "snapshot" / "copy.py").write_text("needle = 2\n", encoding="utf-8")
+
+    files = {path.relative_to(tmp_path).as_posix() for path in _iter_text_files(tmp_path)}
+
+    assert files == {"src/keep.py"}

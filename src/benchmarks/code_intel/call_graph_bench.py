@@ -11,6 +11,7 @@ from typing import Any
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import tool_code
+from atelier.infra.code_intel.scip.indexer import ScipIndexer
 
 
 @dataclass(frozen=True)
@@ -45,25 +46,25 @@ def _write_fixture_repo(root: Path) -> None:
     (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "src" / "app.py").write_text(
-        "from src.alpha import alpha\n\n" "def handle() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef handle() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
     (root / "src" / "alpha.py").write_text(
-        "from src.beta import beta\n\n" "def alpha() -> int:\n" "    return beta()\n",
+        "from src.beta import beta\n\ndef alpha() -> int:\n    return beta()\n",
         encoding="utf-8",
     )
     (root / "src" / "beta.py").write_text(
-        "from src.gamma import gamma\n\n" "def beta() -> int:\n" "    return gamma()\n",
+        "from src.gamma import gamma\n\ndef beta() -> int:\n    return gamma()\n",
         encoding="utf-8",
     )
     (root / "src" / "gamma.py").write_text(
-        "from src.alpha import alpha\n\n" "def gamma() -> int:\n" "    return alpha()\n",
+        "from src.alpha import alpha\n\ndef gamma() -> int:\n    return alpha()\n",
         encoding="utf-8",
     )
 
 
 def _write_scip_fixture(engine: CodeContextEngine) -> None:
-    artifact_dir = engine.repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir = ScipIndexer(engine.repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     symbol_specs = [
         ("scip-handle", "src/app.py", "handle"),
@@ -212,8 +213,12 @@ def run_call_graph_bench(
             "budget_tokens": expanded_budget_tokens,
         }
     )
-    default_total_tokens = count_tokens(json.dumps(default_payload, sort_keys=True, ensure_ascii=False, default=str))
-    expanded_total_tokens = count_tokens(json.dumps(expanded_payload, sort_keys=True, ensure_ascii=False, default=str))
+    default_total_tokens = count_tokens(
+        json.dumps(default_payload, sort_keys=True, ensure_ascii=False, default=str)
+    )
+    expanded_total_tokens = count_tokens(
+        json.dumps(expanded_payload, sort_keys=True, ensure_ascii=False, default=str)
+    )
     return CallGraphBenchResult(
         budget_tokens=budget_tokens,
         expanded_budget_tokens=expanded_budget_tokens,

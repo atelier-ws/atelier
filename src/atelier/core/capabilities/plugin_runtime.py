@@ -107,8 +107,7 @@ def _summarize_ab_calibration(root: str | Path) -> dict[str, Any]:
             },
         }
 
-    Measured-by-A/B view of per-tool savings. Produced by
-    ``tests/benchmarks/test_*_ab_real.py`` (run via ``make bench-ab``).
+    Measured-by-A/B view of per-tool savings.
     """
     path = Path(root) / "savings_calibration.jsonl"
     if not path.is_file():

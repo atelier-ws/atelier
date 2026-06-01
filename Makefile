@@ -12,11 +12,10 @@ TEST_PRINT_TIME ?= 0
 COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
-
 .PHONY: help install uninstall status start restart build-host-skills sync-agent-context \
 	check-agent-context docs-check worktree-env runtime-evidence \
 	test test-fast test-cov test-full security-test lint format-check format typecheck launch-gate verify pre-commit \
-	benchmark bench-savings bench-savings-honest proof-cost-quality demo import clean \
+	proof-cost-quality demo import clean \
 	_ensure_hooks
 
 # --------------------------------------------------------------------------- #
@@ -131,24 +130,6 @@ verify: | _ensure_hooks lint format-check typecheck docs-check test ## Verify co
 	bash scripts/verify_agent_clis.sh
 
 pre-commit: | _ensure_hooks format lint typecheck docs-check test ## Format, lint, typecheck, docs, and test
-
-# --------------------------------------------------------------------------- #
-# Benchmarks and demos                                                        #
-# --------------------------------------------------------------------------- #
-
-benchmark: ## Run the full benchmark suite
-	LOCAL=1 atelier benchmark full --json
-
-# `bench-savings` (V2) was removed — it was deprecated for measurement and
-	# its percentage claims were not honored. Use `bench-ab` for real A/B numbers
-	# or `bench-savings-honest` for the V3 synthetic replay.
-
-	bench-ab: ## Real A/B benchmarks: run Atelier tool + native equivalent on the same input, persist deltas to ~/.atelier/savings_calibration.jsonl
-	LOCAL=1 uv run pytest tests/benchmarks/ -v -m ab
-
-	bench-savings-honest: ## V3 honest replay (synthetic corpus, 50 prompts)
-	rm -rf /tmp/atelier-v3-savings-replay
-	ATELIER_ROOT=/tmp/atelier-v3-savings-replay LOCAL=1 uv run python -m benchmarks.swe.savings_replay --csv docs/benchmarks/v3-honest-savings-results.csv
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v

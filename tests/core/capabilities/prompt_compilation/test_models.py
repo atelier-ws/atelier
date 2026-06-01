@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from atelier.core.capabilities.prompt_compilation.models import (
+    COUNTEREXAMPLE_METADATA_KEY,
     DEFAULT_STABILITY,
     BlockKind,
     PromptBlock,
@@ -123,3 +124,16 @@ class TestEmptyContent:
     def test_empty_content_raises(self) -> None:
         with pytest.raises(ValueError, match="content"):
             _block(content="")
+
+
+class TestCounterexampleMarker:
+    def test_counterexample_metadata_sets_property(self) -> None:
+        block = _block(
+            kind=BlockKind.TOOL_RESULT,
+            stability=Stability.TURN,
+            metadata={COUNTEREXAMPLE_METADATA_KEY: True},
+        )
+        assert block.is_counterexample is True
+
+    def test_regular_block_is_not_counterexample(self) -> None:
+        assert _block().is_counterexample is False

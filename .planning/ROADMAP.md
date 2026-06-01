@@ -912,260 +912,7 @@ Plans:
 
 ---
 
-## Milestone v0.5: Quality & Benchmark Lift
-
-**Goal:** Raise coding quality and benchmark credibility by gating new debt, burning down silent errors/stdout hazards, decomposing the CLI, expanding A/B suite coverage, and publishing reproducible regression-gated results.
-
-**Source of truth:** `docs/plans/quality-and-benchmark-lift/`
-
-**Phases:**
-
-- [x] **Phase 22: Lint and Coverage Gates** — Enable BLE001/T20 with scoped ignores and add nightly full-suite coverage gating (completed 2026-05-29)
-- [x] **Phase 23: Silent Exception Audit** — Remove or justify every `except Exception: pass` site and shrink BLE001 ignores (completed 2026-05-29)
-- [x] **Phase 24: Stdout to Logging** — Replace non-CLI `print()` calls with logging/stderr and preserve CLI output via Click (completed 2026-05-29)
-- [ ] **Phase 25: CLI Decomposition** — Split `gateway/cli/app.py` into command modules and extract business logic
-- [ ] **Phase 26: A/B Suite Expansion** — Map every savings mechanism to a runnable suite/grader with smoke coverage
-- [ ] **Phase 27: Public Benchmark Results** — Publish reproducible results and add benchmark regression CI
-
----
-
-### Phase 22: Lint and Coverage Gates
-
-**Goal**: Stop new broad-except/print debt and gate full-suite coverage without blocking existing debt burn-down.
-**Depends on**: v0.4 completion
-**Requirements**: QBL-GATE-01, QBL-GATE-02, QBL-GATE-03, QBL-GATE-04, QBL-GATE-05
-
-**Key modules**:
-
-- `pyproject.toml` — Ruff BLE/T20 select and per-file ignores
-- `Makefile` — full coverage target
-- `.github/workflows/nightly-coverage.yml` — scheduled coverage workflow
-
-**Success Criteria**:
-
-  1. New BLE001/T20 violations fail lint outside scoped ignores.
-  2. Current violations are tracked with per-file ignores that M2/M3 can shrink.
-  3. Full slow-inclusive coverage command and nightly workflow exist.
-  4. Coverage floor is measured first and set conservatively.
-
-**Plans**: 1 plan
-Plans:
-
-- [x] 22-01-PLAN.md — Enable Ruff BLE/T20 with scoped per-file-ignores, add slow-inclusive `test-full` target with measured coverage floor, and add nightly-coverage.yml workflow
-
----
-
-### Phase 23: Silent Exception Audit
-
-**Goal**: Remove silent `except Exception: pass` blocks or make intentional suppression observable.
-**Depends on**: Phase 22
-**Requirements**: QBL-EXC-01, QBL-EXC-02, QBL-EXC-03, QBL-EXC-04
-
-**Key modules**: Freshly enumerated `src/**/*.py` sites from M2.
-
-**Success Criteria**:
-
-  1. No silent broad-except pass sites remain unless explicitly justified inline.
-  2. Best-effort suppressions log with `exc_info=True`; true failures surface or re-raise.
-  3. BLE001 ignores shrink for fixed files.
-  4. Gateway/MCP focused tests cover touched protocol surfaces.
-
-**Plans**: 3 plans
-**Wave 1**
-
-- [x] 23-01-PLAN.md — MCP/CLI core: make 13 in-scope silent handlers observable (QBL-EXC-01/02/04)
-- [x] 23-02-PLAN.md — SDK/core/infra: 9 silent handlers observable + remove 4 BLE001 ignores (QBL-EXC-02/03)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 23-03-PLAN.md — Benchmarks: narrow 6 pass + 3 continue sites + remove 4 BLE001 ignores (QBL-EXC-02/03)
-
----
-
-### Phase 24: Stdout to Logging
-
-**Goal**: Ensure non-CLI modules do not write stray stdout that can corrupt MCP framing.
-**Depends on**: Phase 22
-**Requirements**: QBL-LOG-01, QBL-LOG-02, QBL-LOG-03, QBL-LOG-04
-
-**Key modules**: Freshly enumerated `print(` sites in `src/`, especially gateway/server/background code.
-
-**Success Criteria**:
-
-  1. Non-CLI prints become logging or stderr diagnostics.
-  2. CLI output remains user-facing through `click.echo`.
-  3. T20 config enforces the intended CLI/non-CLI boundary.
-  4. MCP stdio smoke tests confirm stdout framing remains clean.
-
-**Plans**: 4 plans
-**Wave 1**
-
-- [x] 24-01-PLAN.md — Harden MCP stdio smoke test to strictly reject non-protocol stdout (QBL-LOG-04)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 24-02-PLAN.md — Convert 9 session-parser modules to loggers + CLI stderr progress handler/test (QBL-LOG-02, QBL-LOG-03)
-- [x] 24-03-PLAN.md — Convert registry/publisher prints + T201-clean atelier-mcp --version (QBL-LOG-02)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 24-04-PLAN.md — Shrink T201 per-file-ignores to benchmark boundary + record final inventory (QBL-LOG-01, QBL-LOG-03)
-
----
-
-### Phase 25: CLI Decomposition
-
-**Goal**: Make `src/atelier/gateway/cli/app.py` a thin command-registration entrypoint.
-**Depends on**: Phase 24
-**Requirements**: QBL-CLI-01, QBL-CLI-02, QBL-CLI-03, QBL-CLI-04
-
-**Key modules**:
-
-- `src/atelier/gateway/cli/app.py`
-- `src/atelier/gateway/cli/commands/`
-- `src/atelier/gateway/integrations/openmemory.py`
-- extracted core/infra services as needed
-
-**Success Criteria**:
-
-  1. Command groups live in dedicated command modules.
-  2. Business logic moves out of the CLI entrypoint.
-  3. Command names, flags, and help output remain unchanged.
-  4. `app.py` is registration-only and materially smaller.
-
-**Plans**: 7 plans (sequential waves 1–7; all share `app.py` so strictly ordered)
-**Wave 1**
-
-- [x] 25-01-PLAN.md — Safety net + scaffolding: recursive --help/tree snapshot baselined from dirty WIP, MCP-only suppression test, `cli/commands/` package (`__init__` register, `_dev`, `_shared`)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 25-02-PLAN.md — OpenMemory + Letta command extraction; lifecycle logic → `integrations/openmemory_lifecycle.py`
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 25-03-PLAN.md — Stack/servicectl/background/systemd/service/worker/logs extraction; lifecycle → `infra/runtime/*` (carries in-flight WIP)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 25-04-PLAN.md — Benchmark/savings/optimize/tools extraction; runners → `infra/benchmarks`, dashboards → `core/capabilities/reporting`
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [ ] 25-05-PLAN.md — Code/zoekt/context/memory/route/proof/session/outcomes/runs extraction (preserves duplicate memory/route suppression)
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [ ] 25-06-PLAN.md — Remaining groups: hosts/blocks/domain/telemetry/lessons/eval/admin/misc
-
-**Wave 7** *(blocked on Wave 6 completion)*
-
-- [ ] 25-07-PLAN.md — Final thinning + `test_cli_thinness.py` (no subprocess/sqlite3, LOC budget) + full equivalence/lint/typecheck/test gate
-
----
-
-### Phase 26: A/B Suite Expansion
-
-**Goal**: Make README savings claims independently runnable through A/B suites and graders.
-**Depends on**: v0.5 start; independent of Phases 22-25
-**Requirements**: QBL-AB-01, QBL-AB-02, QBL-AB-03, QBL-AB-04
-
-**Key modules**:
-
-- `benchmarks/ab/suites/`
-- `benchmarks/ab/graders/`
-- `benchmarks/ab/runner.py`
-- `benchmarks/ab/aggregate.py`
-- `benchmarks/ab/report.py`
-- `benchmarks/ab/tests/`
-
-**Success Criteria**:
-
-  1. Every advertised savings mechanism maps to a suite/grader.
-  2. Each new suite has a fast smoke fixture.
-  3. Runner/report/aggregate enumerate suites and produce graded deltas.
-  4. Benchmark tests pass.
-
-**Plans**: TBD
-
----
-
-### Phase 27: Public Benchmark Results
-
-**Goal**: Publish reproducible benchmark results and add a CI regression gate for savings/routing claims.
-**Depends on**: Phase 26
-**Requirements**: QBL-RES-01, QBL-RES-02, QBL-RES-03, QBL-RES-04
-
-**Key modules**:
-
-- `docs/plans/public-benchmarks/RESULTS.md`
-- `docs/plans/public-benchmarks/index.md`
-- `.github/workflows/benchmark-regression.yml`
-- `benchmarks/swe/`
-- `benchmarks/ab/publish.py`
-- `benchmarks/ab/report.py`
-
-**Success Criteria**:
-
-  1. Results document includes corpus versions, commit SHAs, CIs, and reproduction commands.
-  2. Regression workflow fails when savings/routing thresholds regress.
-  3. SWE-bench Lite/subset frontier artifact is committed.
-  4. Public benchmark index points to real reproducible results.
-
-**Plans**: TBD
-
----
-
-## Progress Table (v0.5)
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 22. Lint and Coverage Gates | 1/1 | Complete    | 2026-05-29 |
-| 23. Silent Exception Audit | 3/3 | Complete    | 2026-05-29 |
-| 24. Stdout to Logging | 4/4 | Complete    | 2026-05-29 |
-| 25. CLI Decomposition | 4/7 | In Progress|  |
-| 26. A/B Suite Expansion | 0/? | Not started | - |
-| 27. Public Benchmark Results | 0/? | Not started | - |
-
----
-
-## Coverage (v0.5)
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| QBL-GATE-01 | Phase 22 | Complete |
-| QBL-GATE-02 | Phase 22 | Complete |
-| QBL-GATE-03 | Phase 22 | Complete |
-| QBL-GATE-04 | Phase 22 | Complete |
-| QBL-GATE-05 | Phase 22 | Complete |
-| QBL-EXC-01 | Phase 23 | Complete |
-| QBL-EXC-02 | Phase 23 | Complete |
-| QBL-EXC-03 | Phase 23 | Complete |
-| QBL-EXC-04 | Phase 23 | Complete |
-| QBL-LOG-01 | Phase 24 | Complete |
-| QBL-LOG-02 | Phase 24 | Complete |
-| QBL-LOG-03 | Phase 24 | Complete |
-| QBL-LOG-04 | Phase 24 | Complete |
-| QBL-CLI-01 | Phase 25 | Pending |
-| QBL-CLI-02 | Phase 25 | Pending |
-| QBL-CLI-03 | Phase 25 | Pending |
-| QBL-CLI-04 | Phase 25 | Pending |
-| QBL-AB-01 | Phase 26 | Pending |
-| QBL-AB-02 | Phase 26 | Pending |
-| QBL-AB-03 | Phase 26 | Pending |
-| QBL-AB-04 | Phase 26 | Pending |
-| QBL-RES-01 | Phase 27 | Pending |
-| QBL-RES-02 | Phase 27 | Pending |
-| QBL-RES-03 | Phase 27 | Pending |
-| QBL-RES-04 | Phase 27 | Pending |
-
-**v0.5 coverage: 25/25 requirements mapped ✓**
-
----
-
-*v0.5 roadmap appended: 2026-05-29*
-*Milestone target: v0.5 Quality & Benchmark Lift*
-*Build order: Phase 22 → Phase 23/24 → Phase 25 and Phase 26 → Phase 27*
+## Milestone v0.5: Quality & Benchmark Lift - shipped 2026-06-01 ([roadmap archive](milestones/v0.5-ROADMAP.md), [requirements archive](milestones/v0.5-REQUIREMENTS.md))
 
 ---
 
@@ -1178,7 +925,7 @@ Plans:
 **Phases:**
 
 - [ ] **Phase 28: EMB — Neural Code Embeddings** — Replace 384-dim feature hashing with code-trained neural embeddings via Ollama/local-HF
-- [ ] **Phase 29: PROOF — Empirical Proof Program** — Replace modeled headlines with real TerminalBench A/B and self-repo eval numbers
+- [ ] **Phase 29: PROOF — Empirical Proof Program** — Replace modeled headlines with real TerminalBench outcomes, wire-savings cost deltas, and self-repo eval numbers
 - [ ] **Phase 30: RERANK — Cross-encoder Reranker** — Add a local cross-encoder rerank stage to the candidate fusion pipeline
 - [ ] **Phase 31: STEM — Phase-aware Workflow ("Stem Agent")** — Implement phase-aware "stem" workflows to reuse prompt cache across explore→plan→execute
 - [ ] **Phase 32: ROUTE+ — Calibrated & Enforcing Routing** — Calibrate quality-gain estimates from real traces and add opt-in enforcement
@@ -1220,14 +967,16 @@ Plans:
 **Key modules**:
 
 - `tests/benchmarks/context_quality/M2_routing.py` (re-implement)
-- `benchmarks/ab/runner.py` (execute)
+- `benchmarks/terminalbench/runner.py` (execute / aggregate `runs.jsonl`)
+- `benchmarks/wire_savings/report.py` (cost deltas)
+- `src/atelier/core/capabilities/optimization/non_inferiority.py` (new)
 - `docs/plans/world-class-atelier/results/` (new artifacts)
 - `bench_cost.py` (modify)
 
 **Success Criteria**:
 
   1. M2 routing benchmark uses real recorded trace outcomes instead of static gains.
-  2. A complete TerminalBench A/B report (N=5) is committed to the results directory.
+  2. A complete TerminalBench + wire-savings non-inferiority verdict (N=5 or better where applicable) is committed to the results directory.
   3. Self-repo evaluation suite completes on 30 tasks with original PR test gates.
   4. Public docs and `bench_cost.py` show measured empirical numbers.
 
@@ -1411,7 +1160,7 @@ Plans:
 ### Phase 38: AUTO-OPT — Autonomous Optimization Agent
 
 **Goal**: Close GitHub's gap — a scheduled agent that audits token usage, diagnoses optimizations, and proposes fixes — but gate every proposal behind the non-inferiority benchmark so savings never ship at the cost of quality. Available both as a manual CLI command and as an opt-in background run configured at install time.
-**Depends on**: Phase 35 (crash-safe job queue), and the non-inferiority gate NI-01/NI-02 (folded into Phases 27/29).
+**Depends on**: Phase 35 (crash-safe job queue), and the current TerminalBench + wire-savings non-inferiority gate surface (folded into Phase 29).
 **Requirements**: OPT-01, OPT-02, OPT-03, OPT-04, OPT-05, OPT-06
 
 **Context / findings (verified 2026-05-30)**:
@@ -1426,17 +1175,17 @@ Plans:
 - `src/atelier/core/service/jobs.py` (register `JOB_OPTIMIZE`)
 - `src/atelier/gateway/cli/app.py` (`atelier optimize` command + servicectl tick wiring)
 - `scripts/install.sh` (install-time opt-in prompt; respects `ATELIER_NON_INTERACTIVE`)
-- `benchmarks/ab/` (non-inferiority gate, NI-01/NI-02)
-
-**Success Criteria**:
-
-  1. Manual CLI: `atelier optimize run` does a one-shot diagnose over recent traces + savings and prints candidate optimizations with projected savings; `--open-pr` opens a PR via `pr_bot` only when the non-inferiority gate passes.
-  2. A `JOB_OPTIMIZE` daemon job is registered (crash-safe via the Phase-35 reaper) and runs on the servicectl tick, gated on an enabled flag that defaults OFF.
-  3. `install.sh` prompts the user (respecting `ATELIER_NON_INTERACTIVE`) whether to enable automatic background optimization, records the choice (e.g. `~/.atelier/auto_optimize_enabled`), and configures the daemon accordingly; default is OFF unless the user opts in.
-  4. Every proposed change is gated by the non-inferiority A/B benchmark (NI-01/NI-02): a PR/issue is opened ONLY when it saves ≥ a target effective-token threshold AND the pass-rate Δ 95% CI lower bound ≥ −ε.
-  5. Proposals + verdicts are surfaced in telemetry; there is no auto-merge — a human approves.
-  6. Safety: auto-run is opt-in and OFF by default, honors `ATELIER_NO_SERVICECTL`, and the manual CLI always works regardless of the auto setting.
-
+- [x] **Phase 28**: World-Class Embedder + Auto-Selection
+- [ ] **Phase 29**: Real Proof Surfaces + Honest Benchmarks *(implementation landed; benchmark execution is external to this session)*
+- [x] **Phase 30**: Lightweight Reranker Layer
+- [x] **Phase 31**: Single-Thread Execution Memory (STEM)
+- [x] **Phase 32**: Route+ (Real Quality Calibration + Enforcement)
+- [x] **Phase 33**: Branch-Aware Incremental Indexing
+- [ ] **Phase 34**: Speculative Retrieval + Prefetch
+- [x] **Phase 35**: Job Queue Reliability + Process Hardening
+- [ ] **Phase 36**: Harvest+ Coverage Expansion *(blocked on missing real Claude artifacts)*
+- [x] **Phase 37**: Dynamic Workflow Sessions
+- [x] **Phase 38**: Auto-Optimize + Proof Gate
 ---
 
 *v0.6 roadmap appended: 2026-05-29 (Phase 38 added 2026-05-30)*

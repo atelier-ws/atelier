@@ -90,6 +90,7 @@ ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
 ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
 ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
+ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-0}"   # 1 = enable periodic optimize automation
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # 1 = install persistent Zoekt sidecar
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
@@ -836,6 +837,44 @@ prompt_memory_selection() {
     esac
 }
 
+prompt_auto_optimize_selection() {
+    if [[ "$ATELIER_NO_SERVICECTL" == "1" ]]; then
+        ATELIER_AUTO_OPTIMIZE=0
+        return 0
+    fi
+    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
+    has_interactive_input || return 0
+    case "${ATELIER_AUTO_OPTIMIZE}" in
+        0|1) ;;
+        *) ATELIER_AUTO_OPTIMIZE=0 ;;
+    esac
+
+    local enable_choice=0
+    if supports_interactive_selector; then
+        interactive_single_select \
+            "Enable periodic optimization checks?" \
+            enable_choice \
+            "$ATELIER_AUTO_OPTIMIZE" \
+            "No (default, safe)" \
+            "Yes (diagnose + gated proposal artifacts)"
+    else
+        echo ""
+        printf "◇  Enable periodic optimization checks?\n"
+        printf "│  0) No  - keep autonomous optimization disabled (default)\n"
+        printf "│  1) Yes - run optimizer periodically; proposal artifacts remain NI-gated\n"
+        printf "Choice [0/1, default: %s]: " "$ATELIER_AUTO_OPTIMIZE"
+        local choice
+        read -r choice </dev/tty
+        echo ""
+        case "$choice" in
+            1) enable_choice=1 ;;
+            0|"") enable_choice="${ATELIER_AUTO_OPTIMIZE:-0}" ;;
+            *) enable_choice=0 ;;
+        esac
+    fi
+    ATELIER_AUTO_OPTIMIZE="$enable_choice"
+}
+
 prompt_local_zoekt_selection() {
     local zoekt_all_present=1
     local _z
@@ -1553,6 +1592,7 @@ main() {
     print_installer_header
     host_wizard
     prompt_memory_selection
+    prompt_auto_optimize_selection
     prompt_local_zoekt_selection
 
     if supports_interactive_selector; then
@@ -1885,6 +1925,23 @@ main() {
             index_skipped=1
             info "Index target: not detected (no git repository in current directory)"
             info "Skipped code indexing (no git repository detected)."
+        fi
+    fi
+    step_done
+    step_start "Persisting optimize automation"
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
+            echo "[dry-run] $atelier_cli optimize auto enable"
+        else
+            echo "[dry-run] $atelier_cli optimize auto disable"
+        fi
+    else
+        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
+            "$atelier_cli" optimize auto enable >>"$ATELIER_INSTALL_LOG_FILE" 2>&1 \
+                || degrade "Failed to persist auto optimize settings"
+        else
+            "$atelier_cli" optimize auto disable >>"$ATELIER_INSTALL_LOG_FILE" 2>&1 \
+                || degrade "Failed to persist auto optimize settings"
         fi
     fi
     step_done
