@@ -1,0 +1,124 @@
+{
+  "by_mode": {
+    "off": {
+      "cache_creation_input_tokens_sum": 0,
+      "cache_read_input_tokens_sum": 0,
+      "cost_usd_sum": 0.0,
+      "counts": {
+        "passed": 1,
+        "total": 1
+      },
+      "error_like": 0,
+      "failed": 0,
+      "input_tokens_sum": 4187,
+      "latency_api_ms_mean": 13347.0,
+      "latency_ms_mean": 13347.0,
+      "mode": "off",
+      "output_tokens_sum": 255,
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1,
+      "wilson_95": {
+        "lower": 0.20654931437723745,
+        "upper": 1.0
+      },
+      "wilson_lower": 0.20654931437723745,
+      "wilson_upper": 1.0
+    },
+    "on": {
+      "cache_creation_input_tokens_sum": 0,
+      "cache_read_input_tokens_sum": 0,
+      "cost_usd_sum": 0.0,
+      "counts": {
+        "passed": 1,
+        "total": 1
+      },
+      "error_like": 0,
+      "failed": 0,
+      "input_tokens_sum": 4187,
+      "latency_api_ms_mean": 7762.0,
+      "latency_ms_mean": 7762.0,
+      "mode": "on",
+      "output_tokens_sum": 255,
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1,
+      "wilson_95": {
+        "lower": 0.20654931437723745,
+        "upper": 1.0
+      },
+      "wilson_lower": 0.20654931437723745,
+      "wilson_upper": 1.0
+    }
+  },
+  "cells": {
+    "hello-world": {
+      "off": {
+        "cache_creation_input_tokens_sum": 0,
+        "cache_read_input_tokens_sum": 0,
+        "cost_usd_sum": 0.0,
+        "counts": {
+          "passed": 1,
+          "total": 1
+        },
+        "error_like": 0,
+        "failed": 0,
+        "input_tokens_sum": 4187,
+        "latency_api_ms_mean": 13347.0,
+        "latency_ms_mean": 13347.0,
+        "mode": "off",
+        "output_tokens_sum": 255,
+        "pass_rate": 1.0,
+        "task_id": "hello-world",
+        "wilson_95": {
+          "lower": 0.20654931437723745,
+          "upper": 1.0
+        }
+      },
+      "on": {
+        "cache_creation_input_tokens_sum": 0,
+        "cache_read_input_tokens_sum": 0,
+        "cost_usd_sum": 0.0,
+        "counts": {
+          "passed": 1,
+          "total": 1
+        },
+        "error_like": 0,
+        "failed": 0,
+        "input_tokens_sum": 4187,
+        "latency_api_ms_mean": 7762.0,
+        "latency_ms_mean": 7762.0,
+        "mode": "on",
+        "output_tokens_sum": 255,
+        "pass_rate": 1.0,
+        "task_id": "hello-world",
+        "wilson_95": {
+          "lower": 0.20654931437723745,
+          "upper": 1.0
+        }
+      }
+    }
+  },
+  "delta_on_minus_off": {
+    "cost_usd_sum": 0.0,
+    "input_tokens_sum": 0,
+    "latency_ms_mean": -5585.0,
+    "output_tokens_sum": 0,
+    "pass_rate": 0.0
+  },
+  "meta": {
+    "confidence": 0.95,
+    "generated_at": "2026-06-01T16:35:08.755848+00:00",
+    "models": [
+      "qwen3.6:27b"
+    ],
+    "modes": [
+      "off",
+      "on"
+    ],
+    "record_count": 2,
+    "tasks": [
+      "hello-world"
+    ]
+  }
+}

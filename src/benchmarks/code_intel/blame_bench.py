@@ -15,6 +15,7 @@ from typing import Any
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.repo_map.budget import count_tokens
 from atelier.gateway.adapters.mcp_server import tool_code
+from atelier.infra.code_intel.scip.indexer import ScipIndexer
 
 
 @dataclass
@@ -96,7 +97,7 @@ def _commit_all(
 def _write_scip_fixture(repo_root: Path, *, index_sha: str) -> None:
     engine = CodeContextEngine(repo_root)
     source = (repo_root / "service.py").read_text(encoding="utf-8")
-    artifact_dir = repo_root / ".atelier" / "cache" / "scip" / engine.repo_id
+    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
     artifact_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
@@ -133,7 +134,7 @@ def _write_fixture_repo(repo_root: Path) -> str:
     _git(["config", "user.email", "fixture@example.com"], repo_root)
     now = datetime.now(tz=UTC)
     (repo_root / "service.py").write_text(
-        "def risk_score() -> int:\n" "    value = 1\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 1\n    return value\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -144,7 +145,7 @@ def _write_fixture_repo(repo_root: Path) -> str:
         author_date=(now - timedelta(days=240)).isoformat(),
     )
     (repo_root / "service.py").write_text(
-        "def risk_score() -> int:\n" "    value = 3\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 3\n    return value\n",
         encoding="utf-8",
     )
     _commit_all(
@@ -155,7 +156,7 @@ def _write_fixture_repo(repo_root: Path) -> str:
         author_date=(now - timedelta(days=30)).isoformat(),
     )
     (repo_root / "service.py").write_text(
-        "def risk_score() -> int:\n" "    value = 5\n" "    return value\n",
+        "def risk_score() -> int:\n    value = 5\n    return value\n",
         encoding="utf-8",
     )
     head_sha = _commit_all(
@@ -205,10 +206,14 @@ def run_blame_bench(
     _write_fixture_repo(repo_root)
 
     cold_start = time.perf_counter()
-    cold = tool_code({"op": "blame", "repo_root": str(repo_root), "query": query, "budget_tokens": budget_tokens})
+    cold = tool_code(
+        {"op": "blame", "repo_root": str(repo_root), "query": query, "budget_tokens": budget_tokens}
+    )
     cold_elapsed_ms = (time.perf_counter() - cold_start) * 1000
     hot_start = time.perf_counter()
-    hot = tool_code({"op": "blame", "repo_root": str(repo_root), "query": query, "budget_tokens": budget_tokens})
+    hot = tool_code(
+        {"op": "blame", "repo_root": str(repo_root), "query": query, "budget_tokens": budget_tokens}
+    )
     hot_elapsed_ms = (time.perf_counter() - hot_start) * 1000
     manual_total_tokens = _manual_blame_tokens(repo_root)
 
@@ -225,11 +230,15 @@ def run_blame_bench(
         hot_elapsed_ms=round(hot_elapsed_ms, 3),
         last_author=str(cold.get("last_author") or ""),
         churn_commit_count=(
-            int(cold.get("churn", {}).get("commit_count", 0)) if isinstance(cold.get("churn"), dict) else None
+            int(cold.get("churn", {}).get("commit_count", 0))
+            if isinstance(cold.get("churn"), dict)
+            else None
         ),
         manual_total_tokens=manual_total_tokens,
         blame_to_manual_ratio=(
-            (int(cold.get("total_tokens", 0) or 0) / manual_total_tokens) if manual_total_tokens else 0.0
+            (int(cold.get("total_tokens", 0) or 0) / manual_total_tokens)
+            if manual_total_tokens
+            else 0.0
         ),
         blame_workflow_steps=1,
         manual_workflow_steps=3,

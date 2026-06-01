@@ -139,11 +139,12 @@ def build_bootstrap_plan(repo_root: str | Path) -> BootstrapPlan:
     agent_id = bootstrap_agent_id(repo_id)
     labels = expected_bootstrap_labels(repo_id)
 
+    _BLOCK_LIMIT = 7900  # leave headroom below MemoryBlock.limit_chars (8000)
     block_values = {
-        labels[0]: _render_architecture_sketch(repo_map, files),
-        labels[1]: _render_entry_points(repo_map.get("ranked_files", []), files),
-        labels[2]: _render_hot_symbols(repo_map.get("ranked_files", []), files),
-        labels[3]: _render_language_mix(root, repo_id),
+        labels[0]: _render_architecture_sketch(repo_map, files)[:_BLOCK_LIMIT],
+        labels[1]: _render_entry_points(repo_map.get("ranked_files", []), files)[:_BLOCK_LIMIT],
+        labels[2]: _render_hot_symbols(repo_map.get("ranked_files", []), files)[:_BLOCK_LIMIT],
+        labels[3]: _render_language_mix(root, repo_id)[:_BLOCK_LIMIT],
     }
     signature = hashlib.sha256(
         json.dumps(block_values, ensure_ascii=False, sort_keys=True).encode("utf-8")

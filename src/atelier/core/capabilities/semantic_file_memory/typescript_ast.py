@@ -15,7 +15,7 @@ from .models import FileOutline, ImportInfo, SymbolInfo, SymbolOutline
 try:
     from tree_sitter_languages import get_parser
 except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
+    logging.getLogger(__name__).debug("tree_sitter_languages unavailable; using regex fallback", exc_info=True)
     get_parser = None
 
 # ---------------------------------------------------------------------------

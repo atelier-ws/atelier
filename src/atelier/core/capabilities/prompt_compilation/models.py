@@ -67,6 +67,7 @@ DEFAULT_STABILITY: dict[BlockKind, Stability] = {
 
 _NON_CACHEABLE_STABILITY = {Stability.TURN, Stability.VOLATILE}
 _ID_RE = re.compile(r"^[a-z0-9_./:-]+$")
+COUNTEREXAMPLE_METADATA_KEY = "verification.counterexample"
 
 
 @dataclass(frozen=True)
@@ -120,3 +121,7 @@ class PromptBlock:
         from .tokens import estimate_tokens
 
         return estimate_tokens(self.content)
+
+    @property
+    def is_counterexample(self) -> bool:
+        return self.metadata.get(COUNTEREXAMPLE_METADATA_KEY) is True

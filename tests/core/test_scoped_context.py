@@ -18,6 +18,8 @@ class _FakeRecord:
     signature: str = ""
     snippet: str = ""
     score: float | None = None
+    provenance: str = "local"
+    commit_sha: str = ""
 
 
 class _FakeEngine:
@@ -25,6 +27,7 @@ class _FakeEngine:
 
     def __init__(self, records: list[_FakeRecord]) -> None:
         self._records = records
+        self.index_version = 0
 
     def search_symbols(
         self,
@@ -35,12 +38,18 @@ class _FakeEngine:
         snippet: str = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
+        provenance_filter: str | None = None,
         **_: object,
     ) -> list[_FakeRecord]:
         recs = self._records
         if file_glob is not None:
             recs = [r for r in recs if r.file_path == file_glob or fnmatch.fnmatch(r.file_path, file_glob)]
+        if provenance_filter is not None:
+            recs = [r for r in recs if r.provenance == provenance_filter]
         return recs[:limit]
+
+    def _current_index_version(self) -> int:
+        return self.index_version
 
 
 def _records() -> list[_FakeRecord]:
@@ -83,9 +92,89 @@ def test_cache_hit() -> None:
     assert [c.path for c in first.chunks] == [c.path for c in second.chunks]
 
 
+def test_cache_misses_when_index_version_changes() -> None:
+    engine = _FakeEngine(_records())
+    cap = ScopedContextCapability(engine)
+    subtask = Subtask(description="work on alpha", budget_tokens=4000)
+
+    first = cap.pull(subtask)
+    engine.index_version = 1
+    second = cap.pull(subtask)
+
+    assert first.provenance == "fresh"
+    assert second.provenance == "fresh"
+
+
 def test_dead_end_filtered() -> None:
     cap = ScopedContextCapability(_FakeEngine(_records()))
     cap.mark_dead_end("beta src/b.py")
     result = cap.pull(Subtask(description="work", budget_tokens=4000))
     assert all(c.path != "src/b.py" for c in result.chunks)
     assert any(e.reason == "dead_end" for e in result.excluded)
+
+
+def test_path_token_overlap_can_outrank_higher_raw_score() -> None:
+    records = [
+        _FakeRecord("src/misc/helpers.py", "helper", score=0.95),
+        _FakeRecord("src/search/ranking.py", "rank_candidates", score=0.45),
+    ]
+
+    cap = ScopedContextCapability(_FakeEngine(records))
+    result = cap.pull(
+        Subtask(
+            description="improve search ranking relevance",
+            keywords=["search", "ranking"],
+            budget_tokens=4000,
+        )
+    )
+
+    assert result.chunks[0].path == "src/search/ranking.py"
+
+
+def test_pull_seeds_local_results_only() -> None:
+    records = [
+        _FakeRecord("src/current.py", "current", score=0.5, provenance="local"),
+        _FakeRecord(
+            "history/fix.py",
+            "historical_fix",
+            kind="commit",
+            score=1.0,
+            provenance="commit",
+            commit_sha="abc12345",
+        ),
+    ]
+
+    cap = ScopedContextCapability(_FakeEngine(records))
+    result = cap.pull(Subtask(description="current fix", budget_tokens=4000))
+
+    assert [chunk.path for chunk in result.chunks] == ["src/current.py"]
+
+
+def test_pull_surfaces_commit_provenance_for_history_queries() -> None:
+    records = [
+        _FakeRecord("src/current.py", "current", score=0.6, provenance="local"),
+        _FakeRecord(
+            "src/auth.py",
+            "abc12345",
+            kind="commit",
+            qualified_name="Fixed auth session token leak on logout",
+            signature="Fixed auth session token leak on logout",
+            score=0.8,
+            provenance="commit",
+            commit_sha="abc12345deadbeef",
+        ),
+    ]
+
+    cap = ScopedContextCapability(_FakeEngine(records))
+    result = cap.pull(
+        Subtask(
+            description="which prior commit introduced the auth session regression",
+            affected_paths=["src/auth.py"],
+            budget_tokens=4000,
+        )
+    )
+
+    commit_chunks = [chunk for chunk in result.chunks if chunk.provenance == "commit"]
+    assert commit_chunks
+    assert commit_chunks[0].commit_sha == "abc12345deadbeef"
+    assert commit_chunks[0].path == "src/auth.py"

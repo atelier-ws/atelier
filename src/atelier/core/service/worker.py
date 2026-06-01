@@ -25,6 +25,7 @@ from atelier.core.service.jobs import (
     JOB_BOOTSTRAP_CONTEXT,
     JOB_CONSOLIDATE_BLOCKS,
     JOB_INGEST_SESSION_FILE,
+    JOB_OPTIMIZE,
     KNOWN_JOB_TYPES,
 )
 
@@ -67,6 +68,7 @@ class Worker:
 
     def _default_dispatch(self) -> dict[str, JobHandler]:
         from atelier.core.capabilities.consolidation import consolidate
+        from atelier.core.capabilities.optimization import run_optimization_cycle
         from atelier.core.service.bootstrap_context import persist_bootstrap_plan
         from atelier.core.service.ingest_session import (
             ingest_session_file as ingest_session_file_service,
@@ -93,10 +95,27 @@ class Worker:
                 return {"status": "error", "message": "file_path is required"}
             return ingest_session_file_service(file_path, self._store)
 
+        def optimize_handler(payload: dict[str, Any]) -> dict[str, Any]:
+            store_root = Path(getattr(self._store, "root", default_store_root())).resolve()
+            host = str(payload.get("host")).strip() or None
+            days = int(payload.get("days", 7) or 7)
+            return run_optimization_cycle(
+                store_root=store_root,
+                host=host,
+                days=max(1, days),
+                source=str(payload.get("source", "worker")),
+                open_pr=False,
+                dry_run=False,
+                proposal_tokens_threshold=None,
+                benchmark_evidence=None,
+                store=self._store,
+            )
+
         return {
             JOB_CONSOLIDATE_BLOCKS: consolidate_handler,
             JOB_BOOTSTRAP_CONTEXT: bootstrap_context_handler,
             JOB_INGEST_SESSION_FILE: ingest_session_handler,
+            JOB_OPTIMIZE: optimize_handler,
         }
 
     # ------------------------------------------------------------------ #
