@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
 from atelier.gateway.hosts.models import HostFingerprint, HostRegistration, HostStatus
+
+logger = logging.getLogger(__name__)
 
 
 class HostRegistry:
@@ -137,8 +140,9 @@ class HostRegistry:
                     registration = HostRegistration(**data)
                     self._hosts[str(registration.host_id)] = registration
                 except Exception as e:
+                    logging.exception("Recovered from broad exception handler")
                     # Log warning but continue
-                    print(f"Warning: Failed to load {file}: {e}")
+                    logger.warning("Failed to load %s: %s", file, e, exc_info=True)
 
 
 __all__ = ["HostRegistry", "HostStatus"]

@@ -78,7 +78,7 @@ Do not run these inside the atelier directory — they are separate test suites.
 4. Register any new CLI commands in `src/atelier/adapters/cli.py`
 5. Register any new MCP tools in `src/atelier/adapters/mcp_server.py`
 6. Write tests in `tests/test_your_module.py`
-7. Update `atelier/AGENT_README.md` and any relevant parent READMEs
+7. Use `mcp__atelier__context mode="symbols"` to discover module structure from the code index
 
 ## Never Modify Generated Files
 
@@ -89,9 +89,8 @@ Do not run these inside the atelier directory — they are separate test suites.
 
 1. Run `make pre-commit` and fix all errors before opening PR
 2. Include test coverage for all new behavior
-3. Update `AGENT_README.md` for any directories you touch
-4. Create an ADR (`docs/decisions/NNN-description.md`) for significant design decisions
-5. Never commit directly - human review required per project rules
+3. Create an ADR (`docs/decisions/NNN-description.md`) for significant design decisions
+4. Never commit directly - human review required per project rules
 
 ## Repo-native execution memory
 

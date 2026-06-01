@@ -2,12 +2,12 @@
 
 Runs a practical cross-tool search benchmark for the indexers discussed in this
 session:
-  - Atelier code tool
+  - Atelier code tool (local lexical index)
+  - Atelier Zoekt adapter
   - Serena
   - CodeGraph
   - code-index-mcp
   - cocoindex-code (ccc)
-  - mcp-vector-search
   - jcodemunch-mcp
 
 Usage:
@@ -17,20 +17,33 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import json
+import os
+import shutil
+import socket
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import tiktoken
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore[assignment]
+
 ENC = tiktoken.get_encoding("cl100k_base")
+CODE_INDEX_REPO_URL = "https://github.com/johnhuang316/code-index-mcp.git"
 
 
 def token_count(value: Any) -> int:
@@ -38,7 +51,13 @@ def token_count(value: Any) -> int:
     return len(ENC.encode(text))
 
 
-def run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+def run_cmd(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout: int = 600,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         cwd=str(cwd) if cwd else None,
@@ -46,6 +65,7 @@ def run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 600) -> s
         text=True,
         capture_output=True,
         timeout=timeout,
+        env=env,
     )
 
 
@@ -58,26 +78,74 @@ class ToolBenchResult:
     p95_ms: float
     median_tokens: int
     runs: int
+    query: str = ""
     error: str = ""
+    input: str = ""
     sample: str = ""
+    output: str = ""
 
 
 class SerenaRunner:
-    def __init__(self, project_name: str = "atelier", port: int = 8041) -> None:
+    def __init__(
+        self,
+        *,
+        project_root: Path,
+        home_dir: Path,
+        project_name: str = "atelier-bench",
+        port: int | None = None,
+    ) -> None:
+        self.project_root = project_root
+        self.home_dir = home_dir
         self.project_name = project_name
-        self.port = port
+        self.port = port if port is not None else _find_free_port()
         self.proc: subprocess.Popen[str] | None = None
+
+    def _env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["HOME"] = str(self.home_dir)
+        return env
+
+    def bootstrap(self) -> None:
+        if self.home_dir.exists():
+            shutil.rmtree(self.home_dir)
+        self.home_dir.mkdir(parents=True, exist_ok=True)
+        init = run_cmd(
+            ["serena", "init", "-b", "LSP"], cwd=self.project_root, timeout=300, env=self._env()
+        )
+        if init.returncode != 0:
+            raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
+        create = run_cmd(
+            [
+                "serena",
+                "project",
+                "create",
+                str(self.project_root),
+                "--name",
+                self.project_name,
+                "--language",
+                "python",
+            ],
+            cwd=self.project_root,
+            timeout=600,
+            env=self._env(),
+        )
+        if create.returncode != 0:
+            raise RuntimeError(create.stderr[:1200] or create.stdout[:1200])
 
     def start(self) -> None:
         self.proc = subprocess.Popen(
             ["serena", "start-project-server", "--host", "127.0.0.1", "--port", str(self.port)],
+            cwd=str(self.project_root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=self._env(),
         )
         for _ in range(80):
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/heartbeat", timeout=2) as res:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{self.port}/heartbeat", timeout=2
+                ) as res:
                     if res.status == 200:
                         return
             except Exception:
@@ -114,42 +182,92 @@ class SerenaRunner:
 
 
 class CodeIndexRunner:
-    def __init__(self, repo_root: Path, code_index_repo: Path) -> None:
+    def __init__(self, repo_root: Path, workspace_root: Path, code_index_repo: Path) -> None:
         self.repo_root = repo_root
+        self.workspace_root = workspace_root
         self.code_index_repo = code_index_repo
-        self.search_service: Any = None
+        self.project_root: Path | None = None
+        self.python_bin: Path | None = None
+
+    def _script(self, *, rebuild: bool) -> str:
+        rebuild_block = (
+            """
+IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
+"""
+            if rebuild
+            else ""
+        )
+        return f"""
+import json
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1]).resolve()
+code_index_repo = Path(sys.argv[2]).resolve()
+sys.path.insert(0, str(code_index_repo / "src"))
+
+from code_index_mcp.project_settings import ProjectSettings
+from code_index_mcp.server import CodeIndexerContext, _BootstrapRequestContext, mcp
+from code_index_mcp.services.index_management_service import IndexManagementService
+from code_index_mcp.services.project_management_service import ProjectManagementService
+from code_index_mcp.services.search_service import SearchService
+from mcp.server.fastmcp import Context
+
+lifespan = CodeIndexerContext(base_path="", settings=ProjectSettings("", skip_load=True))
+ctx = Context(request_context=_BootstrapRequestContext(lifespan), fastmcp=mcp)
+ProjectManagementService(ctx).initialize_project(str(repo_root))
+{rebuild_block}
+result = SearchService(ctx).search_code(
+    pattern=sys.argv[3],
+    regex=False,
+    file_pattern="*.py",
+    max_results=50,
+    context_lines=0,
+    case_sensitive=False,
+)
+print(json.dumps(result, ensure_ascii=False))
+"""
 
     def start(self) -> None:
-        src_path = self.code_index_repo / "src"
-        if not src_path.exists():
-            raise RuntimeError(f"code-index-mcp src not found at {src_path}")
-        if str(src_path) not in sys.path:
-            sys.path.insert(0, str(src_path))
-
-        from code_index_mcp.project_settings import ProjectSettings
-        from code_index_mcp.server import CodeIndexerContext, _BootstrapRequestContext, mcp
-        from code_index_mcp.services.index_management_service import IndexManagementService
-        from code_index_mcp.services.project_management_service import ProjectManagementService
-        from code_index_mcp.services.search_service import SearchService
-        from mcp.server.fastmcp import Context
-
-        lifespan = CodeIndexerContext(base_path="", settings=ProjectSettings("", skip_load=True))
-        ctx = Context(request_context=_BootstrapRequestContext(lifespan), fastmcp=mcp)
-        ProjectManagementService(ctx).initialize_project(str(self.repo_root))
-        IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
-        self.search_service = SearchService(ctx)
+        tool_workspace = external_workspace_root(self.workspace_root)
+        self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
+        self.python_bin = ensure_code_index_runtime(self.code_index_repo)
+        self.project_root = prepare_repo_snapshot(
+            self.repo_root, tool_workspace, "code-index-target"
+        )
+        proc = run_cmd(
+            [
+                str(self.python_bin),
+                "-c",
+                self._script(rebuild=True),
+                str(self.project_root),
+                str(self.code_index_repo),
+                "classify_command",
+            ],
+            cwd=self.code_index_repo,
+            timeout=1800,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
 
     def query(self, pattern: str) -> dict[str, Any]:
-        if self.search_service is None:
+        if self.python_bin is None or self.project_root is None:
             raise RuntimeError("code-index-mcp not initialized")
-        result = self.search_service.search_code(
-            pattern=pattern,
-            regex=False,
-            file_pattern="*.py",
-            max_results=50,
-            context_lines=0,
-            case_sensitive=False,
+        proc = run_cmd(
+            [
+                str(self.python_bin),
+                "-c",
+                self._script(rebuild=False),
+                str(self.project_root),
+                str(self.code_index_repo),
+                pattern,
+            ],
+            cwd=self.code_index_repo,
+            timeout=300,
         )
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+        result = json.loads(proc.stdout)
         assert isinstance(result, dict)
         return result
 
@@ -158,11 +276,119 @@ def ensure_workspace(workspace: Path) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
 
 
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+SNAPSHOT_IGNORE_NAMES = {
+    ".git",
+    ".venv",
+    ".atelier-benchmarks",
+    ".codegraph",
+    ".mcp-vector-search",
+    "node_modules",
+    "reports",
+    ".bench-work",
+    ".cocoindex_code",
+    ".serena",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+}
+
+
+def _copy_repo_tree(src_dir: Path, dst_dir: Path) -> None:
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for entry in src_dir.iterdir():
+        if entry.name in SNAPSHOT_IGNORE_NAMES:
+            continue
+        target = dst_dir / entry.name
+        if entry.is_symlink():
+            if entry.exists():
+                target.symlink_to(os.readlink(entry))
+            continue
+        if entry.is_dir():
+            _copy_repo_tree(entry, target)
+            continue
+        if entry.is_file():
+            shutil.copy2(entry, target)
+
+
+def prepare_repo_snapshot(repo_root: Path, workspace_root: Path, name: str) -> Path:
+    ensure_workspace(workspace_root)
+    snapshot_root = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=workspace_root))
+    _copy_repo_tree(repo_root, snapshot_root)
+    return snapshot_root
+
+
+def repo_cache_key(repo_root: Path) -> str:
+    digest = hashlib.sha256()
+    stack = [repo_root]
+    while stack:
+        current = stack.pop()
+        for entry in sorted(current.iterdir(), key=lambda item: item.name):
+            if entry.name in SNAPSHOT_IGNORE_NAMES:
+                continue
+            relative = entry.relative_to(repo_root).as_posix()
+            if entry.is_dir():
+                digest.update(f"dir:{relative}".encode())
+                stack.append(entry)
+                continue
+            if not entry.is_file():
+                continue
+            digest.update(f"file:{relative}".encode())
+            with entry.open("rb") as handle:
+                while chunk := handle.read(1024 * 1024):
+                    digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+@contextmanager
+def cache_lock(lock_path: Path) -> Iterator[None]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def prepare_cached_repo_snapshot(
+    repo_root: Path,
+    cache_root: Path,
+    *,
+    name: str,
+    cache_key: str,
+) -> Path:
+    ensure_workspace(cache_root)
+    snapshot_root = cache_root / f"{name}-{cache_key}"
+    marker_path = snapshot_root / ".atelier-snapshot-ready.json"
+    lock_path = cache_root / f"{name}-{cache_key}.lock"
+    with cache_lock(lock_path):
+        if marker_path.is_file():
+            return snapshot_root
+        if snapshot_root.exists():
+            shutil.rmtree(snapshot_root)
+        tmp_root = cache_root / f".{name}-{cache_key}.tmp-{os.getpid()}"
+        if tmp_root.exists():
+            shutil.rmtree(tmp_root)
+        _copy_repo_tree(repo_root, tmp_root)
+        (tmp_root / ".atelier-snapshot-ready.json").write_text(
+            json.dumps({"cache_key": cache_key}) + "\n", encoding="utf-8"
+        )
+        tmp_root.rename(snapshot_root)
+    return snapshot_root
+
+
 def install_external_tools(workspace: Path) -> None:
     ensure_workspace(workspace)
     commands = [
         ["npm", "i", "-g", "@colbymchenry/codegraph"],
-        ["uv", "tool", "install", "--upgrade", "mcp-vector-search"],
         ["uv", "tool", "install", "--upgrade", "cocoindex-code[full]"],
         [
             "uv",
@@ -178,15 +404,74 @@ def install_external_tools(workspace: Path) -> None:
             raise RuntimeError(f"install failed: {' '.join(cmd)}\n{proc.stderr[:1200]}")
 
 
-def bench_atelier(query: str, iterations: int) -> ToolBenchResult:
+def external_workspace_root(workspace_root: Path) -> Path:
+    root = workspace_root / "external-indexers"
+    ensure_workspace(root)
+    return root
+
+
+def default_benchmark_root(repo_root: Path) -> Path:
+    return repo_root.parent / "benchmarks" / repo_root.name
+
+
+def ensure_code_index_checkout(code_index_repo: Path) -> Path:
+    src_path = code_index_repo / "src"
+    if src_path.exists():
+        return code_index_repo
+    if code_index_repo.exists():
+        shutil.rmtree(code_index_repo)
+    ensure_workspace(code_index_repo.parent)
+    proc = run_cmd(
+        ["git", "clone", "--depth", "1", CODE_INDEX_REPO_URL, str(code_index_repo)],
+        timeout=1800,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+    if not src_path.exists():
+        raise RuntimeError(f"code-index-mcp src not found at {src_path}")
+    return code_index_repo
+
+
+def ensure_code_index_runtime(code_index_repo: Path) -> Path:
+    python_bin = code_index_repo / ".venv" / "bin" / "python"
+    if python_bin.exists():
+        return python_bin
+    proc = run_cmd(["uv", "sync"], cwd=code_index_repo, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+    if not python_bin.exists():
+        raise RuntimeError(f"code-index-mcp python not found at {python_bin}")
+    return python_bin
+
+
+def bench_atelier(
+    repo_root: Path, workspace_root: Path, query: str, iterations: int
+) -> ToolBenchResult:
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from benchmarks.mcp_tools._env import configure_benchmark_runtime
+
+    tool_workspace = external_workspace_root(workspace_root)
+    snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "atelier-repo")
+    runtime_root = Path(tempfile.mkdtemp(prefix="atelier-root-", dir=tool_workspace))
+    configure_benchmark_runtime(runtime_root, workspace_root=snapshot_root)
     from atelier.gateway.adapters.mcp_server import tool_code
 
     times: list[float] = []
     toks: list[int] = []
     sample = ""
+    sample = ""
+    request = {
+        "op": "search",
+        "repo_root": str(snapshot_root),
+        "query": query,
+        "mode": "lexical",
+        "limit": 20,
+        "budget_tokens": 4000,
+    }
     for _ in range(iterations):
         t0 = time.perf_counter()
-        resp = tool_code({"op": "search", "query": query, "mode": "lexical", "limit": 20, "budget_tokens": 4000})
+        resp = tool_code(request)
         elapsed = (time.perf_counter() - t0) * 1000
         payload = json.dumps(resp, ensure_ascii=False)
         times.append(elapsed)
@@ -200,13 +485,81 @@ def bench_atelier(query: str, iterations: int) -> ToolBenchResult:
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
         runs=iterations,
+        query=query,
+        input=json.dumps(request, ensure_ascii=False),
         sample=sample,
+        output=payload,
     )
 
 
-def bench_serena(query: str, iterations: int) -> ToolBenchResult:
-    runner = SerenaRunner()
+def bench_atelier_zoekt(
+    repo_root: Path, workspace_root: Path, query: str, iterations: int
+) -> ToolBenchResult:
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from benchmarks.mcp_tools._env import configure_benchmark_runtime
+
+    tool_workspace = external_workspace_root(workspace_root)
+    snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "atelier-zoekt-repo")
+    runtime_root = Path(tempfile.mkdtemp(prefix="atelier-zoekt-root-", dir=tool_workspace))
+    configure_benchmark_runtime(runtime_root, workspace_root=snapshot_root)
+    from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor, reset_zoekt_supervisors
+
+    reset_zoekt_supervisors()
+    request = {
+        "query": query,
+        "search_path": str(snapshot_root),
+        "max_files": 20,
+        "max_chars_per_file": 600,
+        "include_outline": False,
+    }
+    max_files = 20
+    max_chars_per_file = 600
+    include_outline = False
+    supervisor = get_zoekt_supervisor(snapshot_root)
+    times: list[float] = []
+    toks: list[int] = []
+    sample = ""
+    for _ in range(iterations):
+        t0 = time.perf_counter()
+        result = supervisor.search(
+            query=query,
+            search_path=snapshot_root,
+            max_files=max_files,
+            max_chars_per_file=max_chars_per_file,
+            include_outline=include_outline,
+        )
+        elapsed = (time.perf_counter() - t0) * 1000
+        payload = json.dumps(asdict(result), ensure_ascii=False)
+        times.append(elapsed)
+        toks.append(token_count(payload))
+        sample = payload[:280]
+    return ToolBenchResult(
+        tool="atelier-zoekt",
+        ok=True,
+        correctness=1.0,
+        median_ms=statistics.median(times),
+        p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
+        median_tokens=int(statistics.median(toks)),
+        runs=iterations,
+        query=query,
+        input=json.dumps(request, ensure_ascii=False),
+        sample=sample,
+        output=payload,
+    )
+
+
+def bench_serena(
+    repo_root: Path, workspace_root: Path, query: str, iterations: int
+) -> ToolBenchResult:
+    tool_workspace = external_workspace_root(workspace_root)
+    snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "serena-repo")
+    runner = SerenaRunner(
+        project_root=snapshot_root,
+        home_dir=tool_workspace / "serena-home",
+    )
     try:
+        runner.bootstrap()
         runner.start()
         times: list[float] = []
         toks: list[int] = []
@@ -231,7 +584,13 @@ def bench_serena(query: str, iterations: int) -> ToolBenchResult:
             p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
             median_tokens=int(statistics.median(toks)),
             runs=iterations,
+            query=query,
+            input=json.dumps(
+                {"tool_name": "search_for_pattern", "params": params},
+                ensure_ascii=False,
+            ),
             sample=sample,
+            output=resp,
         )
     finally:
         runner.stop()
@@ -246,7 +605,9 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     sample = ""
     for _ in range(iterations):
         t0 = time.perf_counter()
-        proc = run_cmd(["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300)
+        proc = run_cmd(
+            ["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300
+        )
         elapsed = (time.perf_counter() - t0) * 1000
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
@@ -262,12 +623,22 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
         runs=iterations,
+        query=query,
+        input=json.dumps(
+            {"command": ["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query]},
+            ensure_ascii=False,
+        ),
         sample=sample,
+        output=payload,
     )
 
 
-def bench_code_index(repo_root: Path, code_index_repo: Path, query: str, iterations: int) -> ToolBenchResult:
-    runner = CodeIndexRunner(repo_root=repo_root, code_index_repo=code_index_repo)
+def bench_code_index(
+    repo_root: Path, workspace_root: Path, code_index_repo: Path, query: str, iterations: int
+) -> ToolBenchResult:
+    runner = CodeIndexRunner(
+        repo_root=repo_root, workspace_root=workspace_root, code_index_repo=code_index_repo
+    )
     runner.start()
     times: list[float] = []
     toks: list[int] = []
@@ -288,12 +659,32 @@ def bench_code_index(repo_root: Path, code_index_repo: Path, query: str, iterati
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
         runs=iterations,
+        query=query,
+        input=json.dumps(
+            {
+                "pattern": query,
+                "regex": False,
+                "file_pattern": "*.py",
+                "max_results": 50,
+                "context_lines": 0,
+                "case_sensitive": False,
+            },
+            ensure_ascii=False,
+        ),
         sample=sample,
+        output=payload,
     )
 
 
-def bench_ccc(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
-    index = run_cmd(["ccc", "index"], cwd=repo_root, timeout=1800)
+def bench_ccc(
+    repo_root: Path, workspace_root: Path, query: str, iterations: int
+) -> ToolBenchResult:
+    tool_workspace = external_workspace_root(workspace_root)
+    snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "ccc-repo")
+    init = run_cmd(["ccc", "init", "--force"], cwd=snapshot_root, timeout=300)
+    if init.returncode != 0:
+        raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
+    index = run_cmd(["ccc", "index"], cwd=snapshot_root, timeout=1800)
     if index.returncode != 0:
         raise RuntimeError(index.stderr[:1200] or index.stdout[:1200])
     times: list[float] = []
@@ -301,7 +692,11 @@ def bench_ccc(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
     sample = ""
     for _ in range(iterations):
         t0 = time.perf_counter()
-        proc = run_cmd(["ccc", "search", "--path", "src/**/*.py", "--limit", "20", query], cwd=repo_root, timeout=300)
+        proc = run_cmd(
+            ["ccc", "search", "--path", "src/**/*.py", "--limit", "20", query],
+            cwd=snapshot_root,
+            timeout=300,
+        )
         elapsed = (time.perf_counter() - t0) * 1000
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
@@ -317,42 +712,13 @@ def bench_ccc(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
         runs=iterations,
+        query=query,
+        input=json.dumps(
+            {"command": ["ccc", "search", "--path", "src/**/*.py", "--limit", "20", query]},
+            ensure_ascii=False,
+        ),
         sample=sample,
-    )
-
-
-def bench_mvs(repo_root: Path, query: str, iterations: int) -> ToolBenchResult:
-    init = run_cmd(["mcp-vector-search", "--project-root", str(repo_root), "init"], timeout=600)
-    if init.returncode not in (0, 1):
-        raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
-    idx = run_cmd(["mcp-vector-search", "--project-root", str(repo_root), "index"], timeout=1800)
-    if idx.returncode != 0:
-        raise RuntimeError(idx.stderr[:1200] or idx.stdout[:1200])
-    times: list[float] = []
-    toks: list[int] = []
-    sample = ""
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        proc = run_cmd(
-            ["mcp-vector-search", "--project-root", str(repo_root), "search", "--json", "--limit", "20", query],
-            timeout=300,
-        )
-        elapsed = (time.perf_counter() - t0) * 1000
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-        payload = proc.stdout
-        times.append(elapsed)
-        toks.append(token_count(payload))
-        sample = payload[:280]
-    return ToolBenchResult(
-        tool="mcp-vector-search",
-        ok=True,
-        correctness=1.0,
-        median_ms=statistics.median(times),
-        p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
-        median_tokens=int(statistics.median(toks)),
-        runs=iterations,
-        sample=sample,
+        output=payload,
     )
 
 
@@ -381,7 +747,13 @@ def bench_jcodemunch(repo_root: Path, iterations: int) -> ToolBenchResult:
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
         runs=iterations,
+        query="digest",
+        input=json.dumps(
+            {"command": ["jcodemunch-mcp", "digest", str(repo_root), "--json"]},
+            ensure_ascii=False,
+        ),
         sample=sample,
+        output=payload,
     )
 
 
@@ -395,12 +767,18 @@ def run_external_benchmarks(
 ) -> list[ToolBenchResult]:
     results: list[ToolBenchResult] = []
     benches: list[tuple[str, Callable[[], ToolBenchResult]]] = [
-        ("atelier", lambda: bench_atelier(query, iterations)),
-        ("serena", lambda: bench_serena(query, iterations)),
+        ("atelier", lambda: bench_atelier(repo_root, workspace_root, query, iterations)),
+        (
+            "atelier-zoekt",
+            lambda: bench_atelier_zoekt(repo_root, workspace_root, query, iterations),
+        ),
+        ("serena", lambda: bench_serena(repo_root, workspace_root, query, iterations)),
         ("codegraph", lambda: bench_codegraph(repo_root, query, iterations)),
-        ("code-index-mcp", lambda: bench_code_index(repo_root, code_index_repo, query, iterations)),
-        ("cocoindex-code", lambda: bench_ccc(repo_root, query, iterations)),
-        ("mcp-vector-search", lambda: bench_mvs(repo_root, query, iterations)),
+        (
+            "code-index-mcp",
+            lambda: bench_code_index(repo_root, workspace_root, code_index_repo, query, iterations),
+        ),
+        ("cocoindex-code", lambda: bench_ccc(repo_root, workspace_root, query, iterations)),
         ("jcodemunch-mcp", lambda: bench_jcodemunch(repo_root, iterations)),
     ]
     for name, fn in benches:
@@ -416,6 +794,7 @@ def run_external_benchmarks(
                     p95_ms=0.0,
                     median_tokens=0,
                     runs=0,
+                    query=query if name != "jcodemunch-mcp" else "digest",
                     error=str(exc),
                 )
             )
@@ -435,23 +814,65 @@ def render_table(results: list[ToolBenchResult]) -> str:
     return "\n".join(lines)
 
 
+def write_csv(results: list[ToolBenchResult], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "query",
+                "tool",
+                "status",
+                "correctness",
+                "median_ms",
+                "p95_ms",
+                "median_tokens",
+                "runs",
+                "error",
+                "input",
+                "output",
+            ],
+        )
+        writer.writeheader()
+        for result in results:
+            writer.writerow(
+                {
+                    "query": result.query,
+                    "tool": result.tool,
+                    "status": "ok" if result.ok else "failed",
+                    "correctness": result.correctness,
+                    "median_ms": result.median_ms,
+                    "p95_ms": result.p95_ms,
+                    "median_tokens": result.median_tokens,
+                    "runs": result.runs,
+                    "error": result.error,
+                    "input": result.input,
+                    "output": result.output,
+                }
+            )
+
+
 def main() -> None:
+    repo_default = Path(__file__).resolve().parents[2]
+    workspace_default = default_benchmark_root(repo_default)
     parser = argparse.ArgumentParser(description="External code-indexer benchmark runner")
-    parser.add_argument("--repo-root", default=str(Path(__file__).resolve().parents[2]))
-    parser.add_argument("--workspace-root", default=str(Path(__file__).resolve().parents[2] / ".bench-work"))
-    parser.add_argument(
-        "--code-index-repo",
-        default=str(Path(__file__).resolve().parents[2] / ".bench-work" / "code-index-mcp"),
-    )
+    parser.add_argument("--repo-root", default=str(repo_default))
+    parser.add_argument("--workspace-root", default=str(workspace_default))
+    parser.add_argument("--code-index-repo", default="")
     parser.add_argument("--query", default="classify_command")
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--install", action="store_true")
     parser.add_argument("--json-out", default="")
+    parser.add_argument("--csv-out", default="")
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
     workspace_root = Path(args.workspace_root).resolve()
-    code_index_repo = Path(args.code_index_repo).resolve()
+    code_index_repo = (
+        Path(args.code_index_repo).resolve()
+        if args.code_index_repo
+        else (workspace_root / "code-index-mcp").resolve()
+    )
     ensure_workspace(workspace_root)
 
     if args.install:
@@ -470,6 +891,8 @@ def main() -> None:
         out = Path(args.json_out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps([r.__dict__ for r in results], indent=2), encoding="utf-8")
+    if args.csv_out:
+        write_csv(results, Path(args.csv_out))
 
 
 if __name__ == "__main__":

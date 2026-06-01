@@ -32,12 +32,15 @@ Pricing is hardcoded so the benchmark is deterministic without LiteLLM.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pricing constants (USD per 1 M input tokens)
@@ -199,7 +202,12 @@ def _parse_session_routing(path: Path) -> tuple[list[dict[str, Any]], str]:
                     continue
                 try:
                     ev = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("transcript line json parse skipped", exc_info=True)
+                    continue
+
+                if not isinstance(ev, dict):
+                    logger.debug("transcript line non-object json skipped")
                     continue
 
                 if ev.get("type") != "assistant":
@@ -207,7 +215,13 @@ def _parse_session_routing(path: Path) -> tuple[list[dict[str, Any]], str]:
                     continue
 
                 msg = ev.get("message") or {}
+                if not isinstance(msg, dict):
+                    logger.debug("assistant message non-object skipped")
+                    continue
                 usage = msg.get("usage") or {}
+                if not isinstance(usage, dict):
+                    logger.debug("assistant usage non-object skipped")
+                    continue
                 inp = int(usage.get("input_tokens", 0))
                 cache_create = int(usage.get("cache_creation_input_tokens", 0))
                 cache_read = int(usage.get("cache_read_input_tokens", 0))
@@ -245,8 +259,8 @@ def _parse_session_routing(path: Path) -> tuple[list[dict[str, Any]], str]:
                         "synthetic": synthetic,
                     }
                 )
-    except Exception:
-        pass
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+        logger.debug("transcript parse skipped", exc_info=True)
 
     return turns, dominant_model
 
@@ -333,6 +347,8 @@ def run_routing_bench(
                 },
             )
 
+            if rec is None:
+                continue
             baseline_cost = _turn_cost(inp, out, actual_tier)
             rec_cost = _turn_cost(inp, out, rec.tier)
 

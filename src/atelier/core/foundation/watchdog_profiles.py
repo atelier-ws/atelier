@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ def load_watchdog_profile_config(root: str | Path) -> WatchdogProfileConfig:
             loaded = json.loads(path.read_text(encoding="utf-8"))
             raw = loaded if isinstance(loaded, dict) else {}
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             raw = {}
 
     builtin = {profile.id: profile for profile in builtin_watchdog_profiles()}

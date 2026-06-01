@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.parse
@@ -94,6 +95,7 @@ class OpenMemoryAdapter:
             if payload not in ({}, None):
                 return payload
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             last_error = exc
         else:
             last_error = RuntimeError("empty add_memories response")
@@ -116,6 +118,7 @@ class OpenMemoryAdapter:
                 },
             )
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             last_error = exc
             payload = None
         else:
@@ -150,6 +153,7 @@ class OpenMemoryAdapter:
                 },
             )
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             last_error = exc
             payload = None
         else:
@@ -503,6 +507,7 @@ class OpenMemoryMemoryStore:
         try:
             payload = json.loads(text)
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return None
         if not isinstance(payload, dict):
             return None

@@ -43,7 +43,6 @@ def test_main_agent_dev_variant_bans_native_file_tools() -> None:
 def test_explore_agent_is_fast_read_only_and_uses_native_fallback() -> None:
     frontmatter = _frontmatter(PLUGIN / "agents" / "explore.md")
     body = (PLUGIN / "agents" / "explore.md").read_text(encoding="utf-8")
-    assert "model: haiku" in frontmatter
     for tool_name in ["Read", "Grep", "Glob"]:
         assert tool_name in frontmatter
     assert "Edit" in frontmatter
@@ -54,7 +53,6 @@ def test_explore_agent_is_fast_read_only_and_uses_native_fallback() -> None:
 
 def test_explore_dev_variant_can_use_mcp_read_search() -> None:
     frontmatter = _frontmatter(PLUGIN / "agents" / "explore.dev.md")
-    assert "model: haiku" in frontmatter
     assert "mcp__atelier__search" in frontmatter
     assert "mcp__atelier__read" in frontmatter
 

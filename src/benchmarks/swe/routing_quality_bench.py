@@ -68,6 +68,7 @@ Quality score = (safe x 1.0 + moderate x 0.6 + risky x 0.0) / total_downtiered
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -75,6 +76,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.model_routing.router import ModelRouter, ModelTier
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Tool risk - base scores
@@ -280,14 +283,25 @@ def _parse_events(path: Path) -> list[_Event]:
                     continue
                 try:
                     ev = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("event line json parse skipped", exc_info=True)
+                    continue
+
+                if not isinstance(ev, dict):
+                    logger.debug("event line non-object json skipped")
                     continue
 
                 ev_type = ev.get("type", "")
 
                 if ev_type == "assistant":
                     msg = ev.get("message") or {}
+                    if not isinstance(msg, dict):
+                        logger.debug("assistant message non-object skipped")
+                        continue
                     usage = msg.get("usage") or {}
+                    if not isinstance(usage, dict):
+                        logger.debug("assistant usage non-object skipped")
+                        continue
                     inp = int(usage.get("input_tokens", 0))
                     cache_c = int(usage.get("cache_creation_input_tokens", 0))
                     cache_r = int(usage.get("cache_read_input_tokens", 0))
@@ -322,6 +336,9 @@ def _parse_events(path: Path) -> list[_Event]:
                 elif ev_type == "user":
                     last_a_fingerprint = None
                     msg = ev.get("message") or {}
+                    if not isinstance(msg, dict):
+                        logger.debug("user message non-object skipped")
+                        continue
                     content = msg.get("content") or []
                     tool_results: list[dict[str, Any]] = []
                     if isinstance(content, list):
@@ -348,8 +365,8 @@ def _parse_events(path: Path) -> list[_Event]:
                 else:
                     events.append(_Event(ev_type="other"))
 
-    except Exception:
-        pass
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+        logger.debug("events parse skipped", exc_info=True)
 
     return events
 
@@ -439,6 +456,8 @@ def _analyze_session(path: Path, router: ModelRouter) -> list[_TurnQuality]:
             prior_errors += 1
 
         # Only analyse downtiered turns
+        if rec is None:
+            continue
         if _TIER_RANK[rec.tier] < _TIER_RANK[actual_tier]:
             label, risk = _classify_risk(tool_name, tool_input, ev.output_tokens, had_model, had_retry)
             results.append(

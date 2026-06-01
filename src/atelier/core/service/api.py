@@ -20,14 +20,38 @@ import contextlib
 import json
 import logging
 import mimetypes
+import os
+import re
+import shlex
 import sqlite3
 import threading
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from atelier.core.capabilities.pricing import usage_cost_usd
+from atelier.core.capabilities.swarm import (
+    build_swarm_apply_payload,
+    build_swarm_export_payload,
+    build_swarm_spec_payload,
+    discover_repo_root,
+    initialize_swarm_run,
+    list_swarm_runner_profiles,
+    list_swarm_runs,
+    load_swarm_state,
+    read_swarm_log,
+    resolve_state_path,
+    resolve_swarm_child_command,
+    resolve_swarm_provider_command,
+    resolve_swarm_runner_metadata,
+    resolve_swarm_spec_path,
+    save_swarm_state,
+    spawn_swarm_coordinator,
+    stop_swarm_run,
+)
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
@@ -79,6 +103,220 @@ _HOST_ORDER: tuple[str, ...] = (
     "cursor",
     "hermes",
 )
+
+_SWARM_FILE_SKIP_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "node_modules",
+    "dist",
+    "build",
+    "__pycache__",
+}
+
+
+class SwarmLaunchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_root: str
+    spec_path: str | None = None
+    spec_mode: Literal["existing", "inline"] = "existing"
+    spec_content: str | None = None
+    provider: Literal["cli", "openai", "litellm"] = "cli"
+    runner: str | None = "claude"
+    runner_model: str | None = None
+    model: str | None = None
+    runner_options: str = ""
+    runs: int = Field(default=3, ge=1)
+    continuous: bool = True
+    evaluator_backend: Literal["auto", "disabled", "ollama", "openai", "litellm"] = "auto"
+    evaluator_model: str | None = None
+    max_idle_waves: int = Field(default=3, ge=1)
+    max_evaluator_failures: int = Field(default=3, ge=1)
+    keep_worktrees: bool = True
+    effort: str = "high"
+    provider_api_key: str | None = None
+    provider_base_url: str | None = None
+    provider_env: dict[str, str] = Field(default_factory=dict)
+
+
+_SWARM_PROVIDER_ENV_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_SWARM_DEFAULT_SPEC_NAMES = ("PROGRAM.md", "program.md")
+_SWARM_PROVIDER_ENV_BLOCKLIST = {
+    "ATELIER_ROOT",
+    "ATELIER_WORKSPACE_ROOT",
+    "CLAUDE_WORKSPACE_ROOT",
+    "PATH",
+    "PYTHONPATH",
+}
+
+
+def _sanitize_swarm_provider_env(raw_env: dict[str, str] | None) -> dict[str, str]:
+    sanitized: dict[str, str] = {}
+    for raw_key, raw_value in (raw_env or {}).items():
+        key = str(raw_key or "").strip()
+        value = str(raw_value or "")
+        if not key:
+            continue
+        if not _SWARM_PROVIDER_ENV_KEY.fullmatch(key):
+            raise ValueError(f"invalid provider env key: {key!r}")
+        if key in _SWARM_PROVIDER_ENV_BLOCKLIST or key.startswith("ATELIER_SWARM_"):
+            raise ValueError(f"provider env key is reserved: {key}")
+        if "\x00" in value:
+            raise ValueError(f"provider env value contains NUL byte: {key}")
+        sanitized[key] = value
+    return sanitized
+
+
+def _build_swarm_provider_env(payload: SwarmLaunchRequest) -> dict[str, str]:
+    env = _sanitize_swarm_provider_env(payload.provider_env)
+    if payload.provider == "openai":
+        if payload.provider_api_key:
+            env["ATELIER_OPENAI_API_KEY"] = payload.provider_api_key
+        if payload.provider_base_url:
+            env["ATELIER_OPENAI_BASE_URL"] = payload.provider_base_url
+    return env
+
+
+def _default_swarm_spec_name(project_root: Path) -> str:
+    for name in _SWARM_DEFAULT_SPEC_NAMES:
+        if (project_root / name).is_file():
+            return name
+    return _SWARM_DEFAULT_SPEC_NAMES[0]
+
+
+def _swarm_candidate_project_roots(root: Path) -> list[Path]:
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+
+    def add_candidate(candidate: Path) -> None:
+        resolved = candidate.expanduser().resolve()
+        if resolved in seen or not resolved.exists() or not resolved.is_dir():
+            return
+        seen.add(resolved)
+        candidates.append(resolved)
+
+    with contextlib.suppress(RuntimeError):
+        add_candidate(discover_repo_root(Path.cwd()))
+    for state in list_swarm_runs(root):
+        with contextlib.suppress(OSError, RuntimeError):
+            add_candidate(Path(state.repo_root))
+    return candidates
+
+
+def _coerce_project_root(root: Path, project_root: str | None) -> Path:
+    candidates = _swarm_candidate_project_roots(root)
+    if project_root:
+        requested = Path(project_root).expanduser().resolve()
+        if requested in candidates:
+            return requested
+        try:
+            discovered = discover_repo_root(requested)
+        except RuntimeError as exc:
+            raise ValueError(f"unknown swarm project root: {project_root}") from exc
+        resolved = discovered.resolve()
+        if resolved != requested:
+            raise ValueError(f"project root must point at a repository root: {project_root}")
+        return resolved
+    if candidates:
+        return candidates[0]
+    raise ValueError("no swarm project roots available")
+
+
+def _iter_swarm_spec_candidates(project_root: Path, limit: int = 80) -> list[str]:
+    preferred = [
+        "PROGRAM.md",
+        "program.md",
+        "spec.md",
+        "SPEC.md",
+        "prompt.md",
+        "PROMPT.md",
+        "README.md",
+    ]
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def add_relative(path: Path) -> None:
+        relative = path.relative_to(project_root).as_posix()
+        if relative not in seen:
+            seen.add(relative)
+            ordered.append(relative)
+
+    for name in preferred:
+        candidate = project_root / name
+        if candidate.exists() and candidate.is_file():
+            add_relative(candidate)
+
+    for current_root, dirnames, filenames in os.walk(project_root):
+        current_path = Path(current_root)
+        dirnames[:] = [name for name in dirnames if name not in _SWARM_FILE_SKIP_DIRS and not name.startswith(".")]
+        for filename in sorted(filenames):
+            if filename.startswith("."):
+                continue
+            suffix = Path(filename).suffix.lower()
+            if suffix not in {".md", ".txt"}:
+                continue
+            candidate = current_path / filename
+            try:
+                size = candidate.stat().st_size
+            except OSError:
+                continue
+            if size > 128_000:
+                continue
+            add_relative(candidate)
+            if len(ordered) >= limit:
+                return ordered
+    return ordered
+
+
+def _read_swarm_preview(path: Path, limit: int = 4000) -> tuple[str, bool]:
+    content = path.read_text(encoding="utf-8")
+    return content[:limit], len(content) > limit
+
+
+def _resolve_swarm_spec_target(project_root: Path, spec_path: str | None) -> tuple[Path, str]:
+    default_spec = _default_swarm_spec_name(project_root)
+    requested = (spec_path or default_spec).strip() or default_spec
+    raw = Path(requested).expanduser()
+    candidate = raw.resolve() if raw.is_absolute() else (project_root / raw).resolve()
+    if not candidate.is_relative_to(project_root):
+        raise ValueError(f"swarm spec must stay under the selected project root: {project_root}")
+    if candidate.exists() and not candidate.is_file():
+        raise ValueError(f"swarm spec is not a file: {candidate}")
+    return candidate, candidate.relative_to(project_root).as_posix()
+
+
+def _load_swarm_spec_document(project_root: Path, spec_path: str | None) -> dict[str, Any]:
+    candidate, relative_path = _resolve_swarm_spec_target(project_root, spec_path)
+    exists = candidate.is_file()
+    content = candidate.read_text(encoding="utf-8") if exists else ""
+    return {
+        "path": relative_path,
+        "content": content,
+        "exists": exists,
+        "is_default": relative_path == _default_swarm_spec_name(project_root),
+    }
+
+
+def _materialize_swarm_spec(
+    *,
+    project_root: Path,
+    spec_path: str | None,
+    spec_mode: Literal["existing", "inline"],
+    spec_content: str | None,
+) -> tuple[Path, str, Literal["explicit", "default"], bool]:
+    if spec_mode == "inline" and spec_content is None:
+        raise ValueError("inline swarm specs require spec_content")
+    target, relative_path = _resolve_swarm_spec_target(project_root, spec_path)
+    if spec_content is not None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(spec_content, encoding="utf-8")
+    resolved_spec_path, spec_resolution, used_program_md = resolve_swarm_spec_path(
+        project_root=project_root,
+        spec_path=relative_path,
+    )
+    return resolved_spec_path, relative_path, spec_resolution, used_program_md
 
 
 def _extract_enum_params(input_schema: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1020,6 +1258,7 @@ def _tracked_saved_tokens(store: ContextStore, trace: Trace) -> tuple[int, int]:
     try:
         rows = store.list_context_budgets(_trace_run_key(trace))
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         logger.warning("Failed to load context budgets for trace %s: %s", trace.id, exc)
         return 0, 0
 
@@ -1206,6 +1445,7 @@ def _build_auto_optimizations(
         try:
             at_date = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00")).date()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in savings event, using today: %s", event.get("at"), exc)
             at_date = datetime.now(UTC).date()
         if at_date < start_day:
@@ -1297,6 +1537,7 @@ def _build_reread_telemetry(root: Path, *, window_days: int) -> dict[str, Any]:
         try:
             at = datetime.fromisoformat(str(event.get("at", "")).replace("Z", "+00:00"))
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in reread event, using now: %s", event.get("at"), exc)
             at = datetime.now(UTC)
         if at.date() < start_day:
@@ -1708,6 +1949,7 @@ def _savings_summary_payload(
             try:
                 at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 logger.debug("Bad timestamp %r in savings call, using today: %s", at_raw, exc)
                 at_date = today
             day_key = at_date.isoformat()
@@ -1726,6 +1968,7 @@ def _savings_summary_payload(
         try:
             at_date = datetime.fromisoformat(at_raw.replace("Z", "+00:00")).date()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.debug("Bad timestamp %r in live savings event, using today: %s", at_raw, exc)
             at_date = today
         if at_date < start_day:
@@ -1930,7 +2173,7 @@ def _savings_summary_payload(
         baseline_cost_usd = (
             actual_cost_usd
             if saved_tokens <= 0
-            else round(actual_cost_usd + pricing.cost_usd(input_tokens=naive_tokens), 6)
+            else round(actual_cost_usd + pricing.cost_usd(input_tokens=saved_tokens), 6)
         )
         saved_cost_usd = round(max(0.0, baseline_cost_usd - actual_cost_usd), 6)
         trace = trace_by_session.get(session_id)
@@ -3857,6 +4100,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 _session_savings[_sk] = read_total_savings_from_events(_sk, _atelier_root)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 _session_savings[_sk] = 0.0
 
         top_sessions_clean = [
@@ -4491,6 +4735,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 ledger = RunLedger.load(ledger_path)
                 snap = ledger.snapshot()
             except Exception as e:
+                logging.exception("Recovered from broad exception handler")
                 return {"session_id": session_id, "error": str(e)}
 
         # Always check for a trace to fetch the full conversation history.
@@ -4705,6 +4950,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 if _tool_visible_to_llm(name, spec)
             ]
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.warning("Failed to load MCP tool status: %s", exc, exc_info=True)
             return []
 
@@ -4816,6 +5062,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     try:
                         fm = yaml.safe_load(text[3:end]) or {}
                     except Exception:
+                        logging.exception("Recovered from broad exception handler")
                         fm = {}
                     body = text[end + 3 :].strip()
             # Strip generator comment from body
@@ -4924,6 +5171,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         try:
             return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
             return []
 
@@ -5651,6 +5899,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 results.append(payload)
                 seen_session_ids.add(payload["session_id"])
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         store_inst = get_store()
         for trace in store_inst.list_traces(since=cutoff, limit=max(limit * 5, limit)):
@@ -5855,6 +6104,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 outcomes = load_outcomes_from_state(state_path)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
 
             for entry in outcomes.get("route_outcomes", []):
@@ -5948,6 +6198,301 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 
         return {"week": week, "markdown": markdown_content, "json": json_data}
+
+    @app.get("/v1/swarm/launch/options", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_launch_options(
+        project_root: str | None = Query(default=None),
+        spec_path: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        root = Path(cfg.atelier_root)
+        try:
+            selected_project_root = _coerce_project_root(root, project_root)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        file_options = _iter_swarm_spec_candidates(selected_project_root)
+        default_spec = _default_swarm_spec_name(selected_project_root)
+        selected_spec = (spec_path or default_spec).strip() or default_spec
+        if selected_spec not in file_options:
+            file_options.insert(0, selected_spec)
+        elif file_options and file_options[0] != selected_spec:
+            file_options = [
+                selected_spec,
+                *[item for item in file_options if item != selected_spec],
+            ]
+        spec_document = _load_swarm_spec_document(selected_project_root, selected_spec)
+
+        return {
+            "project_roots": [
+                {
+                    "path": str(candidate),
+                    "label": candidate.name or str(candidate),
+                    "full_path": str(candidate),
+                    "has_program_md": any((candidate / name).is_file() for name in _SWARM_DEFAULT_SPEC_NAMES),
+                }
+                for candidate in _swarm_candidate_project_roots(root)
+            ],
+            "selected_project_root": str(selected_project_root),
+            "files": [
+                {
+                    "path": relative_path,
+                    "is_default": relative_path == default_spec,
+                    "exists": (selected_project_root / relative_path).is_file(),
+                }
+                for relative_path in file_options
+            ],
+            "selected_spec_path": selected_spec,
+            "spec_document": spec_document,
+            "providers": [
+                {
+                    "id": "cli",
+                    "label": "CLI runner",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": None,
+                    "credential_hint": None,
+                },
+                {
+                    "id": "openai",
+                    "label": "OpenAI API",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": "gpt-4o-mini",
+                    "credential_hint": "Uses server env only: ATELIER_OPENAI_API_KEY / OPENAI_API_KEY (+ optional ATELIER_OPENAI_BASE_URL).",
+                },
+                {
+                    "id": "litellm",
+                    "label": "LiteLLM",
+                    "supported": True,
+                    "reason": None,
+                    "model_placeholder": "openai/gpt-4o-mini",
+                    "credential_hint": "Uses server env only via LiteLLM credentials; no secrets are stored in swarm state.",
+                },
+            ],
+            "runners": list_swarm_runner_profiles(),
+            "defaults": {
+                "provider": "cli",
+                "runner": "claude",
+                "runs": 3,
+                "continuous": True,
+                "keep_worktrees": True,
+                "effort": "high",
+            },
+            "notes": {
+                "default_spec": default_spec,
+                "default_spec_missing": not any(
+                    (selected_project_root / name).is_file() for name in _SWARM_DEFAULT_SPEC_NAMES
+                ),
+                "effort_behavior": "Effort is recorded in swarm metadata today; built-in CLI profiles do not auto-inject runner-specific effort flags.",
+                "provider_credentials": "Provider-backed swarm workers inherit credentials from the server environment. API keys and base URLs are never written into child commands or persisted swarm state.",
+            },
+        }
+
+    @app.post("/v1/swarm/runs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def post_swarm_run(payload: SwarmLaunchRequest) -> dict[str, Any]:
+        root = Path(cfg.atelier_root)
+        try:
+            provider_env = _build_swarm_provider_env(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            project_root = _coerce_project_root(root, payload.project_root)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            resolved_spec_path, resolved_spec_source, spec_resolution, used_program_md = _materialize_swarm_spec(
+                project_root=project_root,
+                spec_path=payload.spec_path,
+                spec_mode=payload.spec_mode,
+                spec_content=payload.spec_content,
+            )
+            if payload.provider == "cli":
+                runner_options = shlex.split(payload.runner_options) if payload.runner_options.strip() else []
+                child_command = resolve_swarm_child_command(
+                    runner=payload.runner,
+                    runner_model=payload.runner_model,
+                    runner_args=runner_options,
+                    child_command=(),
+                    prompt_template=(
+                        "The authoritative task spec is stored at {spec}.\n\n"
+                        "<task_spec>\n"
+                        "{spec_contents}\n"
+                        "</task_spec>\n\n"
+                        "Work directly in the current repository, make only the requested "
+                        "changes, do not commit, and print a concise summary of what you "
+                        "changed or why you left it unchanged."
+                    ),
+                )
+                runner_name, runner_model = resolve_swarm_runner_metadata(
+                    runner=payload.runner,
+                    runner_model=payload.runner_model,
+                    child_command=child_command,
+                )
+            else:
+                child_command = resolve_swarm_provider_command(payload.provider)
+                runner_name = payload.provider
+                runner_model = payload.model or ""
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        state, state_path = initialize_swarm_run(
+            root=root,
+            repo_root=project_root,
+            spec_path=resolved_spec_path,
+            spec_source_path=resolved_spec_source,
+            spec_resolution=spec_resolution,
+            used_program_md=used_program_md,
+            runner_name=runner_name,
+            runner_model=runner_model,
+            child_command=child_command,
+            runs=payload.runs,
+            validation_commands=[],
+            keep_worktrees=payload.keep_worktrees,
+            detached=True,
+            continuous=payload.continuous,
+            launch_provider=payload.provider,
+            launch_effort=payload.effort,
+            evaluator_backend=payload.evaluator_backend,
+            evaluator_model=payload.evaluator_model or "",
+            max_no_progress_waves=payload.max_idle_waves,
+            max_evaluator_failures=payload.max_evaluator_failures,
+        )
+        if payload.provider != "cli":
+            state.limitations.append(
+                "Provider-backed swarm children only run bounded tool loops plus structural git-diff validation unless explicit validation commands are configured."
+            )
+        coordinator_pid, log_path = spawn_swarm_coordinator(
+            root,
+            project_root,
+            state_path,
+            env_overrides=provider_env,
+        )
+        state.coordinator_pid = coordinator_pid
+        state.coordinator_log_path = str(log_path)
+        save_swarm_state(state_path, state)
+        return {
+            "run_id": state.run_id,
+            "status": "running",
+            "state_path": str(state_path),
+            "coordinator_pid": coordinator_pid,
+            "log_path": str(log_path),
+        }
+
+    @app.get("/v1/swarm/runs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_runs() -> list[dict[str, Any]]:
+        root = Path(cfg.atelier_root)
+        states = list_swarm_runs(root)
+        payload: list[dict[str, Any]] = []
+        for state in states:
+            latest_wave = state.waves[-1] if state.waves else None
+            spec_payload = build_swarm_spec_payload(state)
+            payload.append(
+                {
+                    "run_id": state.run_id,
+                    "status": state.status,
+                    "mode": state.mode,
+                    "repo_root": state.repo_root,
+                    "repo_label": Path(state.repo_root).name,
+                    "runner_name": state.runner_name,
+                    "runner_model": state.runner_model,
+                    "launch_provider": state.launch_provider,
+                    "launch_effort": state.launch_effort,
+                    "evaluator_backend": state.evaluator_backend,
+                    "evaluator_model": state.evaluator_model,
+                    "convergence_status": state.convergence_status,
+                    "convergence_summary": state.convergence_summary,
+                    "next_wave_directives": list(state.next_wave_directives),
+                    "max_no_progress_waves": state.max_no_progress_waves,
+                    "consecutive_no_progress_waves": state.consecutive_no_progress_waves,
+                    "current_wave": state.current_wave,
+                    "max_runs": state.max_runs or state.runs,
+                    "planned_runs": latest_wave.planned_runs if latest_wave else 0,
+                    "planning_mode": latest_wave.planning_mode if latest_wave else state.planning_mode,
+                    "accepted_child_ids": state.accepted_child_ids,
+                    "primary_winner_child_id": state.primary_winner_child_id or state.winner_child_id,
+                    "failed_children": [child.child_id for child in state.children if child.status == "failed"],
+                    "running_children": [
+                        {
+                            "child_id": child.child_id,
+                            "activity": child.current_activity,
+                            "last_output_at": child.last_output_at,
+                        }
+                        for child in state.children
+                        if child.status == "running"
+                    ],
+                    "spec_title": spec_payload["title"],
+                    "spec_excerpt": spec_payload["excerpt"],
+                    "spec_resolution": state.spec_resolution,
+                    "used_program_md": state.used_program_md,
+                    "created_at": state.created_at,
+                    "updated_at": state.updated_at,
+                }
+            )
+        return payload
+
+    @app.get("/v1/swarm/runs/{run_id}", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_run(run_id: str) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = load_swarm_state(state_path)
+        return {
+            "run": state.model_dump(mode="json"),
+            "spec": build_swarm_spec_payload(state),
+            "export": build_swarm_export_payload(state),
+            "apply": build_swarm_apply_payload(state),
+        }
+
+    @app.get("/v1/swarm/runs/{run_id}/logs", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_logs(
+        run_id: str,
+        child_id: str | None = None,
+        stderr: bool = False,
+        tail: int = 40,
+    ) -> dict[str, Any]:
+        try:
+            content = read_swarm_log(
+                Path(cfg.atelier_root),
+                run_id,
+                child_id=child_id,
+                stderr=stderr,
+                tail=tail,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "run_id": run_id,
+            "child_id": child_id,
+            "stderr": stderr,
+            "tail": tail,
+            "content": content,
+        }
+
+    @app.get("/v1/swarm/runs/{run_id}/export", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_export(run_id: str) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        return build_swarm_export_payload(load_swarm_state(state_path))
+
+    @app.get("/v1/swarm/runs/{run_id}/apply", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def get_swarm_apply(run_id: str, wave: int | None = None, child_id: str | None = None) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = load_swarm_state(state_path)
+        try:
+            return build_swarm_apply_payload(state, wave_index=wave, child_id=child_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/swarm/runs/{run_id}/stop", tags=["swarm"], dependencies=[Depends(verify_api_key)])
+    def post_swarm_stop(run_id: str, cleanup: bool = False) -> dict[str, Any]:
+        state_path = resolve_state_path(Path(cfg.atelier_root), run_id)
+        if not state_path.exists():
+            raise HTTPException(status_code=404, detail=f"unknown swarm run: {run_id}")
+        state = stop_swarm_run(root=Path(cfg.atelier_root), state_path=state_path, cleanup=cleanup)
+        return state.model_dump(mode="json")
 
     return app
 

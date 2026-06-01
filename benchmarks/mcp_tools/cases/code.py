@@ -1,4 +1,4 @@
-"""Benchmark cases for the `code` MCP tool.
+"""Benchmark cases for the public code-intel MCP tools.
 
 Savings vs baseline come from:
 - Symbol-level abstraction: return signature/location, not full file content
@@ -17,12 +17,21 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import tiktoken
 
 from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
+from benchmarks.mcp_tools.repo_facts import (
+    CallRelationFact,
+    collect_call_relation_facts,
+    collect_repo_file_facts,
+    collect_symbol_facts,
+    symbols_with_text_references,
+    unique_symbol_facts,
+)
 
 # ---------------------------------------------------------------------------
 # Assertions helpers
@@ -38,6 +47,9 @@ def _repo_root() -> Path:
     if value:
         return Path(value)
     return Path(__file__).resolve().parents[3]
+
+
+DEFAULT_REPO_ROOT = str(_repo_root())
 
 
 def _run_cmd(argv: list[str], *, cwd: Path, max_chars: int = 80_000) -> dict[str, Any]:
@@ -71,14 +83,26 @@ def _count_text_tokens(text: str) -> int:
 def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]]:
     common_cmds = [
         ["find", "src", "tests", "benchmarks", "-type", "f", "-name", "*.py"],
-        ["rg", "-n", "tool_code|mcp_tool|classify_command|run_command", "src", "tests", "benchmarks"],
+        [
+            "rg",
+            "-n",
+            "tool_code|mcp_tool|classify_command|run_command",
+            "src",
+            "tests",
+            "benchmarks",
+        ],
     ]
     by_op: dict[str, tuple[list[list[str]], list[str]]] = {
         "index": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "def\\s+|class\\s+", "src/atelier/gateway/adapters/mcp_server.py"],
-                ["rg", "-n", "def\\s+tool_|def\\s+search_symbols|def\\s+_tool_call_graph", "src/atelier/core/capabilities/code_context/engine.py"],
+                [
+                    "rg",
+                    "-n",
+                    "def\\s+tool_|def\\s+search_symbols|def\\s+_tool_call_graph",
+                    "src/atelier/core/capabilities/code_context/engine.py",
+                ],
             ],
             [
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -90,10 +114,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "search": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "classify_command|run_command", "src/atelier"],
-                ["rg", "-n", "search_symbols|tool_search|resolve_search_mode", "src/atelier/core/capabilities/code_context/engine.py"],
+                [
+                    "rg",
+                    "-n",
+                    "search_symbols|tool_search|resolve_search_mode",
+                    "src/atelier/core/capabilities/code_context/engine.py",
+                ],
             ],
             [
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -103,8 +132,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "symbol": (
-            common_cmds
-            + [["rg", "-n", "classify_command", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "classify_command",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -112,8 +148,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "hover": (
-            common_cmds
-            + [["rg", "-n", "classify_command|CommandPolicyDecision", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "classify_command|CommandPolicyDecision",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -121,8 +164,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "outline": (
-            common_cmds
-            + [["rg", "-n", "^def\\s+|^class\\s+", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "^def\\s+|^class\\s+",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -130,8 +180,8 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "usages": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "run_command\\(", "src", "tests", "benchmarks"],
                 ["rg", "-n", "run_command", "src", "tests", "benchmarks"],
             ],
@@ -143,10 +193,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "callers": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "run_command\\(", "src", "tests", "benchmarks"],
-                ["rg", "-n", "_run_shell_tool|tool_shell", "src/atelier/gateway/adapters/mcp_server.py"],
+                [
+                    "rg",
+                    "-n",
+                    "_run_shell_tool|tool_shell",
+                    "src/atelier/gateway/adapters/mcp_server.py",
+                ],
             ],
             [
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -156,8 +211,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "callees": (
-            common_cmds
-            + [["rg", "-n", "classify_command|_is_|split\\(", "src/atelier/core/capabilities/tool_supervision/bash_exec.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "classify_command|_is_|split\\(",
+                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -165,8 +227,15 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "pattern": (
-            common_cmds
-            + [["rg", "-n", "@mcp_tool\\(|mcp_tool\\(", "src/atelier/gateway/adapters/mcp_server.py"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "@mcp_tool\\(|mcp_tool\\(",
+                    "src/atelier/gateway/adapters/mcp_server.py",
+                ],
+            ],
             [
                 "src/atelier/gateway/adapters/mcp_server.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -174,8 +243,17 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "impact": (
-            common_cmds
-            + [["rg", "-n", "bash_exec|tool_supervision\\.bash_exec", "src", "tests", "benchmarks"]],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "bash_exec|tool_supervision\\.bash_exec",
+                    "src",
+                    "tests",
+                    "benchmarks",
+                ],
+            ],
             [
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/gateway/adapters/mcp_server.py",
@@ -184,8 +262,8 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "context": (
-            common_cmds
-            + [
+            [
+                *common_cmds,
                 ["rg", "-n", "tool_code|tool_context|tool_search|tool_symbol", "src/atelier"],
                 ["rg", "-n", "test_tool_code_|code_context", "tests/gateway", "tests/core"],
             ],
@@ -198,9 +276,16 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
             ],
         ),
         "cache_status": (
-            common_cmds
-            + [
-                ["rg", "-n", "tool_cache_status|cache_invalidate|entries_by_tool", "src/atelier", "tests/core", "tests/gateway"],
+            [
+                *common_cmds,
+                [
+                    "rg",
+                    "-n",
+                    "tool_cache_status|cache_invalidate|entries_by_tool",
+                    "src/atelier",
+                    "tests/core",
+                    "tests/gateway",
+                ],
             ],
             [
                 "src/atelier/core/capabilities/code_context/engine.py",
@@ -240,7 +325,9 @@ def _build_measured_baseline(case: BenchCase) -> BaselineMeasurement:
 
 
 def _assert_ok(result: dict[str, Any]) -> None:
-    assert "error" not in result, f"unexpected error: {result.get('error')} / {result.get('message')}"
+    assert "error" not in result, (
+        f"unexpected error: {result.get('error')} / {result.get('message')}"
+    )
 
 
 def _assert_has(result: dict[str, Any], *keys: str) -> None:
@@ -266,8 +353,12 @@ def _assert_index(result: dict[str, Any]) -> None:
     files_indexed = int(result.get("files_indexed", 0))
     symbols_indexed = int(result.get("symbols_indexed", 0))
     # Harden benchmark: ensure this is a real repo-scale index, not a tiny subset.
-    assert files_indexed >= 500, f"index must process repo-scale files, got files_indexed={files_indexed}"
-    assert symbols_indexed >= 5000, f"index must process repo-scale symbols, got symbols_indexed={symbols_indexed}"
+    assert files_indexed >= 500, (
+        f"index must process repo-scale files, got files_indexed={files_indexed}"
+    )
+    assert symbols_indexed >= 5000, (
+        f"index must process repo-scale symbols, got symbols_indexed={symbols_indexed}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -281,13 +372,21 @@ def _assert_search_semantic(result: dict[str, Any]) -> None:
     assert "items" in result or "matches" in result or "hits" in result or "results" in result, (
         f"semantic search must return items/matches/hits/results, got keys={list(result)}"
     )
-    items = result.get("items") or result.get("matches") or result.get("hits") or result.get("results") or []
+    items = (
+        result.get("items")
+        or result.get("matches")
+        or result.get("hits")
+        or result.get("results")
+        or []
+    )
     assert len(items) > 0, (
         f"semantic search for 'classify shell commands' must return at least one hit, got: {result}"
     )
     for item in items:
         fp = str(item.get("path") or item.get("file_path", ""))
-        assert fp.startswith("src/"), f"search results must be filtered to src/, got file_path={fp!r}"
+        assert fp.startswith("src/"), (
+            f"search results must be filtered to src/, got file_path={fp!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -310,10 +409,56 @@ def _assert_search_lexical(result: dict[str, Any]) -> None:
 def _assert_search_compact_location_only(result: dict[str, Any]) -> None:
     _assert_search_lexical(result)
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### search"), f"compact search must render markdown, got: {rendered[:120]!r}"
+    assert rendered, "compact search must render a non-empty summary"
     assert "src/atelier/core/capabilities/tool_supervision/bash_exec.py" in rendered
     assert "classify shell command text" not in rendered
     assert "```" not in rendered
+
+
+def _assert_search_target_view(result: dict[str, Any]) -> None:
+    _assert_search_lexical(result)
+    assert result.get("view") == "target"
+    assert result.get("has_more_context") is True
+    items = result.get("items")
+    assert isinstance(items, list) and items, "target view must return primary items"
+    first = items[0]
+    assert isinstance(first, dict)
+    assert first.get("role") == "definition"
+    assert "path" in first and "line" in first, f"target item must be a pointer, got {first}"
+    assert "content_hash" not in first and "symbol_id" not in first, (
+        f"target item should not expose internal fields, got {first}"
+    )
+    assert result.get("suggested_next") == [
+        {"op": "usages", "query": "run_command"},
+        {"op": "context", "query": "run_command"},
+    ]
+
+
+def _assert_search_graph_view(result: dict[str, Any]) -> None:
+    _assert_ok(result)
+    assert result.get("view") == "graph"
+    assert "items" not in result, "graph view should not mix relationship rows into items"
+    target = result.get("target")
+    assert isinstance(target, dict), "graph view must include the selected target"
+    assert target.get("name") == "run_command"
+    related = result.get("related")
+    assert isinstance(related, dict), "graph view must include related buckets"
+    for key in ("imports", "usages", "callers", "callees"):
+        assert key in related, f"graph view missing related.{key}"
+        assert isinstance(related[key], list), f"related.{key} must be a list"
+    assert related["usages"] or related["callers"], (
+        f"graph view should surface usage/caller evidence, got {related}"
+    )
+
+
+def _assert_search_explain_view(result: dict[str, Any]) -> None:
+    graph_shape = {key: value for key, value in result.items() if key != "items"}
+    _assert_search_graph_view({**graph_shape, "view": "graph"})
+    assert result.get("view") == "explain"
+    items = result.get("items")
+    assert isinstance(items, list) and items, "explain view must preserve primary targets"
+    assert "explanation" in result
+    assert "related" in result
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +482,7 @@ def _assert_symbol(result: dict[str, Any]) -> None:
 def _assert_symbol_compact_no_full_source(result: dict[str, Any]) -> None:
     _assert_symbol(result)
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### symbol"), f"compact symbol must render markdown, got: {rendered[:120]!r}"
+    assert rendered, "compact symbol must render a non-empty summary"
     assert "classify_command" in rendered
     assert "return CommandPolicyDecision" not in rendered
     assert "```" not in rendered
@@ -390,7 +535,7 @@ def _assert_outline_compact_members(result: dict[str, Any]) -> None:
         return
     _assert_outline(result)
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### outline"), f"compact outline must render markdown, got: {rendered[:120]!r}"
+    assert rendered, "compact outline must render a non-empty summary"
     assert "bash_exec.py" in rendered
     assert "```" not in rendered
 
@@ -420,15 +565,13 @@ def _assert_usages(result: dict[str, Any]) -> None:
 def _assert_callers(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
-    assert "run_command" in text, (
-        f"callers result must reference run_command, got: {text[:300]!r}"
-    )
+    assert "run_command" in text, f"callers result must reference run_command, got: {text[:300]!r}"
     if result.get("data_status") == "unavailable":
         return
     # _run_shell_tool in mcp_server.py calls run_command
-    assert any(name in text for name in ("mcp_server", "_run_shell_tool", "bench_shell", "test_")), (
-        f"callers must surface at least one known caller file, got: {text[:400]!r}"
-    )
+    assert any(
+        name in text for name in ("mcp_server", "_run_shell_tool", "bench_shell", "test_")
+    ), f"callers must surface at least one known caller file, got: {text[:400]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -482,37 +625,17 @@ def _assert_impact(result: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _assert_context(result: dict[str, Any]) -> None:
-    _assert_ok(result)
-    text = str(result)
-    # Task: "add a new MCP tool handler" → should surface mcp_server.py and engine.py
-    assert "mcp_server" in text or "tool_code" in text or "mcp_tool" in text, (
-        f"context for 'new MCP tool' must surface mcp_server or tool_, got: {text[:400]!r}"
-    )
-
-
-def _assert_context_compact_sections(result: dict[str, Any]) -> None:
-    _assert_context(result)
-    rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### context"), f"compact context must render markdown, got: {rendered[:120]!r}"
-    assert "#### entry_points" in rendered
-    assert "#### related_symbols" in rendered
-    assert "#### code_blocks" in rendered
-
-
 def _assert_index_compact_summary(result: dict[str, Any]) -> None:
     _assert_index(result)
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### index"), f"compact index must render markdown, got: {rendered[:120]!r}"
+    assert rendered, "compact index must render a non-empty summary"
     assert "counts: files=" in rendered
 
 
 def _assert_cache_status_compact(result: dict[str, Any]) -> None:
     _assert_has(result, "entry_count", "entries_by_tool", "total_bytes", "max_bytes")
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### cache_status"), (
-        f"compact cache_status must render markdown, got: {rendered[:120]!r}"
-    )
+    assert rendered, "compact cache_status must render a non-empty summary"
     assert "payload_json" not in str(result)
 
 
@@ -520,8 +643,8 @@ def _assert_impact_symbol_target(result: dict[str, Any]) -> None:
     _assert_impact(result)
     assert result.get("target_type") == "symbol"
     rendered = str(result.get("rendered") or "")
-    assert rendered.startswith("### impact"), f"compact impact must render markdown, got: {rendered[:120]!r}"
-    assert "symbol " in rendered
+    assert rendered, "compact impact must render a non-empty summary"
+    assert "target: symbol" in rendered
 
 
 def _assert_search_stress(result: dict[str, Any]) -> None:
@@ -542,7 +665,9 @@ def _assert_call_graph_stress(result: dict[str, Any]) -> None:
         f"stress callers should be available after fallback, got data_status={result.get('data_status')!r}"
     )
     edge_count = int(result.get("edge_count", 0))
-    assert edge_count >= 1, f"stress callers should return at least one edge, got edge_count={edge_count}"
+    assert edge_count >= 1, (
+        f"stress callers should return at least one edge, got edge_count={edge_count}"
+    )
 
 
 def _assert_outline_stress(result: dict[str, Any]) -> None:
@@ -562,6 +687,170 @@ def _assert_pattern_stress(result: dict[str, Any]) -> None:
     )
 
 
+def _assert_generated_search(
+    result: dict[str, Any], expected_name: str, expected_path: str
+) -> None:
+    _assert_ok(result)
+    items = result.get("items") or []
+    assert isinstance(items, list) and items, "generated lexical search must return items"
+    first = items[0]
+    assert isinstance(first, dict), f"search hit must be dict, got {type(first).__name__}"
+    assert (first.get("name") or first.get("symbol_name")) == expected_name, (
+        f"expected top hit name {expected_name!r}, got {first!r}"
+    )
+    hit_path = str(first.get("path") or first.get("file_path") or "")
+    assert expected_path in hit_path, f"expected path {expected_path!r}, got {hit_path!r}"
+
+
+def _assert_generated_symbol(
+    result: dict[str, Any], expected_name: str, expected_path: str
+) -> None:
+    _assert_ok(result)
+    text = str(result)
+    assert expected_name in text, f"symbol result must include {expected_name!r}"
+    assert expected_path in text, f"symbol result must include {expected_path!r}"
+    assert any(k in result for k in ("source", "signature", "line", "line_number", "body")), (
+        f"symbol must include source/signature/line, got keys={list(result)}"
+    )
+
+
+def _assert_generated_hover(result: dict[str, Any], expected_name: str, expected_path: str) -> None:
+    _assert_ok(result)
+    text = str(result)
+    assert expected_name in text or expected_path in text, (
+        f"hover result must include {expected_name!r} or {expected_path!r}, got: {text[:300]!r}"
+    )
+
+
+def _assert_generated_outline(
+    result: dict[str, Any], expected_path: str, expected_symbols: tuple[str, ...]
+) -> None:
+    _assert_ok(result)
+    text = str(result)
+    assert expected_path in text, f"outline result must include {expected_path!r}"
+    assert any(symbol in text for symbol in expected_symbols), (
+        f"outline result must include one of {expected_symbols!r}"
+    )
+
+
+def _search_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_generated_search(result, expected_name, expected_path)
+
+    return _assert
+
+
+def _symbol_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_generated_symbol(result, expected_name, expected_path)
+
+    return _assert
+
+
+def _hover_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_generated_hover(result, expected_name, expected_path)
+
+    return _assert
+
+
+def _outline_assert(
+    expected_path: str, expected_symbols: tuple[str, ...]
+) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_generated_outline(result, expected_path, expected_symbols)
+
+    return _assert
+
+
+def _node_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_generated_symbol(result, expected_name, expected_path)
+
+    return _assert
+
+
+def _callers_assert(expected_name: str, expected_paths: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_ok(result)
+        text = str(result)
+        assert expected_name in text, f"callers result must include {expected_name!r}"
+        if result.get("data_status") == "unavailable":
+            return
+        assert any(path in text for path in expected_paths), (
+            f"callers result must include one of {expected_paths!r}, got: {text[:400]!r}"
+        )
+
+    return _assert
+
+
+def _callees_assert(expected_name: str, expected_paths: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_ok(result)
+        text = str(result)
+        assert expected_name in text, f"callees result must include {expected_name!r}"
+        assert any(path in text for path in expected_paths), (
+            f"callees result must include one of {expected_paths!r}, got: {text[:400]!r}"
+        )
+
+    return _assert
+
+
+def _usages_assert(expected_name: str, expected_paths: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_ok(result)
+        text = str(result)
+        assert expected_name in text, f"usages result must include {expected_name!r}"
+        assert any(path in text for path in expected_paths), (
+            f"usages result must include one of {expected_paths!r}, got: {text[:400]!r}"
+        )
+
+    return _assert
+
+
+def _impact_assert(expected_paths: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_ok(result)
+        text = str(result)
+        assert any(path in text for path in expected_paths), (
+            f"impact result must include one of {expected_paths!r}, got: {text[:400]!r}"
+        )
+
+    return _assert
+
+
+def _explore_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
+    def _assert(result: dict[str, Any]) -> None:
+        _assert_ok(result)
+        text = str(result)
+        assert expected_name in text, f"explore result must include {expected_name!r}"
+        assert expected_path in text, f"explore result must include {expected_path!r}"
+
+    return _assert
+
+
+def _group_callers(relations: list[CallRelationFact]) -> list[tuple[str, tuple[str, ...]]]:
+    grouped: dict[str, set[str]] = {}
+    for relation in relations:
+        grouped.setdefault(relation.callee.name, set()).add(relation.caller.path)
+    return [
+        (name, tuple(sorted(paths)))
+        for name, paths in sorted(grouped.items(), key=lambda item: item[0])
+        if paths
+    ]
+
+
+def _group_callees(relations: list[CallRelationFact]) -> list[tuple[str, tuple[str, ...]]]:
+    grouped: dict[str, set[str]] = {}
+    for relation in relations:
+        grouped.setdefault(relation.caller.name, set()).add(relation.callee.path)
+    return [
+        (name, tuple(sorted(paths)))
+        for name, paths in sorted(grouped.items(), key=lambda item: item[0])
+        if paths
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Case definitions
 # ---------------------------------------------------------------------------
@@ -572,8 +861,17 @@ CODE_CASES: list[BenchCase] = [
         label="index — build code index before query benchmarks",
         args={
             "op": "index",
+            "repo_root": DEFAULT_REPO_ROOT,
             "include_globs": ["src/**/*.py", "tests/**/*.py", "benchmarks/**/*.py"],
-            "exclude_globs": [".claude/**", ".git/**", ".venv/**", "node_modules/**", "dist/**", "build/**"],
+            "exclude_globs": [
+                ".claude/**",
+                ".git/**",
+                ".venv/**",
+                "node_modules/**",
+                "dist/**",
+                "build/**",
+            ],
+            "force": True,
             "budget_tokens": 1200,
             "render_compact": True,
         },
@@ -616,6 +914,57 @@ CODE_CASES: list[BenchCase] = [
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
     BenchCase(
+        op="search",
+        label="search/view-target — pointer-first primary results",
+        args={
+            "op": "search",
+            "query": "run_command",
+            "mode": "lexical",
+            "view": "target",
+            "limit": 5,
+            "file_glob": "src/**/*.py",
+            "budget_tokens": 600,
+        },
+        assert_keys=[],
+        custom_assert=_assert_search_target_view,
+        baseline_builder=_build_measured_baseline,
+        min_baseline_tokens=BASELINE_MIN_TOKENS,
+    ),
+    BenchCase(
+        op="search",
+        label="search/view-graph — relationships separated from items",
+        args={
+            "op": "search",
+            "query": "run_command",
+            "mode": "lexical",
+            "view": "graph",
+            "limit": 10,
+            "file_glob": "src/**/*.py",
+            "budget_tokens": 1200,
+        },
+        assert_keys=[],
+        custom_assert=_assert_search_graph_view,
+        baseline_builder=_build_measured_baseline,
+        min_baseline_tokens=BASELINE_MIN_TOKENS,
+    ),
+    BenchCase(
+        op="search",
+        label="search/view-explain — targets plus graph evidence",
+        args={
+            "op": "search",
+            "query": "run_command",
+            "mode": "lexical",
+            "view": "explain",
+            "limit": 10,
+            "file_glob": "src/**/*.py",
+            "budget_tokens": 1400,
+        },
+        assert_keys=[],
+        custom_assert=_assert_search_explain_view,
+        baseline_builder=_build_measured_baseline,
+        min_baseline_tokens=BASELINE_MIN_TOKENS,
+    ),
+    BenchCase(
         op="symbol",
         label="symbol — full definition from symbol name",
         args={
@@ -636,7 +985,7 @@ CODE_CASES: list[BenchCase] = [
         args={
             "op": "hover",
             "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-            "line": 129,
+            "line": 133,
             "budget_tokens": 300,
         },
         assert_keys=[],
@@ -748,20 +1097,6 @@ CODE_CASES: list[BenchCase] = [
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
     BenchCase(
-        op="context",
-        label="context — task-based surfacing for 'add new MCP tool handler'",
-        args={
-            "op": "context",
-            "task": "add a new MCP tool handler to the MCP server with proper schema validation",
-            "budget_tokens": 2000,
-            "render_compact": True,
-        },
-        assert_keys=[],
-        custom_assert=_assert_context_compact_sections,
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
-    BenchCase(
         op="cache_status",
         label="cache_status — compact diagnostics summary only",
         args={
@@ -789,7 +1124,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_search_stress,
-        spill_probe_pattern="\"symbol_name\": \"",
+        spill_probe_pattern='"symbol_name": "',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
@@ -839,7 +1174,7 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_pattern_stress,
-        spill_probe_pattern="\"matches\"",
+        spill_probe_pattern='"matches"',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
@@ -854,23 +1189,219 @@ CODE_CASES: list[BenchCase] = [
         },
         assert_keys=[],
         custom_assert=_assert_outline_stress,
-        spill_probe_pattern="\"symbol_count\"",
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
-    BenchCase(
-        op="context",
-        label="stress/context — broad architecture context pack",
-        args={
-            "op": "context",
-            "task": "map full MCP tool architecture including schema, dispatch, indexing, caching, call graphs, pattern ops, and tests",
-            "max_symbols": 30,
-            "budget_tokens": 12000,
-        },
-        assert_keys=[],
-        custom_assert=_assert_context,
-        spill_probe_pattern="\"content\"",
+        spill_probe_pattern='"symbol_count"',
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
 ]
+
+
+def _build_generated_code_cases() -> list[BenchCase]:
+    repo_root = _repo_root()
+    symbol_facts, _ = collect_symbol_facts(repo_root)
+    unique_symbols = unique_symbol_facts(symbol_facts)
+    file_facts = [fact for fact in collect_repo_file_facts(repo_root) if fact.symbols]
+    call_relations = collect_call_relation_facts(repo_root)
+    callers_targets = _group_callers(call_relations)
+    callees_targets = _group_callees(call_relations)
+    referenced_symbols = symbols_with_text_references(repo_root, unique_symbols, minimum_mentions=3)
+
+    search_symbols = unique_symbols[:75]
+    symbol_targets = unique_symbols[75:150]
+    hover_targets = unique_symbols[150:225]
+    outline_targets = file_facts[:75]
+    node_targets = unique_symbols[225:525]
+    explore_targets = unique_symbols[525:825]
+    usages_targets = referenced_symbols[:300]
+    impact_targets = callers_targets[:300]
+    callers_cases = callers_targets[:300]
+    callees_cases = callees_targets[:300]
+
+    assert len(search_symbols) == 75, "not enough unique symbols for generated code search cases"
+    assert len(symbol_targets) == 75, "not enough unique symbols for generated code symbol cases"
+    assert len(hover_targets) == 75, "not enough unique symbols for generated code hover cases"
+    assert len(outline_targets) == 75, "not enough outline files for generated code outline cases"
+    assert len(node_targets) == 300, "not enough unique symbols for generated node cases"
+    assert len(explore_targets) == 300, "not enough unique symbols for generated explore cases"
+    assert len(usages_targets) == 300, "not enough referenced symbols for generated usages cases"
+    assert len(impact_targets) == 300, "not enough impact targets for generated impact cases"
+    assert len(callers_cases) == 300, "not enough caller targets for generated callers cases"
+    assert len(callees_cases) == 300, "not enough callee targets for generated callees cases"
+
+    cases: list[BenchCase] = []
+    for index, symbol in enumerate(search_symbols, start=1):
+        cases.append(
+            BenchCase(
+                op="search",
+                label=f"generated/search-lexical/{index:03d}",
+                args={
+                    "op": "search",
+                    "query": symbol.name,
+                    "mode": "lexical",
+                    "limit": 5,
+                    "file_glob": "src/**/*.py",
+                    "budget_tokens": 600,
+                    "render_compact": True,
+                },
+                custom_assert=_search_assert(symbol.name, symbol.path),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, symbol in enumerate(symbol_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="symbol",
+                label=f"generated/symbol/{index:03d}",
+                args={
+                    "op": "symbol",
+                    "symbol_name": symbol.name,
+                    "snippet": "head",
+                    "budget_tokens": 900,
+                    "render_compact": True,
+                },
+                custom_assert=_symbol_assert(symbol.name, symbol.path),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, symbol in enumerate(hover_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="hover",
+                label=f"generated/hover/{index:03d}",
+                args={
+                    "op": "hover",
+                    "path": symbol.path,
+                    "line": symbol.line,
+                    "budget_tokens": 300,
+                },
+                custom_assert=_hover_assert(symbol.name, symbol.path),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, fact in enumerate(outline_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="outline",
+                label=f"generated/outline/{index:03d}",
+                args={
+                    "op": "outline",
+                    "path": fact.path,
+                    "limit": min(12, max(4, len(fact.symbols))),
+                    "budget_tokens": 1600,
+                    "render_compact": True,
+                },
+                custom_assert=_outline_assert(fact.path, fact.symbols[:3]),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, symbol in enumerate(node_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="node",
+                label=f"generated/node/{index:03d}",
+                args={
+                    "_tool": "node",
+                    "symbol": symbol.name,
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_node_assert(symbol.name, symbol.path),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, (symbol_name, caller_paths) in enumerate(callers_cases, start=1):
+        cases.append(
+            BenchCase(
+                op="callers",
+                label=f"generated/callers/{index:03d}",
+                args={
+                    "_tool": "callers",
+                    "symbol": symbol_name,
+                    "depth": 1,
+                    "limit": max(8, min(24, len(caller_paths) * 2)),
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_callers_assert(symbol_name, caller_paths[:3]),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, (symbol_name, callee_paths) in enumerate(callees_cases, start=1):
+        cases.append(
+            BenchCase(
+                op="callees",
+                label=f"generated/callees/{index:03d}",
+                args={
+                    "_tool": "callees",
+                    "symbol": symbol_name,
+                    "depth": 1,
+                    "limit": max(8, min(24, len(callee_paths) * 2)),
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_callees_assert(symbol_name, callee_paths[:3]),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, symbol in enumerate(usages_targets, start=1):
+        related_paths = tuple(
+            sorted({relation.caller.path for relation in call_relations if relation.callee.name == symbol.name})[:3]
+        ) or (symbol.path,)
+        cases.append(
+            BenchCase(
+                op="usages",
+                label=f"generated/usages/{index:03d}",
+                args={
+                    "_tool": "usages",
+                    "symbol": symbol.name,
+                    "limit": 24,
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_usages_assert(symbol.name, related_paths),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, (symbol_name, caller_paths) in enumerate(impact_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="impact",
+                label=f"generated/impact/{index:03d}",
+                args={
+                    "_tool": "impact",
+                    "query": symbol_name,
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_impact_assert(caller_paths[:3]),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    for index, symbol in enumerate(explore_targets, start=1):
+        cases.append(
+            BenchCase(
+                op="explore",
+                label=f"generated/explore/{index:03d}",
+                args={
+                    "_tool": "explore",
+                    "query": symbol.name,
+                    "seed_files": [symbol.path],
+                    "max_files": 4,
+                    "repo_root": DEFAULT_REPO_ROOT,
+                },
+                custom_assert=_explore_assert(symbol.name, symbol.path),
+                baseline_builder=_build_measured_baseline,
+                min_baseline_tokens=BASELINE_MIN_TOKENS,
+            )
+        )
+    return cases
+
+
+CODE_CASES.extend(_build_generated_code_cases())
+
+for case in CODE_CASES:
+    case.args.setdefault("repo_root", DEFAULT_REPO_ROOT)

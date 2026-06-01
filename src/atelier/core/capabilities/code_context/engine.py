@@ -8,6 +8,7 @@ import difflib
 import fnmatch
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -59,9 +60,10 @@ from atelier.core.capabilities.code_context.output_policy import (
     hard_cap_chars,
     resolve_output_policy,
 )
+from atelier.core.capabilities.code_context.rerank import SearchReranker
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.budget import count_tokens
-from atelier.core.capabilities.repo_map.graph import iter_source_files
+from atelier.core.capabilities.repo_map.graph import iter_source_files, should_skip_relative_path
 from atelier.core.foundation.paths import default_store_root
 from atelier.core.service.telemetry import emit_product_local
 from atelier.infra.code_intel.astgrep import (
@@ -78,8 +80,10 @@ if TYPE_CHECKING:
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
 _MAX_FILE_BYTES = 1_000_000
+logger = logging.getLogger(__name__)
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_PRECISE_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _SINCE_RELATIVE_RE = re.compile(r"^(?P<amount>\d+)(?P<unit>[dwmy])$")
 _JS_IMPORT_RE = re.compile(
     r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))"
@@ -151,7 +155,9 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
     "last_commit_msg",
     "matched_on",
 ]
-_SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score"])
+_SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score", "commit_sha"])
+_LINEAGE_INDEX_VERSION = 2
+_LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
 )
@@ -191,6 +197,7 @@ _EXPLORE_ESSENTIAL_KEYS = [
     "provenance",
 ]
 _EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
+_EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
 _IMPACT_ESSENTIAL_KEYS = [
     "target",
     "target_type",
@@ -255,7 +262,14 @@ _BLAME_ESSENTIAL_KEYS = [
     "file_path",
     "provenance",
 ]
-_BLAME_OPTIONAL_KEYS = ["index_sha", "head_sha", "last_modified", "last_commit_summary", "hunks", "churn"]
+_BLAME_OPTIONAL_KEYS = [
+    "index_sha",
+    "head_sha",
+    "last_modified",
+    "last_commit_summary",
+    "hunks",
+    "churn",
+]
 _OVERFLOW_SPILL_MIN_EXCESS_TOKENS = 128
 _OVERFLOW_SPILL_MIN_REDUCTION_TOKENS = 256
 DeletedHistoryItem = dict[str, Any]
@@ -454,6 +468,25 @@ def _identifier_terms(text: str) -> list[str]:
     return terms
 
 
+def _is_precise_symbol_query(query: str) -> bool:
+    return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
+
+
+def _exact_symbol_hits(hits: list[SymbolRecord], query: str) -> list[SymbolRecord]:
+    normalized_query = query.strip()
+    normalized_query_lower = normalized_query.lower()
+    case_sensitive = [
+        hit for hit in hits if hit.symbol_name == normalized_query or hit.qualified_name == normalized_query
+    ]
+    if case_sensitive:
+        return case_sensitive
+    return [
+        hit
+        for hit in hits
+        if hit.symbol_name.lower() == normalized_query_lower or hit.qualified_name.lower() == normalized_query_lower
+    ]
+
+
 def _query_implies_test_scope(query: str) -> bool:
     lowered = query.lower()
     return any(token in lowered for token in ("test", "tests", "spec", "pytest", "unittest"))
@@ -547,6 +580,7 @@ def _git_repo_class() -> Any:
     try:
         from git import Repo
     except Exception:  # pragma: no cover - optional dependency fallback
+        logging.exception("Recovered from broad exception handler")
         return None
     return Repo
 
@@ -561,6 +595,7 @@ class CodeContextEngine:
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
+        self._search_reranker = SearchReranker()
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -585,6 +620,11 @@ class CodeContextEngine:
         self._autosync_lock = threading.RLock()
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
+        self._lineage_thread: threading.Thread | None = None
+        self._lineage_rebuild_full = False
+        self._lineage_score_penalty: float = float(
+            os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
+        )
         self._register_symbol_intel_providers()
         if self._autosync_enabled:
             self._start_autosync_worker()
@@ -595,8 +635,35 @@ class CodeContextEngine:
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
         force: bool = True,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> IndexStats:
-        """Build or refresh the persistent symbol/import index for this repository."""
+        """Build or refresh the persistent symbol/import index for this repository.
+
+        Args:
+            include_globs: Glob patterns to include (default source-code patterns).
+            exclude_globs: Glob patterns to exclude.
+            force: If True (default), wipe and rebuild the full index. Pass
+                ``force=False`` for an incremental update (skip unchanged files).
+            progress_callback: Optional callback ``fn(current, total)`` called
+                after each file is processed during indexing.
+        """
+        with self._autosync_lock:
+            return self._index_repo_unsafe(
+                include_globs=include_globs,
+                exclude_globs=exclude_globs,
+                force=force,
+                progress_callback=progress_callback,
+            )
+
+    def _index_repo_unsafe(
+        self,
+        *,
+        include_globs: list[str] | None = None,
+        exclude_globs: list[str] | None = None,
+        force: bool = True,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> IndexStats:
+        """Unlocked inner — callers must hold ``self._autosync_lock``."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         files = [
             path
@@ -615,13 +682,15 @@ class CodeContextEngine:
                 conn.execute('DELETE FROM "references"')
                 conn.execute("DELETE FROM call_edges")
                 conn.execute("DELETE FROM files")
-                for path in files:
+                for idx, path in enumerate(files):
                     indexed, symbol_count, import_count = self._index_single_file(conn, path)
                     if not indexed:
                         continue
                     files_indexed += 1
                     symbols_indexed += symbol_count
                     imports_indexed += import_count
+                    if progress_callback is not None:
+                        progress_callback(idx + 1, len(files))
                 index_version = self._bump_index_version(conn)
             else:
                 existing_rows = conn.execute(
@@ -632,29 +701,39 @@ class CodeContextEngine:
                     str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
                 }
                 current_paths: set[str] = set()
-                for path in files:
+                for idx, path in enumerate(files):
                     rel = _safe_relpath(self.repo_root, path)
                     current_paths.add(rel)
                     try:
                         stat = path.stat()
                     except OSError:
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     if stat.st_size > _MAX_FILE_BYTES:
                         if rel in existing:
                             self._delete_file_index(conn, rel)
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
                     previous = existing.get(rel)
                     if previous == (content_hash, int(stat.st_size)):
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     self._delete_file_index(conn, rel)
                     indexed, symbol_count, import_count = self._index_single_file(conn, path, source_bytes=source_bytes)
                     if not indexed:
+                        if progress_callback is not None:
+                            progress_callback(idx + 1, len(files))
                         continue
                     files_indexed += 1
                     symbols_indexed += symbol_count
                     imports_indexed += import_count
+                    if progress_callback is not None:
+                        progress_callback(idx + 1, len(files))
                 removed_paths = set(existing.keys()) - current_paths
                 for rel in sorted(removed_paths):
                     self._delete_file_index(conn, rel)
@@ -784,7 +863,7 @@ class CodeContextEngine:
         *,
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
-        force: bool = True,
+        force: bool = False,  # incremental by default; pass force=True to full-rebuild
         budget_tokens: int = 4000,
     ) -> dict[str, Any]:
         effective_budget_tokens = self._effective_budget_tokens("index", budget_tokens)
@@ -821,6 +900,7 @@ class CodeContextEngine:
         touched_by: str | None = None,
         budget_tokens: int = 4000,
         auto_index: bool = True,
+        provenance_filter: str | None = None,
     ) -> dict[str, Any]:
         force_compact_snippet = self._should_force_search_compaction(scope=scope, snippet=snippet, limit=limit)
         effective_snippet: Literal["none", "head", "full"] = "none" if force_compact_snippet else snippet
@@ -836,6 +916,7 @@ class CodeContextEngine:
         temporal_scope = scope in {"repo", "deleted"}
         parsed_since = _parse_since_filter(since) if temporal_scope else None
         normalized_touched_by = _normalize_touched_by(touched_by) if temporal_scope else None
+        rerank_limit = self._search_reranker.pre_rerank_limit(limit, mode=resolved_mode, scope=scope)
         cache_args = {
             "query": query,
             "limit": limit,
@@ -851,7 +932,10 @@ class CodeContextEngine:
             "since_ts": parsed_since,
             "touched_by": normalized_touched_by,
             "budget_tokens": effective_budget_tokens,
-            "semantic_candidate_limit": semantic_candidate_limit(limit),
+            "semantic_candidate_limit": semantic_candidate_limit(rerank_limit),
+            "rerank_limit": rerank_limit,
+            "rerank": self._search_reranker.cache_fingerprint(mode=resolved_mode, scope=scope),
+            "provenance_filter": provenance_filter,
         }
         hit, cached = self._cache_get("code.search", cache_args)
         if hit and cached is not None:
@@ -887,6 +971,7 @@ class CodeContextEngine:
                 since=since,
                 touched_by=touched_by,
                 auto_index=False,
+                provenance_filter=provenance_filter,
             )
             items = [item.model_dump(mode="json", exclude_none=True) for item in raw_items]
         if scope == "repo" and (parsed_since is not None or normalized_touched_by is not None):
@@ -1473,7 +1558,11 @@ class CodeContextEngine:
                 file_entry["source_sections"] = merged_sections
             files_payload.append(file_entry)
 
-        relationships: dict[str, list[dict[str, Any]]] = {"callers": [], "callees": [], "usages": []}
+        relationships: dict[str, list[dict[str, Any]]] = {
+            "callers": [],
+            "callees": [],
+            "usages": [],
+        }
         if include_relationships:
             for symbol in trimmed_symbols[:3]:
                 callers = self.tool_callers(
@@ -2085,7 +2174,12 @@ class CodeContextEngine:
                         if not names_match(name):
                             continue
                         matches.append(
-                            build_match(rel, lines, decorator, captures={"decorator": name or target_name or ""})
+                            build_match(
+                                rel,
+                                lines,
+                                decorator,
+                                captures={"decorator": name or target_name or ""},
+                            )
                         )
             elif mode in {"call", "call_any"}:
                 for node in ast.walk(tree):
@@ -2160,6 +2254,7 @@ class CodeContextEngine:
             try:
                 health = provider.health()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 health = ProviderHealth(status="unhealthy", reason=str(exc))
             if isinstance(health, ProviderHealth):
                 entry["status"] = health.status
@@ -2320,6 +2415,7 @@ class CodeContextEngine:
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
+        provenance_filter: str | None = None,
     ) -> list[SymbolRecord]: ...
 
     @overload
@@ -2338,6 +2434,7 @@ class CodeContextEngine:
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
+        provenance_filter: str | None = None,
     ) -> list[DeletedHistoryItem]: ...
 
     def search_symbols(
@@ -2355,6 +2452,7 @@ class CodeContextEngine:
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
+        provenance_filter: str | None = None,
     ) -> list[SymbolRecord] | list[DeletedHistoryItem]:
         """Deterministic multi-channel symbol search with routed-provider fallback."""
         if auto_index and scope != "deleted":
@@ -2369,6 +2467,24 @@ class CodeContextEngine:
             )
         resolved_mode = resolve_search_mode(query, mode)
         candidate_files: set[str] | None = None
+        rerank_limit = self._search_reranker.pre_rerank_limit(limit, mode=resolved_mode, scope=scope)
+        if scope == "repo" and provenance_filter == "commit":
+            hits = self._search_commit_chunks(query, limit=rerank_limit)
+            if file_glob:
+                hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
+            hits = [hit for hit in hits if not should_skip_relative_path(hit.file_path)]
+            if _is_precise_symbol_query(query):
+                exact_hits = _exact_symbol_hits(hits, query)
+                if exact_hits:
+                    hits = exact_hits
+            hits = self._search_reranker.rerank(
+                query,
+                hits,
+                mode=resolved_mode,
+                scope=scope,
+                source_loader=self._load_symbol_source_for_rerank,
+            )
+            return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
         if scope == "repo" and resolved_mode != "semantic":
             candidate_files = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
         if resolved_mode == "lexical":
@@ -2384,7 +2500,7 @@ class CodeContextEngine:
                     candidate_files=candidate_files,
                 )
         else:
-            candidate_limit = semantic_candidate_limit(limit)
+            candidate_limit = semantic_candidate_limit(rerank_limit)
             if scope == "external":
                 hits = self.intel_store.search_symbols(
                     query,
@@ -2417,13 +2533,32 @@ class CodeContextEngine:
                     kind=kind,
                     language=language,
                 )
-                hits = (
-                    semantic_hits[:limit]
-                    if resolved_mode == "semantic"
-                    else self._semantic_ranker.reciprocal_rank_fuse(lexical_hits, semantic_hits, limit=limit)
-                )
+                # Merge commit chunks as a third candidate source (LINEAGE-03)
+                commit_hits: list[SymbolRecord] = []
+                with contextlib.suppress(Exception):
+                    commit_hits = self._search_commit_chunks(query, limit=candidate_limit)
+                if resolved_mode == "semantic":
+                    hits = (semantic_hits + commit_hits)[:rerank_limit]
+                else:
+                    hits = self._semantic_ranker.reciprocal_rank_fuse(
+                        lexical_hits, semantic_hits + commit_hits, limit=rerank_limit
+                    )
         if file_glob:
             hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
+        hits = [hit for hit in hits if not should_skip_relative_path(hit.file_path)]
+        if provenance_filter is not None:
+            hits = [h for h in hits if h.provenance == provenance_filter]
+        if _is_precise_symbol_query(query):
+            exact_hits = _exact_symbol_hits(hits, query)
+            if exact_hits:
+                hits = exact_hits
+        hits = self._search_reranker.rerank(
+            query,
+            hits,
+            mode=resolved_mode,
+            scope=scope,
+            source_loader=self._load_symbol_source_for_rerank,
+        )
         return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
 
     def _search_symbols_local(
@@ -2668,7 +2803,11 @@ class CodeContextEngine:
                         str(item[1]["qualified_name"]),
                     )
                 )
-                consider_rows([row for _, row in fuzzy_scored[:strong_fetch_limit]], channel_rank=7, base=640.0)
+                consider_rows(
+                    [row for _, row in fuzzy_scored[:strong_fetch_limit]],
+                    channel_rank=7,
+                    base=640.0,
+                )
 
         ranked = sorted(
             scored.values(),
@@ -2863,7 +3002,10 @@ class CodeContextEngine:
         symbol_hits = self.search_symbols(task, limit=bounded_max_symbols, auto_index=False)
         seed_symbols = self._symbols_for_files(
             context_seed_files,
-            limit=max(bounded_max_symbols * max(1, context_policy.max_symbols_per_file), bounded_max_symbols),
+            limit=max(
+                bounded_max_symbols * max(1, context_policy.max_symbols_per_file),
+                bounded_max_symbols,
+            ),
         )
         selected = self._dedupe_symbols([*seed_symbols, *symbol_hits])
         selected = [symbol for symbol in selected if not self._is_noise_symbol_kind(symbol.kind)]
@@ -3026,6 +3168,7 @@ class CodeContextEngine:
         try:
             from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return set()
         with contextlib.suppress(Exception):
             search_path = self._resolve_inside_repo(path)
@@ -3131,7 +3274,14 @@ class CodeContextEngine:
             references.extend(cross_lang_refs)
         ordered_references = sorted(
             references,
-            key=lambda item: (item.file_path, item.line, item.column, item.end_line, item.end_column, item.provenance),
+            key=lambda item: (
+                item.file_path,
+                item.line,
+                item.column,
+                item.end_line,
+                item.end_column,
+                item.provenance,
+            ),
         )
         items = self._dedupe_usage_items(
             [self._usage_item(reference, snippet_lines=snippet_lines) for reference in ordered_references]
@@ -3320,16 +3470,24 @@ class CodeContextEngine:
                 if status_rank[current.data_status] > status_rank[merged_status]:
                     merged_status = current.data_status
                 for node in current.nodes:
-                    node_key = (node.symbol_id, node.file_path, node.start_line, node.end_line, node.qualified_name)
+                    node_key = (
+                        node.symbol_id,
+                        node.file_path,
+                        node.start_line,
+                        node.end_line,
+                        node.qualified_name,
+                    )
                     nodes_by_identity[node_key] = node
                 for edge in current.edges:
                     key = (edge.caller_symbol_id, edge.callee_symbol_id, edge.depth)
                     edges_by_key[key] = edge
             merged_nodes = sorted(
-                nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id)
+                nodes_by_identity.values(),
+                key=lambda item: (item.file_path, item.start_line, item.symbol_id),
             )
             merged_edges = sorted(
-                edges_by_key.values(), key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id)
+                edges_by_key.values(),
+                key=lambda item: (item.depth, item.caller_symbol_id, item.callee_symbol_id),
             )
             if merged_edges:
                 merged_status = "available"
@@ -3533,7 +3691,8 @@ class CodeContextEngine:
             {str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")}
         )
         for target in sorted(
-            targets, key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0))
+            targets,
+            key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
         ):
             target_file = str(target["file_path"])
             symbol_display = str(
@@ -3627,7 +3786,10 @@ class CodeContextEngine:
                     }
                     for target in sorted(
                         targets,
-                        key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
+                        key=lambda item: (
+                            str(item.get("file_path") or ""),
+                            int(item.get("start_line") or 0),
+                        ),
                     )[:10]
                 ],
                 "ambiguity": ambiguity,
@@ -3747,6 +3909,18 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_references_file ON "references"(repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_call_edges_callee ON call_edges(repo_id, callee_name);
             CREATE INDEX IF NOT EXISTS idx_call_edges_caller ON call_edges(repo_id, caller_file_path, caller_start_line);
+            CREATE TABLE IF NOT EXISTS commit_chunks (
+                commit_sha     TEXT PRIMARY KEY,
+                author_date    INTEGER NOT NULL,
+                files_touched  TEXT NOT NULL,
+                symbols_touched TEXT,
+                summary        TEXT NOT NULL,
+                summary_model  TEXT NOT NULL,
+                embedding      BLOB,
+                index_version  INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_commit_author_date ON commit_chunks(author_date);
+            CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
             """)
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
 
@@ -3760,9 +3934,9 @@ class CodeContextEngine:
     ) -> None:
         raw_id = f"{self.repo_id}:{rel}:{symbol.qualified_name}:{symbol.start_byte}:{content_hash}"
         symbol_id = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:24]
-        conn.execute(
+        cursor = conn.execute(
             """
-            INSERT INTO symbols(
+            INSERT OR IGNORE INTO symbols(
                 symbol_id, repo_id, file_path, language, symbol_name, qualified_name, kind,
                 signature, start_byte, end_byte, start_line, end_line, parent_symbol,
                 doc_summary, content_hash
@@ -3787,11 +3961,19 @@ class CodeContextEngine:
                 content_hash,
             ),
         )
-        source = self._read_file_slice(rel, symbol.start_byte, symbol.end_byte)
-        conn.execute(
-            "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
-            (symbol_id, symbol.name, symbol.qualified_name, symbol.signature, rel, source[:20_000]),
-        )
+        if cursor.rowcount > 0:
+            source = self._read_file_slice(rel, symbol.start_byte, symbol.end_byte)
+            conn.execute(
+                "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    symbol_id,
+                    symbol.name,
+                    symbol.qualified_name,
+                    symbol.signature,
+                    rel,
+                    source[:20_000],
+                ),
+            )
 
     def _ensure_indexed(self) -> None:
         with self._autosync_lock:
@@ -3810,6 +3992,7 @@ class CodeContextEngine:
                 return
             if self._autosync_enabled:
                 self._maybe_autosync_reindex_locked()
+        self._ensure_lineage_ready()
 
     def _excluded(self, path: Path, patterns: list[str]) -> bool:
         rel = _safe_relpath(self.repo_root, path)
@@ -4399,6 +4582,15 @@ class CodeContextEngine:
         data = (self.repo_root / rel).read_bytes()
         return data[start_byte:end_byte].decode("utf-8", errors="replace")
 
+    def _load_symbol_source_for_rerank(self, symbol: SymbolRecord) -> str:
+        if symbol.provenance == "commit" or symbol.kind == "commit":
+            return ""
+        if not symbol.file_path or symbol.end_byte <= symbol.start_byte:
+            return ""
+        with contextlib.suppress(OSError, ValueError):
+            return self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
+        return ""
+
     def _source_section_for_symbol(
         self,
         symbol: SymbolRecord | dict[str, Any],
@@ -4424,7 +4616,7 @@ class CodeContextEngine:
             "symbol_name": payload["symbol_name"],
             "qualified_name": payload["qualified_name"],
             "line_numbers": line_numbers,
-            "content": content,
+            "content": hard_cap_chars(content, _EXPLORE_SOURCE_SECTION_MAX_CHARS),
         }
 
     def _merge_nearby_source_sections(
@@ -4436,7 +4628,12 @@ class CodeContextEngine:
         if not sections:
             return []
         ordered = sorted(
-            sections, key=lambda item: (str(item["file_path"]), int(item["start_line"]), int(item["end_line"]))
+            sections,
+            key=lambda item: (
+                str(item["file_path"]),
+                int(item["start_line"]),
+                int(item["end_line"]),
+            ),
         )
         merged: list[dict[str, Any]] = [dict(ordered[0])]
         for section in ordered[1:]:
@@ -4474,8 +4671,11 @@ class CodeContextEngine:
         end_idx = min(len(lines), max(start_idx, end_line))
         segment = lines[start_idx:end_idx]
         if line_numbers:
-            return "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(segment))
-        return "\n".join(segment)
+            return hard_cap_chars(
+                "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(segment)),
+                _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            )
+        return hard_cap_chars("\n".join(segment), _EXPLORE_SOURCE_SECTION_MAX_CHARS)
 
     def _usage_item(self, reference: UsageReference, *, snippet_lines: int) -> dict[str, Any]:
         payload = reference.model_dump(mode="json", exclude_none=True)
@@ -5084,7 +5284,10 @@ class CodeContextEngine:
                     end_line=target_end,
                     provenance="local_index",
                 )
-        return sorted(nodes_by_identity.values(), key=lambda item: (item.file_path, item.start_line, item.symbol_id))
+        return sorted(
+            nodes_by_identity.values(),
+            key=lambda item: (item.file_path, item.start_line, item.symbol_id),
+        )
 
     def _indexed_symbol_payloads_for_call_name(self, call_name: str) -> list[dict[str, Any]]:
         short_name = call_name.rsplit(".", 1)[-1]
@@ -5306,7 +5509,13 @@ class CodeContextEngine:
         if scope == "repo":
             result: list[dict[str, Any]] = []
             for item in compacted:
-                cleaned = {k: v for k, v in item.items() if k not in _SEARCH_REPO_STRIP_ITEM_KEYS}
+                # For commit chunks, provenance and commit_sha must survive.
+                if item.get("provenance") == "commit":
+                    cleaned = {
+                        k: v for k, v in item.items() if k not in _SEARCH_REPO_STRIP_ITEM_KEYS or k == "provenance"
+                    }
+                else:
+                    cleaned = {k: v for k, v in item.items() if k not in _SEARCH_REPO_STRIP_ITEM_KEYS}
                 # qualified_name adds no information when it is identical to symbol_name
                 if cleaned.get("qualified_name") == cleaned.get("symbol_name"):
                     cleaned.pop("qualified_name", None)
@@ -5628,7 +5837,8 @@ class CodeContextEngine:
         filename = f"{self.repo_id}-{int(time.time() * 1000)}-{digest}.json"
         artifact_path = artifact_root / filename
         artifact_path.write_text(
-            json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+            json.dumps(artifact_payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
         )
         return {
             "spilled": True,
@@ -5638,7 +5848,14 @@ class CodeContextEngine:
 
     def _prune_overflow_artifact_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         artifact_payload = cast(dict[str, Any], self._json_safe(payload))
-        for key in ("tokens_saved", "total_tokens", "cache_hit", "overflow", "rendered", "rendered_format"):
+        for key in (
+            "tokens_saved",
+            "total_tokens",
+            "cache_hit",
+            "overflow",
+            "rendered",
+            "rendered_format",
+        ):
             artifact_payload.pop(key, None)
         return artifact_payload
 
@@ -5842,7 +6059,13 @@ class CodeContextEngine:
                     break
             if truncated:
                 break
-        routes.sort(key=lambda item: (str(item.get("file_path")), int(item.get("line", 0)), str(item.get("route"))))
+        routes.sort(
+            key=lambda item: (
+                str(item.get("file_path")),
+                int(item.get("line", 0)),
+                str(item.get("route")),
+            )
+        )
         return routes[:limit], truncated
 
     def _extract_routes_from_file(
@@ -6186,6 +6409,7 @@ class CodeContextEngine:
         try:
             from atelier.infra.code_intel.scip import ScipSymbolIntelProvider
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return
         self.intel_store.register(
             ScipSymbolIntelProvider(
@@ -6307,11 +6531,13 @@ class CodeContextEngine:
         try:
             self._ensure_indexed()
         except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
             self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 self._maybe_autosync_reindex()
             except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
 
     def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
@@ -6348,6 +6574,312 @@ class CodeContextEngine:
                 return None
             return str(value)
         return None
+
+    def _lineage_embedder_metadata(self) -> tuple[str, int]:
+        from atelier.infra.code_intel.git_history.embedder import embedder_name, embedding_dim
+
+        return embedder_name(), embedding_dim()
+
+    def _persist_lineage_embedder_metadata(self, conn: sqlite3.Connection, *, name: str, dim: int) -> None:
+        conn.executemany(
+            "INSERT INTO engine_state(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [
+                ("commit_lineage_embedder_name", name),
+                ("commit_lineage_embedder_dim", str(dim)),
+            ],
+        )
+
+    def _ensure_lineage_ready(self) -> None:
+        """Start background lineage bootstrap if commit_chunks is empty or stale.
+
+        Non-blocking: launches a daemon thread. Safe to call multiple times.
+        """
+        if self._lineage_thread is not None:
+            return
+        current_head = self._safe_current_head_sha()
+        if current_head is None:
+            return
+        current_embedder_name, current_embedder_dim = self._lineage_embedder_metadata()
+        needs_update = False
+        full_rebuild = False
+        with contextlib.suppress(Exception), contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            head_row = conn.execute("SELECT value FROM engine_state WHERE key = 'commit_lineage_head'").fetchone()
+            previous_head = str(head_row["value"]) if head_row is not None else None
+            embedder_name_row = conn.execute(
+                "SELECT value FROM engine_state WHERE key = 'commit_lineage_embedder_name'"
+            ).fetchone()
+            stored_embedder_name = str(embedder_name_row["value"]) if embedder_name_row is not None else None
+            embedder_dim_row = conn.execute(
+                "SELECT value FROM engine_state WHERE key = 'commit_lineage_embedder_dim'"
+            ).fetchone()
+            stored_embedder_dim = int(embedder_dim_row["value"]) if embedder_dim_row is not None else None
+            count_row = conn.execute("SELECT COUNT(*) AS n FROM commit_chunks").fetchone()
+            chunk_count = int(count_row["n"]) if count_row is not None else 0
+            stale_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM commit_chunks WHERE index_version < ?",
+                (_LINEAGE_INDEX_VERSION,),
+            ).fetchone()
+            has_stale = stale_row is not None and int(stale_row["n"]) > 0
+            metadata_changed = (
+                stored_embedder_name != current_embedder_name or stored_embedder_dim != current_embedder_dim
+            )
+            has_lineage_state = (
+                previous_head is not None or stored_embedder_name is not None or stored_embedder_dim is not None
+            )
+            full_rebuild = chunk_count > 0 and has_lineage_state and (has_stale or metadata_changed)
+            if full_rebuild or previous_head != current_head or chunk_count == 0:
+                needs_update = True
+        if not needs_update:
+            return
+        self._lineage_rebuild_full = full_rebuild
+        self._lineage_thread = threading.Thread(
+            target=self._lineage_bootstrap_worker,
+            name=f"atelier-lineage-{self.repo_id[:8]}",
+            daemon=True,
+        )
+        self._lineage_thread.start()
+
+    def _lineage_bootstrap_worker(self) -> None:
+        """Background thread: walk, summarise, embed, persist commit chunks."""
+        try:
+            with contextlib.closing(self._connect()) as conn:
+                self._init_schema(conn)
+                watermark_row = conn.execute(
+                    "SELECT value FROM engine_state WHERE key = 'commit_lineage_watermark'"
+                ).fetchone()
+                since_sha = (
+                    None
+                    if self._lineage_rebuild_full
+                    else (str(watermark_row["value"]) if watermark_row is not None else None)
+                )
+            self._walk_and_summarise(since_sha=since_sha, full_rebuild=self._lineage_rebuild_full)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            logger.debug(
+                "lineage bootstrap failed", exc_info=True
+            )  # fail-open — lineage is additive, never blocks search
+        finally:
+            self._lineage_rebuild_full = False
+
+    def _walk_and_summarise(self, *, since_sha: str | None, full_rebuild: bool = False) -> None:
+        """Walk commits, summarise, embed, upsert to commit_chunks in batches of 50.
+
+        Two-pass design: summarise all commits first (LLM), then embed all summaries
+        (vector model). This avoids contention when both operations share the same
+        backend (e.g. a local Ollama server that serialises requests).
+        """
+        from atelier.infra.code_intel.git_history import require_pygit2
+        from atelier.infra.code_intel.git_history.embedder import embed_summary
+        from atelier.infra.code_intel.git_history.models import CommitSummary
+        from atelier.infra.code_intel.git_history.summarizer import (
+            SummarizerError,
+            summarize_commit,
+        )
+        from atelier.infra.code_intel.git_history.walker import iter_commit_records
+
+        def _get_diff_text(repo: Any, commit: Any) -> str:
+            try:
+                if not commit.parents:
+                    return ""
+                parent = commit.parents[0]
+                diff = parent.tree.diff_to_tree(commit.tree)
+                return diff.patch or ""
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                return ""
+
+        pygit2 = require_pygit2()
+        repo = pygit2.Repository(str(self.repo_root))
+
+        # Pass 1: summarise all commits (LLM calls — no embedding yet)
+        summaries: list[CommitSummary] = []
+        for record in iter_commit_records(self.repo_root, limit=500, since_sha=since_sha):
+            try:
+                commit_obj = repo.revparse_single(record.sha)
+                diff_text = _get_diff_text(repo, commit_obj)
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                diff_text = ""
+
+            try:
+                summary = summarize_commit(record, diff_text=diff_text)
+            except SummarizerError:
+                continue
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
+            summaries.append(summary)
+
+        # Pass 2: embed + persist (vector calls — LLM is now idle)
+        batch: list[tuple[Any, ...]] = []
+        rebuild_rows: list[tuple[Any, ...]] = []
+
+        for summary in summaries:
+            try:
+                embedding_blob = embed_summary(summary)
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                embedding_blob = None
+
+            row = (
+                summary.sha,
+                summary.author_date,
+                json.dumps(summary.files_touched),
+                None,  # symbols_touched — deferred to follow-up phase
+                summary.summary,
+                summary.summary_model,
+                embedding_blob,
+                _LINEAGE_INDEX_VERSION,
+            )
+            if full_rebuild:
+                rebuild_rows.append(row)
+                continue
+
+            batch.append(row)
+
+            if len(batch) >= 50:
+                self._flush_commit_batch(batch, watermark_sha=batch[-1][0])
+                batch.clear()
+
+        if full_rebuild:
+            watermark_sha = rebuild_rows[-1][0] if rebuild_rows else None
+            self._replace_commit_chunks(rebuild_rows, watermark_sha=watermark_sha)
+        elif batch:
+            self._flush_commit_batch(batch, watermark_sha=batch[-1][0])
+
+        current_head = self._safe_current_head_sha()
+        if current_head:
+            current_embedder_name, current_embedder_dim = self._lineage_embedder_metadata()
+            with contextlib.closing(self._connect()) as conn:
+                self._persist_lineage_embedder_metadata(conn, name=current_embedder_name, dim=current_embedder_dim)
+                conn.execute(
+                    "INSERT INTO engine_state(key, value) VALUES (?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    ("commit_lineage_head", current_head),
+                )
+                conn.commit()
+
+    def _replace_commit_chunks(self, rows: list[tuple[Any, ...]], *, watermark_sha: str | None) -> None:
+        """Atomically replace commit lineage rows after a full rebuild completes."""
+        with contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            conn.execute("DELETE FROM commit_chunks")
+            if rows:
+                conn.executemany(
+                    """INSERT OR REPLACE INTO commit_chunks
+                       (commit_sha, author_date, files_touched, symbols_touched,
+                        summary, summary_model, embedding, index_version)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    rows,
+                )
+            if watermark_sha is None:
+                conn.execute("DELETE FROM engine_state WHERE key = 'commit_lineage_watermark'")
+            else:
+                conn.execute(
+                    "INSERT INTO engine_state(key, value) VALUES (?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    ("commit_lineage_watermark", watermark_sha),
+                )
+            conn.commit()
+
+    def _flush_commit_batch(self, batch: list[tuple[Any, ...]], *, watermark_sha: str) -> None:
+        """Upsert a batch of commit chunks and advance the resume watermark."""
+        with contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            conn.executemany(
+                """INSERT OR REPLACE INTO commit_chunks
+                   (commit_sha, author_date, files_touched, symbols_touched,
+                    summary, summary_model, embedding, index_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                batch,
+            )
+            conn.execute(
+                "INSERT INTO engine_state(key, value) VALUES (?, ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ("commit_lineage_watermark", watermark_sha),
+            )
+            conn.commit()
+
+    def _search_commit_chunks(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+    ) -> list[SymbolRecord]:
+        """Embed query and return top-limit commit chunks as SymbolRecord objects.
+
+        Each result has provenance="commit" and commit_sha set.
+        Applies ATELIER_LINEAGE_COMMIT_SCORE_PENALTY (default 0.1) to the score.
+        Returns [] if commit_chunks is empty or embeddings unavailable.
+        """
+        from atelier.infra.code_intel.git_history.embedder import decode_embedding
+        from atelier.infra.storage.vector import cosine_similarity
+
+        query_vec: list[float] | None = None
+        with contextlib.suppress(Exception):
+            query_vec = self._semantic_ranker._embed_query(query)
+
+        if not query_vec:
+            return []
+
+        rows: list[sqlite3.Row] = []
+        with contextlib.suppress(Exception), contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                "SELECT commit_sha, author_date, files_touched, summary, summary_model, embedding "
+                "FROM commit_chunks WHERE embedding IS NOT NULL "
+                "ORDER BY author_date DESC LIMIT 2000"
+            ).fetchall()
+
+        if not rows:
+            return []
+
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for row in rows:
+            try:
+                stored_vec = decode_embedding(bytes(row["embedding"]))
+                sim = cosine_similarity(query_vec, stored_vec)
+                adjusted = sim - self._lineage_score_penalty
+                scored.append((adjusted, row))
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
+
+        scored.sort(key=lambda t: t[0], reverse=True)
+        top = scored[:limit]
+
+        results: list[SymbolRecord] = []
+        for score_val, row in top:
+            try:
+                files = json.loads(row["files_touched"]) if row["files_touched"] else []
+                primary_file = files[0] if files else ""
+                sha = str(row["commit_sha"])
+                results.append(
+                    SymbolRecord(
+                        symbol_id=sha,
+                        repo_id=self.repo_id,
+                        file_path=primary_file,
+                        language="",
+                        symbol_name=sha[:8],
+                        qualified_name=str(row["summary"])[:80],
+                        kind="commit",
+                        signature=str(row["summary"]),
+                        start_byte=0,
+                        end_byte=0,
+                        start_line=0,
+                        end_line=0,
+                        content_hash=sha,
+                        score=round(score_val, 4),
+                        provenance="commit",
+                        commit_sha=sha,
+                    )
+                )
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
+        return results
 
     def _deleted_history_adapter(self) -> DeletedHistorySearchAdapter:
         if self._deleted_history_search_adapter is None:

@@ -1,0 +1,835 @@
+# ruff: noqa: E402
+"""Run the public MCP benchmark surface and export per-case results to CSV.
+
+Usage:
+    uv run python benchmarks/mcp_tools/export_public_mcp_csv.py
+    uv run python benchmarks/mcp_tools/export_public_mcp_csv.py --csv-out /tmp/public-mcp.csv
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import csv
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from atelier.gateway.cli.progress import ProgressReporter
+
+from benchmarks.mcp_tools._env import configure_benchmark_runtime
+from benchmarks.mcp_tools.bench_code import _impact_query, _symbol_arg, _tool_name_for_case_args
+from benchmarks.mcp_tools.bench_context import _preseed_bootstrap
+from benchmarks.mcp_tools.bench_edit import _run_edit_case
+from benchmarks.mcp_tools.bench_external_indexers import (
+    default_benchmark_root,
+    prepare_cached_repo_snapshot,
+    repo_cache_key,
+)
+from benchmarks.mcp_tools.bench_rescue import run_rescue_suite
+from benchmarks.mcp_tools.bench_route import _setup_env as _setup_route_env
+from benchmarks.mcp_tools.bench_shell import _patch_paths as _patch_shell_paths
+from benchmarks.mcp_tools.bench_sql import _patch_db as _patch_sql_db
+from benchmarks.mcp_tools.bench_verify import run_verify_suite
+from benchmarks.mcp_tools.cases.code import CODE_CASES
+from benchmarks.mcp_tools.cases.compact import COMPACT_CASES
+from benchmarks.mcp_tools.cases.context import CONTEXT_CASES
+from benchmarks.mcp_tools.cases.edit import EDIT_CASES
+from benchmarks.mcp_tools.cases.grep import GREP_CASES
+from benchmarks.mcp_tools.cases.memory import MEMORY_CASES
+from benchmarks.mcp_tools.cases.read import READ_CASES
+from benchmarks.mcp_tools.cases.rescue import RESCUE_CASES
+from benchmarks.mcp_tools.cases.route import ROUTE_CASES
+from benchmarks.mcp_tools.cases.search import SEARCH_CASES
+from benchmarks.mcp_tools.cases.shell import SHELL_CASES
+from benchmarks.mcp_tools.cases.sql import SQL_CASES
+from benchmarks.mcp_tools.cases.trace import TRACE_CASES
+from benchmarks.mcp_tools.cases.verify import VERIFY_CASES
+from benchmarks.mcp_tools.harness import BenchCase, CaseResult, ToolReport, run_case
+from benchmarks.mcp_tools.reporter import render_summary
+
+
+def _repo_root() -> Path:
+    return ROOT
+
+
+_REPO_SNAPSHOT_ROOT: Path | None = None
+
+
+def _repo_workspace_root() -> Path:
+    global _REPO_SNAPSHOT_ROOT
+    if _REPO_SNAPSHOT_ROOT is not None:
+        return _REPO_SNAPSHOT_ROOT
+    repo_root = _repo_root()
+    cache_root = default_benchmark_root(repo_root) / "mcp-cache" / "snapshots"
+    _REPO_SNAPSHOT_ROOT = prepare_cached_repo_snapshot(
+        repo_root,
+        cache_root,
+        name="public-mcp-repo",
+        cache_key=repo_cache_key(repo_root),
+    )
+    return _REPO_SNAPSHOT_ROOT
+
+
+def _runtime_root(artifact_root: Path, tool_name: str) -> Path:
+    return artifact_root / "public-mcp-runtime" / tool_name
+
+
+def _reset_runtime(root: Path, *, workspace_root: Path | None = None) -> Path:
+    configured = configure_benchmark_runtime(root, workspace_root=workspace_root)
+    from atelier.gateway.adapters import mcp_server
+
+    mcp_server._reset_runtime_cache_for_testing()
+    mcp_server._current_ledger = None
+    return configured
+
+
+def _tool_report(tool_name: str, results: list[CaseResult]) -> ToolReport:
+    return ToolReport(tool_name=tool_name, results=results)
+
+
+def _run_simple_suite(
+    tool_name: str,
+    root: Path,
+    cases: list[BenchCase],
+    tool_fn: Callable[[dict[str, Any]], Any],
+    *,
+    workspace_root: Path | None = None,
+    progress: ProgressReporter | None = None,
+) -> ToolReport:
+    _reset_runtime(root, workspace_root=workspace_root)
+    results: list[CaseResult] = []
+    for case in cases:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"{tool_name} {case.label}")
+        results.append(run_case(case, tool_fn))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"{tool_name} {case.label}")
+    return _tool_report(tool_name, results)
+
+
+def _run_read_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    from atelier.gateway.adapters.mcp_server import tool_smart_read
+
+    return _run_simple_suite(
+        "read",
+        _runtime_root(artifact_root, "read"),
+        READ_CASES,
+        tool_smart_read,
+        workspace_root=_repo_workspace_root(),
+        progress=progress,
+    )
+
+
+def _run_search_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    from atelier.gateway.adapters.mcp_server import tool_smart_search
+
+    return _run_simple_suite(
+        "search",
+        _runtime_root(artifact_root, "search"),
+        SEARCH_CASES,
+        tool_smart_search,
+        workspace_root=_repo_workspace_root(),
+        progress=progress,
+    )
+
+
+def _run_grep_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    from atelier.gateway.adapters.mcp_server import tool_grep
+
+    return _run_simple_suite(
+        "grep",
+        _runtime_root(artifact_root, "grep"),
+        GREP_CASES,
+        tool_grep,
+        workspace_root=_repo_workspace_root(),
+        progress=progress,
+    )
+
+
+def _run_context_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    from atelier.gateway.adapters.mcp_server import tool_get_context
+
+    root = _runtime_root(artifact_root, "context")
+    _reset_runtime(root, workspace_root=_repo_workspace_root())
+    results: list[CaseResult] = []
+    cold_start = [case for case in CONTEXT_CASES if case.label == "context/cold-start"]
+    remaining = [case for case in CONTEXT_CASES if case.label != "context/cold-start"]
+    for case in cold_start:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"context {case.label}")
+        results.append(run_case(case, tool_get_context))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"context {case.label}")
+    _preseed_bootstrap(tool_get_context)
+    for case in remaining:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"context {case.label}")
+        results.append(run_case(case, tool_get_context))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"context {case.label}")
+    return _tool_report("context", results)
+
+
+def _run_trace_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    from atelier.gateway.adapters.mcp_server import tool_record_trace
+
+    return _run_simple_suite(
+        "trace",
+        _runtime_root(artifact_root, "trace"),
+        TRACE_CASES,
+        tool_record_trace,
+        progress=progress,
+    )
+
+
+def _run_route_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "route")
+    _setup_route_env(root)
+    from atelier.gateway.adapters import mcp_server
+    from atelier.gateway.adapters.mcp_server import tool_route
+
+    mcp_server._reset_runtime_cache_for_testing()
+    results: list[CaseResult] = []
+    for case in ROUTE_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"route {case.label}")
+        results.append(run_case(case, tool_route))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"route {case.label}")
+    return _tool_report("route", results)
+
+
+def _run_memory_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "memory")
+    _reset_runtime(root)
+    from atelier.gateway.adapters import mcp_server
+
+    def tool_fn(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        archive_text = payload.pop("_archive_text", None)
+        archive_source_ref = payload.pop("_archive_source_ref", "")
+        archive_tags = payload.pop("_archive_tags", None)
+        if isinstance(archive_text, str) and archive_text:
+            mcp_server._memory_archive(
+                agent_id=payload.get("agent_id"),
+                text=archive_text,
+                source="benchmark",
+                source_ref=str(archive_source_ref),
+                tags=list(archive_tags or []),
+            )
+        return mcp_server.tool_memory(payload)
+
+    results: list[CaseResult] = []
+    for case in MEMORY_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"memory {case.label}")
+        results.append(run_case(case, tool_fn))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"memory {case.label}")
+    return _tool_report("memory", results)
+
+
+def _run_sql_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "sql")
+    _reset_runtime(root)
+    db_path = root / "test.db"
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT
+        );
+        INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
+        INSERT INTO users VALUES (2, 'Bob', 'bob@example.com');
+        INSERT INTO users VALUES (3, 'Carol', 'carol@example.com');
+        """)
+    conn.commit()
+    conn.close()
+    from atelier.gateway.adapters.mcp_server import tool_sql
+
+    results: list[CaseResult] = []
+    for case in SQL_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"sql {case.label}")
+        patched_case = BenchCase(
+            op=case.op,
+            label=case.label,
+            args=_patch_sql_db(case.args, db_path),
+            assert_keys=case.assert_keys,
+            custom_assert=case.custom_assert,
+            baseline_tokens=case.baseline_tokens,
+        )
+        results.append(run_case(patched_case, tool_sql))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"sql {case.label}")
+    return _tool_report("sql", results)
+
+
+def _run_edit_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "edit")
+    workspace = _reset_runtime(root)
+    from atelier.gateway.adapters.mcp_server import tool_smart_edit
+
+    results: list[CaseResult] = []
+    for case in EDIT_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"edit {case.label}")
+        results.append(_run_edit_case(case, tool_smart_edit, workspace))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"edit {case.label}")
+    return _tool_report("edit", results)
+
+
+def _run_code_suite_cases(
+    tool_name: str,
+    code_cases: list[BenchCase],
+    artifact_root: Path,
+    progress: ProgressReporter | None = None,
+) -> ToolReport:
+    root = _runtime_root(artifact_root, tool_name)
+    _reset_runtime(root, workspace_root=_repo_workspace_root())
+    from atelier.gateway.adapters import mcp_server
+
+    def tool_fn(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        tool_name = _tool_name_for_case_args(payload)
+        payload.pop("_tool", None)
+        if tool_name == "symbols":
+            return mcp_server.tool_symbols(payload)
+        if tool_name == "node":
+            return mcp_server.tool_node(
+                {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
+            )
+        if tool_name == "callers":
+            return mcp_server.tool_callers(
+                {
+                    "symbol": _symbol_arg(payload),
+                    "depth": int(payload.get("depth", 1)),
+                    "limit": int(payload.get("limit", 20)),
+                }
+            )
+        if tool_name == "callees":
+            return mcp_server.tool_callees(
+                {
+                    "symbol": _symbol_arg(payload),
+                    "depth": int(payload.get("depth", 1)),
+                    "limit": int(payload.get("limit", 20)),
+                }
+            )
+        if tool_name == "usages":
+            return mcp_server.tool_usages({"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))})
+        if tool_name == "impact":
+            return mcp_server.tool_impact({"query": _impact_query(payload)})
+        if tool_name == "explore":
+            return mcp_server.tool_explore(
+                {
+                    "query": str(payload["query"]),
+                    "seed_files": payload.get("seed_files"),
+                    "max_files": int(payload.get("max_files", 8)),
+                }
+            )
+        if tool_name == "pattern":
+            return mcp_server.tool_pattern(
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
+                }
+            )
+        raise ValueError(f"unsupported public code-intel tool: {tool_name}")
+
+    results: list[CaseResult] = []
+    for case in code_cases:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"{tool_name} {case.label}")
+        results.append(run_case(case, tool_fn))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"{tool_name} {case.label}")
+    return _tool_report(tool_name, results)
+
+
+def _code_tool_cases() -> dict[str, list[BenchCase]]:
+    grouped: dict[str, list[BenchCase]] = {}
+    for case in CODE_CASES:
+        grouped.setdefault(_tool_name_for_case_args(case.args), []).append(case)
+    return grouped
+
+
+CODE_TOOL_CASES = _code_tool_cases()
+
+
+def _code_suite_runner(tool_name: str) -> Callable[[Path, ProgressReporter], ToolReport]:
+    def runner(root: Path, progress: ProgressReporter) -> ToolReport:
+        return _run_code_suite_cases(tool_name, CODE_TOOL_CASES[tool_name], root, progress)
+
+    return runner
+
+
+def _run_code_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> list[ToolReport]:
+    return [
+        _run_code_suite_cases(tool_name, CODE_TOOL_CASES[tool_name], artifact_root, progress)
+        for tool_name in sorted(CODE_TOOL_CASES)
+    ]
+
+
+def _run_compact_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "compact")
+    _reset_runtime(root)
+    from atelier.gateway.adapters import mcp_server
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    def tool_fn(args: dict[str, Any]) -> Any:
+        payload = dict(args)
+        seed = dict(payload.pop("_seed", {}) or {})
+        session_id = str(payload.get("session_id") or seed.get("session_id") or "bench-compact")
+        previous = mcp_server._current_ledger
+        ledger = RunLedger(session_id=session_id, agent="benchmark", root=root)
+        ledger.task = str(seed.get("task") or "")
+        ledger.token_count = int(seed.get("token_count") or 0)
+        ledger.current_plan = list(seed.get("current_plan") or [])
+        ledger.files_touched = list(seed.get("files_touched") or [])
+        ledger.tools_called = list(seed.get("tools_called") or [])
+        ledger.commands_run = list(seed.get("commands_run") or [])
+        ledger.tests_run = list(seed.get("tests_run") or [])
+        ledger.errors_seen = list(seed.get("errors_seen") or [])
+        ledger.repeated_failures = list(seed.get("repeated_failures") or [])
+        ledger.verified_facts = list(seed.get("verified_facts") or [])
+        ledger.open_questions = list(seed.get("open_questions") or [])
+        ledger.active_reasonblocks = list(seed.get("active_reasonblocks") or [])
+        for event in seed.get("tool_events") or []:
+            if isinstance(event, dict):
+                ledger.record_tool_call(
+                    str(event.get("tool") or "tool"),
+                    args=dict(event.get("args") or {}),
+                    output=str(event.get("output") or ""),
+                )
+        for event in seed.get("command_events") or []:
+            if isinstance(event, dict):
+                ledger.record_command(
+                    str(event.get("command") or ""),
+                    ok=bool(event.get("ok")),
+                    stdout=str(event.get("stdout") or ""),
+                    stderr=str(event.get("stderr") or ""),
+                )
+        mcp_server._current_ledger = ledger
+        try:
+            return mcp_server.tool_compact(payload)
+        finally:
+            mcp_server._current_ledger = previous
+
+    results: list[CaseResult] = []
+    for case in COMPACT_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"compact {case.label}")
+        results.append(run_case(case, tool_fn))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"compact {case.label}")
+    return _tool_report("compact", results)
+
+
+def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
+    root = _runtime_root(artifact_root, "shell")
+    workspace = _reset_runtime(root)
+    sentinel = workspace / "sentinel.txt"
+    sentinel.write_text("sentinel_content line1\nsentinel_content line2\n", encoding="utf-8")
+    src = workspace / "src"
+    src.mkdir(exist_ok=True)
+    (src / "module.py").write_text("# module with needle_token\ndef needle_token():\n    return 42\n", encoding="utf-8")
+    from atelier.gateway.adapters.mcp_server import tool_shell
+
+    results: list[CaseResult] = []
+    for case in SHELL_CASES:
+        if progress is not None:
+            progress.phase("running MCP tool benchmark", current=f"shell {case.label}")
+        patched_case = BenchCase(
+            op=case.op,
+            label=case.label,
+            args=_patch_shell_paths(case.args, workspace),
+            assert_keys=case.assert_keys,
+            custom_assert=case.custom_assert,
+            baseline_tokens=case.baseline_tokens,
+        )
+        results.append(run_case(patched_case, tool_shell))
+        if progress is not None:
+            progress.step("running MCP tool benchmark", current=f"shell {case.label}")
+    return _tool_report("shell", results)
+
+
+def _flatten_reports(reports: list[ToolReport]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for report in reports:
+        for result in report.results:
+            rows.append(
+                {
+                    "tool": report.tool_name,
+                    "label": result.case.label,
+                    "op": result.case.op,
+                    "passed": result.passed,
+                    "atelier_tokens": result.atelier_tokens,
+                    "baseline_tokens": result.baseline_tokens,
+                    "input_file_tokens": result.input_file_tokens,
+                    "tokens_saved": result.tokens_saved,
+                    "savings_pct": round(result.savings_pct, 2),
+                    "effective_tokens": round(result.effective_tokens, 2),
+                    "elapsed_ms": round(result.elapsed_ms, 2),
+                    "spill_probe_tokens": result.spill_probe_tokens,
+                    "spill_probe_hits": result.spill_probe_hits,
+                    "failure": result.failure,
+                    "args_json": json.dumps(result.case.args, ensure_ascii=False, sort_keys=True),
+                    "response_json": json.dumps(result.response, ensure_ascii=False, sort_keys=True),
+                }
+            )
+    return rows
+
+
+def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "tool",
+                "label",
+                "op",
+                "passed",
+                "atelier_tokens",
+                "baseline_tokens",
+                "input_file_tokens",
+                "tokens_saved",
+                "savings_pct",
+                "effective_tokens",
+                "elapsed_ms",
+                "spill_probe_tokens",
+                "spill_probe_hits",
+                "failure",
+                "args_json",
+                "response_json",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes"}
+
+
+def _to_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _to_int(value: Any) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_tool: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_tool.setdefault(str(row.get("tool", "")), []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    total_cases = 0
+    total_passed = 0
+    total_saved = 0
+    total_effective = 0.0
+    all_savings_values: list[float] = []
+    for tool_name, tool_rows in sorted(by_tool.items()):
+        cases = len(tool_rows)
+        passed = sum(1 for row in tool_rows if _to_bool(row.get("passed")))
+        failed = cases - passed
+        total_saved_tokens = sum(_to_int(row.get("tokens_saved")) for row in tool_rows)
+        total_effective_tokens = sum(_to_float(row.get("effective_tokens")) for row in tool_rows)
+        savings_values = [
+            _to_float(row.get("savings_pct")) for row in tool_rows if _to_int(row.get("baseline_tokens")) > 0
+        ]
+        summary_rows.append(
+            {
+                "tool": tool_name,
+                "cases": cases,
+                "passed": passed,
+                "failed": failed,
+                "total_saved_tokens": total_saved_tokens,
+                "total_effective_tokens": round(total_effective_tokens, 2),
+                "avg_effective_tokens": round(total_effective_tokens / cases, 2) if cases else 0.0,
+                "avg_savings_pct": round(sum(savings_values) / len(savings_values), 2) if savings_values else 0.0,
+            }
+        )
+        total_cases += cases
+        total_passed += passed
+        total_saved += total_saved_tokens
+        total_effective += total_effective_tokens
+        all_savings_values.extend(savings_values)
+
+    summary_rows.append(
+        {
+            "tool": "TOTAL",
+            "cases": total_cases,
+            "passed": total_passed,
+            "failed": total_cases - total_passed,
+            "total_saved_tokens": total_saved,
+            "total_effective_tokens": round(total_effective, 2),
+            "avg_effective_tokens": round(total_effective / total_cases, 2) if total_cases else 0.0,
+            "avg_savings_pct": (
+                round(sum(all_savings_values) / len(all_savings_values), 2) if all_savings_values else 0.0
+            ),
+        }
+    )
+    return summary_rows
+
+
+def _write_summary_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "tool",
+                "cases",
+                "passed",
+                "failed",
+                "total_saved_tokens",
+                "total_effective_tokens",
+                "avg_effective_tokens",
+                "avg_savings_pct",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _public_case_total() -> int:
+    return sum(size for _name, size, _runner in _suite_specs())
+
+
+def _suite_aliases() -> dict[str, list[str]]:
+    return {"code": sorted(CODE_TOOL_CASES)}
+
+
+def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
+    specs: list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]] = [
+        ("context", len(CONTEXT_CASES), _run_context_suite),
+        ("route", len(ROUTE_CASES), _run_route_suite),
+        (
+            "rescue",
+            len(RESCUE_CASES),
+            lambda root, progress: run_rescue_suite(_runtime_root(root, "rescue"), progress),
+        ),
+        ("trace", len(TRACE_CASES), _run_trace_suite),
+        (
+            "verify",
+            len(VERIFY_CASES),
+            lambda root, progress: run_verify_suite(_runtime_root(root, "verify"), progress),
+        ),
+        ("memory", len(MEMORY_CASES), _run_memory_suite),
+        ("read", len(READ_CASES), _run_read_suite),
+        ("edit", len(EDIT_CASES), _run_edit_suite),
+        ("sql", len(SQL_CASES), _run_sql_suite),
+        ("grep", len(GREP_CASES), _run_grep_suite),
+        ("search", len(SEARCH_CASES), _run_search_suite),
+        ("compact", len(COMPACT_CASES), _run_compact_suite),
+        ("shell", len(SHELL_CASES), _run_shell_suite),
+    ]
+    for tool_name in sorted(CODE_TOOL_CASES):
+        specs.append((tool_name, len(CODE_TOOL_CASES[tool_name]), _code_suite_runner(tool_name)))
+    return specs
+
+
+def _select_suite_specs(
+    suite_names: list[str] | None,
+) -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
+    specs = _suite_specs()
+    if suite_names is None:
+        return specs
+    aliases = _suite_aliases()
+    selected: set[str] = set()
+    for name in suite_names:
+        clean = name.strip()
+        if not clean:
+            continue
+        if clean in aliases:
+            selected.update(aliases[clean])
+        else:
+            selected.add(clean)
+    by_name = {name: (name, size, runner) for name, size, runner in specs}
+    unknown = sorted(selected - set(by_name))
+    if unknown:
+        raise ValueError(f"Unknown MCP suite(s): {', '.join(unknown)}")
+    return [by_name[name] for name, _size, _runner in specs if name in selected]
+
+
+def _plan_suite_shards(
+    suite_names: list[str] | None,
+    *,
+    jobs: int,
+) -> list[list[str]]:
+    specs = _select_suite_specs(suite_names)
+    shard_count = min(max(1, jobs), len(specs))
+    shards: list[tuple[int, list[str]]] = [(0, []) for _ in range(shard_count)]
+    for name, size, _runner in sorted(specs, key=lambda item: item[1], reverse=True):
+        shard_index = min(range(len(shards)), key=lambda index: shards[index][0])
+        total, names = shards[shard_index]
+        names.append(name)
+        shards[shard_index] = (total + size, names)
+    return [names for _total, names in shards if names]
+
+
+def run_public_surface(artifact_root: Path, *, suite_names: list[str] | None = None) -> list[ToolReport]:
+    selected_specs = _select_suite_specs(suite_names)
+    progress = ProgressReporter("mcp", total=sum(size for _name, size, _runner in selected_specs))
+    progress.start("starting public MCP benchmark", current=str(artifact_root))
+    reports: list[ToolReport] = []
+    for _suite_name, _size, runner in selected_specs:
+        result = runner(artifact_root, progress)
+        if isinstance(result, list):
+            reports.extend(result)
+        else:
+            reports.append(result)
+    progress.finish("public MCP benchmark complete")
+    return reports
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _run_parallel_surface(
+    artifact_root: Path,
+    csv_out: Path,
+    *,
+    suite_names: list[str] | None,
+    jobs: int,
+) -> list[dict[str, str]]:
+    shard_groups = _plan_suite_shards(suite_names, jobs=jobs)
+    shard_root = artifact_root / "parallel-shards"
+    shard_root.mkdir(parents=True, exist_ok=True)
+    progress = ProgressReporter("mcp", total=len(shard_groups))
+    progress.start(
+        "starting parallel MCP benchmark",
+        current=f"{len(shard_groups)} shard(s) x {jobs} job(s)",
+    )
+
+    commands: list[tuple[int, list[str], Path]] = []
+    for index, names in enumerate(shard_groups, start=1):
+        child_artifact_root = shard_root / f"shard-{index}"
+        child_csv_out = shard_root / f"shard-{index}.csv"
+        command = [
+            sys.executable,
+            "-m",
+            "benchmarks.mcp_tools.export_public_mcp_csv",
+            "--artifact-root",
+            str(child_artifact_root),
+            "--csv-out",
+            str(child_csv_out),
+            "--jobs",
+            "1",
+            "--suites",
+            ",".join(names),
+        ]
+        commands.append((index, command, child_csv_out))
+
+    def _run_child(index: int, command: list[str], expected_csv: Path) -> tuple[int, Path]:
+        completed = subprocess.run(
+            command,
+            cwd=_repo_root(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"MCP shard {index} failed with exit code {completed.returncode}\n"
+                f"STDOUT:\n{completed.stdout[-4000:]}\nSTDERR:\n{completed.stderr[-4000:]}"
+            )
+        if not expected_csv.is_file():
+            raise RuntimeError(f"MCP shard {index} did not produce {expected_csv}")
+        return index, expected_csv
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(commands))) as executor:
+        futures = {
+            executor.submit(_run_child, index, command, shard_csv): (index, shard_csv)
+            for index, command, shard_csv in commands
+        }
+        completed_csvs: list[Path] = []
+        for future in concurrent.futures.as_completed(futures):
+            index, shard_csv = future.result()
+            completed_csvs.append(shard_csv)
+            progress.step("MCP shard complete", current=f"shard-{index}")
+
+    rows: list[dict[str, str]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    for shard_csv in sorted(completed_csvs):
+        for row in _read_csv_rows(shard_csv):
+            key = (row.get("tool", ""), row.get("label", ""))
+            if key in seen_keys:
+                raise RuntimeError(f"Duplicate MCP benchmark row detected for {key}")
+            seen_keys.add(key)
+            rows.append(row)
+    rows.sort(key=lambda row: (row.get("tool", ""), row.get("label", "")))
+    _write_csv(csv_out, rows)
+    progress.finish("parallel MCP benchmark complete")
+    return rows
+
+
+def _resolve_jobs(requested_jobs: int, suite_names: list[str] | None) -> int:
+    if requested_jobs > 0:
+        return requested_jobs
+    suite_count = len(_select_suite_specs(suite_names))
+    detected = max(os.cpu_count() or 1, 1)
+    return max(1, min(suite_count, 8, max(1, detected // 2)))
+
+
+def main() -> int:
+    repo_root = _repo_root()
+    artifact_root_default = default_benchmark_root(repo_root)
+    csv_default = artifact_root_default / "public_mcp_benchmark.csv"
+    parser = argparse.ArgumentParser(description="Run public MCP benchmark surface and export CSV.")
+    parser.add_argument("--artifact-root", default=str(artifact_root_default))
+    parser.add_argument("--csv-out", default=str(csv_default))
+    parser.add_argument("--jobs", type=int, default=0)
+    parser.add_argument("--suites", default="")
+    args = parser.parse_args()
+
+    artifact_root = Path(args.artifact_root).expanduser().resolve()
+    csv_out = Path(args.csv_out).expanduser().resolve()
+    suite_names = [name.strip() for name in str(args.suites).split(",") if name.strip()] or None
+    resolved_jobs = _resolve_jobs(args.jobs, suite_names)
+    if resolved_jobs > 1:
+        rows = _run_parallel_surface(artifact_root, csv_out, suite_names=suite_names, jobs=resolved_jobs)
+        _write_summary_csv(csv_out.with_name("summary.csv"), _summarize_rows(rows))
+        print(f"Parallel MCP benchmark complete: {len(rows)} rows across {resolved_jobs} job(s)")
+        print(f"CSV written to {csv_out}")
+        return 0
+
+    reports = run_public_surface(artifact_root, suite_names=suite_names)
+    print(render_summary(reports))
+    rows = _flatten_reports(reports)
+    _write_csv(csv_out, rows)
+    _write_summary_csv(csv_out.with_name("summary.csv"), _summarize_rows(rows))
+    print(f"CSV written to {csv_out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

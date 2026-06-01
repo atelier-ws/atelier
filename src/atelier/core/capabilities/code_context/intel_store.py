@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -117,6 +118,7 @@ class SymbolIntelStore:
             try:
                 changed = provider.refresh() or changed
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
         return changed
 
@@ -135,6 +137,7 @@ class SymbolIntelStore:
             try:
                 hits = provider.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             if hits:
                 return hits[:limit]
@@ -161,6 +164,7 @@ class SymbolIntelStore:
                     symbol_name=symbol_name,
                 )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             if payload is not None:
                 return payload
@@ -190,6 +194,7 @@ class SymbolIntelStore:
                     symbol_name=symbol_name,
                 )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             if payload is not None:
                 return payload
@@ -219,6 +224,7 @@ class SymbolIntelStore:
                     symbol_name=symbol_name,
                 )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             if payload is not None:
                 return payload
@@ -248,6 +254,7 @@ class SymbolIntelStore:
                     symbol_name=symbol_name,
                 )
             except Exception:
+                logging.exception("Recovered from broad exception handler")
                 continue
             if payload is not None:
                 return payload
@@ -262,6 +269,7 @@ class SymbolIntelStore:
         try:
             health = provider.health()
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             return False
         if isinstance(health, ProviderHealth):
             return health.ok

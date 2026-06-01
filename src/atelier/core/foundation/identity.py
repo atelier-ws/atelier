@@ -33,6 +33,7 @@ def get_anon_id() -> str:
             uuid.UUID(value)
             return value
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         logger.warning(
             "Suppressed exception at identity.py:32",
             exc_info=True,

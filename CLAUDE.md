@@ -63,6 +63,7 @@ bash scripts/install_claude.sh   # stages and reinstalls the plugin
 ```
 
 Hook scripts run on Claude Code events:
+
 - `hooks/stop.py` — session stats display and auto-record at stop
 - `hooks/session_start.py` — session metadata capture
 - `hooks/pre_tool_use.py`, `post_tool_use.py` — tool-level savings tracking
@@ -74,22 +75,22 @@ Session state is persisted to `~/.atelier/workspaces/<hash>/session_state.json`.
 
 All runtime state lives under `~/.atelier/` (or `$ATELIER_ROOT`):
 
-| Path | Contents |
-|---|---|
-| `runs/<session_id>.json` | Run ledger — events, traces, token stats |
-| `session_stats/<uuid>.json` | Per-session savings keyed by Claude Code UUID |
-| `live_savings_events.jsonl` | Append-only savings event log (uses internal Atelier session IDs, **not** Claude Code UUIDs) |
-| `workspaces/<hash>/session_state.json` | Hook-to-hook state for a workspace |
-| `smart_state.json` | Cumulative savings counters |
+| Path                                   | Contents                                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `runs/<session_id>.json`               | Run ledger — events, traces, token stats                                                     |
+| `session_stats/<uuid>.json`            | Per-session savings keyed by Claude Code UUID                                                |
+| `live_savings_events.jsonl`            | Append-only savings event log (uses internal Atelier session IDs, **not** Claude Code UUIDs) |
+| `workspaces/<hash>/session_state.json` | Hook-to-hook state for a workspace                                                           |
+| `smart_state.json`                     | Cumulative savings counters                                                                  |
 
 ## Source of Truth Hierarchy
 
 Generated files must never be edited directly — edit the source and regenerate:
 
-| Generated file | Source | Regenerate with |
-|---|---|---|
-| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `docs/agent-os/*.md` | `make sync-agent-context` |
-| Plugin staging dir `~/.atelier/claude-plugin-*/` | `integrations/claude/plugin/` | `bash scripts/install_claude.sh` |
+| Generated file                                                 | Source                        | Regenerate with                  |
+| -------------------------------------------------------------- | ----------------------------- | -------------------------------- |
+| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `docs/agent-os/*.md`          | `make sync-agent-context`        |
+| Plugin staging dir `~/.atelier/claude-plugin-*/`               | `integrations/claude/plugin/` | `bash scripts/install_claude.sh` |
 
 ## Coding Guidelines
 
@@ -99,7 +100,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 
 **2. Simplicity First** — minimum code that solves the problem; no speculative features, abstractions for single-use code, or error handling for impossible scenarios; if 200 lines could be 50, rewrite it.
 
-**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that *your* changes made unused.
+**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that _your_ changes made unused.
 
 **4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
 
@@ -107,11 +108,43 @@ See [docs/agent-os/coding-guidelines.md](docs/agent-os/coding-guidelines.md) for
 
 ## Validation by Change Surface
 
-| What changed | Minimum check |
-|---|---|
-| Python runtime / CLI | `make lint && make typecheck && make test` |
-| Hook scripts (`integrations/claude/plugin/hooks/`) | `python3 -m py_compile <file>` then reinstall and smoke-test |
-| MCP tool handlers | `uv run pytest tests/gateway/test_mcp_tool_handlers.py tests/gateway/test_p0_mcp_surfaces.py -q` |
-| Code-intel engine | `uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck` |
-| Frontend | `cd frontend && npm run build && npm run test` |
-| Docs / host instruction sources | `make docs-check && make check-agent-context` |
+| What changed                                       | Minimum check                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Python runtime / CLI                               | `make lint && make typecheck && make test`                                                       |
+| Hook scripts (`integrations/claude/plugin/hooks/`) | `python3 -m py_compile <file>` then reinstall and smoke-test                                     |
+| MCP tool handlers                                  | `uv run pytest tests/gateway/test_mcp_tool_handlers.py tests/gateway/test_p0_mcp_surfaces.py -q` |
+| Code-intel engine                                  | `uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck`                |
+| Frontend                                           | `cd frontend && npm run build && npm run test`                                                   |
+| Docs / host instruction sources                    | `make docs-check && make check-agent-context`                                                    |
+
+## Agent Spawning Rules
+
+When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
+
+| Role                                                      | subagent_type     | When                                                    |
+| --------------------------------------------------------- | ----------------- | ------------------------------------------------------- |
+| Code-review **finder** (read, search, grep — never edits) | `atelier:explore` | All Phase 1 / Angle A–G finder agents in `/code-review` |
+| Code-review **verifier** (applies rubric, never edits)    | `atelier:review`  | All Phase 2 verifier agents in `/code-review`           |
+| Read-only research / exploration                          | `atelier:explore` | Any agent that only reads files, symbols, or web pages  |
+| Coding, edits, fixes                                      | `atelier:code`    | Any agent that writes or modifies files                 |
+| Repeated failure / rescue                                 | `atelier:repair`  | When the same approach fails twice                      |
+
+**Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
+
+## Code Intelligence
+
+Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
+
+| Need                                       | Tool                                              |
+| ------------------------------------------ | ------------------------------------------------- |
+| Find a symbol definition by name           | `mcp__atelier__symbols`                           |
+| Read the full source of one symbol         | `mcp__atelier__node`                              |
+| Who calls a function / what it calls       | `mcp__atelier__callers` / `mcp__atelier__callees` |
+| All references to a symbol                 | `mcp__atelier__usages`                            |
+| Blast radius before refactoring            | `mcp__atelier__impact`                            |
+| Match/rewrite code by AST shape            | `mcp__atelier__pattern`                           |
+| Grouped source + relationships in one call | `mcp__atelier__explore`                           |
+
+There is no `mcp__atelier__code` tool — it was split into the focused tools
+above for discoverability. The multiplexer is still registered as
+`mcp__atelier__symbols` (its `op=` parameter is an internal detail).

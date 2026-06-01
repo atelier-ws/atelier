@@ -8,4 +8,3 @@ Start with:
 
 - [core-beliefs.md](core-beliefs.md)
 - [../quality/scorecard.md](../quality/scorecard.md)
-- [../plans/tech-debt.md](../plans/tech-debt.md)

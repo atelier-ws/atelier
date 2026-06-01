@@ -6,6 +6,7 @@ handles the vast majority of patterns found in real codebases.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Literal, cast
 
@@ -13,7 +14,8 @@ from .models import FileOutline, ImportInfo, SymbolInfo, SymbolOutline
 
 try:
     from tree_sitter_languages import get_parser
-except Exception:  # pragma: no cover - optional dependency fallback
+except ImportError:  # pragma: no cover - optional dependency fallback
+    logging.getLogger(__name__).debug("tree_sitter_languages unavailable; using regex fallback", exc_info=True)
     get_parser = None
 
 # ---------------------------------------------------------------------------
@@ -102,6 +104,7 @@ def _analyze_with_tree_sitter(source: str) -> tuple[list[SymbolInfo], list[Impor
         source_bytes = source.encode("utf-8", errors="replace")
         tree = parser.parse(source_bytes)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return [], [], "typescript_ast:fallback=regex"
 
     symbols: list[SymbolInfo] = []
@@ -294,6 +297,7 @@ def _get_ts_parser() -> Any | None:
             if _TS_PARSER is not None:
                 return _TS_PARSER
         except Exception:
+            logging.exception("Recovered from broad exception handler")
             continue
     return None
 
@@ -302,6 +306,7 @@ def _node_text(source_bytes: bytes, node: Any) -> str:
     try:
         return source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return ""
 
 
@@ -352,6 +357,7 @@ def outline(path: str, source: str, *, lang: str = "typescript") -> FileOutline:
         source_bytes = source.encode("utf-8", errors="replace")
         tree = parser.parse(source_bytes)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return _outline_with_regex(path, source, lang=lang)
 
     imports: list[str] = []

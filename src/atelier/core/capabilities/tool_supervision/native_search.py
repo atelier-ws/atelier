@@ -6,6 +6,7 @@ import ast
 import base64
 import contextlib
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -23,6 +24,7 @@ SearchOutputMode = Literal[
     "file_paths_with_match_count",
 ]
 
+CLAUDE_READ_LINE_LIMIT = 2000
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
 DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
@@ -227,6 +229,17 @@ def _truncate_line(line: str, max_line_length: int | None) -> str:
     return line if len(line) <= max_line_length else line[:max_line_length] + "..."
 
 
+def _claude_grep_path_baseline_bytes(rel_path: str) -> int:
+    return len(rel_path) + 1
+
+
+def _claude_read_baseline_bytes(source: str) -> int:
+    lines = source.splitlines()
+    if len(lines) <= CLAUDE_READ_LINE_LIMIT:
+        return len(source)
+    return len("\n".join(lines[:CLAUDE_READ_LINE_LIMIT]))
+
+
 def _spill_dir() -> Path:
     configured = os.environ.get("ATELIER_MCP_SPILL_DIR")
     if configured:
@@ -280,6 +293,7 @@ def _compact_notebook(source: str) -> str:
     try:
         notebook = json.loads(source)
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return source[:4000]
     rows: list[str] = []
     for idx, cell in enumerate(notebook.get("cells", [])):
@@ -297,11 +311,13 @@ def _extract_pdf(path: Path) -> str:
     try:
         from pypdf import PdfReader
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return f"[PDF text extraction unavailable: install pypdf to read {path.name}]"
     try:
         reader = PdfReader(str(path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
         return f"[PDF text extraction failed: {exc}]"
 
 
@@ -633,7 +649,7 @@ def search_workspace(
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
                 rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
-                naive_bytes += len(source)
+                naive_bytes += _claude_read_baseline_bytes(source)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -648,7 +664,7 @@ def search_workspace(
             if spec.graph_mode == "imported_by":
                 imported = _imported_by_for(root, candidate, candidates)
                 rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
-                naive_bytes += len(source)
+                naive_bytes += _claude_read_baseline_bytes(source)
                 ranked.append(
                     RankedMatch(
                         file=rel,
@@ -664,19 +680,10 @@ def search_workspace(
             line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
             if regex and not line_nos:
                 continue
-            # Naive = grep output: matched lines + context window only.
-            # When there's no regex (include_all), whole file is the baseline.
-            if regex and line_nos:
-                ctx_set: set[int] = set()
-                for ln in line_nos:
-                    for i in range(
-                        max(0, ln - 1 - lines_before),
-                        min(len(lines), ln + lines_after),
-                    ):
-                        ctx_set.add(i)
-                naive_bytes += sum(len(lines[i]) + 1 for i in ctx_set)
-            else:
-                naive_bytes += len(source)
+            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+            # ranked_file_map is closest to Claude Grep/Glob path output, not
+            # a full or contextual Read of every matched file.
+            naive_bytes += _claude_grep_path_baseline_bytes(rel)
             ranges, symbols = _symbol_windows(
                 candidate,
                 lines,
@@ -686,7 +693,6 @@ def search_workspace(
                 lines_after=max(0, lines_after),
             )
             match_count = len(line_nos)
-            rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             score = float(match_count) + (0.15 * len(symbols))
             ranked.append(
                 RankedMatch(
@@ -786,7 +792,8 @@ def search_workspace(
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
             with contextlib.suppress(OSError):
-                naive_bytes += candidate.stat().st_size
+                source = candidate.read_text(encoding="utf-8", errors="replace")
+                naive_bytes += _claude_read_baseline_bytes(source)
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:

@@ -5,11 +5,12 @@
 #   1. 'claude' CLI exists on PATH
 #   2. Repo-root .claude-plugin/marketplace.json exists and has name=atelier
 #   3. Plugin package at integrations/claude/plugin/ validates
-#   4. Claude plugin source 'atelier' is registered
-#   5. Plugin listed as enabled (claude plugin list — atelier@atelier)
-#   6. Global mode: Claude user MCP list contains atelier
-#   7. Workspace mode: .mcp.json in workspace contains atelier server entry
-#   7. MCP wrapper exists and is executable
+#   4. Packaged workflow assets exist and include code-audit.js + README
+#   5. Claude plugin source 'atelier' is registered
+#   6. Plugin listed as enabled (claude plugin list — atelier@atelier)
+#   7. Global mode: Claude user MCP list contains atelier
+#   8. Workspace mode: .mcp.json in workspace contains atelier server entry
+#   9. MCP wrapper exists and is executable
 #
 # Options:
 #   --workspace DIR  Verify project-local workspace config instead of global user MCP
@@ -23,6 +24,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 MARKETPLACE_JSON="${PLUGIN_DIR}/.claude-plugin/marketplace.json"
+WORKFLOWS_DIR="${PLUGIN_DIR}/workflows"
+WORKFLOW_FILE="${WORKFLOWS_DIR}/code-audit.js"
+GATE_WORKFLOW_FILE="${WORKFLOWS_DIR}/gate-benchmark.js"
+WORKFLOW_README="${WORKFLOWS_DIR}/README.md"
+WORKFLOW_MIN_VERSION="v2.1.154"
 WORKSPACE=""
 WORKSPACE_SET=false
 PLUGIN_REF="atelier@atelier"
@@ -62,7 +68,7 @@ fi
 pass "claude CLI found: $(claude --version 2>/dev/null || echo 'version unknown')"
 
 if [ -f "${MARKETPLACE_JSON}" ]; then
-    MKT_NAME=$(python3 -c "import json; d=json.load(open('${MARKETPLACE_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
+    MKT_NAME=$(uv run python -c "import json; d=json.load(open('${MARKETPLACE_JSON}')); print(d.get('name',''))" 2>/dev/null || echo "")
     if [ "$MKT_NAME" = "atelier" ]; then
         pass "repo-root marketplace.json valid (name=atelier)"
     else
@@ -78,6 +84,13 @@ if echo "$VALIDATE_OUT" | grep -q "Validation passed"; then
 else
     fail "plugin validation failed — run: claude plugin validate ${PLUGIN_DIR}"
 fi
+
+if [ -d "${WORKFLOWS_DIR}" ] && [ -f "${WORKFLOW_FILE}" ] && [ -f "${GATE_WORKFLOW_FILE}" ] && [ -f "${WORKFLOW_README}" ]; then
+    pass "workflow assets bundled (workflows/, code-audit.js, gate-benchmark.js, README.md)"
+else
+    fail "workflow assets missing from ${WORKFLOWS_DIR} — expected code-audit.js, gate-benchmark.js, and README.md"
+fi
+echo "NOTE: packaged Claude workflows appear in /workflows and require Claude Code ${WORKFLOW_MIN_VERSION}+"
 
 SOURCE_LIST="$(claude plugin marketplace list 2>&1 || true)"
 if echo "$SOURCE_LIST" | grep -q "atelier"; then
@@ -100,7 +113,7 @@ fi
 if $WORKSPACE_SET; then
     MCP_JSON="${WORKSPACE}/.mcp.json"
     if [ -f "$MCP_JSON" ]; then
-        HAS=$(python3 -c "
+        HAS=$(uv run python -c "
 import json
 d = json.load(open('$MCP_JSON'))
 servers = d.get('mcpServers', {})

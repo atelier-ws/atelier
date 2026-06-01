@@ -7,6 +7,7 @@ telemetry without calling an LLM or mutating the store.
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from collections import Counter, defaultdict
@@ -507,6 +508,7 @@ def _git_sha(repo_root: Path) -> str:
             timeout=2,
         )
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return "unknown"
     return result.stdout.strip() or "unknown"
 

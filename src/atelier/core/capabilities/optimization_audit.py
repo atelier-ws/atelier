@@ -9,6 +9,7 @@ They surface two missing views in the current product:
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections import Counter
@@ -52,6 +53,7 @@ def _read_file_tokens(path: Path) -> int:
             return 0
         return _estimate_tokens(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Recovered from broad exception handler")
         return 0
 
 

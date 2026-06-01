@@ -41,7 +41,7 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
         return {}
     try:
         return json.loads(p.read_text("utf-8"))  # type: ignore[no-any-return]
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -75,7 +75,7 @@ def _git_diff(file_path: str) -> str:
             timeout=5,
         )
         return result.stdout.strip()
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         return ""
 
 
@@ -144,7 +144,7 @@ def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
 
     try:
         data = json.loads(run_file.read_text("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
@@ -177,9 +177,9 @@ def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
             json.dump(data, tmp, indent=2)
             tmp_path = tmp.name
         Path(tmp_path).replace(run_file)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         if tmp_path:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 Path(tmp_path).unlink(missing_ok=True)
 
 
@@ -191,7 +191,7 @@ def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return 0  # fail-open
 
     tool_name: str = payload.get("tool_name", "") or ""
@@ -199,6 +199,17 @@ def main() -> int:
         return 0
 
     tool_input: dict[str, Any] = payload.get("tool_input", {}) or {}
+
+    # Autopilot (M5): run scoped verification on the touched file and surface
+    # any counterexamples. Fail-open.
+    edited_path = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
+    if edited_path:
+        try:
+            from atelier.core.capabilities.autopilot.factory import run_and_emit
+
+            run_and_emit("post_edit", {"touched_files": [edited_path]})
+        except (ImportError, OSError, ValueError):
+            pass
 
     try:
         file_path, diff = _compute_diff(tool_name, tool_input)
@@ -210,7 +221,7 @@ def main() -> int:
             return 0
 
         _append_file_edit_event(session_id, file_path, diff)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass  # fail-open: never block the agent
 
     return 0

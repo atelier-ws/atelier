@@ -11,6 +11,7 @@ failures, validation results, and reusable lessons — never hidden chain-of-tho
 or user preferences.
 """
 
+import logging
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -47,6 +48,7 @@ try:
 
     __version__ = _version(__name__.split(".")[0])
 except Exception:
+    logging.exception("Recovered from broad exception handler")
     # Fallback: read pyproject.toml directly for dev/uninstalled usage.
     _pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
     if _pyproject.exists():

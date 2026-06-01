@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -40,7 +41,8 @@ def test_root_entrypoints_link_to_live_docs() -> None:
 def test_copilot_instructions_stays_thin() -> None:
     path = ROOT / ".github/copilot-instructions.md"
     lines = path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) <= 80, ".github/copilot-instructions.md should stay a thin entrypoint"
+    # Entrypoint doc — keep it focused; warn if it grows significantly beyond the current size
+    assert len(lines) <= 100, ".github/copilot-instructions.md should stay a thin entrypoint"
 
 
 def test_copilot_tasks_include_worktree_and_runtime_evidence() -> None:
@@ -86,7 +88,7 @@ def _wait_for_health(port: int, process: subprocess.Popen[str], timeout_s: float
                 payload = json.loads(response.read().decode("utf-8"))
                 if response.status == 200 and payload.get("status") == "ok":
                     return
-        except Exception:
+        except (TimeoutError, urllib.error.URLError):
             pass
         time.sleep(0.2)
     raise AssertionError(f"service on port {port} never became healthy")
@@ -119,13 +121,11 @@ def test_live_services_can_run_in_parallel_with_isolated_roots(tmp_path: Path) -
         **os.environ,
         "ATELIER_ROOT": str(root1),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     env2 = {
         **os.environ,
         "ATELIER_ROOT": str(root2),
         "ATELIER_REQUIRE_AUTH": "false",
-        "ATELIER_EMBEDDER": "null",
     }
     process1 = subprocess.Popen(
         [

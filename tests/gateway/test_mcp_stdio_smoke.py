@@ -75,12 +75,15 @@ def test_mcp_stdio_smoke() -> None:
         line = line.strip()
         if not line:
             continue
+        # Strict framing gate (QBL-LOG-04): every non-empty stdout line MUST be a
+        # JSON object. A stray print() now fails the test with its raw line.
         try:
             msg = json.loads(line)
-            if "id" in msg:
-                responses[msg["id"]] = msg
-        except Exception:
-            pass
+        except json.JSONDecodeError as exc:
+            raise AssertionError(f"non-protocol stdout line: {line!r}") from exc
+        assert isinstance(msg, dict), f"non-protocol stdout line: {line!r}"
+        if "id" in msg:
+            responses[msg["id"]] = msg
 
     # 1. tools/list
     assert 2 in responses, "No tools/list response"
