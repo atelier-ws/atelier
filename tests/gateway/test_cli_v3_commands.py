@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+from atelier.infra.internal_llm import OllamaUnavailable
 
 
 def test_cli_reembed_rewrites_legacy_archival_passage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

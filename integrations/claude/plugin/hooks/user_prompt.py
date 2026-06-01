@@ -139,6 +139,47 @@ def _append_prompt_event(session_id: str, prompt: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Context-window estimation
+# ---------------------------------------------------------------------------
+
+# Sonnet context window (200k tokens). One token ≈ 4 bytes of UTF-8 text.
+_CONTEXT_WINDOW_TOKENS = 200_000
+_BYTES_PER_TOKEN = 4
+_COMPACT_WARN_PCT = 70  # warn when estimated context exceeds this percent
+
+
+def _estimate_context_pct(transcript_path: str) -> int | None:
+    """Return estimated context utilisation [0-100] from transcript file size.
+
+    Fail-open: returns None on any error.
+    """
+    try:
+        size = Path(transcript_path).stat().st_size
+        estimated_tokens = size // _BYTES_PER_TOKEN
+        return min(100, round(estimated_tokens * 100 / _CONTEXT_WINDOW_TOKENS))
+    except OSError:
+        return None
+
+
+def _emit_compact_warning(pct: int) -> None:
+    """Write a compact-nudge line to stdout so Claude Code injects it as context."""
+    msg = (
+        f"[Atelier] Context estimated at ~{pct}% of window. "
+        "Call mcp__atelier__compact now, then tell the user to run /compact "
+        "before starting multi-step work."
+    )
+    # Claude Code UserPromptSubmit hooks can inject context by writing
+    # {"type": "context", "content": "..."} to stdout.
+    sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
+    sys.stdout.flush()
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -148,6 +189,13 @@ def main() -> int:
     prompt: str = payload.get("prompt", "") or ""
     if not prompt.strip():
         return 0
+
+    # Context-window check — inject a nudge when transcript is large.
+    transcript_path: str = payload.get("transcript_path", "") or ""
+    if transcript_path:
+        pct = _estimate_context_pct(transcript_path)
+        if pct is not None and pct >= _COMPACT_WARN_PCT:
+            _emit_compact_warning(pct)
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:

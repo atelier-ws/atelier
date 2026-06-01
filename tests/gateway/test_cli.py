@@ -17,7 +17,7 @@ from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.cli import cli
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+from atelier.infra.internal_llm import OllamaUnavailable
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:

@@ -169,7 +169,7 @@ atelier_resolve_install_profile "atelier:claude"
 if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
     warn "$ATELIER_INSTALL_PROFILE_WARNING"
 fi
-python3 "$MODE_RENDERER" >/dev/null
+uv run python "$MODE_RENDERER" >/dev/null || python3 "$MODE_RENDERER" >/dev/null
 STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".

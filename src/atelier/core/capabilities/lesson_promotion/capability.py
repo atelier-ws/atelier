@@ -21,7 +21,7 @@ from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromoti
 from atelier.core.foundation.models import Rubric, Trace
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.embeddings.base import Embedder
-from atelier.infra.embeddings.factory import make_embedder
+from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.embeddings.null_embedder import NullEmbedder
 from atelier.infra.storage.vector import cosine_similarity
 
@@ -41,7 +41,7 @@ class LessonPromoterCapability:
     ) -> None:
         self.store = store
         self._now = now or (lambda: datetime.now(UTC))
-        self._embedder = embedder or make_embedder()
+        self._embedder = embedder or get_embedder()
         self._cluster_threshold = cluster_threshold or float(os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85"))
         self._trace_embedding_cache: dict[str, list[float]] = {}
         self._recent_failed_by_domain: dict[str, list[Trace]] = {}
@@ -294,7 +294,8 @@ class LessonPromoterCapability:
         lesson_payload.setdefault("id", candidate.id)
         lesson_payload.setdefault("kind", candidate.kind)
         lesson_payload.setdefault(
-            "source_session_id", lesson_payload.get("source_session_id") or candidate.evidence.get("source_session_id")
+            "source_session_id",
+            lesson_payload.get("source_session_id") or candidate.evidence.get("source_session_id"),
         )
         lesson_payload.setdefault("confidence", candidate.confidence)
         lesson_payload.setdefault("captured_at", candidate.created_at)

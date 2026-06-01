@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict
 
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.embeddings.base import Embedder
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable, chat
+from atelier.infra.internal_llm import chat
+from atelier.infra.internal_llm.ollama_client import OllamaUnavailable as InternalLLMError
 from atelier.infra.storage.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,7 @@ def arbitrate(
             ],
             json_schema=schema,
         )
-    except OllamaUnavailable:
+    except InternalLLMError:
         return _decision(op="ADD", reason="arbitration unavailable")
 
     if not isinstance(response, dict):

@@ -57,7 +57,7 @@ def _no_ollama() -> Iterator[None]:
 
     Tests that explicitly need LLM behaviour should override via monkeypatch.
     """
-    from atelier.infra.internal_llm.ollama_client import OllamaUnavailable
+    from atelier.infra.internal_llm import OllamaUnavailable
 
     with patch(
         "atelier.infra.internal_llm.ollama_client._ollama_module",

@@ -163,7 +163,7 @@ class ContextCompressionCapability:
         strategy = "tfidf"
         try:
             chunks = summarize_ledger(all_dropped_events)
-            strategy = "ollama_summarizer"
+            strategy = "llm_summarizer"
         except SleeptimeUnavailable as exc:
             _log.warning("Sleeptime summarizer unavailable; skipping archival summary: %s", exc)
             chunks = []

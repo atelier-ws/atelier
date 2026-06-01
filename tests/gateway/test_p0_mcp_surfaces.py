@@ -255,7 +255,8 @@ def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> Non
 
     _ = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
     cached = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
-    indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000})
+    # force=True guarantees a version bump regardless of autosync timing.
+    indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000, "force": True})
     fresh = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
     assert cached["provenance"] == "cached"
@@ -792,7 +793,9 @@ def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: 
     assert "rendered" in payload
     assert payload["rendered"].startswith("### index")
     assert "counts: files=3, symbols=8, imports=2" in payload["rendered"]
-    fake_engine.tool_index.assert_called_once_with(include_globs=None, exclude_globs=None, budget_tokens=220)
+    fake_engine.tool_index.assert_called_once_with(
+        include_globs=None, exclude_globs=None, force=False, budget_tokens=220
+    )
 
 
 def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
