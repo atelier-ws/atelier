@@ -57,6 +57,136 @@ export interface OverviewStats {
   is_estimate: boolean;
 }
 
+export interface SwarmArtifactRef {
+  kind: string;
+  label: string;
+  path: string;
+  exists: boolean;
+}
+
+export interface SwarmAcceptedCommit {
+  order: number;
+  child_id: string;
+  commit_ref?: string | null;
+  patch_path?: string | null;
+  artifacts: SwarmArtifactRef[];
+}
+
+export interface SwarmWaveSummary {
+  wave_index: number;
+  status: string;
+  max_runs: number;
+  planned_runs: number;
+  planning_mode: string;
+  primary_winner_child_id?: string | null;
+  accepted_child_ids: string[];
+  rejected_child_ids: string[];
+  manifest_artifact?: SwarmArtifactRef | null;
+}
+
+export interface SwarmRunningChild {
+  child_id: string;
+  activity?: string | null;
+  last_output_at?: string | null;
+}
+
+export interface SwarmRunListItem {
+  run_id: string;
+  status: string;
+  mode: string;
+  runner_name: string;
+  runner_model?: string | null;
+  current_wave: number;
+  max_runs: number;
+  planned_runs: number;
+  planning_mode?: string | null;
+  accepted_child_ids: string[];
+  primary_winner_child_id?: string | null;
+  failed_children: string[];
+  running_children: SwarmRunningChild[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SwarmChildState {
+  child_id: string;
+  label: string;
+  wave_index: number;
+  status: string;
+  branch?: string | null;
+  worktree_path: string;
+  current_activity?: string | null;
+  last_output_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface SwarmRunStateView {
+  run_id: string;
+  status: string;
+  mode: string;
+  runner_name: string;
+  runner_model?: string | null;
+  base_ref: string;
+  base_snapshot_ref?: string | null;
+  integration_base_ref?: string | null;
+  current_wave: number;
+  max_runs?: number | null;
+  runs: number;
+  planning_mode?: string | null;
+  stop_reason?: string | null;
+  accepted_child_ids: string[];
+  primary_winner_child_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  waves: SwarmWaveSummary[];
+  children: SwarmChildState[];
+  accepted_commits: SwarmAcceptedCommit[];
+}
+
+export interface SwarmExportPayload {
+  run_id: string;
+  status: string;
+  mode: string;
+  runner_name: string;
+  runner_model?: string | null;
+  base_ref: string;
+  base_snapshot_ref?: string | null;
+  integration_base_ref?: string | null;
+  artifact_root?: string | null;
+  base_snapshot_artifact?: SwarmArtifactRef | null;
+  accepted_child_ids: string[];
+  accepted_commits: SwarmAcceptedCommit[];
+  waves: SwarmWaveSummary[];
+  artifacts: SwarmArtifactRef[];
+  transplant_commands: string[];
+}
+
+export interface SwarmApplyPayload {
+  run_id: string;
+  wave_index?: number | null;
+  child_id?: string | null;
+  base_snapshot_ref?: string | null;
+  integration_base_ref?: string | null;
+  selected_commits: SwarmAcceptedCommit[];
+  commands: string[];
+  artifacts: SwarmArtifactRef[];
+}
+
+export interface SwarmRunDetailResponse {
+  run: SwarmRunStateView;
+  export: SwarmExportPayload;
+  apply: SwarmApplyPayload;
+}
+
+export interface SwarmLogResponse {
+  run_id: string;
+  child_id?: string | null;
+  stderr: boolean;
+  tail: number;
+  content: string;
+}
+
 export interface PlanRecord {
   trace_id: string;
   domain: string;
@@ -1434,6 +1564,20 @@ export const api = {
     get<OptimizationsSummary>(
       `/v1/optimizations/summary?window_days=${windowDays}`
     ),
+  swarmRuns: () => get<SwarmRunListItem[]>("/v1/swarm/runs"),
+  swarmRun: (runId: string) =>
+    get<SwarmRunDetailResponse>(`/v1/swarm/runs/${runId}`),
+  swarmLogs: (runId: string, childId?: string, stderr = false, tail = 80) => {
+    const params = new URLSearchParams();
+    if (childId) params.set("child_id", childId);
+    params.set("stderr", String(stderr));
+    params.set("tail", String(tail));
+    return get<SwarmLogResponse>(
+      `/v1/swarm/runs/${runId}/logs?${params.toString()}`
+    );
+  },
+  stopSwarmRun: (runId: string, cleanup = false) =>
+    post<SwarmRunStateView>(`/v1/swarm/runs/${runId}/stop?cleanup=${cleanup}`, {}),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
