@@ -1304,6 +1304,50 @@ def test_tool_code_search_dispatches_mode_without_gateway_ranking_logic(
         mode="semantic",
         kind=None,
         language=None,
+        seed_files=None,
+        snippet="none",
+        snippet_lines=8,
+        file_glob=None,
+        scope="repo",
+        budget_tokens=220,
+    )
+
+
+def test_tool_code_search_dispatches_grounded_seed_files_without_gateway_ranking_logic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine = MagicMock()
+    fake_engine.tool_search.return_value = {
+        "items": [{"symbol_name": "OrderService", "provenance": "local"}],
+        "cache_hit": False,
+        "provenance": "local",
+        "tokens_saved": 6,
+        "total_tokens": 60,
+        "mode": "lexical",
+    }
+    monkeypatch.setattr(
+        "atelier.gateway.adapters.mcp_server._code_context_engine",
+        lambda repo_root=".": fake_engine,
+    )
+
+    payload = tool_code(
+        {
+            "op": "search",
+            "repo_root": str(tmp_path),
+            "query": "OrderService",
+            "seed_files": ["src/orders.py"],
+            "budget_tokens": 220,
+        }
+    )
+
+    assert payload["mode"] == "lexical"
+    fake_engine.tool_search.assert_called_once_with(
+        "OrderService",
+        limit=20,
+        mode="auto",
+        kind=None,
+        language=None,
+        seed_files=["src/orders.py"],
         snippet="none",
         snippet_lines=8,
         file_glob=None,

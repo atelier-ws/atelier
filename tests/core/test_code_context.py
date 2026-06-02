@@ -1548,6 +1548,25 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(
     assert all("content_hash" not in item for item in payload["items"])
 
 
+def test_tool_search_seed_files_prioritize_grounded_results(tmp_path: Path) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "legacy").mkdir()
+    (tmp_path / "app" / "orders.py").write_text("class OrderService:\n    pass\n", encoding="utf-8")
+    (tmp_path / "legacy" / "orders.py").write_text("class OrderService:\n    pass\n", encoding="utf-8")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+
+    payload = engine.tool_search(
+        "OrderService",
+        limit=5,
+        mode="lexical",
+        seed_files=["legacy/orders.py"],
+        budget_tokens=4000,
+    )
+
+    assert payload["items"][0]["path"] == "legacy/orders.py"
+    assert payload["items"][0]["name"] == "OrderService"
+
+
 def test_tool_search_high_limit_forces_location_only_compaction(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
