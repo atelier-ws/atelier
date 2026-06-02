@@ -39,6 +39,7 @@ ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
 ATELIER_INSTALL_RECORD="${HOME}/.atelier/install_dir"
 ATELIER_DEFAULT_INSTALL_DIR="${HOME}/.local/share/atelier"
+ATELIER_PROTECTED_SOURCE_ROOTS="${ATELIER_PROTECTED_SOURCE_ROOTS:-${HOME}/Projects}"
 PASSTHROUGH=()
 WORKSPACE_EXPLICIT=0
 PURGE=0
@@ -114,6 +115,30 @@ install_dir_from_record() {
     fi
 }
 
+is_protected_source_path() {
+    local path="$1"
+    local root root_real path_real
+    if [[ -d "$path" ]]; then
+        path_real="$(cd "$path" && pwd -P)"
+    else
+        path_real="$path"
+    fi
+
+    IFS=':' read -r -a roots <<< "$ATELIER_PROTECTED_SOURCE_ROOTS"
+    for root in "${roots[@]}"; do
+        [[ -n "$root" ]] || continue
+        if [[ -d "$root" ]]; then
+            root_real="$(cd "$root" && pwd -P)"
+        else
+            root_real="$root"
+        fi
+        if [[ "$path_real" == "$root_real" || "$path_real" == "$root_real/"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 purge_leftovers() {
     local repo_root install_dir
     repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -130,6 +155,11 @@ purge_leftovers() {
     remove_glob "${HOME}/.codex/AGENTS.md.atelier-backup.*"
     remove_glob "${HOME}/.codex/plugins/atelier*"
     remove_path "${HOME}/.codex/plugins/cache/atelier"
+    remove_path "${HOME}/.codex/plugins/cache/openai-curated/atelier"
+    if [ -f "${HOME}/.copilot/hooks/hooks.json" ] && grep -q "atelier" "${HOME}/.copilot/hooks/hooks.json" 2>/dev/null; then
+        run "rm -f '${HOME}/.copilot/hooks/hooks.json'"
+        info "Removed Atelier Copilot CLI hooks config"
+    fi
 
     if command -v npm >/dev/null 2>&1; then
         run "npm uninstall -g codeburn tokscale >/dev/null 2>&1 || true"
@@ -172,7 +202,9 @@ purge_leftovers() {
             install_dir_real="$install_dir"
         fi
 
-        if [[ "$script_root_real" == "$install_dir_real" || "$script_root_real" == "$install_dir_real/"* || "$install_dir" == "$repo_root" || "$install_dir" == "$PWD" ]]; then
+        if is_protected_source_path "$install_dir_real"; then
+            warn "Skipping install source under protected source root: $install_dir"
+        elif [[ "$script_root_real" == "$install_dir_real" || "$script_root_real" == "$install_dir_real/"* || "$install_dir" == "$repo_root" || "$install_dir" == "$PWD" ]]; then
             if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
                 warn "Will remove install source after script exits (deferred): $install_dir"
             else

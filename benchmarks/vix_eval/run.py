@@ -12,6 +12,18 @@ The Atelier arm adds the atelier stdio MCP server + a tool-discipline CLAUDE.md.
 
 Usage:
     uv run python -m benchmarks.vix_eval.run --tasks task1 --reps 1 --model sonnet
+
+    # Cloud providers - reads credentials from .env or current env automatically:
+    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+        --provider aws --model us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+        --provider gcp --model claude-sonnet-4-5@20250929
+    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+        --provider azure --model claude-sonnet-4-5
+    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms baseline atelier \
+        --provider openrouter --model anthropic/claude-sonnet-4-5
+
+    # Manual override (--agent-env takes precedence over --provider):
     uv run python -m benchmarks.vix_eval.run --tasks task1 --arms baseline atelier \
         --model claude-opus-4-8 \
         --agent-env ANTHROPIC_BASE_URL=https://openrouter.ai/api \
@@ -32,14 +44,22 @@ import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Callable
 
-from atelier.core.capabilities.host_runners import build_vix_cli_command
+from atelier.core.capabilities.host_runners import (
+    CLAUDE_PROVIDER_PRESETS,
+    build_vix_cli_command,
+)
+from atelier.core.capabilities.pricing import usage_cost_usd
 
 from benchmarks.vix_eval.tasks import BY_ID, TASKS, Task
 
@@ -48,8 +68,19 @@ RESULTS_ROOT = REPO_ROOT / "benchmarks" / "vix_eval" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
-VALID_ARMS = ("baseline", "atelier", "vix")
-CLI_DRIVERS = ("claude", "copilot", "codex", "opencode")
+VALID_ARMS = ("baseline", "atelier", "woz", "vix")
+PERSISTENT_WORKSPACE_ROOT = Path(
+    os.environ.get("VIX_EVAL_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "vix_eval_workspaces"))
+)
+PROVIDER_ALIASES: dict[str, str] = {
+    "aws": "aws-claude",
+    "bedrock": "aws-claude",
+    "gcp": "gcp-claude",
+    "vertex": "gcp-claude",
+    "azure": "azure-claude",
+    "openrouter": "openrouter-claude",
+}
+CLI_DRIVERS = ("claude", "copilot", "codex", "opencode", "vix")
 PLACEHOLDER_RESPONSE_MARKERS = (
     "i'm ready to help",
     "what would you like to work on",
@@ -140,15 +171,25 @@ API_DEFAULT_BASE_URLS = {
     "litellm": "http://localhost:4000/v1",
     "ollama": "http://localhost:11434/v1",
 }
-ATELIER_CLAUDE_MD = """# Tool discipline (benchmark candidate)
+WOZ_PLUGIN_ROOT = Path("/home/pankaj/.claude/plugins/cache/wozcode-marketplace/woz/0.3.75")
+WOZ_CLAUDE_MD = ""
+ATELIER_CLAUDE_MD = ""
 
-Prefer Atelier MCP tools over native ones to minimise context/token use:
-- Read files with `mcp__atelier__read` (outline mode for large files), not full reads.
-- Search with `mcp__atelier__grep` / `mcp__atelier__search` instead of dumping files.
-- For symbols use `mcp__atelier__node` / `mcp__atelier__symbols` (one symbol, not whole file).
-- Trace callers/callees with `mcp__atelier__callers` / `mcp__atelier__callees`.
-Keep reads narrow; do not re-read unchanged files.
-"""
+
+def _woz_mcp_config() -> dict[str, object]:
+    return {
+        "mcpServers": {
+            "plugin_woz_code": {
+                "type": "stdio",
+                "command": "node",
+                "args": [str(WOZ_PLUGIN_ROOT / "servers" / "code-server.js")],
+                "env": {
+                    "CLAUDE_PLUGIN_ROOT": str(WOZ_PLUGIN_ROOT),
+                    "WOZCODE_POSTHOG_ENABLED": "false",
+                },
+            }
+        }
+    }
 
 
 def _atelier_mcp_config(host: str) -> dict[str, object]:
@@ -262,8 +303,11 @@ def _mktemp(prefix: str) -> str:
     return tempfile.mkdtemp(prefix=f"vixeval-{prefix}")
 
 
-def prepare_workspace(task: Task) -> Path:
-    ws = Path(_mktemp(f"ws-{task.id}-"))
+def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
+    ws = workspace or Path(_mktemp(f"ws-{task.id}-"))
+    if ws.exists() and any(ws.iterdir()):
+        return ws
+    ws.mkdir(parents=True, exist_ok=True)
     kind = task.source[0]
     if kind == "empty":
         pass
@@ -663,6 +707,88 @@ def _parse_opencode_result(
     )
 
 
+def _parse_text_result(
+    stdout: str,
+    flow_path: Path,
+    task: str,
+    arm: str,
+    rep: int,
+    wall_duration_ms: int,
+) -> ArmResult:
+    text = stdout.strip()
+    return ArmResult(
+        task=task,
+        arm=arm,
+        rep=rep,
+        ok=bool(text),
+        cost_usd=0.0,
+        duration_ms=wall_duration_ms,
+        duration_api_ms=wall_duration_ms,
+        num_turns=1 if text else 0,
+        input_tokens=0,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        output_tokens=0,
+        models=[],
+        is_error=not bool(text),
+        result_excerpt=text[:4000],
+        flow_path=str(flow_path),
+    )
+
+
+def _parse_vix_result(
+    stdout: str,
+    flow_path: Path,
+    task: str,
+    arm: str,
+    rep: int,
+    wall_duration_ms: int,
+) -> ArmResult:
+    payload: dict[str, object] | None = None
+    for obj in _iter_jsonl_objects(stdout):
+        if obj.get("type") == "result":
+            payload = obj
+    if payload is None:
+        return _parse_text_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
+    usage = payload.get("usage")
+    usage_dict = usage if isinstance(usage, dict) else {}
+    result = str(payload.get("result") or "").strip()
+    is_error = bool(payload.get("is_error")) or not bool(result)
+    duration_ms = _usage_int(payload.get("duration_ms") or payload.get("durationMs"))
+    model = str(payload.get("model") or "").strip()
+    model_for_pricing = model or "claude-sonnet-4.6"
+    input_tokens = _usage_int(usage_dict.get("input_tokens") or usage_dict.get("inputTokens"))
+    cache_read_tokens = _usage_int(usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens"))
+    cache_creation_tokens = _usage_int(
+        usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens")
+    )
+    output_tokens = _usage_int(usage_dict.get("output_tokens") or usage_dict.get("outputTokens"))
+    return ArmResult(
+        task=task,
+        arm=arm,
+        rep=rep,
+        ok=not is_error,
+        cost_usd=usage_cost_usd(
+            model_for_pricing,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_creation_tokens,
+        ),
+        duration_ms=duration_ms or wall_duration_ms,
+        duration_api_ms=duration_ms or wall_duration_ms,
+        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns")) or (1 if result else 0),
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
+        output_tokens=output_tokens,
+        models=[model_for_pricing],
+        is_error=is_error,
+        result_excerpt=result[:4000],
+        flow_path=str(flow_path) if flow_path.exists() else "",
+    )
+
+
 def _parse_cli_result(
     stdout: str,
     flow_path: Path,
@@ -685,6 +811,8 @@ def _parse_cli_result(
         return _parse_codex_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     if cli_driver == "opencode":
         return _parse_opencode_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
+    if cli_driver == "vix":
+        return _parse_vix_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     raise ValueError(f"unsupported cli driver: {cli_driver}")
 
 
@@ -805,6 +933,26 @@ def _parse_agent_env_from_host(entries: list[str] | None) -> dict[str, str]:
     return parsed
 
 
+def _resolve_provider_env(provider: str | None) -> dict[str, str]:
+    """Resolve --provider alias to env vars, reading values from .env / host env."""
+    if not provider:
+        return {}
+    preset_key = PROVIDER_ALIASES.get(provider.lower())
+    if preset_key is None:
+        raise ValueError(f"unknown --provider {provider!r}; choices: {', '.join(sorted(PROVIDER_ALIASES))}")
+    preset = CLAUDE_PROVIDER_PRESETS[preset_key]
+    result: dict[str, str] = dict(preset.env)
+    for dest, source in preset.env_from_host.items():
+        value = _resolve_host_env_value(source)
+        if value is None:
+            raise ValueError(
+                f"--provider {provider!r} requires {source!r} but it was not found "
+                f"in the environment or .env files"
+            )
+        result[dest] = value
+    return result
+
+
 def _as_float(value: object) -> float:
     if isinstance(value, (int, float)):
         return float(value)
@@ -828,9 +976,23 @@ def run_arm(
     api_key_env: str | None = None,
     agent_env: dict[str, str] | None = None,
     cli_extra_args: list[str] | tuple[str, ...] = (),
+    resume_state: bool = False,
 ) -> ArmResult:
     assert arm in VALID_ARMS
-    ws = prepare_workspace(task)
+    row_state: dict[str, object] = {}
+    persistent_workspace = False
+    should_resume_session = False
+    if transport == "cli" and cli_driver == "claude":
+        state_dir = _row_state_dir(out_dir, task.id, arm, rep)
+        existing_state = _load_row_state(state_dir)
+        existing_workspace = Path(str(existing_state.get("workspace", "")))
+        has_saved_state = bool(existing_state.get("session_id")) and existing_workspace.is_dir()
+        row_state = _ensure_claude_row_state(out_dir, task.id, arm, rep)
+        ws = prepare_workspace(task, Path(str(row_state["workspace"])))
+        persistent_workspace = True
+        should_resume_session = resume_state and has_saved_state
+    else:
+        ws = prepare_workspace(task)
     if transport == "api":
         try:
             result = run_api_arm(
@@ -888,27 +1050,18 @@ def run_arm(
         if cli_driver == "claude":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
-                prompt=task.prompt(),
+                prompt="Continue from where you left off." if should_resume_session else task.prompt(),
                 model=model,
                 workspace=str(ws),
                 agent_command=agent_command,
                 extra_args=cli_extra_args,
             )
-            if arm == "atelier":
-                cmd += [
-                    "--strict-mcp-config",
-                    "--mcp-config",
-                    json.dumps(_atelier_mcp_config("claude")),
-                ]
-                (ws / _instruction_filename(cli_driver)).write_text(ATELIER_CLAUDE_MD)
-                baseline_cfg = _make_baseline_config()
-                temp_paths.append(baseline_cfg)
-                env["CLAUDE_CONFIG_DIR"] = str(baseline_cfg)
-            elif arm == "baseline":
-                cmd += ["--strict-mcp-config", "--mcp-config", json.dumps(EMPTY_MCP)]
-                baseline_cfg = _make_baseline_config()
-                temp_paths.append(baseline_cfg)
-                env["CLAUDE_CONFIG_DIR"] = str(baseline_cfg)
+            if row_state:
+                session_id = str(row_state["session_id"])
+                cmd += ["--resume" if should_resume_session else "--session-id", session_id]
+                cmd += ["--add-dir", str(ws)]
+            # Arms are labels only; install/uninstall plugins manually between runs.
+            # No config injection: Claude runs with whatever is currently installed.
         elif cli_driver == "copilot":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
@@ -974,7 +1127,8 @@ def run_arm(
             mitm.terminate()
             with contextlib.suppress(Exception):
                 mitm.wait(timeout=5)
-        shutil.rmtree(ws, ignore_errors=True)
+        if not persistent_workspace:
+            shutil.rmtree(ws, ignore_errors=True)
         for temp_path in locals().get("temp_paths", []):
             shutil.rmtree(temp_path, ignore_errors=True)
 
@@ -1402,6 +1556,35 @@ def _result_key(result: ArmResult) -> tuple[str, str, int]:
     return (result.task, result.arm, result.rep)
 
 
+def _row_state_dir(out_dir: Path, task_id: str, arm: str, rep: int) -> Path:
+    return out_dir / "state" / f"{task_id}_{arm}_rep{rep}"
+
+
+def _load_row_state(state_dir: Path) -> dict[str, object]:
+    state_path = state_dir / "state.json"
+    if not state_path.exists():
+        return {}
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _ensure_claude_row_state(out_dir: Path, task_id: str, arm: str, rep: int) -> dict[str, object]:
+    state_dir = _row_state_dir(out_dir, task_id, arm, rep)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    state = _load_row_state(state_dir)
+    run_key = uuid.uuid5(uuid.NAMESPACE_URL, str(out_dir.resolve())).hex[:12]
+    state.setdefault("session_id", str(uuid.uuid4()))
+    state.setdefault(
+        "workspace",
+        str(PERSISTENT_WORKSPACE_ROOT / f"{out_dir.name}-{run_key}" / f"{task_id}_{arm}_rep{rep}"),
+    )
+    (state_dir / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    return state
+
+
 def _load_existing_results(run_dir: Path) -> list[ArmResult]:
     results_path = run_dir / "results.jsonl"
     if not results_path.exists():
@@ -1482,6 +1665,8 @@ def _run_task_rep(
     api_key_env: str | None,
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
+    resume_state: bool,
+    on_result: Callable[[ArmResult], None] | None = None,
 ) -> list[ArmResult]:
     task = BY_ID[task_id]
     results: list[ArmResult] = []
@@ -1504,6 +1689,7 @@ def _run_task_rep(
                 api_key_env,
                 agent_env,
                 cli_extra_args,
+                resume_state=resume_state,
             )
         except Exception as exc:
             result = ArmResult(
@@ -1531,6 +1717,8 @@ def _run_task_rep(
             flush=True,
         )
         results.append(result)
+        if on_result is not None:
+            on_result(result)
     return results
 
 
@@ -1550,6 +1738,8 @@ def _run_single_arm(
     api_key_env: str | None,
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
+    resume_state: bool,
+    on_result: Callable[[ArmResult], None] | None = None,
 ) -> ArmResult:
     return _run_task_rep(
         task_id,
@@ -1566,6 +1756,8 @@ def _run_single_arm(
         api_key_env=api_key_env,
         agent_env=agent_env,
         cli_extra_args=cli_extra_args,
+        resume_state=resume_state,
+        on_result=on_result,
     )[0]
 
 
@@ -1610,6 +1802,16 @@ def main() -> int:
         help="Copy a host env var into CLI transport env as DEST_KEY=SOURCE_ENV; repeatable.",
     )
     p.add_argument(
+        "--provider",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Cloud provider shorthand: aws/bedrock, gcp/vertex, azure, openrouter. "
+            "Reads credentials from .env or the current environment automatically. "
+            "Explicit --agent-env values take precedence."
+        ),
+    )
+    p.add_argument(
         "--cli-extra-arg",
         action="append",
         default=[],
@@ -1619,9 +1821,15 @@ def main() -> int:
     p.add_argument("--bridge-wait", type=float, default=3.0, help="Seconds to wait after launching the bridge")
     p.add_argument("--out", type=Path, default=None, help="directory for run artifacts")
     p.add_argument("--resume", action="store_true", help="append to existing out dir and skip done runs")
+    p.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="with --resume, rerun rows where ok is false",
+    )
     p.add_argument("--report", default=None, help="path to a results dir to re-report")
     args = p.parse_args()
     agent_env = {
+        **_resolve_provider_env(args.provider),
         **_parse_agent_env(args.agent_env),
         **_parse_agent_env_from_host(args.agent_env_from_host),
     }
@@ -1656,21 +1864,45 @@ def main() -> int:
     task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
     run_dir = args.out if args.out is not None else RESULTS_ROOT / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Results: {run_dir.resolve()}", flush=True)
     unknown_arms = [arm for arm in args.arms if arm not in VALID_ARMS]
     if unknown_arms:
         p.error(f"unknown arm(s): {', '.join(unknown_arms)}")
     if args.jobs < 1:
         p.error("--jobs must be >= 1")
+    if args.retry_failed and not args.resume:
+        p.error("--retry-failed requires --resume")
     bridge_command = args.bridge_command
     if args.launch_ollama and bridge_command is None:
         bridge_command = "ollama serve"
     bridge = subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT)) if bridge_command else None
     if bridge is not None and args.bridge_wait > 0:
         time.sleep(args.bridge_wait)
-    results = _load_existing_results(run_dir) if args.resume else []
+    existing_results = _load_existing_results(run_dir) if args.resume else []
+    if args.retry_failed:
+        retry_count = sum(1 for result in existing_results if not result.ok)
+        results = [result for result in existing_results if result.ok]
+        print(f"Retrying failed rows: {retry_count}", flush=True)
+    else:
+        results = existing_results
     completed = {_result_key(result) for result in results}
-    jl_mode = "a" if args.resume else "w"
+    jl_mode = "w" if args.retry_failed else ("a" if args.resume else "w")
     jl = (run_dir / "results.jsonl").open(jl_mode, encoding="utf-8")
+    if jl_mode == "w":
+        for res in results:
+            jl.write(json.dumps(asdict(res)) + "\n")
+        jl.flush()
+    result_lock = threading.Lock()
+
+    def record_result(res: ArmResult) -> None:
+        with result_lock:
+            if _result_key(res) in completed:
+                return
+            results.append(res)
+            completed.add(_result_key(res))
+            jl.write(json.dumps(asdict(res)) + "\n")
+            jl.flush()
+
     try:
         pending_trials: list[tuple[str, int, list[str]]] = []
         pending_arms: list[tuple[str, int, str]] = []
@@ -1689,7 +1921,7 @@ def main() -> int:
 
         if args.jobs == 1 and args.parallel_scope == "task":
             for tid, rep, pending_arms in pending_trials:
-                trial_results = _run_task_rep(
+                _run_task_rep(
                     tid,
                     rep,
                     arms=pending_arms,
@@ -1704,14 +1936,9 @@ def main() -> int:
                     api_key_env=args.api_key_env,
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
+                    resume_state=args.resume,
+                    on_result=record_result,
                 )
-                for res in trial_results:
-                    if _result_key(res) in completed:
-                        continue
-                    results.append(res)
-                    completed.add(_result_key(res))
-                    jl.write(json.dumps(asdict(res)) + "\n")
-                    jl.flush()
         elif args.parallel_scope == "task":
             with ThreadPoolExecutor(max_workers=args.jobs) as executor:
                 futures = {
@@ -1731,17 +1958,13 @@ def main() -> int:
                         api_key_env=args.api_key_env,
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
+                        resume_state=args.resume,
+                        on_result=record_result,
                     ): (tid, rep)
                     for tid, rep, pending_arms in pending_trials
                 }
                 for future in as_completed(futures):
-                    for res in future.result():
-                        if _result_key(res) in completed:
-                            continue
-                        results.append(res)
-                        completed.add(_result_key(res))
-                        jl.write(json.dumps(asdict(res)) + "\n")
-                        jl.flush()
+                    future.result()
         elif args.jobs == 1:
             for tid, rep, arm in pending_arms:
                 res = _run_single_arm(
@@ -1759,13 +1982,9 @@ def main() -> int:
                     api_key_env=args.api_key_env,
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
+                    resume_state=args.resume,
+                    on_result=record_result,
                 )
-                if _result_key(res) in completed:
-                    continue
-                results.append(res)
-                completed.add(_result_key(res))
-                jl.write(json.dumps(asdict(res)) + "\n")
-                jl.flush()
         else:
             with ThreadPoolExecutor(max_workers=args.jobs) as executor:
                 futures = {
@@ -1785,17 +2004,13 @@ def main() -> int:
                         api_key_env=args.api_key_env,
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
+                        resume_state=args.resume,
+                        on_result=record_result,
                     ): (tid, rep, arm)
                     for tid, rep, arm in pending_arms
                 }
-                for future in as_completed(futures):
-                    res = future.result()
-                    if _result_key(res) in completed:
-                        continue
-                    results.append(res)
-                    completed.add(_result_key(res))
-                    jl.write(json.dumps(asdict(res)) + "\n")
-                    jl.flush()
+            for future in as_completed(futures):
+                future.result()
     finally:
         jl.close()
         if bridge is not None and bridge.poll() is None:
