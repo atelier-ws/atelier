@@ -175,6 +175,8 @@ def _persist_last_user_prompt(prompt: str) -> None:
 _CONTEXT_WINDOW_TOKENS = 200_000
 _BYTES_PER_TOKEN = 4
 _COMPACT_WARN_PCT = 70  # warn when estimated context exceeds this percent
+_EDIT_INTENT_TERMS = ("change ", "edit ", "fix ", "modify ", "patch ", "refactor ", "rename ", "rewrite ", "update ")
+_GROUNDED_TERMS = (" search ", " read ", " context ", " explore ", " node ", " callers ", " callees ", " usages ")
 
 
 def _estimate_context_pct(transcript_path: str) -> int | None:
@@ -203,6 +205,22 @@ def _emit_compact_warning(pct: int) -> None:
     sys.stdout.flush()
 
 
+def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
+    lowered = f" {prompt.lower()} "
+    if not any(term in lowered for term in _EDIT_INTENT_TERMS):
+        return False
+    if any(term in lowered for term in _GROUNDED_TERMS):
+        return False
+    file_mentions = lowered.count(".py") + lowered.count(".ts") + lowered.count(".tsx") + lowered.count(".js")
+    return file_mentions >= 2 or " files " in lowered
+
+
+def _emit_grounded_batching_nudge() -> None:
+    msg = "[Atelier] Ground multi-file changes with search or read first, then batch " "related edits in one edit call."
+    sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
+    sys.stdout.flush()
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -225,6 +243,8 @@ def main() -> int:
         pct = _estimate_context_pct(transcript_path)
         if pct is not None and pct >= _COMPACT_WARN_PCT:
             _emit_compact_warning(pct)
+    if _looks_like_multi_file_edit_prompt(prompt):
+        _emit_grounded_batching_nudge()
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:

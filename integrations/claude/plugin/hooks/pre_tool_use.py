@@ -69,6 +69,11 @@ def main() -> int:
         print(json.dumps({"decision": "allow"}))
         return 0
 
+    tool_name = str(payload.get("tool_name") or payload.get("tool") or "").lower()
+    if tool_name and tool_name not in {"edit", "multiedit", "write"}:
+        print(json.dumps({"decision": "allow"}))
+        return 0
+
     tool_input = payload.get("tool_input", {}) or {}
     target = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
     if not target or not _is_risky(target):
@@ -77,8 +82,9 @@ def main() -> int:
 
     msg = (
         f"Atelier: `{target}` is in a risky domain (shopify / pdp / catalog / "
-        "tracker / publish / schema). Call `context` with your "
-        "current goal before editing."
+        "tracker / publish / schema). Ground the change with `search` or `read`, "
+        "call `context` with your current goal if you need repo memory, then batch "
+        "related edits in one edit call."
     )
     print(json.dumps({"decision": "ask", "reason": msg}))
     return 0
