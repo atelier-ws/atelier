@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from atelier.core.capabilities.grounded_loop.search_first import _discovery_calls_saved
 from atelier.core.capabilities.tool_supervision.smart_search import (
     _CLAUDE_READ_LINE_LIMIT,
     _iter_text_files,
@@ -40,3 +41,9 @@ def test_iter_text_files_skips_local_artifact_directories(tmp_path: Path) -> Non
     files = {path.relative_to(tmp_path).as_posix() for path in _iter_text_files(tmp_path)}
 
     assert files == {"src/keep.py"}
+
+
+def test_search_first_batching_baseline_counts_saved_discovery_roundtrips() -> None:
+    matches = [{"path": "src/a.py"}, {"path": "src/b.py"}, {"path": "src/c.py"}]
+
+    assert _discovery_calls_saved(matches) == 2
