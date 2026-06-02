@@ -21,7 +21,7 @@ from bisect import bisect_right
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from atelier.core.capabilities.code_context.budget import (
@@ -481,9 +481,12 @@ def _should_skip_fuzzy_for_precise_query(query: str) -> bool:
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
-    if fnmatch.fnmatch(path, pattern):
+    normalized_path = path.replace("\\", "/")
+    normalized_pattern = pattern.replace("\\", "/")
+    pure_path = PurePosixPath(normalized_path)
+    if pure_path.match(normalized_pattern):
         return True
-    if "**/" in pattern and fnmatch.fnmatch(path, pattern.replace("**/", "")):
+    if "**/" in normalized_pattern and pure_path.match(normalized_pattern.replace("**/", "")):
         return True
     return False
 
@@ -2174,7 +2177,7 @@ class CodeContextEngine:
         matches: list[PatternMatch] = []
         candidates = sorted(path for path in self._indexed_files() if path.endswith(".py"))
         if file_glob:
-            candidates = [path for path in candidates if fnmatch.fnmatch(path, file_glob)]
+            candidates = [path for path in candidates if _matches_file_glob(path, file_glob)]
 
         def names_match(observed: str | None) -> bool:
             if observed is None or target_name is None:
@@ -2518,7 +2521,7 @@ class CodeContextEngine:
         if scope == "repo" and provenance_filter == "commit":
             hits = self._search_commit_chunks(query, limit=rerank_limit)
             if file_glob:
-                hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
+                hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
             hits = [hit for hit in hits if not should_skip_relative_path(hit.file_path)]
             if _is_precise_symbol_query(query):
                 exact_hits = _exact_symbol_hits(hits, query)
@@ -2596,7 +2599,7 @@ class CodeContextEngine:
                         lexical_hits, semantic_hits + commit_hits, limit=rerank_limit
                     )
         if file_glob:
-            hits = [hit for hit in hits if fnmatch.fnmatch(hit.file_path, file_glob)]
+            hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
         hits = [hit for hit in hits if not should_skip_relative_path(hit.file_path)]
         if provenance_filter is not None:
             hits = [h for h in hits if h.provenance == provenance_filter]
@@ -3493,7 +3496,7 @@ class CodeContextEngine:
         matches: list[TextMatch] = []
         lower_query = query.lower()
         for rel in sorted(candidate_files):
-            if file_glob and not fnmatch.fnmatch(rel, file_glob):
+            if file_glob and not _matches_file_glob(rel, file_glob):
                 continue
             with contextlib.suppress(OSError):
                 lines = (self.repo_root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -3600,7 +3603,7 @@ class CodeContextEngine:
                 ]
                 items = self._dedupe_usage_items(items)
         if file_glob:
-            items = [item for item in items if fnmatch.fnmatch(str(item["file_path"]), file_glob)]
+            items = [item for item in items if _matches_file_glob(str(item["file_path"]), file_glob)]
         relation_policy = resolve_output_policy("relation")
         if not relation_policy.include_snippet:
             for item in items:
@@ -6402,7 +6405,7 @@ class CodeContextEngine:
     ) -> bool:
         if path and file_path != path and not file_path.startswith(f"{path}/"):
             return False
-        if pattern and not fnmatch.fnmatch(file_path, pattern):
+        if pattern and not _matches_file_glob(file_path, pattern):
             return False
         if max_depth is None:
             return True
