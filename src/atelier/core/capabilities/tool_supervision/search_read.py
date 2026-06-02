@@ -485,7 +485,7 @@ def search_read_to_dict(result: SearchReadResult, *, include_metadata: bool = Tr
                 match_payload["outline"] = match.outline
         matches.append(match_payload)
 
-    payload: dict[str, Any] = {"matches": matches}
+    payload: dict[str, Any] = {"matches": matches, "match_paths": [match.path for match in result.matches]}
     if include_metadata:
         payload.update(
             {
