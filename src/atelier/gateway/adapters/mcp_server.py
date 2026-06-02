@@ -3460,6 +3460,8 @@ _CODE_OP_ITEM_LIST_FIELDS: tuple[str, ...] = (
 def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Remove internal/telemetry fields that waste LLM context."""
     drop = _CODE_OP_TOP_STRIP | _CODE_OP_EXTRA_STRIP.get(op, frozenset())
+    if op == "search":
+        drop = frozenset(key for key in drop if key not in {"cache_hit", "mode", "provenance", "view"})
     result: dict[str, Any] = {k: v for k, v in payload.items() if k not in drop}
 
     # Save real tokens_saved via thread-local so _record_context_budget_for_tool
@@ -3868,6 +3870,7 @@ def tool_symbols(
             "intent": intent,
             "kind": kind,
             "language": language,
+            "seed_files": seed_files,
             "snippet": snippet,
             "snippet_lines": snippet_lines,
             "file_glob": file_glob,
@@ -4762,7 +4765,8 @@ def tool_grep(
     description=(
         "Search code and docs by ranked query. Use this for relevance-ranked snippets, "
         "full-file ranked reads, or repo maps seeded from known files. Use `grep` for "
-        "regex, glob, type-filter, or context-line search."
+        "regex, glob, type-filter, or context-line search, then escalate with `node`, "
+        "`callers`, `callees`, `usages`, `impact`, or `explore` once grounded."
     ),
     input_schema={
         "type": "object",
@@ -4860,12 +4864,13 @@ def tool_smart_search(
         Field(description="Include backend/cache metadata fields in the response."),
     ] = False,
 ) -> dict[str, Any]:
-    """Search by ranked query or repo-map construction.
+    """Search by ranked query or repo-map construction, then hand off to node/explore-style code intel.
 
     - Pass `query` for relevance-ranked search over code and docs.
     - Use `mode='chunks'` for snippets.
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
+    - Once grounded, use `node`, `callers`, `callees`, `usages`, `impact`, or `explore` for exact code-intel follow-up.
     """
     if mode == "map":
         if not seed_files:
