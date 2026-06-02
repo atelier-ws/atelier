@@ -112,6 +112,91 @@ This document preserves the research that informed the brownfield reset of Ateli
 
 Eval's biggest real advantage is not marketing-level "project brain." It is the presence of a real workflow kernel and compression/cache mechanics that reduce prompt churn and guide execution.
 
+### Expanded Eval Detail
+
+#### Workflow / Session Architecture
+
+- `Session` is the actual runtime owner. It carries conversation state, turn snapshots for fork/trim, active workflow state, background task registry, bash jobs, loaded agents/workflows, read-set, TODO state, and workflow message buffering in one object.
+- The main session loop handles typed commands such as session input, workflow execution, model switching, trim, and close rather than relying on loose prompt conventions.
+- `WorkflowDef` / `WorkflowStepDef` form a real workflow graph with step kinds (`agent`, `tool`, `bash`), branching, `fork_from`, `deny_tools`, JSON output handling, and per-step timeouts.
+- Workflow execution is evented: start, step start, step done, and complete events are emitted with token and cost context.
+- Persistent step agents matter: Eval keeps prior messages and can clone agent state for `fork_from` reuse, which is the real mechanism behind explore -> plan -> refine reuse.
+- Plan review is not implicit. Typed plan/proposal/action objects and explicit user review flows exist in the protocol/UI loop.
+- Background tasks are real runtime objects, not just prompts about subagents.
+
+Relevant files:
+
+- `/home/pankaj/Projects/eval/internal/daemon/session.go`
+- `/home/pankaj/Projects/eval/internal/daemon/workflow.go`
+- `/home/pankaj/Projects/eval/internal/protocol/types.go`
+- `/home/pankaj/Projects/eval/internal/protocol/plan.go`
+- `/home/pankaj/Projects/eval/internal/ui/model.go`
+- `/home/pankaj/Projects/eval/internal/config/defaults/settings.json`
+
+#### Prompt / Token Saving Mechanisms
+
+- Workflow-local history reuse is one of the biggest real savings levers. `fork_from` lets later steps inherit earlier step state instead of rebuilding context from scratch.
+- Step-local outputs become variables for later steps, which reduces repeated prompting and keeps flow state inside the workflow itself.
+- JSON output / display extraction lets Eval keep structured outputs while showing only a compact summary in the UI.
+- The minified VFS is a real implementation, not just a claim: reads can be minified after line slicing, and edits/writes are translated back into formatted source.
+- Read-before-edit is enforced, which keeps edit flows grounded in explicit file reads.
+- Output caps and continuation behavior exist for subagents and workflows, which helps bound runaway generation.
+
+Relevant files:
+
+- `/home/pankaj/Projects/eval/internal/daemon/workflow.go`
+- `/home/pankaj/Projects/eval/internal/daemon/vfs.go`
+- `/home/pankaj/Projects/eval/internal/daemon/session_read_gate.go`
+- `/home/pankaj/Projects/eval/internal/daemon/subagent.go`
+- `/home/pankaj/Projects/eval/internal/config/defaults/settings.json`
+
+#### Safety / Execution Controls
+
+- Bash execution uses real sandbox selection logic rather than only prompt rules: Landlock on Linux when available, bubblewrap fallback, Seatbelt on macOS, else unsandboxed fallback.
+- Directory and write approvals are wired in code and happen before risky execution.
+- Tool calls have bounded timeouts, and workflow bash steps can branch on timeout instead of only failing hard.
+- Session, workflow, and subagent loops all have extended-thinking stall detection with retries and a final no-thinking fallback.
+- TODO management is structured and validated, with dependency checks and updates emitted as events.
+
+Relevant files:
+
+- `/home/pankaj/Projects/eval/internal/daemon/sandbox.go`
+- `/home/pankaj/Projects/eval/internal/daemon/sandbox_landlock.go`
+- `/home/pankaj/Projects/eval/internal/daemon/session.go`
+- `/home/pankaj/Projects/eval/internal/daemon/workflow.go`
+- `/home/pankaj/Projects/eval/internal/daemon/llm/stream.go`
+- `/home/pankaj/Projects/eval/internal/daemon/session_todo.go`
+
+#### README / Marketing Claims That Are Weaker In Code
+
+- "Project brain" is still much more roadmap/positioning than a clearly demonstrated reusable system in the inspected code.
+- "Stem agents" maps to persistent `AgentRunner` history and `fork_from` cloning, not to a broad standalone abstraction.
+- Claims around broad voting / MAKER-like control are only partially backed by the code that was inspected.
+- The strongest code-backed parts are still workflow reuse, minified VFS, read gates, sandboxing, and stall handling.
+
+Relevant files:
+
+- `/home/pankaj/Projects/eval/README.md`
+- `/home/pankaj/Projects/eval/internal/daemon/session.go`
+- `/home/pankaj/Projects/eval/internal/daemon/workflow.go`
+
+#### What Atelier Should Borrow First vs Later
+
+Borrow first:
+
+- A session-owned workflow object with explicit step state and workflow events.
+- Persistent step-local history reuse similar to `fork_from`.
+- Step result variables / structured outputs to avoid re-prompting.
+- Read-before-edit gating.
+- Minified read/edit path where safe.
+- Timeout caps, stall detection, and explicit TODO/task state.
+
+Defer:
+
+- The full workflow DSL surface.
+- Broad "project brain" claims before there is measured support.
+- Extra Eval product surfaces that are not part of the terminal-first milestone.
+
 ## What WOZ Source Contributes
 
 ### Strongest Code-Backed Mechanisms
