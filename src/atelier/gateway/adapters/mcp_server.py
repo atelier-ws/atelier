@@ -3411,7 +3411,6 @@ _CODE_OP_TOP_STRIP: frozenset[str] = frozenset(
         "total_tokens",
         "tokens_saved",
         "provenance_breakdown",
-        "provenance",
         "mode",
         "view",
     }
@@ -3461,7 +3460,10 @@ def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Remove internal/telemetry fields that waste LLM context."""
     drop = _CODE_OP_TOP_STRIP | _CODE_OP_EXTRA_STRIP.get(op, frozenset())
     if op == "search":
-        drop = frozenset(key for key in drop if key not in {"cache_hit", "mode", "provenance", "view"})
+        keep = {"mode", "provenance", "view"}
+        if payload.get("provenance") != "graveyard":
+            keep.add("cache_hit")
+        drop = frozenset(key for key in drop if key not in keep)
     result: dict[str, Any] = {k: v for k, v in payload.items() if k not in drop}
 
     # Save real tokens_saved via thread-local so _record_context_budget_for_tool
@@ -3526,11 +3528,18 @@ def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
         "name": item.get("name") or item.get("symbol_name"),
         "qualified_name": item.get("qualified_name"),
         "path": item.get("path") or item.get("file_path"),
+        "repo_name": item.get("repo_name"),
+        "origin": item.get("origin"),
         "line": item.get("line") or item.get("start_line"),
         "end_line": item.get("end_line"),
         "signature": item.get("signature"),
+        "snippet": item.get("snippet"),
         "score": item.get("score"),
         "role": item.get("role") or "definition",
+        "deleted_at": item.get("deleted_at"),
+        "deleted_at_sha": item.get("deleted_at_sha"),
+        "rename_target": item.get("rename_target"),
+        "rename_note": item.get("rename_note"),
     }
     return {key: value for key, value in result.items() if value is not None}
 
@@ -3732,6 +3741,10 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Restrict to a subtree, e.g. 'src/api/**/*.py'.",
         },
+        "repo_root": {
+            "type": "string",
+            "description": "Optional absolute or workspace-relative repository root override for local code-intel operations.",
+        },
         "scope": {
             "type": "string",
             "enum": ["repo", "external", "deleted"],
@@ -3750,6 +3763,7 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 def tool_symbols(
     op: str = "search",
     repo: str | None = None,
+    repo_root: str | None = None,
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
     query: str | None = None,
@@ -3824,13 +3838,14 @@ def tool_symbols(
     """
     if op == "node":
         op = "symbol"
-    workspace_router = _workspace_code_router()
+    engine_root = repo_root or "."
+    workspace_router = _workspace_code_router(engine_root)
     if repo is not None and not workspace_router.is_configured:
         raise ValueError("repo filter requires .atelier/workspace.toml")
     if repo is not None and op not in {"search", "symbol"}:
         raise ValueError("repo filter is only supported for workspace search and symbol operations")
 
-    engine = _code_context_engine()
+    engine = _code_context_engine(engine_root)
     _code_engine_for_current_call.value = engine
 
     if op == "index":
@@ -3867,16 +3882,17 @@ def tool_symbols(
         search_kwargs: dict[str, Any] = {
             "limit": limit,
             "mode": mode,
-            "intent": intent,
             "kind": kind,
             "language": language,
-            "seed_files": seed_files,
             "snippet": snippet,
             "snippet_lines": snippet_lines,
             "file_glob": file_glob,
             "scope": scope,
             "budget_tokens": budget_tokens,
         }
+        if scope != "deleted":
+            search_kwargs["intent"] = intent
+            search_kwargs["seed_files"] = seed_files
         if since is not None:
             search_kwargs["since"] = since
         if touched_by is not None:
