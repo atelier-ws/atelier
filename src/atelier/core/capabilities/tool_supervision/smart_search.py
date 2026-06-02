@@ -350,10 +350,12 @@ def smart_search(
             cached_matches = [match for match in cached.get("matches", []) if isinstance(match, dict)]
             return {
                 "matches": cached_matches[:max_files],
+                "match_paths": [path for path in cached.get("match_paths", []) if isinstance(path, str)][:max_files],
                 "mode": mode,
                 "backend": str(cached.get("backend") or "ripgrep"),
                 "index_age_seconds": cached.get("index_age_seconds"),
                 "cache_hit": True,
+                "total_tokens": int(cached.get("total_tokens", 0) or 0),
                 "tokens_saved": int(cached.get("tokens_saved", 0) or 0),
             }
     else:
@@ -376,6 +378,8 @@ def smart_search(
             include_outline=include_outline,
         )
         payload = search_read_to_dict(chunk_result, include_metadata=False)
+        payload["match_paths"] = [match.path for match in chunk_result.matches]
+        payload["total_tokens"] = chunk_result.total_tokens
     backend = str(payload.get("backend") or "ripgrep")
     matches = [match for match in payload.get("matches", []) if isinstance(match, dict)]
     if backend == "zoekt":
@@ -394,6 +398,7 @@ def smart_search(
         zoekt_rendered = _rendered_bytes_for_matches(zoekt_matches)
         response = {
             "matches": zoekt_matches,
+            "match_paths": [str(match.get("path", "")) for match in zoekt_matches if match.get("path")],
             "mode": mode,
             "backend": backend,
             "index_age_seconds": payload.get("index_age_seconds"),
@@ -448,9 +453,11 @@ def smart_search(
     final_rendered = _rendered_bytes_for_matches(final_matches)
     response = {
         "matches": final_matches,
+        "match_paths": [str(match.get("path", "")) for match in final_matches if match.get("path")],
         "mode": mode,
         "backend": backend,
         "index_age_seconds": payload.get("index_age_seconds"),
+        "total_tokens": int(payload.get("total_tokens", 0) or 0),
         "cache_hit": False,
         "tokens_saved": max(0, (final_naive - final_rendered) // 4),
     }

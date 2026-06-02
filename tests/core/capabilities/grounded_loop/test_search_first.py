@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,9 +8,7 @@ import pytest
 from atelier.core.capabilities.grounded_loop import search_first
 
 
-def test_search_first_returns_ranked_matches_and_explicit_follow_ups(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_search_first_returns_ranked_matches_and_explicit_follow_ups(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("ATELIER_CACHE_DISABLED", "1")
     (tmp_path / "src").mkdir()
@@ -60,6 +59,7 @@ def test_search_first_returns_ranked_matches_and_explicit_follow_ups(
 
 
 def test_search_first_reuses_existing_search_primitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    search_first_module = importlib.import_module("atelier.core.capabilities.grounded_loop.search_first")
     fake_search = MagicMock(
         return_value={
             "matches": [{"path": "src/orders.py", "snippets": [{"text": "OrderService"}]}],
@@ -68,7 +68,7 @@ def test_search_first_reuses_existing_search_primitive(monkeypatch: pytest.Monke
             "total_tokens": 42,
         }
     )
-    monkeypatch.setattr("atelier.core.capabilities.grounded_loop.search_first.smart_search", fake_search)
+    monkeypatch.setattr(search_first_module, "smart_search", fake_search)
 
     payload = search_first(query="OrderService", task="inspect OrderService")
 
