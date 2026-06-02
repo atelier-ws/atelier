@@ -9,9 +9,9 @@ Requirements for the initial reset release. Each maps to roadmap phases.
 
 ### Grounding
 
-- [ ] **GRND-01**: User can inspect files, paths, and matches through a Search-first default path without manually choosing between overlapping discovery tools
-- [ ] **GRND-02**: User can move from Search-first results into precise code-intel answers for symbols, callers, usages, and impact in the same session
-- [ ] **GRND-03**: User can batch related edits and follow-up reads through a low-roundtrip grounded terminal workflow
+- [x] **GRND-01**: User can inspect files, paths, and matches through a Search-first default path without manually choosing between overlapping discovery tools
+- [x] **GRND-02**: User can move from Search-first results into precise code-intel answers for symbols, callers, usages, and impact in the same session
+- [x] **GRND-03**: User can batch related edits and follow-up reads through a low-roundtrip grounded terminal workflow
 
 ### Execution Kernel
 
@@ -36,8 +36,8 @@ Requirements for the initial reset release. Each maps to roadmap phases.
 
 ### Context & Intelligence
 
-- [ ] **INTL-01**: User can keep using Atelier's existing memory and context-recall strengths while the benchmark-first reset ships
-- [ ] **INTL-02**: User can keep using Atelier's existing code-intel strengths while the default terminal path gets simplified
+- [x] **INTL-01**: User can keep using Atelier's existing memory and context-recall strengths while the benchmark-first reset ships
+- [x] **INTL-02**: User can keep using Atelier's existing code-intel strengths while the default terminal path gets simplified
 - [ ] **INTL-03**: User can keep using current tracing, reporting, and host-enforcement surfaces during the reset
 
 ## v2 Requirements
@@ -83,9 +83,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRND-01 | Phase 1 | Pending |
-| GRND-02 | Phase 1 | Pending |
-| GRND-03 | Phase 1 | Pending |
+| GRND-01 | Phase 1 | Complete |
+| GRND-02 | Phase 1 | Complete |
+| GRND-03 | Phase 1 | Complete |
 | EXEC-01 | Phase 2 | Pending |
 | EXEC-02 | Phase 2 | Pending |
 | EXEC-03 | Phase 2 | Pending |
@@ -98,8 +98,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BENC-02 | Phase 4 | Pending |
 | BENC-03 | Phase 4 | Pending |
 | BENC-04 | Phase 4 | Pending |
-| INTL-01 | Phase 1 | Pending |
-| INTL-02 | Phase 1 | Pending |
+| INTL-01 | Phase 1 | Complete |
+| INTL-02 | Phase 1 | Complete |
 | INTL-03 | Phase 2 | Pending |
 
 **Coverage:**

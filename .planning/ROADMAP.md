@@ -12,7 +12,7 @@ This roadmap turns Atelier into a benchmark-first terminal coding agent through 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Grounded Terminal Loop MVP** - Search-first default path with semantic escalation
+- [x] **Phase 1: Grounded Terminal Loop MVP** - Search-first default path with semantic escalation (completed 2026-06-02)
 - [ ] **Phase 2: Execution Kernel MVP** - Explicit workflow state, plan review, and grounded edit discipline
 - [ ] **Phase 3: Routed Subcall Execution MVP** - Enforced provider/model routing for Atelier-owned subcalls
 - [ ] **Phase 4: Benchmark Gate MVP** - Frozen paired benchmarks and artifact-backed proof
@@ -31,9 +31,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Compose Search-first grounding over existing read/search/edit/memory surfaces
-- [ ] 01-02: Preserve code-intel escalation paths inside the simplified terminal loop
-- [ ] 01-03: Add low-roundtrip ergonomics and batching nudges without regressing existing smart context
+- [x] 01-01: Compose Search-first grounding over existing read/search/edit/memory surfaces
+- [x] 01-02: Preserve code-intel escalation paths inside the simplified terminal loop
+- [x] 01-03: Add low-roundtrip ergonomics and batching nudges without regressing existing smart context
 
 ### Phase 2: Execution Kernel MVP
 **Goal:** As a terminal coding agent user, I want explicit workflow state and grounded edit discipline, so that multi-step tasks stay coherent from plan through execution.
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Grounded Terminal Loop MVP | 0/3 | Not started | - |
+| 1. Grounded Terminal Loop MVP | 3/3 | Complete   | 2026-06-02 |
 | 2. Execution Kernel MVP | 0/3 | Not started | - |
 | 3. Routed Subcall Execution MVP | 0/2 | Not started | - |
 | 4. Benchmark Gate MVP | 0/3 | Not started | - |
