@@ -19,10 +19,10 @@ Deliver better terminal-task outcomes per token by combining low-roundtrip tools
 ### Active
 
 - [ ] Turn Atelier into a terminal-first brownfield hybrid of Eval and WOZ without rewriting the existing architecture.
-- [ ] Make a combined Search-first default terminal tool path that lowers roundtrips while keeping Atelier's stronger code-intel and memory as the escalation path.
+- [ ] Make a combined Search-first default terminal tool path, with Edit/Recall/Sql ergonomics, that lowers roundtrips while keeping Atelier's stronger code-intel and memory as the escalation path.
 - [ ] Add a typed workflow kernel with explicit plan review, task-local carry-forward state, and lower prompt churn for plan -> execute -> review loops.
 - [ ] Make provider routing first-class for Atelier-owned sub-invocations, informed by the installed WOZ router pattern but implemented as an Atelier-native execution layer.
-- [ ] Prove milestone-1 success on frozen terminal benchmarks with non-inferior quality and materially lower cost/token spend than the baseline path.
+- [ ] Prove milestone-1 success on frozen terminal benchmarks with non-inferior quality and materially lower cost/token spend than the baseline path, using paired repeated runs and artifact-backed reporting.
 
 ### Out of Scope
 
@@ -38,7 +38,7 @@ Atelier already spans CLI, MCP, HTTP API, SDK, optional frontend, host integrati
 
 The reset direction is informed by four sources: Atelier's current codebase map, Eval's code-backed workflow/session kernel, WOZ's code-backed host/tool ergonomics, and the installed WOZ plugin's dormant but real local router daemon. The installed WOZ plugin materially updates the routing picture: it can rewrite Claude host env to a local router endpoint and serve provider-backed routes, but on this machine it is inactive, so its live value today is still tool redirection, recall, and telemetry rather than active provider routing.
 
-Milestone 1 optimizes for one thing: Eval-level planning/execution quality with materially lower token spend on benchmarked terminal tasks. The benchmark standard must be paired, artifact-backed, and resistant to gaming: same baseline conditions, frozen task set, non-inferior quality threshold, and explicit cost/token deltas.
+The research in this session converged on a concrete milestone-1 shape: a Search-first default path with WOZ-style tool ergonomics, a typed workflow kernel inspired by Eval, enforced routing only on Atelier-owned subcalls, and a paired benchmark gate for quality plus spend. Milestone 1 optimizes for one thing: Eval-level planning/execution quality with materially lower token spend on benchmarked terminal tasks. The benchmark standard must be paired, artifact-backed, and resistant to gaming: same baseline conditions, frozen task set, non-inferior quality threshold, and explicit cost/token deltas.
 
 ## Constraints
 
@@ -57,6 +57,7 @@ Milestone 1 optimizes for one thing: Eval-level planning/execution quality with 
 | Make the product terminal-first | The primary goal is better planning/execution quality per token on benchmarked terminal tasks | — Pending |
 | Borrow Eval's workflow kernel ideas, not its full product shape | The strongest Eval advantages are code-backed workflow/session mechanics and prompt-churn reduction | — Pending |
 | Borrow WOZ's host/tool ergonomics and router pattern, not WOZ wholesale | WOZ contributes decisive Search/Edit/Recall UX and an installed local router pattern, but not a complete reusable architecture by itself | — Pending |
+| Restrict enforced routing to Atelier-owned subcalls in milestone 1 | This is the smallest safe path to real routing without fighting the host's top-level conversation loop | — Pending |
 | Keep existing Atelier surfaces until measured parity justifies cuts | The repo is broad, but removal before evidence risks deleting current advantages | — Pending |
 | Use benchmarked non-inferior quality + lower spend as the milestone gate | The reset is explicitly about cost reduction without compromising terminal-task outcomes | — Pending |
 
