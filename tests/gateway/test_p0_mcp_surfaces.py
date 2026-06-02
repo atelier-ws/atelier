@@ -89,6 +89,8 @@ def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None
 
     assert "query" in search_tool["description"]
     assert "grep" in search_tool["description"]
+    assert "node" in search_tool["description"]
+    assert "explore" in search_tool["description"]
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
