@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
 
 
 def _strip_ansi(text: str) -> str:
@@ -96,6 +97,20 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
 
     pattern = cleaned[0]
     path = cleaned[1] if len(cleaned) > 1 else "."
+    if (
+        command_name == "rg"
+        and not ignore_case
+        and file_type is None
+        and len(cleaned) <= 2
+        and not _SEARCH_REGEX_METACHARS.search(pattern)
+    ):
+        return CommandPolicyDecision(
+            category="search",
+            action="rewrite",
+            reason="Use Atelier search for search-first grounding",
+            rewrite_target="search",
+            rewrite_payload={"query": pattern, "path": path},
+        )
     payload: dict[str, Any] = {
         "file_path": path,
         "content_regex": pattern,
