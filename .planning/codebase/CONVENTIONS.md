@@ -1,194 +1,61 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-05-28
+**Analysis Date:** 2026-06-02
 
 ## Naming Patterns
 
-**Files:**
-- Module files use `snake_case.py`: e.g., `context_compressor.py`, `run_ledger.py`, `rubric_gate.py`
-- Test files prefixed with `test_`: e.g., `test_store.py`, `test_domains.py`, `test_service_api.py`
-- Config files use `snake_case` without extension where conventional
-
-**Functions:**
-- Public functions: `snake_case` — e.g., `upsert_block`, `record_trace`, `search_blocks`
-- Private/internal helpers: leading underscore `_snake_case` — e.g., `_build_trace_search_query`, `_connect`, `_seed_packaged_rubrics`
-- Test helper factories: leading underscore — e.g., `_block(...)`, `_write(...)`, `_count_tiktoken(...)`
-
-**Classes:**
-- `PascalCase` for all classes — e.g., `ContextStore`, `ReasonBlock`, `ContextRuntime`, `AtelierClient`
-- Abstract base classes use `ABC` from `abc` module — e.g., `AtelierClient(ABC)` in `src/atelier/gateway/sdk/client.py`
-- Pydantic models subclass `BaseModel` — e.g., `ReasonBlock(BaseModel)`, `Trace(BaseModel)`
-- Protocol classes: `PascalCase` with leading underscore for private protocols — e.g., `_ServiceClient(Protocol)`
-
-**Variables/Constants:**
-- Local variables: `snake_case`
-- Module-level constants: `UPPER_SNAKE_CASE` — e.g., `SCHEMA`, `TRACE_FTS_COLUMNS`, `JOB_CONSOLIDATE_BLOCKS`
-- Private module constants: `_UPPER_SNAKE_CASE` — e.g., `_TASK_TYPE_BUDGET_MULTIPLIER`, `_LAZY_EXPORTS`
-
-**Type Aliases / Literals:**
-- Type aliases use `PascalCase` — e.g., `BlockStatus = Literal["active", "deprecated", "quarantined"]`, `TraceStatus`, `Severity`
+- Python code uses `snake_case` for modules/functions and `PascalCase` for classes (`src/atelier/infra/storage/factory.py`, `src/atelier/gateway/hosts/registry.py`).
+- React components/pages are `PascalCase` exports in `frontend/src/pages/*.tsx` and `frontend/src/components/*`.
+- Environment variables and configuration flags are `ATELIER_*` throughout service/runtime/install code (`src/atelier/core/service/config.py`, `scripts/install.sh`).
+- CLI commands are organized as module-per-command under `src/atelier/gateway/cli/commands/`.
+- Tests follow `test_<surface>.py` in pytest and `*.test.tsx` for frontend interaction tests.
 
 ## Code Style
 
-**Formatting:**
-- Tool: `black` with `line-length = 120`, `target-version = ["py311"]`
-- Run: `uv run black src tests`
-
-**Linting:**
-- Tool: `ruff` with `line-length = 100`, `target-version = "py311"`
-- Rule sets selected: `E, F, I, B, UP, SIM, RUF`
-- `E501` (line-length) ignored (black handles formatting)
-- Run: `uv run ruff check src`
-- Auto-fix: `uv run ruff check --fix src`
-
-**Type Checking:**
-- Tool: `mypy` with `strict = true`, `warn_unused_ignores = true`, `ignore_missing_imports = true`
-- Python version: 3.11
-- `untyped-decorator` errors disabled for `atelier.core.service.api` and `atelier.gateway.adapters.http_api`
-- `ignore_errors = true` for `atelier.gateway.cli.app` (CLI file has many `# type: ignore` annotations on Click decorators)
-- Run: `uv run mypy --strict src`
+- Python targets 3.11+, uses strict mypy, Ruff, and Black (`pyproject.toml`, `Makefile`).
+- Many Python modules start with `from __future__ import annotations` and explicit return types (`src/atelier/gateway/cli/app.py`, `src/atelier/core/runtime/engine.py`).
+- Frontend code uses functional React components with hooks and typed interfaces (`frontend/src/App.tsx`, `frontend/src/api.ts`).
+- Repository guidance explicitly says all Python commands should run through `uv run ...` (`CLAUDE.md`).
 
 ## Import Organization
 
-**Universal first line:**
-Every source file starts with `from __future__ import annotations` for deferred type evaluation.
-
-**Order (ruff `I` rules enforce isort):**
-1. `from __future__ import annotations`
-2. Standard library imports
-3. Third-party imports
-4. Local `atelier` imports
-
-**Example from `src/atelier/core/foundation/models.py`:**
-```python
-from __future__ import annotations
-
-import hashlib
-import json
-import re
-from datetime import UTC, datetime
-from typing import Any, Literal
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-```
-
-**TYPE_CHECKING guard:**
-Used to avoid circular imports at runtime — types imported only for annotations go under `if TYPE_CHECKING:`:
-```python
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from atelier.gateway.adapters.runtime import ContextRuntime
-```
-
-**Lazy exports in `__init__.py`:**
-Top-level `src/atelier/__init__.py` uses a `_LAZY_EXPORTS` dict and `__getattr__` to avoid loading heavy modules at import time.
+- Python modules generally follow stdlib -> third-party -> local imports, often with `TYPE_CHECKING` blocks when needed (`src/atelier/infra/storage/factory.py`, `src/atelier/gateway/sdk/local.py`).
+- Backend packages preserve the gateway/core/infra separation rather than reaching across layers ad hoc (`CLAUDE.md`, `src/atelier/` tree).
+- Frontend imports group React/vendor imports first, then local pages/components/lib modules (`frontend/src/App.tsx`).
 
 ## Error Handling
 
-**Patterns:**
-- Broad `except Exception` is used for fail-open paths, always followed by `logger.warning(...)` — never silently swallowed
-- Specific exceptions caught by type where appropriate: `except sqlite3.OperationalError as exc:`
-- `raise ValueError(...)` for data validation errors (e.g., escaping store root)
-- `raise RuntimeError(...)` for broken-invariant situations (e.g., missing schema tables)
-- Context managers (`contextlib.suppress`, `contextlib.closing`) used for resource cleanup
-
-**Example:**
-```python
-except Exception as exc:
-    logger.warning("failed to seed packaged rubrics: %s", exc)
-```
+- Core API/auth paths prefer explicit exceptions with actionable messages (`src/atelier/core/service/auth.py`, `src/atelier/infra/storage/factory.py`).
+- Optional integrations often fail open and log instead of interrupting the main runtime (`src/atelier/gateway/integrations/langfuse.py`, `src/atelier/gateway/integrations/openmemory.py`).
+- Service and remote-client code use framework-native status handling (`HTTPException`, typed unavailable exceptions, `ApiError` in `frontend/src/api.ts`).
+- Security-sensitive comparisons use `secrets.compare_digest` instead of plain equality (`src/atelier/core/service/auth.py`).
 
 ## Logging
 
-**Framework:** Standard library `logging` module
+- Python modules typically define `logger = logging.getLogger(__name__)` and emit structured warnings/debug info (`src/atelier/gateway/adapters/mcp_server.py`, `src/atelier/gateway/integrations/langfuse.py`).
+- Product telemetry events are emitted as a first-class cross-cutting concern from CLI/MCP/runtime code (`src/atelier/gateway/cli/app.py`, `src/atelier/core/service/telemetry/`).
+- Shell/install flows print framed human-readable progress rather than raw command noise (`scripts/install.sh`).
 
-**Setup:**
-```python
-import logging
-logger = logging.getLogger(__name__)
-```
+## Comments
 
-**Patterns:**
-- Module-level logger via `logging.getLogger(__name__)`
-- `logger.warning("msg: %s", exc)` — use `%s` style (not f-strings) for lazy formatting
-- No direct `print()` calls in library code (CLI output uses `rich` or `click.echo`)
-
-## Comments and Docstrings
-
-**Module docstrings:**
-Every module has a docstring explaining its purpose, design decisions, and key usage patterns.
-Example from `src/atelier/core/foundation/store.py`:
-```python
-"""Persistent storage for ReasonBlocks, traces, and rubrics.
-
-Backend: SQLite + FTS5 (no external services).
-
-Design:
-- One table per entity, JSON column for the full payload.
-...
-"""
-```
-
-**Section dividers:**
-Visual separators used to group related functions in long files:
-```python
-# --------------------------------------------------------------------------- #
-# Schema                                                                      #
-# --------------------------------------------------------------------------- #
-```
-
-**Function docstrings:**
-Short one-line docstrings on public methods and test functions when the function name alone is insufficient:
-```python
-def slugify(text: str) -> str:
-    """Lowercase, dash-separated slug. Used for stable block/rubric IDs."""
-```
-
-**Test docstrings:**
-Single-sentence descriptions on test functions explaining the expected behaviour:
-```python
-def test_domain_manager_lists_builtins(tmp_path: Path) -> None:
-    """DomainManager should return built-in bundles when no user bundles exist."""
-```
-
-**Inline comments:**
-Sparingly used for non-obvious decisions, often explaining why (not what).
+- Module docstrings are common and usually describe the surface contract or usage pattern (`src/atelier/gateway/adapters/runtime.py`, `src/atelier/core/service/api.py`).
+- Inline comments are used sparingly for unusual behavior, invariants, or debt notes rather than narrating obvious code.
+- Repository guidance discourages unnecessary comments and emphasizes small, surgical changes (`CLAUDE.md`).
 
 ## Function Design
 
-**Signatures:**
-- All parameters and return values are fully type-annotated
-- Return type `-> None` always explicit
-- Keyword-only parameters enforced with `*` where intent matters — e.g., `upsert_block(block, *, write_markdown=True)`
-- Default parameters use factory callables via `Field(default_factory=list)` in Pydantic models
+- Helper-heavy modules often expose a small public surface and many private `_helper` functions (`src/atelier/core/foundation/paths.py`, `src/atelier/infra/runtime/stack_lifecycle.py`).
+- Factories and adapters return typed abstractions (`make_memory_store`, `LocalClient`, `ContextRuntime`) instead of leaking backend wiring to callers.
+- Frontend API calls centralize fetch/error behavior in `frontend/src/api.ts` rather than duplicating network logic across pages.
 
-**Size:**
-- Functions are focused and generally short; complex logic is factored into private helper methods
+## Module Design
 
-## Module and Class Design
-
-**Pydantic Models:**
-- Subclass `BaseModel`
-- Use `model_config = ConfigDict(extra="forbid")` to prevent unexpected fields
-- Validators use `@field_validator` and `@model_validator` decorators
-- Field defaults use `Field(default_factory=...)` not mutable defaults
-
-**Abstract Base Classes:**
-- Use `from abc import ABC, abstractmethod`
-- `AtelierClient(ABC)` defines interface contract for SDK clients (`src/atelier/gateway/sdk/client.py`)
-
-**Protocols:**
-- Used for structural typing — e.g., `_ServiceClient(Protocol)` in `src/atelier/gateway/sdk/remote.py`
-
-**`__all__` exports:**
-- All public packages define `__all__` explicitly
-- Subpackages with nothing to re-export use `__all__ = []`
-
-## Package Runner
-
-- `uv` is the project's package manager and script runner — all commands use `uv run ...`
-- `make` targets wrap `uv run` invocations for developer convenience
+- Entry points stay thin: new behavior is expected in `core/capabilities/`, not in CLI/MCP shells (`CLAUDE.md`, `src/atelier/gateway/cli/app.py`).
+- Generated host instruction assets are treated as distribution artifacts; `docs/agent-os/` is the source of truth (`CLAUDE.md`, `Makefile`, `scripts/sync_agent_context.py`).
+- Host integrations isolate per-runtime differences in `integrations/` and `src/atelier/gateway/hosts/` rather than mixing them into core logic.
+- Runtime state, lessons, and workspace-specific data are deliberately separated by path helpers (`src/atelier/core/foundation/paths.py`).
 
 ---
 
-*Convention analysis: 2026-05-28*
+*Convention analysis: 2026-06-02*
+*Update when repo-wide style or layering rules change*
