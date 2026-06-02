@@ -9,6 +9,63 @@ from click.testing import CliRunner
 from atelier.gateway.cli import cli
 
 
+def _run_uninstall_script(
+    repo_root: Path,
+    *,
+    home: Path,
+    install_dir: Path,
+    protected_roots: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    (home / ".atelier").mkdir(parents=True)
+    (home / ".atelier" / "install_dir").write_text(str(install_dir), encoding="utf-8")
+    install_dir.mkdir(parents=True)
+    (install_dir / "sentinel.txt").write_text("keep", encoding="utf-8")
+
+    env = {
+        "HOME": str(home),
+        "PATH": "/usr/bin:/bin",
+        "SHELL": "/bin/bash",
+        "ATELIER_BIN_DIR": str(home / ".local" / "bin"),
+        "ATELIER_TOOL_DIR": str(home / ".local" / "share" / "uv" / "tools"),
+    }
+    if protected_roots is not None:
+        env["ATELIER_PROTECTED_SOURCE_ROOTS"] = protected_roots
+
+    return subprocess.run(
+        ["bash", str(repo_root / "scripts" / "uninstall.sh"), "--purge", "--no-hosts"],
+        cwd=str(repo_root),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_uninstall_purge_preserves_install_dir_under_projects(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    home = tmp_path / "home"
+    install_dir = home / "Projects" / "atelier"
+
+    result = _run_uninstall_script(repo_root, home=home, install_dir=install_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert install_dir.exists()
+    assert (install_dir / "sentinel.txt").exists()
+    assert "Skipping install source under protected source root" in result.stdout
+
+
+def test_uninstall_purge_removes_default_managed_install_dir(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    home = tmp_path / "home"
+    install_dir = home / ".local" / "share" / "atelier"
+
+    result = _run_uninstall_script(repo_root, home=home, install_dir=install_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert not install_dir.exists()
+    assert "Removed" in result.stdout
+
+
 def test_uninstall_command_calls_script(tmp_path: Path) -> None:
     runner = CliRunner()
     # Mock _project_root to point to a temp dir where we'll place a dummy script

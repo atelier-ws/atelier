@@ -34,6 +34,13 @@ RUNNER_PROFILES: tuple[dict[str, Any], ...] = (
         "options_help": "Extra `opencode run` flags appended before the generated swarm prompt.",
     },
     {
+        "id": "eval",
+        "label": "VIX CLI",
+        "supports_model": False,
+        "model_placeholder": "",
+        "options_help": "Extra `eval` flags appended before the generated prompt.",
+    },
+    {
         "id": "ollama-claude",
         "label": "Ollama Claude bridge",
         "supports_model": True,
@@ -226,6 +233,15 @@ def build_vix_cli_command(
             model,
             "--dangerously-skip-permissions",
             prompt,
+        ]
+    if cli_driver == "eval":
+        return [
+            "eval",
+            *runner_args,
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
         ]
     raise ValueError(f"unsupported cli driver: {cli_driver}")
 

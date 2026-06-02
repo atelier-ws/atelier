@@ -46,6 +46,7 @@ fi
 
 PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
 PLUGIN_CACHE_DIR="${HOME}/.codex/plugins/cache/atelier"
+OPENAI_CURATED_PLUGIN_CACHE_DIR="${CODEX_HOME}/plugins/cache/openai-curated/atelier"
 AGENT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/integrations/codex/AGENTS.atelier.md"
 STAGING_DIRS=("${HOME}/.atelier/codex-plugin-stable" "${HOME}/.atelier/codex-plugin-dev")
 
@@ -99,6 +100,34 @@ fi
 if [ -d "$PLUGIN_CACHE_DIR" ]; then
     run "rm -rf '$PLUGIN_CACHE_DIR'"
     info "Removed $PLUGIN_CACHE_DIR"
+fi
+
+if [ -d "$OPENAI_CURATED_PLUGIN_CACHE_DIR" ]; then
+    run "rm -rf '$OPENAI_CURATED_PLUGIN_CACHE_DIR'"
+    info "Removed $OPENAI_CURATED_PLUGIN_CACHE_DIR"
+fi
+
+CODEX_CONFIG="${CODEX_HOME}/config.toml"
+if [ -f "$CODEX_CONFIG" ] && grep -q 'plugins."atelier@openai-curated"' "$CODEX_CONFIG" 2>/dev/null; then
+    run "python3 -c '
+from pathlib import Path
+
+path = Path(\"$CODEX_CONFIG\")
+lines = path.read_text(encoding=\"utf-8\").splitlines()
+out = []
+skip = False
+for line in lines:
+    stripped = line.strip()
+    if stripped == \"[plugins.\\\"atelier@openai-curated\\\"]\":
+        skip = True
+        continue
+    if skip and stripped.startswith(\"[\") and stripped.endswith(\"]\"):
+        skip = False
+    if not skip:
+        out.append(line)
+path.write_text(\"\\n\".join(out).rstrip() + \"\\n\", encoding=\"utf-8\")
+'"
+    info "Removed atelier@openai-curated plugin config from $CODEX_CONFIG"
 fi
 
 for staging_dir in "${STAGING_DIRS[@]}"; do

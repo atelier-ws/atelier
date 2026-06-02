@@ -22,6 +22,15 @@ from atelier.core.capabilities.host_runners import (
 )
 from atelier.gateway.cli.progress import ProgressReporter
 
+_PROVIDER_ALIASES: dict[str, str] = {
+    "aws": "aws-claude",
+    "bedrock": "aws-claude",
+    "gcp": "gcp-claude",
+    "vertex": "gcp-claude",
+    "azure": "azure-claude",
+    "openrouter": "openrouter-claude",
+}
+
 
 @click.group("benchmark")
 def benchmark_group() -> None:
@@ -395,7 +404,7 @@ def benchmark_swe_cmd(
     multiple=True,
     default=("baseline", "atelier"),
     show_default=True,
-    type=click.Choice(["baseline", "atelier", "eval"]),
+    type=click.Choice(["baseline", "atelier", "feature", "eval", "atelier.raw"]),
 )
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
@@ -403,7 +412,7 @@ def benchmark_swe_cmd(
 @click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
     "--cli-driver",
-    type=click.Choice(["claude", "copilot", "codex", "opencode"]),
+    type=click.Choice(["claude", "copilot", "codex", "opencode", "eval"]),
     default="claude",
     show_default=True,
     help="CLI host to benchmark when --transport cli is used.",
@@ -506,6 +515,16 @@ def benchmark_swe_cmd(
 @click.option("--bridge-wait", type=float, default=3.0, show_default=True)
 @click.option("--eval-eval-dir", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+@click.option(
+    "--provider",
+    default=None,
+    metavar="PROVIDER",
+    help=(
+        "Cloud provider shorthand: aws/bedrock, gcp/vertex, azure, openrouter. "
+        "Reads credentials from .env or the current environment. "
+        "Shorthand for --claude-provider-preset; explicit --agent-env takes precedence."
+    ),
+)
 def benchmark_vix_cmd(
     tasks: tuple[str, ...],
     arms: tuple[str, ...],
@@ -542,6 +561,7 @@ def benchmark_vix_cmd(
     bridge_wait: float,
     eval_dir: Path | None,
     out: Path | None,
+    provider: str | None,
 ) -> None:
     """Run the VIX head-to-head benchmark and write a report."""
     repo_root = Path.cwd().resolve()
@@ -574,6 +594,13 @@ def benchmark_vix_cmd(
     if judge_api_key_env:
         judge_args.extend(["--judge-api-key-env", judge_api_key_env])
     agent_env_args: list[str] = []
+    if provider:
+        preset_key = _PROVIDER_ALIASES.get(provider.lower())
+        if preset_key is None:
+            raise click.ClickException(
+                f"unknown --provider {provider!r}; choices: {', '.join(sorted(_PROVIDER_ALIASES))}"
+            )
+        claude_provider_preset = claude_provider_preset or preset_key
     if openrouter_claude:
         if transport != "cli" or cli_driver != "claude":
             raise click.ClickException("--openrouter-claude only applies to --transport cli --cli-driver claude.")
