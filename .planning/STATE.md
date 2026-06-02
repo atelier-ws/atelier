@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-06-02T22:38:08.995Z"
+status: planning
+last_updated: "2026-06-02T23:36:31Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
+  total_plans: 11
   completed_plans: 3
   percent: 25
 ---
@@ -20,23 +20,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Achieve the highest solved-rate on frozen terminal-bench-style coding tasks, with non-inferior quality and lower cost where possible.
-**Current focus:** Phase 1 - Grounded Terminal Loop MVP
+**Current focus:** Phase 2 - Execution Kernel MVP
 
 ## Current Position
 
-Phase: 1 of 4 (Grounded Terminal Loop MVP)
-Plan: 3 of 3 in current phase
-Status: Phase complete — ready for verification
+Phase: 2 of 4 (Execution Kernel MVP)
+Plan: 0 of 3 in current phase
+Status: Ready for Phase 2 planning
 Last activity: 2026-06-02
 
-Progress: [██████████] 100%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: 0 min
+- Total plans completed: 3
+- Average duration: 19 min
 - Total execution time: 0.0 hours
 
 **By Phase:**
@@ -47,7 +47,7 @@ Progress: [██████████] 100%
 
 **Recent Trend:**
 
-- Last 5 plans: none
+- Last 5 plans: 01-01, 01-02, 01-03
 - Trend: Stable
 
 | Phase 01 P01 | 2 | 2 tasks | 7 files |
@@ -76,7 +76,8 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- Repo-wide `make lint` still fails on pre-existing issues in `benchmarks/eval/run.py` and `scripts/extract_flow.py`.
+- Repo-wide `make typecheck` still fails on the pre-existing duplicate `benchmarks` package discovery between `benchmarks/` and `src/benchmarks/`.
 
 ## Deferred Items
 
@@ -87,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-06-02T22:37:19.709Z
-Stopped at: Roadmap created and awaiting approval
+Stopped at: Phase 1 rerun closed out; Phase 2 planning pending
 Resume file: None
