@@ -909,6 +909,7 @@ class CodeContextEngine:
         intent: Literal["auto", "symbol", "text", "semantic"] = "auto",
         kind: str | None = None,
         language: str | None = None,
+        seed_files: list[str] | None = None,
         snippet: Literal["none", "head", "full"] = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
@@ -945,6 +946,7 @@ class CodeContextEngine:
         temporal_scope = scope in {"repo", "deleted"}
         parsed_since = _parse_since_filter(since) if temporal_scope else None
         normalized_touched_by = _normalize_touched_by(touched_by) if temporal_scope else None
+        normalized_seed_files = [self._normalize_file_arg(seed) for seed in seed_files or []]
         rerank_limit = self._search_reranker.pre_rerank_limit(limit, mode=resolved_mode, scope=scope)
         cache_args = {
             "query": query,
@@ -954,6 +956,7 @@ class CodeContextEngine:
             "resolved_mode": resolved_mode,
             "kind": kind,
             "language": language,
+            "seed_files": normalized_seed_files,
             "snippet": snippet,
             "effective_snippet": effective_snippet,
             "snippet_lines": effective_snippet_lines,
@@ -1024,6 +1027,7 @@ class CodeContextEngine:
             )
             items = [item for item in items if str(item.get("file_path") or "") in changed_files]
         items = self._dedupe_search_items(items)
+        items = self._prioritize_grounded_search_items(items, seed_files=normalized_seed_files)
         if effective_snippet == "none":
             items = self._compact_search_items(items, scope=scope)
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
@@ -5924,6 +5928,24 @@ class CodeContextEngine:
             seen.add(key)
             deduped.append(item)
         return deduped
+
+    def _prioritize_grounded_search_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        seed_files: list[str],
+    ) -> list[dict[str, Any]]:
+        if not seed_files:
+            return items
+        seed_set = set(seed_files)
+        indexed_items = list(enumerate(items))
+        indexed_items.sort(
+            key=lambda entry: (
+                0 if str(entry[1].get("file_path") or "") in seed_set else 1,
+                entry[0],
+            )
+        )
+        return [item for _, item in indexed_items]
 
     def _compact_search_items(
         self,
