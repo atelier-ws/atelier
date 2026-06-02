@@ -83,29 +83,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRND-01 | TBD | Pending |
-| GRND-02 | TBD | Pending |
-| GRND-03 | TBD | Pending |
-| EXEC-01 | TBD | Pending |
-| EXEC-02 | TBD | Pending |
-| EXEC-03 | TBD | Pending |
-| EXEC-04 | TBD | Pending |
-| EXEC-05 | TBD | Pending |
-| ROUT-01 | TBD | Pending |
-| ROUT-02 | TBD | Pending |
-| ROUT-03 | TBD | Pending |
-| BENC-01 | TBD | Pending |
-| BENC-02 | TBD | Pending |
-| BENC-03 | TBD | Pending |
-| BENC-04 | TBD | Pending |
-| INTL-01 | TBD | Pending |
-| INTL-02 | TBD | Pending |
-| INTL-03 | TBD | Pending |
+| GRND-01 | Phase 1 | Pending |
+| GRND-02 | Phase 1 | Pending |
+| GRND-03 | Phase 1 | Pending |
+| EXEC-01 | Phase 2 | Pending |
+| EXEC-02 | Phase 2 | Pending |
+| EXEC-03 | Phase 2 | Pending |
+| EXEC-04 | Phase 2 | Pending |
+| EXEC-05 | Phase 2 | Pending |
+| ROUT-01 | Phase 3 | Pending |
+| ROUT-02 | Phase 3 | Pending |
+| ROUT-03 | Phase 3 | Pending |
+| BENC-01 | Phase 4 | Pending |
+| BENC-02 | Phase 4 | Pending |
+| BENC-03 | Phase 4 | Pending |
+| BENC-04 | Phase 4 | Pending |
+| INTL-01 | Phase 1 | Pending |
+| INTL-02 | Phase 1 | Pending |
+| INTL-03 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 ⚠️
+- Mapped to phases: 18
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-02*
