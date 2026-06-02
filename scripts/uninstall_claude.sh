@@ -153,20 +153,21 @@ for agents_dir in ".claude/agents" "${HOME}/.claude/agents"; do
     fi
 done
 
-# ---- statusLine setting in ~/.claude/settings.json --------------------------
+# ---- statusline settings in ~/.claude/settings.json -------------------------
 if [ -f "${CLAUDE_SETTINGS}" ] && grep -q "atelier" "${CLAUDE_SETTINGS}" 2>/dev/null; then
     if $DRY_RUN; then
-        echo "  [dry-run] remove atelier statusLine from ${CLAUDE_SETTINGS}"
+        echo "  [dry-run] remove atelier status line settings from ${CLAUDE_SETTINGS}"
     else
         python3 - <<PYEOF2
 import json
 from pathlib import Path
 path = Path("${CLAUDE_SETTINGS}")
 data = json.loads(path.read_text(encoding="utf-8") or "{}")
-sl = data.get("statusLine", {})
-if isinstance(sl, dict) and "atelier" in sl.get("command", ""):
-    data.pop("statusLine", None)
-    print("[atelier:uninstall:claude] Removed atelier statusLine from ${CLAUDE_SETTINGS}")
+for key in ("statusLine", "subagentStatusLine"):
+    sl = data.get(key, {})
+    if isinstance(sl, dict) and "atelier" in sl.get("command", ""):
+        data.pop(key, None)
+        print(f"[atelier:uninstall:claude] Removed atelier {key} from ${CLAUDE_SETTINGS}")
 if data.get("agent") == "atelier:code":
     data.pop("agent", None)
     print("[atelier:uninstall:claude] Removed atelier-code default agent from ${CLAUDE_SETTINGS}")
