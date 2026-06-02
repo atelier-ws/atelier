@@ -40,6 +40,7 @@ else
     INSTRUCTIONS="${HOME}/.copilot/instructions/atelier.instructions.md"
     CHATMODE=""
     TASKS_JSON="${VSCODE_USER_DIR}/tasks.json"
+    COPILOT_CLI_HOOKS_JSON="${HOME}/.copilot/hooks/hooks.json"
 fi
 
 info()  { echo "[atelier:uninstall:copilot] $*"; }
@@ -98,6 +99,32 @@ data[\"inputs\"] = [i for i in data.get(\"inputs\", []) if not str(i.get(\"id\",
 path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 '"
     info "Removed Atelier task presets from $TASKS_JSON"
+fi
+
+if ! $WORKSPACE_SET && [ -f "$COPILOT_CLI_HOOKS_JSON" ] && grep -q "atelier" "$COPILOT_CLI_HOOKS_JSON" 2>/dev/null; then
+    run "python3 -c '
+import json
+from pathlib import Path
+
+path = Path(\"$COPILOT_CLI_HOOKS_JSON\")
+data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
+hooks = data.get(\"hooks\", {})
+for event, entries in list(hooks.items()):
+    filtered = [
+        entry for entry in entries
+        if \"atelier\" not in str(entry.get(\"bash\", \"\")).lower()
+    ]
+    if filtered:
+        hooks[event] = filtered
+    else:
+        hooks.pop(event, None)
+if hooks:
+    data[\"hooks\"] = hooks
+    path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
+else:
+    path.unlink()
+'"
+    info "Removed Atelier Copilot CLI hooks from $COPILOT_CLI_HOOKS_JSON"
 fi
 
 
