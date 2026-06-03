@@ -315,3 +315,258 @@ def _decode_body(body: bytes, content_type: str) -> str:
         return body.decode(encoding, errors="replace")
     except LookupError:
         return body.decode("utf-8", errors="replace")
+
+
+def _render_content(raw: _RawFetchResult, *, requested_format: OutputFormat) -> dict[str, str]:
+    media_type = _media_type(raw.content_type)
+    decoded = _decode_body(raw.body, raw.content_type)
+    if media_type in _MARKDOWN_TYPES:
+        markdown = clean_markdown_for_agent(decoded)
+        return _format_markdown(markdown, requested_format=requested_format)
+    if media_type in _HTML_TYPES:
+        if requested_format == "html":
+            return {"content": _sanitize_html(decoded, base_url=raw.final_url), "format": "html"}
+        markdown = html_to_markdown_for_agent(decoded, base_url=raw.final_url)
+        if _markdown_looks_weak(markdown, decoded):
+            fallback = _trafilatura_markdown(decoded, base_url=raw.final_url)
+            if fallback:
+                markdown = fallback
+        return _format_markdown(markdown, requested_format=requested_format)
+    if media_type == "application/json":
+        return {"content": _format_json(decoded), "format": "text" if requested_format == "text" else "markdown"}
+    text = _normalize_plain_text(decoded)
+    return {"content": text, "format": "text"}
+
+
+def _format_markdown(markdown: str, *, requested_format: OutputFormat) -> dict[str, str]:
+    if requested_format == "text":
+        return {"content": _markdown_to_plain_text(markdown), "format": "text"}
+    if requested_format == "html":
+        return {"content": markdown, "format": "markdown"}
+    return {"content": markdown, "format": "markdown"}
+
+
+def html_to_markdown_for_agent(html: str, *, base_url: str = "") -> str:
+    """Convert HTML to Markdown while preserving coding-doc structure."""
+    cache_key = _transform_cache_key("html_markdown", html + "\0" + base_url)
+    cached = _get_transform_cache(cache_key)
+    if cached is not None:
+        return cached
+    result = _html_to_markdown_uncached(html, base_url=base_url)
+    _set_transform_cache(cache_key, result)
+    return result
+
+
+def _html_to_markdown_uncached(html: str, *, base_url: str) -> str:
+    sanitized_html = strip_non_content_html(html) or html
+    soup = _soup(sanitized_html)
+    _remove_noise(soup)
+    _normalize_links_and_images(soup, base_url=base_url)
+    root = _select_content_root(soup)
+    source = str(root) if root is not None else str(soup)
+    markdown = _markdownify_html(source)
+    prefix = _small_metadata_prefix(soup, markdown)
+    return clean_markdown_for_agent(prefix + markdown)
+
+
+def _soup(html: str) -> Any:
+    from bs4 import BeautifulSoup, FeatureNotFound
+
+    try:
+        return BeautifulSoup(html, "lxml")
+    except (AttributeError, TypeError, ValueError, FeatureNotFound):
+        return BeautifulSoup(html, "html.parser")
+
+
+def _remove_noise(soup: Any) -> None:
+    for tag in soup.find_all(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "input", "button", "select", "textarea"]):
+        tag.decompose()
+    for tag in soup.find_all(True):
+        style = str(tag.get("style") or "").lower()
+        if tag.has_attr("hidden") or tag.get("aria-hidden") == "true" or "display:none" in style or "visibility:hidden" in style:
+            tag.decompose()
+            continue
+        marker = " ".join(
+            [str(tag.get("id") or ""), " ".join(str(c) for c in tag.get("class") or [])]
+        )
+        if _NOISE_CLASS_ID_RE.search(marker):
+            tag.decompose()
+
+
+def _normalize_links_and_images(soup: Any, *, base_url: str) -> None:
+    from bs4 import NavigableString
+
+    for tag in soup.find_all("a"):
+        href = str(tag.get("href") or "").strip()
+        if href and not href.startswith(("#", "mailto:", "tel:")):
+            tag["href"] = urljoin(base_url, href)
+    for tag in soup.find_all("img"):
+        alt = str(tag.get("alt") or "").strip()
+        if alt:
+            tag.replace_with(NavigableString(alt))
+        else:
+            tag.decompose()
+
+
+def _select_content_root(soup: Any) -> Any:
+    selectors = [
+        "article",
+        "main",
+        "[role=main]",
+        ".markdown-body",
+        ".theme-doc-markdown",
+        ".docs-content",
+        ".documentation",
+        "#content",
+        "#main-content",
+        "body",
+    ]
+    candidates: list[Any] = []
+    for selector in selectors:
+        candidates.extend(soup.select(selector))
+    if not candidates:
+        return soup.body or soup
+    return max(candidates, key=_content_score)
+
+
+def _content_score(node: Any) -> int:
+    text = node.get_text(" ", strip=True)
+    score = len(text)
+    score += 400 * len(node.find_all(["pre", "code"]))
+    score += 150 * len(node.find_all(["h1", "h2", "h3"]))
+    score += 80 * len(node.find_all("table"))
+    return score
+
+
+def _markdownify_html(html: str) -> str:
+    import markdownify
+
+    kwargs: dict[str, Any] = {
+        "heading_style": "ATX",
+        "bullets": "-",
+        "strip": ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "input", "button", "select", "textarea"],
+        "code_language_callback": _code_language_callback,
+        "table_infer_header": True,
+        "wrap": False,
+        "autolinks": False,
+        "default_title": False,
+    }
+    try:
+        return str(markdownify.markdownify(html, **kwargs))
+    except TypeError:
+        safe_kwargs = {"heading_style": "ATX", "bullets": "-", "strip": ["script", "style"]}
+        return str(markdownify.markdownify(html, **safe_kwargs))
+
+
+def _code_language_callback(el: Any) -> str | None:
+    attrs = [str(el.get("class") or ""), str(el.get("data-lang") or ""), str(el.get("data-language") or "")]
+    parent = getattr(el, "parent", None)
+    if parent is not None:
+        attrs.append(str(parent.get("class") or ""))
+    joined = " ".join(attrs)
+    match = _CODE_LANG_RE.search(joined)
+    return match.group(1).lower() if match else None
+
+
+def _small_metadata_prefix(soup: Any, markdown: str) -> str:
+    parts: list[str] = []
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    if title and not markdown.lstrip().startswith("#"):
+        parts.append(f"# {title}")
+    meta = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
+    description = str(meta.get("content") or "").strip() if meta else ""
+    if description and description not in markdown and len(description) <= 300:
+        parts.append(description)
+    return ("\n\n".join(parts) + "\n\n") if parts else ""
+
+
+def _sanitize_html(html: str, *, base_url: str) -> str:
+    soup = _soup(strip_non_content_html(html) or html)
+    _remove_noise(soup)
+    _normalize_links_and_images(soup, base_url=base_url)
+    root = _select_content_root(soup)
+    return str(root or soup).strip()
+
+
+def _trafilatura_markdown(html: str, *, base_url: str) -> str:
+    try:
+        import trafilatura
+    except ImportError:
+        return ""
+    try:
+        extracted = trafilatura.extract(
+            html,
+            url=base_url or None,
+            output_format="markdown",
+            include_comments=False,
+            include_tables=True,
+            include_links=True,
+            deduplicate=True,
+            favor_precision=False,
+            favor_recall=True,
+        )
+    except (AttributeError, TypeError, ValueError, OSError, RuntimeError):
+        return ""
+    return clean_markdown_for_agent(extracted or "")
+
+
+def _markdown_looks_weak(markdown: str, html: str) -> bool:
+    if len(html) < 5_000:
+        return False
+    if len(markdown.strip()) < 300:
+        return True
+    code_or_table = markdown.count("```") + markdown.count("|")
+    return code_or_table == 0 and len(markdown) < len(html) * 0.03
+
+
+def _format_json(text: str) -> str:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return _normalize_plain_text(text)
+    return json.dumps(parsed, ensure_ascii=False, indent=2)
+
+
+def _normalize_plain_text(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
+def _markdown_to_plain_text(markdown: str) -> str:
+    text = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", markdown)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"[`*_~>]", "", text)
+    return _normalize_plain_text(text)
+
+
+def _estimate_tokens_saved(raw: _RawFetchResult, content: str) -> int:
+    media_type = _media_type(raw.content_type)
+    if media_type not in _HTML_TYPES:
+        return 0
+    raw_tokens = max(0, len(raw.body.decode("utf-8", errors="ignore")) // 4)
+    rendered_tokens = max(0, len(content) // 4)
+    return max(0, raw_tokens - rendered_tokens)
+
+
+def _transform_cache_key(name: str, content: str) -> tuple[str, str]:
+    digest = hashlib.blake2b(content.encode("utf-8", errors="ignore"), digest_size=16).hexdigest()
+    return name, digest
+
+
+def _get_transform_cache(cache_key: tuple[str, str]) -> str | None:
+    with _TRANSFORM_CACHE_LOCK:
+        cached = _TRANSFORM_CACHE.get(cache_key)
+        if cached is not None:
+            _TRANSFORM_CACHE.move_to_end(cache_key)
+        return cached
+
+
+def _set_transform_cache(cache_key: tuple[str, str], value: str) -> None:
+    with _TRANSFORM_CACHE_LOCK:
+        _TRANSFORM_CACHE[cache_key] = value
+        _TRANSFORM_CACHE.move_to_end(cache_key)
+        while len(_TRANSFORM_CACHE) > TRANSFORM_CACHE_MAX_ITEMS:
+            _TRANSFORM_CACHE.popitem(last=False)
