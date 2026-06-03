@@ -20,6 +20,7 @@ _STEP_RANK = {"exploration": 0, "planning": 1, "execution": 2}
 _STEP_SESSION_PHASE = {
     "exploration": "explore",
     "planning": "transition",
+    "review": "review",
     "execution": "execute",
 }
 _PHASE_STEP = {
@@ -27,6 +28,7 @@ _PHASE_STEP = {
     "exploration": "exploration",
     "transition": "planning",
     "planning": "planning",
+    "review": "review",
     "execute": "execution",
     "execution": "execution",
 }
@@ -60,6 +62,9 @@ class WorkflowState:
     session_phase: str = "explore"
     sticky_window: int = 0
     advisory_emitted_steps: tuple[str, ...] = ()
+    review: dict[str, Any] = field(default_factory=dict)
+    current_task: dict[str, Any] = field(default_factory=dict)
+    task_outputs: dict[str, Any] = field(default_factory=dict)
     updated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,6 +74,9 @@ class WorkflowState:
             "session_phase": self.session_phase,
             "sticky_window": self.sticky_window,
             "advisory_emitted_steps": list(self.advisory_emitted_steps),
+            "review": dict(self.review),
+            "current_task": dict(self.current_task),
+            "task_outputs": dict(self.task_outputs),
             "updated_at": self.updated_at,
         }
 
@@ -78,6 +86,7 @@ def default_workflow_config() -> WorkflowConfig:
         steps=(
             WorkflowStepConfig(id="exploration", share_context=False, sticky_window=0),
             WorkflowStepConfig(id="planning", share_context=True, sticky_window=1, advisory_vote=True, critical=True),
+            WorkflowStepConfig(id="review", share_context=True, sticky_window=1),
             WorkflowStepConfig(id="execution", share_context=True, sticky_window=3),
         )
     )
@@ -86,6 +95,25 @@ def default_workflow_config() -> WorkflowConfig:
 def normalize_workflow_step(value: str | None) -> str:
     normalized = (value or "").strip().lower().replace("-", "_")
     return _PHASE_STEP.get(normalized, normalized if normalized in _STEP_RANK else "exploration")
+
+
+def _normalize_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _normalize_json_value(item) for key, item in value.items() if str(key).strip()}
+    if isinstance(value, tuple):
+        return [_normalize_json_value(item) for item in value]
+    if isinstance(value, list):
+        return [_normalize_json_value(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    return str(value)
+
+
+def _normalize_json_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    normalized = _normalize_json_value(value)
+    return normalized if isinstance(normalized, dict) else {}
 
 
 def workflow_state_from_mapping(
@@ -107,6 +135,9 @@ def workflow_state_from_mapping(
         session_phase=session_phase_for_step(current),
         sticky_window=sticky,
         advisory_emitted_steps=emitted,
+        review=_normalize_json_mapping(data.get("review")),
+        current_task=_normalize_json_mapping(data.get("current_task")),
+        task_outputs=_normalize_json_mapping(data.get("task_outputs")),
         updated_at=str(data.get("updated_at") or ""),
     )
 
@@ -167,6 +198,9 @@ def advance_workflow_state(
             session_phase=session_phase_for_step(current),
             sticky_window=step_cfg.sticky_window,
             advisory_emitted_steps=tuple(sorted(emitted)),
+            review=dict(prior_state.review),
+            current_task=dict(prior_state.current_task),
+            task_outputs=dict(prior_state.task_outputs),
             updated_at=datetime.now(UTC).isoformat(),
         ),
         step_cfg,
