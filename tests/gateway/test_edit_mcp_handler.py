@@ -7,6 +7,7 @@ cases that were previously untested.
 
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,22 @@ def _edit(args: dict[str, Any]) -> dict[str, Any]:
     return _result(_call("edit", args))
 
 
+def _set_bench_mode(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    monkeypatch.setenv("ATELIER_BENCH_MODE", mode)
+    bench_mode = importlib.import_module("atelier.bench.mode")
+    monkeypatch.setattr(bench_mode, "_mode", None)
+
+
+def _session_state_path() -> Path:
+    return mcp_server._workspace_session_state_file()
+
+
+def _write_session_state(state: dict[str, Any]) -> None:
+    path = _session_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Fixture
 # ---------------------------------------------------------------------------
@@ -91,6 +108,50 @@ def test_rich_replace_basic(workspace: Path) -> None:
     assert "HELLO" not in f.read_text(encoding="utf-8")
     assert len(payload["applied"]) == 1
     assert payload["applied"][0]["path"] == "hello.py"
+
+
+def test_benchmark_mode_blocks_ungrounded_edit(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_bench_mode(monkeypatch, "on")
+    _write_session_state({"session_id": "bench-session"})
+    target = workspace / "guarded.py"
+    target.write_text("alpha\n", encoding="utf-8")
+
+    response = _call(
+        "edit",
+        {"edits": [{"file_path": "guarded.py", "old_string": "alpha", "new_string": "beta"}]},
+    )
+
+    assert "error" in response
+    assert "grounding evidence" in response["error"]["message"]
+    assert target.read_text(encoding="utf-8") == "alpha\n"
+
+
+def test_benchmark_mode_allows_grounded_edit_after_read(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_bench_mode(monkeypatch, "on")
+    _write_session_state({"session_id": "bench-session"})
+    target = workspace / "grounded.py"
+    target.write_text("alpha\n", encoding="utf-8")
+
+    read_response = _call("read", {"path": "grounded.py"})
+    assert "result" in read_response
+    payload = _edit({"edits": [{"file_path": "grounded.py", "old_string": "alpha", "new_string": "beta"}]})
+
+    assert payload["failed"] == []
+    assert target.read_text(encoding="utf-8") == "beta\n"
+
+
+def test_non_benchmark_edit_stays_fail_open_without_grounding(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATELIER_BENCH_MODE", raising=False)
+    bench_mode = importlib.import_module("atelier.bench.mode")
+    monkeypatch.setattr(bench_mode, "_mode", None)
+    _write_session_state({"session_id": "bench-session"})
+    target = workspace / "normal.py"
+    target.write_text("alpha\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "normal.py", "old_string": "alpha", "new_string": "beta"}]})
+
+    assert payload["failed"] == []
+    assert target.read_text(encoding="utf-8") == "beta\n"
 
 
 def test_rich_create_new_file_via_overwrite(workspace: Path) -> None:
@@ -231,7 +292,17 @@ def test_legacy_replace_range(workspace: Path) -> None:
     f.write_text("aaa\nbbb\nccc\nddd\n", encoding="utf-8")
 
     payload = _edit(
-        {"edits": [{"path": str(f), "op": "replace_range", "line_start": 2, "line_end": 3, "new_string": "REPLACED"}]}
+        {
+            "edits": [
+                {
+                    "path": str(f),
+                    "op": "replace_range",
+                    "line_start": 2,
+                    "line_end": 3,
+                    "new_string": "REPLACED",
+                }
+            ]
+        }
     )
 
     assert payload["failed"] == []
@@ -249,7 +320,17 @@ def test_legacy_fuzzy_replace(workspace: Path) -> None:
     f.write_text("def f():\n    x = 1\n    return x\n", encoding="utf-8")
 
     payload = _edit(
-        {"edits": [{"path": str(f), "op": "replace", "old_string": "x = 1", "new_string": "x = 42", "fuzzy": True}]}
+        {
+            "edits": [
+                {
+                    "path": str(f),
+                    "op": "replace",
+                    "old_string": "x = 1",
+                    "new_string": "x = 42",
+                    "fuzzy": True,
+                }
+            ]
+        }
     )
 
     assert payload["failed"] == []
@@ -268,7 +349,13 @@ def test_notebook_cell_insert_through_handler(workspace: Path) -> None:
         json.dumps(
             {
                 "cells": [
-                    {"cell_type": "code", "metadata": {}, "source": "x = 1", "outputs": [], "execution_count": None}
+                    {
+                        "cell_type": "code",
+                        "metadata": {},
+                        "source": "x = 1",
+                        "outputs": [],
+                        "execution_count": None,
+                    }
                 ],
                 "metadata": {},
                 "nbformat": 4,
