@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-03T09:53:00Z"
+status: complete
+last_updated: "2026-06-03T16:45:00Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 17
-  completed_plans: 10
-  percent: 59
+  completed_plans: 17
+  percent: 100
 ---
 
 # Project State
@@ -20,22 +20,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Achieve the highest solved-rate on frozen terminal-bench-style coding tasks, with non-inferior quality and lower cost where possible.
-**Current focus:** Phase 3 - Routed Execution MVP
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 3 of 4 (Routed Execution MVP)
-Plan: 0 of 4 in current phase
-Status: Phase 2 complete; owned workflow runner, canonical defaults, benchmark solver runtime, and reader-only structural minify are all closed
+Phase: 4 of 4 (Benchmark Gate MVP)
+Plan: 3 of 3 in current phase
+Status: All four milestone phases are complete, including Phase 4 benchmark corpus freezing, evidence artifacts, and benchmark gating
 Last activity: 2026-06-03
 
-Progress: [██████░░░░] 59%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 17
 - Average duration: 19 min
 - Total execution time: 0.0 hours
 
@@ -47,7 +47,7 @@ Progress: [██████░░░░] 59%
 
 **Recent Trend:**
 
-- Last 5 plans: 02-03, 02-04, 02-05, 02-06, 02-07
+- Last 5 plans: 03-03, 03-04, 04-01, 04-02, 04-03
 - Trend: Accelerating
 
 | Phase 01 P01 | 2 | 2 tasks | 7 files |
@@ -77,11 +77,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Implement 03-01 provider catalog plus explicit/auto route selection for Atelier-owned execution.
-- Implement 03-02 provider execution lanes for owned subcalls without regressing the Phase 2 workflow/default/solver surfaces.
-- Implement 03-03 prompt-cache affinity, cache-token accounting, and warm-route stickiness across owned loops.
-- Implement 03-04 the shadow-safe local host router bridge for Claude-Code-compatible traffic.
-- Phase 4 should then freeze the benchmark corpus, capture paired artifacts, and gate milestone claims on solved-rate, quality, and cost-under-parity.
+- Archive or prepare the completed milestone for the next cycle.
 
 ### Blockers/Concerns
 

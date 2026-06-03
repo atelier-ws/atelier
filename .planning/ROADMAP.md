@@ -14,8 +14,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Grounded Terminal Loop MVP** - Search-first default path with semantic escalation (completed 2026-06-02)
 - [x] **Phase 2: Execution Kernel MVP** - Owned workflow runner, default definitions, solver loop, explicit plan review, grounded edit discipline, and read-only structural minification (completed 2026-06-03)
-- [ ] **Phase 3: Routed Execution MVP** - Explicit or auto provider/model routing for Atelier-owned subcalls, plus prompt-cache affinity and a shadow-safe local host router bridge
-- [ ] **Phase 4: Benchmark Gate MVP** - Frozen paired benchmarks and artifact-backed proof
+- [x] **Phase 3: Routed Execution MVP** - Explicit or auto provider/model routing for Atelier-owned subcalls, plus prompt-cache affinity and a shadow-safe local host router bridge (completed 2026-06-03)
+- [x] **Phase 4: Benchmark Gate MVP** - Frozen paired benchmarks and artifact-backed proof (completed 2026-06-03)
 
 ## Phase Details
 
@@ -77,10 +77,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Add provider catalog and explicit/auto route selection modes for owned execution
-- [ ] 03-02: Add provider execution lanes for Atelier-owned subcalls using existing routing foundations
-- [ ] 03-03: Add prompt-cache affinity, cache-token accounting, and warm-route stickiness
-- [ ] 03-04: Add a shadow-safe local host router bridge for Claude-Code-compatible traffic
+- [x] 03-01: Add provider catalog and explicit/auto route selection modes for owned execution
+- [x] 03-02: Add provider execution lanes for Atelier-owned subcalls using existing routing foundations
+- [x] 03-03: Add prompt-cache affinity, cache-token accounting, and warm-route stickiness
+- [x] 03-04: Add a shadow-safe local host router bridge for Claude-Code-compatible traffic
 
 ### Phase 4: Benchmark Gate MVP
 **Goal:** As a benchmark-driven maintainer, I want paired artifact-backed terminal benchmarks, so that Atelier can prove higher solved-rate with non-inferior quality and lower cost where possible.
@@ -95,9 +95,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: Freeze benchmark corpus and matched baseline protocol for terminal-bench-style tasks
-- [ ] 04-02: Capture paired run artifacts, judge outputs, and benchmark summaries
-- [ ] 04-03: Gate milestone claims on solved-rate, quality, and cost-under-parity
+- [x] 04-01: Freeze benchmark corpus and matched baseline protocol for terminal-bench-style tasks
+- [x] 04-02: Capture paired run artifacts, judge outputs, and benchmark summaries
+- [x] 04-03: Gate milestone claims on solved-rate, quality, and cost-under-parity
 
 ## Progress
 
@@ -108,5 +108,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Grounded Terminal Loop MVP | 3/3 | Complete   | 2026-06-02 |
 | 2. Execution Kernel MVP | 7/7 | Complete | 2026-06-03 |
-| 3. Routed Execution MVP | 0/4 | Not started | - |
-| 4. Benchmark Gate MVP | 0/3 | Not started | - |
+| 3. Routed Execution MVP | 4/4 | Complete | 2026-06-03 |
+| 4. Benchmark Gate MVP | 3/3 | Complete | 2026-06-03 |

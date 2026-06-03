@@ -28,5 +28,4 @@ Regenerate them after edits:
 
 ```bash
 uv run python scripts/sync_agent_context.py
-uv run python scripts/render_mode_surfaces.py
 ```

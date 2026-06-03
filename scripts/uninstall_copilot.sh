@@ -32,13 +32,13 @@ if $WORKSPACE_SET; then
     WORKSPACE="$(cd "$WORKSPACE" && pwd)"
     MCP_JSON="${WORKSPACE}/.vscode/mcp.json"
     INSTRUCTIONS="${WORKSPACE}/.github/copilot-instructions.md"
-    CHATMODE="${WORKSPACE}/.github/chatmodes/atelier.chatmode.md"
+    AGENT_FILE="${WORKSPACE}/.github/agents/atelier.agent.md"
     TASKS_JSON="${WORKSPACE}/.vscode/tasks.json"
 else
     VSCODE_USER_DIR="${VSCODE_USER_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/Code/User}"
     MCP_JSON="${VSCODE_USER_DIR}/mcp.json"
     INSTRUCTIONS="${HOME}/.copilot/instructions/atelier.instructions.md"
-    CHATMODE=""
+    AGENT_FILE=""
     TASKS_JSON="${VSCODE_USER_DIR}/tasks.json"
     COPILOT_CLI_HOOKS_JSON="${HOME}/.copilot/hooks/hooks.json"
 fi
@@ -83,9 +83,9 @@ path.write_text((content + \"\\n\") if content else \"\", encoding=\"utf-8\")
     fi
 fi
 
-if [ -n "$CHATMODE" ] && [ -f "$CHATMODE" ]; then
-    run "rm -f '$CHATMODE'"
-    info "Removed $CHATMODE"
+if [ -n "$AGENT_FILE" ] && [ -f "$AGENT_FILE" ]; then
+    run "rm -f '$AGENT_FILE'"
+    info "Removed $AGENT_FILE"
 fi
 
 if [ -f "$TASKS_JSON" ] && grep -q "Atelier:" "$TASKS_JSON" 2>/dev/null; then

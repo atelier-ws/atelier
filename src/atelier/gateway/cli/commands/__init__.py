@@ -141,6 +141,13 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
+        from .defaults import defaults_group
+
+        cli.add_command(defaults_group)
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
         from .code import code_group, zoekt_group
 
         cli.add_command(code_group)

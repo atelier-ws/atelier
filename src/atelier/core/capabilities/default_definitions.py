@@ -145,6 +145,8 @@ class DefaultWorkflowStep:
     effort: str
     read_mode_hint: str
     fork_from: str = ""
+    context_mode: str = "inherit"
+    requires_plan_review: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -154,6 +156,8 @@ class DefaultWorkflowStep:
             "effort": self.effort,
             "read_mode_hint": self.read_mode_hint,
             "fork_from": self.fork_from,
+            "context_mode": self.context_mode,
+            "requires_plan_review": self.requires_plan_review,
         }
 
 
@@ -337,7 +341,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
         "explore": ToolPolicy(
             policy_id="explore",
             allowed_tools=("read", "grep", "search", "symbols", "node", "usages", "explore"),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "plan": ToolPolicy(
             policy_id="plan",
@@ -354,7 +358,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "explore",
                 "web_fetch",
             ),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",)),
         "review": ToolPolicy(
@@ -369,12 +373,12 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "impact",
                 "verify",
             ),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "research": ToolPolicy(
             policy_id="research",
             allowed_tools=("web_fetch", "web_search", "read", "search"),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
     }
@@ -425,58 +429,81 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
         "owned-stem-system": PromptDefinition(
             prompt_id="owned-stem-system",
             body=(
-                "You are operating inside Atelier's owned execution runtime. Keep the prompt prefix stable "
-                "across phases, preserve trustworthy evidence, and treat the current phase prompt as the "
-                "authoritative pivot for goals, tools, and output."
+                "You are operating inside Atelier's owned execution runtime. Keep this system prompt stable "
+                "across every phase so provider prompt caches stay warm. Treat the current phase prompt as "
+                "the only active contract. Preserve first-hand evidence. Do not broaden the task."
             ),
         ),
         "owned-explore-phase": PromptDefinition(
             prompt_id="owned-explore-phase",
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE EXPLORE PHASE ===\n"
-                "Set aside implementation assumptions. Map the smallest set of files, symbols, constraints, "
-                "and acceptance checks needed to ground the task. Prefer minified or selective reads."
+                "Read only. Do not plan. Do not edit. Use prior context first, then ask targeted questions "
+                "of the code only where facts are missing. Do not re-read the same file through the same "
+                "tool. Output only the facts, constraints, unknowns, and proving checks needed for this task."
             ),
         ),
         "owned-plan-phase": PromptDefinition(
             prompt_id="owned-plan-phase",
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE PLAN PHASE ===\n"
-                "Set aside exploration habits that do not improve the plan. Produce the smallest executable "
-                "plan with file order, risks, and the narrowest proving checks."
+                "Do not edit. Produce a concrete execution plan from verified facts. Include: name, why the "
+                "change is needed, exact files to create or modify, ordered steps with real identifiers, "
+                "risks, and exact verification commands. Remove vague steps before answering."
+            ),
+        ),
+        "owned-critique-phase": PromptDefinition(
+            prompt_id="owned-critique-phase",
+            body=(
+                "=== PIVOT: YOU ARE NOW IN THE PLAN CRITIQUE PHASE ===\n"
+                "Do not edit. Attack the plan with fresh eyes. Find missing requirements, bad sequencing, "
+                "ungrounded file or symbol names, destructive risk, scope creep, and missing verification. "
+                "If the plan is sound, say exactly why. Otherwise list only actionable fixes."
+            ),
+        ),
+        "owned-refine-plan-phase": PromptDefinition(
+            prompt_id="owned-refine-plan-phase",
+            body=(
+                "=== PIVOT: YOU ARE NOW IN THE PLAN REFINE PHASE ===\n"
+                "Do not edit. Produce the complete final plan, not a diff. Address every critique item or "
+                "state the evidence that makes it inapplicable. Keep the file list exact and the verification "
+                "commands runnable."
             ),
         ),
         "owned-execute-phase": PromptDefinition(
             prompt_id="owned-execute-phase",
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE EXECUTE PHASE ===\n"
-                "Set aside prior-phase debate. Make the smallest verified change, prefer exact reads for edit "
-                "targets, and leave behind only task-relevant artifacts."
+                "Execute the approved plan sequentially. Read exact content before editing. Change only files "
+                "named by the plan unless direct evidence proves the plan missed a required target. After each "
+                "significant change, run the nearest useful check. Stop after self-verification."
             ),
         ),
         "owned-review-phase": PromptDefinition(
             prompt_id="owned-review-phase",
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE REVIEW PHASE ===\n"
-                "Set aside implementer optimism. Gather first-hand evidence only, do not edit, and emit exactly "
-                "one JSON verdict block with keys verdict, checklist, and missing. If evidence is ambiguous, use "
-                "NEEDS_FIX."
+                "Do not edit. Do not trust the implementer's summary. Inspect the filesystem and run direct "
+                "checks. Decide whether every requested deliverable is satisfied. If evidence is missing or "
+                "ambiguous, use NEEDS_FIX. End with exactly one JSON verdict block with keys verdict, checklist, "
+                "and missing."
             ),
         ),
-        "owned-refine-phase": PromptDefinition(
-            prompt_id="owned-refine-phase",
+        "owned-fix-phase": PromptDefinition(
+            prompt_id="owned-fix-phase",
             body=(
-                "=== PIVOT: YOU ARE NOW IN THE REFINE PHASE ===\n"
-                "Set aside prior completion claims. Apply only the fixes justified by review evidence, rerun the "
-                "narrow proof, and keep the conversation history forked from the plan phase."
+                "=== PIVOT: YOU ARE NOW IN THE FIX PHASE ===\n"
+                "The review evidence is the punch list. Fix only cited gaps. Do not restart from scratch unless "
+                "the approach is proven wrong. Rerun the checks tied to each gap, then stop for review."
             ),
         ),
         "solver-retry": PromptDefinition(
             prompt_id="solver-retry",
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE SOLVER RETRY PHASE ===\n"
-                "Start from the prior attempt's forked context. Read harness feedback first, avoid blind command "
-                "repetition, and change scope, input, or approach before retrying."
+                "Start from the prior attempt transcript. Read harness feedback first. Do not repeat a failed "
+                "command verbatim; change the input, scope, timeout, or approach before retrying. Fix the "
+                "smallest proven cause and keep the workspace clean."
             ),
         ),
     }
@@ -504,12 +531,29 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     fork_from="explore",
                 ),
                 DefaultWorkflowStep(
+                    step_id="critique",
+                    role_id="review",
+                    phase_prompt_id="owned-critique-phase",
+                    effort="medium",
+                    read_mode_hint="minified",
+                    fork_from="plan",
+                ),
+                DefaultWorkflowStep(
+                    step_id="refine",
+                    role_id="plan",
+                    phase_prompt_id="owned-refine-plan-phase",
+                    effort="medium",
+                    read_mode_hint="minified",
+                    fork_from="critique",
+                ),
+                DefaultWorkflowStep(
                     step_id="execute",
                     role_id="execute",
                     phase_prompt_id="owned-execute-phase",
                     effort="high",
                     read_mode_hint="exact",
-                    fork_from="plan",
+                    fork_from="refine",
+                    requires_plan_review=True,
                 ),
                 DefaultWorkflowStep(
                     step_id="review",
@@ -517,15 +561,15 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     phase_prompt_id="owned-review-phase",
                     effort="medium",
                     read_mode_hint="exact",
-                    fork_from="plan",
+                    fork_from="refine",
                 ),
                 DefaultWorkflowStep(
-                    step_id="refine",
+                    step_id="fix",
                     role_id="execute",
-                    phase_prompt_id="owned-refine-phase",
+                    phase_prompt_id="owned-fix-phase",
                     effort="medium",
                     read_mode_hint="exact",
-                    fork_from="plan",
+                    fork_from="review",
                 ),
             ),
         ),
@@ -549,12 +593,28 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     fork_from="explore",
                 ),
                 DefaultWorkflowStep(
+                    step_id="critique",
+                    role_id="review",
+                    phase_prompt_id="owned-critique-phase",
+                    effort="medium",
+                    read_mode_hint="minified",
+                    fork_from="plan",
+                ),
+                DefaultWorkflowStep(
+                    step_id="refine",
+                    role_id="plan",
+                    phase_prompt_id="owned-refine-plan-phase",
+                    effort="medium",
+                    read_mode_hint="minified",
+                    fork_from="critique",
+                ),
+                DefaultWorkflowStep(
                     step_id="execute",
                     role_id="solve",
                     phase_prompt_id="owned-execute-phase",
                     effort="high",
                     read_mode_hint="exact",
-                    fork_from="plan",
+                    fork_from="refine",
                 ),
                 DefaultWorkflowStep(
                     step_id="review",
@@ -562,7 +622,7 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     phase_prompt_id="owned-review-phase",
                     effort="medium",
                     read_mode_hint="exact",
-                    fork_from="plan",
+                    fork_from="refine",
                 ),
                 DefaultWorkflowStep(
                     step_id="retry",
@@ -740,109 +800,79 @@ def _role_read_hint(role_id: str) -> str:
     }[role_id]
 
 
-CLAUDE_STABLE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
-    "code": (("name", "code"), ("description", ""), ("tools", ["*"]), ("color", "purple")),
-    "explore": (
-        ("name", "explore"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__grep",
-                "mcp__atelier__node",
-                "mcp__atelier__symbols",
-                "mcp__atelier__usages",
-                "mcp__atelier__explore",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("disallowedTools", ["Edit", "Write", "MultiEdit", "NotebookEdit", "Agent"]),
-        ("color", "blue"),
-    ),
-    "review": (
-        ("name", "review"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "mcp__atelier__context",
-                "mcp__atelier__read",
-                "mcp__atelier__search",
-                "mcp__atelier__node",
-                "mcp__atelier__usages",
-                "mcp__atelier__callers",
-                "mcp__atelier__impact",
-                "mcp__atelier__verify",
-                "mcp__atelier__trace",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "yellow"),
-    ),
-    "plan": (
-        ("name", "plan"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "WebFetch",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__grep",
-                "mcp__atelier__node",
-                "mcp__atelier__symbols",
-                "mcp__atelier__usages",
-                "mcp__atelier__callers",
-                "mcp__atelier__callees",
-                "mcp__atelier__impact",
-                "mcp__atelier__explore",
-                "mcp__atelier__memory",
-            ],
-        ),
-        (
-            "disallowedTools",
-            ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"],
-        ),
-        ("color", "cyan"),
-    ),
-    "execute": (("name", "execute"), ("description", ""), ("tools", ["*"]), ("color", "purple")),
-    "research": (
-        ("name", "research"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "WebFetch",
-                "WebSearch",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "green"),
-    ),
-    "solve": (
-        ("name", "solve"),
-        ("description", ""),
-        ("tools", ["*"]),
-        ("disallowedTools", ["Agent"]),
-        ("color", "orange"),
-    ),
+# Single host-neutral source: each role's ``tool_policy.denied_actions`` declares
+# the intent (deny mutation, deny sub-agent spawn). Per-host renderers below
+# translate that intent into each host's native gating mechanism. Editing the
+# policy in ``_tool_policies`` is the only place a restriction is declared.
+
+# Native host tools that have Atelier MCP equivalents. Disallowing them forces
+# MCP-grounded file I/O and search across every generated Claude agent while
+# keeping the frontmatter small: ``tools: ["*"]`` already grants every MCP tool,
+# so an explicit allow-list is unnecessary. ``MultiEdit``/``NotebookEdit`` are
+# intentionally omitted (``Edit``/``Write`` plus ``mcp__atelier__edit`` cover the
+# real write paths) so the list stays short. Native ``Bash`` and
+# ``mcp__atelier__shell`` are never denied: read-only roles still need shell to
+# run checks and probes (``git diff``, ``pytest``, ``ls``), the Atelier shell is
+# the path they should prefer, and read-only is enforced by denying the write
+# tools, not by removing shell.
+_NATIVE_MCP_OVERRIDDEN: list[str] = [
+    "Read",
+    "Edit",
+    "Write",
+    "Grep",
+    "Glob",
+]
+
+
+def _denies_mutation(policy: ToolPolicy) -> bool:
+    return bool({"edit", "write", "delete"} & set(policy.denied_actions))
+
+
+def _denies_spawn(policy: ToolPolicy) -> bool:
+    return "agent-spawn" in policy.denied_actions
+
+
+def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
+    """Render a Claude ``disallowedTools`` deny-list from the host-neutral policy.
+
+    Every host-projected role forces MCP file I/O (native read/edit/write/grep/glob
+    are denied so the Atelier equivalents are used). Read-only roles additionally
+    lose sub-agent spawning and the MCP write path. Shell is never denied.
+    """
+    denied = list(_NATIVE_MCP_OVERRIDDEN)
+    if _denies_spawn(policy):
+        denied.append("Agent")
+    if _denies_mutation(policy):
+        denied.append("mcp__atelier__edit")
+    return denied
+
+
+_CLAUDE_AGENT_COLORS: dict[str, str] = {
+    "code": "purple",
+    "explore": "blue",
+    "review": "yellow",
+    "plan": "cyan",
+    "execute": "purple",
+    "research": "green",
+    "solve": "orange",
 }
+
+
+def _build_claude_stable_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
+    policies = _tool_policies()
+    return {
+        role_id: (
+            ("name", role_id),
+            ("description", ""),
+            ("tools", ["*"]),
+            ("disallowedTools", _claude_disallowed_tools(policies[role_id])),
+            ("color", _CLAUDE_AGENT_COLORS[role_id]),
+        )
+        for role_id in SURFACED_ROLE_IDS
+    }
+
+
+CLAUDE_STABLE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = _build_claude_stable_frontmatter()
 
 CLAUDE_DEV_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
     "code": (
@@ -964,48 +994,49 @@ CLAUDE_DEV_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
     ),
 }
 
-OPENCODE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
-    "code": (
-        ("description", "Atelier - main coding agent for the Agent Reasoning Runtime"),
-        ("mode", "primary"),
-    ),
-    "explore": (
-        (
-            "description",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        ),
-    ),
-    "review": (
-        (
-            "description",
-            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-        ),
-    ),
-    "plan": (
-        (
-            "description",
-            "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-        ),
-    ),
-    "execute": (
-        (
-            "description",
-            "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-        ),
-    ),
-    "research": (
-        (
-            "description",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        ),
-    ),
-    "solve": (
-        (
-            "description",
-            "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
-        ),
-    ),
+
+def _opencode_tool_gates(policy: ToolPolicy) -> dict[str, bool]:
+    """Translate the host-neutral policy into OpenCode's ``tools`` deny map.
+
+    OpenCode gates native tools by name. Mutation tools are denied for read-only
+    roles and ``task`` (sub-agent spawn) wherever spawning is denied. Native
+    ``read``/``grep``/``bash`` stay enabled -- "prefer Atelier MCP" is handled by the
+    body prose, and shell is never denied.
+    """
+    gates: dict[str, bool] = {}
+    if _denies_mutation(policy):
+        gates.update({"write": False, "edit": False, "patch": False})
+    if _denies_spawn(policy):
+        gates["task"] = False
+    return gates
+
+
+_OPENCODE_DESCRIPTIONS: dict[str, str] = {
+    "code": "Atelier - main coding agent for the Agent Reasoning Runtime",
+    "explore": "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
+    "review": "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
+    "plan": "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
+    "execute": "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
+    "research": "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
+    "solve": "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
 }
+
+
+def _build_opencode_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
+    policies = _tool_policies()
+    out: dict[str, tuple[tuple[str, Any], ...]] = {}
+    for role_id in SURFACED_ROLE_IDS:
+        items: list[tuple[str, Any]] = [("description", _OPENCODE_DESCRIPTIONS[role_id])]
+        if role_id == "code":
+            items.append(("mode", "primary"))
+        gates = _opencode_tool_gates(policies[role_id])
+        if gates:
+            items.append(("tools", gates))
+        out[role_id] = tuple(items)
+    return out
+
+
+OPENCODE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = _build_opencode_frontmatter()
 
 ANTIGRAVITY_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
     "code": (

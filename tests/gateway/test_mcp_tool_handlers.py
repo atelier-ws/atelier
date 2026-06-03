@@ -56,6 +56,7 @@ EXPECTED_TOOLS = {
     "usages",
     "pattern",
     "explore",
+    "workflow_run",
 }
 
 
