@@ -53,7 +53,7 @@ if [[ -z "$HOST" ]]; then
     exit 1
 fi
 
-python3 "$RENDER_SCRIPT" >/dev/null
+uv run python "$RENDER_SCRIPT" >/dev/null
 
 if [[ ! -d "$SKILLS_SRC" ]]; then
     echo "Shared packaged skills directory not found: $SKILLS_SRC" >&2
@@ -64,7 +64,7 @@ DEV_ONLY_SKILLS=()
 while IFS= read -r skill_name; do
     [[ -n "$skill_name" ]] && DEV_ONLY_SKILLS+=("$skill_name")
 done < <(
-    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" python3 - <<'PY'
+    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
 from atelier.core.environment import DEV_ONLY_SKILLS
 
 for name in sorted(DEV_ONLY_SKILLS):
@@ -111,6 +111,8 @@ render_host_bundle() {
     local dest_dir="$2"
     local skill_dir
     local skill_name
+    local projected_skill
+    local projected_skills=()
 
     mkdir -p "$dest_dir"
     find "$dest_dir" -mindepth 1 -maxdepth 1 \
@@ -118,12 +120,22 @@ render_host_bundle() {
         ! -name "README.md" \
         -exec rm -rf {} +
 
-    for skill_dir in "$SKILLS_SRC"/*; do
+    while IFS= read -r projected_skill; do
+        [[ -n "$projected_skill" ]] && projected_skills+=("$projected_skill")
+    done < <(
+        PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
+from atelier.core.capabilities.default_definitions import build_default_registry
+
+for role_id in build_default_registry().surfaced_role_ids("shared_skill"):
+    print(role_id)
+PY
+    )
+
+    for skill_name in "${projected_skills[@]}"; do
+        skill_dir="${SKILLS_SRC}/${skill_name}"
         if [[ ! -d "$skill_dir" || ! -f "$skill_dir/SKILL.md" ]]; then
             continue
         fi
-
-        skill_name="$(basename "$skill_dir")"
         if is_always_excluded_skill "$skill_name"; then
             continue
         fi

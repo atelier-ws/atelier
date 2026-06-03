@@ -16,9 +16,8 @@ result tables. Does **not** write feature code itself; delegates to `atelier:cod
 |---|---|---|
 | `atelier:research` | external facts: exact embed/rerank model + dims + license + Ollama availability | no |
 | `atelier:explore` | internal blast-radius maps, exact touch-point lists | no |
-| `atelier:code` | all implementation | yes |
+| `atelier:execute` | focused implementation from an accepted brief | yes |
 | `atelier:review` | adversarial diff review against acceptance criteria | no |
-| `atelier:repair` | only if a code agent's approach fails twice (capture signal → rescue) | yes |
 
 **Hard rules (from repo CLAUDE.md / AGENTS.md):**
 - **Hard-remove, never deprecate** — when EMB replaces the hashing default, delete
@@ -236,7 +235,8 @@ Record a trace referencing EMB. Do NOT touch model_routing, scip, or autopilot.
 6. Launch **W5a ROUTE+ (wt-route)** and **W5b INDEX (wt-index)** in parallel.
 7. Launch **W6 SPEC (wt-spec)** last.
 8. After every merge: re-run the change-surface gate; if an agent's approach
-   fails twice, hand off to `atelier:repair` rather than retrying a third time.
+   fails twice, capture the failing signal and call `rescue` rather than retrying
+   a third time.
 
 ## 8. Risk controls
 - **Worktree discipline** prevents parallel code agents from clobbering shared

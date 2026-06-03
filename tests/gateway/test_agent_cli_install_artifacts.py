@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from atelier.core.capabilities.default_definitions import build_default_registry
+
 ATELIER_ROOT = Path(__file__).parent.parent.parent
 SCRIPTS = ATELIER_ROOT / "scripts"
 INTEGRATIONS = ATELIER_ROOT / "integrations"
@@ -76,7 +78,10 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    assert generated == {"code", "explore", "repair", "research", "review"}
+    expected = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    registry = build_default_registry(ATELIER_ROOT)
+    assert generated == expected
+    assert generated == set(registry.surfaced_role_ids("shared_skill"))
 
 
 def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
@@ -95,7 +100,18 @@ def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    assert generated == {"code", "explore", "repair", "research", "review"}
+    expected = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    registry = build_default_registry(ATELIER_ROOT)
+    assert generated == expected
+    assert generated == set(registry.surfaced_role_ids("shared_skill"))
+
+
+def test_render_mode_surfaces_is_in_sync_with_repository_artifacts() -> None:
+    subprocess.run(
+        ["uv", "run", "python", str(SCRIPTS / "render_mode_surfaces.py"), "--check"],
+        cwd=ATELIER_ROOT,
+        check=True,
+    )
 
 
 def test_verify_agent_clis_script_exists() -> None:
@@ -530,7 +546,7 @@ def test_new_claude_plugin_json_no_manifest_keys() -> None:
 
 @pytest.mark.parametrize(
     "skill_name",
-    ["code", "explore", "review", "repair", "research"],
+    ["code", "explore", "execute", "plan", "research", "review", "solve"],
 )
 def test_new_claude_plugin_user_skill_exists(skill_name: str) -> None:
     skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
@@ -539,7 +555,7 @@ def test_new_claude_plugin_user_skill_exists(skill_name: str) -> None:
 
 @pytest.mark.parametrize(
     "skill_name",
-    ["code", "explore", "review", "repair", "research"],
+    ["code", "explore", "execute", "plan", "research", "review", "solve"],
 )
 def test_new_claude_plugin_skill_has_description(skill_name: str) -> None:
     skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
@@ -552,7 +568,15 @@ def test_new_claude_plugin_skill_has_description(skill_name: str) -> None:
 def test_new_claude_plugin_has_agents() -> None:
     agents_dir = CLAUDE_PLUGIN_NEW / "agents"
     assert agents_dir.is_dir(), "integrations/claude/plugin/agents/ directory must exist"
-    for name in ("code.md", "explore.md", "review.md", "repair.md", "research.md"):
+    for name in (
+        "code.md",
+        "explore.md",
+        "execute.md",
+        "plan.md",
+        "research.md",
+        "review.md",
+        "solve.md",
+    ):
         assert (agents_dir / name).exists(), f"integrations/claude/plugin/agents/{name} must exist"
 
 

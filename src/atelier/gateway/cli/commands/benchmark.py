@@ -22,6 +22,8 @@ from atelier.core.capabilities.host_runners import (
 )
 from atelier.gateway.cli.progress import ProgressReporter
 
+from .benchmark_solver import benchmark_solver_cmd
+
 _PROVIDER_ALIASES: dict[str, str] = {
     "aws": "aws-claude",
     "bedrock": "aws-claude",
@@ -168,7 +170,12 @@ def benchmark_providers_cmd(
 @click.option("--task", default="all", show_default=True, help="TerminalBench task id or 'all'.")
 @click.option("--mode", default="all", show_default=True, type=click.Choice(["all", "on", "off"]))
 @click.option("--model", default="claude-sonnet-4-5", show_default=True)
-@click.option("--provider", default="claude", type=click.Choice(["claude", "ollama"]), show_default=True)
+@click.option(
+    "--provider",
+    default="claude",
+    type=click.Choice(["claude", "ollama", "owned"]),
+    show_default=True,
+)
 @click.option("--rep", type=int, default=1, show_default=True, help="Repetitions per task/arm.")
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 def benchmark_terminalbench_cmd(
@@ -240,6 +247,9 @@ def benchmark_terminalbench_cmd(
     progress.step("summary complete", current="summary.json")
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
+
+
+benchmark_group.add_command(benchmark_solver_cmd)
 
 
 @benchmark_group.command("swe")

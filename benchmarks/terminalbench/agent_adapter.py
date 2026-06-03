@@ -53,6 +53,7 @@ class AdapterResult:
     mode: str  # "on" | "off"
     rep: int
     model: str
+    provider: str
     input_tokens: int
     output_tokens: int
     cache_creation_input_tokens: int
@@ -232,6 +233,37 @@ class AtelierClaudeAgent(AbstractInstalledAgent):
 
 
 # ---------------------------------------------------------------------------
+# AtelierOwnedSolverAgent — AbstractInstalledAgent subclass
+# ---------------------------------------------------------------------------
+
+
+class AtelierOwnedSolverAgent(AtelierClaudeAgent):
+    """TerminalBench agent that runs Atelier's owned solver CLI inside Docker."""
+
+    @staticmethod
+    def name() -> str:  # type: ignore[override]
+        return "atelier-owned-solver"
+
+    def _run_agent_commands(self, instruction: str) -> list[TerminalCommand]:
+        escaped = shlex.quote(instruction)
+        model_arg = f"--model {shlex.quote(self._model)} " if self._model is not None else ""
+        cmd = (
+            f"atelier benchmark solver --task-prompt {escaped} "
+            f"--format stream-json {model_arg}--out /logs/owned "
+            f"2>&1 | tee {CONTAINER_STREAM_LOG}"
+        )
+        return [
+            TerminalCommand(
+                command=cmd,
+                min_timeout_sec=0.0,
+                max_timeout_sec=float("inf"),
+                block=True,
+                append_enter=True,
+            )
+        ]
+
+
+# ---------------------------------------------------------------------------
 # AtelierOllamaAgent — AbstractInstalledAgent subclass
 # ---------------------------------------------------------------------------
 
@@ -328,7 +360,7 @@ class AtelierOllamaAgent(AbstractInstalledAgent):
             [
                 "sh",
                 "-c",
-                (f"echo {shlex.quote(env_setup_content)} > " "/installed-agent/setup-env.sh"),
+                (f"echo {shlex.quote(env_setup_content)} > /installed-agent/setup-env.sh"),
             ]
         )
 
@@ -345,7 +377,7 @@ class AtelierOllamaAgent(AbstractInstalledAgent):
         # Execute installation script and capture failure status
         session.send_keys(
             [
-                ("source /installed-agent/install-agent.sh || " "echo 'INSTALL_FAIL_STATUS'"),
+                ("source /installed-agent/install-agent.sh || echo 'INSTALL_FAIL_STATUS'"),
                 "Enter",
             ],
             block=True,
@@ -404,13 +436,15 @@ class AtelierOllamaAgent(AbstractInstalledAgent):
 # ---------------------------------------------------------------------------
 
 
-Provider = Literal["claude", "ollama"]
+Provider = Literal["claude", "ollama", "owned"]
 
 
 def _agent_import_path(provider: Provider) -> str:
     """Return the agent import path for the given provider."""
     if provider == "ollama":
         return "terminalbench.agent_adapter:AtelierOllamaAgent"
+    if provider == "owned":
+        return "terminalbench.agent_adapter:AtelierOwnedSolverAgent"
     return "terminalbench.agent_adapter:AtelierClaudeAgent"
 
 
@@ -444,6 +478,9 @@ def run_terminalbench_trial(
     """
     from atelier.bench.mode import BenchMode, make_arm_env
     from terminal_bench import BenchmarkResults, Harness
+
+    if provider == "owned" and bench_mode != "on":
+        raise ValueError("owned provider requires bench_mode='on'")
 
     # Isolated temp dir for Atelier runtime state
     arm_tmp = Path(tempfile.mkdtemp(prefix=f"atelier_bench_{bench_mode}_"))
@@ -527,6 +564,7 @@ def run_terminalbench_trial(
         mode=bench_mode,
         rep=rep,
         model=model,
+        provider=provider,
         input_tokens=int(stream_parsed.get("input_tokens", 0)),
         output_tokens=int(stream_parsed.get("output_tokens", 0)),
         cache_creation_input_tokens=int(stream_parsed.get("cache_creation_input_tokens", 0)),

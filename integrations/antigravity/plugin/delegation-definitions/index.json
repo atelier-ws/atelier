@@ -2,8 +2,10 @@
   "agents": [
     "atelier-code",
     "atelier-explore",
-    "atelier-repair",
+    "atelier-plan",
+    "atelier-execute",
     "atelier-research",
-    "atelier-review"
+    "atelier-review",
+    "atelier-solve"
   ]
 }

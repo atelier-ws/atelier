@@ -117,9 +117,11 @@ All commands use the `/atelier:name` format (colon, not dash):
 | ------------------- | ---------------------------------------------- |
 | `/atelier:code`     | Switch to main coding mode                     |
 | `/atelier:explore`  | Switch to read-only exploration mode           |
+| `/atelier:plan`     | Switch to implementation planning mode         |
+| `/atelier:execute` | Switch to focused execution mode               |
 | `/atelier:review`   | Switch to adversarial review mode              |
-| `/atelier:repair`   | Switch to repeated-failure repair mode         |
 | `/atelier:research` | Switch to external research mode with citations |
+| `/atelier:solve`   | Switch to benchmark solve mode                 |
 
 ## Agents
 
@@ -129,9 +131,11 @@ Select from the `/agents` list in Claude Code:
 | ----------------- | -------------------------------------------- |
 | `atelier:code`    | Main coding agent — full task loop           |
 | `atelier:explore` | Read-only repo exploration                   |
+| `atelier:plan`    | Planner — grounded implementation plan       |
+| `atelier:execute` | Executor — focused edits + self-check       |
 | `atelier:review`  | Verifier — plan checks + rubric gate         |
-| `atelier:repair`  | Repair specialist — rescue repeated failures |
 | `atelier:research`| External research with citations             |
+| `atelier:solve`  | Benchmark solver — artifact/check loop       |
 
 ## Dynamic Workflows
 

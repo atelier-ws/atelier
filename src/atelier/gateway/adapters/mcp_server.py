@@ -2823,13 +2823,23 @@ def tool_smart_read(
     # 3+ blank-line runs), which the fuzzy edit matcher tolerates. Outline mode
     # carries no body, so it is left untouched.
     minify_saved = 0
-    if isinstance(content, str) and content and mode in ("full", "range"):
+    minification_delta: dict[str, Any] | None = None
+    exact_read = expand or range is not None
+    if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
         from atelier.core.capabilities.context_compression.minify import minify_source
+        from atelier.core.capabilities.context_compression.models import MinificationDelta
 
-        minified, orig_tok, min_tok = minify_source(content, str(payload.get("language") or ""))
+        language = str(payload.get("language") or "")
+        minified, orig_tok, min_tok = minify_source(content, language)
         if min_tok < orig_tok:
             content = minified
             minify_saved = orig_tok - min_tok
+            minification_delta = MinificationDelta(
+                path=str(payload.get("path", str(target))),
+                lang=language,
+                original_tokens=orig_tok,
+                minified_tokens=min_tok,
+            ).to_dict()
     response: dict[str, Any] = {
         "mode": mode,
         "outline": payload.get("outline"),
@@ -2842,6 +2852,8 @@ def tool_smart_read(
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
         response["tokens_saved"] = ts
+        if minification_delta is not None:
+            response["minification_delta"] = minification_delta
     # Always save real savings via thread-local for the budget recorder
     if ts > 0:
         _tool_call_tokens_saved.value = ts

@@ -30,6 +30,7 @@ from atelier.core.capabilities.prompt_compilation.tokens import (
 _BLANK_RUN = re.compile(r"\n{3,}")
 _TRAILING_WS = re.compile(r"[ \t]+$", re.MULTILINE)
 _WHITESPACE_SIGNIFICANT: frozenset[str] = frozenset({"python", "py", "yaml", "yml", "makefile", "haml"})
+_AGGRESSIVE_INLINE_SAFE: frozenset[str] = frozenset({"c", "cpp", "c++", "cs", "go", "java", "json", "kotlin"})
 
 
 def minify_source(text: str, lang: str) -> tuple[str, int, int]:
@@ -48,14 +49,63 @@ def minify_source(text: str, lang: str) -> tuple[str, int, int]:
     produce the same outputs; no I/O, no logging, no global state.
     """
     original = text
-    out = _TRAILING_WS.sub("", text)
-    out = _BLANK_RUN.sub("\n\n", out)
-    # The whitespace-significant set currently gates only future
-    # aggressive transforms; we honour it by NEVER adding intra-line
-    # collapses here. Reference the set so it remains part of the
-    # public contract and lints clean.
-    _ = lang.lower() in _WHITESPACE_SIGNIFICANT
+    out = _conservative_minify(text)
+    normalized = lang.lower()
+    if normalized in _AGGRESSIVE_INLINE_SAFE:
+        out = _collapse_inline_whitespace(out)
     return out, _count_tokens(original), _count_tokens(out)
+
+
+def _conservative_minify(text: str) -> str:
+    out = _TRAILING_WS.sub("", text)
+    return _BLANK_RUN.sub("\n\n", out)
+
+
+def _collapse_inline_whitespace(text: str) -> str:
+    out: list[str] = []
+    quote: str = ""
+    escaped = False
+    pending_space = False
+    at_line_start = True
+
+    for char in text:
+        if quote:
+            out.append(char)
+            if quote != "`" and escaped:
+                escaped = False
+                continue
+            if quote != "`" and char == "\\":
+                escaped = True
+                continue
+            if char == quote and (quote == "`" or not escaped):
+                quote = ""
+            continue
+
+        if char == "\n":
+            pending_space = False
+            out.append(char)
+            at_line_start = True
+            continue
+
+        if at_line_start and char in " \t":
+            out.append(char)
+            continue
+
+        if char in " \t":
+            pending_space = True
+            at_line_start = False
+            continue
+
+        if pending_space:
+            out.append(" ")
+            pending_space = False
+
+        if char in {"'", '"', "`"}:
+            quote = char
+            escaped = False
+        out.append(char)
+        at_line_start = False
+    return "".join(out)
 
 
 __all__ = ["minify_source"]

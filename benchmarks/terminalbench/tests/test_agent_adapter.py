@@ -7,9 +7,17 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parents[3]
+BENCHMARKS_ROOT = ROOT / "benchmarks"
+if str(BENCHMARKS_ROOT) not in sys.path:
+    sys.path.insert(0, str(BENCHMARKS_ROOT))
+
+pytest.importorskip("terminal_bench")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,6 +28,7 @@ TB04_FIELDS = {
     "mode",
     "rep",
     "model",
+    "provider",
     "input_tokens",
     "output_tokens",
     "cache_creation_input_tokens",
@@ -248,6 +257,18 @@ def test_agent_run_commands_shlex_escape(monkeypatch: pytest.MonkeyPatch) -> Non
     assert quoted != instruction, "shlex.quote must modify the instruction (add quotes/escaping)"
 
 
+def test_owned_solver_agent_runs_benchmark_solver(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-tests")
+    from terminalbench.agent_adapter import AtelierOwnedSolverAgent
+
+    agent = AtelierOwnedSolverAgent(bench_mode="on", model="claude-opus-4.8")
+    command = agent._run_agent_commands("solve the task")[0].command
+
+    assert "atelier benchmark solver" in command
+    assert "--format stream-json" in command
+    assert "--out /logs/owned" in command
+
+
 # ---------------------------------------------------------------------------
 # AdapterResult schema test
 # ---------------------------------------------------------------------------
@@ -262,6 +283,7 @@ def test_adapter_result_to_dict_has_all_tb04_fields() -> None:
         mode="on",
         rep=1,
         model="claude-sonnet-4-5",
+        provider="claude",
         input_tokens=100,
         output_tokens=50,
         cache_creation_input_tokens=0,
