@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import ipaddress
 import json
@@ -14,6 +15,9 @@ from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
 
 import urllib3
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3.util.connection import _set_socket_options
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,8 @@ MAX_REDIRECTS = 5
 FETCH_CACHE_TTL_S = 300.0
 FETCH_CACHE_MAX_ITEMS = 128
 TRANSFORM_CACHE_MAX_ITEMS = 128
+DNS_TIMEOUT_S = 10.0
+_DNS_MAX_WORKERS = 4
 
 DEFAULT_USER_AGENT = "Atelier web_fetch/0.2 (+https://github.com/atelier-runtime/atelier)"
 
@@ -54,7 +60,116 @@ _CODE_LANG_RE = re.compile(
     r"(?:^|\s)(?:language|lang|highlight-source|brush|sourceCode)[-_:]([a-zA-Z0-9_+.#-]+)(?:\s|$)",
     re.IGNORECASE,
 )
-_HTTP = urllib3.PoolManager(num_pools=16, maxsize=16, retries=False, cert_reqs="CERT_REQUIRED")
+
+_DNS_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=_DNS_MAX_WORKERS, thread_name_prefix="atelier-dns"
+)
+
+
+def _resolve_host_safe(hostname: str, timeout: float) -> str:
+    """Resolve *hostname* to an IP via DNS with a timeout and public-IP validation.
+
+    Returns the first resolved public IP address string.
+    Raises ``ValueError`` on resolution failure, timeout, or non-public IP.
+    """
+    try:
+        ascii_host = hostname.encode("idna").decode("ascii")
+    except (UnicodeError, ValueError):
+        raise ValueError(f"web_fetch invalid hostname: {hostname}") from None
+    try:
+        future = _DNS_EXECUTOR.submit(socket.getaddrinfo, ascii_host, None, proto=socket.IPPROTO_TCP)
+        effective_timeout = min(timeout, DNS_TIMEOUT_S)
+        infos = future.result(timeout=effective_timeout)
+    except concurrent.futures.TimeoutError:
+        raise ValueError(f"web_fetch DNS resolution timed out for: {hostname}") from None
+    except OSError as exc:
+        raise ValueError(f"web_fetch could not resolve host: {hostname}") from exc
+    if not infos:
+        raise ValueError(f"web_fetch could not resolve host: {hostname}")
+    for info in infos:
+        raw_ip = info[4][0]
+        _assert_public_ip(raw_ip)
+    return infos[0][4][0]
+
+
+def _assert_public_ip(raw_ip: str) -> None:
+    ip = ipaddress.ip_address(raw_ip)
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        raise ValueError(f"web_fetch blocked private/local network IP: {raw_ip}")
+
+
+# --------------------------------------------------------------------------- #
+# Custom urllib3 connection classes — DNS + IP validation at connect time     #
+# --------------------------------------------------------------------------- #
+
+
+class _ValidatingHTTPConnection(HTTPConnection):
+    """HTTPConnection that resolves DNS with timeout and rejects private IPs."""
+
+    def _new_conn(self):
+        host = self.host
+        timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
+        if not _is_ip_address(host):
+            host = _resolve_host_safe(host, timeout=timeout)
+        self._dns_host = host
+        conn = socket.create_connection(
+            (host, self.port),
+            self.timeout,
+            source_address=self.source_address,
+        )
+        _set_socket_options(conn, self.socket_options)
+        return conn
+
+
+class _ValidatingHTTPSConnection(HTTPSConnection):
+    """HTTPSConnection that resolves DNS with timeout and rejects private IPs."""
+
+    def _new_conn(self):
+        host = self.host
+        timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
+        if not _is_ip_address(host):
+            host = _resolve_host_safe(host, timeout=timeout)
+        self._dns_host = host
+        conn = socket.create_connection(
+            (host, self.port),
+            self.timeout,
+            source_address=self.source_address,
+        )
+        _set_socket_options(conn, self.socket_options)
+        return conn
+
+
+class _ValidatingHTTPConnectionPool(HTTPConnectionPool):
+    ConnectionCls = _ValidatingHTTPConnection
+
+
+class _ValidatingHTTPSConnectionPool(HTTPSConnectionPool):
+    ConnectionCls = _ValidatingHTTPSConnection
+
+
+class _ValidatingPoolManager(urllib3.PoolManager):
+    """PoolManager that uses validating connection classes for HTTP/HTTPS."""
+
+    def _new_pool(self, scheme, host, port, request_context=None):
+        if scheme == "http":
+            pool_cls = _ValidatingHTTPConnectionPool
+        elif scheme == "https":
+            pool_cls = _ValidatingHTTPSConnectionPool
+        else:
+            pool_cls = self.pool_classes_by_scheme[scheme]
+        return pool_cls(host, port, **self.connection_pool_kw)
+
+
+_HTTP = _ValidatingPoolManager(num_pools=16, maxsize=16, retries=False, cert_reqs="CERT_REQUIRED")
+
+
+def _is_ip_address(value: str) -> bool:
+    """Return True when *value* is a bare IP address (no DNS resolution needed)."""
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -215,7 +330,7 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
                 preload_content=False,
                 redirect=False,
             )
-        except urllib3.exceptions.HTTPError as exc:
+        except (urllib3.exceptions.HTTPError, ValueError) as exc:
             raise RuntimeError(f"web_fetch failed: {exc}") from exc
 
         try:
@@ -269,6 +384,7 @@ def _read_limited_body(response: urllib3.HTTPResponse) -> tuple[bytes, bool]:
 
 
 def _validate_public_url(url: str) -> str:
+    """Basic URL format validation — DNS + IP check happens at connect time."""
     if not url or _CONTROL_CHARS_RE.search(url):
         raise ValueError("web_fetch URL is empty or contains control characters")
     parsed = urlparse(url)
@@ -278,30 +394,7 @@ def _validate_public_url(url: str) -> str:
         raise ValueError("web_fetch URL must include a hostname")
     if parsed.username or parsed.password:
         raise ValueError("web_fetch does not allow embedded credentials")
-    _resolve_public_host(parsed.hostname)
     return url
-
-
-def _resolve_public_host(hostname: str) -> None:
-    try:
-        ascii_hostname = hostname.encode("idna").decode("ascii")
-        infos = socket.getaddrinfo(ascii_hostname, None, proto=socket.IPPROTO_TCP)
-    except OSError as exc:
-        raise ValueError(f"web_fetch could not resolve host: {hostname}") from exc
-    if not infos:
-        raise ValueError(f"web_fetch could not resolve host: {hostname}")
-    for info in infos:
-        raw_ip = info[4][0]
-        ip = ipaddress.ip_address(raw_ip)
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            raise ValueError("web_fetch blocked private/local network URL")
 
 
 def _media_type(content_type: str) -> str:
@@ -379,16 +472,34 @@ def _soup(html: str) -> Any:
 
 
 def _remove_noise(soup: Any) -> None:
-    for tag in soup.find_all(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "input", "button", "select", "textarea"]):
+    for tag in soup.find_all(
+        [
+            "script",
+            "style",
+            "noscript",
+            "template",
+            "svg",
+            "canvas",
+            "iframe",
+            "form",
+            "input",
+            "button",
+            "select",
+            "textarea",
+        ]
+    ):
         tag.decompose()
     for tag in soup.find_all(True):
         style = str(tag.get("style") or "").lower()
-        if tag.has_attr("hidden") or tag.get("aria-hidden") == "true" or "display:none" in style or "visibility:hidden" in style:
+        if (
+            tag.has_attr("hidden")
+            or tag.get("aria-hidden") == "true"
+            or "display:none" in style
+            or "visibility:hidden" in style
+        ):
             tag.decompose()
             continue
-        marker = " ".join(
-            [str(tag.get("id") or ""), " ".join(str(c) for c in tag.get("class") or [])]
-        )
+        marker = " ".join([str(tag.get("id") or ""), " ".join(str(c) for c in tag.get("class") or [])])
         if _NOISE_CLASS_ID_RE.search(marker):
             tag.decompose()
 
@@ -444,7 +555,20 @@ def _markdownify_html(html: str) -> str:
     kwargs: dict[str, Any] = {
         "heading_style": "ATX",
         "bullets": "-",
-        "strip": ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "input", "button", "select", "textarea"],
+        "strip": [
+            "script",
+            "style",
+            "noscript",
+            "template",
+            "svg",
+            "canvas",
+            "iframe",
+            "form",
+            "input",
+            "button",
+            "select",
+            "textarea",
+        ],
         "code_language_callback": _code_language_callback,
         "table_infer_header": True,
         "wrap": False,
