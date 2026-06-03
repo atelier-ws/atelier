@@ -36,7 +36,6 @@ STABLE_LLM_TOOLS = frozenset(
         "read",
         "grep",
         "search",
-        "web_fetch",
         "route",
         "edit",
         "sql",
