@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 import uuid as _uuid_mod
@@ -28,6 +29,11 @@ from pydantic import Field, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+from atelier.core.capabilities.grounded_loop.grounding_evidence import (
+    extract_grounding_targets,
+    missing_grounding_targets,
+    record_grounding_evidence,
+)
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
 from atelier.core.environment import (
     dev_tool_disabled_message,
@@ -631,9 +637,85 @@ def _write_workspace_session_state(state: dict[str, Any]) -> None:
     try:
         path = _workspace_session_state_file()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        tmp_path: str | None = None
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=path.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as handle:
+            json.dump(state, handle, indent=2)
+            tmp_path = handle.name
+        Path(tmp_path).replace(path)
     except Exception:
         logging.exception("Recovered from broad exception handler")
+
+
+def _grounded_benchmark_mode_enabled() -> bool:
+    raw_mode = os.environ.get("ATELIER_BENCH_MODE")
+    if raw_mode is None:
+        return False
+    from atelier.bench.mode import is_off as _bench_is_off
+
+    return not _bench_is_off()
+
+
+def _workspace_session_id(state: dict[str, Any] | None = None) -> str:
+    session_state = state if state is not None else _read_workspace_session_state()
+    session_id = str(session_state.get("session_id") or session_state.get("active_session_id") or "").strip()
+    return session_id or _get_claude_session_id()
+
+
+def _record_grounding_evidence_if_available(tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> None:
+    targets = extract_grounding_targets(
+        tool_name,
+        args=args,
+        result=result,
+        workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
+    )
+    if not targets:
+        return
+    state = _read_workspace_session_state()
+    session_id = _workspace_session_id(state)
+    if not session_id:
+        return
+    updated = record_grounding_evidence(
+        state,
+        session_id=session_id,
+        tool_name=tool_name,
+        targets=targets,
+        workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
+    )
+    if updated != state:
+        _write_workspace_session_state(updated)
+
+
+def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
+    if not _grounded_benchmark_mode_enabled():
+        return None
+    edits = args.get("edits")
+    if not isinstance(edits, list):
+        return None
+    targets = list(_collect_touched_paths(edits).keys())
+    if not targets:
+        return None
+    state = _read_workspace_session_state()
+    session_id = _workspace_session_id(state)
+    missing = missing_grounding_targets(
+        state,
+        session_id=session_id,
+        targets=targets,
+        workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
+    )
+    if not missing:
+        return None
+    target_list = ", ".join(missing[:4])
+    return (
+        "Benchmark edit gate requires grounding evidence before editing. "
+        f"Ground the target with read, grep, search, symbols, node, explore, callers, "
+        f"callees, usages, or impact first: {target_list}"
+    )
 
 
 def _register_mcp_session() -> None:
@@ -5795,6 +5877,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     led,
                 )
                 handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
+                if name == "edit" and isinstance(args, dict):
+                    blocked_message = _benchmark_edit_block_message(args)
+                    if blocked_message:
+                        return _err(rid, -32000, blocked_message)
                 _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
                 _tool_call_rendered_text.value = None  # reset before handler
                 wrapper_model = (
@@ -5821,6 +5907,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
                 if isinstance(result, dict):
                     result = _clean_tool_result(result, name)
+                    _record_grounding_evidence_if_available(name, args if isinstance(args, dict) else {}, result)
 
                 # Compute MD text for read-heavy tools
                 _args = args if isinstance(args, dict) else {}
@@ -5876,6 +5963,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 "type": "text",
                 "text": response_text,
             }
+            # Mark large responses for ephemeral caching. Claude Code forwards
+            # cache_control from MCP tool results to the Anthropic API, turning
+            # repeated large context reads into cheap cache hits. Anthropic
+            # requires ≥1024 tokens (~4096 chars) for a cache checkpoint to be
+            # eligible; smaller responses are not worth the write overhead.
+            if len(response_text) >= 4096:
+                content_item["cache_control"] = {"type": "ephemeral"}
             if isinstance(result, dict):
                 saved_tokens = _extract_tokens_saved(result)
                 saved_calls = _coerce_saved_tokens(result.get("calls_saved"))
