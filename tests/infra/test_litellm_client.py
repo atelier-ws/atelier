@@ -129,7 +129,13 @@ def test_chat_with_result_preserves_structured_messages_and_prompt_cache_usage(
     messages = [
         {
             "role": "system",
-            "content": [{"type": "text", "text": "Long cached prefix", "cache_control": {"type": "ephemeral"}}],
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Long cached prefix",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
         },
         {"role": "user", "content": "Use the cached prefix."},
     ]
