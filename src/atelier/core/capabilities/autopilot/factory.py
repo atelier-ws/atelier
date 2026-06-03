@@ -188,6 +188,24 @@ def _persist_retry_budget(state: dict[str, Any], cap: AutopilotCapability) -> No
         state.pop("counterexample_budget", None)
 
 
+def _merge_workflow_payload(
+    session_state: dict[str, Any],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    existing_workflow = session_state.get("workflow")
+    merged: dict[str, Any] = dict(existing_workflow) if isinstance(existing_workflow, dict) else {}
+    payload_workflow = payload.get("workflow")
+    if isinstance(payload_workflow, dict):
+        merged.update(payload_workflow)
+    for key in ("current_step", "workflow_step", "session_phase", "last_step", "sticky_window", "updated_at"):
+        if key in payload:
+            merged[key] = payload[key]
+    for key in ("review", "current_task", "task_outputs", "advisory_emitted_steps"):
+        if key in payload:
+            merged[key] = payload[key]
+    return merged
+
+
 def run_autopilot_event(trigger: str, payload: dict[str, Any]) -> AutopilotAction:
     """Resolve roots from env, build the capability, and evaluate one event."""
     try:
@@ -197,7 +215,7 @@ def run_autopilot_event(trigger: str, payload: dict[str, Any]) -> AutopilotActio
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
         session_state = _read_session_state(store_root, workspace)
         workflow_config = default_workflow_config()
-        prior_workflow = workflow_state_from_mapping(session_state.get("workflow"), workflow_config)
+        prior_workflow = workflow_state_from_mapping(_merge_workflow_payload(session_state, payload), workflow_config)
         workflow_state, step_cfg, emit_advisory = advance_workflow_state(
             trigger,
             payload,

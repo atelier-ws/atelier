@@ -39,6 +39,30 @@ def test_model_recommendation_state_prefers_persisted_workflow_phase(workflow_en
     assert state["session_phase"] == "transition"
 
 
+def test_model_recommendation_state_supports_review_workflow_state(workflow_env: Path) -> None:
+    path = _workspace_session_state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "workflow": {
+                    "current_step": "review",
+                    "session_phase": "review",
+                    "sticky_window": 1,
+                    "current_task": {"task_id": "02-01/task-2"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    led = RunLedger(root=workflow_env)
+
+    state = _model_recommendation_state(led, {})
+
+    assert state["workflow_step"] == "review"
+    assert state["session_phase"] == "review"
+
+
 def test_legacy_route_stickiness_resets_when_workflow_step_changes(workflow_env: Path) -> None:
     path = _workspace_session_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
