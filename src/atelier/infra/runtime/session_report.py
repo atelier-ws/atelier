@@ -393,6 +393,11 @@ class SessionReport:
 
     # Top tools by estimated cost
     top_tools_by_cost: list[tuple[str, int, float]]
+    workflow_step: str = ""
+    review_decision: str = ""
+    task_progress_task_id: str = ""
+    completed_tasks: int = 0
+    remaining_tasks: int = 0
     routing_lesson_applications: int = 0
     cost_cap_fired_turns: int = 0
     context_compression_savings_usd: float = 0.0
@@ -517,6 +522,9 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
     skills = list(snapshot.get("skills") or [])
     telemetry = dict(snapshot.get("telemetry") or {})
     raw_artifact_ids = list(snapshot.get("raw_artifact_ids") or [])
+    workflow_state = dict(snapshot.get("workflow_state") or {})
+    plan_review = dict(snapshot.get("plan_review") or {})
+    task_progress = dict(snapshot.get("task_progress") or {})
 
     return SessionReport(
         session_id=session_id,
@@ -533,6 +541,11 @@ def build_report(snapshot: dict[str, Any], root: Path) -> SessionReport:
         started_model=started_model,
         total_turns=total_turns,
         tool_call_count=tool_call_count,
+        workflow_step=str(workflow_state.get("workflow_step") or ""),
+        review_decision=str(plan_review.get("review_decision") or ""),
+        task_progress_task_id=str(task_progress.get("task_id") or ""),
+        completed_tasks=int(task_progress.get("completed_tasks") or 0),
+        remaining_tasks=int(task_progress.get("remaining_tasks") or 0),
         input_token_cost_usd=in_cost,
         cache_write_cost_usd=cw_cost,
         cache_read_cost_usd=cr_cost,
@@ -637,6 +650,17 @@ def render_text(report: SessionReport, *, no_color: bool = False) -> str:
     lines.append(row("Models used:", models_str))
     lines.append(row("Total turns:", str(report.total_turns)))
     lines.append(row("Tool calls:", str(report.tool_call_count)))
+    if report.workflow_step or report.review_decision or report.task_progress_task_id:
+        lines.append(row("Workflow step:", report.workflow_step or "n/a"))
+        if report.review_decision:
+            lines.append(row("Review decision:", report.review_decision))
+        if report.task_progress_task_id:
+            lines.append(
+                row(
+                    "Task progress:",
+                    f"{report.task_progress_task_id} ({report.completed_tasks} done/{report.remaining_tasks} remaining)",
+                )
+            )
     lines.append("")
 
     # cost breakdown

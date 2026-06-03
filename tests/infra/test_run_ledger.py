@@ -59,3 +59,32 @@ def test_ledger_close_marks_status(tmp_path: Path) -> None:
     assert led.status == "running"
     led.close("complete")
     assert led.status == "complete"
+
+
+def test_ledger_persists_structured_workflow_progress(tmp_path: Path) -> None:
+    led = RunLedger(agent="copilot", task="Track progress", domain="workflow", root=tmp_path)
+    led.record_workflow_event("workflow_state", {"workflow_step": "review", "session_phase": "review"})
+    led.record_workflow_event("plan_review", {"review_decision": "approve", "plan_id": "02-01"})
+    led.record_workflow_event(
+        "task_progress",
+        {"task_id": "02-01/task-2", "completed_tasks": 1, "remaining_tasks": 2},
+    )
+
+    snap = led.snapshot()
+    assert snap["workflow_state"] == {"workflow_step": "review", "session_phase": "review"}
+    assert snap["plan_review"] == {"review_decision": "approve", "plan_id": "02-01"}
+    assert snap["task_progress"] == {
+        "task_id": "02-01/task-2",
+        "completed_tasks": 1,
+        "remaining_tasks": 2,
+    }
+
+    path = led.persist()
+    loaded = RunLedger.load(path)
+    assert loaded.workflow_state == {"workflow_step": "review", "session_phase": "review"}
+    assert loaded.plan_review == {"review_decision": "approve", "plan_id": "02-01"}
+    assert loaded.task_progress == {
+        "task_id": "02-01/task-2",
+        "completed_tasks": 1,
+        "remaining_tasks": 2,
+    }
