@@ -24,25 +24,41 @@ from atelier.core.capabilities.benchmark_solver import run_benchmark_solver, wri
     show_default=True,
 )
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+@click.option(
+    "--route-mode",
+    type=click.Choice(["native", "auto", "explicit"]),
+    default="auto",
+    show_default=True,
+    help="Owned route selection mode for benchmark solver execution.",
+)
+@click.option("--provider", type=str, default=None, help="Explicit provider/vendor when route-mode=explicit.")
 @click.option("--model", type=str, default=None, help="Override the owned solver model.")
 @click.option(
     "--runner",
     type=str,
-    default="claude",
-    show_default=True,
-    help="Runner profile used for owned solver steps.",
+    default=None,
+    help="Optional runner profile override for the selected route.",
 )
 def benchmark_solver_cmd(
     task_prompt: str | None,
     task_file: Path | None,
     output_format: str,
     out: Path | None,
+    route_mode: str,
+    provider: str | None,
     model: str | None,
-    runner: str,
+    runner: str | None,
 ) -> None:
     """Run the owned benchmark solver headlessly."""
     prompt = _load_task_prompt(task_prompt=task_prompt, task_file=task_file)
-    run = run_benchmark_solver(prompt, repo_root=Path.cwd().resolve(), model=model, runner=runner)
+    run = run_benchmark_solver(
+        prompt,
+        repo_root=Path.cwd().resolve(),
+        route_mode=route_mode,
+        provider=provider,
+        model=model,
+        runner=runner,
+    )
     artifacts = write_solver_artifacts(run, out or Path.cwd().resolve() / ".atelier-benchmark-solver")
     payload = dict(run.to_dict())
     payload["artifact_paths"] = {

@@ -81,6 +81,38 @@ def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeyp
     assert isinstance(result["index_age_seconds"], int)
     assert "matches" in result
     assert "total_tokens" in result
+    assert result["mode"] == "chunks"
+    assert result["discovery"] == {"tool": "search", "mode": "chunks"}
+    assert result["handoff"]["read"] == {"tool": "read"}
+    assert result["handoff"]["context"]["tool"] == "context"
+    assert result["handoff"]["explore"]["tool"] == "explore"
+
+
+def test_search_tool_returns_search_first_handoffs_without_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "sample.py"
+    target.write_text("class Needle:\n    pass\n", encoding="utf-8")
+
+    result = tool_smart_search({"query": "Needle", "path": str(tmp_path), "budget_tokens": 4000})
+
+    assert result["mode"] == "chunks"
+    assert result["discovery"] == {"tool": "search", "mode": "chunks"}
+    assert result["calls_saved"] >= 0
+    assert result["matches"]
+    assert result["matches"][0]["follow_up"]["read"]["tool"] == "read"
+    assert result["matches"][0]["follow_up"]["context"]["tool"] == "context"
+    assert result["handoff"]["memory"] == {
+        "tool": "context",
+        "mode": "procedures",
+        "task": "Needle",
+        "files": [match["path"] for match in result["matches"]],
+        "recall": True,
+    }
+    assert "backend" not in result
+    assert "cache_hit" not in result
+    assert "total_tokens" not in result
 
 
 def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None:

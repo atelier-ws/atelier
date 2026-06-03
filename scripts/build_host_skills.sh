@@ -12,7 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="${ATELIER_REPO}/integrations/skills"
-RENDER_SCRIPT="${SCRIPT_DIR}/render_mode_surfaces.py"
+RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
 ALWAYS_EXCLUDED_SKILLS=("trace")
 
 HOST=""

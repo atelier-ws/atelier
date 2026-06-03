@@ -61,6 +61,7 @@ def search_first(
         "query": query,
         "task": task,
         "path": path,
+        "mode": "chunks",
         "discovery": {"tool": "search", "mode": "chunks"},
         "matches": enriched_matches,
         "match_paths": match_paths,
@@ -72,8 +73,10 @@ def search_first(
             "explore": {"tool": "explore", "query": query, "seed_files": match_paths},
         },
         "backend": str(payload.get("backend") or "ripgrep"),
+        "index_age_seconds": payload.get("index_age_seconds"),
         "cache_hit": bool(payload.get("cache_hit", False)),
         "total_tokens": int(payload.get("total_tokens", 0) or 0),
+        "tokens_saved": int(payload.get("tokens_saved", 0) or 0),
     }
 
 

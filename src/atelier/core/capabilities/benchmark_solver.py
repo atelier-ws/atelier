@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
+from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
 from atelier.core.capabilities.default_definitions import (
     DefaultRegistry,
     DefaultWorkflow,
@@ -14,9 +17,24 @@ from atelier.core.capabilities.default_definitions import (
     build_default_registry,
 )
 from atelier.core.capabilities.host_runners import resolve_swarm_runner_command
+from atelier.core.capabilities.owned_execution_cache_affinity import (
+    cache_affinity_hint,
+    latest_cache_affinity,
+)
+from atelier.core.capabilities.owned_execution_lanes import (
+    OwnedExecutionError,
+    execute_owned_prompt,
+)
+from atelier.core.capabilities.owned_execution_routing import (
+    OwnedCachePolicy,
+    OwnedRouteDecision,
+    OwnedRouteRequest,
+    select_owned_route,
+)
 from atelier.core.capabilities.workflow_context import StepResult, WorkflowContextState
 from atelier.core.capabilities.workflow_runner import WorkflowRunner
 from atelier.core.capabilities.workflow_schema import WorkflowDefinition, WorkflowStepDefinition
+from atelier.core.foundation.paths import default_store_root
 
 
 @dataclass(frozen=True)
@@ -43,10 +61,16 @@ class SolverStepArtifact:
     effort: str
     read_mode_hint: str
     status: str
+    input_prompt: str
     output: str
     output_json: dict[str, Any]
+    execution_receipt: dict[str, Any]
     duration_seconds: float = 0.0
     cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
     changed_files: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,10 +81,16 @@ class SolverStepArtifact:
             "effort": self.effort,
             "read_mode_hint": self.read_mode_hint,
             "status": self.status,
+            "input_prompt": self.input_prompt,
             "output": self.output,
             "output_json": dict(self.output_json),
+            "execution_receipt": dict(self.execution_receipt),
             "duration_seconds": self.duration_seconds,
             "cost_usd": self.cost_usd,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cache_creation_input_tokens": self.cache_creation_input_tokens,
+            "cache_read_input_tokens": self.cache_read_input_tokens,
             "changed_files": list(self.changed_files),
         }
 
@@ -140,6 +170,9 @@ class SolverRunArtifact:
     status: str
     attempts: tuple[BenchmarkAttempt, ...]
     events: tuple[SolverEvent, ...]
+    provider: str = ""
+    runner: str = ""
+    transport: str = ""
     model: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
@@ -157,6 +190,9 @@ class SolverRunArtifact:
             "status": self.status,
             "attempts": [attempt.to_dict() for attempt in self.attempts],
             "events": [event.to_dict() for event in self.events],
+            "provider": self.provider,
+            "runner": self.runner,
+            "transport": self.transport,
             "model": self.model,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
@@ -217,18 +253,42 @@ def run_benchmark_solver(
     step_executor: Any | None = None,
     feedback_provider: Any | None = None,
     max_attempts: int | None = None,
+    route_mode: str = "auto",
+    provider: str | None = None,
     model: str | None = None,
-    runner: str = "claude",
+    runner: str | None = None,
 ) -> SolverRunArtifact:
     defaults = build_default_registry(repo_root)
     profile = defaults.benchmark_profiles[profile_id]
     workflow = defaults.workflows[profile.workflow_id]
     run_id = uuid.uuid4().hex
     limit = max_attempts if max_attempts is not None else profile.retry_limit
-    resolved_model = model or defaults.roles[profile.role_id].model_default
+    try:
+        route_decision, resolved_provider, resolved_runner, resolved_model, resolved_transport = (
+            _resolve_solver_execution_route(
+                task_prompt=task_prompt,
+                defaults=defaults,
+                profile_id=profile_id,
+                route_mode=route_mode,
+                provider=provider,
+                model=model,
+                runner=runner,
+            )
+        )
+    except (RouteConfigError, NoFeasibleRouteError):
+        if step_executor is None or route_mode != "auto" or provider or model or runner:
+            raise
+        fallback_model = defaults.roles[profile.role_id].model_default
+        fallback_runner = "claude"
+        route_decision = None
+        resolved_provider = _provider_for_model(fallback_model)
+        resolved_runner = fallback_runner
+        resolved_model = fallback_model
+        resolved_transport = ""
     executor = step_executor or _default_step_executor(
         repo_root=Path.cwd().resolve() if repo_root is None else repo_root,
-        runner=runner,
+        route_decision=route_decision,
+        runner=resolved_runner,
         model=resolved_model,
     )
     events: list[SolverEvent] = [SolverEvent(event="start", run_id=run_id, attempt_number=1)]
@@ -302,6 +362,9 @@ def run_benchmark_solver(
         status=final_status,
         attempts=tuple(attempts),
         events=tuple(events),
+        provider=resolved_provider,
+        runner=resolved_runner,
+        transport=resolved_transport,
         model=resolved_model,
         input_tokens=sum(attempt.input_tokens for attempt in attempts),
         output_tokens=sum(attempt.output_tokens for attempt in attempts),
@@ -342,6 +405,10 @@ def _run_attempt(
         task_prompt=task_prompt,
         retry_context=retry_context,
     )
+    stem_prompt = defaults.render_named_prompt(workflow.stem_prompt_id)
+    prior_attempt_history = _step_history_from_attempt(previous_attempt)
+    step_histories: dict[str, tuple[dict[str, str], ...]] = {}
+    executed_prompts: dict[str, str] = {}
 
     def agent_executor(
         step: WorkflowStepDefinition,
@@ -349,7 +416,28 @@ def _run_attempt(
         context_state: WorkflowContextState,
     ) -> Any:
         default_step = default_steps[step.step_id]
-        return step_executor(default_step, rendered_prompt, context_state, attempt_number)
+        parent_history = _parent_step_history(
+            default_step=default_step,
+            step_histories=step_histories,
+            prior_attempt_history=prior_attempt_history,
+        )
+        composed_prompt = _compose_agent_prompt(
+            stem_prompt=stem_prompt,
+            current_prompt=rendered_prompt,
+            transcript=parent_history,
+        )
+        raw_result = step_executor(default_step, composed_prompt, context_state, attempt_number)
+        executed_prompts[step.step_id] = composed_prompt
+        step_histories[step.step_id] = (
+            *parent_history,
+            {
+                "step_id": default_step.step_id,
+                "phase_prompt_id": default_step.phase_prompt_id,
+                "input_prompt": composed_prompt,
+                "output": _raw_output_text(raw_result),
+            },
+        )
+        return raw_result
 
     runner = WorkflowRunner(
         agent_executor=agent_executor,
@@ -364,7 +452,7 @@ def _run_attempt(
     )
     result = runner.run(definition)
     step_artifacts = tuple(
-        _step_artifact(default_steps[step_id], result.step_results[step_id])
+        _step_artifact(default_steps[step_id], result.step_results[step_id], executed_prompts.get(step_id, ""))
         for step_id in result.step_order
         if step_id in result.step_results
     )
@@ -383,6 +471,10 @@ def _run_attempt(
         forked_from_attempt=previous_attempt.attempt_number if previous_attempt is not None else None,
         review_raw_output=review_raw_output,
         review_verdict_json=review_verdict_json,
+        input_tokens=sum(item.input_tokens for item in step_artifacts),
+        output_tokens=sum(item.output_tokens for item in step_artifacts),
+        cache_creation_input_tokens=sum(item.cache_creation_input_tokens for item in step_artifacts),
+        cache_read_input_tokens=sum(item.cache_read_input_tokens for item in step_artifacts),
         duration_seconds=sum(item.duration_seconds for item in step_artifacts),
         cost_usd=sum(item.cost_usd for item in step_artifacts),
     )
@@ -412,14 +504,17 @@ def _build_workflow_definition(
                 step_id=default_step.step_id,
                 kind="agent",
                 fork_from=default_step.fork_from,
+                context_mode=default_step.context_mode,
+                requires_plan_review=default_step.requires_plan_review,
                 prompt="\n".join(part for part in prompt_parts if part),
             )
         )
     return WorkflowDefinition(workflow_id=workflow.workflow_id, steps=tuple(steps)), by_id
 
 
-def _step_artifact(default_step: DefaultWorkflowStep, result: StepResult) -> SolverStepArtifact:
+def _step_artifact(default_step: DefaultWorkflowStep, result: StepResult, input_prompt: str) -> SolverStepArtifact:
     output_json = dict(result.output_json)
+    execution_receipt = dict(result.execution_receipt)
     changed_files_raw = output_json.get("changed_files")
     changed_files = (
         tuple(str(path) for path in changed_files_raw) if isinstance(changed_files_raw, list | tuple) else ()
@@ -431,12 +526,92 @@ def _step_artifact(default_step: DefaultWorkflowStep, result: StepResult) -> Sol
         effort=default_step.effort,
         read_mode_hint=default_step.read_mode_hint,
         status=result.status,
+        input_prompt=input_prompt,
         output=str(result.output),
         output_json=output_json,
+        execution_receipt=execution_receipt,
         duration_seconds=result.duration_seconds,
         cost_usd=result.cost_usd,
+        input_tokens=_receipt_int(execution_receipt, "input_tokens"),
+        output_tokens=_receipt_int(execution_receipt, "output_tokens"),
+        cache_creation_input_tokens=_receipt_int(execution_receipt, "cache_write_input_tokens"),
+        cache_read_input_tokens=_receipt_int(execution_receipt, "cache_read_input_tokens"),
         changed_files=changed_files,
     )
+
+
+def _parent_step_history(
+    *,
+    default_step: DefaultWorkflowStep,
+    step_histories: dict[str, tuple[dict[str, str], ...]],
+    prior_attempt_history: tuple[dict[str, str], ...],
+) -> tuple[dict[str, str], ...]:
+    if default_step.context_mode == "fresh":
+        return ()
+    if default_step.fork_from:
+        inherited = step_histories.get(default_step.fork_from)
+        if inherited is not None:
+            return inherited
+    return prior_attempt_history
+
+
+def _compose_agent_prompt(
+    *,
+    stem_prompt: str,
+    current_prompt: str,
+    transcript: tuple[dict[str, str], ...],
+) -> str:
+    parts = [stem_prompt.strip()]
+    if transcript:
+        parts.extend(["", "Forked conversation transcript:", _format_transcript(transcript)])
+    parts.extend(["", "Current phase prompt:", current_prompt.strip()])
+    return "\n".join(part for part in parts if part).strip()
+
+
+def _format_transcript(transcript: tuple[dict[str, str], ...]) -> str:
+    lines: list[str] = []
+    for turn in transcript:
+        lines.extend(
+            [
+                f"[{turn['step_id']}] {turn['phase_prompt_id']}",
+                "Prompt:",
+                turn["input_prompt"],
+                "Output:",
+                turn["output"],
+                "",
+            ]
+        )
+    return "\n".join(lines).strip()
+
+
+def _raw_output_text(raw_result: Any) -> str:
+    if isinstance(raw_result, StepResult):
+        return str(raw_result.output)
+    if isinstance(raw_result, dict):
+        if "output" in raw_result:
+            return str(raw_result.get("output") or "")
+        if isinstance(raw_result.get("content"), str):
+            return str(raw_result["content"])
+        return json.dumps(raw_result, sort_keys=True)
+    return str(raw_result)
+
+
+def _step_history_from_attempt(
+    previous_attempt: BenchmarkAttempt | None,
+) -> tuple[dict[str, str], ...]:
+    if previous_attempt is None:
+        return ()
+    history: list[dict[str, str]] = []
+    for artifact in previous_attempt.step_artifacts:
+        history.append(
+            {
+                "step_id": artifact.step_id,
+                "phase_prompt_id": artifact.phase_prompt_id,
+                "input_prompt": artifact.input_prompt,
+                "output": artifact.output,
+            }
+        )
+    return tuple(history)
 
 
 def _parse_review_verdict(result: StepResult | None) -> dict[str, Any]:
@@ -467,13 +642,105 @@ def _parse_json_block(raw: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _default_step_executor(*, repo_root: Path, runner: str, model: str) -> Any:
+def _resolve_solver_execution_route(
+    *,
+    task_prompt: str,
+    defaults: DefaultRegistry,
+    profile_id: str,
+    route_mode: str,
+    provider: str | None,
+    model: str | None,
+    runner: str | None,
+) -> tuple[OwnedRouteDecision | None, str, str, str, str]:
+    legacy_model = model or defaults.roles[defaults.benchmark_profiles[profile_id].role_id].model_default
+    legacy_runner = runner or "claude"
+    if route_mode == "native":
+        return None, _provider_for_model(legacy_model), legacy_runner, legacy_model, ""
+    if route_mode == "explicit" or provider:
+        decision = select_owned_route(
+            default_store_root(),
+            OwnedRouteRequest(
+                tool_name="agent",
+                task_text=task_prompt,
+                mode="explicit",
+                provider=(provider or "").strip(),
+                model=(model or "").strip(),
+                runner=(runner or "").strip(),
+                host_agent=_detect_solver_host_agent(),
+                session_state={"expected_input_tokens": max(1000, len(task_prompt) // 4)},
+            ),
+        )
+        return decision, decision.provider, decision.runner, decision.model, decision.transport
+    try:
+        decision = select_owned_route(
+            default_store_root(),
+            OwnedRouteRequest(
+                tool_name="agent",
+                task_text=task_prompt,
+                mode="auto",
+                provider=(provider or "").strip(),
+                model=(model or "").strip(),
+                runner=(runner or "").strip(),
+                host_agent=_detect_solver_host_agent(),
+                session_state={"expected_input_tokens": max(1000, len(task_prompt) // 4)},
+            ),
+        )
+        return decision, decision.provider, decision.runner, decision.model, decision.transport
+    except (RouteConfigError, NoFeasibleRouteError):
+        raise
+
+
+def _default_step_executor(
+    *, repo_root: Path, route_decision: OwnedRouteDecision | None, runner: str, model: str
+) -> Any:
     def _execute(
-        _step: DefaultWorkflowStep,
+        step: DefaultWorkflowStep,
         prompt: str,
-        _context: WorkflowContextState,
+        context: WorkflowContextState,
         _attempt_number: int,
     ) -> dict[str, Any]:
+        if route_decision is not None:
+            cache_policy: OwnedCachePolicy = (
+                "fresh" if getattr(step, "context_mode", "inherit") == "fresh" else "inherit"
+            )
+            affinity_state = (
+                latest_cache_affinity(context.step_results, context.step_order) if cache_policy == "inherit" else {}
+            )
+            try:
+                execution = execute_owned_prompt(
+                    prompt,
+                    root=default_store_root(),
+                    tool_name="agent",
+                    task_text=prompt,
+                    decision=route_decision,
+                    host_agent=_detect_solver_host_agent(),
+                    session_state={
+                        "workflow_step": step.step_id,
+                        "expected_input_tokens": max(1000, len(prompt) // 4),
+                        "session_phase": step.step_id,
+                        **cache_affinity_hint({"cache_affinity": affinity_state}),
+                    },
+                    allow_fallback=route_decision.mode == "auto",
+                    cache_policy=cache_policy,
+                )
+            except OwnedExecutionError as exc:
+                return {
+                    "status": "failed",
+                    "output": "",
+                    "output_json": {},
+                    "execution_receipt": exc.receipt.to_dict(),
+                    "duration_seconds": exc.receipt.duration_seconds,
+                    "cost_usd": exc.receipt.cost_usd,
+                    "error": str(exc),
+                }
+            return {
+                "status": "done",
+                "output": execution.output,
+                "output_json": _parse_json_block(execution.output),
+                "execution_receipt": execution.receipt.to_dict(),
+                "duration_seconds": execution.receipt.duration_seconds,
+                "cost_usd": execution.receipt.cost_usd,
+            }
         command = resolve_swarm_runner_command(
             runner=runner,
             runner_model=model,
@@ -491,10 +758,94 @@ def _default_step_executor(*, repo_root: Path, runner: str, model: str) -> Any:
         output = (completed.stdout or "").strip()
         if completed.returncode != 0:
             error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
-            return {"status": "failed", "output": output, "output_json": {}, "error": error}
-        return {"status": "done", "output": output, "output_json": _parse_json_block(output)}
+            return {
+                "status": "failed",
+                "output": output,
+                "output_json": {},
+                "execution_receipt": _native_solver_execution_receipt(
+                    runner=runner,
+                    model=model,
+                    status="failed",
+                    error=error,
+                ),
+                "error": error,
+            }
+        return {
+            "status": "done",
+            "output": output,
+            "output_json": _parse_json_block(output),
+            "execution_receipt": _native_solver_execution_receipt(
+                runner=runner,
+                model=model,
+                status="done",
+            ),
+        }
 
     return _execute
+
+
+def _native_solver_execution_receipt(*, runner: str, model: str, status: str, error: str = "") -> dict[str, Any]:
+    provider = _provider_for_model(model)
+    return {
+        "status": status,
+        "mode": "native",
+        "selected_provider": provider,
+        "selected_model": model,
+        "selected_runner": runner,
+        "selected_transport": "host-cli",
+        "executed_provider": provider if status == "done" else "",
+        "executed_model": model if status == "done" else "",
+        "executed_runner": runner if status == "done" else "",
+        "executed_transport": "host-cli" if status == "done" else "",
+        "request_id": "",
+        "duration_seconds": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "modeled_cache_read_input_tokens": 0,
+        "stable_prefix_hash": "",
+        "stable_prefix_tokens": 0,
+        "dynamic_tokens": 0,
+        "prefix_invalidated_reason": "",
+        "cache_evidence": "none",
+        "cost_usd": 0.0,
+        "rerouted": False,
+        "attempts": [],
+        "error": error,
+    }
+
+
+def _detect_solver_host_agent() -> str:
+    if os.environ.get("CLAUDE_CODE"):
+        return "claude"
+    if os.environ.get("GITHUB_COPILOT_SESSION_ID") or os.environ.get("COPILOT_CLI"):
+        return "copilot"
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
+        return "codex"
+    return ""
+
+
+def _provider_for_model(model_id: str) -> str:
+    normalized = model_id.strip().lower()
+    if normalized.startswith("claude"):
+        return "anthropic"
+    if normalized.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    if normalized.startswith("gemini"):
+        return "google"
+    return ""
+
+
+def _receipt_int(receipt: dict[str, Any], key: str) -> int:
+    value = receipt.get(key)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return int(max(0.0, value))
+    return 0
 
 
 __all__ = [

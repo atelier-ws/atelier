@@ -5,20 +5,26 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-# Allow running from repo root as well as from scripts/
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-
-from render_mode_surfaces import build_mode_outputs  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from atelier.core.capabilities.default_definitions import (  # noqa: E402
+    DefaultRole,
+    HostProjection,
+    ModeDoc,
+    build_default_registry,
+    load_mode_docs,
+)
 
 DOC_LINKS = [
     ("Agent OS", ROOT / "docs/agent-os/README.md"),
@@ -32,6 +38,20 @@ DOC_LINKS = [
     ("Decisions", ROOT / "docs/decisions/README.md"),
 ]
 CODING_GUIDELINES_PATH = ROOT / "docs/agent-os/coding-guidelines.md"
+CORE_DISCIPLINE_PATH = ROOT / "docs/agent-os/core-discipline.md"
+
+# Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
+# "## <heading>" section sourced from one canonical partial. A mode opts in by
+# including the token anywhere in its body.
+SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
+    "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
+    "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
+}
+HOST_SKILL_DIRS = {
+    "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",
+    "codex": ROOT / "integrations" / "codex" / "plugin" / "skills",
+    "antigravity": ROOT / "integrations" / "antigravity" / "skills",
+}
 
 HOST_FALLBACKS = {
     "copilot": "Copilot or VS Code native file reads, workspace search, shell `rg`, or `grep`",
@@ -299,7 +319,11 @@ def render_copilot_workspace(output_path: Path) -> str:
     return "\n".join(["---", 'applyTo: "**"', "---", "", body]).rstrip() + "\n"
 
 
-def render_chatmode(output_path: Path) -> str:
+def render_copilot_agent(output_path: Path) -> str:
+    # VS Code custom agent (`.github/agents/*.agent.md`). ``atelier/*`` grants every
+    # Atelier MCP tool so the agent prefers them; the namespaced native tools are the
+    # fallback set. Unknown/unavailable tools are ignored by VS Code, so listing
+    # ``atelier/*`` is safe even when the MCP server is not registered.
     return (
         "\n".join(
             [
@@ -307,23 +331,27 @@ def render_chatmode(output_path: Path) -> str:
                 'description: "Atelier - Agent Reasoning Runtime coding agent"',
                 "tools:",
                 "  [",
-                '    "codebase",',
+                '    "atelier/*",',
+                '    "search/codebase",',
                 '    "changes",',
-                '    "editFiles",',
-                '    "fetch",',
+                '    "edit/editFiles",',
+                '    "web/fetch",',
                 '    "findTestFiles",',
-                '    "githubRepo",',
-                '    "problems",',
-                '    "runCommands",',
-                '    "runTasks",',
-                '    "runTests",',
+                '    "web/githubRepo",',
+                '    "read/problems",',
+                '    "execute/getTerminalOutput",',
+                '    "execute/runInTerminal",',
+                '    "execute/createAndRunTask",',
+                '    "execute/runTask",',
+                '    "read/getTaskOutput",',
+                '    "execute/runTests",',
                 '    "search",',
                 '    "searchResults",',
-                '    "terminalLastCommand",',
-                '    "terminalSelection",',
-                '    "testFailure",',
-                '    "usages",',
-                '    "vscodeAPI",',
+                '    "read/terminalLastCommand",',
+                '    "read/terminalSelection",',
+                '    "execute/testFailure",',
+                '    "search/usages",',
+                '    "vscode/vscodeAPI",',
                 "  ]",
                 "---",
                 "",
@@ -427,19 +455,152 @@ def sync_host_configs() -> dict[Path, str]:
     return outputs
 
 
+def _shared_section(heading: str, source_path: Path) -> str:
+    return "\n".join([f"## {heading}", "", _markdown_body(source_path)])
+
+
+def render_mode_body(mode_doc: ModeDoc) -> str:
+    body = mode_doc.body.rstrip()
+    for token, (heading, source_path) in SHARED_SECTIONS.items():
+        if token in body:
+            body = body.replace(token, _shared_section(heading, source_path))
+    return body
+
+
+def _format_frontmatter_value(value: Any) -> str:
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def render_frontmatter(items: list[tuple[str, Any]]) -> str:
+    lines = ["---"]
+    for key, value in items:
+        lines.append(f"{key}: {_format_frontmatter_value(value)}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def _inject_description(frontmatter: tuple[tuple[str, Any], ...], description: str) -> list[tuple[str, Any]]:
+    rendered: list[tuple[str, Any]] = []
+    for key, value in frontmatter:
+        rendered.append((key, description if key == "description" and value == "" else value))
+    return rendered
+
+
+def render_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
+    return (
+        "\n".join(
+            [
+                render_frontmatter([("name", role.role_id), ("description", role.skill_description)]),
+                "",
+                distribution_notice(),
+                "",
+                render_mode_body(mode_doc),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_claude_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
+    frontmatter = _inject_description(projection.frontmatter, role.agent_description)
+    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
+    return (
+        "\n".join(
+            [
+                render_frontmatter(frontmatter),
+                "",
+                distribution_notice(),
+                "",
+                *identity_block,
+                render_mode_body(mode_doc),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
+    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
+    return (
+        "\n".join(
+            [
+                render_frontmatter(list(projection.frontmatter)),
+                "",
+                distribution_notice(),
+                "",
+                *identity_block,
+                render_mode_body(mode_doc),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
+def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
+    repo_root = ROOT if root is None else root
+    registry = build_default_registry(repo_root)
+    mode_docs = load_mode_docs(repo_root)
+    outputs: dict[Path, str] = {}
+
+    for role_id in registry.surfaced_role_ids("shared_skill"):
+        role = registry.roles[role_id]
+        mode_doc = mode_docs[role_id]
+
+        skill_path = repo_root / "integrations" / "skills" / role_id / "SKILL.md"
+        skill_content = render_skill(role, mode_doc)
+        outputs[skill_path] = skill_content
+        for host_dir in HOST_SKILL_DIRS.values():
+            host_skill_path = host_dir / role_id / "SKILL.md"
+            outputs[host_skill_path] = skill_content
+
+        stable_projection = registry.projection(role_id, "claude_agent")
+        stable_path = (
+            repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{stable_projection.output_name}.md"
+        )
+        outputs[stable_path] = render_claude_agent(role, mode_doc, stable_projection)
+
+        dev_projection = registry.projection(role_id, "claude_agent_dev")
+        dev_path = repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{dev_projection.output_name}.md"
+        outputs[dev_path] = render_claude_agent(role, mode_doc, dev_projection)
+
+        antigravity_projection = registry.projection(role_id, "antigravity_agent")
+        antigravity_path = (
+            repo_root
+            / "integrations"
+            / "antigravity"
+            / "plugin"
+            / "agents"
+            / f"{antigravity_projection.output_name}.md"
+        )
+        outputs[antigravity_path] = render_simple_agent(role, mode_doc, antigravity_projection)
+
+        opencode_projection = registry.projection(role_id, "opencode_agent")
+        opencode_path = repo_root / "integrations" / "opencode" / "agents" / f"{opencode_projection.output_name}.md"
+        outputs[opencode_path] = render_simple_agent(role, mode_doc, opencode_projection)
+
+    for output_path, content in outputs.items():
+        if "{{" in content:
+            raise ValueError(f"unexpanded template token in generated surface: {output_path}")
+    return outputs
+
+
 def build_outputs() -> dict[Path, str]:
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
-        ROOT / ".github/chatmodes/atelier.chatmode.md": render_chatmode(ROOT / ".github/chatmodes/atelier.chatmode.md"),
+        ROOT / ".github/agents/atelier.agent.md": render_copilot_agent(ROOT / ".github/agents/atelier.agent.md"),
         ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
         ROOT
         / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
         ROOT
-        / "integrations/copilot/chatmodes/atelier.chatmode.md": render_chatmode(
-            ROOT / "integrations/copilot/chatmodes/atelier.chatmode.md"
+        / "integrations/copilot/agents/atelier.agent.md": render_copilot_agent(
+            ROOT / "integrations/copilot/agents/atelier.agent.md"
         ),
         ROOT
         / "integrations/claude/AGENTS.atelier.md": render_host_surface(

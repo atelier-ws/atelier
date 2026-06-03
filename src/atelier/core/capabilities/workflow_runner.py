@@ -31,6 +31,7 @@ class WorkflowRunResult:
     step_order: list[str]
     step_results: dict[str, StepResult]
     failed_step_id: str | None = None
+    paused_step_id: str | None = None
 
 
 def build_execution_waves(definition: WorkflowDefinition) -> list[tuple[str, ...]]:
@@ -76,6 +77,8 @@ class WorkflowRunner:
                     "kind": step.kind,
                     "next_steps": list(step.next_steps),
                     "fork_from": step.fork_from,
+                    "context_mode": step.context_mode,
+                    "requires_plan_review": step.requires_plan_review,
                     "prompt": step.prompt,
                     "tool": step.tool,
                     "args": step.args,
@@ -99,6 +102,7 @@ class WorkflowRunner:
                 status=raw.status,
                 output=raw.output,
                 output_json=raw.output_json,
+                execution_receipt=raw.execution_receipt,
                 duration_seconds=raw.duration_seconds or duration_seconds,
                 cost_usd=raw.cost_usd,
                 error=raw.error,
@@ -106,6 +110,8 @@ class WorkflowRunner:
         if isinstance(raw, dict):
             raw_output_json = raw.get("output_json")
             output_json: dict[str, Any] = dict(raw_output_json) if isinstance(raw_output_json, dict) else dict(raw)
+            raw_execution_receipt = raw.get("execution_receipt")
+            execution_receipt = dict(raw_execution_receipt) if isinstance(raw_execution_receipt, dict) else {}
             if "output" in raw:
                 output = raw.get("output")
             elif isinstance(raw.get("content"), str):
@@ -118,6 +124,7 @@ class WorkflowRunner:
                 status=str(raw.get("status") or "done"),
                 output=output,
                 output_json=output_json,
+                execution_receipt=execution_receipt,
                 duration_seconds=float(raw.get("duration_seconds") or duration_seconds),
                 cost_usd=float(raw.get("cost_usd") or 0.0),
                 error=str(raw.get("error") or ""),
@@ -175,6 +182,7 @@ class WorkflowRunner:
         *,
         context_state: WorkflowContextState | None = None,
         ledger: RunLedger | None = None,
+        plan_review_decision: str = "",
     ) -> WorkflowRunResult:
         validated = validate_workflow_definition(definition)
         state = context_state if context_state is not None else WorkflowContextState()
@@ -185,23 +193,44 @@ class WorkflowRunner:
         waves = build_execution_waves(validated)
         by_id = {step.step_id: step for step in validated.steps}
         total_steps = len(validated.steps)
-        completed_steps = 0
+        approved = plan_review_decision.strip().lower() == "approve"
+        completed_steps = sum(1 for result in state.step_results.values() if result.status == "done")
 
         if ledger is not None:
             ledger.record_workflow_event("workflow_state", {"workflow_step": "execution", "session_phase": "execute"})
 
         for wave in waves:
+            pending_wave = tuple(
+                step_id
+                for step_id in wave
+                if state.step_results.get(step_id) is None or state.step_results[step_id].status != "done"
+            )
+            if not pending_wave:
+                continue
+            gated_step = next(
+                (step_id for step_id in pending_wave if by_id[step_id].requires_plan_review),
+                None,
+            )
+            if gated_step is not None and not approved:
+                state.status = "review_rejected" if plan_review_decision else "awaiting_review"
+                return WorkflowRunResult(
+                    run_id=state.run_id,
+                    status=state.status,
+                    step_order=list(state.step_order),
+                    step_results=dict(state.step_results),
+                    paused_step_id=gated_step,
+                )
             results: list[StepResult] = []
-            if len(wave) > 1:
-                with ThreadPoolExecutor(max_workers=len(wave)) as pool:
-                    futures = [pool.submit(self._run_step, by_id[step_id], state, ledger) for step_id in wave]
+            if len(pending_wave) > 1:
+                with ThreadPoolExecutor(max_workers=len(pending_wave)) as pool:
+                    futures = [pool.submit(self._run_step, by_id[step_id], state, ledger) for step_id in pending_wave]
                     for future in futures:
                         results.append(future.result())
             else:
-                results.append(self._run_step(by_id[wave[0]], state, ledger))
+                results.append(self._run_step(by_id[pending_wave[0]], state, ledger))
 
             results_by_id = {result.step_id: result for result in results}
-            ordered_results = [results_by_id[step_id] for step_id in wave]
+            ordered_results = [results_by_id[step_id] for step_id in pending_wave]
             for result in ordered_results:
                 state.record_step_result(result)
                 if result.status == "done":
