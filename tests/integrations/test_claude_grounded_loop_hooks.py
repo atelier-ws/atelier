@@ -1,18 +1,48 @@
 from __future__ import annotations
 
+import importlib
 import io
 import json
+from pathlib import Path
+from typing import Any, cast
+
+import pytest
 
 from integrations.claude.plugin.hooks import pre_tool_use, user_prompt
 
+PRE_TOOL_USE = cast(Any, pre_tool_use)
+USER_PROMPT = cast(Any, user_prompt)
+
+
+def _session_state_path(root: Path, workspace: Path) -> Path:
+    import hashlib
+
+    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
+    return root / "workspaces" / workspace_hash / "session_state.json"
+
+
+def _write_session_state(root: Path, workspace: Path, state: dict[str, object]) -> None:
+    path = _session_state_path(root, workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _set_bench_mode(monkeypatch: pytest.MonkeyPatch, mode: str | None) -> None:
+    if mode is None:
+        monkeypatch.delenv("ATELIER_BENCH_MODE", raising=False)
+    else:
+        monkeypatch.setenv("ATELIER_BENCH_MODE", mode)
+    bench_mode = importlib.import_module("atelier.bench.mode")
+    monkeypatch.setattr(bench_mode, "_mode", None)
+
 
 def test_pre_tool_use_risky_edit_gets_grounded_batching_nudge(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: True)
     monkeypatch.setattr(
-        pre_tool_use.sys,
+        PRE_TOOL_USE.sys,
         "stdin",
         io.StringIO(
             json.dumps(
@@ -34,12 +64,12 @@ def test_pre_tool_use_risky_edit_gets_grounded_batching_nudge(
 
 
 def test_pre_tool_use_low_risk_edit_stays_soft_and_allows_through(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: True)
     monkeypatch.setattr(
-        pre_tool_use.sys,
+        PRE_TOOL_USE.sys,
         "stdin",
         io.StringIO(
             json.dumps(
@@ -57,17 +87,100 @@ def test_pre_tool_use_low_risk_edit_stays_soft_and_allows_through(
     assert payload == {"decision": "allow"}
 
 
+def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    _set_bench_mode(monkeypatch, "on")
+    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
+    _write_session_state(root, workspace, {"session_id": "bench-session"})
+    monkeypatch.setattr(
+        PRE_TOOL_USE.sys,
+        "stdin",
+        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+    )
+
+    assert pre_tool_use.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["decision"] == "block"
+    assert "ground" in payload["reason"].lower()
+
+
+def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    _set_bench_mode(monkeypatch, "on")
+    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
+    _write_session_state(
+        root,
+        workspace,
+        {
+            "session_id": "bench-session",
+            "grounding_evidence": [
+                {
+                    "session_id": "bench-session",
+                    "tool": "read",
+                    "path": "shopify/catalog/product.py",
+                    "recorded_at": "2026-06-03T00:00:00Z",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        PRE_TOOL_USE.sys,
+        "stdin",
+        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+    )
+
+    assert pre_tool_use.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"decision": "allow"}
+
+
+def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    _set_bench_mode(monkeypatch, "off")
+    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
+    monkeypatch.setattr(
+        PRE_TOOL_USE.sys,
+        "stdin",
+        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+    )
+
+    assert pre_tool_use.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"decision": "allow"}
+
+
 def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_warning(
-    tmp_path,
-    monkeypatch,
-    capsys,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     transcript = tmp_path / "transcript.jsonl"
     transcript.write_text("x" * 600_000, encoding="utf-8")
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
     monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
     monkeypatch.setattr(
-        user_prompt.sys,
+        USER_PROMPT.sys,
         "stdin",
         io.StringIO(
             json.dumps(
@@ -89,13 +202,13 @@ def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_w
 
 
 def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
     monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
     monkeypatch.setattr(
-        user_prompt.sys,
+        USER_PROMPT.sys,
         "stdin",
         io.StringIO(
             json.dumps(
