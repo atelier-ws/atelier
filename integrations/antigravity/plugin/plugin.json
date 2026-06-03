@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Atelier",
     "shortDescription": "Atelier tools and agents for agy.",
-    "longDescription": "Bundle the Atelier MCP server, specialized agents (code, explore, repair, research, review), and skills for Antigravity. Start coding tasks with Atelier context, use Atelier MCP tools before native host tools, and treat native reads/search/shell as fallback only when Atelier is unavailable.",
+    "longDescription": "Bundle the Atelier MCP server, specialized agents (code, explore, plan, execute, review, research, solve), and skills for Antigravity. Start coding tasks with Atelier context, use Atelier MCP tools before native host tools, and treat native reads/search/shell as fallback only when Atelier is unavailable.",
     "developerName": "Atelier Team",
     "category": "Productivity",
     "brandColor": "#0f766e"

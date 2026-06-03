@@ -13,7 +13,7 @@ Use these files instead of repeating the same operating rules in ad hoc prompts:
 - [validation-matrix.md](validation-matrix.md) - what to run for each change type
 - [review-rubric.md](review-rubric.md) - adversarial review discipline and verification ladder
 - [learnings-flow.md](learnings-flow.md) - how to extract and persist learnings across sessions
-- [modes/](modes/) - canonical mode behavior for code, explore, review, repair, and research
+- [modes/](modes/) - canonical mode behavior for code, explore, plan, execute, review, research, and solve
 - [host-overrides/](host-overrides/) - host-specific notes that sit on top of the shared rules
 
 Generated entrypoints are derived from this tree:

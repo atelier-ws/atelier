@@ -7,15 +7,20 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
-pytest.importorskip("terminalbench.agent_adapter")
-pytest.importorskip("terminalbench.runner")
+ROOT = Path(__file__).resolve().parents[3]
+BENCHMARKS_ROOT = ROOT / "benchmarks"
+if str(BENCHMARKS_ROOT) not in sys.path:
+    sys.path.insert(0, str(BENCHMARKS_ROOT))
 
-from terminalbench.agent_adapter import AdapterResult
-from terminalbench.runner import RunRecord, write_records, write_transcript
+pytest.importorskip("terminal_bench")
+
+from terminalbench.agent_adapter import AdapterResult  # noqa: E402
+from terminalbench.runner import RunRecord, write_records, write_transcript  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # TB-04 field set (shared with test_agent_adapter.py)
@@ -26,6 +31,7 @@ TB04_FIELDS = {
     "mode",
     "rep",
     "model",
+    "provider",
     "input_tokens",
     "output_tokens",
     "cache_creation_input_tokens",
@@ -58,6 +64,7 @@ def _make_adapter_result(
     task_id: str = "hello-world",
     mode: str = "on",
     rep: int = 1,
+    provider: str = "claude",
 ) -> AdapterResult:
     """Return a minimal but fully-populated AdapterResult for tests."""
     return AdapterResult(
@@ -65,6 +72,7 @@ def _make_adapter_result(
         mode=mode,
         rep=rep,
         model="claude-sonnet-4-5",
+        provider=provider,
         input_tokens=100,
         output_tokens=50,
         cache_creation_input_tokens=200,
@@ -97,6 +105,7 @@ def _make_run_record(**overrides: object) -> RunRecord:
         mode=result.mode,
         rep=result.rep,
         model=result.model,
+        provider=result.provider,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         cache_creation_input_tokens=result.cache_creation_input_tokens,
@@ -185,11 +194,11 @@ def test_write_records_appends_to_existing_jsonl(tmp_path: Path) -> None:
 
 
 def test_write_transcript_naming(tmp_path: Path) -> None:
-    """write_transcript creates file named <task_id>__<mode>__rep<N>.json."""
+    """write_transcript creates file named <task_id>__<mode>__<provider>__rep<N>.json."""
     result = _make_adapter_result(task_id="fix-git", mode="off", rep=3)
     path = write_transcript(result, tmp_path)
 
-    assert path.name == "fix-git__off__rep3.json"
+    assert path.name == "fix-git__off__claude__rep3.json"
 
 
 def test_write_transcript_content_valid_json(tmp_path: Path) -> None:
@@ -210,9 +219,9 @@ def test_write_transcript_atomic(tmp_path: Path) -> None:
     result = _make_adapter_result(task_id="fix-git", mode="on", rep=1)
     write_transcript(result, tmp_path)
 
-    tmp_file = tmp_path / "fix-git__on__rep1.json.tmp"
+    tmp_file = tmp_path / "fix-git__on__claude__rep1.json.tmp"
     assert not tmp_file.exists(), ".tmp file must be removed after atomic write"
-    assert (tmp_path / "fix-git__on__rep1.json").exists()
+    assert (tmp_path / "fix-git__on__claude__rep1.json").exists()
 
 
 def test_write_transcript_creates_parent_dirs(tmp_path: Path) -> None:
@@ -224,4 +233,4 @@ def test_write_transcript_creates_parent_dirs(tmp_path: Path) -> None:
     write_transcript(result, out)
 
     assert out.exists()
-    assert (out / "hello-world__on__rep1.json").exists()
+    assert (out / "hello-world__on__claude__rep1.json").exists()

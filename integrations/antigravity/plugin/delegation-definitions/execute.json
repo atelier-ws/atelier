@@ -2,8 +2,8 @@
   "schemaVersion": "1.0",
   "runtimeContract": "subagent-v1",
   "defineSubagent": {
-    "atelier-repair": {
-      "description": "Repair specialist for repeated failures. Captures the failing signal, calls rescue, applies the fix, records a postmortem.",
+    "atelier-execute": {
+      "description": "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
       "capabilities": ["read_files", "edit_files", "create_files", "run_shell", "search_code", "mcp_tools"]
     }
   }

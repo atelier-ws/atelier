@@ -46,6 +46,7 @@ class RunRecord:
     mode: str
     rep: int
     model: str
+    provider: str
     input_tokens: int
     output_tokens: int
     cache_creation_input_tokens: int
@@ -99,7 +100,7 @@ def write_records(rows: list[RunRecord], path: Path) -> Path:
 def write_transcript(result: Any, out_dir: Path) -> Path:
     """Write a per-run transcript JSON file atomically (T-02-08).
 
-    The filename follows the convention ``<task_id>__<mode>__rep<N>.json``.
+    The filename follows the convention ``<task_id>__<mode>__<provider>__rep<N>.json``.
     Writes to a ``.tmp`` file then calls ``os.replace()`` to prevent partial
     files on crash/kill.
 
@@ -110,7 +111,7 @@ def write_transcript(result: Any, out_dir: Path) -> Path:
     Returns:
         Final path of the written transcript.
     """
-    filename = f"{result.task_id}__{result.mode}__rep{result.rep}.json"
+    filename = f"{result.task_id}__{result.mode}__{result.provider}__rep{result.rep}.json"
     final_path = out_dir / filename
     tmp_path = out_dir / f"{filename}.tmp"
 
@@ -154,8 +155,12 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="claude",
-        choices=["claude", "ollama"],
-        help="Agent provider: 'claude' (Anthropic Claude Code, default) or 'ollama' (local Ollama via OpenAI-compatible API).",
+        choices=["claude", "ollama", "owned"],
+        help=(
+            "Agent provider: 'claude' (Anthropic Claude Code, default), "
+            "'ollama' (local Ollama via OpenAI-compatible API), or "
+            "'owned' (Atelier benchmark solver runtime)."
+        ),
     )
     parser.add_argument(
         "--rep",
@@ -204,6 +209,7 @@ def main() -> None:
         mode=result.mode,
         rep=result.rep,
         model=result.model,
+        provider=result.provider,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         cache_creation_input_tokens=result.cache_creation_input_tokens,

@@ -16,7 +16,7 @@ _EXECUTION_SIGNAL = re.compile(
     r"\b(fix|implement|code|edit|patch|write|test|run|debug|refactor|build|apply|change)\b",
     re.IGNORECASE,
 )
-_STEP_RANK = {"exploration": 0, "planning": 1, "execution": 2}
+_STEP_RANK = {"exploration": 0, "planning": 1, "review": 2, "execution": 3}
 _STEP_SESSION_PHASE = {
     "exploration": "explore",
     "planning": "transition",
