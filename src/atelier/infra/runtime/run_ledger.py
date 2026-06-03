@@ -59,6 +59,7 @@ class RunLedger:
         self.workflow_state: dict[str, Any] = {}
         self.plan_review: dict[str, Any] = {}
         self.task_progress: dict[str, Any] = {}
+        self.workflow_step_events: list[dict[str, Any]] = []
         self.agent_settings: dict[str, Any] = {}
         self.skills: list[str] = []
         self.token_count: int = 0
@@ -156,6 +157,26 @@ class RunLedger:
         else:
             summary = f"event:{event_type}"
         return self.record("note", summary, normalized)
+
+    def record_workflow_step_event(
+        self,
+        *,
+        step_id: str,
+        event: str,
+        kind: str,
+        status: str,
+        payload: dict[str, Any] | None = None,
+    ) -> LedgerEvent:
+        normalized = {
+            "step_id": step_id,
+            "event": event,
+            "kind": kind,
+            "status": status,
+        }
+        if payload:
+            normalized.update(payload)
+        self.workflow_step_events.append(dict(normalized))
+        return self.record("note", f"workflow_step:{step_id}:{event}", normalized)
 
     # ----- recording ------------------------------------------------------ #
 
@@ -481,6 +502,7 @@ class RunLedger:
             "workflow_state": dict(self.workflow_state),
             "plan_review": dict(self.plan_review),
             "task_progress": dict(self.task_progress),
+            "workflow_step_events": [dict(event) for event in self.workflow_step_events],
             "agent_settings": dict(self.agent_settings),
             "skills": list(self.skills),
             "token_count": self.token_count,
@@ -536,6 +558,9 @@ class RunLedger:
         led.workflow_state = dict(snap.get("workflow_state") or {})
         led.plan_review = dict(snap.get("plan_review") or {})
         led.task_progress = dict(snap.get("task_progress") or {})
+        led.workflow_step_events = [
+            dict(event) for event in snap.get("workflow_step_events", []) if isinstance(event, dict)
+        ]
         led.agent_settings = dict(snap.get("agent_settings") or {})
         led.skills = list(snap.get("skills") or [])
         led.token_count = int(snap.get("token_count") or 0)
