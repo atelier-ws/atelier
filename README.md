@@ -14,7 +14,7 @@ Atelier ships the same context runtime everywhere: CLI, MCP (for all major agent
 ## Install in One Command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/refs/heads/main/scripts/install.sh | bash
 ```
 
 The installer:
