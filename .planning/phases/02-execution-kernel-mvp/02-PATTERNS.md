@@ -844,6 +844,97 @@ class HandoverPacket:
 
 ---
 
+## Eval-Parity Runner/Defaults/Solver Addendum
+
+Added after the Eval implementation parity audit. These patterns guide 02-04, 02-05, and 02-06.
+
+### `src/atelier/core/capabilities/workflow_schema.py`
+
+**Role:** model, validation  
+**Analog:** `src/atelier/core/capabilities/autopilot/workflow_config.py`
+
+- Define validated workflow and step records for `agent`, `tool`, and `shell`.
+- Validate `next_steps`, `fork_from`, prompt/command/tool requirements, output ids, JSON output flags, and timeout fields before execution.
+- Keep definitions serializable so defaults can bootstrap and test fixtures can round-trip them.
+
+### `src/atelier/core/capabilities/workflow_context.py`
+
+**Role:** utility, persistence  
+**Analog:** `autopilot/factory.py` workspace-state helpers plus `RunLedger` event snapshots.
+
+- Store step outputs in canonical workspace workflow state, not a new sidecar store.
+- Provide copy-on-write forked context from prior steps.
+- Resolve template variables from prior step outputs through a structured map, not ad hoc string scraping.
+
+### `src/atelier/core/capabilities/workflow_runner.py`
+
+**Role:** service, orchestration  
+**Analog:** Eval `executeWorkflow`, adapted to Atelier's core/gateway split.
+
+- Execute a validated DAG with injected `agent`, `tool`, and `shell` handlers so tests do not need model/network access.
+- Persist step records with output, parsed JSON, status, duration, usage/cost fields, and artifact references.
+- Batch only explicitly safe read/search/code-intel tool steps; serialize writes, shell mutations, and interactive decisions.
+- Emit workflow step start/done/fail events through `RunLedger`.
+
+### `src/atelier/core/capabilities/default_definitions.py`
+
+**Role:** model, registry  
+**Analog:** `scripts/render_mode_surfaces.py` mode loading and frontmatter rendering, plus existing generated host surface tests.
+
+- Canonicalize agent/skill/runtime roles before rendering them into host-specific artifacts.
+- Include role ids for `code`, `general`, `explore`, `plan`, `execute`, `review`, `research`, and `solve`.
+- Store or reference name, description, prompt source/body, tool allow/deny policy, model/provider tier where owned, effort, max turns/tokens, workflow usage, and host projections.
+- Runtime-only roles do not need every host projection, but they must still be inspectable and consumable by the owned runner/solver.
+
+### `scripts/render_mode_surfaces.py`
+
+**Role:** renderer, generated host surfaces  
+**Analog:** existing mode-doc renderer.
+
+- Continue rendering current Claude, OpenCode, Antigravity, shared skill, and Codex skill surfaces.
+- Read role/projection metadata from canonical defaults where possible.
+- Preserve host-specific schema constraints, especially Claude plugin auto-discovery of agents/skills/hooks/MCP.
+- Provide or preserve check mode so generated files can be verified in tests/CI.
+
+### `tests/gateway/test_agent_cli_install_artifacts.py`
+
+**Role:** static distribution contract  
+**Analog:** existing install artifact tests.
+
+- Extend existing checks to prove generated files are present and synced with canonical defaults.
+- Keep tests host-CLI-free.
+- Cover plugin manifests, agents, skills, workflows, MCP templates, and installer staging behavior.
+
+### `src/atelier/core/capabilities/workflow_defaults.py`
+
+**Role:** utility, bootstrap  
+**Analog:** Eval non-overwriting default bootstrap.
+
+- Embed or reference minimal default workflow/solver/agent definitions.
+- Write missing files only and never overwrite project-local user changes.
+- Return deterministic created/skipped/invalid receipts.
+
+### `src/atelier/core/capabilities/benchmark_solver.py`
+
+**Role:** service, benchmark runtime  
+**Analog:** Eval solver profile plus headless workflow artifacts, adapted to TerminalBench arms.
+
+- Consume solver rules from canonical defaults; do not duplicate solver prompt/rule text locally.
+- Persist benchmark attempts with task prompt, changed files, failed commands, harness feedback, raw artifact paths, and retry count.
+- Generate retry context from harness evidence and explicitly prevent blind repetition of failed commands.
+- Keep provider/Docker execution injectable in tests.
+
+### `benchmarks/terminalbench/agent_adapter.py`
+
+**Role:** benchmark seam  
+**Analog:** existing Claude-host adapter, with an added owned-solver arm.
+
+- Preserve the existing Claude baseline and Atelier-hook arms unchanged.
+- Add an explicit owned-solver mode that invokes the benchmark solver runtime.
+- Emit artifacts into the existing benchmark run directory shape so aggregate/report tooling can consume them later.
+
+---
+
 ## No Analog Found
 
 | File | Role | Data Flow | Reason |

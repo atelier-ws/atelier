@@ -13,8 +13,8 @@ This roadmap turns Atelier into a benchmark-first terminal coding agent through 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Grounded Terminal Loop MVP** - Search-first default path with semantic escalation (completed 2026-06-02)
-- [ ] **Phase 2: Execution Kernel MVP** - Explicit workflow state, plan review, and grounded edit discipline
-- [ ] **Phase 3: Routed Subcall Execution MVP** - Enforced provider/model routing for Atelier-owned subcalls
+- [x] **Phase 2: Execution Kernel MVP** - Owned workflow runner, default definitions, solver loop, explicit plan review, grounded edit discipline, and read-only structural minification (completed 2026-06-03)
+- [ ] **Phase 3: Routed Execution MVP** - Explicit or auto provider/model routing for Atelier-owned subcalls, plus prompt-cache affinity and a shadow-safe local host router bridge
 - [ ] **Phase 4: Benchmark Gate MVP** - Frozen paired benchmarks and artifact-backed proof
 
 ## Phase Details
@@ -36,36 +36,51 @@ Plans:
 - [x] 01-03: Add low-roundtrip ergonomics and batching nudges without regressing existing smart context
 
 ### Phase 2: Execution Kernel MVP
-**Goal:** As a terminal coding agent user, I want explicit workflow state and grounded edit discipline, so that multi-step tasks stay coherent from plan through execution.
+**Goal:** As a terminal coding agent user, I want an owned workflow runner with explicit state and benchmark solver discipline, so that multi-step tasks stay coherent from plan through execution and can be retried from harness feedback.
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: EXEC-01, EXEC-02, EXEC-03, EXEC-04, EXEC-05, INTL-03
+**Requirements**: EXEC-01, EXEC-02, EXEC-03, EXEC-04, EXEC-05, EXEC-06, EXEC-07, EXEC-08, EXEC-09, EXEC-10, EXEC-11, EXEC-12, EXEC-13, EXEC-14, DFLT-01, DFLT-02, DFLT-03, DFLT-04, INTL-03
 **Success Criteria** (what must be TRUE):
   1. User can move through explicit explore, plan, execute, and review workflow states in one session.
   2. User can approve or revise a plan before execution starts.
   3. User can resume execution with current-task state and prior task outputs preserved.
   4. User can only apply benchmark-path edits after the relevant code has been grounded by read/search/code-intel steps.
-**Plans**: 3 plans
+  5. User can run an Atelier-owned workflow DAG with persistent/forkable step context, safe tool scheduling, and per-step telemetry.
+  6. User can inspect and regenerate default agent, skill, workflow, prompt, MCP, and benchmark-profile definitions from one canonical source.
+  7. User can run a benchmark solver profile headlessly, retry from harness feedback, and emit artifact-backed JSON/stream-JSON outputs.
+  8. User can run owned explore/plan/review/execute on one generic stem system prompt with phase-pivot user prompts and conversation-forking steps, preserving the prompt-cache prefix across phases.
+  9. User can read files through a structural minified reader path that cuts explore-time tokens while writer/execute reads stay byte-exact.
+**Plans**: 7 plans
 
 Plans:
-- [ ] 02-01: Introduce typed session workflow state and task-local carry-forward outputs
-- [ ] 02-02: Add plan review, progress, and workflow event surfaces through existing tracing/reporting
-- [ ] 02-03: Enforce grounded edit gates on the benchmark execution path
+- [x] 02-01: Introduce typed session workflow state and task-local carry-forward outputs
+- [x] 02-02: Add plan review, progress, and workflow event surfaces through existing tracing/reporting
+- [x] 02-03: Enforce grounded edit gates on the benchmark execution path
+- [x] 02-04: Add owned workflow DAG execution with persistent/forkable step context
+- [x] 02-05: Add canonical default definitions and generated host/runtime surfaces (incl. stem-agent prompt set, phase-pivot prompts, reviewer verdict contract, and Eval solver command-discipline rules)
+- [x] 02-06: Add benchmark solver profile, conversation-fork harness-feedback retry, and headless run artifacts
+- [x] 02-07: Add read-only structural minification on the explore read path (the read half of Eval's VFS)
 
-### Phase 3: Routed Subcall Execution MVP
-**Goal:** As a terminal coding agent user, I want Atelier-owned subcalls to route through the right provider and model while my host chat stays native, so that hard tasks use better execution paths without destabilizing the host loop.
+### Phase 3: Routed Execution MVP
+**Goal:** As a terminal coding agent user, I want Atelier-owned subcalls to run through an explicit provider/model I choose or an auto-selected route, while preserving prompt-cache locality, so that I can control important runs and still let policy choose when appropriate.
 **Mode:** mvp
 **Depends on**: Phase 2
-**Requirements**: ROUT-01, ROUT-02, ROUT-03
+**Requirements**: ROUT-01, ROUT-02, ROUT-03, ROUT-04, ROUT-05, ROUT-06, ROUT-07
 **Success Criteria** (what must be TRUE):
   1. User can execute Atelier-owned subcalls through enforced provider/model routing rather than advisory-only routing.
-  2. User can inspect actual provider/model provenance for each routed subcall.
-  3. User can keep the top-level host conversation native while routed execution runs safely on owned subcalls.
-**Plans**: 2 plans
+  2. User can explicitly select provider and model as a first-class route mode for owned subcalls and benchmarks.
+  3. User can choose `auto` mode when they want policy to select from task class, provider health, quality risk, price, latency, and cache warmth.
+  4. User can preserve provider-side prompt-cache affinity across explore -> plan -> review -> execute loops when the selected or auto route is cache-compatible.
+  5. User can inspect actual provider/model/cache provenance for each routed subcall.
+  6. User can keep the top-level host conversation native while routed execution runs safely on owned subcalls.
+  7. User can shadow a Claude-Code-compatible local router bridge before opting into broader host-level routing.
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Add provider execution lanes for Atelier-owned subcalls using existing routing foundations
-- [ ] 03-02: Record route provenance and preserve shadow-safe top-level host behavior
+- [ ] 03-01: Add provider catalog and explicit/auto route selection modes for owned execution
+- [ ] 03-02: Add provider execution lanes for Atelier-owned subcalls using existing routing foundations
+- [ ] 03-03: Add prompt-cache affinity, cache-token accounting, and warm-route stickiness
+- [ ] 03-04: Add a shadow-safe local host router bridge for Claude-Code-compatible traffic
 
 ### Phase 4: Benchmark Gate MVP
 **Goal:** As a benchmark-driven maintainer, I want paired artifact-backed terminal benchmarks, so that Atelier can prove higher solved-rate with non-inferior quality and lower cost where possible.
@@ -92,6 +107,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Grounded Terminal Loop MVP | 3/3 | Complete   | 2026-06-02 |
-| 2. Execution Kernel MVP | 0/3 | Not started | - |
-| 3. Routed Subcall Execution MVP | 0/2 | Not started | - |
+| 2. Execution Kernel MVP | 7/7 | Complete | 2026-06-03 |
+| 3. Routed Execution MVP | 0/4 | Not started | - |
 | 4. Benchmark Gate MVP | 0/3 | Not started | - |

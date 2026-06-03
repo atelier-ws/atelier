@@ -15,17 +15,37 @@ Requirements for the initial reset release. Each maps to roadmap phases.
 
 ### Execution Kernel
 
-- [ ] **EXEC-01**: User can move through explicit explore, plan, execute, and review workflow states inside one session
+- [x] **EXEC-01**: User can move through explicit explore, plan, execute, and review workflow states inside one session
 - [ ] **EXEC-02**: User can approve, revise, or re-run a plan before execution starts
-- [ ] **EXEC-03**: User can resume execution with current task state and prior task outputs preserved
+- [x] **EXEC-03**: User can resume execution with current task state and prior task outputs preserved
 - [ ] **EXEC-04**: User can inspect workflow events and task progress without reconstructing the session manually
 - [ ] **EXEC-05**: User can only apply benchmark-path edits after the relevant file or code region has been grounded by a read, search, or code-intel step
+- [ ] **EXEC-06**: User can run an Atelier-owned workflow DAG with agent, tool, and shell steps instead of only receiving advisory workflow state
+- [ ] **EXEC-07**: User can reuse persistent per-step execution context and fork context from earlier workflow steps for plan -> review -> execute loops
+- [ ] **EXEC-08**: User can execute safe independent tool work in parallel while writes, shell mutations, and interactive decisions stay serialized
+- [ ] **EXEC-09**: User can run a dedicated benchmark solver profile with artifact-first, no-repeat-failure, cleanup, and command-discipline rules
+- [ ] **EXEC-10**: User can reinvoke a failed benchmark attempt with the same task context and harness feedback instead of treating the first attempt as the final outcome
+- [ ] **EXEC-11**: User can run the owned workflow/solver headlessly with JSON and stream-JSON artifacts that include step outputs, tokens, cache, cost, and duration
+- [ ] **EXEC-12**: User can install or bootstrap default workflow, solver, agent, skill, and MCP definitions without overwriting project-local user changes
+- [ ] **EXEC-13**: User can run owned explore/plan/review/execute phases on one generic ("stem") system prompt — with phase changes delivered as user-turn prompts and later steps forking the prior step's conversation — so the provider prompt-cache prefix is preserved across phases instead of invalidated at every boundary
+- [ ] **EXEC-14**: User can read files through a more aggressive minified reader path (reader-profile only) that collapses intra-line whitespace for non-whitespace-significant languages — beyond today's trailing-whitespace/blank-run transform — with savings attributed through existing minification telemetry and byte-exact reads preserved for writer/execute profiles
+
+### Defaults & Distribution
+
+- [ ] **DFLT-01**: User can inspect one canonical default-definition registry that covers agent roles, skills, workflows, prompts, MCP templates, tool policies, model/effort defaults, and benchmark profiles
+- [ ] **DFLT-02**: User can regenerate Claude, Codex, OpenCode, Antigravity, shared skill, and benchmark-owned runtime surfaces from the canonical defaults without hand-editing generated artifacts
+- [ ] **DFLT-03**: User can verify generated agent/skill/workflow/MCP surfaces are in sync with canonical defaults before release or benchmark runs
+- [ ] **DFLT-04**: User can layer project-local defaults over packaged defaults while preserving existing local user changes and reporting created/skipped/changed files
 
 ### Routing
 
 - [ ] **ROUT-01**: User can run Atelier-owned subcalls through an enforced provider/model routing layer
 - [ ] **ROUT-02**: User can see which provider/model actually executed each Atelier-owned subcall
 - [ ] **ROUT-03**: User can keep the top-level host conversation native while routed execution runs on owned subcalls
+- [ ] **ROUT-04**: User can explicitly select provider and model as a first-class route mode for Atelier-owned subcalls and benchmark runs
+- [ ] **ROUT-05**: User can choose `auto` mode when they want Atelier to select from task class, quality risk, provider health, price, latency, and cache warmth
+- [ ] **ROUT-06**: User can preserve provider-side prompt-cache locality across related workflow steps and inspect cache read/write tokens, cache misses, and route-stickiness decisions
+- [ ] **ROUT-07**: User can run a shadow-safe local host router bridge for Claude-Code-compatible traffic before opting into broader host-level routing enforcement
 
 ### Benchmark Gate
 
@@ -46,13 +66,13 @@ Deferred to a later release. Tracked but not in the current roadmap.
 
 ### Tooling
 
-- **TOOL-01**: User can use a minified read/edit path that safely reduces token spend for supported languages
+- **TOOL-01**: User can use a minified **edit/write** round-trip path (match-against-minified + formatter-restore) for supported languages — the read-only half is promoted to v1 as EXEC-14; this v2 item is the harder write-side round-trip (Eval's tree-sitter VFS)
 - **TOOL-02**: User can see richer savings UX that ties per-session counters back to benchmark-backed truth
 
 ### Routing
 
-- **ROUT-04**: User can compare shadow-routed and actively routed execution paths across more providers and hosts
-- **ROUT-05**: User can opt into broader host-level routing once subcall routing has proven parity
+- **ROUT-08**: User can compare shadow-routed and actively routed execution paths across more providers and hosts
+- **ROUT-09**: User can make local host-router enforcement the default once subcall routing and shadow routing have proven parity
 
 ### Product Shape
 
@@ -86,14 +106,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRND-01 | Phase 1 | Complete |
 | GRND-02 | Phase 1 | Complete |
 | GRND-03 | Phase 1 | Complete |
-| EXEC-01 | Phase 2 | Pending |
+| EXEC-01 | Phase 2 | Complete |
 | EXEC-02 | Phase 2 | Pending |
-| EXEC-03 | Phase 2 | Pending |
+| EXEC-03 | Phase 2 | Complete |
 | EXEC-04 | Phase 2 | Pending |
 | EXEC-05 | Phase 2 | Pending |
+| EXEC-06 | Phase 2 | Pending |
+| EXEC-07 | Phase 2 | Pending |
+| EXEC-08 | Phase 2 | Pending |
+| EXEC-09 | Phase 2 | Pending |
+| EXEC-10 | Phase 2 | Pending |
+| EXEC-11 | Phase 2 | Pending |
+| EXEC-12 | Phase 2 | Pending |
+| EXEC-13 | Phase 2 | Pending |
+| EXEC-14 | Phase 2 | Pending |
+| DFLT-01 | Phase 2 | Pending |
+| DFLT-02 | Phase 2 | Pending |
+| DFLT-03 | Phase 2 | Pending |
+| DFLT-04 | Phase 2 | Pending |
 | ROUT-01 | Phase 3 | Pending |
 | ROUT-02 | Phase 3 | Pending |
 | ROUT-03 | Phase 3 | Pending |
+| ROUT-04 | Phase 3 | Pending |
+| ROUT-05 | Phase 3 | Pending |
+| ROUT-06 | Phase 3 | Pending |
+| ROUT-07 | Phase 3 | Pending |
 | BENC-01 | Phase 4 | Pending |
 | BENC-02 | Phase 4 | Pending |
 | BENC-03 | Phase 4 | Pending |
@@ -103,10 +140,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTL-03 | Phase 2 | Pending |
 
 **Coverage:**
-- v1 requirements: 18 total
-- Mapped to phases: 18
+- v1 requirements: 32 total
+- Mapped to phases: 32
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-02*
-*Last updated: 2026-06-02 after initial definition*
+*Last updated: 2026-06-03 after Eval stem-agent (EXEC-13) and structural read-minify (EXEC-14) planning update*

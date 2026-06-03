@@ -279,6 +279,42 @@ def test_workflow_progression_is_monotonic() -> None:
     assert steady.current_step == "execution"
 
 
+def test_workflow_can_advance_from_planning_to_review() -> None:
+    config = default_workflow_config()
+    state = workflow_state_from_mapping({}, config)
+    planning, _, _ = advance_workflow_state(
+        "user_prompt",
+        {"prompt": "design the rollout plan"},
+        state,
+        config,
+    )
+
+    review, _, _ = advance_workflow_state(
+        "user_prompt",
+        {"workflow_step": "review", "review": {"decision": "revise"}},
+        planning,
+        config,
+    )
+    execution, _, _ = advance_workflow_state(
+        "user_prompt",
+        {"workflow_step": "execution"},
+        review,
+        config,
+    )
+    steady, _, _ = advance_workflow_state(
+        "user_prompt",
+        {"workflow_step": "planning"},
+        execution,
+        config,
+    )
+
+    assert review.current_step == "review"
+    assert review.last_step == "planning"
+    assert review.session_phase == "review"
+    assert execution.current_step == "execution"
+    assert steady.current_step == "execution"
+
+
 def test_workflow_state_from_mapping_preserves_review_and_task_metadata() -> None:
     config = default_workflow_config()
 

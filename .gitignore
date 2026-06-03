@@ -284,3 +284,4 @@ exports/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 /reports/
+.eval

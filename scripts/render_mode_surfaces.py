@@ -6,37 +6,38 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
-import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-MODES_DIR = ROOT / "docs" / "agent-os" / "modes"
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from atelier.core.capabilities.default_definitions import (  # noqa: E402
+    DefaultRole,
+    HostProjection,
+    ModeDoc,
+    build_default_registry,
+    load_mode_docs,
+)
+
 CODING_GUIDELINES_PATH = ROOT / "docs" / "agent-os" / "coding-guidelines.md"
+CORE_DISCIPLINE_PATH = ROOT / "docs" / "agent-os" / "core-discipline.md"
+
+# Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
+# "## <heading>" section sourced from one canonical partial. A mode opts in by
+# including the token anywhere in its body.
+SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
+    "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
+    "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
+}
 HOST_SKILL_DIRS = {
     "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",
     "codex": ROOT / "integrations" / "codex" / "plugin" / "skills",
     "antigravity": ROOT / "integrations" / "antigravity" / "skills",
 }
-
-
-@dataclass(frozen=True)
-class ModeDoc:
-    name: str
-    skill_description: str
-    agent_description: str
-    body: str
-    source_path: Path
-
-    @property
-    def title(self) -> str:
-        return self.name.replace("-", " ").title()
-
-
-def relpath(output_path: Path, target: Path) -> str:
-    return os.path.relpath(target, output_path.parent)
 
 
 def generated_notice(output_path: Path, source_path: Path) -> str:
@@ -57,50 +58,16 @@ def markdown_body(path: Path) -> str:
     return "\n".join(lines).rstrip()
 
 
-def shared_coding_guidelines_section() -> str:
-    return "\n".join(["## Coding Guidelines", "", markdown_body(CODING_GUIDELINES_PATH)])
+def _shared_section(heading: str, source_path: Path) -> str:
+    return "\n".join([f"## {heading}", "", markdown_body(source_path)])
 
 
-def render_mode_body(mode: ModeDoc) -> str:
-    body = mode.body.rstrip()
-    if mode.name == "code":
-        body = body.replace("## Coding guidelines\n\n{{CODING_GUIDELINES}}", shared_coding_guidelines_section())
+def render_mode_body(mode_doc: ModeDoc) -> str:
+    body = mode_doc.body.rstrip()
+    for token, (heading, source_path) in SHARED_SECTIONS.items():
+        if token in body:
+            body = body.replace(token, _shared_section(heading, source_path))
     return body
-
-
-def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    if not text.startswith("---\n"):
-        raise ValueError("mode doc is missing frontmatter")
-    end = text.find("\n---\n", 4)
-    if end < 0:
-        raise ValueError("mode doc frontmatter is not terminated")
-    raw_meta = text[4:end].splitlines()
-    meta: dict[str, str] = {}
-    for raw_line in raw_meta:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            raise ValueError(f"invalid frontmatter line: {raw_line}")
-        key, value = line.split(":", 1)
-        meta[key.strip()] = value.strip().strip('"').strip("'")
-    body = text[end + len("\n---\n") :].lstrip()
-    return meta, body
-
-
-def load_modes() -> dict[str, ModeDoc]:
-    modes: dict[str, ModeDoc] = {}
-    for path in sorted(MODES_DIR.glob("*.md")):
-        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-        name = meta["mode"]
-        modes[name] = ModeDoc(
-            name=name,
-            skill_description=meta["skill_description"],
-            agent_description=meta["agent_description"],
-            body=body.rstrip() + "\n",
-            source_path=path,
-        )
-    return modes
 
 
 def _format_frontmatter_value(value: Any) -> str:
@@ -119,267 +86,67 @@ def render_frontmatter(items: list[tuple[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-CLAUDE_STABLE_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
-    "code": [("name", "code"), ("description", ""), ("tools", ["*"]), ("color", "purple")],
-    "explore": [
-        ("name", "explore"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__grep",
-                "mcp__atelier__node",
-                "mcp__atelier__symbols",
-                "mcp__atelier__usages",
-                "mcp__atelier__explore",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("disallowedTools", ["Edit", "Write", "MultiEdit", "NotebookEdit", "Agent"]),
-        ("color", "blue"),
-    ],
-    "review": [
-        ("name", "review"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "mcp__atelier__context",
-                "mcp__atelier__read",
-                "mcp__atelier__search",
-                "mcp__atelier__node",
-                "mcp__atelier__usages",
-                "mcp__atelier__callers",
-                "mcp__atelier__impact",
-                "mcp__atelier__verify",
-                "mcp__atelier__trace",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "yellow"),
-    ],
-    "repair": [("name", "repair"), ("description", ""), ("tools", ["*"]), ("color", "red")],
-    "research": [
-        ("name", "research"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "WebFetch",
-                "WebSearch",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "green"),
-    ],
-}
-
-CLAUDE_DEV_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
-    "code": [
-        ("name", "code"),
-        ("description", ""),
-        ("tools", ["*"]),
-        ("disallowedTools", ["Read", "Edit", "Write", "Grep", "Glob", "NotebookEdit"]),
-        ("color", "purple"),
-    ],
-    "explore": [
-        ("name", "explore"),
-        ("description", ""),
-        ("color", "cyan"),
-        (
-            "tools",
-            [
-                "Read",
-                "Grep",
-                "Glob",
-                "WebFetch",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__grep",
-                "mcp__atelier__node",
-                "mcp__atelier__symbols",
-                "mcp__atelier__usages",
-                "mcp__atelier__explore",
-                "mcp__atelier__memory",
-            ],
-        ),
-        (
-            "disallowedTools",
-            ["Edit", "Write", "MultiEdit", "NotebookEdit", "mcp__atelier__edit", "Agent"],
-        ),
-    ],
-    "review": [
-        ("name", "review"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "Read",
-                "mcp__atelier__search",
-                "mcp__atelier__node",
-                "mcp__atelier__usages",
-                "mcp__atelier__callers",
-                "mcp__atelier__impact",
-                "Glob",
-                "mcp__atelier__context",
-                "mcp__atelier__read",
-                "mcp__atelier__verify",
-                "mcp__atelier__trace",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "yellow"),
-    ],
-    "repair": [("name", "repair"), ("description", ""), ("tools", ["*"]), ("color", "red")],
-    "research": [
-        ("name", "research"),
-        ("description", ""),
-        (
-            "tools",
-            [
-                "WebFetch",
-                "WebSearch",
-                "mcp__atelier__context",
-                "mcp__atelier__search",
-                "mcp__atelier__read",
-                "mcp__atelier__memory",
-            ],
-        ),
-        ("color", "green"),
-    ],
-}
-
-OPENCODE_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
-    "code": [
-        ("description", "Atelier - main coding agent for the Agent Reasoning Runtime"),
-        ("mode", "primary"),
-    ],
-    "explore": [
-        (
-            "description",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        )
-    ],
-    "review": [
-        (
-            "description",
-            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-        )
-    ],
-    "repair": [
-        (
-            "description",
-            "Repair specialist for repeated failures. Captures the failing signal, calls rescue, applies the fix, and records a postmortem.",
-        )
-    ],
-    "research": [
-        (
-            "description",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        )
-    ],
-}
-
-ANTIGRAVITY_FRONTMATTER: dict[str, list[tuple[str, Any]]] = {
-    "code": [
-        (
-            "description",
-            "Main Atelier coding agent. Uses Atelier MCP tools for all file I/O, search, edits, and shell work.",
-        )
-    ],
-    "explore": [
-        (
-            "description",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        )
-    ],
-    "review": [
-        (
-            "description",
-            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-        )
-    ],
-    "repair": [
-        (
-            "description",
-            "Repair specialist for repeated failures. Captures the failing signal, calls rescue, applies the fix, and records a postmortem.",
-        )
-    ],
-    "research": [
-        (
-            "description",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        )
-    ],
-}
-
-
-def _inject_description(frontmatter: list[tuple[str, Any]], description: str) -> list[tuple[str, Any]]:
+def _inject_description(frontmatter: tuple[tuple[str, Any], ...], description: str) -> list[tuple[str, Any]]:
     rendered: list[tuple[str, Any]] = []
     for key, value in frontmatter:
         rendered.append((key, description if key == "description" and value == "" else value))
     return rendered
 
 
-def render_skill(mode: ModeDoc, output_path: Path) -> str:
+def render_skill(role: DefaultRole, mode_doc: ModeDoc, output_path: Path) -> str:
     return (
         "\n".join(
             [
-                render_frontmatter([("name", mode.name), ("description", mode.skill_description)]),
+                render_frontmatter([("name", role.role_id), ("description", role.skill_description)]),
                 "",
-                generated_notice(output_path, mode.source_path),
+                generated_notice(output_path, ROOT / mode_doc.source_path),
                 "",
-                render_mode_body(mode),
+                render_mode_body(mode_doc),
             ]
         ).rstrip()
         + "\n"
     )
 
 
-def render_claude_agent(mode: ModeDoc, output_path: Path, *, dev: bool) -> str:
-    template = CLAUDE_DEV_FRONTMATTER if dev else CLAUDE_STABLE_FRONTMATTER
-    frontmatter = _inject_description(template[mode.name], mode.agent_description)
-    identity_block = ["You are operating as *atelier:code*.", ""] if mode.name == "code" else []
+def render_claude_agent(
+    role: DefaultRole,
+    mode_doc: ModeDoc,
+    output_path: Path,
+    projection: HostProjection,
+) -> str:
+    frontmatter = _inject_description(projection.frontmatter, role.agent_description)
+    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
     return (
         "\n".join(
             [
                 render_frontmatter(frontmatter),
                 "",
-                generated_notice(output_path, mode.source_path),
+                generated_notice(output_path, ROOT / mode_doc.source_path),
                 "",
                 *identity_block,
-                render_mode_body(mode),
+                render_mode_body(mode_doc),
             ]
         ).rstrip()
         + "\n"
     )
 
 
-def render_simple_agent(mode: ModeDoc, output_path: Path, *, frontmatter_map: dict[str, list[tuple[str, Any]]]) -> str:
-    frontmatter = frontmatter_map[mode.name]
-    identity_block = ["You are operating as *atelier:code*.", ""] if mode.name == "code" else []
+def render_simple_agent(
+    role: DefaultRole,
+    mode_doc: ModeDoc,
+    output_path: Path,
+    projection: HostProjection,
+) -> str:
+    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
     return (
         "\n".join(
             [
-                render_frontmatter(frontmatter),
+                render_frontmatter(list(projection.frontmatter)),
                 "",
-                generated_notice(output_path, mode.source_path),
+                generated_notice(output_path, ROOT / mode_doc.source_path),
                 "",
                 *identity_block,
-                render_mode_body(mode),
+                render_mode_body(mode_doc),
             ]
         ).rstrip()
         + "\n"
@@ -388,30 +155,54 @@ def render_simple_agent(mode: ModeDoc, output_path: Path, *, frontmatter_map: di
 
 def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
     repo_root = ROOT if root is None else root
-    modes = load_modes()
+    registry = build_default_registry(repo_root)
+    mode_docs = load_mode_docs(repo_root)
     outputs: dict[Path, str] = {}
 
-    for mode in modes.values():
-        skill_path = repo_root / "integrations" / "skills" / mode.name / "SKILL.md"
-        skill_content = render_skill(mode, skill_path)
+    for role_id in registry.surfaced_role_ids("shared_skill"):
+        role = registry.roles[role_id]
+        mode_doc = mode_docs[role_id]
+
+        skill_path = repo_root / "integrations" / "skills" / role_id / "SKILL.md"
+        skill_content = render_skill(role, mode_doc, skill_path)
         outputs[skill_path] = skill_content
         for host_dir in HOST_SKILL_DIRS.values():
-            host_skill_path = host_dir / mode.name / "SKILL.md"
+            host_skill_path = host_dir / role_id / "SKILL.md"
             outputs[host_skill_path] = skill_content
 
-        stable_path = repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{mode.name}.md"
-        outputs[stable_path] = render_claude_agent(mode, stable_path, dev=False)
-        dev_path = repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{mode.name}.dev.md"
-        outputs[dev_path] = render_claude_agent(mode, dev_path, dev=True)
+        stable_projection = registry.projection(role_id, "claude_agent")
+        stable_path = (
+            repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{stable_projection.output_name}.md"
+        )
+        outputs[stable_path] = render_claude_agent(role, mode_doc, stable_path, stable_projection)
 
-        antigravity_name = "atelier-code.md" if mode.name == "code" else f"atelier-{mode.name}.md"
-        antigravity_path = repo_root / "integrations" / "antigravity" / "plugin" / "agents" / antigravity_name
-        outputs[antigravity_path] = render_simple_agent(mode, antigravity_path, frontmatter_map=ANTIGRAVITY_FRONTMATTER)
+        dev_projection = registry.projection(role_id, "claude_agent_dev")
+        dev_path = repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{dev_projection.output_name}.md"
+        outputs[dev_path] = render_claude_agent(role, mode_doc, dev_path, dev_projection)
 
-        opencode_name = "atelier.md" if mode.name == "code" else f"{mode.name}.md"
-        opencode_path = repo_root / "integrations" / "opencode" / "agents" / opencode_name
-        outputs[opencode_path] = render_simple_agent(mode, opencode_path, frontmatter_map=OPENCODE_FRONTMATTER)
+        antigravity_projection = registry.projection(role_id, "antigravity_agent")
+        antigravity_path = (
+            repo_root
+            / "integrations"
+            / "antigravity"
+            / "plugin"
+            / "agents"
+            / f"{antigravity_projection.output_name}.md"
+        )
+        outputs[antigravity_path] = render_simple_agent(
+            role,
+            mode_doc,
+            antigravity_path,
+            antigravity_projection,
+        )
 
+        opencode_projection = registry.projection(role_id, "opencode_agent")
+        opencode_path = repo_root / "integrations" / "opencode" / "agents" / f"{opencode_projection.output_name}.md"
+        outputs[opencode_path] = render_simple_agent(role, mode_doc, opencode_path, opencode_projection)
+
+    for output_path, content in outputs.items():
+        if "{{" in content:
+            raise ValueError(f"unexpanded template token in generated surface: {output_path}")
     return outputs
 
 
