@@ -897,7 +897,10 @@ def _codex_native_tool_replacement(payload: dict[str, Any]) -> tuple[str, str] |
     if lowered == "read":
         return ("mcp__atelier__read", "Use Atelier read for file reads and ranges.")
     if lowered in {"edit", "write", "multiedit"}:
-        return ("mcp__atelier__edit", "Use Atelier edit for deterministic grouped writes and rollback.")
+        return (
+            "mcp__atelier__edit",
+            "Use Atelier edit for deterministic grouped writes and rollback.",
+        )
     if lowered in {"grep", "glob"}:
         return ("mcp__atelier__grep", "Use Atelier grep/search for text and path discovery.")
     if lowered in {"bash", "shell", "exec_command", "run_command"}:
@@ -906,10 +909,16 @@ def _codex_native_tool_replacement(payload: dict[str, Any]) -> tuple[str, str] |
             or " rg " in f" {normalized} "
             or " grep " in f" {normalized} "
         ):
-            return ("mcp__atelier__grep", "Use Atelier grep/search instead of shell rg/grep/find loops.")
+            return (
+                "mcp__atelier__grep",
+                "Use Atelier grep/search instead of shell rg/grep/find loops.",
+            )
         if normalized.startswith(("cat ", "sed ", "head ", "tail ")):
             return ("mcp__atelier__read", "Use Atelier read instead of shell file-print commands.")
-        return ("mcp__atelier__shell", "Use Atelier shell so command execution stays compact and supervised.")
+        return (
+            "mcp__atelier__shell",
+            "Use Atelier shell so command execution stays compact and supervised.",
+        )
     return None
 
 
@@ -1208,6 +1217,81 @@ def _append_session_event(root: str | Path, session_id: str, payload: dict[str, 
         handle.write(json.dumps(record, sort_keys=True) + "\n")
 
 
+def _normalize_workflow_state_payload(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    workflow_step = str(raw.get("workflow_step") or raw.get("current_step") or "").strip()
+    session_phase = str(raw.get("session_phase") or "").strip()
+    result: dict[str, Any] = {}
+    if workflow_step:
+        result["workflow_step"] = workflow_step
+    if session_phase:
+        result["session_phase"] = session_phase
+    return result
+
+
+def _normalize_plan_review_payload(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    review_decision = str(raw.get("review_decision") or raw.get("decision") or "").strip()
+    plan_id = str(raw.get("plan_id") or "").strip()
+    workflow_step = str(raw.get("workflow_step") or "").strip()
+    result: dict[str, Any] = {}
+    if review_decision:
+        result["review_decision"] = review_decision
+    if plan_id:
+        result["plan_id"] = plan_id
+    if workflow_step:
+        result["workflow_step"] = workflow_step
+    return result
+
+
+def _normalize_task_progress_payload(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    task_id = str(raw.get("task_id") or "").strip()
+    workflow_step = str(raw.get("workflow_step") or "").strip()
+    result: dict[str, Any] = {}
+    if task_id:
+        result["task_id"] = task_id
+    if workflow_step:
+        result["workflow_step"] = workflow_step
+    for key in ("completed_tasks", "remaining_tasks"):
+        value = raw.get(key)
+        if isinstance(value, bool):
+            continue
+        try:
+            result[key] = max(0, int(value or 0))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _workflow_progress_output(stats: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    has_update = any(isinstance(payload.get(key), dict) for key in ("workflow_state", "plan_review", "task_progress"))
+    if not has_update:
+        return {"no_output": True}
+    raw_workflow_state = stats.get("workflow_state")
+    workflow_state: dict[str, Any] = raw_workflow_state if isinstance(raw_workflow_state, dict) else {}
+    raw_plan_review = stats.get("plan_review")
+    plan_review: dict[str, Any] = raw_plan_review if isinstance(raw_plan_review, dict) else {}
+    raw_task_progress = stats.get("task_progress")
+    task_progress: dict[str, Any] = raw_task_progress if isinstance(raw_task_progress, dict) else {}
+    parts: list[str] = []
+    if workflow_state.get("workflow_step"):
+        parts.append(f"workflow={workflow_state['workflow_step']}")
+    if plan_review.get("review_decision"):
+        parts.append(f"review={plan_review['review_decision']}")
+    if task_progress.get("task_id"):
+        completed = int(task_progress.get("completed_tasks", 0) or 0)
+        remaining = int(task_progress.get("remaining_tasks", 0) or 0)
+        parts.append(f"task={task_progress['task_id']} ({completed} done/{remaining} remaining)")
+    if not parts:
+        return {"no_output": True}
+    text = "Atelier workflow progress: " + " | ".join(parts)
+    return {"message": text, "additionalContext": text}
+
+
 def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     session_id = str(payload.get("session_id") or "default")
     path = session_stats_path(root, session_id)
@@ -1229,6 +1313,15 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     event = str(payload.get("hook_event_name") or payload.get("event") or "")
     if event:
         state["event_counts"][event] = int(state["event_counts"].get(event, 0) or 0) + 1
+    workflow_state = _normalize_workflow_state_payload(payload.get("workflow_state"))
+    if workflow_state:
+        state["workflow_state"] = workflow_state
+    plan_review = _normalize_plan_review_payload(payload.get("plan_review"))
+    if plan_review:
+        state["plan_review"] = plan_review
+    task_progress = _normalize_task_progress_payload(payload.get("task_progress"))
+    if task_progress:
+        state["task_progress"] = task_progress
     _merge_usage(state, _extract_usage(payload))
     # context_window.current_usage is a cumulative snapshot of the entire session so far.
     # Overwrite state["usage"] with it each time — never accumulate it additively.
@@ -1571,6 +1664,7 @@ def build_session_progress_optimization_output(root: str | Path, payload: dict[s
 
     updated, loop_output = _maybe_emit_loop_notice(root, updated, now_ms=now_ms)
     outputs.append(loop_output)
+    outputs.append(_workflow_progress_output(updated, payload))
 
     if updated != stats:
         path.write_text(json.dumps(updated, indent=2), encoding="utf-8")

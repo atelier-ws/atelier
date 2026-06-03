@@ -1803,6 +1803,51 @@ def tool_record_trace(
             return "manual"
         return "manual"
 
+    def _normalize_workflow_trace_payload(raw_event_type: str, raw_payload: dict[str, Any]) -> dict[str, Any] | None:
+        normalized_type = redact(raw_event_type).strip().lower()
+        payload = _redact_json_strings(raw_payload)
+        if not isinstance(payload, dict):
+            return None
+        if normalized_type == "workflow_state":
+            workflow_step = str(payload.get("workflow_step") or payload.get("current_step") or "").strip()
+            session_phase = str(payload.get("session_phase") or "").strip()
+            result: dict[str, Any] = {}
+            if workflow_step:
+                result["workflow_step"] = workflow_step
+            if session_phase:
+                result["session_phase"] = session_phase
+            return result or None
+        if normalized_type == "plan_review":
+            review_decision = str(payload.get("review_decision") or payload.get("decision") or "").strip()
+            plan_id = str(payload.get("plan_id") or "").strip()
+            workflow_step = str(payload.get("workflow_step") or "").strip()
+            result = {}
+            if review_decision:
+                result["review_decision"] = review_decision
+            if plan_id:
+                result["plan_id"] = plan_id
+            if workflow_step:
+                result["workflow_step"] = workflow_step
+            return result or None
+        if normalized_type == "task_progress":
+            task_id = str(payload.get("task_id") or "").strip()
+            workflow_step = str(payload.get("workflow_step") or "").strip()
+            result = {}
+            if task_id:
+                result["task_id"] = task_id
+            if workflow_step:
+                result["workflow_step"] = workflow_step
+            for key in ("completed_tasks", "remaining_tasks"):
+                value = payload.get(key)
+                if isinstance(value, bool):
+                    continue
+                try:
+                    result[key] = max(0, int(value or 0))
+                except (TypeError, ValueError):
+                    continue
+            return result or None
+        return None
+
     # Derive host label from agent string and environment
     def _derive_host(a: str) -> str:
         al = a.lower()
@@ -1908,7 +1953,11 @@ def tool_record_trace(
         payload["raw_artifact_ids"] = raw_artifacts
 
     if event_type:
-        led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
+        normalized_event_payload = _normalize_workflow_trace_payload(event_type, event_payload)
+        if normalized_event_payload is not None:
+            led.record_workflow_event(event_type, normalized_event_payload)
+        else:
+            led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
 
     if "id" not in payload:
         payload["id"] = Trace.make_id(task, agent)
