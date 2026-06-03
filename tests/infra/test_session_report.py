@@ -336,6 +336,27 @@ def test_build_report_compact_savings(tmp_path: Path) -> None:
     assert abs(report.total_atelier_savings_usd - 0.30) < 1e-6
 
 
+def test_build_report_includes_workflow_progress_summary(tmp_path: Path) -> None:
+    snap = _make_snapshot(
+        events=[],
+    )
+    snap["workflow_state"] = {"workflow_step": "review", "session_phase": "review"}
+    snap["plan_review"] = {"review_decision": "revise", "plan_id": "02-01"}
+    snap["task_progress"] = {"task_id": "02-02/task-1", "completed_tasks": 2, "remaining_tasks": 1}
+
+    report = build_report(snap, tmp_path)
+
+    assert report.workflow_step == "review"
+    assert report.review_decision == "revise"
+    assert report.task_progress_task_id == "02-02/task-1"
+    assert report.completed_tasks == 2
+    assert report.remaining_tasks == 1
+    rendered = render_text(report)
+    assert "Workflow step:" in rendered
+    assert "Review decision:" in rendered
+    assert "02-02/task-1 (2 done/1 remaining)" in rendered
+
+
 def test_build_report_total_savings_combined(tmp_path: Path) -> None:
     jl = tmp_path / "live_savings_events.jsonl"
     jl.write_text(

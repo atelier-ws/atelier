@@ -635,7 +635,8 @@ def test_context_pull_reuses_cached_scoped_context(monkeypatch: pytest.MonkeyPat
             file_glob: str | None = None,
             **_: object,
         ) -> list[_FakePullRecord]:
-            _ = query, limit, mode, snippet
+            ignored = (query, limit, mode, snippet)
+            assert ignored
             records = [_FakePullRecord("src/auth.py", "auth_flow")]
             if file_glob is None:
                 return records
@@ -688,6 +689,103 @@ def test_record_trace_accepts_monitor_event_payload(store_root: Path) -> None:
     )
     assert "trace_id" in payload
     assert payload["event_recorded"] is True
+
+
+def test_record_trace_persists_structured_workflow_progress(store_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.setattr(mcp_server, "_remote_client", None)
+    mcp_server._current_ledger = None
+    payload = _result(
+        _call(
+            "trace",
+            {
+                "agent": "copilot",
+                "domain": "coding",
+                "task": "Track plan progress",
+                "status": "partial",
+                "event_type": "plan_review",
+                "event_payload": {
+                    "workflow_step": "review",
+                    "review_decision": "revise",
+                    "plan_id": "02-01",
+                },
+            },
+        )
+    )
+    assert "trace_id" in payload
+    assert payload["event_recorded"] is True
+    assert mcp_server._current_ledger is not None
+    snapshot = mcp_server._current_ledger.snapshot()
+    assert snapshot["plan_review"] == {
+        "workflow_step": "review",
+        "review_decision": "revise",
+        "plan_id": "02-01",
+    }
+
+
+@pytest.mark.parametrize("review_decision", ["approve", "rerun"])
+def test_record_trace_preserves_plan_review_receipt_for_other_decisions(
+    store_root: Path, monkeypatch: pytest.MonkeyPatch, review_decision: str
+) -> None:
+    _ = store_root
+    monkeypatch.setattr(mcp_server, "_remote_client", None)
+    mcp_server._current_ledger = None
+    payload = _result(
+        _call(
+            "trace",
+            {
+                "agent": "copilot",
+                "domain": "coding",
+                "task": "Track plan review",
+                "status": "partial",
+                "event_type": "plan_review",
+                "event_payload": {
+                    "workflow_step": "review",
+                    "review_decision": review_decision,
+                    "plan_id": "02-01",
+                },
+            },
+        )
+    )
+
+    assert "trace_id" in payload
+    assert payload["event_recorded"] is True
+    assert mcp_server._current_ledger is not None
+    assert mcp_server._current_ledger.snapshot()["plan_review"]["review_decision"] == review_decision
+
+
+def test_record_trace_persists_task_progress_workflow_event(store_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.setattr(mcp_server, "_remote_client", None)
+    mcp_server._current_ledger = None
+    payload = _result(
+        _call(
+            "trace",
+            {
+                "agent": "copilot",
+                "domain": "coding",
+                "task": "Track task progress",
+                "status": "partial",
+                "event_type": "task_progress",
+                "event_payload": {
+                    "workflow_step": "execute",
+                    "task_id": "02-02/task-1",
+                    "completed_tasks": 2,
+                    "remaining_tasks": 1,
+                },
+            },
+        )
+    )
+
+    assert "trace_id" in payload
+    assert payload["event_recorded"] is True
+    assert mcp_server._current_ledger is not None
+    assert mcp_server._current_ledger.snapshot()["task_progress"] == {
+        "workflow_step": "execute",
+        "task_id": "02-02/task-1",
+        "completed_tasks": 2,
+        "remaining_tasks": 1,
+    }
 
 
 def test_run_rubric_gate_pass(store_root: Path) -> None:
