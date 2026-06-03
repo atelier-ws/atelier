@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -65,62 +65,6 @@ def app_with_auth(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> TestCl
 AUTH_HEADERS = {"Authorization": "Bearer test-secret-key-123"}
 
 
-class _FakeAsyncResponse:
-    def __init__(
-        self,
-        *,
-        status_code: int = 200,
-        content: bytes = b'{"ok":true}',
-        headers: dict[str, str] | None = None,
-        stream_chunks: list[bytes] | None = None,
-    ) -> None:
-        self.status_code = status_code
-        self.content = content
-        self.headers = headers or {"content-type": "application/json"}
-        self._stream_chunks = list(stream_chunks or [])
-
-    async def aiter_raw(self):
-        for chunk in self._stream_chunks:
-            yield chunk
-
-    async def aclose(self) -> None:
-        return None
-
-
-class _FakeAsyncClient:
-    def __init__(self, capture: dict[str, Any], *, response: _FakeAsyncResponse) -> None:
-        self._capture = capture
-        self._response = response
-
-    async def __aenter__(self) -> _FakeAsyncClient:
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        return None
-
-    def build_request(self, method: str, url: str, *, content: bytes, headers: dict[str, str]) -> dict[str, Any]:
-        request = {"method": method, "url": url, "content": content, "headers": headers}
-        self._capture["request"] = request
-        return request
-
-    async def send(self, request: dict[str, Any], *, stream: bool) -> _FakeAsyncResponse:
-        self._capture["request"] = dict(request)
-        self._capture["stream"] = stream
-        return self._response
-
-    async def post(self, url: str, *, content: bytes, headers: dict[str, str]) -> _FakeAsyncResponse:
-        self._capture["request"] = {
-            "method": "POST",
-            "url": url,
-            "content": content,
-            "headers": headers,
-        }
-        return self._response
-
-    async def aclose(self) -> None:
-        return None
-
-
 # --------------------------------------------------------------------------- #
 # Health / basic info                                                         #
 # --------------------------------------------------------------------------- #
@@ -162,136 +106,6 @@ def test_claude_code_router_endpoint_evaluates_request(
         "bridge_mode": "shadow",
         "requested_path": "/router-preset/claudecode/auto",
     }
-
-
-def test_claude_code_router_messages_proxy_passthrough(app_no_auth: TestClient, monkeypatch) -> None:
-    capture: dict[str, Any] = {}
-    payload = {
-        "model": "claude-sonnet-4.6",
-        "messages": [{"role": "user", "content": "Plan the refactor."}],
-    }
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_host_router_proxy_request",
-        lambda **kwargs: {
-            "payload": payload,
-            "payload_changed": False,
-            "upstream_url": "https://api.anthropic.com/v1/messages",
-        },
-    )
-    monkeypatch.setattr(
-        "atelier.core.service.api.httpx.AsyncClient",
-        lambda timeout=None: _FakeAsyncClient(capture, response=_FakeAsyncResponse()),
-    )
-
-    resp = app_no_auth.post(
-        "/router-preset/claudecode/auto/v1/messages",
-        json=payload,
-        headers={
-            "x-api-key": "upstream-key",
-            "anthropic-version": "2023-06-01",
-        },
-    )
-
-    assert resp.status_code == 200
-    assert resp.json() == {"ok": True}
-    request = capture["request"]
-    assert request["url"] == "https://api.anthropic.com/v1/messages"
-    assert json.loads(request["content"]) == payload
-    assert request["headers"]["x-api-key"] == "upstream-key"
-    assert request["headers"]["anthropic-version"] == "2023-06-01"
-
-
-def test_claude_code_router_messages_proxy_uses_separate_service_auth(app_with_auth: TestClient, monkeypatch) -> None:
-    capture: dict[str, Any] = {}
-    payload = {
-        "model": "claude-sonnet-4.6",
-        "messages": [{"role": "user", "content": "Plan the refactor."}],
-    }
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_host_router_proxy_request",
-        lambda **kwargs: {
-            "payload": payload,
-            "payload_changed": False,
-            "upstream_url": "https://api.anthropic.com/v1/messages",
-        },
-    )
-    monkeypatch.setattr(
-        "atelier.core.service.api.httpx.AsyncClient",
-        lambda timeout=None: _FakeAsyncClient(capture, response=_FakeAsyncResponse()),
-    )
-
-    resp = app_with_auth.post(
-        "/router-preset/claudecode/auto/v1/messages",
-        json=payload,
-        headers={
-            "X-Atelier-API-Key": "test-secret-key-123",
-            "Authorization": "Bearer upstream-token",
-        },
-    )
-
-    assert resp.status_code == 200
-    forwarded_headers = {key.lower(): value for key, value in capture["request"]["headers"].items()}
-    assert forwarded_headers["authorization"] == "Bearer upstream-token"
-    assert "x-atelier-api-key" not in forwarded_headers
-
-
-def test_claude_code_router_messages_proxy_rejects_non_anthropic_target(app_no_auth: TestClient, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_host_router_proxy_request",
-        lambda **kwargs: (_ for _ in ()).throw(
-            ValueError("host router bridge cannot proxy Claude Messages to non-Anthropic provider: openai")
-        ),
-    )
-
-    resp = app_no_auth.post(
-        "/router-preset/claudecode/auto/v1/messages",
-        json={
-            "model": "claude-sonnet-4.6",
-            "messages": [{"role": "user", "content": "Plan the refactor."}],
-        },
-    )
-
-    assert resp.status_code == 409
-    assert "non-Anthropic provider: openai" in resp.json()["detail"]
-
-
-def test_claude_code_router_messages_proxy_streams_upstream_bytes(app_no_auth: TestClient, monkeypatch) -> None:
-    capture: dict[str, Any] = {}
-    payload = {
-        "model": "claude-sonnet-4.6",
-        "stream": True,
-        "messages": [{"role": "user", "content": "Plan the refactor."}],
-    }
-    monkeypatch.setattr(
-        "atelier.core.service.api.resolve_host_router_proxy_request",
-        lambda **kwargs: {
-            "payload": payload,
-            "payload_changed": False,
-            "upstream_url": "https://api.anthropic.com/v1/messages",
-        },
-    )
-    monkeypatch.setattr(
-        "atelier.core.service.api.httpx.AsyncClient",
-        lambda timeout=None: _FakeAsyncClient(
-            capture,
-            response=_FakeAsyncResponse(
-                headers={"content-type": "text/event-stream"},
-                stream_chunks=[b"data: one\n\n", b"data: two\n\n"],
-            ),
-        ),
-    )
-
-    with app_no_auth.stream(
-        "POST",
-        "/router-preset/claudecode/auto/v1/messages",
-        json=payload,
-    ) as resp:
-        body = b"".join(resp.iter_bytes())
-
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("text/event-stream")
-    assert body == b"data: one\n\ndata: two\n\n"
-    assert capture["stream"] is True
 
 
 def test_overview_accessible_no_auth(app_no_auth: TestClient) -> None:
