@@ -56,6 +56,9 @@ class RunLedger:
         self.active_rubrics: list[str] = []
         self.current_blockers: list[str] = []
         self.next_required_validation: str | None = None
+        self.workflow_state: dict[str, Any] = {}
+        self.plan_review: dict[str, Any] = {}
+        self.task_progress: dict[str, Any] = {}
         self.agent_settings: dict[str, Any] = {}
         self.skills: list[str] = []
         self.token_count: int = 0
@@ -97,6 +100,62 @@ class RunLedger:
     def set_next_validation(self, validation: str | None) -> None:
         self.next_required_validation = validation
         self.updated_at = _utcnow()
+
+    def _normalize_workflow_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if event_type == "workflow_state":
+            normalized: dict[str, Any] = {}
+            workflow_step = str(payload.get("workflow_step") or payload.get("current_step") or "").strip()
+            session_phase = str(payload.get("session_phase") or "").strip()
+            if workflow_step:
+                normalized["workflow_step"] = workflow_step
+            if session_phase:
+                normalized["session_phase"] = session_phase
+            return normalized
+        if event_type == "plan_review":
+            normalized = {}
+            review_decision = str(payload.get("review_decision") or payload.get("decision") or "").strip()
+            plan_id = str(payload.get("plan_id") or "").strip()
+            workflow_step = str(payload.get("workflow_step") or "").strip()
+            if review_decision:
+                normalized["review_decision"] = review_decision
+            if plan_id:
+                normalized["plan_id"] = plan_id
+            if workflow_step:
+                normalized["workflow_step"] = workflow_step
+            return normalized
+        if event_type == "task_progress":
+            normalized = {}
+            task_id = str(payload.get("task_id") or "").strip()
+            workflow_step = str(payload.get("workflow_step") or "").strip()
+            if task_id:
+                normalized["task_id"] = task_id
+            if workflow_step:
+                normalized["workflow_step"] = workflow_step
+            for key in ("completed_tasks", "remaining_tasks"):
+                value = payload.get(key)
+                if isinstance(value, bool):
+                    continue
+                try:
+                    normalized[key] = max(0, int(value or 0))
+                except (TypeError, ValueError):
+                    continue
+            return normalized
+        return {}
+
+    def record_workflow_event(self, event_type: str, payload: dict[str, Any]) -> LedgerEvent:
+        normalized = self._normalize_workflow_event(event_type, payload)
+        if event_type == "workflow_state":
+            self.workflow_state = normalized
+            summary = f"workflow:{normalized.get('workflow_step') or 'recorded'}"
+        elif event_type == "plan_review":
+            self.plan_review = normalized
+            summary = f"plan_review:{normalized.get('review_decision') or 'recorded'}"
+        elif event_type == "task_progress":
+            self.task_progress = normalized
+            summary = f"task_progress:{normalized.get('task_id') or 'recorded'}"
+        else:
+            summary = f"event:{event_type}"
+        return self.record("note", summary, normalized)
 
     # ----- recording ------------------------------------------------------ #
 
@@ -419,6 +478,9 @@ class RunLedger:
             "active_rubrics": list(self.active_rubrics),
             "current_blockers": list(self.current_blockers),
             "next_required_validation": self.next_required_validation,
+            "workflow_state": dict(self.workflow_state),
+            "plan_review": dict(self.plan_review),
+            "task_progress": dict(self.task_progress),
             "agent_settings": dict(self.agent_settings),
             "skills": list(self.skills),
             "token_count": self.token_count,
@@ -471,6 +533,9 @@ class RunLedger:
         led.active_rubrics = list(snap.get("active_rubrics") or [])
         led.current_blockers = list(snap.get("current_blockers") or [])
         led.next_required_validation = snap.get("next_required_validation")
+        led.workflow_state = dict(snap.get("workflow_state") or {})
+        led.plan_review = dict(snap.get("plan_review") or {})
+        led.task_progress = dict(snap.get("task_progress") or {})
         led.agent_settings = dict(snap.get("agent_settings") or {})
         led.skills = list(snap.get("skills") or [])
         led.token_count = int(snap.get("token_count") or 0)
