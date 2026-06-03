@@ -37,6 +37,10 @@ dependencies = [
     "fastapi>=0.136.1",
     "uvicorn[standard]>=0.46.0",
     "urllib3>=2.7.0",
+    "beautifulsoup4>=4.12",
+    "markdownify>=1.2.2",
+    "trafilatura>=2.0.0",
+    "lxml>=5.0",
     "pydantic-settings>=2.14.0",
     "python-multipart>=0.0.27",
     "sqlalchemy>=2.0.49",
@@ -84,7 +88,7 @@ dev = [
 
 [project.scripts]
 atelier = "atelier.gateway.cli:main"
-atelier-mcp = "atelier.gateway.adapters.mcp_server:main"
+atelier-mcp = "atelier.gateway.adapters.web_fetch_mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -100,8 +104,6 @@ packages = ["src/atelier", "src/benchmarks"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# Downloaded third-party fixtures must not be linted (force-exclude applies
-# even when ruff is invoked with explicit file paths, e.g. from pre-commit).
 exclude = ["benchmarks/mcp_tools/fixtures/downloaded"]
 force-exclude = true
 
@@ -109,12 +111,6 @@ force-exclude = true
 select = ["E", "F", "I", "B", "BLE", "UP", "RUF"]
 ignore = ["E501"]
 
-# M2/M3 BLE001/T201 burn-down worklist (Phase 22 prevention gates).
-# These files carry PRE-EXISTING blind-except / print debt parked here so the rules
-# stay globally enabled (new debt in clean files still fails lint). Re-derive with:
-#   uv run ruff check src --select BLE001 --output-format=concise | grep -oE "^src/[^:]+" | sort -u
-#   uv run ruff check src --select T20    --output-format=concise | grep -oE "^src/[^:]+" | sort -u
-# Burn these down in Phases 23/24 by fixing the code and removing the entry.
 [tool.ruff.lint.per-file-ignores]
 
 [tool.black]
@@ -127,7 +123,7 @@ addopts = "-ra --strict-markers -m 'not slow'"
 pythonpath = ["src", "."]
 markers = [
     "slow: marks tests as slow",
-    "ab: real A/B benchmark (atelier tool vs native); writes to ~/.atelier/savings_calibration.jsonl; run with `make bench-ab`",
+    "ab: real A/B benchmark for MCP tool savings",
     ]
 
 [tool.mypy]
