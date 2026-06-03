@@ -180,12 +180,12 @@ run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.cl
 run "mkdir -p '$STAGING_DIR/agents'"
 if [[ "$INSTALL_PROFILE" == "dev" ]]; then
     info "Install profile: dev; staging full plugin with task loop"
-    for agent in code explore review repair research; do
+    for agent in code explore plan execute review research solve; do
         atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 else
     info "Install profile: stable; staging stable plugin without dev-only task loop"
-    for agent in code explore review repair research; do
+    for agent in code explore plan execute review research solve; do
         atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
     done
 fi
@@ -289,7 +289,7 @@ if [ -f "${PLUGIN_JSON}" ]; then
     fi
 fi
 
-for agent in code explore review repair research; do
+for agent in code explore plan execute review research solve; do
     AGENT_FILE="${SOURCE_PLUGIN_DIR}/agents/${agent}.md"
     if [ -f "${AGENT_FILE}" ]; then
         struct_pass "agent exists: agents/${agent}.md"
@@ -539,6 +539,6 @@ if [[ -n "${PROJECT_ENFORCE:-}" ]]; then
 fi
 
 info "Done. Start Claude Code in your workspace. Mode skills and agents are available."
-info "  Skills: /atelier:code, /atelier:explore, /atelier:review, /atelier:repair, /atelier:research"
-info "  Agents: atelier:code, atelier:explore, atelier:review, atelier:repair, atelier:research"
+info "  Skills: /atelier:code, /atelier:explore, /atelier:plan, /atelier:execute, /atelier:review, /atelier:research, /atelier:solve"
+info "  Agents: atelier:code, atelier:explore, atelier:plan, atelier:execute, atelier:review, atelier:research, atelier:solve"
 info "  Project enforcement: bash scripts/install_claude.sh --project [DIR]"

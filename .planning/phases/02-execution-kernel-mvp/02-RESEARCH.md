@@ -1,7 +1,7 @@
 # Phase 2: Execution Kernel MVP - Research
 
 **Researched:** 2026-06-03  
-**Domain:** execution workflow state, session continuity, tracing/reporting reuse, benchmark-only grounded edit enforcement  
+**Domain:** owned execution workflow state, session continuity, tracing/reporting reuse, benchmark-only grounded edit enforcement, Eval solver parity  
 **Confidence:** MEDIUM
 
 ## User Constraints (from CONTEXT.md)
@@ -35,7 +35,27 @@ Atelier already has most of the substrate for Phase 2, but it is split across th
 
 The smallest brownfield implementation is to **extend the existing workflow state already owned by `core/capabilities/autopilot`**, persist additional task-local execution data in the same workspace `session_state.json`, mirror user-visible plan/progress/workflow events into `RunLedger`, and surface them through the existing trace/session-report/dashboard/statusline paths. [CITED: `src/atelier/core/capabilities/autopilot/workflow_config.py:76-174`] [CITED: `src/atelier/gateway/adapters/mcp_server.py:5273-5678`] [CITED: `src/atelier/core/capabilities/plugin_runtime.py:1536-1577`] [CITED: `src/atelier/infra/runtime/session_report.py:162-203`]
 
-**Primary recommendation:** Reuse `WorkflowState + session_state.json + RunLedger`; add benchmark-only edit gating at the MCP edit path and host pre-edit hook, keyed off existing benchmark mode/env rather than a new workflow engine. [CITED: `src/atelier/core/capabilities/autopilot/workflow_config.py:56-174`] [CITED: `integrations/claude/plugin/hooks/pre_tool_use.py:62-90`] [CITED: `src/atelier/bench/mode.py:24-61`] [ASSUMED]
+**Primary recommendation:** Reuse `WorkflowState + session_state.json + RunLedger` for state/reporting, but add a real Atelier-owned workflow runner before calling Phase 2 complete. The Eval audit showed that advisory workflow state alone misses the benchmark-relevant mechanisms: declarative workflow steps, persistent/forkable step context, safe tool scheduling, canonical default agents/prompts/settings, headless execution, solver command discipline, harness-feedback retry, default bootstrapping, and per-step telemetry. [CITED: `src/atelier/core/capabilities/autopilot/workflow_config.py:56-174`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:58`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:692`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/session.go:1692`] [CITED: `/home/pankaj/Projects/eval/internal/headless/headless.go:68`] [ASSUMED]
+
+## Eval Implementation Parity Audit
+
+The missing implementation layer is not more host nudging. Eval owns the execution runtime:
+
+- `WorkflowStepDef` supports `agent`, `tool`, and `bash` steps, `next_steps`, `fork_from`, `execute_if`, `json_output`, output files, timeout, streaming, and silent flags. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:58`]
+- `executeWorkflow` keeps `StepAgents` and `StepResults`, reuses existing step agents, forks an agent from prior step context, resolves prompt templates from prior step outputs, and records per-step cost/duration. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:1532`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:1894`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:2141`]
+- `AgentRunner` carries system prompt, message history, tools, model, turn/token limits, and cloning semantics. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:692`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:737`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:767`]
+- The session dispatcher classifies interactive/write tools, parallelizes safe independent work, and serializes writes or interactive decisions. [CITED: `/home/pankaj/Projects/eval/internal/daemon/session.go:1692`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/session.go:1824`]
+- Headless execution accepts prompt/workflow modes, auto-handles approvals/questions, and emits text/JSON/stream-JSON with usage and workflow steps. [CITED: `/home/pankaj/Projects/eval/internal/headless/headless.go:68`]
+- Default settings/agents/prompts are embedded and bootstrapped into `.eval` without overwriting existing local files. [CITED: `/home/pankaj/Projects/eval/internal/config/bootstrap.go:11`] [CITED: `/home/pankaj/Projects/eval/internal/config/paths.go:48`]
+
+Atelier currently has useful pieces but not the same ownership boundary:
+
+- `WorkflowState` and `run_autopilot_event` persist advisory workflow metadata in workspace state. [CITED: `src/atelier/core/capabilities/autopilot/workflow_config.py:56-207`] [CITED: `src/atelier/core/capabilities/autopilot/factory.py:191-238`]
+- Agent and skill surfaces already exist for multiple hosts, but they are generated distribution artifacts, not yet backed by a single runtime default-definition registry. [CITED: `scripts/render_mode_surfaces.py:1`] [CITED: `scripts/render_mode_surfaces.py:395`] [CITED: `integrations/claude/plugin/agents/code.md:1`] [CITED: `integrations/skills/code/SKILL.md:1`]
+- TerminalBench currently shells out to Claude Code with hooks/MCP enabled, so the host owns the main execution loop. [CITED: `benchmarks/terminalbench/agent_adapter.py:210`] [CITED: `benchmarks/terminalbench/agent_adapter.py:417`]
+- Routing enforcement is currently scoped to MCP tool calls and route recommendation state, not top-level owned workflow execution. [CITED: `src/atelier/gateway/adapters/mcp_server.py:5732-5907`]
+
+Therefore Phase 2 must include three additional implementation slices after the existing state/report/gate work: `02-04` for the owned workflow runner, `02-05` for canonical default definitions and generated surfaces, and `02-06` for the benchmark solver/headless retry runtime.
 
 ## Architectural Responsibility Map
 
@@ -56,6 +76,17 @@ The smallest brownfield implementation is to **extend the existing workflow stat
 | EXEC-03 | resume execution with current task state and prior outputs preserved | Store live task outputs in workspace `session_state.json`; optionally snapshot compact summaries into checkpoints/handover. [CITED: `src/atelier/core/capabilities/autopilot/factory.py:191-222`] [CITED: `src/atelier/infra/runtime/checkpoint.py:37-90`] [CITED: `src/atelier/infra/runtime/context_compressor.py:119-181`] |
 | EXEC-04 | inspect workflow events and task progress | Emit workflow/progress into `RunLedger` and existing stats/reporting surfaces. [CITED: `src/atelier/infra/runtime/run_ledger.py:103-189`] [CITED: `src/atelier/core/capabilities/plugin_runtime.py:1211-1577`] |
 | EXEC-05 | benchmark-path edits require prior grounding | Add a hard benchmark-only gate before edit execution; use recent read/search/code-intel evidence, not prompt text alone. [CITED: `src/atelier/gateway/adapters/mcp_server.py:5712-5855`] [CITED: `integrations/claude/plugin/hooks/pre_tool_use.py:62-90`] [CITED: `src/atelier/bench/mode.py:24-61`] |
+| EXEC-06 | owned workflow DAG execution | Add a core-owned workflow runner with step schema and execution loop, using existing state/reporting instead of relying only on host hooks. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:58`] [ASSUMED] |
+| EXEC-07 | persistent/forkable step context | Add per-step context storage and fork semantics modeled on Eval `StepAgents`/`Clone`, adapted to Atelier-owned subcalls. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:119`] [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:737`] [ASSUMED] |
+| EXEC-08 | safe tool scheduling | Classify tool calls so safe read/search/code-intel work can batch while writes, shell mutations, and interactive steps serialize. [CITED: `/home/pankaj/Projects/eval/internal/daemon/session.go:1692`] [ASSUMED] |
+| EXEC-09 | benchmark solver profile | Create a default solver profile with artifact-first behavior, command discipline, cleanup rules, and bounded turn/token policy. [CITED: `/home/pankaj/Projects/eval/internal/config/defaults/agents/solver.md`] [ASSUMED] |
+| EXEC-10 | harness-feedback retry | Persist failed attempt context and harness output so a retry can continue with evidence instead of starting blind. [CITED: `/home/pankaj/Projects/eval/internal/headless/headless.go:68`] [ASSUMED] |
+| EXEC-11 | headless workflow artifacts | Emit JSON/stream-JSON artifacts with steps, outputs, usage, cache, costs, duration, and raw artifact paths. [CITED: `/home/pankaj/Projects/eval/internal/headless/headless.go:68`] [CITED: `/home/pankaj/Projects/eval/internal/protocol/cost.go:59`] [ASSUMED] |
+| EXEC-12 | default runtime bootstrapping | Bootstrap workflow/solver/agent/skill/MCP defaults without overwriting project-local changes. [CITED: `/home/pankaj/Projects/eval/internal/config/bootstrap.go:11`] [ASSUMED] |
+| DFLT-01 | canonical default registry | Add one inspectable registry for roles, prompts, skills, workflows, MCP templates, tool policies, model/effort defaults, and benchmark profiles. [CITED: `scripts/render_mode_surfaces.py:1`] [ASSUMED] |
+| DFLT-02 | generated projections | Generate or verify Claude, Codex, OpenCode, Antigravity, shared skills, and owned runtime surfaces from canonical defaults. [CITED: `scripts/render_mode_surfaces.py:395`] [CITED: `tests/gateway/test_agent_cli_install_artifacts.py:552`] [ASSUMED] |
+| DFLT-03 | drift checks | Extend static tests/check mode so generated agent/skill/workflow/MCP surfaces cannot silently drift from canonical defaults. [CITED: `tests/gateway/test_agent_cli_install_artifacts.py:552`] [CITED: `tests/gateway/test_claude_plugin_static_surface.py:32`] [ASSUMED] |
+| DFLT-04 | layered non-overwriting defaults | Preserve Eval-like local layering and non-overwrite receipts for project/user defaults. [CITED: `/home/pankaj/Projects/eval/internal/config/paths.go:48`] [ASSUMED] |
 | INTL-03 | keep current tracing/reporting/host-enforcement surfaces | Reuse trace/session report/dashboard/session_stats/hooks instead of a parallel workflow log. [CITED: `src/atelier/gateway/adapters/mcp_server.py:1644-1962`] [CITED: `src/atelier/core/capabilities/plugin_runtime.py:1211-1577`] [CITED: `src/atelier/core/service/api.py:3792-4190`] |
 
 ## Standard Stack
@@ -82,6 +113,8 @@ The smallest brownfield implementation is to **extend the existing workflow stat
 | Instead of | Could Use | Tradeoff |
 |---|---|---|
 | Existing `WorkflowState` + workspace state | New workflow engine / DB | Violates locked direction and duplicates already-consumed state. [CITED: `.planning/phases/02-execution-kernel-mvp/02-CONTEXT.md:34-38`] |
+| Host-only hooks | Owned workflow runner | Hooks cannot guarantee persistent/forkable context, safe scheduling, or solver retry semantics because the host still owns the loop. [CITED: `benchmarks/terminalbench/agent_adapter.py:210`] [ASSUMED] |
+| Hand-edited generated agents/skills | Canonical defaults + renderer/check mode | Generated distribution artifacts already exist; changing them directly risks drift across hosts and runtime-owned solver definitions. [CITED: `scripts/render_mode_surfaces.py:45`] [CITED: `integrations/claude/plugin/agents/code.md:8`] |
 | Existing trace/report/session_stats/dashboard | New workflow event bus | Adds a parallel reporting system with overlapping consumers. [CITED: `src/atelier/gateway/adapters/mcp_server.py:1644-1962`] [CITED: `src/atelier/core/capabilities/plugin_runtime.py:1211-1577`] |
 | Benchmark-only gating | Global hard edit block | Conflicts with Phase 1’s advisory/fail-open boundary and bloats normal flows. [CITED: `.planning/STATE.md:67-71`] [CITED: `.planning/phases/01-grounded-terminal-loop-mvp/01-03-SUMMARY.md:61-78`] |
 
@@ -120,6 +153,8 @@ integrations/claude/plugin/hooks/pre_tool_use.py
 
 ### Anti-Patterns to Avoid
 - **Do not create a second workflow state store** beside `session_state.json` + `RunLedger`. [CITED: `src/atelier/core/capabilities/autopilot/factory.py:191-222`] [CITED: `src/atelier/infra/runtime/run_ledger.py:392-439`]
+- **Do not confuse workflow-state persistence with workflow execution**; state is necessary but not sufficient for Eval-style performance. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:1532`] [ASSUMED]
+- **Do not hand-edit generated host agent/skill artifacts as the source of truth**; update canonical definitions and regenerate/check projections. [CITED: `scripts/render_mode_surfaces.py:45`] [CITED: `integrations/claude/plugin/agents/code.md:8`]
 - **Do not rely on checkpoints to preserve task outputs**; current checkpoints store hashes plus compact text, not structured outputs. [CITED: `src/atelier/infra/runtime/checkpoint.py:43-63`] [CITED: `src/atelier/infra/runtime/run_ledger.py:255-289`]
 - **Do not treat `_READ_TOOLS` as grounding truth**; it omits ranked `search` and code-intel tools, so it is insufficient for EXEC-05 evidence. [CITED: `src/atelier/gateway/adapters/mcp_server.py:4990-5003`] [CITED: `src/atelier/gateway/adapters/mcp_server.py:4834-4890`] [CITED: `src/atelier/core/capabilities/grounded_loop/search_first.py:23-77`]
 
@@ -268,6 +303,9 @@ Security enforcement is enabled. [CITED: `.planning/config.json:48-51`]
 
 **Most important planning takeaways**
 - Extend the existing `WorkflowState`; do not invent a new engine. [CITED: `src/atelier/core/capabilities/autopilot/workflow_config.py:56-174`]
+- Add an owned workflow runner; advisory state plus hooks is not enough to match the Eval implementation path. [CITED: `/home/pankaj/Projects/eval/internal/daemon/workflow.go:58`] [CITED: `benchmarks/terminalbench/agent_adapter.py:210`]
+- Add canonical default definitions before solver runtime work; Eval's agents/prompts/settings are part of the performance mechanism, not documentation. [CITED: `/home/pankaj/Projects/eval/internal/config/defaults/agents/solver.md`] [CITED: `/home/pankaj/Projects/eval/internal/config/defaults/settings.json`]
+- Add a benchmark solver/headless retry runtime before treating benchmark proof as meaningful. [CITED: `/home/pankaj/Projects/eval/internal/headless/headless.go:68`]
 - Store live task outputs in workspace state, not checkpoints alone. [CITED: `src/atelier/infra/runtime/checkpoint.py:43-63`]
 - Reuse `RunLedger` + `trace` + `session_stats` + session report/dashboard for plan/progress/workflow visibility. [CITED: `src/atelier/infra/runtime/run_ledger.py:392-439`] [CITED: `src/atelier/core/capabilities/plugin_runtime.py:1211-1577`] [CITED: `src/atelier/core/service/api.py:3792-4190`]
 - Put the hard edit gate at the benchmark edit seam only, using explicit grounding evidence. [CITED: `src/atelier/gateway/adapters/mcp_server.py:5712-5855`] [CITED: `integrations/claude/plugin/hooks/pre_tool_use.py:62-90`] [ASSUMED]

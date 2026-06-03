@@ -199,7 +199,7 @@ else
 fi
 
 AGENTS_SRC_DIR="${ATELIER_REPO}/integrations/opencode/agents"
-for agent_name in explore repair research review; do
+for agent_name in explore plan execute review research solve; do
     agent_file="${AGENTS_SRC_DIR}/${agent_name}.md"
     if [ -f "$agent_file" ]; then
         atelier_write_managed_copy "$agent_file" "$STAGING_DIR/${agent_name}.md" "$DRY_RUN"
