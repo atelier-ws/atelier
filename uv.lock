@@ -334,6 +334,7 @@ name = "atelier"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "beautifulsoup4" },
     { name = "blake3" },
     { name = "click" },
     { name = "datasketch" },
@@ -341,6 +342,8 @@ dependencies = [
     { name = "fastapi" },
     { name = "gitpython" },
     { name = "litellm" },
+    { name = "lxml" },
+    { name = "markdownify" },
     { name = "mypy" },
     { name = "networkx" },
     { name = "opentelemetry-api" },
@@ -360,6 +363,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tenacity" },
     { name = "tiktoken" },
+    { name = "trafilatura" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
     { name = "types-pyyaml" },
@@ -437,6 +441,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.4" },
     { name = "blake3", specifier = ">=0.4.1" },
     { name = "click", specifier = ">=8.1" },
@@ -449,6 +454,8 @@ requires-dist = [
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
     { name = "litellm", specifier = ">=1.83.14" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
+    { name = "lxml", specifier = ">=5.0" },
+    { name = "markdownify", specifier = ">=1.2.2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", specifier = ">=1.20.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
@@ -483,6 +490,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.49" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
+    { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter", marker = "extra == 'repo-map'", specifier = ">=0.23" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1" },
