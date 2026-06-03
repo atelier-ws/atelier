@@ -283,6 +283,8 @@ class RunLedger:
         stable_prefix_hash: str | None = None,
         prefix_invalidated_reason: str = "",
         cache_write_tokens: int = 0,
+        modeled_cache_read_tokens: int = 0,
+        cache_evidence: str = "",
         phase: str | None = None,
     ) -> LedgerEvent:
         """Record a single LLM call with cost + lessons attribution.
@@ -317,6 +319,8 @@ class RunLedger:
                 "output_tokens": rec.output_tokens,
                 "cache_read_tokens": rec.cache_read_tokens,
                 "cache_write_tokens": cache_write_tokens,
+                "modeled_cache_read_tokens": modeled_cache_read_tokens,
+                "cache_evidence": cache_evidence,
                 "cost_usd": rec.cost_usd,
                 "lessons_used": list(rec.lessons_used),
                 "op_key": rec.op_key,
