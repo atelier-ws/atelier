@@ -20,6 +20,7 @@ import os
 from typing import Any
 
 from atelier.infra.internal_llm.exceptions import OpenAIClientUnavailable
+from atelier.infra.internal_llm.result import InternalLLMChatResult
 
 
 def _openai_module() -> Any:
@@ -39,6 +40,24 @@ def _resolve_client() -> Any:
 
 def _resolve_model() -> str:
     return os.environ.get("ATELIER_OPENAI_MODEL") or "gpt-4o-mini"
+
+
+def _token_value(source: Any, name: str) -> int:
+    value = source.get(name) if isinstance(source, dict) else getattr(source, name, 0)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return int(max(0.0, value))
+    return 0
+
+
+def _usage_detail(usage: Any, detail_name: str, token_name: str) -> int:
+    detail = usage.get(detail_name) if isinstance(usage, dict) else getattr(usage, detail_name, None)
+    if detail is None:
+        return 0
+    return _token_value(detail, token_name)
 
 
 def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) -> str:
@@ -61,13 +80,13 @@ def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) ->
     return str(response.choices[0].message.content or "")
 
 
-def chat(
-    messages: list[dict[str, str]],
+def chat_with_result(
+    messages: list[dict[str, Any]],
     *,
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
-) -> str | dict[str, Any]:
-    """Call an OpenAI-compatible chat endpoint and optionally parse a JSON response."""
+) -> InternalLLMChatResult:
+    """Call an OpenAI-compatible chat endpoint and return content plus usage metadata."""
     client = _resolve_client()
     chosen_model = model or _resolve_model()
     try:
@@ -78,13 +97,38 @@ def chat(
     except Exception as exc:
         raise OpenAIClientUnavailable(f"OpenAI-compatible API unavailable: {exc}") from exc
     content = str(response.choices[0].message.content or "")
+    parsed_json: dict[str, Any] | None = None
+    if json_schema is not None:
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise OpenAIClientUnavailable(f"API returned invalid JSON: {exc}") from exc
+        parsed_json = parsed if isinstance(parsed, dict) else {"value": parsed}
+    usage = getattr(response, "usage", None)
+    return InternalLLMChatResult(
+        content=content,
+        parsed_json=parsed_json,
+        model=chosen_model,
+        request_id=str(getattr(response, "id", "") or ""),
+        input_tokens=_token_value(usage, "prompt_tokens"),
+        output_tokens=_token_value(usage, "completion_tokens"),
+        cache_read_input_tokens=_usage_detail(usage, "prompt_tokens_details", "cached_tokens"),
+        cache_write_input_tokens=_token_value(usage, "cache_creation_input_tokens")
+        or _usage_detail(usage, "prompt_tokens_details", "cache_creation_tokens"),
+    )
+
+
+def chat(
+    messages: list[dict[str, Any]],
+    *,
+    model: str | None = None,
+    json_schema: dict[str, Any] | None = None,
+) -> str | dict[str, Any]:
+    """Call an OpenAI-compatible chat endpoint and optionally parse a JSON response."""
+    result = chat_with_result(messages, model=model, json_schema=json_schema)
     if json_schema is None:
-        return content
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise OpenAIClientUnavailable(f"API returned invalid JSON: {exc}") from exc
-    return parsed if isinstance(parsed, dict) else {"value": parsed}
+        return result.content
+    return dict(result.parsed_json or {})
 
 
-__all__ = ["OpenAIClientUnavailable", "chat", "summarize"]
+__all__ = ["OpenAIClientUnavailable", "chat", "chat_with_result", "summarize"]

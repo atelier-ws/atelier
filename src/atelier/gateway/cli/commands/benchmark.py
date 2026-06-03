@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import time
@@ -16,6 +17,24 @@ from shutil import rmtree, which
 import click
 import yaml
 
+from atelier.core.capabilities.benchmark_evidence import (
+    build_terminalbench_evidence,
+    build_vix_evidence,
+    git_state,
+    write_benchmark_evidence,
+)
+from atelier.core.capabilities.benchmark_gate import (
+    evaluate_terminalbench_gate,
+    evaluate_vix_gate,
+    load_benchmark_gate,
+    require_benchmark_gate_pass,
+    write_benchmark_gate,
+)
+from atelier.core.capabilities.benchmark_manifest import (
+    build_terminalbench_manifest,
+    build_vix_manifest,
+    write_benchmark_manifest,
+)
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     resolve_claude_provider_preset,
@@ -166,6 +185,37 @@ def benchmark_providers_cmd(
     click.echo(f"Results: {run_dir}")
 
 
+@benchmark_group.command("gate")
+@click.option(
+    "--run-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="Benchmark run directory containing benchmark-gate.json.",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the loaded benchmark gate as JSON.")
+@click.option(
+    "--require-pass/--allow-failed-gate",
+    default=False,
+    show_default=True,
+    help="Exit non-zero when the loaded benchmark gate did not pass.",
+)
+def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None:
+    """Load an existing benchmark gate artifact and optionally fail on a failed gate."""
+    gate = load_benchmark_gate(run_dir.resolve())
+    if as_json:
+        click.echo(json.dumps(gate))
+    else:
+        click.echo(f"suite: {gate.get('suite', '')}")
+        click.echo(f"passed: {bool(gate.get('passed'))}")
+        for reason in gate.get("reasons", []) or []:
+            click.echo(f"- {reason}")
+    if require_pass:
+        try:
+            require_benchmark_gate_pass(run_dir.resolve())
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
 @benchmark_group.command("terminalbench")
 @click.option("--task", default="all", show_default=True, help="TerminalBench task id or 'all'.")
 @click.option("--mode", default="all", show_default=True, type=click.Choice(["all", "on", "off"]))
@@ -178,6 +228,12 @@ def benchmark_providers_cmd(
 )
 @click.option("--rep", type=int, default=1, show_default=True, help="Repetitions per task/arm.")
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+@click.option(
+    "--require-pass/--allow-failed-gate",
+    default=False,
+    show_default=True,
+    help="Exit non-zero after writing artifacts when the benchmark gate does not pass.",
+)
 def benchmark_terminalbench_cmd(
     task: str,
     mode: str,
@@ -185,6 +241,7 @@ def benchmark_terminalbench_cmd(
     provider: str,
     rep: int,
     out: Path,
+    require_pass: bool,
 ) -> None:
     """Run TerminalBench tasks and write transcripts plus summary."""
     repo_root = Path.cwd().resolve()
@@ -197,6 +254,19 @@ def benchmark_terminalbench_cmd(
         raise click.ClickException(f"Unknown TerminalBench task(s): {', '.join(unknown)}")
     modes = ["on", "off"] if mode == "all" else [mode]
     total_trials = len(task_ids) * len(modes) * rep
+    manifest_path = write_benchmark_manifest(
+        run_dir,
+        build_terminalbench_manifest(
+            task_ids=task_ids,
+            modes=modes,
+            rep=rep,
+            model=model,
+            provider=provider,
+            dataset_meta=dataset_meta,
+            tasks_path=tasks_path,
+        ),
+    )
+    repo_state = git_state(repo_root)
     progress = ProgressReporter("terminalbench", total=total_trials + 1)
     progress.start(
         "starting benchmark",
@@ -245,6 +315,20 @@ def benchmark_terminalbench_cmd(
         label="TerminalBench summary",
     )
     progress.step("summary complete", current="summary.json")
+    write_benchmark_evidence(
+        run_dir,
+        build_terminalbench_evidence(
+            run_dir=run_dir,
+            manifest_path=manifest_path,
+            repo_state=repo_state,
+        ),
+    )
+    write_benchmark_gate(run_dir, evaluate_terminalbench_gate(run_dir))
+    if require_pass:
+        try:
+            require_benchmark_gate_pass(run_dir)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
 
@@ -526,6 +610,12 @@ def benchmark_swe_cmd(
 @click.option("--vix-eval-dir", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option(
+    "--require-pass/--allow-failed-gate",
+    default=False,
+    show_default=True,
+    help="Exit non-zero after writing artifacts when the benchmark gate does not pass.",
+)
+@click.option(
     "--provider",
     default=None,
     metavar="PROVIDER",
@@ -571,6 +661,7 @@ def benchmark_vix_cmd(
     bridge_wait: float,
     vix_eval_dir: Path | None,
     out: Path | None,
+    require_pass: bool,
     provider: str | None,
 ) -> None:
     """Run the VIX head-to-head benchmark and write a report."""
@@ -644,6 +735,29 @@ def benchmark_vix_cmd(
         agent_env_args.extend(["--agent-env", item])
     for item in agent_env_from_host:
         agent_env_args.extend(["--agent-env-from-host", item])
+    baseline_arm = "baseline" if "baseline" in arms else arms[0]
+    candidate_arm = next((arm for arm in arms if arm != baseline_arm), baseline_arm)
+    task_catalog = _load_vix_catalog(repo_root)
+    task_ids = [task["id"] for task in task_catalog] if tasks == ("all",) else list(tasks)
+    task_payload = [task for task in task_catalog if task["id"] in task_ids]
+    manifest_path = write_benchmark_manifest(
+        run_dir,
+        build_vix_manifest(
+            tasks=task_payload,
+            arms=list(arms),
+            reps=reps,
+            model=model,
+            cli_driver=cli_driver,
+            transport=transport,
+            api_provider=api_provider,
+            timeout=timeout,
+            jobs=jobs,
+            parallel_scope=parallel_scope,
+            vix_eval_dir=resolved_vix_eval_dir,
+            bridge_command=bridge_command,
+        ),
+    )
+    repo_state = git_state(repo_root)
     forwarded_cli_extra_args = [f"--cli-extra-arg={arg}" for arg in cli_extra_args]
     progress = ProgressReporter("vix", total=1)
     progress.start("starting benchmark", current=f"{len(tasks)} task selector(s) x {len(arms)} arm(s)")
@@ -683,6 +797,27 @@ def benchmark_vix_cmd(
         env=env,
     )
     progress.step("benchmark command complete", current=run_dir.name)
+    write_benchmark_evidence(
+        run_dir,
+        build_vix_evidence(
+            run_dir=run_dir,
+            manifest_path=manifest_path,
+            repo_state=repo_state,
+        ),
+    )
+    write_benchmark_gate(
+        run_dir,
+        evaluate_vix_gate(
+            run_dir,
+            baseline_arm=baseline_arm,
+            candidate_arm=candidate_arm,
+        ),
+    )
+    if require_pass:
+        try:
+            require_benchmark_gate_pass(run_dir)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
 
@@ -790,6 +925,44 @@ def _load_terminalbench_catalog(tasks_path: Path) -> tuple[list[str], dict[str, 
     if len(task_ids) != len(tasks):
         raise click.ClickException(f"Invalid TerminalBench task list: {tasks_path}")
     return task_ids, {"name": name, "version": version}
+
+
+def _load_vix_catalog(repo_root: Path) -> list[dict[str, object]]:
+    tasks_path = repo_root / "benchmarks" / "vix_eval" / "tasks.py"
+    module_name = "_atelier_vix_tasks"
+    spec = importlib.util.spec_from_file_location(module_name, tasks_path)
+    if spec is None or spec.loader is None:
+        raise click.ClickException(f"Unable to load VIX task catalog: {tasks_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    tasks = getattr(module, "TASKS", None)
+    if not isinstance(tasks, list):
+        raise click.ClickException(f"Invalid VIX task catalog: {tasks_path}")
+    catalog: list[dict[str, object]] = []
+    for task in tasks:
+        task_id = getattr(task, "id", None)
+        language = getattr(task, "language", None)
+        weight = getattr(task, "weight", None)
+        task_dir = getattr(task, "task_dir", None)
+        source = getattr(task, "source", None)
+        if (
+            not isinstance(task_id, str)
+            or not isinstance(language, str)
+            or not isinstance(weight, int)
+            or not isinstance(task_dir, str)
+        ):
+            raise click.ClickException(f"Invalid VIX task metadata: {tasks_path}")
+        catalog.append(
+            {
+                "id": task_id,
+                "language": language,
+                "weight": weight,
+                "task_dir": task_dir,
+                "source": list(source) if isinstance(source, tuple) else [],
+            }
+        )
+    return catalog
 
 
 def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:

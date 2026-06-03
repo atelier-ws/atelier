@@ -29,10 +29,25 @@ from pydantic import Field, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+from atelier.core.capabilities.default_definitions import DefaultRegistry, build_default_registry
 from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     extract_grounding_targets,
     missing_grounding_targets,
     record_grounding_evidence,
+)
+from atelier.core.capabilities.host_runners import resolve_swarm_runner_command
+from atelier.core.capabilities.owned_execution_cache_affinity import (
+    cache_affinity_hint,
+    latest_cache_affinity,
+)
+from atelier.core.capabilities.owned_execution_lanes import (
+    OwnedExecutionError,
+    execute_owned_prompt,
+)
+from atelier.core.capabilities.owned_execution_routing import (
+    OwnedCachePolicy,
+    OwnedRouteRequest,
+    select_owned_route,
 )
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
 from atelier.core.capabilities.workflow_context import WorkflowContextState
@@ -655,8 +670,265 @@ def _write_workspace_session_state(state: dict[str, Any]) -> None:
         logging.exception("Recovered from broad exception handler")
 
 
-def _default_workflow_agent_executor(step: Any, prompt: str, context_state: Any) -> Any:
-    raise RuntimeError(f"workflow agent steps require an injected executor: {step.step_id}")
+def _default_workflow_agent_executor(
+    step: Any,
+    prompt: str,
+    context_state: Any,
+    *,
+    route: Mapping[str, Any] | None = None,
+) -> Any:
+    import subprocess
+
+    from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
+    from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
+
+    workspace = _workspace_root().resolve()
+    defaults = build_default_registry()
+    decision = None
+    route_args = route if isinstance(route, Mapping) else {}
+    route_mode = str(route_args.get("mode") or "native").strip() or "native"
+    explicit_requested = any(str(route_args.get(field) or "").strip() for field in ("provider", "model", "runner"))
+    explicit_requested = explicit_requested or route_mode == "explicit"
+    cache_policy: OwnedCachePolicy = "fresh" if str(getattr(step, "context_mode", "") or "") == "fresh" else "inherit"
+    affinity_state = (
+        latest_cache_affinity(context_state.step_results, context_state.step_order) if cache_policy == "inherit" else {}
+    )
+    route_state = {
+        "workflow_step": str(getattr(step, "step_id", "") or ""),
+        "expected_input_tokens": max(1000, len(prompt) // 4),
+        "session_phase": "execute",
+        **cache_affinity_hint({"cache_affinity": affinity_state}),
+    }
+    if route_mode != "native":
+        try:
+            decision = _select_owned_execution_route(
+                tool_name="agent",
+                task_text=prompt,
+                mode=route_mode,
+                provider=str(route_args.get("provider") or ""),
+                model=str(route_args.get("model") or ""),
+                runner=str(route_args.get("runner") or ""),
+                cache_policy=cache_policy,
+                session_state=route_state,
+            )
+        except (RouteConfigError, NoFeasibleRouteError) as exc:
+            if explicit_requested or route_mode == "auto":
+                error = f"owned route selection failed: {exc}"
+                return {
+                    "status": "failed",
+                    "output": "",
+                    "output_json": {},
+                    "execution_receipt": _native_workflow_execution_receipt(
+                        defaults=defaults,
+                        status="failed",
+                        error=error,
+                        route_mode=route_mode,
+                        attempted_route=True,
+                    ),
+                    "error": error,
+                }
+    if decision is not None:
+        ledger = _get_ledger()
+        try:
+            execution = execute_owned_prompt(
+                prompt,
+                root=_atelier_root(),
+                tool_name="agent",
+                task_text=prompt,
+                decision=decision,
+                host_agent=_detect_agent(),
+                session_state=route_state,
+                allow_fallback=decision.mode == "auto",
+                cache_policy=cache_policy,
+            )
+        except OwnedExecutionError as exc:
+            return {
+                "status": "failed",
+                "output": "",
+                "output_json": {},
+                "execution_receipt": exc.receipt.to_dict(),
+                "duration_seconds": exc.receipt.duration_seconds,
+                "cost_usd": exc.receipt.cost_usd,
+                "error": str(exc),
+            }
+        ledger.record_call(
+            operation="owned_execution",
+            model=execution.receipt.executed_model,
+            input_tokens=execution.receipt.input_tokens,
+            output_tokens=execution.receipt.output_tokens,
+            cache_read_tokens=execution.receipt.cache_read_input_tokens,
+            cache_write_tokens=execution.receipt.cache_write_input_tokens,
+            modeled_cache_read_tokens=execution.receipt.modeled_cache_read_input_tokens,
+            cost_usd=execution.receipt.cost_usd,
+            stable_prefix_hash=execution.receipt.stable_prefix_hash,
+            prefix_invalidated_reason=execution.receipt.prefix_invalidated_reason,
+            cache_evidence=execution.receipt.cache_evidence,
+            phase="workflow",
+        )
+        return {
+            "status": "done",
+            "output": execution.output,
+            "output_json": _parse_workflow_agent_output(execution.output),
+            "execution_receipt": execution.receipt.to_dict(),
+            "duration_seconds": execution.receipt.duration_seconds,
+            "cost_usd": execution.receipt.cost_usd,
+        }
+    runner = decision.runner if decision is not None else _workflow_runner_profile()
+    model = decision.model if decision is not None else _workflow_runner_model(defaults)
+    command = resolve_swarm_runner_command(
+        runner=runner,
+        runner_model=model,
+        runner_args=(),
+        child_command=(),
+        prompt_template=prompt,
+    )
+    completed = subprocess.run(
+        command,
+        cwd=workspace,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    output = (completed.stdout or "").strip()
+    if completed.returncode != 0:
+        error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
+        return {
+            "status": "failed",
+            "output": output,
+            "output_json": {},
+            "execution_receipt": _native_workflow_execution_receipt(
+                defaults=defaults,
+                runner=runner,
+                model=model,
+                status="failed",
+                error=error,
+                route_mode=route_mode,
+            ),
+            "error": error,
+        }
+    return {
+        "status": "done",
+        "output": output,
+        "output_json": _parse_workflow_agent_output(output),
+        "execution_receipt": _native_workflow_execution_receipt(
+            defaults=defaults,
+            runner=runner,
+            model=model,
+            status="done",
+            route_mode=route_mode,
+        ),
+    }
+
+
+def _workflow_runner_profile() -> str:
+    detected = _detect_agent()
+    if detected in {"claude", "codex", "copilot", "opencode"}:
+        return detected
+    return "claude"
+
+
+def _workflow_runner_model(defaults: DefaultRegistry) -> str:
+    configured = str(_get_mcp_model() or os.environ.get("ATELIER_MODEL") or "").strip()
+    if configured:
+        return configured
+    return defaults.roles["general"].model_default
+
+
+def _native_workflow_execution_receipt(
+    *,
+    defaults: DefaultRegistry,
+    runner: str | None = None,
+    model: str | None = None,
+    status: str,
+    error: str = "",
+    route_mode: str = "native",
+    attempted_route: bool = False,
+) -> dict[str, Any]:
+    resolved_runner = runner or _workflow_runner_profile()
+    resolved_model = model or _workflow_runner_model(defaults)
+    resolved_provider = _provider_for_model(resolved_model)
+    expose_selection = attempted_route or route_mode == "native"
+    return {
+        "status": status,
+        "mode": route_mode,
+        "selected_provider": resolved_provider if expose_selection else "",
+        "selected_model": resolved_model if expose_selection else "",
+        "selected_runner": resolved_runner if expose_selection else "",
+        "selected_transport": "host-cli" if expose_selection else "",
+        "executed_provider": resolved_provider if status == "done" else "",
+        "executed_model": resolved_model if status == "done" else "",
+        "executed_runner": resolved_runner if status == "done" else "",
+        "executed_transport": "host-cli" if status == "done" else "",
+        "request_id": "",
+        "duration_seconds": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "modeled_cache_read_input_tokens": 0,
+        "stable_prefix_hash": "",
+        "stable_prefix_tokens": 0,
+        "dynamic_tokens": 0,
+        "prefix_invalidated_reason": "",
+        "cache_evidence": "none",
+        "cost_usd": 0.0,
+        "rerouted": False,
+        "attempts": [],
+        "error": error,
+    }
+
+
+def _parse_workflow_agent_output(raw: str) -> dict[str, Any]:
+    text = raw.strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _select_owned_execution_route(
+    *,
+    tool_name: str,
+    task_text: str,
+    mode: str,
+    provider: str,
+    model: str,
+    runner: str,
+    cache_policy: OwnedCachePolicy = "inherit",
+    session_state: Mapping[str, Any] | None = None,
+) -> Any:
+    return select_owned_route(
+        _atelier_root(),
+        OwnedRouteRequest(
+            tool_name=tool_name,
+            task_text=task_text,
+            mode="explicit" if mode == "explicit" else "auto",
+            provider=provider.strip().lower(),
+            model=model.strip(),
+            runner=runner.strip().lower(),
+            host_agent=_detect_agent(),
+            cache_policy="fresh" if cache_policy == "fresh" else "inherit",
+            session_state=dict(session_state or {}),
+        ),
+    )
+
+
+def _normalize_model_id(model_id: str) -> str:
+    return model_id.strip().lower().replace(".", "-")
+
+
+def _provider_for_model(model_id: str) -> str:
+    normalized = _normalize_model_id(model_id)
+    if normalized.startswith("claude"):
+        return "anthropic"
+    if normalized.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    if normalized.startswith("gemini"):
+        return "google"
+    return "unknown"
 
 
 def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_state: Any) -> Any:
@@ -681,6 +953,11 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     workflow_raw = arguments.get("workflow")
     if not isinstance(workflow_raw, Mapping):
         raise ValueError("workflow_run requires workflow mapping")
+    route_raw = arguments.get("route")
+    route = dict(route_raw) if isinstance(route_raw, Mapping) else {}
+    review_raw = arguments.get("plan_review")
+    plan_review = dict(review_raw) if isinstance(review_raw, Mapping) else {}
+    review_decision = str(plan_review.get("decision") or plan_review.get("review_decision") or "").strip().lower()
     definition = workflow_definition_from_mapping(workflow_raw)
     session_state = _read_workspace_session_state()
     workflow_state = (
@@ -688,23 +965,80 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     )
     runner_state = WorkflowContextState.from_mapping(workflow_state.get("runner"))
     runner = WorkflowRunner(
-        agent_executor=_default_workflow_agent_executor,
+        agent_executor=lambda step, prompt, context_state: _default_workflow_agent_executor(
+            step,
+            prompt,
+            context_state,
+            route=route,
+        ),
         tool_executor=_default_workflow_tool_executor,
         shell_executor=_default_workflow_shell_executor,
     )
     ledger = _get_ledger()
-    result = runner.run(definition, context_state=runner_state, ledger=ledger)
-    workflow_state["current_step"] = "execution"
-    workflow_state["session_phase"] = "execute"
+    result = runner.run(
+        definition,
+        context_state=runner_state,
+        ledger=ledger,
+        plan_review_decision=review_decision,
+    )
+    if result.status == "awaiting_review":
+        workflow_state["current_step"] = "review"
+        workflow_state["session_phase"] = "review"
+        ledger.record_workflow_event(
+            "plan_review",
+            {
+                "workflow_step": "review",
+                "review_decision": "pending",
+                "workflow_id": definition.workflow_id,
+                "step_id": result.paused_step_id or "",
+            },
+        )
+    elif result.status == "review_rejected":
+        workflow_state["current_step"] = "review"
+        workflow_state["session_phase"] = "review"
+        ledger.record_workflow_event(
+            "plan_review",
+            {
+                "workflow_step": "review",
+                "review_decision": review_decision or "revise",
+                "workflow_id": definition.workflow_id,
+                "step_id": result.paused_step_id or "",
+            },
+        )
+    else:
+        workflow_state["current_step"] = "execution"
+        workflow_state["session_phase"] = "execute"
+        if review_decision:
+            ledger.record_workflow_event(
+                "plan_review",
+                {
+                    "workflow_step": "review",
+                    "review_decision": review_decision,
+                    "workflow_id": definition.workflow_id,
+                },
+            )
     workflow_state["runner"] = runner_state.to_dict()
     workflow_state["current_task"] = {
         "workflow_id": definition.workflow_id,
         "run_id": result.run_id,
-        "step_id": result.failed_step_id or (result.step_order[-1] if result.step_order else ""),
+        "step_id": result.paused_step_id
+        or result.failed_step_id
+        or (result.step_order[-1] if result.step_order else ""),
     }
     workflow_state["task_outputs"] = {
         step_id: step_result.to_dict() for step_id, step_result in result.step_results.items()
     }
+    if result.status in {"awaiting_review", "review_rejected"}:
+        workflow_state["plan_review"] = {
+            "decision": review_decision or "pending",
+            "paused_step_id": result.paused_step_id or "",
+            "workflow_id": definition.workflow_id,
+        }
+    elif review_decision:
+        workflow_state["plan_review"] = {
+            "decision": review_decision,
+            "workflow_id": definition.workflow_id,
+        }
     workflow_state["updated_at"] = datetime.now(UTC).isoformat()
     session_state["workflow"] = workflow_state
     _write_workspace_session_state(session_state)
@@ -717,6 +1051,8 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     }
     if result.failed_step_id:
         receipt["failed_step_id"] = result.failed_step_id
+    if result.paused_step_id:
+        receipt["paused_step_id"] = result.paused_step_id
     return receipt
 
 
@@ -790,14 +1126,37 @@ def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
     name="workflow_run",
     input_schema={
         "type": "object",
-        "properties": {"workflow": {"type": "object"}},
+        "properties": {
+            "workflow": {"type": "object"},
+            "route": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["native", "auto", "explicit"]},
+                    "provider": {"type": "string"},
+                    "model": {"type": "string"},
+                    "runner": {"type": "string"},
+                },
+                "additionalProperties": False,
+            },
+            "plan_review": {
+                "type": "object",
+                "properties": {
+                    "decision": {"type": "string", "enum": ["approve", "revise", "rerun"]},
+                },
+                "additionalProperties": False,
+            },
+        },
         "required": ["workflow"],
         "additionalProperties": False,
     },
 )
-def tool_workflow_run(workflow: dict[str, Any]) -> dict[str, Any]:
+def tool_workflow_run(
+    workflow: dict[str, Any],
+    route: dict[str, Any] | None = None,
+    plan_review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Run an owned Atelier workflow DAG through the core workflow runner."""
-    return _run_owned_workflow({"workflow": workflow})
+    return _run_owned_workflow({"workflow": workflow, "route": route or {}, "plan_review": plan_review or {}})
 
 
 def _register_mcp_session() -> None:
@@ -1460,6 +1819,7 @@ def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
         }
 
     cache_read_totals = [int(e.payload.get("cache_read_tokens", 0)) for e in call_events]
+    modeled_cache_read_totals = [int(e.payload.get("modeled_cache_read_tokens", 0)) for e in call_events]
     input_totals = [int(e.payload.get("input_tokens", 0)) for e in call_events]
     prefix_hashes = [e.payload.get("stable_prefix_hash", "") for e in call_events]
 
@@ -1475,6 +1835,7 @@ def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
         "turn_count": len(call_events),
         "cache_hit_ratio": hit_ratio,
         "cache_read_tokens_saved": cache_read_saved,
+        "modeled_cache_read_tokens_saved": sum(modeled_cache_read_totals),
         "avg_prefix_tokens": avg_input,
         "avg_dynamic_tokens": 0,
         "current_prefix_hash": prefix_hashes[-1] if prefix_hashes else "",
@@ -1649,6 +2010,24 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
                 "default": "balanced",
                 "description": "Cost preference: cheap=lowest cost, balanced=smart default, best=highest quality.",
             },
+            "mode": {
+                "type": "string",
+                "enum": ["auto", "explicit"],
+                "default": "auto",
+                "description": "Owned route selection mode.",
+            },
+            "provider": {
+                "type": "string",
+                "description": "Explicit provider/vendor for owned execution when mode=explicit.",
+            },
+            "model": {
+                "type": "string",
+                "description": "Explicit model for owned execution when mode=explicit.",
+            },
+            "runner": {
+                "type": "string",
+                "description": "Optional runner profile override for the selected provider.",
+            },
         },
         "required": [],
     },
@@ -1657,36 +2036,56 @@ def tool_route(
     task: str = "",
     task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
     budget: Literal["cheap", "balanced", "best"] = "balanced",
+    mode: Literal["auto", "explicit"] = "auto",
+    provider: str = "",
+    model: str = "",
+    runner: str = "",
 ) -> dict[str, Any]:
     """Pick the best model for an upcoming task."""
     led = _get_ledger()
 
-    led.record_tool_call("route", {"task_type": task_type, "budget": budget})
+    led.record_tool_call(
+        "route",
+        {
+            "task_type": task_type,
+            "budget": budget,
+            "mode": mode,
+            "provider": provider,
+            "model": model,
+        },
+    )
     available = _get_available_models()
 
-    # Try cross-vendor advisor for a cost-and-quality-aware recommendation
+    # Try the owned execution selector first so the route is executable, not advisory-only.
     chosen_model = ""
     tier = ""
     rationale = ""
+    payload: dict[str, Any] = {}
+    explicit_requested = mode == "explicit" or any(value.strip() for value in (provider, model, runner))
     try:
-        from atelier.core.capabilities.cross_vendor_routing.advisor import (
-            CrossVendorRouteAdvisor,
-        )
+        from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
+        from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
 
-        advisor = CrossVendorRouteAdvisor(_atelier_root())
         advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
-        rec = advisor.recommend(
+        decision = _select_owned_execution_route(
             tool_name=advisor_tool,
             task_text=task,
+            mode=mode,
+            provider=provider,
+            model=model,
+            runner=runner,
             session_state=_model_recommendation_state(led, {}),
         )
-        chosen_model = rec.get("model", "")
-        tier = rec.get("tier", "")
-        rationale = rec.get("reason", "")
+        payload = decision.to_dict()
+        chosen_model = decision.model
+        tier = decision.tier
+        rationale = decision.reason
+    except (RouteConfigError, NoFeasibleRouteError):
+        if explicit_requested:
+            raise
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        # Best-effort model recommendation; fall back to defaults on any advisor failure.
-        _log.debug("model recommendation failed", exc_info=True)
+        _log.debug("owned route selection failed", exc_info=True)
 
     # Apply budget override on top of advisor recommendation
     if budget == "cheap" and available:
@@ -1715,12 +2114,15 @@ def tool_route(
     # Emit route_tier using the semantic 5-tier model
     route_tier = _compute_route_tier_for_response(tier, led)
 
-    return {
-        "model": chosen_model,
-        "tier": tier,
-        "route_tier": route_tier,
-        "rationale": rationale,
-    }
+    payload.update(
+        {
+            "model": chosen_model,
+            "tier": tier,
+            "route_tier": payload.get("route_tier", route_tier),
+            "rationale": rationale,
+        }
+    )
+    return payload
 
 
 @mcp_tool(name="rescue")
@@ -5116,20 +5518,32 @@ def tool_smart_search(
     if mode == "map":
         if not seed_files:
             raise ValueError("seed_files is required when mode='map'")
+        from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+
+        payload = smart_search(
+            query=query or "",
+            path=path,
+            mode=mode,
+            max_files=max_files,
+            max_chars_per_file=max_chars_per_file,
+            include_outline=include_outline,
+            seed_files=seed_files,
+            budget_tokens=budget_tokens,
+        )
     elif query is None:
         raise ValueError("query is required for ranked search; use grep for regex/glob search")
-    from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+    else:
+        from atelier.core.capabilities.grounded_loop.search_first import search_first
 
-    payload = smart_search(
-        query=query or "",
-        path=path,
-        mode=mode,
-        max_files=max_files,
-        max_chars_per_file=max_chars_per_file,
-        include_outline=include_outline,
-        seed_files=seed_files,
-        budget_tokens=budget_tokens,
-    )
+        payload = search_first(
+            query=query,
+            task=query,
+            path=path,
+            max_files=max_files,
+            max_chars_per_file=max_chars_per_file,
+            include_outline=include_outline,
+            budget_tokens=budget_tokens,
+        )
     # Plumb savings via thread-local and strip from the LLM-facing payload.
     ts = int(payload.pop("tokens_saved", 0) or 0)
     if ts > 0:
@@ -5644,7 +6058,6 @@ def _prepare_model_recommendation(
     args: dict[str, Any],
     led: RunLedger,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str]:
-    from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
     from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
     from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
     from atelier.core.capabilities.model_routing import ModelRouter
@@ -5656,16 +6069,29 @@ def _prepare_model_recommendation(
     current_step = str(session_state.get("workflow_step") or "")
     prior_route, stickiness_remaining = _restore_legacy_route(workflow, current_step)
     estimated_input_tokens = max(1_000, int(session_state.get("expected_input_tokens") or 0))
-    advisor = CrossVendorRouteAdvisor(_atelier_root())
     try:
-        recommendation = advisor.recommend(
+        decision = _select_owned_execution_route(
             tool_name=tool_name,
             task_text=_task_text_from_args(args),
+            mode="auto",
+            provider="",
+            model="",
+            runner="",
             session_state=session_state,
         )
-        vs_model = recommendation["actual_model"] or "auto"
+        led.record("route_decision", f"{decision.mode} route for {tool_name}", decision.to_dict())
+        actual_model = str(getattr(led, "model", "") or os.environ.get("ATELIER_MODEL") or "").strip()
+        actual_vendor = _provider_for_model(actual_model)
+        recommendation = {
+            **decision.to_dict(),
+            "vendor": decision.provider,
+            "actual_model": actual_model,
+            "actual_vendor": actual_vendor,
+            "recommendation_followed": _normalize_model_id(actual_model) == _normalize_model_id(decision.model),
+        }
+        vs_model = actual_model or "auto"
         cost_saved_usd = 0.0
-        if recommendation["model"] != vs_model:
+        if recommendation["model"] != vs_model and vs_model != "auto":
             expensive_pricing = get_model_pricing(vs_model)
             recommended_pricing = get_model_pricing(recommendation["model"])
             cost_saved_usd = max(

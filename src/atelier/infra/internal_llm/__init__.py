@@ -29,7 +29,7 @@ def _backend() -> str:
 
 
 def chat(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,

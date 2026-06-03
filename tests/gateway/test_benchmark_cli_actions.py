@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -64,6 +65,63 @@ def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(monkeypatch, tm
         "swe-bench-langcodes",
         "grid-pattern-transform",
     }
+    manifest = json.loads((tmp_path / "terminalbench" / "benchmark-manifest.json").read_text("utf-8"))
+    assert manifest["suite"] == "terminalbench"
+    assert manifest["protocol"]["baseline_arm"] == "off"
+    assert manifest["corpus"]["tasks"][0] == "hello-world"
+    evidence = json.loads((tmp_path / "terminalbench" / "benchmark-evidence.json").read_text("utf-8"))
+    assert evidence["suite"] == "terminalbench"
+    assert evidence["artifacts"]["runs_jsonl"]["path"].endswith("runs.jsonl")
+    gate = json.loads((tmp_path / "terminalbench" / "benchmark-gate.json").read_text("utf-8"))
+    assert gate["suite"] == "terminalbench"
+    assert gate["passed"] is False
+
+
+def test_benchmark_terminalbench_require_pass_exits_nonzero_after_writing_artifacts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench", "--require-pass"])
+
+    assert result.exit_code != 0
+    assert "no paired benchmark evidence is available" in result.output
+    assert (tmp_path / "terminalbench" / "benchmark-manifest.json").is_file()
+    assert (tmp_path / "terminalbench" / "benchmark-evidence.json").is_file()
+    assert (tmp_path / "terminalbench" / "benchmark-gate.json").is_file()
+
+
+def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    run_dir = tmp_path / "terminalbench"
+    run_dir.mkdir()
+    (run_dir / "benchmark-gate.json").write_text(
+        json.dumps({"suite": "terminalbench", "passed": False, "reasons": ["candidate cost was higher"]}),
+        encoding="utf-8",
+    )
+
+    ok = runner.invoke(cli, ["--root", str(root), "benchmark", "gate", "--run-dir", str(run_dir), "--json"])
+    assert ok.exit_code == 0, ok.output
+    assert json.loads(ok.output)["suite"] == "terminalbench"
+
+    failed = runner.invoke(
+        cli,
+        ["--root", str(root), "benchmark", "gate", "--run-dir", str(run_dir), "--require-pass"],
+    )
+    assert failed.exit_code != 0
+    assert "candidate cost was higher" in failed.output
 
 
 def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> None:
@@ -129,6 +187,16 @@ def test_benchmark_vix_wraps_runner(monkeypatch, tmp_path: Path) -> None:
     assert cmd[cmd.index("--jobs") + 1] == "1"
     assert cmd[cmd.index("--parallel-scope") + 1] == "task"
     assert env == {"VIX_EVAL_DIR": str(vix_eval_dir.resolve())}
+    manifest = json.loads((tmp_path / "vix" / "benchmark-manifest.json").read_text("utf-8"))
+    assert manifest["suite"] == "vix"
+    assert manifest["protocol"]["baseline_arm"] == "baseline"
+    assert manifest["corpus"]["tasks"][0]["id"] == "task1"
+    evidence = json.loads((tmp_path / "vix" / "benchmark-evidence.json").read_text("utf-8"))
+    assert evidence["suite"] == "vix"
+    assert evidence["artifacts"]["results_jsonl"]["path"].endswith("results.jsonl")
+    gate = json.loads((tmp_path / "vix" / "benchmark-gate.json").read_text("utf-8"))
+    assert gate["suite"] == "vix"
+    assert gate["passed"] is False
 
 
 def test_benchmark_vix_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:

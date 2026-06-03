@@ -54,29 +54,37 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
     assert [step.step_id for step in owned_loop.steps] == [
         "explore",
         "plan",
+        "critique",
+        "refine",
         "execute",
         "review",
-        "refine",
+        "fix",
     ]
     assert owned_loop.steps[1].fork_from == "explore"
-    assert owned_loop.steps[3].fork_from == "plan"
-    assert owned_loop.steps[4].fork_from == "plan"
+    assert owned_loop.steps[2].fork_from == "plan"
+    assert owned_loop.steps[3].fork_from == "critique"
+    assert owned_loop.steps[4].fork_from == "refine"
+    assert owned_loop.steps[5].fork_from == "refine"
+    assert owned_loop.steps[6].fork_from == "review"
+    assert owned_loop.steps[4].requires_plan_review is True
     assert owned_loop.steps[0].read_mode_hint == "minified"
-    assert owned_loop.steps[2].read_mode_hint == "exact"
+    assert owned_loop.steps[4].read_mode_hint == "exact"
     assert owned_loop.steps[0].effort == "adaptive"
-    assert owned_loop.steps[2].effort in {"medium", "high"}
+    assert owned_loop.steps[4].effort in {"medium", "high"}
 
     solver_loop = registry.workflows["owned-benchmark-solver"]
     assert solver_loop.stem_prompt_id == "owned-stem-system"
     assert [step.step_id for step in solver_loop.steps] == [
         "explore",
         "plan",
+        "critique",
+        "refine",
         "execute",
         "review",
         "retry",
     ]
-    assert solver_loop.steps[4].fork_from == "review"
-    assert solver_loop.steps[4].phase_prompt_id == "solver-retry"
+    assert solver_loop.steps[6].fork_from == "review"
+    assert solver_loop.steps[6].phase_prompt_id == "solver-retry"
 
     profile = registry.benchmark_profiles["terminalbench-owned-solver"]
     assert profile.role_id == "solve"
@@ -85,6 +93,54 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
     assert any("stderr" in rule.lower() for rule in profile.command_rules)
     assert any("generator" in rule.lower() for rule in profile.command_rules)
     assert any("failed command" in rule.lower() for rule in profile.command_rules)
+
+
+def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
+    registry = build_default_registry(ROOT)
+
+    stem = registry.render_named_prompt("owned-stem-system", ROOT)
+    assert "prompt caches stay warm" in stem
+    assert "Do not broaden the task" in stem
+
+    explore = registry.render_named_prompt("owned-explore-phase", ROOT)
+    assert "Read only" in explore
+    assert "Do not plan" in explore
+    assert "Do not edit" in explore
+    assert "Do not re-read the same file" in explore
+
+    plan = registry.render_named_prompt("owned-plan-phase", ROOT)
+    assert "Do not edit" in plan
+    assert "exact files" in plan
+    assert "verification commands" in plan
+    assert "vague steps" in plan
+
+    critique = registry.render_named_prompt("owned-critique-phase", ROOT)
+    assert "Do not edit" in critique
+    assert "Attack the plan" in critique
+    assert "ungrounded file or symbol names" in critique
+    assert "missing verification" in critique
+
+    refine = registry.render_named_prompt("owned-refine-plan-phase", ROOT)
+    assert "complete final plan" in refine
+    assert "not a diff" in refine
+
+    execute = registry.render_named_prompt("owned-execute-phase", ROOT)
+    assert "approved plan sequentially" in execute
+    assert "Change only files named by the plan" in execute
+    assert "Stop after self-verification" in execute
+
+    review = registry.render_named_prompt("owned-review-phase", ROOT)
+    assert "Do not trust the implementer's summary" in review
+    assert "If evidence is missing or ambiguous, use NEEDS_FIX" in review
+    assert "JSON verdict block" in review
+
+    fix = registry.render_named_prompt("owned-fix-phase", ROOT)
+    assert "FIX PHASE" in fix
+    assert "Fix only cited gaps" in fix
+
+    retry = registry.render_named_prompt("solver-retry", ROOT)
+    assert "Do not repeat a failed command verbatim" in retry
+    assert "keep the workspace clean" in retry
 
 
 def test_registry_host_projections_match_current_surface_set() -> None:

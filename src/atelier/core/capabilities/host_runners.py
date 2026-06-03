@@ -235,10 +235,14 @@ def build_vix_cli_command(
             prompt,
         ]
     if cli_driver == "vix":
-        cmd = ["vix", *runner_args, "-p", prompt, "--output-format", "json"]
-        if model:
-            cmd += ["--model", model]
-        return cmd
+        return [
+            "vix",
+            *runner_args,
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+        ]
     raise ValueError(f"unsupported cli driver: {cli_driver}")
 
 

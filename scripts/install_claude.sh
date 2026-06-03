@@ -25,7 +25,7 @@ PLUGIN_DIR="${ATELIER_REPO}/integrations/claude/plugin"
 SOURCE_PLUGIN_DIR="${PLUGIN_DIR}"
 INSTALL_SOURCE_DIR="${PLUGIN_DIR}"
 SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
-MODE_RENDERER="${SCRIPT_DIR}/render_mode_surfaces.py"
+MODE_RENDERER="${SCRIPT_DIR}/sync_agent_context.py"
 
 PLUGIN_REF="atelier@atelier"
 DRY_RUN=false

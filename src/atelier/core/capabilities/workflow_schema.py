@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 SUPPORTED_STEP_KINDS = frozenset({"agent", "tool", "shell"})
+SUPPORTED_CONTEXT_MODES = frozenset({"inherit", "fresh"})
 SAFE_PARALLEL_TOOL_NAMES = frozenset(
     {
         "read",
@@ -29,6 +30,8 @@ class WorkflowStepDefinition:
     kind: str
     next_steps: tuple[str, ...] = ()
     fork_from: str = ""
+    context_mode: str = "inherit"
+    requires_plan_review: bool = False
     prompt: str = ""
     tool: str = ""
     args: dict[str, Any] = field(default_factory=dict)
@@ -58,6 +61,8 @@ def workflow_step_from_mapping(raw: Mapping[str, Any]) -> WorkflowStepDefinition
         kind=str(raw.get("kind") or "").strip(),
         next_steps=next_steps,
         fork_from=str(raw.get("fork_from") or "").strip(),
+        context_mode=str(raw.get("context_mode") or "inherit").strip() or "inherit",
+        requires_plan_review=bool(raw.get("requires_plan_review", False)),
         prompt=str(raw.get("prompt") or "").strip(),
         tool=str(raw.get("tool") or "").strip(),
         args=dict(args),
@@ -132,6 +137,8 @@ def validate_workflow_definition(definition: WorkflowDefinition) -> WorkflowDefi
         seen_ids.add(step.step_id)
         if step.kind not in SUPPORTED_STEP_KINDS:
             raise ValueError(f"unsupported step kind: {step.kind}")
+        if step.context_mode not in SUPPORTED_CONTEXT_MODES:
+            raise ValueError(f"unsupported context mode: {step.context_mode}")
         if step.kind == "agent" and not step.prompt:
             raise ValueError(f"agent step requires prompt: {step.step_id}")
         if step.kind == "tool" and not step.tool:
@@ -177,6 +184,7 @@ def validate_workflow_definition(definition: WorkflowDefinition) -> WorkflowDefi
 
 __all__ = [
     "SAFE_PARALLEL_TOOL_NAMES",
+    "SUPPORTED_CONTEXT_MODES",
     "SUPPORTED_STEP_KINDS",
     "WorkflowDefinition",
     "WorkflowStepDefinition",
