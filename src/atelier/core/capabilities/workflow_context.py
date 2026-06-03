@@ -17,6 +17,7 @@ class StepResult:
     status: str
     output: Any = ""
     output_json: dict[str, Any] = field(default_factory=dict)
+    execution_receipt: dict[str, Any] = field(default_factory=dict)
     duration_seconds: float = 0.0
     cost_usd: float = 0.0
     error: str = ""
@@ -28,6 +29,7 @@ class StepResult:
             "status": self.status,
             "output": self.output,
             "output_json": copy.deepcopy(self.output_json),
+            "execution_receipt": copy.deepcopy(self.execution_receipt),
             "duration_seconds": self.duration_seconds,
             "cost_usd": self.cost_usd,
             "error": self.error,
@@ -37,12 +39,15 @@ class StepResult:
     def from_mapping(cls, raw: Mapping[str, Any]) -> StepResult:
         raw_output_json = raw.get("output_json")
         output_json: dict[str, Any] = dict(raw_output_json) if isinstance(raw_output_json, dict) else {}
+        raw_execution_receipt = raw.get("execution_receipt")
+        execution_receipt = dict(raw_execution_receipt) if isinstance(raw_execution_receipt, dict) else {}
         return cls(
             step_id=str(raw.get("step_id") or "").strip(),
             kind=str(raw.get("kind") or "").strip(),
             status=str(raw.get("status") or "").strip() or "pending",
             output=copy.deepcopy(raw.get("output")),
             output_json=copy.deepcopy(output_json),
+            execution_receipt=copy.deepcopy(execution_receipt),
             duration_seconds=float(raw.get("duration_seconds") or 0.0),
             cost_usd=float(raw.get("cost_usd") or 0.0),
             error=str(raw.get("error") or "").strip(),

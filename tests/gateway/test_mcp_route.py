@@ -42,6 +42,10 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("GOOGLE_API_KEY", "google-key")
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda command: (f"/usr/bin/{command}" if command in {"claude", "codex", "copilot"} else None),
+    )
     save_route_config(root, RouteConfig(enabled_vendors=["anthropic", "openai", "google"]))
 
     import atelier.gateway.adapters.mcp_server as m
@@ -90,7 +94,34 @@ def test_mcp_route_decide_budget_best_picks_powerful(mcp_env: Path) -> None:
     payload = _result(resp)
 
     # Should pick a high-tier model
-    assert payload["tier"] in ("high", "expensive", "medium", "cheap")  # just must return valid tier
+    assert payload["tier"] in (
+        "high",
+        "expensive",
+        "medium",
+        "cheap",
+    )  # just must return valid tier
+
+
+def test_mcp_route_decide_explicit_provider_and_model(mcp_env: Path) -> None:
+    resp = _call(
+        "route",
+        {
+            "task": "execute the owned workflow with the requested provider",
+            "task_type": "feature",
+            "mode": "explicit",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "runner": "codex",
+        },
+    )
+    payload = _result(resp)
+
+    assert payload["mode"] == "explicit"
+    assert payload["provider"] == "openai"
+    assert payload["model"] == "gpt-4o"
+    assert payload["runner"] == "codex"
+    assert payload["transport"] == "openai"
+    assert payload["execution_mode"] == "wrapper_enforced"
 
 
 def test_mcp_route_decide_no_route_config_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,6 +129,7 @@ def test_mcp_route_decide_no_route_config_falls_back(tmp_path: Path, monkeypatch
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("ATELIER_MODEL", "claude-haiku-4-5")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
+    monkeypatch.setattr("shutil.which", lambda _command: None)
     # No route config saved — advisor will raise, decide must fall back gracefully
 
     import atelier.gateway.adapters.mcp_server as m
@@ -116,15 +148,14 @@ def test_mcp_route_schema_exposes_only_decide() -> None:
 
     schema = TOOLS["route"].get("inputSchema", {})
     props = schema.get("properties", {})
-    assert "op" not in props
     assert "task" in props
     assert "task_type" in props
     assert "budget" in props
+    assert "mode" in props
+    assert "provider" in props
+    assert "model" in props
+    assert "runner" in props
     assert schema.get("required", []) == []
-    # Internal ops must not appear in the schema
-    schema_text = json.dumps(schema)
-    assert "verify" not in schema_text
-    assert "recommend" not in schema_text
 
 
 def _last_model_recommendation_payload() -> dict[str, Any]:

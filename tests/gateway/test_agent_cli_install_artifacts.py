@@ -106,9 +106,9 @@ def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
     assert generated == set(registry.surfaced_role_ids("shared_skill"))
 
 
-def test_render_mode_surfaces_is_in_sync_with_repository_artifacts() -> None:
+def test_generated_surfaces_in_sync_with_repository_artifacts() -> None:
     subprocess.run(
-        ["uv", "run", "python", str(SCRIPTS / "render_mode_surfaces.py"), "--check"],
+        ["uv", "run", "python", str(SCRIPTS / "sync_agent_context.py"), "--check"],
         cwd=ATELIER_ROOT,
         check=True,
     )

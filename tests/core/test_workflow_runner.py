@@ -57,6 +57,38 @@ def test_validate_workflow_definition_rejects_invalid_step_kind() -> None:
         validate_workflow_definition(definition)
 
 
+def test_validate_workflow_definition_rejects_invalid_context_mode() -> None:
+    definition = WorkflowDefinition(
+        workflow_id="bad-context-mode",
+        steps=(
+            WorkflowStepDefinition(
+                step_id="research",
+                kind="agent",
+                context_mode="shared",
+                prompt="Research independently.",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="unsupported context mode"):
+        validate_workflow_definition(definition)
+
+
+def test_workflow_step_mapping_supports_fresh_context_mode() -> None:
+    from atelier.core.capabilities.workflow_schema import workflow_step_from_mapping
+
+    step = workflow_step_from_mapping(
+        {
+            "step_id": "research",
+            "kind": "agent",
+            "context_mode": "fresh",
+            "prompt": "Research independently.",
+        }
+    )
+
+    assert step.context_mode == "fresh"
+
+
 def test_build_execution_waves_uses_template_and_parallel_tool_dependencies() -> None:
     validated = validate_workflow_definition(_owned_workflow_definition())
 
@@ -170,3 +202,48 @@ def test_workflow_runner_stops_on_failed_step_and_keeps_downstream_unpublished(
         "kind": "shell",
         "status": "failed",
     }
+
+
+def test_workflow_runner_pauses_before_review_gated_execution_and_resumes(tmp_path: Path) -> None:
+    definition = WorkflowDefinition(
+        workflow_id="review-gated",
+        steps=(
+            WorkflowStepDefinition(step_id="plan", kind="agent", prompt="Draft the implementation plan."),
+            WorkflowStepDefinition(
+                step_id="execute",
+                kind="shell",
+                command="echo apply",
+                fork_from="plan",
+                requires_plan_review=True,
+            ),
+        ),
+    )
+    validated = validate_workflow_definition(definition)
+    ledger = RunLedger(root=tmp_path / ".atelier")
+    state = WorkflowContextState()
+    calls: list[tuple[str, Any]] = []
+
+    runner = WorkflowRunner(
+        agent_executor=lambda step, prompt, context: (calls.append((step.step_id, prompt)) or {"output": "plan ready"}),
+        tool_executor=lambda step, args, context: {"output": "unused"},
+        shell_executor=lambda step, command, forked: (calls.append((step.step_id, command)) or {"output": "applied"}),
+    )
+
+    first = runner.run(validated, context_state=state, ledger=ledger)
+
+    assert first.status == "awaiting_review"
+    assert first.paused_step_id == "execute"
+    assert list(state.step_results) == ["plan"]
+    assert calls == [("plan", "Draft the implementation plan.")]
+
+    second = runner.run(
+        validated,
+        context_state=state,
+        ledger=ledger,
+        plan_review_decision="approve",
+    )
+
+    assert second.status == "success"
+    assert second.step_order == ["plan", "execute"]
+    assert state.step_results["execute"].output == "applied"
+    assert calls == [("plan", "Draft the implementation plan."), ("execute", "echo apply")]

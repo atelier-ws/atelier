@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from atelier.core.capabilities.host_router_bridge import evaluate_host_router_request
 from atelier.core.capabilities.pricing import usage_cost_usd
 from atelier.core.capabilities.swarm import (
     build_swarm_apply_payload,
@@ -139,6 +140,17 @@ class SwarmLaunchRequest(BaseModel):
     provider_api_key: str | None = None
     provider_base_url: str | None = None
     provider_env: dict[str, str] = Field(default_factory=dict)
+
+
+class HostRouterEvaluateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = "/router-preset/claudecode/auto"
+    model: str = ""
+    system: str = ""
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    session_state: dict[str, Any] = Field(default_factory=dict)
+    mode: Literal["disabled", "shadow", "enforced"] | None = None
 
 
 _SWARM_PROVIDER_ENV_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
@@ -3000,6 +3012,22 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     @app.get("/config", tags=["system"], dependencies=[Depends(verify_api_key)])
     def get_config() -> dict[str, Any]:
         return cfg.as_dict()
+
+    @app.post(
+        "/v1/router/claude-code/evaluate",
+        tags=["router"],
+        dependencies=[Depends(verify_api_key)],
+    )
+    def evaluate_claude_code_router(payload: HostRouterEvaluateRequest) -> dict[str, Any]:
+        return evaluate_host_router_request(
+            root=store.root,
+            path=payload.path,
+            model=payload.model,
+            messages=payload.messages,
+            system=payload.system,
+            session_state=payload.session_state,
+            mode=payload.mode,
+        )
 
     @app.get("/overview", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_overview(days: int = Query(30)) -> dict[str, Any]:
