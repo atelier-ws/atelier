@@ -6,7 +6,9 @@ from pydantic import Field, ValidationError
 
 from atelier.gateway.adapters import mcp_server
 
-_ORIGINAL_HANDLE = mcp_server._handle
+if not hasattr(mcp_server, "_atelier_original_handle"):
+    mcp_server._atelier_original_handle = mcp_server._handle  # type: ignore[attr-defined]
+_ORIGINAL_HANDLE = mcp_server._atelier_original_handle  # type: ignore[attr-defined]
 
 
 @mcp_server.mcp_tool(
@@ -48,11 +50,31 @@ def tool_web_fetch(
     )
 
 
+def _tool_entry(name: str) -> dict[str, Any] | None:
+    spec = mcp_server.TOOLS.get(name)
+    if spec is None:
+        return None
+    return {
+        "name": name,
+        "description": mcp_server._tool_description(spec),
+        "inputSchema": spec.get("inputSchema", {}),
+    }
+
+
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     """Handle web_fetch with a content-only render; delegate all other MCP calls."""
     method = request.get("method")
     params = request.get("params") or {}
     name = params.get("name") if isinstance(params, dict) else None
+    if method == "tools/list":
+        response = _ORIGINAL_HANDLE(request)
+        if response is not None and "result" in response:
+            tools = response["result"].setdefault("tools", [])
+            names = {str(tool.get("name") or "") for tool in tools if isinstance(tool, dict)}
+            web_fetch_tool = _tool_entry("web_fetch")
+            if web_fetch_tool is not None and "web_fetch" not in names:
+                tools.append(web_fetch_tool)
+        return response
     if method != "tools/call" or name != "web_fetch":
         return _ORIGINAL_HANDLE(request)
 
