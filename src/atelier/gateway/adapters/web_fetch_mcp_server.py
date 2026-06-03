@@ -70,10 +70,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         response = _ORIGINAL_HANDLE(request)
         if response is not None and "result" in response:
             tools = response["result"].setdefault("tools", [])
-            names = {str(tool.get("name") or "") for tool in tools if isinstance(tool, dict)}
-            web_fetch_tool = _tool_entry("web_fetch")
-            if web_fetch_tool is not None and "web_fetch" not in names:
-                tools.append(web_fetch_tool)
+            # Preserve bench-off / hidden-tool runs: if the base server exposed no
+            # tools, do not add web_fetch out-of-band.
+            if tools:
+                names = {str(tool.get("name") or "") for tool in tools if isinstance(tool, dict)}
+                web_fetch_tool = _tool_entry("web_fetch")
+                if web_fetch_tool is not None and "web_fetch" not in names:
+                    tools.append(web_fetch_tool)
         return response
     if method != "tools/call" or name != "web_fetch":
         return _ORIGINAL_HANDLE(request)
