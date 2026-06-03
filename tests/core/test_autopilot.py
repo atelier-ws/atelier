@@ -279,6 +279,32 @@ def test_workflow_progression_is_monotonic() -> None:
     assert steady.current_step == "execution"
 
 
+def test_workflow_state_from_mapping_preserves_review_and_task_metadata() -> None:
+    config = default_workflow_config()
+
+    state = workflow_state_from_mapping(
+        {
+            "current_step": "review",
+            "session_phase": "review",
+            "review": {"decision": "approve", "plan_id": "02-01"},
+            "current_task": {"task_id": "02-01/task-1", "title": "Review state"},
+            "task_outputs": {
+                "02-01/task-1": {"summary": "seeded output", "files": ["src/a.py"]},
+            },
+        },
+        config,
+    )
+
+    assert state.current_step == "review"
+    assert state.session_phase == "review"
+    assert state.review == {"decision": "approve", "plan_id": "02-01"}
+    assert state.current_task == {"task_id": "02-01/task-1", "title": "Review state"}
+    assert state.task_outputs == {
+        "02-01/task-1": {"summary": "seeded output", "files": ["src/a.py"]},
+    }
+    assert workflow_state_from_mapping(state.to_dict(), config) == state
+
+
 def test_run_autopilot_event_persists_workflow_state_and_advisory_once(
     tmp_path: Path,
     monkeypatch: Any,
@@ -302,6 +328,43 @@ def test_run_autopilot_event_persists_workflow_state_and_advisory_once(
     assert payload["workflow"]["current_step"] == "planning"
     assert payload["workflow"]["session_phase"] == "transition"
     assert payload["workflow"]["advisory_emitted_steps"] == ["planning"]
+
+
+def test_run_autopilot_event_round_trips_review_and_task_outputs(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / ".atelier"))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+
+    action = run_autopilot_event(
+        "user_prompt",
+        {
+            "prompt": "review the execution plan before coding",
+            "workflow_step": "review",
+            "review": {"decision": "revise", "plan_id": "02-01"},
+            "current_task": {"task_id": "02-01/task-2", "title": "Refine review state"},
+            "task_outputs": {
+                "02-01/task-1": {"summary": "draft plan", "remaining": ["task-2"]},
+            },
+        },
+    )
+
+    assert action.kind in {"inject", "noop"}
+
+    session_state_path = tmp_path / ".atelier" / "workspaces"
+    files = list(session_state_path.glob("*/session_state.json"))
+    assert len(files) == 1
+    payload = json.loads(files[0].read_text(encoding="utf-8"))
+    assert payload["workflow"]["current_step"] == "review"
+    assert payload["workflow"]["session_phase"] == "review"
+    assert payload["workflow"]["review"] == {"decision": "revise", "plan_id": "02-01"}
+    assert payload["workflow"]["current_task"] == {"task_id": "02-01/task-2", "title": "Refine review state"}
+    assert payload["workflow"]["task_outputs"] == {
+        "02-01/task-1": {"summary": "draft plan", "remaining": ["task-2"]},
+    }
 
 
 def test_run_autopilot_event_persists_counterexample_budget(tmp_path: Path, monkeypatch: Any) -> None:
