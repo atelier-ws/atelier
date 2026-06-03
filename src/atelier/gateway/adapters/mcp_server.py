@@ -35,6 +35,9 @@ from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     record_grounding_evidence,
 )
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.capabilities.workflow_context import WorkflowContextState
+from atelier.core.capabilities.workflow_runner import WorkflowRunner
+from atelier.core.capabilities.workflow_schema import workflow_definition_from_mapping
 from atelier.core.environment import (
     dev_tool_disabled_message,
     is_dev_mode,
@@ -652,6 +655,71 @@ def _write_workspace_session_state(state: dict[str, Any]) -> None:
         logging.exception("Recovered from broad exception handler")
 
 
+def _default_workflow_agent_executor(step: Any, prompt: str, context_state: Any) -> Any:
+    raise RuntimeError(f"workflow agent steps require an injected executor: {step.step_id}")
+
+
+def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_state: Any) -> Any:
+    if step.tool == "workflow_run":
+        raise ValueError("workflow_run cannot recursively invoke itself")
+    spec = TOOLS.get(step.tool)
+    if spec is None:
+        raise ValueError(f"unknown workflow tool: {step.tool}")
+    handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
+    return handler(args)
+
+
+def _default_workflow_shell_executor(step: Any, command: str, forked_context: dict[str, Any]) -> Any:
+    spec = TOOLS.get("shell")
+    if spec is None:
+        raise ValueError("shell tool not registered")
+    handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
+    return handler({"command": command})
+
+
+def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
+    workflow_raw = arguments.get("workflow")
+    if not isinstance(workflow_raw, Mapping):
+        raise ValueError("workflow_run requires workflow mapping")
+    definition = workflow_definition_from_mapping(workflow_raw)
+    session_state = _read_workspace_session_state()
+    workflow_state = (
+        dict(session_state.get("workflow") or {}) if isinstance(session_state.get("workflow"), dict) else {}
+    )
+    runner_state = WorkflowContextState.from_mapping(workflow_state.get("runner"))
+    runner = WorkflowRunner(
+        agent_executor=_default_workflow_agent_executor,
+        tool_executor=_default_workflow_tool_executor,
+        shell_executor=_default_workflow_shell_executor,
+    )
+    ledger = _get_ledger()
+    result = runner.run(definition, context_state=runner_state, ledger=ledger)
+    workflow_state["current_step"] = "execution"
+    workflow_state["session_phase"] = "execute"
+    workflow_state["runner"] = runner_state.to_dict()
+    workflow_state["current_task"] = {
+        "workflow_id": definition.workflow_id,
+        "run_id": result.run_id,
+        "step_id": result.failed_step_id or (result.step_order[-1] if result.step_order else ""),
+    }
+    workflow_state["task_outputs"] = {
+        step_id: step_result.to_dict() for step_id, step_result in result.step_results.items()
+    }
+    workflow_state["updated_at"] = datetime.now(UTC).isoformat()
+    session_state["workflow"] = workflow_state
+    _write_workspace_session_state(session_state)
+    ledger.persist()
+    receipt = {
+        "run_id": result.run_id,
+        "status": result.status,
+        "step_count": len(result.step_order),
+        "artifact_ids": [],
+    }
+    if result.failed_step_id:
+        receipt["failed_step_id"] = result.failed_step_id
+    return receipt
+
+
 def _grounded_benchmark_mode_enabled() -> bool:
     raw_mode = os.environ.get("ATELIER_BENCH_MODE")
     if raw_mode is None:
@@ -716,6 +784,20 @@ def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
         f"Ground the target with read, grep, search, symbols, node, explore, callers, "
         f"callees, usages, or impact first: {target_list}"
     )
+
+
+@mcp_tool(
+    name="workflow_run",
+    input_schema={
+        "type": "object",
+        "properties": {"workflow": {"type": "object"}},
+        "required": ["workflow"],
+        "additionalProperties": False,
+    },
+)
+def tool_workflow_run(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Run an owned Atelier workflow DAG through the core workflow runner."""
+    return _run_owned_workflow({"workflow": workflow})
 
 
 def _register_mcp_session() -> None:
