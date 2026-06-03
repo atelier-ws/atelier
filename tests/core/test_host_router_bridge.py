@@ -33,6 +33,7 @@ def test_shadow_router_bridge_classifies_without_mutation(monkeypatch, tmp_path)
     assert result["native_request_unchanged"] is True
     assert result["recommendation"]["provider"] == "openai"
     assert result["resolved_model"] == "claude-sonnet-4.6"
+    assert result["resolved_upstream"]["base_url"] == "http://127.0.0.1:4000"
 
 
 def test_enforced_router_bridge_requires_explicit_enable(monkeypatch, tmp_path) -> None:
