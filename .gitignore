@@ -286,3 +286,5 @@ exports/
 /reports/
 .vix
 dist/
+*.spec
+bundle/
