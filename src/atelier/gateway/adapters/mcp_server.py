@@ -36,6 +36,7 @@ from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     record_grounding_evidence,
 )
 from atelier.core.capabilities.host_runners import resolve_swarm_runner_command
+from atelier.core.capabilities.model_settings import normalize_model_for_host, resolve_host_model
 from atelier.core.capabilities.owned_execution_cache_affinity import (
     cache_affinity_hint,
     latest_cache_affinity,
@@ -75,6 +76,7 @@ from atelier.core.capabilities.workflow_runtime_state import (
     write_workflow_runtime_state as _write_workflow_runtime_state,
 )
 from atelier.core.capabilities.workflow_schema import workflow_definition_from_mapping
+from atelier.core.capabilities.workflow_spawn import build_spawn_envelope, compile_prompt_text
 from atelier.core.environment import mcp_tool_description, mcp_tool_mode, mcp_tool_visible_to_llm
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
@@ -700,13 +702,25 @@ def _default_workflow_agent_executor(
     explicit_requested = any(str(route_args.get(field) or "").strip() for field in ("provider", "model", "runner"))
     explicit_requested = explicit_requested or route_mode == "explicit"
     cache_policy: OwnedCachePolicy = "fresh" if str(getattr(step, "context_mode", "") or "") == "fresh" else "inherit"
+    compiled_prompt = compile_prompt_text(prompt)
+    spawn_plan = context_state.spawn_plan_for_step(str(getattr(step, "step_id", "") or ""))
+    spawn_envelope = build_spawn_envelope(
+        step_id=str(getattr(step, "step_id", "") or ""),
+        role_id=str(getattr(step, "role_id", "") or "general"),
+        compiled_prompt=compiled_prompt,
+        spawn_group_id=str(spawn_plan.get("spawn_group_id") or ""),
+        cache_scope_id=str(spawn_plan.get("cache_scope_id") or ""),
+        cache_policy=cache_policy,
+    )
     affinity_state = (
         latest_cache_affinity(context_state.step_results, context_state.step_order) if cache_policy == "inherit" else {}
     )
     route_state = {
         "workflow_step": str(getattr(step, "step_id", "") or ""),
-        "expected_input_tokens": max(1000, len(prompt) // 4),
+        "expected_input_tokens": max(1000, len(spawn_envelope.prompt) // 4),
         "session_phase": "execute",
+        "spawn_group_id": spawn_envelope.spawn_group_id,
+        "cache_scope_id": spawn_envelope.cache_scope_id,
         **cache_affinity_hint({"cache_affinity": affinity_state}),
     }
     if route_mode != "native":
@@ -730,6 +744,9 @@ def _default_workflow_agent_executor(
                     "output_json": {},
                     "execution_receipt": _native_workflow_execution_receipt(
                         defaults=defaults,
+                        role_id=str(getattr(step, "role_id", "") or "general"),
+                        compiled_prompt=compiled_prompt,
+                        spawn_envelope=spawn_envelope.to_dict(),
                         status="failed",
                         error=error,
                         route_mode=route_mode,
@@ -741,15 +758,17 @@ def _default_workflow_agent_executor(
         ledger = _get_ledger()
         try:
             execution = execute_owned_prompt(
-                prompt,
+                spawn_envelope.prompt,
                 root=_atelier_root(),
                 tool_name="agent",
-                task_text=prompt,
+                task_text=spawn_envelope.prompt,
                 decision=decision,
                 host_agent=_detect_agent(),
                 session_state=route_state,
                 allow_fallback=decision.mode == "auto",
                 cache_policy=cache_policy,
+                compiled_prompt=compiled_prompt.to_dict(),
+                spawn_metadata=spawn_envelope.to_dict(),
             )
         except OwnedExecutionError as exc:
             return {
@@ -784,14 +803,30 @@ def _default_workflow_agent_executor(
             "cost_usd": execution.receipt.cost_usd,
         }
     runner = decision.runner if decision is not None else _workflow_runner_profile()
-    model = decision.model if decision is not None else _workflow_runner_model(defaults)
+    model = (
+        decision.model
+        if decision is not None
+        else _workflow_runner_model(
+            defaults,
+            role_id=str(getattr(step, "role_id", "") or "general"),
+            workspace=workspace,
+            runner=runner,
+        )
+    )
+    lane_key = ":".join(part for part in (spawn_envelope.spawn_group_id, spawn_envelope.role_id) if part)
+    observed_lane = context_state.observed_host_lane(lane_key) if lane_key else {}
+    selected_runner = str(observed_lane.get("runner") or runner)
+    selected_model = str(observed_lane.get("model") or model or "")
+    if lane_key and not observed_lane:
+        context_state.record_host_lane(lane_key, {"runner": selected_runner, "model": selected_model})
     command = resolve_swarm_runner_command(
-        runner=runner,
-        runner_model=model,
+        runner=selected_runner,
+        runner_model=selected_model,
         runner_args=(),
         child_command=(),
-        prompt_template=prompt,
+        prompt_template=spawn_envelope.prompt,
     )
+    started = time.perf_counter()
     completed = subprocess.run(
         command,
         cwd=workspace,
@@ -799,6 +834,7 @@ def _default_workflow_agent_executor(
         capture_output=True,
         check=False,
     )
+    duration_seconds = time.perf_counter() - started
     output = (completed.stdout or "").strip()
     if completed.returncode != 0:
         error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
@@ -808,9 +844,19 @@ def _default_workflow_agent_executor(
             "output_json": {},
             "execution_receipt": _native_workflow_execution_receipt(
                 defaults=defaults,
-                runner=runner,
-                model=model,
+                runner=selected_runner,
+                model=selected_model,
+                role_id=str(getattr(step, "role_id", "") or "general"),
+                compiled_prompt=compiled_prompt,
+                spawn_envelope=spawn_envelope.to_dict(),
                 status="failed",
+                duration_seconds=duration_seconds,
+                observed_fields=_observed_host_fields(
+                    spawn_envelope=spawn_envelope.to_dict(),
+                    selected_runner=selected_runner,
+                    selected_model=selected_model,
+                ),
+                unverified_fields=_unverified_host_fields(selected_model=selected_model),
                 error=error,
                 route_mode=route_mode,
             ),
@@ -822,9 +868,19 @@ def _default_workflow_agent_executor(
         "output_json": _parse_workflow_agent_output(output),
         "execution_receipt": _native_workflow_execution_receipt(
             defaults=defaults,
-            runner=runner,
-            model=model,
+            runner=selected_runner,
+            model=selected_model,
+            role_id=str(getattr(step, "role_id", "") or "general"),
+            compiled_prompt=compiled_prompt,
+            spawn_envelope=spawn_envelope.to_dict(),
             status="done",
+            duration_seconds=duration_seconds,
+            observed_fields=_observed_host_fields(
+                spawn_envelope=spawn_envelope.to_dict(),
+                selected_runner=selected_runner,
+                selected_model=selected_model,
+            ),
+            unverified_fields=_unverified_host_fields(selected_model=selected_model),
             route_mode=route_mode,
         ),
     }
@@ -837,11 +893,21 @@ def _workflow_runner_profile() -> str:
     return "claude"
 
 
-def _workflow_runner_model(defaults: DefaultRegistry) -> str:
+def _workflow_runner_model(
+    defaults: DefaultRegistry,
+    *,
+    role_id: str = "general",
+    workspace: Path | None = None,
+    runner: str | None = None,
+) -> str | None:
+    resolved_runner = runner or _workflow_runner_profile()
     configured = str(_get_mcp_model() or os.environ.get("ATELIER_MODEL") or "").strip()
     if configured:
-        return configured
-    return defaults.roles["general"].model_default
+        return normalize_model_for_host(resolved_runner, configured)
+    return normalize_model_for_host(
+        resolved_runner,
+        resolve_host_model(resolved_runner, role_id, workspace_root=workspace, fallback=None),
+    )
 
 
 def _native_workflow_execution_receipt(
@@ -849,43 +915,93 @@ def _native_workflow_execution_receipt(
     defaults: DefaultRegistry,
     runner: str | None = None,
     model: str | None = None,
+    role_id: str = "",
+    compiled_prompt: Any | None = None,
+    spawn_envelope: dict[str, Any] | None = None,
     status: str,
+    duration_seconds: float = 0.0,
+    observed_fields: tuple[str, ...] = (),
+    unverified_fields: tuple[str, ...] = (),
     error: str = "",
     route_mode: str = "native",
     attempted_route: bool = False,
 ) -> dict[str, Any]:
     resolved_runner = runner or _workflow_runner_profile()
-    resolved_model = model or _workflow_runner_model(defaults)
-    resolved_provider = _provider_for_model(resolved_model)
+    resolved_model = model or _workflow_runner_model(defaults) or ""
+    resolved_provider = _provider_for_model(resolved_model) if resolved_model else ""
     expose_selection = attempted_route or route_mode == "native"
+    compiled = compiled_prompt if hasattr(compiled_prompt, "stable_prefix_hash") else None
+    envelope = dict(spawn_envelope or {})
+    requested_fields = tuple(str(field) for field in envelope.get("requested_fields", ()))
+    honored_fields = ("prompt",)
+    dropped_fields = tuple(field for field in requested_fields if field not in honored_fields)
     return {
         "status": status,
         "mode": route_mode,
+        "role_id": role_id,
         "selected_provider": resolved_provider if expose_selection else "",
         "selected_model": resolved_model if expose_selection else "",
         "selected_runner": resolved_runner if expose_selection else "",
         "selected_transport": "host-cli" if expose_selection else "",
-        "executed_provider": resolved_provider if status == "done" else "",
-        "executed_model": resolved_model if status == "done" else "",
+        "executed_provider": "",
+        "executed_model": "",
         "executed_runner": resolved_runner if status == "done" else "",
         "executed_transport": "host-cli" if status == "done" else "",
         "request_id": "",
-        "duration_seconds": 0.0,
+        "duration_seconds": duration_seconds,
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_write_input_tokens": 0,
         "modeled_cache_read_input_tokens": 0,
-        "stable_prefix_hash": "",
-        "stable_prefix_tokens": 0,
-        "dynamic_tokens": 0,
-        "prefix_invalidated_reason": "",
-        "cache_evidence": "none",
+        "stable_prefix_hash": getattr(compiled, "stable_prefix_hash", ""),
+        "stable_prefix_tokens": getattr(compiled, "stable_prefix_tokens", 0),
+        "dynamic_tokens": getattr(compiled, "dynamic_tokens", 0),
+        "prefix_invalidated_reason": "cache_policy_fresh" if str(envelope.get("cache_policy") or "") == "fresh" else "",
+        "cache_evidence": "hint_only" if getattr(compiled, "stable_prefix_hash", "") else "none",
+        "cache_capability": "hint_only" if getattr(compiled, "stable_prefix_hash", "") else "none",
+        "spawn_group_id": str(envelope.get("spawn_group_id") or ""),
+        "cache_scope_id": str(envelope.get("cache_scope_id") or ""),
+        "cache_policy": str(envelope.get("cache_policy") or "inherit"),
+        "eligible_for_reuse": bool(
+            getattr(compiled, "stable_prefix_hash", "") and str(envelope.get("cache_policy") or "inherit") != "fresh"
+        ),
+        "reuse_observed": False,
+        "spawn_latency_ms": int(duration_seconds * 1000),
+        "requested_fields": list(requested_fields),
+        "honored_fields": list(observed_fields or honored_fields),
+        "dropped_fields": list(dropped_fields),
+        "observed_fields": list(observed_fields),
+        "unverified_fields": list(unverified_fields),
+        "observation_mode": "runtime-observed",
         "cost_usd": 0.0,
         "rerouted": False,
         "attempts": [],
         "error": error,
     }
+
+
+def _observed_host_fields(
+    *,
+    spawn_envelope: dict[str, Any],
+    selected_runner: str,
+    selected_model: str,
+) -> tuple[str, ...]:
+    observed = ["prompt", "cache_policy", "spawn_group_id", "cache_scope_id"]
+    if str(spawn_envelope.get("role_id") or "").strip():
+        observed.append("role_id")
+    if selected_runner:
+        observed.append("selected_runner")
+    if selected_model:
+        observed.append("selected_model")
+    return tuple(observed)
+
+
+def _unverified_host_fields(*, selected_model: str) -> tuple[str, ...]:
+    fields = ["executed_provider", "executed_transport", "reuse_observed"]
+    if selected_model:
+        fields.append("executed_model")
+    return tuple(fields)
 
 
 def _parse_workflow_agent_output(raw: str) -> dict[str, Any]:
@@ -897,6 +1013,43 @@ def _parse_workflow_agent_output(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _workflow_spawn_summary(step_results: Mapping[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "step_count": 0,
+        "eligible_for_reuse": 0,
+        "reuse_observed": 0,
+        "spawn_latency_ms": 0,
+        "cache_capability_counts": {},
+        "host_dropped_fields": {},
+    }
+    for step_result in step_results.values():
+        receipt = getattr(step_result, "execution_receipt", None)
+        if not isinstance(receipt, Mapping):
+            continue
+        if not any(
+            key in receipt
+            for key in ("cache_capability", "spawn_group_id", "cache_scope_id", "requested_fields", "dropped_fields")
+        ):
+            continue
+        summary["step_count"] += 1
+        summary["eligible_for_reuse"] += int(bool(receipt.get("eligible_for_reuse", False)))
+        summary["reuse_observed"] += int(bool(receipt.get("reuse_observed", False)))
+        summary["spawn_latency_ms"] += int(receipt.get("spawn_latency_ms", 0) or 0)
+        capability = str(receipt.get("cache_capability") or "").strip()
+        if capability:
+            counts = cast(dict[str, int], summary["cache_capability_counts"])
+            counts[capability] = int(counts.get(capability, 0) or 0) + 1
+        dropped = receipt.get("dropped_fields")
+        if isinstance(dropped, list | tuple):
+            for field in dropped:
+                field_name = str(field).strip()
+                if not field_name:
+                    continue
+                drop_counts = cast(dict[str, int], summary["host_dropped_fields"])
+                drop_counts[field_name] = int(drop_counts.get(field_name, 0) or 0) + 1
+    return summary if summary["step_count"] else {}
 
 
 def _select_owned_execution_route(
@@ -932,6 +1085,8 @@ def _normalize_model_id(model_id: str) -> str:
 
 def _provider_for_model(model_id: str) -> str:
     normalized = _normalize_model_id(model_id)
+    if not normalized:
+        return ""
     if normalized.startswith("claude"):
         return "anthropic"
     if normalized.startswith(("gpt", "o1", "o3", "o4")):
@@ -998,6 +1153,7 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
         ledger=ledger,
         plan_review_decision=review_decision,
     )
+    spawn_summary = _workflow_spawn_summary(result.step_results)
     created_at = str(runtime_state.get("created_at") or "").strip() if resume else ""
     runtime_state = {
         "run_id": result.run_id,
@@ -1016,6 +1172,8 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
         "updated_at": datetime.now(UTC).isoformat(),
         "runner": runner_state.to_dict(),
     }
+    if spawn_summary:
+        runtime_state["spawn_summary"] = dict(spawn_summary)
     if result.status == "awaiting_review":
         workflow_state["current_step"] = "review"
         workflow_state["session_phase"] = "review"
@@ -1077,6 +1235,9 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     workflow_state["task_outputs"] = {
         step_id: step_result.to_dict() for step_id, step_result in result.step_results.items()
     }
+    if spawn_summary:
+        workflow_state["spawn_summary"] = dict(spawn_summary)
+        ledger.record_workflow_event("spawn_summary", dict(spawn_summary))
     if result.status in {"awaiting_review", "review_rejected"}:
         workflow_state["plan_review"] = {
             "decision": review_decision or "pending",
@@ -1101,6 +1262,8 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
         "step_count": len(result.step_order),
         "artifact_ids": [],
     }
+    if spawn_summary:
+        receipt["spawn_summary"] = dict(spawn_summary)
     if result.failed_step_id:
         receipt["failed_step_id"] = result.failed_step_id
     if result.paused_step_id:
@@ -1113,7 +1276,7 @@ WORKFLOW_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "op": {
             "type": "string",
-            "enum": ["run", "status", "pause", "resume", "stop"],
+            "enum": ["run", "status", "inspect", "pause", "resume", "stop"],
         },
         "workflow": {"type": "object"},
         "run_id": {"type": "string"},
@@ -1157,6 +1320,7 @@ def tool_workflow(
     Ops:
       run     — execute a workflow synchronously from a fresh runtime state
       status  — inspect the persisted workflow runtime for this workspace
+      inspect — inspect spawn/cache receipts for the persisted workflow runtime
       pause   — mark the persisted workflow runtime paused (does not cancel a live synchronous call)
       resume  — continue the persisted workflow runtime using its stored workflow and route
       stop    — mark the persisted workflow runtime stopped (does not cancel a live synchronous call)
@@ -1167,6 +1331,8 @@ def tool_workflow(
     session_state = _read_workspace_session_state()
     if normalized_op == "status":
         return _coerce_workflow_runtime_status(session_state)
+    if normalized_op == "inspect":
+        return _inspect_workflow_runtime(session_state)
     if normalized_op not in {"pause", "resume", "stop"}:
         raise ValueError(f"unsupported workflow op: {op}")
     _require_active_workflow_runtime(session_state, run_id or "")
@@ -1194,6 +1360,48 @@ def tool_workflow(
         _write_workspace_session_state(session_state)
         return _coerce_workflow_runtime_status(session_state)
     raise ValueError(f"unsupported workflow op: {op}")
+
+
+def _inspect_workflow_runtime(session_state: dict[str, Any]) -> dict[str, Any]:
+    status = _coerce_workflow_runtime_status(session_state)
+    runtime_state = _workflow_runtime_state(session_state)
+    runner_state = WorkflowContextState.from_mapping(runtime_state.get("runner"))
+    step_spawns: list[dict[str, Any]] = []
+    for step_id in runner_state.step_order:
+        step_result = runner_state.step_results.get(step_id)
+        if step_result is None:
+            continue
+        receipt = step_result.execution_receipt
+        if not isinstance(receipt, Mapping):
+            continue
+        if not any(
+            key in receipt
+            for key in ("cache_capability", "spawn_group_id", "cache_scope_id", "requested_fields", "dropped_fields")
+        ):
+            continue
+        step_spawns.append(
+            {
+                "step_id": step_id,
+                "status": step_result.status,
+                "mode": str(receipt.get("mode") or ""),
+                "role_id": str(receipt.get("role_id") or ""),
+                "cache_capability": str(receipt.get("cache_capability") or ""),
+                "eligible_for_reuse": bool(receipt.get("eligible_for_reuse", False)),
+                "reuse_observed": bool(receipt.get("reuse_observed", False)),
+                "spawn_latency_ms": int(receipt.get("spawn_latency_ms", 0) or 0),
+                "spawn_group_id": str(receipt.get("spawn_group_id") or ""),
+                "cache_scope_id": str(receipt.get("cache_scope_id") or ""),
+                "requested_fields": list(receipt.get("requested_fields") or []),
+                "honored_fields": list(receipt.get("honored_fields") or []),
+                "dropped_fields": list(receipt.get("dropped_fields") or []),
+            }
+        )
+    spawn_summary = runtime_state.get("spawn_summary") if isinstance(runtime_state.get("spawn_summary"), dict) else {}
+    return {
+        **status,
+        "spawn_summary": dict(spawn_summary),
+        "step_spawns": step_spawns,
+    }
 
 
 def _grounded_benchmark_mode_enabled() -> bool:

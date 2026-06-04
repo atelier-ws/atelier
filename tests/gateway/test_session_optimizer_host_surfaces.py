@@ -13,7 +13,7 @@ HOST_SURFACES = [
     ROOT / "integrations/claude/plugin/agents/code.md",
     ROOT / "integrations/codex/AGENTS.atelier.md",
     ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md",
-    ROOT / "integrations/copilot/agents/atelier.agent.md",
+    ROOT / "integrations/copilot/agents/atelier.code.agent.md",
     ROOT / "integrations/antigravity/AGENTS.atelier.md",
     ROOT / "integrations/opencode/agents/atelier.md",
 ]

@@ -27,6 +27,16 @@ instead.
 
 The script is idempotent — safe to run again after updates.
 
+To configure project-specific role models after the global install, run:
+
+```bash
+uv run atelier init --configure-models
+```
+
+The init wizard writes `<workspace>/.atelier/settings.json` and materializes
+workspace-local Claude overrides under `.claude/`, so the shared global plugin
+can stay neutral while the current project carries explicit per-role models.
+
 ### Verify
 
 ```bash
@@ -98,6 +108,19 @@ bash scripts/install_claude.sh --print-only
 | Skills/agents/hooks/workflows | bundled in `integrations/claude/plugin/`     | bundled in the same plugin                |
 
 ---
+
+## Project-local model config
+
+The intended flow is:
+
+1. Install the shared Claude plugin globally.
+2. Run `uv run atelier init --configure-models` inside a repository.
+3. Let the wizard write `.atelier/settings.json`, `.claude/settings.local.json`,
+   `.claude/agents/`, and `.claude/skills/`.
+
+`"auto"` means omit an explicit model pin for the workspace Claude surface.
+Concrete values write `model:` into the workspace-local Claude agent files while
+the shared global plugin remains unpinned.
 
 ## First Task
 

@@ -854,10 +854,12 @@ def test_opencode_atelier_agent_exists() -> None:
     assert "---" in text, "opencode agent must have frontmatter"
 
 
-def test_copilot_atelier_agent_exists() -> None:
-    f = INTEGRATIONS / "copilot" / "agents" / "atelier.agent.md"
-    assert f.exists(), "Missing: integrations/copilot/agents/atelier.agent.md"
-    text = f.read_text()
+def test_copilot_atelier_agents_exist() -> None:
+    code_agent = INTEGRATIONS / "copilot" / "agents" / "atelier.code.agent.md"
+    execute_agent = INTEGRATIONS / "copilot" / "agents" / "atelier.execute.agent.md"
+    assert code_agent.exists(), "Missing: integrations/copilot/agents/atelier.code.agent.md"
+    assert execute_agent.exists(), "Missing: integrations/copilot/agents/atelier.execute.agent.md"
+    text = code_agent.read_text()
     assert "atelier:code" in text
     assert "description:" in text, "agent must have description: frontmatter"
     assert "model: gpt-5.4" in text, "Copilot agent must pin the model in frontmatter"

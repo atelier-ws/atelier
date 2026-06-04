@@ -375,6 +375,20 @@ elif $WORKSPACE_SET; then
     warn "task template directory missing: $TASKS_SRC_DIR"
 fi
 
+if $WORKSPACE_SET; then
+    if $DRY_RUN; then
+        echo "  [dry-run] project workspace-local Codex agents into '${WORKSPACE}/.codex/agents'"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agents
+
+written = write_workspace_codex_agents(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:codex] projected {len(written)} workspace-local Codex agents into ${WORKSPACE}/.codex/agents")
+PYEOF
+    fi
+fi
+
 if $DRY_RUN; then
     info "Dry run complete; skipping post-install verification."
     exit 0

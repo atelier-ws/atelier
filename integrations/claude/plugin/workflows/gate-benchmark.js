@@ -11,7 +11,7 @@
  * Dynamic workflows are in research preview and require Claude Code v2.1.154+.
  */
 
-const MODEL = "claude-opus-4-8"
+import { resolveClaudeRoleModel } from "./model-config.js"
 
 function resolveTask(runtime) {
   if (typeof runtime?.task === "string" && runtime.task.trim()) {
@@ -121,28 +121,29 @@ function consolidatePrompt(task, collectedEvidence, gateVerdict) {
 
 export default async function gateBenchmark(runtime) {
   const task = resolveTask(runtime)
+  const reviewModel = resolveClaudeRoleModel("review")
 
   const collectedEvidence = await invokeAgent(runtime, {
     name: "gate-benchmark-collector",
-    model: MODEL,
+    ...(reviewModel ? { model: reviewModel } : {}),
     prompt: collectorPrompt(task),
   })
 
   const gateVerdict = await invokeAgent(runtime, {
     name: "gate-benchmark-statistician",
-    model: MODEL,
+    ...(reviewModel ? { model: reviewModel } : {}),
     prompt: statisticianPrompt(task, collectedEvidence),
   })
 
   const consolidated = await invokeAgent(runtime, {
     name: "gate-benchmark-consolidator",
-    model: MODEL,
+    ...(reviewModel ? { model: reviewModel } : {}),
     prompt: consolidatePrompt(task, collectedEvidence, gateVerdict),
   })
 
   return {
     workflow: "gate-benchmark",
-    model: MODEL,
+    model: reviewModel || "auto",
     task,
     collectedEvidence,
     gateVerdict,

@@ -1267,8 +1267,50 @@ def _normalize_task_progress_payload(raw: Any) -> dict[str, Any]:
     return result
 
 
+def _normalize_spawn_telemetry_payload(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    dropped = raw.get("host_dropped_fields")
+    return {
+        "eligible_for_reuse": bool(raw.get("eligible_for_reuse", False)),
+        "reuse_observed": bool(raw.get("reuse_observed", False)),
+        "spawn_latency_ms": max(0, int(raw.get("spawn_latency_ms", 0) or 0)),
+        "cache_capability": str(raw.get("cache_capability") or "").strip(),
+        "host_dropped_fields": (
+            [str(item).strip() for item in dropped if str(item).strip()] if isinstance(dropped, list | tuple) else []
+        ),
+    }
+
+
+def _normalize_spawn_summary_payload(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    result = {
+        "step_count": max(0, int(raw.get("step_count", 0) or 0)),
+        "eligible_for_reuse": max(0, int(raw.get("eligible_for_reuse", 0) or 0)),
+        "reuse_observed": max(0, int(raw.get("reuse_observed", 0) or 0)),
+        "spawn_latency_ms": max(0, int(raw.get("spawn_latency_ms", 0) or 0)),
+        "cache_capability_counts": {},
+        "host_dropped_fields": {},
+    }
+    cache_capability_counts = raw.get("cache_capability_counts")
+    if isinstance(cache_capability_counts, dict):
+        result["cache_capability_counts"] = {
+            str(key): max(0, int(value or 0)) for key, value in cache_capability_counts.items() if str(key).strip()
+        }
+    host_dropped_fields = raw.get("host_dropped_fields")
+    if isinstance(host_dropped_fields, dict):
+        result["host_dropped_fields"] = {
+            str(key): max(0, int(value or 0)) for key, value in host_dropped_fields.items() if str(key).strip()
+        }
+    return result
+
+
 def _workflow_progress_output(stats: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    has_update = any(isinstance(payload.get(key), dict) for key in ("workflow_state", "plan_review", "task_progress"))
+    has_update = any(
+        isinstance(payload.get(key), dict)
+        for key in ("workflow_state", "plan_review", "task_progress", "spawn_summary")
+    )
     if not has_update:
         return {"no_output": True}
     raw_workflow_state = stats.get("workflow_state")
@@ -1277,6 +1319,8 @@ def _workflow_progress_output(stats: dict[str, Any], payload: dict[str, Any]) ->
     plan_review: dict[str, Any] = raw_plan_review if isinstance(raw_plan_review, dict) else {}
     raw_task_progress = stats.get("task_progress")
     task_progress: dict[str, Any] = raw_task_progress if isinstance(raw_task_progress, dict) else {}
+    raw_spawn_summary = stats.get("spawn_summary")
+    spawn_summary: dict[str, Any] = raw_spawn_summary if isinstance(raw_spawn_summary, dict) else {}
     parts: list[str] = []
     if workflow_state.get("workflow_step"):
         parts.append(f"workflow={workflow_state['workflow_step']}")
@@ -1286,6 +1330,14 @@ def _workflow_progress_output(stats: dict[str, Any], payload: dict[str, Any]) ->
         completed = int(task_progress.get("completed_tasks", 0) or 0)
         remaining = int(task_progress.get("remaining_tasks", 0) or 0)
         parts.append(f"task={task_progress['task_id']} ({completed} done/{remaining} remaining)")
+    if int(spawn_summary.get("step_count", 0) or 0) > 0:
+        reuse_observed = int(spawn_summary.get("reuse_observed", 0) or 0)
+        eligible = int(spawn_summary.get("eligible_for_reuse", 0) or 0)
+        parts.append(f"spawn=reuse {reuse_observed}/{eligible}")
+        dropped_fields = spawn_summary.get("host_dropped_fields")
+        if isinstance(dropped_fields, dict) and dropped_fields:
+            first_field = next(iter(dropped_fields.items()))
+            parts.append(f"drop={first_field[0]}:{int(first_field[1] or 0)}")
     if not parts:
         return {"no_output": True}
     text = "Atelier workflow progress: " + " | ".join(parts)
@@ -1322,6 +1374,19 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     task_progress = _normalize_task_progress_payload(payload.get("task_progress"))
     if task_progress:
         state["task_progress"] = task_progress
+    spawn_summary = _normalize_spawn_summary_payload(payload.get("spawn_summary"))
+    if spawn_summary:
+        state["spawn_summary"] = spawn_summary
+    state.setdefault(
+        "spawn_telemetry",
+        {
+            "eligible_for_reuse": 0,
+            "reuse_observed": 0,
+            "spawn_latency_ms": 0,
+            "cache_capability_counts": {},
+            "host_dropped_fields": {},
+        },
+    )
     _merge_usage(state, _extract_usage(payload))
     # context_window.current_usage is a cumulative snapshot of the entire session so far.
     # Overwrite state["usage"] with it each time — never accumulate it additively.
@@ -1342,6 +1407,18 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         if tool_name == "Agent":
             state["subagents_started"] = int(state.get("subagents_started", 0) or 0) + 1
             state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) + 1)
+        spawn_telemetry = _normalize_spawn_telemetry_payload(payload.get("spawn_telemetry"))
+        if spawn_telemetry:
+            state["spawn_telemetry"]["eligible_for_reuse"] += int(spawn_telemetry["eligible_for_reuse"])
+            state["spawn_telemetry"]["reuse_observed"] += int(spawn_telemetry["reuse_observed"])
+            state["spawn_telemetry"]["spawn_latency_ms"] += int(spawn_telemetry["spawn_latency_ms"])
+            cache_capability = str(spawn_telemetry.get("cache_capability") or "")
+            if cache_capability:
+                counts = state["spawn_telemetry"]["cache_capability_counts"]
+                counts[cache_capability] = int(counts.get(cache_capability, 0) or 0) + 1
+            for field in spawn_telemetry.get("host_dropped_fields", []):
+                dropped_fields = state["spawn_telemetry"]["host_dropped_fields"]
+                dropped_fields[field] = int(dropped_fields.get(field, 0) or 0) + 1
     elif event == "PreCompact":
         state["compaction_started_at_ms"] = _now_ms(payload)
     elif event == "PostCompact":
@@ -1742,6 +1819,13 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         "pending_subagents": 0,
         "subagents_started": 0,
         "subagents_completed": 0,
+        "spawn_telemetry": {
+            "eligible_for_reuse": 0,
+            "reuse_observed": 0,
+            "spawn_latency_ms": 0,
+            "cache_capability_counts": {},
+            "host_dropped_fields": {},
+        },
     }
     for file_path in files:
         try:
@@ -1764,6 +1848,27 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
             "subagents_completed",
         ):
             aggregate[key] += int(data.get(key, 0) or 0)
+        spawn_telemetry_raw = data.get("spawn_telemetry")
+        spawn_telemetry = spawn_telemetry_raw if isinstance(spawn_telemetry_raw, dict) else {}
+        aggregate["spawn_telemetry"]["eligible_for_reuse"] += int(spawn_telemetry.get("eligible_for_reuse", 0) or 0)
+        aggregate["spawn_telemetry"]["reuse_observed"] += int(spawn_telemetry.get("reuse_observed", 0) or 0)
+        aggregate["spawn_telemetry"]["spawn_latency_ms"] += int(spawn_telemetry.get("spawn_latency_ms", 0) or 0)
+        cache_capability_counts: dict[str, Any] = {}
+        raw_cache_capability_counts = spawn_telemetry.get("cache_capability_counts")
+        if isinstance(raw_cache_capability_counts, dict):
+            cache_capability_counts = raw_cache_capability_counts
+        for key, value in cache_capability_counts.items():
+            aggregate["spawn_telemetry"]["cache_capability_counts"][str(key)] = int(
+                aggregate["spawn_telemetry"]["cache_capability_counts"].get(str(key), 0) or 0
+            ) + int(value or 0)
+        host_dropped_fields: dict[str, Any] = {}
+        raw_host_dropped_fields = spawn_telemetry.get("host_dropped_fields")
+        if isinstance(raw_host_dropped_fields, dict):
+            host_dropped_fields = raw_host_dropped_fields
+        for key, value in host_dropped_fields.items():
+            aggregate["spawn_telemetry"]["host_dropped_fields"][str(key)] = int(
+                aggregate["spawn_telemetry"]["host_dropped_fields"].get(str(key), 0) or 0
+            ) + int(value or 0)
     return aggregate
 
 
