@@ -37,6 +37,11 @@ install: ## Install Atelier (default: binary mode, use ARGS="--local" for source
 release: ## Build and package for production distribution
 	bash scripts/bundle-prod.sh
 
+prod: ## Build and install from local production build
+	bash scripts/bundle-prod.sh
+	ATELIER_BINARY_MODE=0 ATELIER_LOCAL=1 bash scripts/install.sh
+
+
 
 uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
 	@bash scripts/uninstall.sh $${ARGS:-}
