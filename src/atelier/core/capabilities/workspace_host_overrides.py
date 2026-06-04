@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.resources
 import json
 import shutil
 from pathlib import Path
@@ -25,8 +26,10 @@ def workspace_copilot_agent_text(
     *,
     repo_root: str | Path | None = None,
 ) -> str:
-    root = _resolve_repo_root(repo_root)
-    text = (root / "integrations" / "copilot" / "agents" / _copilot_agent_filename(role_id)).read_text(encoding="utf-8")
+    agent_path = importlib.resources.files("atelier").joinpath(
+        "integrations", "copilot", "agents", _copilot_agent_filename(role_id)
+    )
+    text = agent_path.read_text(encoding="utf-8")
     model = resolve_host_model(
         "copilot",
         role_id,
@@ -42,8 +45,10 @@ def workspace_claude_agent_text(
     *,
     repo_root: str | Path | None = None,
 ) -> str:
-    root = _resolve_repo_root(repo_root)
-    text = (root / "integrations" / "claude" / "plugin" / "agents" / f"{role_id}.md").read_text(encoding="utf-8")
+    agent_path = importlib.resources.files("atelier").joinpath(
+        "integrations", "claude", "plugin", "agents", f"{role_id}.md"
+    )
+    text = agent_path.read_text(encoding="utf-8")
     # Only inject model if user explicitly set a host override (otherwise inherit session model)
     model = _claude_explicit_host_model(role_id, workspace_root)
     return rewrite_agent_name(rewrite_agent_model(text, model), f"atelier:{role_id}")
