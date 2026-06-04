@@ -286,3 +286,5 @@ exports/
 /reports/
 .eval
 dist/
+*.spec
+bundle/
