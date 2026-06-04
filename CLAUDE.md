@@ -33,7 +33,7 @@ make typecheck      # mypy --strict src
 make pre-commit     # format + lint + typecheck + docs + test
 
 # Docs governance
-make sync-agent-context   # regenerate host instruction files from docs/agent-os/
+make sync-agent-context   # regenerate host instruction files from integrations/shared/
 make check-agent-context  # verify generated files are up to date
 
 # Install Claude plugin (after changing integrations/claude/plugin/)
@@ -89,7 +89,7 @@ Generated files must never be edited directly — edit the source and regenerate
 
 | Generated file                                                 | Source                        | Regenerate with                  |
 | -------------------------------------------------------------- | ----------------------------- | -------------------------------- |
-| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `docs/agent-os/*.md`          | `make sync-agent-context`        |
+| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `integrations/agents/`, `integrations/shared/` | `make sync-agent-context`        |
 | Plugin staging dir `~/.atelier/claude-plugin-*/`               | `integrations/claude/plugin/` | `bash scripts/install_claude.sh` |
 
 ## Coding Guidelines
