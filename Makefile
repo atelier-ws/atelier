@@ -29,10 +29,14 @@ EXTERNAL_PERIODS ?= today week month
 #    * To pass other flags (like skipping hosts or dry-run):
 
 #         make install ARGS="--local --no-hosts --dry-run"
-# install: ## Install Atelier (use ARGS="--local" to install from current dir)
-install: ## Install Atelier (use ARGS="--local" to install from current dir)
+# install: ## Install Atelier (default: binary mode, use ARGS="--local" for source)
+install: ## Install Atelier (default: binary mode, use ARGS="--local" for source)
 	@# This target calls scripts/install.sh
-	bash scripts/install.sh --local $(ARGS)
+	bash scripts/install.sh $(ARGS)
+
+release: ## Build and package for production distribution
+	bash scripts/bundle-prod.sh
+
 
 uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
 	@bash scripts/uninstall.sh $${ARGS:-}
