@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -127,6 +128,48 @@ def test_trace_search_reindexes_existing_traces(tmp_path: Path) -> None:
     assert any(snippet.startswith("Files:") for snippet in matches[0].snippets)
     assert any(snippet.startswith("Validations:") for snippet in matches[0].snippets)
     assert any(snippet.startswith("Learnings:") for snippet in matches[0].snippets)
+
+
+def test_init_syncs_template_blocks_without_warning(tmp_path: Path, caplog) -> None:
+    root = tmp_path / ".atelier"
+    lessons_dir = tmp_path / ".lessons" / "blocks"
+    lessons_dir.mkdir(parents=True)
+    (lessons_dir / "template_python-fastapi-api-boundaries.md").write_text(
+        """---
+id: template-python-fastapi-api-boundaries
+title: API Boundaries
+domain: coding.python-fastapi
+task_types:
+  - feature
+triggers:
+  - API model
+file_patterns:
+  - "**/*.py"
+tool_patterns: []
+situation: "An endpoint contract changes."
+dead_ends:
+  - "Ad-hoc response shapes."
+procedure:
+  - "Define the contract."
+verification:
+  - "Run endpoint tests."
+failure_signals:
+  - "API responses drift."
+required_rubrics: []
+when_not_to_apply: "Internal-only helpers."
+---
+
+TODO: Fill in repo-specific examples.
+""",
+        encoding="utf-8",
+    )
+
+    store = ContextStore(root)
+    with caplog.at_level(logging.WARNING):
+        store.init()
+
+    assert store.get_block("template-python-fastapi-api-boundaries") is not None
+    assert not [record for record in caplog.records if "failed to sync lessons block" in record.message]
 
 
 def test_rubric_roundtrip(store: ContextStore) -> None:

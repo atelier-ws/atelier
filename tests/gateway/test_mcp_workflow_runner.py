@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -235,9 +236,65 @@ def test_workflow_run_executes_agent_steps_by_default(workflow_env: Path, monkey
     assert payload["status"] == "success"
     assert payload["step_count"] == 1
     assert seen["runner"] == mcp_server._workflow_runner_profile()
-    assert seen["runner_model"] == "claude-opus-4.8"
+    assert seen["runner_model"] == mcp_server._workflow_runner_model(
+        mcp_server.build_default_registry(Path(__file__).resolve().parents[2]),
+        role_id="general",
+        workspace=Path(os.environ["CLAUDE_WORKSPACE_ROOT"]),
+        runner=seen["runner"],
+    )
     assert seen["cwd"].name == "workspace"
     assert "Inspect README.md" in seen["prompt"]
+
+
+def test_workflow_run_uses_workspace_host_model_when_configured(
+    workflow_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = Path(os.environ["CLAUDE_WORKSPACE_ROOT"])
+    settings_dir = workspace / ".atelier"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(
+        json.dumps({"models": {"hosts": {"claude": {"roles": {"*": "claude-opus-4.8"}}}}}),
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_resolve_swarm_runner_command(
+        *,
+        runner: str | None,
+        runner_model: str | None,
+        runner_args: list[str] | tuple[str, ...],
+        child_command: list[str] | tuple[str, ...],
+        prompt_template: str,
+    ) -> list[str]:
+        seen["runner_model"] = runner_model
+        return ["fake-runner", prompt_template]
+
+    monkeypatch.setattr(mcp_server, "resolve_swarm_runner_command", fake_resolve_swarm_runner_command)
+    monkeypatch.setattr(mcp_server, "_workflow_runner_profile", lambda: "claude")
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout='{"verdict":"PASS","checklist":["done"],"missing":[]}',
+            stderr="",
+        ),
+    )
+
+    payload = mcp_server._run_owned_workflow(
+        {
+            "workflow": {
+                "workflow_id": "owned-review-loop",
+                "steps": [
+                    {"step_id": "agent_step", "kind": "agent", "role_id": "code", "prompt": "Inspect README.md."}
+                ],
+            }
+        }
+    )
+
+    assert payload["status"] == "success"
+    assert seen["runner_model"] == "claude-opus-4-8"
 
 
 def test_workflow_run_applies_explicit_owned_route(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:

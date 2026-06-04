@@ -13,6 +13,7 @@ from atelier.core.capabilities.model_routing.stickiness import (
 from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlan, PrefixCachePlanner
 from atelier.core.capabilities.pricing import get_model_pricing
 from atelier.core.capabilities.prompt_compilation.models import BlockKind, PromptBlock, Stability
+from atelier.core.capabilities.workflow_spawn import compile_prompt_text, scope_break_reason
 
 
 def build_cache_affinity_state(
@@ -22,12 +23,15 @@ def build_cache_affinity_state(
     model: str,
     transport: str,
     prior_state: Mapping[str, Any] | None = None,
+    compiled_prompt: Mapping[str, Any] | None = None,
+    cache_scope_id: str = "",
+    spawn_group_id: str = "",
     actual_cache_read_input_tokens: int = 0,
     actual_cache_write_input_tokens: int = 0,
 ) -> dict[str, Any]:
     previous = dict(prior_state or {})
     previous_plan = _plan_from_state(previous)
-    current_plan = _plan_prompt(prompt, previous_plan)
+    current_plan = _plan_compiled_prompt(compiled_prompt, prompt=prompt, previous_plan=previous_plan)
     same_route = _same_route(previous, provider=provider, model=model, transport=transport)
     has_actual_cache = actual_cache_read_input_tokens > 0 or actual_cache_write_input_tokens > 0
     modeled_cache_read = current_plan.prefix_tokens if same_route and current_plan.prefix_tokens > 0 else 0
@@ -47,14 +51,29 @@ def build_cache_affinity_state(
     invalidated_reason = (
         current_plan.invalidated_reason if current_plan.invalidated_reason and previous_plan.prefix_tokens > 0 else ""
     )
+    selected_scope_id = cache_scope_id or str(previous.get("cache_scope_id") or "")
     return {
         "provider": provider,
         "model": model,
         "transport": transport,
+        "spawn_group_id": spawn_group_id or str(previous.get("spawn_group_id") or ""),
+        "cache_scope_id": selected_scope_id,
         "stable_prefix_hash": prefix_hash,
         "stable_prefix_tokens": current_plan.prefix_tokens,
         "dynamic_tokens": current_plan.dynamic_tokens,
-        "prefix_invalidated_reason": invalidated_reason,
+        "prefix_invalidated_reason": invalidated_reason
+        or scope_break_reason(
+            cache_policy="inherit",
+            prior_scope_id=selected_scope_id,
+            prior_prefix_hash=previous_plan.prefix_hash,
+            current_prefix_hash=prefix_hash,
+            selected_model=model,
+            executed_model=model,
+            selected_provider=provider,
+            executed_provider=provider,
+            selected_transport=transport,
+            executed_transport=transport,
+        ),
         "cache_evidence": cache_evidence,
         "cache_read_input_tokens": actual_cache_read_input_tokens,
         "cache_write_input_tokens": actual_cache_write_input_tokens,
@@ -124,6 +143,37 @@ def _plan_prompt(prompt: str, previous_plan: PrefixCachePlan | None) -> PrefixCa
     )
     prior_hash = previous_plan.prefix_hash or None if previous_plan is not None else None
     return PrefixCachePlanner().plan_with_history(blocks, prior_hash)
+
+
+def _plan_compiled_prompt(
+    compiled_prompt: Mapping[str, Any] | None,
+    *,
+    prompt: str,
+    previous_plan: PrefixCachePlan | None,
+) -> PrefixCachePlan:
+    if not isinstance(compiled_prompt, Mapping):
+        return _plan_prompt(prompt, previous_plan)
+    stable_prefix = str(compiled_prompt.get("stable_prefix") or "").strip()
+    dynamic_tail = str(compiled_prompt.get("dynamic_tail") or "").strip()
+    prefix_hash = str(compiled_prompt.get("stable_prefix_hash") or "").strip()
+    prefix_tokens = _safe_int(compiled_prompt.get("stable_prefix_tokens"))
+    dynamic_tokens = _safe_int(compiled_prompt.get("dynamic_tokens"))
+    if not stable_prefix and not dynamic_tail and prompt.strip():
+        return _plan_prompt(prompt, previous_plan)
+    if prefix_hash:
+        invalidated_reason = ""
+        if previous_plan is not None and previous_plan.prefix_hash and previous_plan.prefix_hash != prefix_hash:
+            invalidated_reason = "stable_prefix_changed"
+        return PrefixCachePlan(
+            static_prefix=(),
+            dynamic_state=(),
+            prefix_hash=prefix_hash,
+            prefix_tokens=prefix_tokens,
+            dynamic_tokens=dynamic_tokens,
+            total_tokens=prefix_tokens + dynamic_tokens,
+            invalidated_reason=invalidated_reason,
+        )
+    return _plan_prompt(compile_prompt_text(prompt).prompt, previous_plan)
 
 
 def _plan_from_state(state: Mapping[str, Any]) -> PrefixCachePlan:

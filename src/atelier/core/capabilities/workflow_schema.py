@@ -28,9 +28,11 @@ _STEP_REF_PATTERN = re.compile(r"\{\{\s*steps\.([A-Za-z0-9_\-]+)\.(?:output|outp
 class WorkflowStepDefinition:
     step_id: str
     kind: str
+    role_id: str = ""
     next_steps: tuple[str, ...] = ()
     fork_from: str = ""
     context_mode: str = "inherit"
+    parallel_safe: bool = False
     requires_plan_review: bool = False
     prompt: str = ""
     tool: str = ""
@@ -59,9 +61,11 @@ def workflow_step_from_mapping(raw: Mapping[str, Any]) -> WorkflowStepDefinition
     return WorkflowStepDefinition(
         step_id=str(raw.get("step_id") or raw.get("id") or "").strip(),
         kind=str(raw.get("kind") or "").strip(),
+        role_id=str(raw.get("role_id") or "").strip(),
         next_steps=next_steps,
         fork_from=str(raw.get("fork_from") or "").strip(),
         context_mode=str(raw.get("context_mode") or "inherit").strip() or "inherit",
+        parallel_safe=bool(raw.get("parallel_safe", False)),
         requires_plan_review=bool(raw.get("requires_plan_review", False)),
         prompt=str(raw.get("prompt") or "").strip(),
         tool=str(raw.get("tool") or "").strip(),
@@ -98,11 +102,15 @@ def referenced_step_ids(value: Any) -> set[str]:
 
 
 def step_is_safe_parallel(step: WorkflowStepDefinition) -> bool:
-    if step.kind != "tool" or step.interactive:
-        return False
-    if step.tool == "context":
-        return str(step.args.get("mode") or "").strip() == "symbols"
-    return step.tool in SAFE_PARALLEL_TOOL_NAMES
+    if step.kind == "tool":
+        if step.interactive:
+            return False
+        if step.tool == "context":
+            return str(step.args.get("mode") or "").strip() == "symbols"
+        return step.tool in SAFE_PARALLEL_TOOL_NAMES
+    if step.kind == "agent":
+        return step.parallel_safe and not step.requires_plan_review
+    return False
 
 
 def step_dependencies(definition: WorkflowDefinition) -> dict[str, set[str]]:

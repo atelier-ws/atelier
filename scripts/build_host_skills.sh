@@ -13,6 +13,7 @@ ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="${ATELIER_REPO}/integrations/skills"
 RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
 ALWAYS_EXCLUDED_SKILLS=("trace")
+CLAUDE_ROLE_SKILLS=("code" "execute" "explore" "plan" "research" "review" "solve")
 
 HOST=""
 DEST=""
@@ -88,6 +89,17 @@ is_always_excluded_skill() {
     return 1
 }
 
+is_claude_role_skill() {
+    local name="$1"
+    local skill
+    for skill in "${CLAUDE_ROLE_SKILLS[@]}"; do
+        if [[ "$skill" == "$name" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 default_dest_for_host() {
     case "$1" in
         claude) printf "%s" "${ATELIER_REPO}/integrations/claude/plugin/skills" ;;
@@ -122,6 +134,9 @@ render_host_bundle() {
             continue
         fi
         if is_hidden_skill "$skill_name"; then
+            continue
+        fi
+        if [[ "$host" == "claude" ]] && is_claude_role_skill "$skill_name"; then
             continue
         fi
 

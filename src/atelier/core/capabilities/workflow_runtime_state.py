@@ -37,6 +37,15 @@ def workflow_runtime_status(session_state: dict[str, Any]) -> dict[str, Any]:
     )
     step_count = len(runtime_state.get("step_order") or []) or len(runner_state.step_order)
     completed_steps = sum(1 for result in runner_state.step_results.values() if result.status == "done")
+    spawn_summary = (
+        dict(runtime_state.get("spawn_summary") or {})
+        if isinstance(runtime_state.get("spawn_summary"), dict)
+        else (
+            dict(workflow_state.get("spawn_summary") or {})
+            if isinstance(workflow_state.get("spawn_summary"), dict)
+            else {}
+        )
+    )
     return {
         "run_id": str(runtime_state.get("run_id") or runner_state.run_id or "").strip(),
         "workflow_id": str(runtime_state.get("workflow_id") or "").strip(),
@@ -56,6 +65,7 @@ def workflow_runtime_status(session_state: dict[str, Any]) -> dict[str, Any]:
         ),
         "updated_at": str(runtime_state.get("updated_at") or "").strip(),
         "created_at": str(runtime_state.get("created_at") or "").strip(),
+        "spawn_summary": spawn_summary,
     }
 
 
@@ -122,6 +132,7 @@ def workflow_runtime_detail(session_state: dict[str, Any]) -> dict[str, Any]:
             else {}
         ),
         "task_outputs": task_outputs,
+        "spawn_summary": dict(summary.get("spawn_summary") or {}),
         "step_order": list(runtime_state.get("step_order") or runner_state.step_order),
         "available_actions": {
             "can_pause": can_pause,
