@@ -92,6 +92,10 @@ ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
 ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
 ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-0}"   # 1 = enable periodic optimize automation
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # 1 = install persistent Zoekt sidecar
+OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+BINARY_SUFFIX="${OS_NAME}-${ARCH}"
+
 ATELIER_BINARY_MODE="${ATELIER_BINARY_MODE:-1}"
 ATELIER_RELEASE_URL="${ATELIER_RELEASE_URL:-https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz}"
 ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
@@ -1632,10 +1636,6 @@ main() {
         ATELIER_INSTALL_DIR="$(pwd)"
     elif [[ "$ATELIER_BINARY_MODE" == "1" ]]; then
         verbose "Binary mode: downloading pre-compiled binaries"
-        
-        OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
-        ARCH="$(uname -m)"
-        BINARY_SUFFIX="${OS_NAME}-${ARCH}"
         
         # Default URL format for CI/CD generated artifacts
         ATELIER_RELEASE_URL="${ATELIER_RELEASE_URL:-https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz}"
