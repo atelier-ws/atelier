@@ -134,6 +134,8 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = ["src", "benchmarks", "integrations"]
 
 [[tool.mypy.overrides]]
 module = [
