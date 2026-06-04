@@ -55,7 +55,6 @@ def test_web_fetch_renders_content_only(mcp_env: Path, monkeypatch: pytest.Monke
 
 def test_web_fetch_listed_in_tool_surface(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = mcp_env
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
 
     response = mcp_server._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     assert response is not None

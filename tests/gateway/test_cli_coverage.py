@@ -43,7 +43,6 @@ def _seed_ledger(root: Path, session_id: str = "run1") -> Path:
 
 
 def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     root = tmp_path / ".atelier"
     init_store_at(str(root))
 
