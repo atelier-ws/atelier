@@ -1628,6 +1628,31 @@ main() {
     if [[ "$ATELIER_LOCAL" == "1" ]]; then
         verbose "Local mode: using current directory as an editable install source"
         ATELIER_INSTALL_DIR="$(pwd)"
+    elif [[ "$ATELIER_BINARY_MODE" == "1" ]]; then
+        verbose "Binary mode: downloading pre-compiled binaries"
+        
+        OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        ARCH="$(uname -m)"
+        BINARY_SUFFIX="${OS_NAME}-${ARCH}"
+        
+        # Default URL format for CI/CD generated artifacts
+        ATELIER_RELEASE_URL="${ATELIER_RELEASE_URL:-https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz}"
+
+        step_start "Downloading binaries ($BINARY_SUFFIX)"
+        local tmp_binaries
+        tmp_binaries="$(mktemp "${TMPDIR:-/tmp}/atelier-binaries-${BINARY_SUFFIX}.XXXXXX.tar.gz")"
+
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] curl -sSL $ATELIER_RELEASE_URL -o $tmp_binaries"
+            echo "[dry-run] mkdir -p $ATELIER_INSTALL_DIR"
+            echo "[dry-run] tar -xzf $tmp_binaries -C $ATELIER_INSTALL_DIR"
+        else
+            curl -sSL "$ATELIER_RELEASE_URL" -o "$tmp_binaries"
+            mkdir -p "$ATELIER_INSTALL_DIR"
+            tar -xzf "$tmp_binaries" -C "$ATELIER_INSTALL_DIR"
+            rm -f "$tmp_binaries"
+        fi
+        step_done
     else
         spin "Preparing repository" prepare_repo
     fi

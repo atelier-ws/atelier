@@ -285,3 +285,4 @@ exports/
 /.cocoindex_code/
 /reports/
 .vix
+dist/
