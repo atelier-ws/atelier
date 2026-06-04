@@ -16,18 +16,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.cli import cli
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _seed_store(root: Path) -> None:
-    from click.testing import CliRunner
-
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
+from tests.helpers import init_store_at
 
 
 def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -78,7 +71,7 @@ def _write_session_state(state: dict[str, Any]) -> None:
 @pytest.fixture()
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
-    _seed_store(root)
+    init_store_at(str(root))
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("ATELIER_DEV_MODE", "1")

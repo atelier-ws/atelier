@@ -50,16 +50,32 @@ from atelier.core.capabilities.owned_execution_routing import (
     select_owned_route,
 )
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.capabilities.source_projection import SourceProjection
 from atelier.core.capabilities.workflow_context import WorkflowContextState
 from atelier.core.capabilities.workflow_runner import WorkflowRunner
-from atelier.core.capabilities.workflow_schema import workflow_definition_from_mapping
-from atelier.core.environment import (
-    dev_tool_disabled_message,
-    is_dev_mode,
-    mcp_tool_description,
-    mcp_tool_mode,
-    mcp_tool_visible_to_llm,
+from atelier.core.capabilities.workflow_runtime_state import (
+    coerce_workflow_review_decision as _coerce_workflow_review_decision,
 )
+from atelier.core.capabilities.workflow_runtime_state import (
+    pause_workflow_runtime as _pause_workflow_runtime,
+)
+from atelier.core.capabilities.workflow_runtime_state import (
+    require_active_workflow_runtime as _require_active_workflow_runtime,
+)
+from atelier.core.capabilities.workflow_runtime_state import (
+    stop_workflow_runtime as _stop_workflow_runtime,
+)
+from atelier.core.capabilities.workflow_runtime_state import (
+    workflow_runtime_state as _workflow_runtime_state,
+)
+from atelier.core.capabilities.workflow_runtime_state import (
+    workflow_runtime_status as _coerce_workflow_runtime_status,
+)
+from atelier.core.capabilities.workflow_runtime_state import (
+    write_workflow_runtime_state as _write_workflow_runtime_state,
+)
+from atelier.core.capabilities.workflow_schema import workflow_definition_from_mapping
+from atelier.core.environment import mcp_tool_description, mcp_tool_mode, mcp_tool_visible_to_llm
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.foundation.models import RawArtifact, Trace, to_jsonable
 from atelier.core.foundation.redaction import redact
@@ -84,12 +100,6 @@ AUTO_COMPACT_MIN_TURNS = 15
 # Bypass the min-turns gate when utilisation already exceeds this level —
 # a few very large turns can fill the window just as fast as many small ones.
 AUTO_COMPACT_HIGH_UTIL_OVERRIDE = 90.0
-
-
-def _check_dev_mode(tool_name: str) -> str | None:
-    if not is_dev_mode():
-        return dev_tool_disabled_message(tool_name)
-    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -932,8 +942,8 @@ def _provider_for_model(model_id: str) -> str:
 
 
 def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_state: Any) -> Any:
-    if step.tool == "workflow_run":
-        raise ValueError("workflow_run cannot recursively invoke itself")
+    if step.tool == "workflow":
+        raise ValueError("workflow cannot recursively invoke itself")
     spec = TOOLS.get(step.tool)
     if spec is None:
         raise ValueError(f"unknown workflow tool: {step.tool}")
@@ -950,20 +960,27 @@ def _default_workflow_shell_executor(step: Any, command: str, forked_context: di
 
 
 def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
+    resume = bool(arguments.get("resume", False))
+    session_state = _read_workspace_session_state()
+    runtime_state = _workflow_runtime_state(session_state)
+
     workflow_raw = arguments.get("workflow")
+    if resume and not isinstance(workflow_raw, Mapping):
+        workflow_raw = runtime_state.get("workflow")
     if not isinstance(workflow_raw, Mapping):
-        raise ValueError("workflow_run requires workflow mapping")
+        raise ValueError("workflow run requires workflow mapping")
     route_raw = arguments.get("route")
+    if resume and not isinstance(route_raw, Mapping):
+        route_raw = runtime_state.get("route")
     route = dict(route_raw) if isinstance(route_raw, Mapping) else {}
     review_raw = arguments.get("plan_review")
     plan_review = dict(review_raw) if isinstance(review_raw, Mapping) else {}
-    review_decision = str(plan_review.get("decision") or plan_review.get("review_decision") or "").strip().lower()
+    review_decision = _coerce_workflow_review_decision(plan_review)
     definition = workflow_definition_from_mapping(workflow_raw)
-    session_state = _read_workspace_session_state()
     workflow_state = (
         dict(session_state.get("workflow") or {}) if isinstance(session_state.get("workflow"), dict) else {}
     )
-    runner_state = WorkflowContextState.from_mapping(workflow_state.get("runner"))
+    runner_state = WorkflowContextState.from_mapping(runtime_state.get("runner")) if resume else WorkflowContextState()
     runner = WorkflowRunner(
         agent_executor=lambda step, prompt, context_state: _default_workflow_agent_executor(
             step,
@@ -981,9 +998,32 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
         ledger=ledger,
         plan_review_decision=review_decision,
     )
+    created_at = str(runtime_state.get("created_at") or "").strip() if resume else ""
+    runtime_state = {
+        "run_id": result.run_id,
+        "workflow_id": definition.workflow_id,
+        "workflow": dict(workflow_raw),
+        "route": dict(route),
+        "status": result.status,
+        "step_order": list(result.step_order),
+        "current_step": result.paused_step_id
+        or result.failed_step_id
+        or (result.step_order[-1] if result.step_order else ""),
+        "failed_step_id": result.failed_step_id or "",
+        "paused_step_id": result.paused_step_id or "",
+        "artifact_ids": [],
+        "created_at": created_at or datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
+        "runner": runner_state.to_dict(),
+    }
     if result.status == "awaiting_review":
         workflow_state["current_step"] = "review"
         workflow_state["session_phase"] = "review"
+        runtime_state["plan_review"] = {
+            "decision": review_decision or "pending",
+            "paused_step_id": result.paused_step_id or "",
+            "workflow_id": definition.workflow_id,
+        }
         ledger.record_workflow_event(
             "plan_review",
             {
@@ -996,6 +1036,11 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     elif result.status == "review_rejected":
         workflow_state["current_step"] = "review"
         workflow_state["session_phase"] = "review"
+        runtime_state["plan_review"] = {
+            "decision": review_decision or "revise",
+            "paused_step_id": result.paused_step_id or "",
+            "workflow_id": definition.workflow_id,
+        }
         ledger.record_workflow_event(
             "plan_review",
             {
@@ -1009,6 +1054,11 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
         workflow_state["current_step"] = "execution"
         workflow_state["session_phase"] = "execute"
         if review_decision:
+            runtime_state["plan_review"] = {
+                "decision": review_decision,
+                "workflow_id": definition.workflow_id,
+            }
+        if review_decision:
             ledger.record_workflow_event(
                 "plan_review",
                 {
@@ -1017,7 +1067,6 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
                     "workflow_id": definition.workflow_id,
                 },
             )
-    workflow_state["runner"] = runner_state.to_dict()
     workflow_state["current_task"] = {
         "workflow_id": definition.workflow_id,
         "run_id": result.run_id,
@@ -1039,8 +1088,11 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
             "decision": review_decision,
             "workflow_id": definition.workflow_id,
         }
+    else:
+        workflow_state.pop("plan_review", None)
     workflow_state["updated_at"] = datetime.now(UTC).isoformat()
     session_state["workflow"] = workflow_state
+    _write_workflow_runtime_state(session_state, runtime_state)
     _write_workspace_session_state(session_state)
     ledger.persist()
     receipt = {
@@ -1054,6 +1106,94 @@ def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     if result.paused_step_id:
         receipt["paused_step_id"] = result.paused_step_id
     return receipt
+
+
+WORKFLOW_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "op": {
+            "type": "string",
+            "enum": ["run", "status", "pause", "resume", "stop"],
+        },
+        "workflow": {"type": "object"},
+        "run_id": {"type": "string"},
+        "route": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "enum": ["native", "auto", "explicit"]},
+                "provider": {"type": "string"},
+                "model": {"type": "string"},
+                "runner": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "plan_review": {
+            "type": "object",
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "revise", "rerun"]},
+            },
+            "additionalProperties": False,
+        },
+        "pause_reason": {"type": "string"},
+        "stop_reason": {"type": "string"},
+    },
+    "required": ["op"],
+    "additionalProperties": False,
+}
+
+
+@mcp_tool(name="workflow", input_schema=WORKFLOW_TOOL_INPUT_SCHEMA)
+def tool_workflow(
+    op: str,
+    workflow: dict[str, Any] | None = None,
+    run_id: str | None = None,
+    route: dict[str, Any] | None = None,
+    plan_review: dict[str, Any] | None = None,
+    pause_reason: str | None = None,
+    stop_reason: str | None = None,
+) -> dict[str, Any]:
+    """Run or inspect Atelier's durable workflow runtime.
+
+    Ops:
+      run     — execute a workflow synchronously from a fresh runtime state
+      status  — inspect the persisted workflow runtime for this workspace
+      pause   — mark the persisted workflow runtime paused (does not cancel a live synchronous call)
+      resume  — continue the persisted workflow runtime using its stored workflow and route
+      stop    — mark the persisted workflow runtime stopped (does not cancel a live synchronous call)
+    """
+    normalized_op = op.strip().lower()
+    if normalized_op == "run":
+        return _run_owned_workflow({"workflow": workflow or {}, "route": route or {}, "plan_review": plan_review or {}})
+    session_state = _read_workspace_session_state()
+    if normalized_op == "status":
+        return _coerce_workflow_runtime_status(session_state)
+    if normalized_op not in {"pause", "resume", "stop"}:
+        raise ValueError(f"unsupported workflow op: {op}")
+    _require_active_workflow_runtime(session_state, run_id or "")
+    if normalized_op == "resume":
+        arguments: dict[str, Any] = {"resume": True, "plan_review": plan_review or {}}
+        if workflow is not None:
+            arguments["workflow"] = workflow
+        if route is not None:
+            arguments["route"] = route
+        return _run_owned_workflow(arguments)
+    if normalized_op == "pause":
+        _pause_workflow_runtime(
+            session_state,
+            run_id=run_id or "",
+            pause_reason=str(pause_reason or ""),
+        )
+        _write_workspace_session_state(session_state)
+        return _coerce_workflow_runtime_status(session_state)
+    if normalized_op == "stop":
+        _stop_workflow_runtime(
+            session_state,
+            run_id=run_id or "",
+            stop_reason=str(stop_reason or ""),
+        )
+        _write_workspace_session_state(session_state)
+        return _coerce_workflow_runtime_status(session_state)
+    raise ValueError(f"unsupported workflow op: {op}")
 
 
 def _grounded_benchmark_mode_enabled() -> bool:
@@ -1120,43 +1260,6 @@ def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
         f"Ground the target with read, grep, search, symbols, node, explore, callers, "
         f"callees, usages, or impact first: {target_list}"
     )
-
-
-@mcp_tool(
-    name="workflow_run",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "workflow": {"type": "object"},
-            "route": {
-                "type": "object",
-                "properties": {
-                    "mode": {"type": "string", "enum": ["native", "auto", "explicit"]},
-                    "provider": {"type": "string"},
-                    "model": {"type": "string"},
-                    "runner": {"type": "string"},
-                },
-                "additionalProperties": False,
-            },
-            "plan_review": {
-                "type": "object",
-                "properties": {
-                    "decision": {"type": "string", "enum": ["approve", "revise", "rerun"]},
-                },
-                "additionalProperties": False,
-            },
-        },
-        "required": ["workflow"],
-        "additionalProperties": False,
-    },
-)
-def tool_workflow_run(
-    workflow: dict[str, Any],
-    route: dict[str, Any] | None = None,
-    plan_review: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run an owned Atelier workflow DAG through the core workflow runner."""
-    return _run_owned_workflow({"workflow": workflow, "route": route or {}, "plan_review": plan_review or {}})
 
 
 def _register_mcp_session() -> None:
@@ -2041,7 +2144,13 @@ def tool_route(
     model: str = "",
     runner: str = "",
 ) -> dict[str, Any]:
-    """Pick the best model for an upcoming task."""
+    """Pick the provider/model for an upcoming Atelier-owned subcall.
+
+    `mode="auto"` lets policy choose from task class, budget, provider health, and cache warmth;
+    `mode="explicit"` (or setting `provider`/`model`/`runner`) pins a route for control or benchmark isolation.
+
+    Returns: {model, tier, route_tier, rationale} — echoes the resolved provider/model when explicit.
+    """
     led = _get_ledger()
 
     led.record_tool_call(
@@ -2133,7 +2242,10 @@ def tool_rescue_failure(
     files: list[str] | None = None,
     recent_actions: list[str] | None = None,
 ) -> dict[str, Any]:
-    """[DEV] Suggest a rescue procedure for a repeated failure."""
+    """Suggest a rescue procedure for a repeated failure (call after the same approach fails twice).
+
+    Returns: {cluster_id, domain, rescue_type, procedure: [{step, rationale}], rationale, analysis?}.
+    """
     if recent_actions is None:
         recent_actions = []
     if files is None:
@@ -2151,15 +2263,6 @@ def tool_rescue_failure(
             "recent_actions": recent_actions,
         },
     )
-
-    if stub := _check_dev_mode("rescue"):
-        return {
-            "cluster_id": "dev-mode-stub",
-            "domain": domain or "unknown",
-            "rescue_type": "none",
-            "procedure": [],
-            "rationale": stub,
-        }
 
     result = rt.rescue_failure(
         task=task,
@@ -2229,7 +2332,12 @@ def tool_record_trace(
     capture_files: list[str] | None = None,
     learnings: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Record an observable trace from an agent run."""
+    """Record an observable trace of an agent run (status, diffs, tools, validations, learnings) to the run ledger.
+
+    Call once when a task is done so outcomes and lessons persist for later recall.
+
+    Returns: {trace_id, event_recorded}.
+    """
     from atelier.core.foundation.redaction import redact, redact_list
 
     if tools_called is None:
@@ -2579,18 +2687,10 @@ def tool_record_trace(
 
 @mcp_tool(name="verify")
 def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
-    """[DEV] Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
+    """Evaluate agent results against a domain rubric. Returns pass|warn|fail with per-check detail."""
     rt = _runtime()
     led = _get_ledger()
     led.record_tool_call("run_rubric_gate", {"rubric_id": rubric_id, "checks": checks})
-
-    if stub := _check_dev_mode("verify"):
-        return {
-            "rubric_id": rubric_id,
-            "status": "pass",
-            "results": {},
-            "summary": stub,
-        }
 
     rubric = rt.store.get_rubric(rubric_id)
     if rubric is None:
@@ -2605,7 +2705,12 @@ def tool_run_rubric_gate(rubric_id: str, checks: dict[str, Any]) -> Any:
 
 
 def _compress_context(session_id: str | None = None) -> Any:
-    """Compress the current ledger state into a compact prompt block for context continuation."""
+    """Compress the current ledger state into a compact prompt block for context continuation.
+
+    Call when context is heavy; the block preserves decisions and state while dropping stale history.
+
+    Returns: {prompt_block, tokens_before, tokens_after_estimate, tokens_freed, cost_saved_usd}.
+    """
     from atelier.infra.runtime.context_compressor import ContextCompressor
 
     led = _get_ledger()
@@ -3031,19 +3136,34 @@ def tool_memory(
 
 def _render_read_md(result: dict[str, Any]) -> str | None:
     mode = str(result.get("mode") or "")
-    path = str(result.get("path") or "?")
-    language = str(result.get("language") or "")
+    projection = result.get("projection")
+    notice = ""
+    if isinstance(projection, dict):
+        raw_notice = str(projection.get("notice") or "").strip()
+        if raw_notice:
+            notice = raw_notice
     if mode == "directory":
         entries = result.get("entries")
         if isinstance(entries, list):
             return "\n".join(entries)
         return None
+    if mode == "summary":
+        summary = str(result.get("summary") or "").strip()
+        if not summary:
+            return None
+        return f"{notice}\n\n{summary}" if notice else summary
     if mode in {"range", "full"}:
-        return str(result.get("content") or "")
+        content = str(result.get("content") or "")
+        if not content:
+            return None
+        return f"{notice}\n\n{content}" if notice else content
     if mode == "outline":
+        path = str(result.get("path") or "?")
+        language = str(result.get("language") or "")
         outline = result.get("outline")
         if isinstance(outline, dict):
-            return _render_read_outline_md(path, outline, language)
+            rendered = _render_read_outline_md(path, outline, language)
+            return f"{notice}\n\n{rendered}" if notice else rendered
         return None
     return None
 
@@ -3112,14 +3232,11 @@ def _render_grep_md(result: dict[str, Any]) -> str | None:
 def _render_search_md(result: dict[str, Any]) -> str | None:
     mode = str(result.get("mode") or "chunks")
     if mode == "map":
-        ranked_files = result.get("ranked_files")
-        if isinstance(ranked_files, list) and ranked_files:
-            return "\n".join(ranked_files[:30])
-        return "no matches"
+        return json.dumps(result, ensure_ascii=False)
     matches = result.get("matches")
     if not isinstance(matches, list) or not matches:
-        return "no matches"
-    lines: list[str] = []
+        return "### search\n- no matches"
+    lines: list[str] = ["### search"]
     for match in matches:
         if not isinstance(match, dict):
             continue
@@ -3155,7 +3272,7 @@ def tool_smart_read(
         Field(description="Include tool metadata fields (cache and token counters)."),
     ] = False,
 ) -> dict[str, Any]:
-    """Read a file with automatic outline mode for large files.
+    """Read a file with automatic source projection for large files.
 
     Returns less context than native `Read` / `cat` for files >200 LOC:
       - outline mode: signatures, imports, structure -- no bodies.
@@ -3167,7 +3284,10 @@ def tool_smart_read(
         as a fallback for any other text-like language.
       - range mode (when range="42-118", range="L42-L118", or open-ended like "L42-"): exact line slice,
         cheaper than reading the whole file when you already know the range.
-      - full mode: identical to native Read (for tiny files or expand=True).
+      - full mode: untransformed file text (for tiny files or expand=True).
+      - compact projection: safe whitespace-only transformation on default full
+        reads when it saves tokens; preserves strings and indentation-sensitive
+        languages, but is not identical to the original text.
 
     Prefer over native `Read` whenever you don't already know the file is small.
     For files <200 LOC the cost is the same; for larger files outline mode
@@ -3180,6 +3300,7 @@ def tool_smart_read(
       content: str,                      # only when mode in {range, full}
       path: str,
       range: str,                        # only when mode == "range"
+      projection: {view, transformed, body_complete, untransformed_text, ...},
     }
     """
     target_path = path
@@ -3187,6 +3308,8 @@ def tool_smart_read(
         raise ValueError("provide path")
     if max_lines is not None and range is None and not expand:
         payload = cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
+        payload.setdefault("mode", "summary")
+        payload["projection"] = SourceProjection.summary().to_dict()
         if include_meta:
             return payload
         payload.pop("cache_hit", None)
@@ -3224,24 +3347,31 @@ def tool_smart_read(
     # conservative transform is applied (strip trailing whitespace + collapse
     # 3+ blank-line runs), which the fuzzy edit matcher tolerates. Outline mode
     # carries no body, so it is left untouched.
-    minify_saved = 0
-    minification_delta: dict[str, Any] | None = None
+    projection = SourceProjection.outline() if mode == "outline" else SourceProjection.exact()
+    projection_saved = 0
+    projection_delta: dict[str, Any] | None = None
+    compact = None
     exact_read = expand or range is not None
     if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
-        from atelier.core.capabilities.context_compression.minify import minify_source
-        from atelier.core.capabilities.context_compression.models import MinificationDelta
+        from atelier.core.capabilities.source_projection import (
+            ProjectionDelta,
+            build_compact_projection,
+        )
 
         language = str(payload.get("language") or "")
-        minified, orig_tok, min_tok = minify_source(content, language)
-        if min_tok < orig_tok:
-            content = minified
-            minify_saved = orig_tok - min_tok
-            minification_delta = MinificationDelta(
+        compact = build_compact_projection(content, language, include_mapping=include_meta, path=str(target))
+        if compact.applied:
+            content = compact.content
+            projection = SourceProjection.compact()
+            projection_saved = compact.saved_tokens
+            projection_delta = ProjectionDelta(
                 path=str(payload.get("path", str(target))),
                 lang=language,
-                original_tokens=orig_tok,
-                minified_tokens=min_tok,
+                original_tokens=compact.original_tokens,
+                projected_tokens=compact.projected_tokens,
             ).to_dict()
+    elif mode == "range":
+        projection = SourceProjection.range()
     response: dict[str, Any] = {
         "mode": mode,
         "outline": payload.get("outline"),
@@ -3249,13 +3379,16 @@ def tool_smart_read(
         "path": payload.get("path", str(target)),
         "range": payload.get("range"),
         "language": payload.get("language"),
+        "projection": projection.to_dict(),
     }
-    ts = int(payload.get("tokens_saved", 0) or 0) + minify_saved
+    ts = int(payload.get("tokens_saved", 0) or 0) + projection_saved
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
         response["tokens_saved"] = ts
-        if minification_delta is not None:
-            response["minification_delta"] = minification_delta
+        if projection_delta is not None:
+            response["projection_delta"] = projection_delta
+        if compact is not None and compact.applied and compact.mapping is not None:
+            response["projection_mapping"] = compact.mapping.to_dict()
     # Always save real savings via thread-local for the budget recorder
     if ts > 0:
         _tool_call_tokens_saved.value = ts
@@ -3577,8 +3710,17 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["connect", "lint", "query"],
-            "description": "connect: discover DB and show schema overview. lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[]).",
+            "enum": ["connect", "tables", "schema", "table", "relationships", "search", "lint", "query"],
+            "description": (
+                "connect: discover DB + overview. tables: table names + count. schema: columns + foreign keys "
+                "per table. table: one table's columns + FKs (needs name). relationships: foreign-key graph. "
+                "search: keyword over table/column names -> matching tables with columns + FKs (needs name). "
+                "lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[])."
+            ),
+        },
+        "name": {
+            "type": "string",
+            "description": "Target table for action=table, or keyword for action=search.",
         },
         "sql": {
             "type": "string",
@@ -3636,17 +3778,29 @@ def tool_sql(
     """SQL op-dispatch for connect, lint, and bounded query batching.
 
     Actions:
-      connect  — discover database and show schema overview
-      lint     — validate SQL syntax without executing (needs sql)
-      query    — execute SQL (needs sql or queries[{name,sql},...])
+      connect       — discover database and show schema overview
+      tables        — list table names (+ count)
+      schema        — columns + foreign keys per table
+      table         — one table's columns + foreign keys (needs name)
+      relationships — foreign-key graph as {from: "t.col", to: "rt.col"}
+      search        — keyword over table/column names -> matching tables with columns + FKs (needs name)
+      lint          — validate SQL syntax without executing (needs sql)
+      query         — execute SQL (needs sql or queries[{name,sql},...])
 
     Connection is auto-discovered from DATABASE_URL env or .env file.
-    Pass connection_string explicitly to override.
+    Pass connection_string explicitly to override. Live introspection/queries run on SQLite;
+    other dialects report a driver-required note.
+
+    Returns: introspection actions return {tables|table_count|schema|columns|foreign_keys|relationships|matches};
+    lint -> {ok, message}; query -> {results: [{name, columns, rows, row_count, truncated}], took_ms}.
     """
     from atelier.core.capabilities.tool_supervision.sql_tool import sql_tool
 
-    if action not in {"connect", "lint", "query"}:
-        return {"isError": True, "message": "unsupported action: use connect, lint, or query"}
+    if action not in {"connect", "tables", "schema", "table", "relationships", "search", "lint", "query"}:
+        return {
+            "isError": True,
+            "message": "unsupported action: use connect, tables, schema, table, relationships, search, lint, or query",
+        }
     if action == "query" and not sql and not queries:
         return {"isError": True, "message": "action='query' requires sql or queries parameter"}
 
@@ -5024,6 +5178,7 @@ def tool_usages(
     false hits. Use `callers` instead when you only want call sites of a function.
     Pass an unqualified name ('run_command'), qualified path ('module.Class.method'),
     or a SCIP id from a prior result.
+    Returns: references grouped by file with line numbers and matched snippets.
     """
     return _tool_symbols_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
 
@@ -5044,6 +5199,7 @@ def tool_pattern(
     Pass `rewrite` to transform matches; `dry_run=True` (default) previews
     changes without writing. Use `language` (e.g. 'python') and `file_glob` to
     scope the search.
+    Returns: matches (snippet, file_path, line) -- or, with rewrite and dry_run=False, {files_changed, total_rewrites}.
     """
     return _tool_symbols_alias_handler(
         {
@@ -5377,6 +5533,7 @@ def tool_grep(
 
     Use this tool when you already know the pattern, file globs, or file types you want.
     Prefer `search` for ranked natural-language lookup and repo-map construction.
+    Returns: results shaped by `output_mode` (default `ranked_file_map`: token-budgeted file pointers with line ranges and symbols).
     """
     payload = _run_native_grep(
         path=path,
@@ -5683,6 +5840,48 @@ def tool_shell(
     """
     result = _run_shell_tool(command, timeout=timeout, cwd=cwd, max_lines=max_lines)
     return _render_shell_text(result)
+
+
+@mcp_tool(
+    name="web_fetch",
+    description=(
+        "Fetch a public HTTP/HTTPS page for coding-agent research. Requests Markdown when available, "
+        "converts HTML to clean Markdown by default, blocks private/local network URLs, and caches "
+        "fetched content for 5 minutes."
+    ),
+)
+def tool_web_fetch(
+    url: Annotated[str, Field(description="Public HTTP/HTTPS URL to fetch.")],
+    output_format: Annotated[
+        Literal["auto", "markdown", "text", "html"],
+        Field(description="Return format. auto prefers Markdown and converts HTML to Markdown."),
+    ] = "auto",
+    max_chars: Annotated[
+        int,
+        Field(description="Maximum returned content characters. Clamped to a safe upper bound."),
+    ] = 12_000,
+    timeout_s: Annotated[
+        float,
+        Field(description="Network timeout in seconds. Clamped to a safe upper bound."),
+    ] = 20.0,
+    include_meta: Annotated[
+        bool,
+        Field(description="Include minimal debug metadata in the internal payload."),
+    ] = False,
+) -> dict[str, Any]:
+    """Fetch a public web page and return coding-agent-friendly content.
+
+    Returns: {content, format, tokens_saved}; the MCP layer renders `content` directly.
+    """
+    from atelier.core.capabilities.web_fetch import fetch_url
+
+    return fetch_url(
+        url,
+        output_format=output_format,
+        max_chars=max_chars,
+        timeout_s=timeout_s,
+        include_meta=include_meta,
+    )
 
 
 _remote_client: Any = None
@@ -6110,6 +6309,7 @@ def _prepare_model_recommendation(
             "cost_saved_usd": round(cost_saved_usd, 6),
             "vs_model": vs_model,
             "estimated_input_tokens": estimated_input_tokens,
+            "configured": True,
             **recommendation,
         }
     except (RouteConfigError, NoFeasibleRouteError) as exc:
@@ -6445,6 +6645,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 elif name == "shell":
                     with contextlib.suppress(Exception):
                         rendered_text = _render_shell_text(result if isinstance(result, dict) else {})
+                elif name == "web_fetch":
+                    with contextlib.suppress(Exception):
+                        rendered_text = str((result if isinstance(result, dict) else {}).get("content") or "")
 
                 _record_context_budget_for_tool(
                     name,
@@ -6500,7 +6703,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     }
                     _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
-            return _ok(rid, {"content": [content_item]})
+            response_payload: dict[str, Any] = {"content": [content_item]}
+            if isinstance(result, dict):
+                response_payload["structuredContent"] = result
+            return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
             if not remote_routed:

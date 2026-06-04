@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
 from benchmarks.mcp_tools.cases.context import CONTEXT_CASES
 from benchmarks.mcp_tools.harness import BenchCase, CaseResult, ToolReport, run_case
@@ -42,9 +41,9 @@ def _preseed_bootstrap(context_tool_fn: Any) -> None:
     persist_bootstrap_plan(workspace_root, make_memory_store(atelier_root))
     mcp_server._reset_runtime_cache_for_testing()
     payload = context_tool_fn({"task": "Use the warmed bootstrap state", "recall": False})
-    assert payload.get("bootstrap", {}).get("status") == "warm", (
-        f"context bootstrap did not reach warm state: {payload}"
-    )
+    assert (
+        payload.get("bootstrap", {}).get("status") == "warm"
+    ), f"context bootstrap did not reach warm state: {payload}"
 
 
 @pytest.fixture(scope="session")
@@ -88,6 +87,6 @@ def test_context_op_saves_tokens(case: BenchCase, context_bench_results: list[Ca
     result = _find(context_bench_results, case.label)
     if not result.passed:
         pytest.skip(f"skipping savings check — op failed: {result.failure}")
-    assert result.atelier_tokens < case.baseline_tokens, (
-        f"[{case.label}] no savings: atelier={result.atelier_tokens} >= baseline={case.baseline_tokens}"
-    )
+    assert (
+        result.atelier_tokens < case.baseline_tokens
+    ), f"[{case.label}] no savings: atelier={result.atelier_tokens} >= baseline={case.baseline_tokens}"

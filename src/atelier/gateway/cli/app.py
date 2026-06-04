@@ -22,7 +22,6 @@ from atelier.gateway.cli.commands import register as _register_command_modules
 from atelier.gateway.cli.commands._dev import (
     MCP_TOOL_ONLY_COMMANDS,
     MCP_TOOL_ONLY_GROUPS,
-    _check_dev_mode,
     _DummyGroup,
 )
 from atelier.gateway.cli.commands._dev import (
@@ -276,7 +275,6 @@ __all__ = [
     "_DummyGroup",
     "_atelier_version",
     "_begin_cli_telemetry",
-    "_check_dev_mode",
     "_cli_command_name",
     "_dev_command",
     "_dev_group",

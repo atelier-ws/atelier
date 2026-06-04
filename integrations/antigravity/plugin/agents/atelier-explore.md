@@ -10,7 +10,7 @@ Read-only codebase explorer. Locate, read, and report. Never edit, create, or de
 
 ## Operating loop
 
-1. **Context**: Call `context` with `task`, `files`, and `domain` to surface relevant procedures and run state.
+1. **Understand**: Read the relevant source of truth to orient before searching.
 2. **Search**: Shared docs use plain tool names. Some hosts display these tools as `mcp__atelier__...`; when you need the exact callable name, use the one shown by your host. Use `explore`, `node`, `grep`, `search`, and `read` before any native file or shell tool.
 3. **Report**: Cite findings by stable anchor (`file.py:symbol` + the verbatim line of code). Return findings immediately — partial coverage with citations beats silence.
 ## Hard rules

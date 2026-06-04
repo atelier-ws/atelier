@@ -3,9 +3,11 @@
 Usage: uv run --project benchmarks python scripts/extract_flow.py <path>
 
 Outputs <file>.flow_dump.txt alongside each .flow file.
-Only shows the text/tool content — skips all raw request/response payloads.
+Only shows the text/tool content - skips all raw request/response payloads.
 """
+
 import base64
+import binascii
 import json
 import os
 import re
@@ -23,7 +25,7 @@ def _iter_text_from_bedrock_stream(raw: bytes):
     for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
         try:
             chunk = json.loads(base64.b64decode(b64))
-        except Exception:
+        except (binascii.Error, json.JSONDecodeError, ValueError):
             continue
         t = chunk.get("type", "")
         if t == "content_block_delta":
@@ -73,15 +75,16 @@ def extract(path: str, output_file: str) -> None:
                                 if isinstance(inner, str):
                                     parts.append(f"[tool_result] {inner}")
                                 elif isinstance(inner, list):
-                                    parts.append("[tool_result] " + " ".join(
-                                        i.get("text", "") for i in inner if i.get("type") == "text"
-                                    ))
+                                    parts.append(
+                                        "[tool_result] "
+                                        + " ".join(i.get("text", "") for i in inner if i.get("type") == "text")
+                                    )
                         text = "\n".join(parts)
                     else:
                         text = ""
                     out.write(f"[{role}] {text[:300]}\n")
-            except Exception:
-                pass
+            except json.JSONDecodeError:
+                continue
 
             # Extract assistant response
             resp_raw = flow.response.content

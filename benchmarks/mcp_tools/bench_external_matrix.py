@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from atelier.gateway.cli.progress import ProgressReporter
-
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
 from benchmarks.mcp_tools.bench_external_indexers import (
     SerenaRunner,

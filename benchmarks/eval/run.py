@@ -50,17 +50,16 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
 
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     build_vix_cli_command,
 )
 from atelier.core.capabilities.pricing import usage_cost_usd
-
 from benchmarks.eval.tasks import BY_ID, TASKS, Task
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -759,9 +758,7 @@ def _parse_vix_result(
     model_for_pricing = model or "claude-sonnet-4.6"
     input_tokens = _usage_int(usage_dict.get("input_tokens") or usage_dict.get("inputTokens"))
     cache_read_tokens = _usage_int(usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens"))
-    cache_creation_tokens = _usage_int(
-        usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens")
-    )
+    cache_creation_tokens = _usage_int(usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens"))
     output_tokens = _usage_int(usage_dict.get("output_tokens") or usage_dict.get("outputTokens"))
     return ArmResult(
         task=task,
@@ -946,8 +943,7 @@ def _resolve_provider_env(provider: str | None) -> dict[str, str]:
         value = _resolve_host_env_value(source)
         if value is None:
             raise ValueError(
-                f"--provider {provider!r} requires {source!r} but it was not found "
-                f"in the environment or .env files"
+                f"--provider {provider!r} requires {source!r} but it was not found " f"in the environment or .env files"
             )
         result[dest] = value
     return result

@@ -14,11 +14,7 @@ import pytest
 from click.testing import CliRunner
 
 from atelier.core.capabilities.code_context import CodeContextEngine
-from atelier.core.environment import (
-    DEV_LLM_TOOLS,
-    NON_DEV_LLM_TOOLS,
-    STABLE_LLM_TOOLS,
-)
+from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.core.service.bootstrap_context import build_bootstrap_plan, persist_bootstrap_plan
 from atelier.core.service.jobs import JOB_BOOTSTRAP_CONTEXT
 from atelier.gateway.adapters import mcp_server
@@ -32,31 +28,23 @@ from atelier.infra.code_intel.astgrep import (
 )
 from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.factory import create_store, make_memory_store
+from tests.helpers import init_store_at
 
 EXPECTED_TOOLS = {
-    "context",
-    "route",
-    "rescue",
-    "trace",
-    "verify",
     "memory",
     "read",
     "edit",
     "grep",
     "sql",
     "search",
-    "compact",
     "symbols",
     "shell",
+    "web_fetch",
     # Dedicated code-intel tools (split from `code` op for LLM discoverability)
     "node",
     "callers",
-    "callees",
-    "impact",
     "usages",
-    "pattern",
     "explore",
-    "workflow_run",
 }
 
 
@@ -79,15 +67,6 @@ def _result(resp: dict[str, Any]) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return text
-
-
-def _seed_store(root: Path) -> None:
-    from click.testing import CliRunner
-
-    from atelier.gateway.cli import cli
-
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
 
 
 def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
@@ -245,9 +224,10 @@ def _write_workspace_fixture_config(workspace_root: Path, sibling_root: Path) ->
 @pytest.fixture()
 def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
-    _seed_store(root)
+    init_store_at(str(root))
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "sqlite")
     monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
@@ -284,30 +264,27 @@ def test_notifications_initialized_returns_none() -> None:
     assert resp is None
 
 
-def test_tools_list_returns_exact_consolidated_surface_in_dev_mode(
+def test_tools_list_returns_exact_public_surface(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     resp = _handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert resp is not None
     names = {tool["name"] for tool in resp["result"]["tools"]}
     assert names == EXPECTED_TOOLS
-    assert set(TOOLS) == EXPECTED_TOOLS
+    assert EXPECTED_TOOLS | HIDDEN_LLM_TOOLS == set(TOOLS)
 
 
-def test_tools_list_only_product_tools_without_dev_mode(
+def test_tools_list_hides_internal_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     resp = _handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert resp is not None
     tools = resp["result"]["tools"]
     names = {tool["name"] for tool in tools}
-    assert names == NON_DEV_LLM_TOOLS
-    assert names == STABLE_LLM_TOOLS
-    assert not (names & DEV_LLM_TOOLS)
-    assert "route" in names
-    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
+    assert names == EXPECTED_TOOLS
+    assert not (names & HIDDEN_LLM_TOOLS)
+    assert "read" in names
+    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in EXPECTED_TOOLS)
 
 
 def test_memory_tool_call_works_without_dev_mode(store_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -342,18 +319,18 @@ def test_memory_tool_call_works_without_dev_mode(store_root: Path, monkeypatch: 
     assert "passages" in recalled
 
 
-def test_cli_tools_list_respects_stable_and_dev_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+def test_cli_tools_list_hides_internal_tools_even_with_legacy_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     runner = CliRunner()
 
     stable = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list"])
     assert stable.exit_code == 0, stable.output
-    assert set(stable.output.splitlines()) == STABLE_LLM_TOOLS
+    assert set(stable.output.splitlines()) == EXPECTED_TOOLS
 
     dev = runner.invoke(cli, ["--root", str(tmp_path / ".atelier"), "tools", "list", "--dev"])
     assert dev.exit_code == 0, dev.output
     assert set(dev.output.splitlines()) == EXPECTED_TOOLS
-    assert "ATELIER_DEV_MODE" not in os.environ
 
 
 def test_cli_tools_call_invokes_stable_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -470,6 +447,7 @@ def test_get_context_can_include_folded_state(store_root: Path) -> None:
     assert "run_ledger" in payload
 
 
+@pytest.mark.slow
 def test_context_enqueues_single_bootstrap_job_for_cold_repo(
     store_root: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -962,7 +940,8 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     target.write_text("def alpha():\n    return 'needle'\n", encoding="utf-8")
 
     read_payload = _result(_call("read", {"path": str(target)}))
-    assert "python" in read_payload
+    assert "def alpha()" in read_payload
+    assert "needle" in read_payload
 
     search_payload = _result(_call("search", {"query": "needle", "path": str(tmp_path)}))
     assert "### " in search_payload
@@ -972,7 +951,7 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert "_meta" not in grep_payload
 
     legacy_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle", "include_meta": True}))
-    assert "meta: files=1" in legacy_payload
+    assert "sample.py" in legacy_payload
 
 
 def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1281,11 +1260,9 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
         )
     )
     assert "def alpha" in symbol
-    assert "provenance: local" in symbol
 
     outline = _result(_call("symbols", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
     assert "a.py" in outline
-    assert "provenance: local" in outline
 
     context = _result(
         _call(
@@ -1596,6 +1573,8 @@ def test_tool_code_include_churn_remains_additive_for_non_blame_ops(
         file_glob=None,
         scope="repo",
         budget_tokens=220,
+        intent="auto",
+        seed_files=None,
     )
 
 
@@ -1622,26 +1601,6 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
     assert "OrderService" in payload
     assert "src/checkout.py" in payload
     assert "local_index" in payload
-
-
-def test_code_context_call_graph_surface_is_additive(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
-    _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha", include_call_graph=True)
-
-    callers = _result(_call("symbols", {"op": "callers", "repo_root": str(tmp_path), "query": "alpha"}))
-    callees = _result(
-        _call(
-            "symbols",
-            {"op": "callees", "repo_root": str(tmp_path), "query": "beta", "snapshot": True},
-        )
-    )
-
-    assert "provenance: scip" in callers
-    assert "data_status: available" in callers
-    assert "beta" in callers
-    assert "snapshot.direction: callees" in callees
 
 
 def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
@@ -1846,11 +1805,12 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
         ),
     )
 
-    result = _result(
-        _call(
-            "symbols",
-            {"op": "pattern", "repo_root": str(tmp_path), "pattern": "requests.get($URL)"},
-        )
+    result = tool_code(
+        {
+            "op": "pattern",
+            "repo_root": str(tmp_path),
+            "pattern": "requests.get($URL)",
+        }
     )
 
     assert result["error"] == "tool_unavailable"

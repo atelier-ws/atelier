@@ -53,7 +53,13 @@ from atelier.core.capabilities.swarm import (
     spawn_swarm_coordinator,
     stop_swarm_run,
 )
+from atelier.core.capabilities.workflow_runtime_state import (
+    pause_workflow_runtime,
+    stop_workflow_runtime,
+    workflow_runtime_detail,
+)
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
+from atelier.core.foundation.paths import resolve_session_state_path, resolve_workspace_root
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
 from atelier.core.service.config import cfg
@@ -142,6 +148,12 @@ class SwarmLaunchRequest(BaseModel):
     provider_env: dict[str, str] = Field(default_factory=dict)
 
 
+class WorkflowSnapshotActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
 class HostRouterEvaluateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -189,6 +201,29 @@ def _build_swarm_provider_env(payload: SwarmLaunchRequest) -> dict[str, str]:
         if payload.provider_base_url:
             env["ATELIER_OPENAI_BASE_URL"] = payload.provider_base_url
     return env
+
+
+def _workflow_session_state_path() -> Path:
+    return resolve_session_state_path(resolve_workspace_root())
+
+
+def _read_workflow_session_state() -> dict[str, Any]:
+    path = _workflow_session_state_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_workflow_session_state(state: dict[str, Any]) -> None:
+    path = _workflow_session_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def _default_swarm_spec_name(project_root: Path) -> str:
@@ -2540,7 +2575,7 @@ def _optimization_runtime_coverage() -> list[dict[str, Any]]:
                 "Copilot preflight task",
                 "atelier CLI shell task",
                 "Copilot instructions",
-                "Atelier chatmode",
+                "Atelier agent",
             ],
             "notes": (
                 "Copilot now has a task-driven preflight that runs atelier CLI checks before chat work begins. "
@@ -3714,7 +3749,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.post("/telemetry/config", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -3728,7 +3762,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.post("/telemetry/ack", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -3741,7 +3774,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.get("/telemetry/local", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -4745,6 +4777,31 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
+    @app.get("/v1/files/projection", tags=["files"], dependencies=[Depends(verify_api_key)])
+    def get_file_projection(
+        path: str,
+        view: str = "compact",
+        range: str | None = None,
+        max_lines: int = 200,
+    ) -> dict[str, Any]:
+        """Return structured projection metadata for a file read."""
+        from atelier.gateway.adapters.mcp_server import tool_smart_read
+
+        payload: dict[str, Any] = {"path": path, "include_meta": True}
+        if view == "compact":
+            pass
+        elif view == "exact":
+            payload["expand"] = True
+        elif view == "summary":
+            payload["max_lines"] = max_lines
+        elif view == "range":
+            if not range:
+                raise HTTPException(status_code=400, detail="range is required when view=range")
+            payload["range"] = range
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported projection view: {view}")
+        return cast(dict[str, Any], tool_smart_read(payload))
+
     @app.get("/ledgers/{session_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_ledger(session_id: str) -> dict[str, Any]:
         """Compatibility: GET /ledgers/{session_id} -> returns run ledger data.
@@ -5054,7 +5111,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.core.environment import skill_visible
 
         if not skill_visible(name):
-            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
+            raise HTTPException(status_code=404, detail=f"Skill is hidden from the public host surface: {name}")
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"
         if not md.exists():
@@ -6226,6 +6283,28 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 
         return {"week": week, "markdown": markdown_content, "json": json_data}
+
+    @app.get("/v1/workflow/current", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def get_workflow_current() -> dict[str, Any]:
+        detail = workflow_runtime_detail(_read_workflow_session_state())
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
+
+    @app.post("/v1/workflow/current/pause", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def post_workflow_pause(payload: WorkflowSnapshotActionRequest) -> dict[str, Any]:
+        state = _read_workflow_session_state()
+        detail = pause_workflow_runtime(state, pause_reason=str(payload.reason or ""))
+        _write_workflow_session_state(state)
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
+
+    @app.post("/v1/workflow/current/stop", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def post_workflow_stop(payload: WorkflowSnapshotActionRequest) -> dict[str, Any]:
+        state = _read_workflow_session_state()
+        detail = stop_workflow_runtime(state, stop_reason=str(payload.reason or ""))
+        _write_workflow_session_state(state)
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
 
     @app.get("/v1/swarm/launch/options", tags=["swarm"], dependencies=[Depends(verify_api_key)])
     def get_swarm_launch_options(

@@ -2,9 +2,9 @@
 
 Atelier tools are **not optional wrappers**. They are the reason this repo exists. Using native tools here is eating your own savings.
 
-Shared docs use plain tool names like `context`, `read`, `search`, and `trace`.
-Some hosts display those same tools as handles like `mcp__atelier__context` and
-`mcp__atelier__read`. When you need the exact callable name, use the one shown by
+Shared docs use plain tool names like `read`, `search`, `grep`, and `edit`.
+Some hosts display those same tools as handles like `mcp__atelier__read` and
+`mcp__atelier__search`. When you need the exact callable name, use the one shown by
 your host.
 
 | Instead of | Use | Why | Measured |
@@ -36,10 +36,7 @@ code intelligence. Native tools are fallback-only.
 | `mcp__atelier__symbols` | Find symbol definitions by name (SCIP-indexed) — faster and exact vs grep |
 | `mcp__atelier__node` | Full definition of a specific symbol — faster than `read` for targeted inspection |
 | `mcp__atelier__callers` | Who calls a function (inbound call graph) — faster than grep for invocation tracing |
-| `mcp__atelier__callees` | What a function calls (outbound call graph) — understand dependencies before editing |
 | `mcp__atelier__usages` | All references to a symbol — exact (not textual), unlike grep |
-| `mcp__atelier__impact` | Blast radius for a file or symbol — use before refactoring |
-| `mcp__atelier__pattern` | AST-structural search / rewrite (ast-grep) — match code shape, not text |
 | `mcp__atelier__explore` | Grouped source + relationships in one call — replaces search→node→callers chain |
 | `mcp__atelier__grep` | Regex and glob search across files |
 | `mcp__atelier__read` | Reading files (outline mode for large files) |
@@ -51,21 +48,18 @@ code intelligence. Native tools are fallback-only.
 
 1. **Find a symbol / its definition** → `mcp__atelier__symbols` then `mcp__atelier__node` FIRST (not grep).
 2. **Find callers of a function** → `mcp__atelier__callers` FIRST (not grep).
-3. **Find what a function calls** → `mcp__atelier__callees` FIRST.
-4. **Find all references to a symbol** → `mcp__atelier__usages` FIRST (not grep).
-5. **Blast radius before refactoring** → `mcp__atelier__impact` FIRST.
-6. **Match or rewrite code by shape** → `mcp__atelier__pattern` FIRST (not regex grep).
-7. **Understand a concept across files** → `mcp__atelier__explore` FIRST.
-8. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
-9. **File reading** → `mcp__atelier__read` FIRST.
-10. **Editing** → `mcp__atelier__edit` FIRST.
-11. **Shell commands** → `mcp__atelier__shell` FIRST.
+3. **Find all references to a symbol** → `mcp__atelier__usages` FIRST (not grep).
+4. **Understand a concept across files** → `mcp__atelier__explore` FIRST.
+5. **Regex/grep, text search** → `mcp__atelier__grep` FIRST.
+6. **File reading** → `mcp__atelier__read` FIRST.
+7. **Editing** → `mcp__atelier__edit` FIRST.
+8. **Shell commands** → `mcp__atelier__shell` FIRST.
 
 **Fallback:** Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
 
 ## Model routing — use cheap sub-agents for read work
 
-Before spawning an `Agent(...)` for a read-only task, call `mcp__atelier__route` to get the recommended model tier. Read/search/explore tasks should spawn as `Agent(model="haiku")`. Edit/implement tasks stay on the current model.
+Spawn read-only sub-agents on a cheap model tier. Read/search/explore tasks should spawn as `Agent(model="haiku")`. Edit/implement tasks stay on the current model.
 
 ```
 # exploration, file reading, grep work

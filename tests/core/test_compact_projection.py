@@ -1,7 +1,7 @@
-"""Tests for minify_source — LINEAR-03 / D-10.
+"""Tests for read-side compact source projection — LINEAR-03 / D-10.
 
-Wave-0 RED scaffolds for the three minifier transform-safety cases
-(13-02-01..03). minify_source must be a pure whitespace transform that
+Wave-0 RED scaffolds for the three compact-projection transform-safety cases
+(13-02-01..03). build_compact_projection must be a pure whitespace transform that
 preserves Python and YAML semantics while collapsing trailing whitespace
 and runs of 3+ consecutive newlines.
 """
@@ -12,24 +12,25 @@ import ast
 
 import yaml
 
-from atelier.core.capabilities.context_compression.minify import minify_source
+from atelier.core.capabilities.source_projection.compact import build_compact_projection
 
 
 def test_collapses_blank_runs() -> None:
     """13-02-01: trailing WS stripped; ≥3-newline runs collapse to two."""
     src = "line one   \nline two\t\n\n\n\nline three\n"
-    out, original_tokens, minified_tokens = minify_source(src, "text")
+    projection = build_compact_projection(src, "text")
+    out = projection.content
     # Four consecutive \n become exactly two.
     assert "\n\n\n" not in out
     assert out == "line one\nline two\n\nline three\n"
-    assert original_tokens >= minified_tokens
+    assert projection.original_tokens >= projection.projected_tokens
 
 
 def test_python_semantics_preserved() -> None:
     """13-02-02: Python source remains parseable + AST-equivalent; leading
     indentation on every non-blank line is byte-preserved (D-10)."""
     original = "def f(x):   \n" "    if x:\t\n" "        return x   \n" "\n" "\n" "\n" "    return 0\n"
-    out, _o, _m = minify_source(original, "python")
+    out = build_compact_projection(original, "python").content
     # Compiles
     compile(out, "<test>", "exec")
     # Semantic equality via AST
@@ -49,5 +50,5 @@ def test_python_semantics_preserved() -> None:
 def test_yaml_semantics_preserved() -> None:
     """13-02-03: YAML structural equality after minify (D-10)."""
     original = "root:   \n  child_a: 1   \n  child_b:\n    - one\n    - two   \n\n\n\nother: value\n"
-    out, _o, _m = minify_source(original, "yaml")
+    out = build_compact_projection(original, "yaml").content
     assert yaml.safe_load(original) == yaml.safe_load(out)
