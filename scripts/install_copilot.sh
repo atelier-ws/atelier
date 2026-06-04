@@ -184,21 +184,11 @@ fi
 # ---- install Copilot instructions ------------------------------------------
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:copilot"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
-STAGING_DIR="${HOME}/.atelier/copilot-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/copilot"
 run "mkdir -p '$STAGING_DIR'"
 COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full instructions with task loop"
-    atelier_write_managed_copy "${COPILOT_SRC/.md/.dev.md}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
-else
-    info "Install profile: stable; staging stable instructions"
-    atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
-fi
+info "Staging Copilot instructions"
+atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
 
 if [ -f "$ATELIER_INSTRUCTIONS" ]; then

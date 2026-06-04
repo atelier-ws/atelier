@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.source_projection import (
+    ProjectionEditError,
+    ProjectionMapping,
+    apply_compact_projection_edit,
+    apply_compact_projection_edits,
+)
+
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
 from .path_safety import PROTECTED_PARTS
 from .symbol_edit import SymbolEditError, record_symbol_edit_memory, resolve_symbol_edit
@@ -283,6 +290,67 @@ def apply_rich_edits(
                 applied.append({"path": raw_path, "kind": "notebook"})
                 continue
 
+            if str(edit.get("kind") or "") == "projection":
+                raw_mapping = edit.get("projection_mapping")
+                if not isinstance(raw_mapping, dict):
+                    raise ProjectionEditError(
+                        "projection_mapping is required for projection edits",
+                        code="missing_projection_mapping",
+                        hint="Pass the projection_mapping returned by a compact read with include_meta=true.",
+                    )
+                mapping = ProjectionMapping.from_dict(raw_mapping)
+                mapping_path = Path(mapping.path).resolve() if mapping.path else path
+                if mapping.path and mapping_path != path:
+                    raise ProjectionEditError(
+                        "projection_mapping path does not match file_path",
+                        code="projection_path_mismatch",
+                        hint="Use the same file_path that produced the compact projection.",
+                    )
+                projected_ranges = edit.get("projected_ranges")
+                if isinstance(projected_ranges, list) and projected_ranges:
+                    new_content, hunks = apply_compact_projection_edits(
+                        content,
+                        mapping=mapping,
+                        projected_edits=[
+                            {
+                                "projected_start": int(item.get("projected_start", 0)),
+                                "projected_end": int(item.get("projected_end", 0)),
+                                "new_string": str(item.get("new_string", "")),
+                            }
+                            for item in projected_ranges
+                            if isinstance(item, dict)
+                        ],
+                    )
+                else:
+                    if not {
+                        "projected_start",
+                        "projected_end",
+                        "new_string",
+                    }.issubset(edit):
+                        raise ProjectionEditError(
+                            "projection edit must provide projected_start/projected_end/new_string or projected_ranges",
+                            code="missing_projection_span",
+                            hint="Pass a single exact projected span or a non-empty projected_ranges array.",
+                        )
+                    new_content, line_start, line_end = apply_compact_projection_edit(
+                        content,
+                        mapping=mapping,
+                        projected_start=int(edit.get("projected_start", 0)),
+                        projected_end=int(edit.get("projected_end", 0)),
+                        new_string=str(edit.get("new_string", "")),
+                    )
+                    hunks = [(line_start, line_end)]
+                file_state[path] = new_content
+                applied.append(
+                    {
+                        "path": raw_path,
+                        "kind": "projection",
+                        "projection_kind": mapping.projection_kind,
+                        "hunks": [{"line_start": line_start, "line_end": line_end} for line_start, line_end in hunks],
+                    }
+                )
+                continue
+
             if edit.get("overwrite") or (not path.exists() and not edit.get("old_string")):
                 file_state[path] = str(edit.get("new_string", ""))
                 applied.append({"path": raw_path, "kind": "overwrite"})
@@ -316,7 +384,7 @@ def apply_rich_edits(
         return {"applied": applied, "failed": [], "rolled_back": False, "writes": len(file_state)}
     except Exception as exc:
         logging.exception("Recovered from broad exception handler")
-        if isinstance(exc, SymbolEditError):
+        if isinstance(exc, SymbolEditError | ProjectionEditError):
             failed.append(exc.to_dict())
         else:
             failed.append({"error": str(exc)})

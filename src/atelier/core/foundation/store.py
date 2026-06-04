@@ -1096,20 +1096,21 @@ class ContextStore:
             base_sql += " AND created_at >= ?"
             params.append(since.isoformat())
 
-        with self._connect() as conn:
-            # 1. Total and status breakdown
-            status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
-            status_rows = conn.execute(status_sql, params).fetchall()
+        with closing(self._connect()) as conn:
+            with conn:
+                # 1. Total and status breakdown
+                status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
+                status_rows = conn.execute(status_sql, params).fetchall()
 
-            # 2. Distinct hosts, agents, and domains
-            host_sql = f"SELECT DISTINCT host {base_sql}"
-            host_rows = conn.execute(host_sql, params).fetchall()
+                # 2. Distinct hosts, agents, and domains
+                host_sql = f"SELECT DISTINCT host {base_sql}"
+                host_rows = conn.execute(host_sql, params).fetchall()
 
-            agent_sql = f"SELECT DISTINCT agent {base_sql}"
-            agent_rows = conn.execute(agent_sql, params).fetchall()
+                agent_sql = f"SELECT DISTINCT agent {base_sql}"
+                agent_rows = conn.execute(agent_sql, params).fetchall()
 
-            domain_sql = f"SELECT DISTINCT domain {base_sql}"
-            domain_rows = conn.execute(domain_sql, params).fetchall()
+                domain_sql = f"SELECT DISTINCT domain {base_sql}"
+                domain_rows = conn.execute(domain_sql, params).fetchall()
 
         stats = {"total": 0, "success": 0, "failed": 0, "partial": 0}
         for row in status_rows:

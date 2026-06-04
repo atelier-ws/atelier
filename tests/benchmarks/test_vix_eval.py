@@ -15,12 +15,25 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _ensure_benchmarks_package() -> None:
-    benchmarks_pkg = types.ModuleType("benchmarks")
-    benchmarks_pkg.__path__ = [str(ROOT / "benchmarks")]
-    vix_pkg = types.ModuleType("benchmarks.vix_eval")
-    vix_pkg.__path__ = [str(ROOT / "benchmarks" / "vix_eval")]
-    sys.modules["benchmarks"] = benchmarks_pkg
-    sys.modules["benchmarks.vix_eval"] = vix_pkg
+    import benchmarks
+
+    benchmark_paths = list(getattr(benchmarks, "__path__", []))
+    root_path = str(ROOT / "benchmarks")
+    src_path = str(ROOT / "src" / "benchmarks")
+    for path in (root_path, src_path):
+        if path not in benchmark_paths:
+            benchmark_paths.append(path)
+    benchmarks.__path__ = benchmark_paths
+
+    vix_pkg = sys.modules.get("benchmarks.vix_eval")
+    if vix_pkg is None:
+        vix_pkg = types.ModuleType("benchmarks.vix_eval")
+        sys.modules["benchmarks.vix_eval"] = vix_pkg
+    vix_paths = list(getattr(vix_pkg, "__path__", []))
+    root_vix_path = str(ROOT / "benchmarks" / "vix_eval")
+    if root_vix_path not in vix_paths:
+        vix_paths.append(root_vix_path)
+    vix_pkg.__path__ = vix_paths
 
 
 def _load(module_name: str) -> ModuleType:
@@ -168,6 +181,7 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
         api_key_env: str | None = None,
         agent_env: dict[str, str] | None = None,
         cli_extra_args: list[str] | tuple[str, ...] = (),
+        resume_state: bool = False,
     ) -> Any:
         del (
             model,
@@ -181,6 +195,7 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
             api_key_env,
             agent_env,
             cli_extra_args,
+            resume_state,
         )
         calls.append((task_obj.id, arm, rep))
         return VIX.ArmResult(

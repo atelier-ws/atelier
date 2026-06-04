@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from atelier.gateway.cli import cli
+from tests.helpers import init_store_at
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
@@ -24,7 +25,7 @@ def test_telemetry_status_writes_local_event_and_show_outputs_send_payloads(
     monkeypatch.setenv("ATELIER_TELEMETRY", "0")
 
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     status = _invoke(root, "telemetry", "status", "--json")
     assert status.exit_code == 0, status.output
     payload = json.loads(status.output)
@@ -45,7 +46,7 @@ def test_telemetry_toggles_and_reset_id(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.delenv("ATELIER_TELEMETRY", raising=False)
 
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     off = _invoke(root, "telemetry", "off")
     assert off.exit_code == 0, off.output
     assert "off" in off.output

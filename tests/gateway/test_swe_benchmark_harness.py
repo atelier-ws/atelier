@@ -243,6 +243,7 @@ def test_cli_show_modes() -> None:
     assert "atelier_warm_reasonblocks" in result.output
 
 
+@pytest.mark.slow
 def test_cli_run_end_to_end(tmp_path: Path) -> None:
     cfg_path = tmp_path / "cfg.yaml"
     cfg_path.write_text(

@@ -19,6 +19,7 @@ from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.cli import cli
 from atelier.infra.internal_llm import OllamaUnavailable
+from tests.helpers import init_store_at
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
@@ -81,7 +82,7 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
 
 def test_run_rubric_via_cli(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_state_change_rubric(root)
     checks = {
         "canonical_identifier_used": True,
@@ -108,7 +109,7 @@ def test_run_rubric_via_cli(tmp_path: Path) -> None:
 
 def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_state_change_rubric(root)
     res = _invoke(
         root,
@@ -142,7 +143,7 @@ def test_code_context_cli_round_trip(tmp_path: Path) -> None:
 
 def test_record_trace_and_extract_block(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     trace = json.dumps(
         {
             "agent": "codex",
@@ -162,7 +163,7 @@ def test_record_trace_and_extract_block(tmp_path: Path) -> None:
 
 def test_rescue_returns_procedure(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_rescue_block(root)
     res = _invoke(
         root,
@@ -188,7 +189,7 @@ def test_rescue_returns_procedure(tmp_path: Path) -> None:
 
 def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     update_session_stats(
         root,
         {
@@ -267,7 +268,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     store = ContextStore(root)
     store.upsert_block(
@@ -484,7 +485,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     store = ContextStore(root)
     store.upsert_block(
@@ -538,7 +539,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
 
 def test_servicectl_start_writes_pidfile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     spawned: dict[str, object] = {}
 
@@ -580,7 +581,7 @@ def test_servicectl_tick_imports_only_new_or_updated_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     codex_file = tmp_path / "codex" / "rollout-2026-05-09T12-00-00-11111111-2222-3333-4444-555555555555.jsonl"
     codex_file.parent.mkdir(parents=True, exist_ok=True)
@@ -678,7 +679,7 @@ def test_servicectl_tick_collects_external_analytics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     monkeypatch.setattr(
         "atelier.gateway.integrations.external_analytics.run_external_reports",
@@ -748,7 +749,7 @@ def test_servicectl_surfaces_job_queue_health(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     store = ContextStore(root)
     running_job_id = store.enqueue_job("consolidate", {"n": 1}, max_attempts=2)
@@ -811,7 +812,7 @@ def test_servicectl_tick_collects_multiple_external_analytics_periods(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     def fake_run_external_reports(
         tool: str = "all",

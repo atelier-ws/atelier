@@ -9,6 +9,36 @@ from atelier.core.capabilities.workflow_defaults import bootstrap_default_defini
 ROOT = Path(__file__).resolve().parents[2]
 HOST_FACING_ROLES = {"code", "explore", "execute", "plan", "research", "review", "solve"}
 REQUIRED_ROLES = HOST_FACING_ROLES | {"general"}
+EXPECTED_ROLE_MODELS = {
+    "code": "claude-opus-4.8",
+    "general": "claude-opus-4.8",
+    "explore": "claude-sonnet-4.6",
+    "plan": "claude-sonnet-4.6",
+    "execute": "claude-opus-4.8",
+    "review": "claude-sonnet-4.6",
+    "research": "claude-sonnet-4.6",
+    "solve": "claude-opus-4.8",
+}
+EXPECTED_ROLE_TURNS = {
+    "code": 100,
+    "general": 100,
+    "explore": 25,
+    "plan": 100,
+    "execute": 100,
+    "review": 40,
+    "research": 25,
+    "solve": 80,
+}
+EXPECTED_ROLE_TOKENS = {
+    "code": 64000,
+    "general": 64000,
+    "explore": 32000,
+    "plan": 64000,
+    "execute": 64000,
+    "review": 48000,
+    "research": 32000,
+    "solve": 64000,
+}
 
 
 def test_default_registry_contains_required_roles() -> None:
@@ -25,6 +55,16 @@ def test_default_registry_contains_required_roles() -> None:
     assert general.max_tokens > 0
 
 
+def test_role_defaults_stay_workload_aware() -> None:
+    registry = build_default_registry(ROOT)
+
+    for role_id, expected_model in EXPECTED_ROLE_MODELS.items():
+        role = registry.roles[role_id]
+        assert role.model_default == expected_model
+        assert role.max_turns == EXPECTED_ROLE_TURNS[role_id]
+        assert role.max_tokens == EXPECTED_ROLE_TOKENS[role_id]
+
+
 def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
     registry = build_default_registry(ROOT)
 
@@ -35,6 +75,24 @@ def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
         body = registry.render_prompt(role_id, ROOT)
         assert "Vix" not in body
         assert f"# {role_id.replace('-', ' ').title()} mode" in body
+
+
+def test_role_prompts_include_todo_and_question_discipline() -> None:
+    registry = build_default_registry(ROOT)
+
+    code = registry.render_prompt("code", ROOT)
+    assert "todo list" in code
+    assert "Ask the user only for real ambiguity" in code
+
+    execute = registry.render_prompt("execute", ROOT)
+    assert "todo list" in execute
+    assert "Ask the user only for real ambiguity" in execute
+    assert "{{CODING_GUIDELINES}}" in execute
+
+    plan = registry.render_prompt("plan", ROOT)
+    assert "todo list" in plan
+    assert "ask the user instead of guessing" in plan.lower()
+    assert "{{CORE_DISCIPLINE}}" in plan
 
 
 def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
@@ -67,7 +125,7 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
     assert owned_loop.steps[5].fork_from == "refine"
     assert owned_loop.steps[6].fork_from == "review"
     assert owned_loop.steps[4].requires_plan_review is True
-    assert owned_loop.steps[0].read_mode_hint == "minified"
+    assert owned_loop.steps[0].read_mode_hint == "compact"
     assert owned_loop.steps[4].read_mode_hint == "exact"
     assert owned_loop.steps[0].effort == "adaptive"
     assert owned_loop.steps[4].effort in {"medium", "high"}
@@ -110,15 +168,15 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
 
     plan = registry.render_named_prompt("owned-plan-phase", ROOT)
     assert "Do not edit" in plan
-    assert "exact files" in plan
-    assert "verification commands" in plan
-    assert "vague steps" in plan
+    assert "exact files" in plan.lower()
+    assert "exact build/test commands" in plan
+    assert "bundled steps" in plan
 
     critique = registry.render_named_prompt("owned-critique-phase", ROOT)
     assert "Do not edit" in critique
     assert "Attack the plan" in critique
-    assert "ungrounded file or symbol names" in critique
-    assert "missing verification" in critique
+    assert "ungrounded file, function, or utility names" in critique
+    assert "significant changes with no verification" in critique
 
     refine = registry.render_named_prompt("owned-refine-plan-phase", ROOT)
     assert "complete final plan" in refine
@@ -127,6 +185,8 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     execute = registry.render_named_prompt("owned-execute-phase", ROOT)
     assert "approved plan sequentially" in execute
     assert "Change only files named by the plan" in execute
+    assert "local, reversible reads, edits, and tests" in execute
+    assert "shared-state" in execute
     assert "Stop after self-verification" in execute
 
     review = registry.render_named_prompt("owned-review-phase", ROOT)
@@ -137,6 +197,7 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     fix = registry.render_named_prompt("owned-fix-phase", ROOT)
     assert "FIX PHASE" in fix
     assert "Fix only cited gaps" in fix
+    assert "local, reversible reads, edits, and tests" in fix
 
     retry = registry.render_named_prompt("solver-retry", ROOT)
     assert "Do not repeat a failed command verbatim" in retry
@@ -149,7 +210,6 @@ def test_registry_host_projections_match_current_surface_set() -> None:
     surfaced = {"code", "explore", "execute", "plan", "research", "review", "solve"}
     assert set(registry.surfaced_role_ids("shared_skill")) == surfaced
     assert set(registry.surfaced_role_ids("claude_agent")) == surfaced
-    assert set(registry.surfaced_role_ids("claude_agent_dev")) == surfaced
     assert set(registry.surfaced_role_ids("opencode_agent")) == surfaced
     assert set(registry.surfaced_role_ids("antigravity_agent")) == surfaced
     assert "general" not in set(registry.surfaced_role_ids("shared_skill"))

@@ -272,6 +272,13 @@ def code_index_cmd(
 ) -> None:
     """Index a repository into the SQLite FTS5 symbol store."""
     engine = _code_context_engine(repo_root)
+    if as_json:
+        payload = engine.index_repo(
+            include_globs=list(include_globs) or None,
+            exclude_globs=list(exclude_globs) or None,
+        ).model_dump(mode="json")
+        _emit(payload, as_json=True)
+        return
 
     try:
         from rich.console import Console
@@ -320,9 +327,6 @@ def code_index_cmd(
             exclude_globs=list(exclude_globs) or None,
         ).model_dump(mode="json")
 
-    if as_json:
-        _emit(payload, as_json=True)
-        return
     click.echo(
         f"indexed {payload['files_indexed']} files, {payload['symbols_indexed']} symbols "
         f"({payload['imports_indexed']} imports)"

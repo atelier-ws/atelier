@@ -39,6 +39,7 @@ from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     resolve_claude_provider_preset,
 )
+from atelier.core.domains.manager import DomainManager
 from atelier.gateway.cli.progress import ProgressReporter
 
 from .benchmark_solver import benchmark_solver_cmd
@@ -56,6 +57,35 @@ _PROVIDER_ALIASES: dict[str, str] = {
 @click.group("benchmark")
 def benchmark_group() -> None:
     """Run Atelier benchmark suites and reports."""
+
+
+@benchmark_group.command("packs")
+@click.option("--json", "as_json", is_flag=True, help="Emit the domain benchmark summary as JSON.")
+@click.pass_context
+def benchmark_packs_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Summarize benchmarkable shipped domain bundles."""
+    manager = DomainManager(ctx.obj["root"])
+    refs = manager.list_bundles()
+    bundle_infos = [manager.info(ref.bundle_id) for ref in refs]
+    benchmarked = [
+        {
+            "bundle_id": str(info["bundle_id"]),
+            "domain": str(info["domain"]),
+            "benchmarks": list(info.get("benchmarks") or []),
+        }
+        for info in bundle_infos
+        if isinstance(info, dict) and info.get("benchmarks")
+    ]
+    payload = {
+        "suite": "domains",
+        "domains_total": len(refs),
+        "domains_benchmarked": len(benchmarked),
+        "domains": benchmarked,
+    }
+    if as_json:
+        click.echo(json.dumps(payload))
+        return
+    click.echo(f"benchmarkable domains: {payload['domains_benchmarked']}/{payload['domains_total']}")
 
 
 @benchmark_group.command("mcp")

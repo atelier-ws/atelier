@@ -17,16 +17,15 @@ This file is a thin entrypoint. The live source of truth lives in the linked doc
 
 ## Operating loop
 
-1. **Context** — call `context` with `task`, `files`, and `domain` before touching any file. Use the host-displayed handle if it adds an `mcp__atelier__` prefix.
-2. **Implement** — use Atelier tools for ALL file I/O and shell ops (see [Tool substitution](docs/agent-os/tool-substitution.md)). Use `route` to get model recommendations before expensive steps. Use `rescue` on repeated failures.
-3. **Record** — call `trace` at completion.
+1. **Understand** — read the relevant source of truth before touching any file; ground every change in real code.
+2. **Implement** — use Atelier tools for ALL file I/O and shell ops (see [Tool substitution](docs/agent-os/tool-substitution.md)). If the same approach fails twice, change approach — do not retry a third time.
 
 ## Tool substitution — mandatory
 
-- Shared docs use plain tool names like `context`, `read`, `search`, and `trace`.
+- Shared docs use plain tool names like `read`, `search`, `grep`, and `edit`.
 - Some hosts expose the same tools as handles like `mcp__atelier__context`; use the name shown by your host when invoking one explicitly.
 - `read` for file reads; `search` / `grep` for discovery; `edit` for file changes.
-- `symbols` / `node` / `callers` / `callees` / `usages` / `impact` / `explore` for code intelligence.
+- `symbols` / `node` / `callers` / `usages` / `explore` for code intelligence.
 - `shell` only for commands without a better Atelier equivalent.
 
 ## Always prefer Atelier MCP tools
@@ -48,7 +47,7 @@ This file is a thin entrypoint. The live source of truth lives in the linked doc
 - Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
-- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+- If the same approach fails twice, change approach; do not retry a third time.
 
 Shared coding guidance is sourced from [coding-guidelines.md](docs/agent-os/coding-guidelines.md).
 

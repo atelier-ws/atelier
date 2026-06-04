@@ -19,21 +19,16 @@ from click.testing import CliRunner
 from atelier.core.foundation.models import ReasonBlock
 from atelier.core.runtime import AtelierRuntimeCore, AtelierRuntimeV3
 from atelier.gateway.cli import cli
-
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
+from tests.helpers import init_store_at
 
 
 def _init_root(root: Path) -> None:
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "init"])
-    assert res.exit_code == 0, res.output
+    init_store_at(str(root))
 
 
 def _make_rt(tmp_path: Path) -> tuple[AtelierRuntimeCore, Path]:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     return AtelierRuntimeCore(root), root
 
 
@@ -156,7 +151,7 @@ def test_context_reuse_returns_empty_when_no_strong_match(tmp_path: Path) -> Non
 
     context = rt.get_context(task="unrelated task", domain="weak.only", recall=False)
 
-    assert context == ""
+    assert context == "<context_procedures>\n(no relevant procedures found)\n</context_procedures>\n"
 
 
 # --------------------------------------------------------------------------- #

@@ -46,31 +46,33 @@ def _write_large_repo(repo_root: Path, *, files: int = 24, lines_per_file: int =
 
 
 @skip_docker
-def test_zoekt_health_resolves_managed_runtime_and_serves_health(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo_root = tmp_path / "repo"
-    _write_fixture_repo(repo_root)
-    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
-    monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
-    monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+@pytest.mark.slow
+class TestZoektRouting:
+    def test_zoekt_health_resolves_managed_runtime_and_serves_health(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        _write_fixture_repo(repo_root)
+        monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
+        monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
+        monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
 
-    resolution = discover_zoekt_binary(repo_root)
+        resolution = discover_zoekt_binary(repo_root)
 
-    assert resolution.available is True
-    assert resolution.runtime in {"binary", "docker"}
-    if resolution.runtime == "docker":
-        assert resolution.image_ref
-    else:
-        assert resolution.path is not None
+        assert resolution.available is True
+        assert resolution.runtime in {"binary", "docker"}
+        if resolution.runtime == "docker":
+            assert resolution.image_ref
+        else:
+            assert resolution.path is not None
 
-    server = get_zoekt_server(repo_root, resolution=resolution)
-    health = server.health()
+        server = get_zoekt_server(repo_root, resolution=resolution)
+        health = server.health()
 
-    assert health.ok is True
-    assert health.backend == "zoekt"
-    expected_runtime_ref = resolution.image_ref or (str(resolution.path) if resolution.path is not None else None)
-    assert health.binary_path == expected_runtime_ref
+        assert health.ok is True
+        assert health.backend == "zoekt"
+        expected_runtime_ref = resolution.image_ref or (str(resolution.path) if resolution.path is not None else None)
+        assert health.binary_path == expected_runtime_ref
 
 
 def test_zoekt_managed_bootstrap_provisions_manifest_when_env_is_absent(

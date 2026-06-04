@@ -137,6 +137,7 @@ def register(cli: click.Group) -> None:
         from .benchmark import benchmark_group
 
         cli.add_command(benchmark_group)
+        cli.add_command(benchmark_group, name="bench")
     except (ModuleNotFoundError, ImportError):
         pass
 

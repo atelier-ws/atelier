@@ -30,7 +30,7 @@ _BASELINE_SNAPSHOT = {
 def _init_runtime(tmp_path: Path) -> AtelierRuntimeCore:
     root = tmp_path / ".atelier"
     runner = CliRunner()
-    result = runner.invoke(cli, ["--root", str(root), "init"])
+    result = runner.invoke(cli, ["--root", str(root), "init", "--no-index"])
     assert result.exit_code == 0, result.output
     return AtelierRuntimeCore(root)
 
@@ -245,10 +245,8 @@ def _cold_start_block_in_top_five(tmp_path: Path) -> bool:
     return any(item.block.id == "eval-cold-start-trace-playbook" for item in ranked)
 
 
-def test_context_retrieval_eval_metrics(tmp_path: Path) -> None:
-    runtime = _init_runtime(tmp_path)
-    _ensure_eval_blocks_exist(runtime)
-    metrics = _evaluate(runtime, _load_cases(), limit=5)
+def test_context_retrieval_eval_metrics(retrieval_eval_runtime: AtelierRuntimeCore) -> None:
+    metrics = _evaluate(retrieval_eval_runtime, _load_cases(), limit=5)
 
     assert metrics["query_count"] >= 1
     assert metrics["recall_at_5"] >= 0.0
@@ -278,10 +276,8 @@ def test_context_retrieval_trace_records_drop_reasons(
     assert trace["candidate_count"] > 0
 
 
-def test_context_retrieval_rubric_passes(tmp_path: Path) -> None:
-    runtime = _init_runtime(tmp_path)
-    _ensure_eval_blocks_exist(runtime)
-    metrics = _evaluate(runtime, _load_cases(), limit=5)
+def test_context_retrieval_rubric_passes(retrieval_eval_runtime: AtelierRuntimeCore) -> None:
+    metrics = _evaluate(retrieval_eval_runtime, _load_cases(), limit=5)
 
     assert metrics["query_count"] >= 1
     assert metrics["recall_at_5"] >= 0.0
