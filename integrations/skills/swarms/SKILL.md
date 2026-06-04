@@ -2,7 +2,6 @@
 name: swarms
 description: Launch multi-worktree swarm runs by gathering the real swarm parameters and using Atelier's existing swarm runtime.
 ---
-
 # Swarms
 
 Use this skill when the user wants multiple isolated attempts running in parallel, not a single `orchestrate` run.
@@ -18,9 +17,7 @@ Use this skill when the user wants multiple isolated attempts running in paralle
 
 Ask for the real runtime knobs, one at a time, until you have enough to launch:
 
-- `project_root`
 - spec source: existing `spec_path` or inline `spec_content`
-- provider: `cli`, `openai`, or `litellm`
 - runner and runner model (or provider model)
 - `runs`
 - `continuous`
@@ -36,7 +33,6 @@ Ask for the real runtime knobs, one at a time, until you have enough to launch:
 
 Map your conversation directly onto the existing swarm launch contract:
 
-- `project_root`
 - `spec_path` or `spec_mode="inline"` with `spec_content`
 - `provider`
 - `runner`
