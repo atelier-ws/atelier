@@ -45,14 +45,55 @@ jobs:
           name: dist
           path: dist/
 
+  binary-build:
+    name: Build binaries (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build binaries
+        run: bash scripts/bundle-prod.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}
+          path: atelier-binaries-*.tar.gz
+
   release:
     name: Create GitHub Release
-    needs: [build]
+    needs: [build, binary-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: binaries/
+
+      - name: Download source artifacts
         uses: actions/download-artifact@v4
         with:
           name: dist
@@ -77,11 +118,14 @@ jobs:
           ### Assets
           - \`atelier-${VERSION}.tar.gz\` — source distribution
           - \`atelier-${VERSION}-py3-none-any.whl\` — pure Python wheel
+          - Pre-compiled binaries for Linux/macOS in the release assets.
           EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
-          files: dist/*
+          files: |
+            dist/*
+            binaries/*
           generate_release_notes: true
