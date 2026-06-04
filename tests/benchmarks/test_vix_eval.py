@@ -539,6 +539,18 @@ def test_validate_result_excerpt_accepts_task_relevant_summary() -> None:
     assert reason == ""
 
 
+def test_validate_result_excerpt_accepts_error_handling_summary() -> None:
+    task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
+
+    valid, reason = VIX._validate_result_excerpt(
+        task,
+        "Implemented the Swift LRU cache with persistence and explicit error handling for corrupted index recovery.",
+    )
+
+    assert valid is True
+    assert reason == ""
+
+
 def test_validate_result_excerpt_rejects_unnecessary_clarification() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
