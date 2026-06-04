@@ -32,12 +32,12 @@ if $WORKSPACE_SET; then
     WORKSPACE="$(cd "$WORKSPACE" && pwd)"
     OC_FILE="${WORKSPACE}/opencode.json"
     LEGACY_OC_FILE="${WORKSPACE}/opencode.jsonc"
-    AGENT_FILE="${WORKSPACE}/.opencode/agents/atelier.md"
+    AGENTS_DIR="${WORKSPACE}/.opencode/agents"
 else
     OPENCODE_CONFIG_HOME="${OPENCODE_CONFIG_HOME:-${XDG_CONFIG_HOME:-${HOME}/.config}/opencode}"
     OC_FILE="${OPENCODE_CONFIG_HOME}/opencode.json"
     LEGACY_OC_FILE="${OPENCODE_CONFIG_HOME}/opencode.jsonc"
-    AGENT_FILE="${OPENCODE_CONFIG_HOME}/agents/atelier.md"
+    AGENTS_DIR="${OPENCODE_CONFIG_HOME}/agents"
 fi
 
 info()  { echo "[atelier:uninstall:opencode] $*"; }
@@ -71,9 +71,12 @@ else:
 clean_config "$OC_FILE"
 clean_config "$LEGACY_OC_FILE"
 
-if [ -f "$AGENT_FILE" ]; then
-    run "rm -f '$AGENT_FILE'"
-    info "Removed $AGENT_FILE"
+if [ -d "$AGENTS_DIR" ]; then
+    for f in "$AGENTS_DIR"/atelier.md "$AGENTS_DIR"/atelier.*.md; do
+        [ -f "$f" ] || continue
+        run "rm -f '$f'"
+        info "Removed $f"
+    done
 fi
 
 info "Done."

@@ -16,6 +16,18 @@ By default this installs VS Code user/global MCP, instructions, and task presets
 bash scripts/install_copilot.sh --workspace /path/to/workspace
 ```
 
+To configure project-specific role models after the global install, run:
+
+```bash
+uv run atelier init --configure-models
+```
+
+Inside a git workspace, the init wizard writes `<workspace>/.atelier/settings.json`
+and refreshes the workspace Copilot agent at
+`<workspace>/.github/agents/atelier.code.agent.md`. Those workspace role agents are the
+surface Copilot uses for the current project, so it can carry explicit model
+pins even when the global install stays neutral.
+
 ---
 
 ## What Gets Installed
@@ -24,12 +36,24 @@ bash scripts/install_copilot.sh --workspace /path/to/workspace
 | -------------------- | ------------------------------------------------- | --------------------------------------------- |
 | MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                |
 | Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md` |
-| Agent                | not installed globally                            | `<workspace>/.github/agents/atelier.agent.md` |
+| Agent                | not installed globally                            | `<workspace>/.github/agents/atelier.code.agent.md` plus the other `atelier.<role>.agent.md` files |
 | Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)     |
 
 The MCP config registers Atelier as a stdio server:
 
-```json
+```
+
+## Project-local model config
+
+The intended flow is:
+
+1. Install Atelier globally so Copilot can see the MCP server and default instructions.
+2. Run `uv run atelier init --configure-models` inside a repository.
+3. Let the wizard write `.atelier/settings.json` plus a workspace-local
+   `.github/agents/atelier.code.agent.md` and the other `atelier.<role>.agent.md` files.
+
+`"auto"` means omit an explicit model pin for that host surface. Concrete values
+write the selected model directly into the workspace agent frontmatter.json
 &#123;
   "servers": &#123;
     "atelier": {

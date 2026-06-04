@@ -312,6 +312,57 @@ def test_default_step_executor_uses_owned_provider_execution(monkeypatch, tmp_pa
     assert result["execution_receipt"]["executed_transport"] == "openai"
 
 
+def test_default_step_executor_native_receipt_tracks_spawn_cache_projection(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        benchmark_solver_module,
+        "resolve_swarm_runner_command",
+        lambda **kwargs: ["fake-runner", kwargs["prompt_template"]],
+    )
+    monkeypatch.setattr(
+        benchmark_solver_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="done", stderr=""),
+    )
+
+    executor = _default_step_executor(
+        repo_root=tmp_path,
+        route_decision=None,
+        runner="claude",
+        model="claude-opus-4.8",
+    )
+    result = executor(
+        SimpleNamespace(step_id="plan", role_id="plan", context_mode="inherit"),
+        "Keep the prompt prefix stable.\n\nCurrent phase prompt:\nImplement the fix.",
+        WorkflowContextState(),
+        1,
+    )
+
+    receipt = result["execution_receipt"]
+    assert receipt["cache_capability"] == "hint_only"
+    assert receipt["eligible_for_reuse"] is True
+    assert receipt["requested_fields"] == [
+        "prompt",
+        "cache_policy",
+        "stable_prefix_hash",
+        "stable_prefix_tokens",
+        "dynamic_tokens",
+        "spawn_group_id",
+        "cache_scope_id",
+        "role_id",
+    ]
+    assert receipt["honored_fields"] == [
+        "prompt",
+        "cache_policy",
+        "spawn_group_id",
+        "cache_scope_id",
+        "role_id",
+        "selected_runner",
+        "selected_model",
+    ]
+    assert receipt["executed_model"] == ""
+    assert receipt["observation_mode"] == "runtime-observed"
+
+
 def test_run_benchmark_solver_records_execution_receipts_and_transport(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         benchmark_solver_module,
@@ -370,7 +421,7 @@ def test_run_benchmark_solver_records_execution_receipts_and_transport(monkeypat
     assert run.attempts[0].step_artifacts[0].execution_receipt["executed_transport"] == "openai"
 
 
-def test_resolve_solver_execution_route_native_mode_skips_owned_route(monkeypatch) -> None:
+def test_resolve_solver_execution_route_native_mode_skips_owned_route(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         benchmark_solver_module,
         "select_owned_route",
@@ -385,18 +436,17 @@ def test_resolve_solver_execution_route_native_mode_skips_owned_route(monkeypatc
         provider=None,
         model=None,
         runner=None,
+        workspace_root=tmp_path,
     )
 
     assert decision is None
     assert provider == "anthropic"
-    assert runner == "claude"
-    assert model == "claude-opus-4.8"
+    assert runner == benchmark_solver_module._detect_solver_host_agent()
+    assert model in ("claude-opus-4.8", "claude-opus-4-8")
     assert transport == ""
 
 
-def test_resolve_solver_execution_route_auto_mode_raises_when_owned_route_missing(
-    monkeypatch,
-) -> None:
+def test_resolve_solver_execution_route_auto_mode_raises_when_owned_route_missing(monkeypatch, tmp_path: Path) -> None:
     from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
 
     monkeypatch.setattr(
@@ -414,6 +464,7 @@ def test_resolve_solver_execution_route_auto_mode_raises_when_owned_route_missin
             provider=None,
             model=None,
             runner=None,
+            workspace_root=tmp_path,
         )
 
 

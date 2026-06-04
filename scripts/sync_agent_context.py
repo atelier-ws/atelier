@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+# ruff: noqa: E402
 import argparse
 import difflib
 import json
@@ -18,16 +19,24 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from atelier.core.capabilities.default_definitions import (  # noqa: E402
+from atelier.core.capabilities.default_definitions import (
     DefaultRole,
     HostProjection,
     ModeDoc,
     build_default_registry,
     load_mode_docs,
 )
-from atelier.core.environment import skill_visible  # noqa: E402
+from atelier.core.capabilities.model_settings import (
+    CANONICAL_COPILOT_AGENT_MODEL,
+    resolve_host_model,
+)
+from atelier.core.capabilities.workspace_host_overrides import (
+    rewrite_agent_model,
+)
+from atelier.core.environment import skill_visible
 
 _AGENT_DISPLAY_ORDER = ("code", "explore", "plan", "execute", "research", "review", "solve")
+_CLAUDE_ROLE_SKILL_IDS = frozenset(_AGENT_DISPLAY_ORDER)
 
 DOC_LINKS = [
     ("Agent OS", ROOT / "docs/agent-os/README.md"),
@@ -157,42 +166,55 @@ def coding_guidelines_section() -> str:
     return "\n".join(["## Coding Guidelines", "", _markdown_body(CODING_GUIDELINES_PATH)])
 
 
-def tool_substitution_table() -> str:
+_OPENCODE_TOOL_PREFIX = "atelier_"
+
+
+def _tn(name: str, *, prefix: str = "") -> str:
+    """Return a tool name, optionally prefixed with *atelier_*."""
+    return f"{prefix}{name}"
+
+
+def tool_substitution_table(*, tool_prefix: str = "") -> str:
+    p = tool_prefix
     return "\n".join(
         [
             "## Tool substitution — mandatory",
             "",
-            "- Shared docs use plain tool names like `read`, `search`, `grep`, and `edit`.",
+            f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}`, `{_tn('search', prefix=p)}`, `{_tn('grep', prefix=p)}`, and `{_tn('edit', prefix=p)}`.",
             "- Some hosts expose the same tools as handles like `mcp__atelier__context`; use the name shown by your host when invoking one explicitly.",
-            "- `read` for file reads; `search` / `grep` for discovery; `edit` for file changes.",
-            "- `symbols` / `node` / `callers` / `usages` / `explore` for code intelligence.",
-            "- `shell` only for commands without a better Atelier equivalent.",
+            f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes.",
+            f"- `{_tn('symbols', prefix=p)}` / `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence.",
+            f"- `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
         ]
     )
 
 
-def mcp_priority_section() -> str:
-    return "\n".join(
-        [
-            "## Always prefer Atelier MCP tools",
-            "",
-            "- Prefer Atelier tools for file I/O, search, edits, shell, and code intelligence.",
-            "- Use symbols/callers/usages before text search when you need code relationships.",
-            "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
-        ]
-    )
+def mcp_priority_section(*, tool_prefix: str = "") -> str:
+    p = tool_prefix
+    lines = [
+        "## Always prefer Atelier MCP tools",
+        "",
+        f"- Prefer Atelier tools (`{_tn('read', prefix=p)}`, `{_tn('edit', prefix=p)}`, `{_tn('shell', prefix=p)}`, etc.) for file I/O, search, edits, shell, and code intelligence.",
+        f"- Use `{_tn('symbols', prefix=p)}`/`{_tn('callers', prefix=p)}`/`{_tn('usages', prefix=p)}` before text search when you need code relationships.",
+        "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
+    ]
+    if tool_prefix:
+        lines.append(
+            "- Native tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`) are disallowed by policy — always use the Atelier MCP counterparts."
+        )
+    return "\n".join(lines)
 
 
-def distribution_sections(host: str | None = None) -> list[str]:
+def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> list[str]:
     lines = [
         "## Operating loop",
         "",
         "1. **Understand**: Read the relevant source of truth before changing anything; ground every change in real code.",
-        "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change approach — do not retry a third time.",
+        f"2. **Implement**: Use Atelier MCP tools (`{_tn('read', prefix=tool_prefix)}`, `{_tn('edit', prefix=tool_prefix)}`, `{_tn('shell', prefix=tool_prefix)}`, etc.) for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change approach — do not retry a third time.",
         "",
-        tool_substitution_table(),
+        tool_substitution_table(tool_prefix=tool_prefix),
         "",
-        mcp_priority_section(),
+        mcp_priority_section(tool_prefix=tool_prefix),
         "",
         budget_section(),
         "",
@@ -319,61 +341,57 @@ def render_copilot_workspace(output_path: Path) -> str:
     return "\n".join(["---", 'applyTo: "**"', "---", "", body]).rstrip() + "\n"
 
 
-def render_copilot_agent(output_path: Path) -> str:
-    # VS Code custom agent (`.github/agents/*.agent.md`). ``atelier/*`` grants every
-    # Atelier MCP tool so the agent prefers them; the namespaced native tools are the
-    # fallback set. Unknown/unavailable tools are ignored by VS Code, so listing
-    # ``atelier/*`` is safe even when the MCP server is not registered.
+def _copilot_native_tools(role_id: str) -> list[str]:
+    base = [
+        "atelier/*",
+        "search/codebase",
+        "web/fetch",
+        "findTestFiles",
+        "web/githubRepo",
+        "read/problems",
+        "read/getTaskOutput",
+        "search",
+        "searchResults",
+        "read/terminalLastCommand",
+        "read/terminalSelection",
+        "search/usages",
+        "vscode/vscodeAPI",
+    ]
+    if role_id in {"code", "execute", "solve"}:
+        base[1:1] = [
+            "changes",
+            "edit/editFiles",
+            "execute/getTerminalOutput",
+            "execute/runInTerminal",
+            "execute/createAndRunTask",
+            "execute/runTask",
+            "execute/runTests",
+            "execute/testFailure",
+        ]
+    return base
+
+
+def render_copilot_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
+    tools = "\n".join(f'    "{tool}",' for tool in _copilot_native_tools(role.role_id))
     return (
         "\n".join(
             [
                 "---",
-                'description: "Atelier - Agent Reasoning Runtime coding agent"',
-                "model: gpt-5.4",
+                f'description: "{role.agent_description}"',
+                f"model: {CANONICAL_COPILOT_AGENT_MODEL}",
                 "tools:",
                 "  [",
-                '    "atelier/*",',
-                '    "search/codebase",',
-                '    "changes",',
-                '    "edit/editFiles",',
-                '    "web/fetch",',
-                '    "findTestFiles",',
-                '    "web/githubRepo",',
-                '    "read/problems",',
-                '    "execute/getTerminalOutput",',
-                '    "execute/runInTerminal",',
-                '    "execute/createAndRunTask",',
-                '    "execute/runTask",',
-                '    "read/getTaskOutput",',
-                '    "execute/runTests",',
-                '    "search",',
-                '    "searchResults",',
-                '    "read/terminalLastCommand",',
-                '    "read/terminalSelection",',
-                '    "execute/testFailure",',
-                '    "search/usages",',
-                '    "vscode/vscodeAPI",',
+                tools,
                 "  ]",
                 "---",
                 "",
-                generated_notice(output_path),
+                generated_notice(ROOT / "integrations" / "copilot" / "agents" / f"{projection.output_name}.agent.md"),
                 "",
-                "# atelier:code",
+                f"# atelier:{role.role_id}",
                 "",
-                "You are operating as *atelier:code*.",
+                f"You are operating as *atelier:{role.role_id}*.",
                 "",
-                "## Operating loop",
-                "",
-                "1. **Understand** - read the relevant source of truth first; ground every change in real code.",
-                "2. **Plan** - keep the plan small and concrete.",
-                "3. **Execute** - use Atelier MCP tools for file I/O, search, edits, and shell work. "
-                "Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable.",
-                "4. **Recover** - if the same approach fails twice, change approach; do not retry a third time.",
-                "5. **Continue** - after completing a task, always present the user with a question about what to do next before ending the turn.",
-                "",
-                budget_section(),
-                "",
-                fallback_section("copilot"),
+                render_mode_body(mode_doc),
             ]
         ).rstrip()
         + "\n"
@@ -398,7 +416,23 @@ def render_cursor_coding_rules() -> str:
     )
 
 
+def render_cursor_role_rule(role: DefaultRole, mode_doc: ModeDoc) -> str:
+    return (
+        "\n".join(
+            [
+                "---",
+                f"description: Atelier {role.role_id} mode reference for Cursor.",
+                "---",
+                "",
+                render_mode_body(mode_doc),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
+    tool_prefix = _OPENCODE_TOOL_PREFIX if host == "opencode" else ""
     lines = [
         distribution_notice(),
         "",
@@ -406,7 +440,7 @@ def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
         "",
         "You are operating as *atelier:code*.",
         "",
-        *distribution_sections(host),
+        *distribution_sections(host, tool_prefix=tool_prefix),
     ]
     if host == "opencode":
         return (
@@ -541,6 +575,46 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
     )
 
 
+def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
+    """OpenCode agent that uses ``atelier_``-prefixed tool names.
+
+    OpenCode registers MCP tools with the ``atelier_`` prefix (``atelier_read``,
+    ``atelier_edit``, etc.), so the body must reference those names rather than
+    the bare tool names used in other hosts.
+    """
+    p = _OPENCODE_TOOL_PREFIX
+    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
+    tool_discipline = "\n".join(
+        [
+            "## OpenCode tool discipline",
+            "",
+            f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
+            f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
+            f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
+            f"  `{p}symbols` / `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
+            "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
+            "  are disallowed by policy — always use the Atelier MCP counterparts.",
+            "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
+            "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
+        ]
+    )
+    return (
+        "\n".join(
+            [
+                render_frontmatter(list(projection.frontmatter)),
+                "",
+                distribution_notice(),
+                "",
+                *identity_block,
+                render_mode_body(mode_doc),
+                "",
+                tool_discipline,
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def _extra_shared_skill_paths(repo_root: Path, generated_role_ids: set[str]) -> dict[str, Path]:
     skills_root = repo_root / "integrations" / "skills"
     extras: dict[str, Path] = {}
@@ -572,7 +646,9 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
         skill_path = repo_root / "integrations" / "skills" / role_id / "SKILL.md"
         skill_content = render_skill(role, mode_doc)
         outputs[skill_path] = skill_content
-        for host_dir in HOST_SKILL_DIRS.values():
+        for host_name, host_dir in HOST_SKILL_DIRS.items():
+            if host_name == "claude" and role_id in _CLAUDE_ROLE_SKILL_IDS:
+                continue
             host_skill_path = host_dir / role_id / "SKILL.md"
             outputs[host_skill_path] = skill_content
 
@@ -595,7 +671,14 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
 
         opencode_projection = registry.projection(role_id, "opencode_agent")
         opencode_path = repo_root / "integrations" / "opencode" / "agents" / f"{opencode_projection.output_name}.md"
-        outputs[opencode_path] = render_simple_agent(role, mode_doc, opencode_projection)
+        outputs[opencode_path] = render_opencode_agent(role, mode_doc, opencode_projection)
+
+        copilot_projection = registry.projection(role_id, "copilot_agent")
+        copilot_path = repo_root / "integrations" / "copilot" / "agents" / f"{copilot_projection.output_name}.agent.md"
+        outputs[copilot_path] = render_copilot_agent(role, mode_doc, copilot_projection)
+
+        cursor_path = repo_root / "integrations" / "cursor" / "rules" / f"atelier.{role_id}.mdc"
+        outputs[cursor_path] = render_cursor_role_rule(role, mode_doc)
 
     for skill_name, skill_path in _extra_shared_skill_paths(repo_root, generated_role_ids).items():
         content = skill_path.read_text(encoding="utf-8")
@@ -675,19 +758,16 @@ def render_agents_overview(output_path: Path) -> str:
 
 
 def build_outputs() -> dict[Path, str]:
+    registry = build_default_registry(ROOT)
+    mode_outputs = build_mode_outputs(ROOT)
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
         ROOT / "docs/agent-os/agents.md": render_agents_overview(ROOT / "docs/agent-os/agents.md"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
-        ROOT / ".github/agents/atelier.agent.md": render_copilot_agent(ROOT / ".github/agents/atelier.agent.md"),
         ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
         ROOT
         / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
-        ),
-        ROOT
-        / "integrations/copilot/agents/atelier.agent.md": render_copilot_agent(
-            ROOT / "integrations/copilot/agents/atelier.agent.md"
         ),
         ROOT
         / "integrations/claude/AGENTS.atelier.md": render_host_surface(
@@ -727,7 +807,14 @@ def build_outputs() -> dict[Path, str]:
             host="hermes",
         ),
     }
-    outputs.update(build_mode_outputs(ROOT))
+    for role_id in registry.surfaced_role_ids("copilot_agent"):
+        projection = registry.projection(role_id, "copilot_agent")
+        integration_path = ROOT / "integrations" / "copilot" / "agents" / f"{projection.output_name}.agent.md"
+        outputs[ROOT / ".github" / "agents" / f"{projection.output_name}.agent.md"] = rewrite_agent_model(
+            mode_outputs[integration_path],
+            resolve_host_model("copilot", role_id, workspace_root=ROOT, fallback=CANONICAL_COPILOT_AGENT_MODEL),
+        )
+    outputs.update(mode_outputs)
     outputs.update(sync_host_configs())
     return outputs
 

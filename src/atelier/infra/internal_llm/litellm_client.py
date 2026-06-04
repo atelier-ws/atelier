@@ -101,6 +101,7 @@ def chat_with_result(
     *,
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
+    cache_metadata: dict[str, Any] | None = None,
 ) -> InternalLLMChatResult:
     """Call LiteLLM and optionally parse a JSON response.
 
@@ -110,18 +111,19 @@ def chat_with_result(
     """
     litellm = _litellm_module()
     chosen_model = _resolve_model(model)
+    request_messages = _apply_cache_control(messages, chosen_model=chosen_model, cache_metadata=cache_metadata)
     try:
         if json_schema is None:
-            response = litellm.completion(model=chosen_model, messages=messages)
+            response = litellm.completion(model=chosen_model, messages=request_messages)
         else:
             try:
                 response = litellm.completion(
                     model=chosen_model,
-                    messages=messages,
+                    messages=request_messages,
                     response_format={"type": "json_object"},
                 )
             except Exception:  # noqa: BLE001 - provider may reject response_format; retry plain
-                response = litellm.completion(model=chosen_model, messages=messages)
+                response = litellm.completion(model=chosen_model, messages=request_messages)
     except Exception as exc:
         if isinstance(exc, LiteLLMUnavailable):
             raise
@@ -145,6 +147,8 @@ def chat_with_result(
         cache_read_input_tokens=_usage_detail(usage, "prompt_tokens_details", "cached_tokens"),
         cache_write_input_tokens=_token_value(usage, "cache_creation_input_tokens")
         or _usage_detail(usage, "prompt_tokens_details", "cache_creation_tokens"),
+        cache_capability=_cache_capability(chosen_model=chosen_model, cache_metadata=cache_metadata),
+        request_metadata=dict(cache_metadata or {}),
     )
 
 
@@ -161,3 +165,34 @@ def chat(
 
 
 __all__ = ["LiteLLMUnavailable", "chat", "chat_with_result", "summarize"]
+
+
+def _apply_cache_control(
+    messages: list[dict[str, Any]],
+    *,
+    chosen_model: str,
+    cache_metadata: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not cache_metadata or not _supports_anthropic_cache_control(chosen_model):
+        return messages
+    patched = [dict(message) for message in messages]
+    if not patched:
+        return patched
+    first = dict(patched[0])
+    content = first.get("content")
+    if first.get("role") != "system" or not isinstance(content, str) or not content.strip():
+        return patched
+    first["content"] = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+    patched[0] = first
+    return patched
+
+
+def _cache_capability(*, chosen_model: str, cache_metadata: dict[str, Any] | None) -> str:
+    if not cache_metadata:
+        return "none"
+    return "explicit" if _supports_anthropic_cache_control(chosen_model) else "hint_only"
+
+
+def _supports_anthropic_cache_control(chosen_model: str) -> bool:
+    normalized = chosen_model.strip().lower()
+    return "anthropic" in normalized or "claude" in normalized
