@@ -1,5 +1,7 @@
 ---
-description: Atelier review mode reference for Cursor.
+mode: review
+skill_description: Switch to adversarial review mode. Apply the verification ladder, read the code directly, and never edit source files.
+agent_description: Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.
 ---
 
 # Review mode

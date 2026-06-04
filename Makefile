@@ -61,7 +61,7 @@ restart: ## Restart the service and frontend natively
 build-host-skills: ## Generate Codex/Gemini skill bundles from integrations/skills (set ATELIER_DEV_MODE=1 to include dev-only skills)
 	@bash scripts/build_host_skills.sh --host all $$( [ "$${ATELIER_DEV_MODE:-0}" = "1" ] && echo --include-dev )
 
-sync-agent-context: ## Regenerate host instruction surfaces from docs/agent-os
+sync-agent-context: ## Regenerate host instruction surfaces from integrations/shared/
 	uv run python scripts/sync_agent_context.py
 
 check-agent-context: ## Verify generated host instruction surfaces are up to date

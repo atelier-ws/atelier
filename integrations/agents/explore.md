@@ -1,5 +1,7 @@
 ---
-description: Atelier explore mode reference for Cursor.
+mode: explore
+skill_description: Switch to read-only explorer mode. Locate files, symbols, and patterns. Never edit, create, or delete files.
+agent_description: Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.
 ---
 
 # Explore mode

@@ -1,5 +1,7 @@
 ---
-description: Atelier research mode reference for Cursor.
+mode: research
+skill_description: Switch to external research mode. Fetch web sources and code references, synthesize them, and cite every factual claim. Never edit files.
+agent_description: External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.
 ---
 
 # Research mode
@@ -34,3 +36,4 @@ External researcher. Fetch, synthesize, and cite. Never edit files.
 ## Gaps
 - <what could not be confirmed>
 ```
+
