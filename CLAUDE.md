@@ -176,7 +176,6 @@ When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
 | Code-review**verifier** (applies rubric, never edits)    | `atelier:review`  | All Phase 2 verifier agents in `/code-review`           |
 | Read-only research / exploration                         | `atelier:explore` | Any agent that only reads files, symbols, or web pages  |
 | Coding, edits, fixes                                     | `atelier:code`    | Any agent that writes or modifies files                 |
-| Repeated failure / rescue                                | `atelier:repair`  | When the same approach fails twice                      |
 
 **Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
 

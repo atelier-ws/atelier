@@ -1,23 +1,18 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
-from click.testing import CliRunner
-
-from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
 from atelier.core.capabilities.semantic_file_memory.capability import (
+    SemanticFileMemoryCapability,
     _claude_read_baseline_text,
     _count_tokens,
 )
 from atelier.gateway.adapters.mcp_server import _handle
-from atelier.gateway.cli import cli
+from tests.helpers import init_store_at
 
 
 def _seed_store(tmp_path: Path, monkeypatch: Any) -> Path:
     root = tmp_path / ".atelier"
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
+    init_store_at(str(root))
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     return root
 
@@ -46,6 +41,7 @@ def test_smart_read_outline_first_for_large_python_file(tmp_path: Path, monkeypa
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     outline_md = _smart_read({"path": str(target), "include_meta": True})
+    assert outline_md.startswith("Projection: outline")
     assert "hint:" in outline_md
     assert "Demo" in outline_md
 
@@ -112,3 +108,18 @@ def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> No
     assert payload["mode"] == "outline"
     assert payload["tokens_saved"] <= baseline_tokens
     assert payload["tokens_saved"] < full_file_tokens
+
+
+def test_smart_read_compact_projection_banner_for_safe_language(tmp_path: Path, monkeypatch: Any) -> None:
+    _seed_store(tmp_path, monkeypatch)
+
+    target = tmp_path / "sample.go"
+    target.write_text(
+        'package   main\n\nfunc   main()   {\n    println("hello")\n}\n',
+        encoding="utf-8",
+    )
+
+    rendered = _smart_read({"path": str(target)})
+
+    assert rendered.startswith("Projection: compact")
+    assert "package main" in rendered

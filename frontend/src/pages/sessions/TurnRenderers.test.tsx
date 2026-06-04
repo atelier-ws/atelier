@@ -61,6 +61,10 @@ describe("ConversationTurn rich cards", () => {
     expect(screen.getByText("/tmp/spec.md")).toBeInTheDocument();
     expect(screen.getByText(/# Spec/)).toBeInTheDocument();
     expect(screen.getByText(/Important context/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Projection" })).toHaveAttribute(
+      "href",
+      "/projection?path=%2Ftmp%2Fspec.md&view=compact"
+    );
   });
 
   it("hides generic main transcript filenames from the turn header", () => {
@@ -85,7 +89,9 @@ describe("ConversationTurn rich cards", () => {
       />
     );
 
-    expect(screen.getByText("@frontend/src/pages/sessions/")).toBeInTheDocument();
+    expect(
+      screen.getByText("@frontend/src/pages/sessions/")
+    ).toBeInTheDocument();
     expect(screen.queryByText("events.jsonl")).not.toBeInTheDocument();
   });
 

@@ -1,8 +1,8 @@
-"""Central runtime environment policy.
+"""Central runtime visibility policy.
 
-This module owns the stable/dev boundary for Atelier runtime code. Keep tool
-visibility, dev-disabled messages, and dev-only skill lists here so MCP, HTTP,
-CLI, and UI-facing metadata stay consistent.
+This module owns the always-on public tool/skill surface for Atelier runtime
+code. Keep hardcoded hidden lists here so MCP, HTTP, CLI, and UI-facing
+metadata stay consistent without a separate dev-mode branch.
 """
 
 from __future__ import annotations
@@ -21,44 +21,25 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-DEV_MODE_ENV_VAR = "ATELIER_DEV_MODE"
 MEMORY_BACKEND_ENV_VAR = "ATELIER_MEMORY_BACKEND"
 TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
-INSTALL_PROFILES = frozenset({"stable", "dev"})
 MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
-STABLE_LLM_TOOLS = frozenset(
-    {
-        "compact",
-        "context",
-        "trace",
-        "memory",
-        "read",
-        "grep",
-        "search",
-        "route",
-        "edit",
-        "sql",
-        "shell",
-        "symbols",
-        # Dedicated code-intel tools (split from `symbols` op for LLM discoverability)
-        "node",
-        "callers",
-        "callees",
-        "usages",
-        "impact",
-        "pattern",
-        "explore",
-    }
-)
-DEV_LLM_TOOLS = frozenset(
+HIDDEN_LLM_TOOLS = frozenset(
     {
         "rescue",
         "verify",
+        "callees",
+        "impact",
+        "pattern",
+        "route",
+        "trace",
+        "workflow",
+        "compact",
+        "context",
     }
 )
-NON_DEV_LLM_TOOLS = STABLE_LLM_TOOLS
-DEV_ONLY_SKILLS = frozenset(
+HIDDEN_SKILLS = frozenset(
     {
         "analyze-failures",
         "benchmark",
@@ -81,62 +62,31 @@ def bool_env(name: str, default: bool = False, env: Mapping[str, str] | None = N
     return raw.strip().lower() in TRUE_ENV_VALUES
 
 
-def is_dev_mode(env: Mapping[str, str] | None = None) -> bool:
-    return bool_env(DEV_MODE_ENV_VAR, False, env)
-
-
-def dev_tool_disabled_message(tool_name: str) -> str:
-    return "noop"
-
-
-def cli_dev_disabled_message(command_name: str) -> str:
-    return "noop"
-
-
 def mcp_tool_description(tool_name: str, description: str | None) -> str:
     return str(description or "")
 
 
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
-    # Bench-off overrides dev-mode — baseline arm must not see Atelier MCP tools.
-    # This check MUST run before is_dev_mode() (per MODE-04).
+    # Bench-off overrides the normal public surface — the baseline arm must not
+    # see Atelier MCP tools.
     if _bench_is_off():
         return False
-    if is_dev_mode():
-        return True
-    return tool_name in STABLE_LLM_TOOLS
+    return tool_name not in HIDDEN_LLM_TOOLS
 
 
 def mcp_tool_mode(tool_name: str) -> str:
-    if is_dev_mode():
-        return "active"
-    if tool_name in STABLE_LLM_TOOLS:
-        return "active"
-    return "dev"
+    return "hidden" if tool_name in HIDDEN_LLM_TOOLS else "active"
 
 
 def skill_visible(skill_name: str) -> bool:
-    return is_dev_mode() or skill_name not in DEV_ONLY_SKILLS
+    return skill_name not in HIDDEN_SKILLS
 
 
 def resolve_install_profile(env: Mapping[str, str] | None = None) -> str:
-    values = os.environ if env is None else env
-    requested = values.get("ATELIER_PROFILE", "").strip()
-    if requested:
-        if requested not in INSTALL_PROFILES:
-            raise ValueError("ATELIER_PROFILE must be 'stable' or 'dev'")
-        return requested
-    return "dev" if is_dev_mode(values) else "stable"
+    return "stable"
 
 
 def install_profile_warning(profile: str | None = None, env: Mapping[str, str] | None = None) -> str | None:
-    resolved = profile or resolve_install_profile(env)
-    if resolved == "dev" and not is_dev_mode(env):
-        return (
-            f"ATELIER_PROFILE=dev selected without {DEV_MODE_ENV_VAR}=1; installer will stage "
-            "dev artifacts, but runtime-gated dev tools remain disabled until "
-            f"{DEV_MODE_ENV_VAR}=1 is set."
-        )
     return None
 
 

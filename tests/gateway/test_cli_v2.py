@@ -13,6 +13,7 @@ from atelier.core.foundation.models import Trace, UsageEntry
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
+from tests.helpers import init_store_at
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
@@ -97,7 +98,7 @@ def _seed_advisor_traces(root: Path, count: int = 20) -> None:
 
 def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     res = _invoke(root, "ledger", "show", "--json")
     assert res.exit_code == 0, res.output
@@ -111,7 +112,7 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
 
 def test_failure_list_accept_reject(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     _seed_ledger(root, session_id="run2")
 
@@ -133,7 +134,7 @@ def test_failure_list_accept_reject(tmp_path: Path) -> None:
 
 def test_analyze_failures_cli(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     res = _invoke(root, "analyze-failures", "--json")
     assert res.exit_code == 0
@@ -142,7 +143,7 @@ def test_analyze_failures_cli(tmp_path: Path) -> None:
 
 def test_eval_lifecycle(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     eval_dir = root / "evals"
     eval_dir.mkdir(parents=True, exist_ok=True)
     case = {
@@ -173,7 +174,7 @@ def test_eval_lifecycle(tmp_path: Path) -> None:
 
 def test_tool_mode_show_set(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     res = _invoke(root, "tool-mode", "show")
     assert res.exit_code == 0
     assert res.output.strip() == "shadow"
@@ -185,7 +186,7 @@ def test_tool_mode_show_set(tmp_path: Path) -> None:
 
 def test_read_returns_summary_and_related(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     f = tmp_path / "x.py"
     f.write_text("\n".join(f"line {i}" for i in range(200)), encoding="utf-8")
     res = _invoke(
@@ -206,7 +207,7 @@ def test_read_returns_summary_and_related(tmp_path: Path) -> None:
 
 def test_savings_reports_counters(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     res = _invoke(root, "savings", "--json")
     assert res.exit_code == 0
@@ -267,7 +268,7 @@ def test_optimize_details_reports_advisor_breakdowns(tmp_path: Path) -> None:
 
 def test_optimize_apply_preset_writes_policy(tmp_path: Path) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     res = _invoke(root, "optimize", "apply", "--preset", "economy", "--json")
 
@@ -309,7 +310,7 @@ def test_optimize_shadow_requires_consent_then_records_state(tmp_path: Path) -> 
 
 def test_external_status_cli_reports_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     monkeypatch.setattr(
         "atelier.gateway.integrations.external_analytics.external_status",
@@ -338,7 +339,7 @@ def test_external_status_cli_reports_tools(tmp_path: Path, monkeypatch: pytest.M
 
 def test_external_report_cli_returns_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     monkeypatch.setattr(
         "atelier.gateway.integrations.external_analytics.run_external_reports",
@@ -365,7 +366,7 @@ def test_external_report_cli_returns_reports(tmp_path: Path, monkeypatch: pytest
 
 def test_external_report_cli_persists_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
 
     monkeypatch.setattr(
         "atelier.gateway.integrations.external_analytics.run_external_reports",
@@ -399,7 +400,7 @@ def test_external_report_cli_persists_reports(tmp_path: Path, monkeypatch: pytes
 
 def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
-    _invoke(root, "init")
+    init_store_at(str(root))
     calls: list[str] = []
 
     def fake_run_external_report(tool: str, *, period: str = "week", cwd: Path | None = None) -> dict[str, object]:

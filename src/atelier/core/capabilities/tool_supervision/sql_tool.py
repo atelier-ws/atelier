@@ -138,6 +138,58 @@ def _sqlite_overview(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"tables": tables, "table_count": len(tables), "schema": table_info}
 
 
+def _sqlite_all_tables(conn: sqlite3.Connection) -> list[str]:
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
+
+
+def _sqlite_columns(conn: sqlite3.Connection, table: str) -> list[dict[str, Any]]:
+    return [
+        dict(name=row[1], type=row[2], notnull=bool(row[3]), pk=bool(row[5]))
+        for row in conn.execute(f"PRAGMA table_info({table!r})")
+    ]
+
+
+def _sqlite_table_fks(conn: sqlite3.Connection, table: str) -> list[dict[str, Any]]:
+    return [
+        dict(from_column=row[3], table=row[2], to_column=row[4])
+        for row in conn.execute(f"PRAGMA foreign_key_list({table!r})")
+    ]
+
+
+def _sqlite_relationships(conn: sqlite3.Connection) -> list[dict[str, str]]:
+    rels: list[dict[str, str]] = []
+    for table in _sqlite_all_tables(conn):
+        for fk in _sqlite_table_fks(conn, table):
+            rels.append({"from": f"{table}.{fk['from_column']}", "to": f"{fk['table']}.{fk['to_column']}"})
+    return rels
+
+
+def _sqlite_search(conn: sqlite3.Connection, terms: list[str], *, limit: int = 25) -> list[dict[str, Any]]:
+    lowered = [t.lower() for t in terms if t]
+    matches: list[dict[str, Any]] = []
+    for table in _sqlite_all_tables(conn):
+        columns = _sqlite_columns(conn, table)
+        table_hit = any(t in table.lower() for t in lowered)
+        col_hits = [c for c in columns if any(t in str(c["name"]).lower() for t in lowered)]
+        if not table_hit and not col_hits:
+            continue
+        matches.append(
+            {
+                "table": table,
+                "columns": columns if table_hit else col_hits,
+                "foreign_keys": _sqlite_table_fks(conn, table),
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
 def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, Any]:
     cursor = conn.execute(sql)
     rows = cursor.fetchmany(max_rows + 1)
@@ -227,15 +279,28 @@ def sql_tool(
                 "overview": overview,
                 "source": discovered.get("source"),
             }
-        if action in {"tables", "schema"}:
+        if action == "tables":
+            tables = _sqlite_all_tables(conn)
+            return {"isError": False, "dialect": "sqlite", "tables": tables, "table_count": len(tables)}
+        if action == "schema":
             return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
         if action == "table":
             table_name = str(name or "")
+            if not table_name:
+                return {"isError": True, "message": "action='table' requires name=<table>"}
             return {
                 "isError": False,
                 "table": table_name,
-                "columns": _sqlite_overview(conn)["schema"].get(table_name, {}).get("columns", []),
+                "columns": _sqlite_columns(conn, table_name),
+                "foreign_keys": _sqlite_table_fks(conn, table_name),
             }
+        if action == "relationships":
+            return {"isError": False, "dialect": "sqlite", "relationships": _sqlite_relationships(conn)}
+        if action == "search":
+            terms = name if isinstance(name, list) else [name] if name else []
+            if not terms:
+                return {"isError": True, "message": "action='search' requires name=<keyword>"}
+            return {"isError": False, "dialect": "sqlite", "matches": _sqlite_search(conn, terms)}
         if action == "lint":
             lint = lint_sql(sql or "", allow_writes=allow_writes)
             return {"isError": not lint["ok"], **lint}

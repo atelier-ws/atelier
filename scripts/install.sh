@@ -1420,7 +1420,6 @@ install_console_scripts() {
         mv "$mcp_path" "$wrapped_path"
         cat >"$mcp_path" <<EOF
 #!/usr/bin/env bash
-export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"
