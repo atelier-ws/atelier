@@ -1,3 +1,6 @@
+[tool.uv]
+workspace = { members = ["benchmarks", "integrations"] }
+
 [project]
 name = "atelier"
 version = "0.2.0"
