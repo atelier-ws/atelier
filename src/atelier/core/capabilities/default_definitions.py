@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-MODES_DIR = Path("docs/agent-os/modes")
+MODES_DIR = Path("integrations/agents")
 
 HOST_ROLE_IDS = ("code", "explore", "review", "plan", "execute", "research", "solve")
 SURFACED_ROLE_IDS = ("code", "explore", "execute", "plan", "research", "review", "solve")
@@ -263,7 +263,7 @@ def _resolve_repo_root(repo_root: Path | None) -> Path:
 
 
 def source_path_looks_like_mode_doc(path: Path) -> bool:
-    return path.parts[:3] == ("docs", "agent-os", "modes")
+    return path.parts[:2] == ("integrations", "agents")
 
 
 def markdown_body(path: Path) -> str:
@@ -722,7 +722,7 @@ def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
             name=role_id.replace("-", " ").title(),
             skill_description=skill_description,
             agent_description=agent_description,
-            prompt_source=Path("docs/agent-os/modes") / f"{role_id}.md",
+            prompt_source=Path("integrations/agents") / f"{role_id}.md",
             prompt_body="",
             tool_policy=policies[role_id],
             workflow_usage=_workflow_usage(role_id),

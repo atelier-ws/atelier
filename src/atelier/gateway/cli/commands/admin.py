@@ -115,7 +115,7 @@ make typecheck      # mypy --strict src
 make pre-commit     # format + lint + typecheck + docs + test
 
 # Docs governance
-make sync-agent-context   # regenerate host instruction files from docs/agent-os/
+make sync-agent-context   # regenerate host instruction files from integrations/shared/
 make check-agent-context  # verify generated files are up to date
 ```
 
@@ -154,7 +154,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 
 **4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
 
-See [docs/agent-os/coding-guidelines.md](docs/agent-os/coding-guidelines.md) for the full reference.
+See [integrations/shared/coding-guidelines.md](integrations/shared/coding-guidelines.md) for the full reference.
 
 ## Code Intelligence
 

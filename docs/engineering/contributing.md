@@ -20,7 +20,7 @@ The repository-managed pre-push hook runs `make install` before the rest of the 
 ## Development Commands
 
 ```bash
-make sync-agent-context  # Regenerate host instruction artifacts from docs/agent-os
+make sync-agent-context  # Regenerate host instruction artifacts from integrations/shared/
 make check-agent-context # Verify generated host instruction artifacts are current
 make docs-check          # Run docs and repo-governance checks
 make verify        # Full gate: ruff + black --check + mypy strict + pytest
@@ -101,7 +101,7 @@ Do not run these inside the atelier directory — they are separate test suites.
 ## Host instruction generation
 
 Do not hand-edit the generated host entrypoints unless you are also updating the
-Agent OS source docs. The source of truth is `docs/agent-os/` and the generator:
+Agent OS source docs. The source of truth is `integrations/shared/`, `integrations/agents/`, and the generator:
 
 ```bash
 uv run python scripts/sync_agent_context.py

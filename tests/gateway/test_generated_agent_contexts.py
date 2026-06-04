@@ -33,9 +33,9 @@ def load_script(path: Path, module_name: str) -> object:
 def test_root_entrypoints_link_to_live_docs() -> None:
     for rel in ("AGENTS.md", ".github/copilot-instructions.md"):
         path = ROOT / rel
-        assert "docs/agent-os/README.md" in path.read_text(
+        assert "integrations/shared/coding-guidelines.md" in path.read_text(
             encoding="utf-8"
-        ), f"{rel} must link to docs/agent-os/README.md"
+        ), f"{rel} must link to integrations/shared/coding-guidelines.md"
 
 
 def test_copilot_instructions_stays_thin() -> None:

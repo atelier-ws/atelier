@@ -71,7 +71,7 @@ def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
     for role_id in sorted(HOST_FACING_ROLES):
         role = registry.roles[role_id]
         assert role.prompt_source is not None
-        assert role.prompt_source.as_posix().endswith(f"docs/agent-os/modes/{role_id}.md")
+        assert role.prompt_source.as_posix().endswith(f"integrations/agents/{role_id}.md")
         body = registry.render_prompt(role_id, ROOT)
         assert "Eval" not in body
         assert f"# {role_id.replace('-', ' ').title()} mode" in body
