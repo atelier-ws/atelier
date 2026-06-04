@@ -60,6 +60,7 @@ from atelier.core.capabilities.host_runners import (
     build_vix_cli_command,
 )
 from atelier.core.capabilities.pricing import usage_cost_usd
+
 from benchmarks.eval.tasks import BY_ID, TASKS, Task
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -121,6 +122,7 @@ RUNTIME_ERROR_MARKERS = (
     "api error:",
     "permission denied",
     "timed out",
+    "error:",
 )
 STOPWORDS = frozenset(
     {
@@ -172,7 +174,17 @@ API_DEFAULT_BASE_URLS = {
 }
 WOZ_PLUGIN_ROOT = Path("/home/pankaj/.claude/plugins/cache/baseline-marketplace/feature/0.3.75")
 WOZ_CLAUDE_MD = ""
-ATELIER_CLAUDE_MD = ""
+ATELIER_CLAUDE_MD = """\
+# Benchmark Instructions
+
+You are running in a non-interactive benchmark environment.
+
+**Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
+Implement the task directly using your available tools and complete the full
+implementation without waiting for user input or approval.
+
+Work in the current directory. Deliver a complete, working implementation.
+"""
 
 
 def _woz_mcp_config() -> dict[str, object]:
@@ -861,6 +873,13 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str]:
 
 
 def _apply_result_validity(task: Task, result: ArmResult) -> ArmResult:
+    # If the trial already failed execution (ok=False), propagate that as invalid
+    # to avoid false positives in validity reporting.
+    if not result.ok:
+        result.valid = False
+        result.validity_reason = result.validity_reason or "trial execution failed (ok=False)"
+        return result
+
     valid, reason = _validate_result_excerpt(task, result.result_excerpt)
     result.valid = valid
     result.validity_reason = reason
@@ -882,6 +901,7 @@ def _parse_agent_env(entries: list[str] | None) -> dict[str, str]:
 def _env_file_candidates() -> tuple[Path, ...]:
     return (
         REPO_ROOT / ".env",
+        REPO_ROOT / "benchmarks" / ".env",
         REPO_ROOT / "benchmarks" / "eval" / ".env",
     )
 
@@ -1056,8 +1076,10 @@ def run_arm(
                 session_id = str(row_state["session_id"])
                 cmd += ["--resume" if should_resume_session else "--session-id", session_id]
                 cmd += ["--add-dir", str(ws)]
-            # Arms are labels only; install/uninstall plugins manually between runs.
-            # No config injection: Claude runs with whatever is currently installed.
+            if arm == "atelier":
+                (ws / "CLAUDE.md").write_text(ATELIER_CLAUDE_MD)
+            # Arms are labels only for claude driver; install/uninstall plugin between runs.
+            # Only inject CLAUDE.md; MCP comes from globally installed plugin.
         elif cli_driver == "copilot":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
