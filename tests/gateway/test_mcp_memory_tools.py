@@ -38,7 +38,6 @@ def _memory_args(op: str, **kwargs: Any) -> dict[str, Any]:
 def mcp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
     monkeypatch.setenv("ATELIER_ROOT", str(root))
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     monkeypatch.setattr(mcp_server, "_REMOTE_TOOLS", frozenset())
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
