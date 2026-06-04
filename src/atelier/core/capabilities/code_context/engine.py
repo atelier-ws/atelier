@@ -82,6 +82,21 @@ if TYPE_CHECKING:
 
 _MAX_FILE_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
+
+_DB_LOCKS_GUARD = threading.Lock()
+_DB_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _shared_db_lock(db_path: Path) -> threading.RLock:
+    key = str(db_path.resolve())
+    with _DB_LOCKS_GUARD:
+        lock = _DB_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _DB_LOCKS[key] = lock
+        return lock
+
+
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _PRECISE_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -620,6 +635,7 @@ class CodeContextEngine:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
+        self._db_lock = _shared_db_lock(self.db_path)
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
@@ -675,7 +691,7 @@ class CodeContextEngine:
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
-        with self._autosync_lock:
+        with self._db_lock, self._autosync_lock:
             return self._index_repo_unsafe(
                 include_globs=include_globs,
                 exclude_globs=exclude_globs,
@@ -4276,7 +4292,7 @@ class CodeContextEngine:
             )
 
     def _ensure_indexed(self) -> None:
-        with self._autosync_lock:
+        with self._db_lock, self._autosync_lock:
             with self._connect() as conn:
                 self._init_schema(conn)
                 row = conn.execute("SELECT COUNT(*) AS n FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()

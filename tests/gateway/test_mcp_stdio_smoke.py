@@ -56,9 +56,7 @@ def test_mcp_stdio_smoke() -> None:
     input_str = "\n".join(json.dumps(m) for m in messages) + "\n"
 
     # Run atelier-mcp via uv run to ensure dependencies
-    # Set ATELIER_DEV_MODE=1 to ensure all tools (like context, edit) are visible
     env = os.environ.copy()
-    env["ATELIER_DEV_MODE"] = "1"
 
     result = subprocess.run(
         ["uv", "run", "atelier-mcp"],

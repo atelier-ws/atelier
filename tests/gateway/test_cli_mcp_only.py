@@ -11,15 +11,10 @@ with a live ``@cli.group`` that MUST remain resolvable. This test locks both
 halves so a future relocation cannot silently leak dev commands or remove the
 live groups.
 
-``ATELIER_DEV_MODE`` is set BEFORE importing ``cli`` so the dev-gated
 registrations are exercised (matching ``tests/gateway/test_cli.py``).
 """
 
 from __future__ import annotations
-
-import os
-
-os.environ["ATELIER_DEV_MODE"] = "1"  # match tests/gateway/test_cli.py ordering
 
 import click
 from click.testing import CliRunner
