@@ -16,13 +16,13 @@ def _invoke(root: Path, *args: str) -> tuple[int, str]:
     return res.exit_code, res.output
 
 
-@pytest.mark.skip(reason="Fixing broken benchmark command reference")
+@pytest.mark.skip(reason="benchmark solver CLI needs a deterministic offline harness")
 def test_bench_runtime(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     code, out = _invoke(root, "init")
     assert code == 0, out
 
-    code, out = _invoke(root, "benchmark", "solver", "--json")
+    code, out = _invoke(root, "benchmark", "solver", "--task-prompt", "Fix PDP", "--format", "json")
     assert code == 0, out
     metrics = json.loads(out)
     assert "total_tool_calls" in metrics
