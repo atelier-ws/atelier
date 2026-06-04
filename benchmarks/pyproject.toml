@@ -23,7 +23,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-atelier = { path = "../", editable = true }
+atelier = { workspace = true }
 
 [tool.hatch.metadata]
 allow-direct-references = true
