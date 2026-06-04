@@ -10,8 +10,6 @@ import pytest
 from click.testing import CliRunner, Result
 
 # Must set dev mode before importing cli for @_dev_command registration
-os.environ["ATELIER_DEV_MODE"] = "1"
-
 from atelier.core.capabilities.plugin_runtime import update_session_stats
 from atelier.core.foundation.models import ReasonBlock, Rubric
 from atelier.core.foundation.store import ContextStore

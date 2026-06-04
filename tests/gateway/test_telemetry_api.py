@@ -65,7 +65,6 @@ def test_telemetry_api_local_schema_summary_and_config(app_no_auth: TestClient) 
     ack = app_no_auth.post("/telemetry/ack")
     assert ack.status_code == 200
     assert ack.json()["remote_enabled"] is False
-    assert "dev_mode" in ack.json()
 
 
 def test_telemetry_api_filters_by_window_and_host(app_no_auth: TestClient, tmp_path: Path) -> None:

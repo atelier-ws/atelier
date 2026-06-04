@@ -228,7 +228,6 @@ def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "sqlite")
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = _mock_client(
@@ -289,7 +288,6 @@ def test_tools_list_hides_internal_tools(
 
 def test_memory_tool_call_works_without_dev_mode(store_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = store_root
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     monkeypatch.delenv("ATELIER_SERVICE_URL", raising=False)
     mcp_server._remote_client = None
     resp = _call(
@@ -334,7 +332,6 @@ def test_cli_tools_list_hides_internal_tools_even_with_legacy_flag(
 
 
 def test_cli_tools_call_invokes_stable_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     runner = CliRunner()
 
     result = runner.invoke(
@@ -476,6 +473,7 @@ def test_context_enqueues_single_bootstrap_job_for_cold_repo(
 def test_context_worker_tick_persists_bootstrap_blocks_without_blocking_initial_response(
     store_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     workspace_root = Path(os.environ["CLAUDE_WORKSPACE_ROOT"])
     monkeypatch.delenv("ATELIER_SERVICE_URL", raising=False)
     mcp_server._remote_client = None

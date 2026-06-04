@@ -39,7 +39,6 @@ def workflow_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = None

@@ -148,7 +148,6 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
 
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None

@@ -52,10 +52,8 @@ class RecallSymbolBenchResult:
 def _workspace_env(workspace_root: Path, atelier_root: Path) -> Iterator[None]:
     old_workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
     old_atelier = os.environ.get("ATELIER_ROOT")
-    old_dev = os.environ.get("ATELIER_DEV_MODE")
     os.environ["CLAUDE_WORKSPACE_ROOT"] = str(workspace_root)
     os.environ["ATELIER_ROOT"] = str(atelier_root)
-    os.environ["ATELIER_DEV_MODE"] = "1"
     try:
         yield
     finally:
@@ -67,10 +65,6 @@ def _workspace_env(workspace_root: Path, atelier_root: Path) -> Iterator[None]:
             os.environ.pop("ATELIER_ROOT", None)
         else:
             os.environ["ATELIER_ROOT"] = old_atelier
-        if old_dev is None:
-            os.environ.pop("ATELIER_DEV_MODE", None)
-        else:
-            os.environ["ATELIER_DEV_MODE"] = old_dev
 
 
 def _write_fixture_repo(root: Path) -> None:
