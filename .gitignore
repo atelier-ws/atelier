@@ -288,3 +288,4 @@ exports/
 dist/
 *.spec
 bundle/
+build_dist/

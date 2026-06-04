@@ -22,14 +22,14 @@ echo "◆ Compiling Backend Binaries..."
 # We do NOT remove it.
 
 .venv/bin/python -m PyInstaller --noconfirm --onefile --name atelier \
+  --distpath ./build_dist \
   src/atelier/gateway/cli/__main__.py
-# Move to bundle (overwrite if exists)
-mv -f dist/atelier bundle/bin/
+mv -f ./build_dist/atelier bundle/bin/
 
 .venv/bin/python -m PyInstaller --noconfirm --onefile --name atelier-mcp \
+  --distpath ./build_dist \
   src/atelier/gateway/adapters/web_fetch_mcp_server.py
-# Move to bundle (overwrite if exists)
-mv -f dist/atelier-mcp bundle/bin/
+mv -f ./build_dist/atelier-mcp bundle/bin/
 
 # 4. Create Archive
 echo "◆ Creating Archive..."
