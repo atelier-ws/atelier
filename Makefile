@@ -29,10 +29,14 @@ EXTERNAL_PERIODS ?= today week month
 #    * To pass other flags (like skipping hosts or dry-run):
 
 #         make install ARGS="--local --no-hosts --dry-run"
-# install: ## Install Atelier (default: binary mode, use ARGS="--local" for source)
-install: ## Install Atelier (default: binary mode, use ARGS="--local" for source)
+# install: ## Install Atelier (default: binary mode)
+install: ## Install Atelier (default: binary mode)
 	@# This target calls scripts/install.sh
-	bash scripts/install.sh $(ARGS)
+	bash scripts/install.sh
+
+dev: ## Install Atelier in editable/dev mode
+	@# This target calls scripts/install.sh --local
+	bash scripts/install.sh --local
 
 release: ## Build and package for production distribution
 	bash scripts/bundle-prod.sh
@@ -40,6 +44,7 @@ release: ## Build and package for production distribution
 prod: ## Build and install from local production build
 	bash scripts/bundle-prod.sh
 	ATELIER_BINARY_MODE=0 ATELIER_LOCAL=1 bash scripts/install.sh
+
 
 
 
