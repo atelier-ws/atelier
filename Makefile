@@ -22,17 +22,10 @@ EXTERNAL_PERIODS ?= today week month
 # Lifecycle                                                                   #
 # --------------------------------------------------------------------------- #
 
-#    * To do a clean global install (clones from GitHub):
-#         make install
-#    * To install from your current local folder:
-#         make install ARGS="--local"
-#    * To pass other flags (like skipping hosts or dry-run):
-
-#         make install ARGS="--local --no-hosts --dry-run"
-# install: ## Install Atelier (default: binary mode)
-install: ## Install Atelier (default: binary mode)
-	@# This target calls scripts/install.sh
-	bash scripts/install.sh
+#    * To do a clean development install (editable mode):
+#         make dev
+#    * To build and install a local production binary:
+#         make prod
 
 dev: ## Install Atelier in editable/dev mode
 	@# This target calls scripts/install.sh --local
@@ -44,6 +37,7 @@ release: ## Build and package for production distribution
 prod: ## Build and install from local production build
 	bash scripts/bundle-prod.sh
 	ATELIER_BINARY_MODE=0 ATELIER_LOCAL=1 bash scripts/install.sh
+
 
 
 
