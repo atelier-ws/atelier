@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from benchmarks.mcp_tools.cases.sql import SQL_CASES
 from benchmarks.mcp_tools.harness import BenchCase, CaseResult, ToolReport, run_case
 from benchmarks.mcp_tools.reporter import render_summary
