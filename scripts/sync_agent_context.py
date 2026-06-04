@@ -507,21 +507,6 @@ def _inject_description(frontmatter: tuple[tuple[str, Any], ...], description: s
     return rendered
 
 
-def render_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
-    return (
-        "\n".join(
-            [
-                render_frontmatter([("name", role.role_id), ("description", role.skill_description)]),
-                "",
-                distribution_notice(),
-                "",
-                render_mode_body(mode_doc),
-            ]
-        ).rstrip()
-        + "\n"
-    )
-
-
 def render_claude_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
     frontmatter = _inject_description(projection.frontmatter, role.agent_description)
     identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
@@ -624,15 +609,6 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
     for role_id in sorted(generated_role_ids):
         role = registry.roles[role_id]
         mode_doc = mode_docs[role_id]
-
-        skill_path = repo_root / "integrations" / "skills" / role_id / "SKILL.md"
-        skill_content = render_skill(role, mode_doc)
-        outputs[skill_path] = skill_content
-        for host_name, host_dir in HOST_SKILL_DIRS.items():
-            if host_name == "claude" and role_id in _CLAUDE_ROLE_SKILL_IDS:
-                continue
-            host_skill_path = host_dir / role_id / "SKILL.md"
-            outputs[host_skill_path] = skill_content
 
         stable_projection = registry.projection(role_id, "claude_agent")
         stable_path = (

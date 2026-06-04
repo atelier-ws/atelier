@@ -12,8 +12,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="${ATELIER_REPO}/integrations/skills"
 RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
-ALWAYS_EXCLUDED_SKILLS=("trace")
-CLAUDE_ROLE_SKILLS=("code" "execute" "explore" "plan" "research" "review" "solve")
 
 HOST=""
 DEST=""
@@ -77,29 +75,6 @@ is_hidden_skill() {
     done
     return 1
 }
-
-is_always_excluded_skill() {
-    local name="$1"
-    local skill
-    for skill in "${ALWAYS_EXCLUDED_SKILLS[@]}"; do
-        if [[ "$skill" == "$name" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-is_claude_role_skill() {
-    local name="$1"
-    local skill
-    for skill in "${CLAUDE_ROLE_SKILLS[@]}"; do
-        if [[ "$skill" == "$name" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
 default_dest_for_host() {
     case "$1" in
         claude) printf "%s" "${ATELIER_REPO}/integrations/claude/plugin/skills" ;;
@@ -119,10 +94,7 @@ render_host_bundle() {
     local skill_name
 
     mkdir -p "$dest_dir"
-    find "$dest_dir" -mindepth 1 -maxdepth 1 \
-        ! -name ".gitignore" \
-        ! -name "README.md" \
-        -exec rm -rf {} +
+
 
     while IFS= read -r skill_dir; do
         [[ -n "$skill_dir" ]] || continue
@@ -130,13 +102,7 @@ render_host_bundle() {
         if [[ ! -f "$skill_dir/SKILL.md" ]]; then
             continue
         fi
-        if is_always_excluded_skill "$skill_name"; then
-            continue
-        fi
         if is_hidden_skill "$skill_name"; then
-            continue
-        fi
-        if [[ "$host" == "claude" ]] && is_claude_role_skill "$skill_name"; then
             continue
         fi
 
