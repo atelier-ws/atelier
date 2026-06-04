@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from atelier.gateway.cli.progress import ProgressReporter
+
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
 from benchmarks.mcp_tools.cases.rescue import RESCUE_CASES
 from benchmarks.mcp_tools.harness import BenchCase, CaseResult, ToolReport, run_case

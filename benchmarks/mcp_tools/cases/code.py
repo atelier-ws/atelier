@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import tiktoken
+
 from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
 from benchmarks.mcp_tools.repo_facts import (
     CallRelationFact,
