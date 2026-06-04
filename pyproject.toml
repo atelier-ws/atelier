@@ -6,7 +6,7 @@ name = "atelier"
 version = "0.2.0"
 description = "Agent Reasoning Runtime — reusable procedures, failure rescue, and rubric verification for coding and product agents."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Atelier" }]
 
@@ -106,7 +106,7 @@ packages = ["src/atelier", "src/benchmarks"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 exclude = ["benchmarks/mcp_tools/fixtures/downloaded"]
 force-exclude = true
 
@@ -118,7 +118,7 @@ ignore = ["E501"]
 
 [tool.black]
 line-length = 120
-target-version = ["py311"]
+target-version = ["py312"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -130,7 +130,7 @@ markers = [
     ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unused_ignores = true
 ignore_missing_imports = true
