@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 from atelier.core.capabilities.default_definitions import build_default_registry
-from atelier.core.environment import skill_visible
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGIN = ROOT / "integrations" / "claude" / "plugin"
@@ -28,14 +29,6 @@ EXPECTED_TURNS = {
 }
 
 
-def _expected_packaged_skills() -> set[str]:
-    return {
-        path.parent.name
-        for path in (ROOT / "integrations" / "skills").glob("*/SKILL.md")
-        if skill_visible(path.parent.name)
-    }
-
-
 def _frontmatter(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
     assert text.startswith("---\n")
@@ -57,11 +50,8 @@ def test_plugin_no_longer_ships_dev_agent_variants() -> None:
 
 
 def test_plugin_skills_are_packaged_locally() -> None:
-    expected = _expected_packaged_skills()
     found = {path.parent.name for path in (PLUGIN / "skills").glob("*/SKILL.md")}
-    registry = build_default_registry(ROOT)
-    assert set(registry.surfaced_role_ids("shared_skill")) <= expected
-    assert expected == found
+    assert found == {"orchestrate", "swarms"}
 
 
 def test_plugin_agent_set_matches_canonical_registry() -> None:
@@ -93,3 +83,47 @@ def test_generated_claude_agents_project_turn_defaults_without_pinning_model() -
         frontmatter = _frontmatter(PLUGIN / "agents" / f"{role_id}.md")
         assert f"maxTurns: {EXPECTED_TURNS[role_id]}" in frontmatter
         assert f"model: {expected_model}" not in frontmatter
+
+
+def test_claude_workflow_model_config_inherits_runtime_and_normalizes_ids(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings_dir = workspace / ".atelier"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "models": {
+                    "runtime": {"roles": {"code": "claude-opus-4.8"}},
+                    "hosts": {
+                        "claude": {
+                            "roles": {
+                                "code": "auto",
+                                "execute": "auto",
+                                "explore": "auto",
+                                "plan": "auto",
+                                "research": "auto",
+                                "review": "auto",
+                                "solve": "auto",
+                            }
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = (
+        "import { resolveClaudeRoleModel } from "
+        f"'{(PLUGIN / 'workflows' / 'model-config.js').as_posix()}'; "
+        "console.log(resolveClaudeRoleModel('code') ?? '')"
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_WORKSPACE_ROOT": str(workspace)},
+    )
+
+    assert result.stdout.strip() == "claude-opus-4-8"

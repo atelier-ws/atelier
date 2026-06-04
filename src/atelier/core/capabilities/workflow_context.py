@@ -61,6 +61,8 @@ class WorkflowContextState:
     definition_hash: str = ""
     step_results: dict[str, StepResult] = field(default_factory=dict)
     step_order: list[str] = field(default_factory=list)
+    wave_spawn_plans: dict[str, dict[str, Any]] = field(default_factory=dict)
+    host_lane_observations: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +71,8 @@ class WorkflowContextState:
             "definition_hash": self.definition_hash,
             "step_results": {step_id: result.to_dict() for step_id, result in self.step_results.items()},
             "step_order": list(self.step_order),
+            "wave_spawn_plans": copy.deepcopy(self.wave_spawn_plans),
+            "host_lane_observations": copy.deepcopy(self.host_lane_observations),
         }
 
     @classmethod
@@ -89,12 +93,34 @@ class WorkflowContextState:
             if isinstance(data.get("step_order"), list)
             else []
         )
+        raw_wave_spawn_plans = data.get("wave_spawn_plans")
+        wave_spawn_plans = (
+            {
+                str(step_id): dict(copy.deepcopy(plan))
+                for step_id, plan in raw_wave_spawn_plans.items()
+                if isinstance(step_id, str) and isinstance(plan, Mapping)
+            }
+            if isinstance(raw_wave_spawn_plans, Mapping)
+            else {}
+        )
+        raw_host_lane_observations = data.get("host_lane_observations")
+        host_lane_observations = (
+            {
+                str(lane_key): {str(key): str(value) for key, value in lane.items()}
+                for lane_key, lane in raw_host_lane_observations.items()
+                if isinstance(lane_key, str) and isinstance(lane, Mapping)
+            }
+            if isinstance(raw_host_lane_observations, Mapping)
+            else {}
+        )
         return cls(
             run_id=str(data.get("run_id") or "").strip(),
             status=str(data.get("status") or "").strip() or "idle",
             definition_hash=str(data.get("definition_hash") or "").strip(),
             step_results=step_results,
             step_order=step_order,
+            wave_spawn_plans=wave_spawn_plans,
+            host_lane_observations=host_lane_observations,
         )
 
     def record_step_result(self, result: StepResult) -> None:
@@ -107,6 +133,20 @@ class WorkflowContextState:
         if result is None:
             raise ValueError(f"unknown fork source: {step_id}")
         return copy.deepcopy(result.to_dict())
+
+    def set_wave_spawn_plan(self, step_id: str, plan: Mapping[str, Any]) -> None:
+        self.wave_spawn_plans[step_id] = copy.deepcopy(dict(plan))
+
+    def spawn_plan_for_step(self, step_id: str) -> dict[str, Any]:
+        plan = self.wave_spawn_plans.get(step_id)
+        return copy.deepcopy(plan) if isinstance(plan, dict) else {}
+
+    def observed_host_lane(self, lane_key: str) -> dict[str, str]:
+        lane = self.host_lane_observations.get(lane_key)
+        return copy.deepcopy(lane) if isinstance(lane, dict) else {}
+
+    def record_host_lane(self, lane_key: str, lane: Mapping[str, str]) -> None:
+        self.host_lane_observations[lane_key] = {str(key): str(value) for key, value in lane.items()}
 
     def resolve_reference(self, reference: str) -> Any:
         match = _FULL_REF_PATTERN.fullmatch(reference.strip())

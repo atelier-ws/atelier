@@ -169,38 +169,52 @@ else
     fi
 fi
 
-# ---- install opencode atelier agent ----------------------------------------
-AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
+# ---- install opencode atelier agents ---------------------------------------
+if $WORKSPACE_SET; then
+    if $DRY_RUN; then
+        echo "  [dry-run] project workspace-local OpenCode agents into '$AGENT_DEST_DIR'"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_opencode_agents
 
-STAGING_DIR="${HOME}/.atelier/opencode"
-run "mkdir -p '$STAGING_DIR'"
-info "Staging opencode agent instructions"
-atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
-AGENT_SRC="$STAGING_DIR/atelier.md"
-
-if $DRY_RUN; then
-    echo "  [dry-run] copy '$AGENT_SRC' to '$AGENT_DEST_DIR/atelier.md'"
-elif [ -f "$AGENT_SRC" ]; then
-    run "mkdir -p '$AGENT_DEST_DIR'"
-    run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
-    info "atelier agent installed -> $AGENT_DEST_DIR/atelier.md"
-else
-    warn "agent source missing: $AGENT_SRC"
-fi
-
-AGENTS_SRC_DIR="${ATELIER_REPO}/integrations/opencode/agents"
-for agent_name in explore plan execute review research solve; do
-    agent_file="${AGENTS_SRC_DIR}/${agent_name}.md"
-    if [ -f "$agent_file" ]; then
-        atelier_write_managed_copy "$agent_file" "$STAGING_DIR/${agent_name}.md" "$DRY_RUN"
-        if $DRY_RUN; then
-            echo "  [dry-run] copy '$STAGING_DIR/${agent_name}.md' to '$AGENT_DEST_DIR/${agent_name}.md'"
-        else
-            run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
-        fi
-        info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
+written = write_workspace_opencode_agents(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:opencode] projected {len(written)} workspace-local OpenCode agents into ${AGENT_DEST_DIR}")
+PYEOF
     fi
-done
+else
+    AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
+
+    STAGING_DIR="${HOME}/.atelier/opencode"
+    run "mkdir -p '$STAGING_DIR'"
+    info "Staging opencode agent instructions"
+    atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
+    AGENT_SRC="$STAGING_DIR/atelier.md"
+
+    if $DRY_RUN; then
+        echo "  [dry-run] copy '$AGENT_SRC' to '$AGENT_DEST_DIR/atelier.md'"
+    elif [ -f "$AGENT_SRC" ]; then
+        run "mkdir -p '$AGENT_DEST_DIR'"
+        run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
+        info "atelier agent installed -> $AGENT_DEST_DIR/atelier.md"
+    else
+        warn "agent source missing: $AGENT_SRC"
+    fi
+
+    AGENTS_SRC_DIR="${ATELIER_REPO}/integrations/opencode/agents"
+    for agent_name in explore plan execute review research solve; do
+        agent_file="${AGENTS_SRC_DIR}/${agent_name}.md"
+        if [ -f "$agent_file" ]; then
+            atelier_write_managed_copy "$agent_file" "$STAGING_DIR/${agent_name}.md" "$DRY_RUN"
+            if $DRY_RUN; then
+                echo "  [dry-run] copy '$STAGING_DIR/${agent_name}.md' to '$AGENT_DEST_DIR/${agent_name}.md'"
+            else
+                run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+            fi
+            info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
+        fi
+    done
+fi
 
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."

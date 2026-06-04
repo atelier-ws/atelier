@@ -21,7 +21,7 @@ Generated entrypoints are derived from this tree:
 - `AGENTS.md`
 - `GEMINI.md`
 - `.github/copilot-instructions.md`
-- `.github/agents/atelier.agent.md`
+- `.github/agents/atelier.code.agent.md`
 - `integrations/*` host instruction artifacts
 
 Regenerate them after edits:

@@ -145,7 +145,7 @@ fi
 # Remove them from the current directory and from ~/.claude/agents/ (user-global).
 for agents_dir in ".claude/agents" "${HOME}/.claude/agents"; do
     if [ -d "$agents_dir" ]; then
-        for f in "$agents_dir"/atelier-*.md "$agents_dir"/atelier_*.md; do
+        for f in "$agents_dir"/atelier-*.md "$agents_dir"/atelier_*.md "$agents_dir"/atelier.*.md; do
             [ -f "$f" ] || continue
             run "rm -f '$f'"
             info "Removed agent file: $f"

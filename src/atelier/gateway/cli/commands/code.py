@@ -254,6 +254,71 @@ def _code_context_engine(repo_root: str) -> Any:
     return CodeContextEngine(repo_root)
 
 
+def _index_repo_with_progress(
+    engine: Any,
+    *,
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+    description: str = "Indexing code",
+    success_description: str | None = None,
+) -> dict[str, Any]:
+    try:
+        from rich.console import Console
+        from rich.progress import (
+            BarColumn,
+            Progress,
+            TextColumn,
+            TimeRemainingColumn,
+        )
+
+        console = Console(stderr=True)
+        progress = Progress(
+            TextColumn("[bold magenta]{task.description}[/bold magenta]"),
+            BarColumn(
+                bar_width=32,
+                style="bright_black",
+                complete_style="cyan",
+                finished_style="green",
+                pulse_style="magenta",
+            ),
+            TextColumn("[bold cyan]{task.percentage:3.0f}%[/bold cyan]"),
+            TimeRemainingColumn(),
+            console=console,
+            transient=False,
+        )
+        with progress:
+            task_id = progress.add_task(description, total=None)
+
+            def _on_progress(current: int, total: int) -> None:
+                if total:
+                    progress.update(
+                        task_id,
+                        completed=current,
+                        total=total,
+                        description=f"{description}  ({current}/{total})",
+                    )
+                else:
+                    progress.update(task_id, completed=current)
+
+            payload = engine.index_repo(
+                include_globs=include_globs,
+                exclude_globs=exclude_globs,
+                progress_callback=_on_progress,
+            ).model_dump(mode="json")
+            progress.update(
+                task_id,
+                total=100,
+                completed=100,
+                description=f"✓ {success_description or description}",
+            )
+            return payload
+    except ImportError:
+        return engine.index_repo(
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+        ).model_dump(mode="json")
+
+
 @click.group("code")
 def code_group() -> None:
     """Code context indexing, retrieval, repo maps, and impact analysis."""
@@ -280,52 +345,13 @@ def code_index_cmd(
         _emit(payload, as_json=True)
         return
 
-    try:
-        from rich.console import Console
-        from rich.progress import (
-            BarColumn,
-            Progress,
-            TextColumn,
-            TimeRemainingColumn,
-        )
-
-        console = Console(stderr=True)
-        progress = Progress(
-            TextColumn("{task.description}"),
-            BarColumn(bar_width=24),
-            TextColumn("{task.percentage:3.0f}%"),
-            TimeRemainingColumn(),
-            console=console,
-            transient=False,
-        )
-        with progress:
-            task_id = progress.add_task("Indexing code", total=None)
-
-            def _on_progress(current: int, total: int) -> None:
-                if total:
-                    progress.update(
-                        task_id,
-                        completed=current,
-                        total=total,
-                        description=f"Indexing  ({current}/{total})",
-                    )
-                else:
-                    progress.update(task_id, completed=current)
-
-            payload = engine.index_repo(
-                include_globs=list(include_globs) or None,
-                exclude_globs=list(exclude_globs) or None,
-                progress_callback=_on_progress,
-            ).model_dump(mode="json")
-            progress.update(
-                task_id,
-                description=f"✓ Indexed  {payload['files_indexed']} files",
-            )
-    except ImportError:
-        payload = engine.index_repo(
-            include_globs=list(include_globs) or None,
-            exclude_globs=list(exclude_globs) or None,
-        ).model_dump(mode="json")
+    payload = _index_repo_with_progress(
+        engine,
+        include_globs=list(include_globs) or None,
+        exclude_globs=list(exclude_globs) or None,
+        description="Indexing code",
+        success_description="Indexed code",
+    )
 
     click.echo(
         f"indexed {payload['files_indexed']} files, {payload['symbols_indexed']} symbols "
@@ -333,4 +359,4 @@ def code_index_cmd(
     )
 
 
-__all__ = ["_code_context_engine", "code_group", "zoekt_group"]
+__all__ = ["_code_context_engine", "_index_repo_with_progress", "code_group", "zoekt_group"]

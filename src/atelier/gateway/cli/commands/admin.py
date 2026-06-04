@@ -16,7 +16,22 @@ from typing import Any
 import click
 import yaml
 
+from atelier.core.capabilities.model_settings import (
+    TOP_MODEL_CHOICES,
+    build_runtime_settings_payload,
+    resolve_host_model,
+    resolve_runtime_model,
+    set_host_role_models,
+    write_workspace_model_settings,
+)
 from atelier.core.capabilities.reporting.dashboard import _render_dashboard
+from atelier.core.capabilities.workspace_host_overrides import (
+    write_workspace_claude_overrides,
+    write_workspace_codex_agents,
+    write_workspace_copilot_agents,
+    write_workspace_cursor_rules,
+    write_workspace_opencode_agents,
+)
 from atelier.core.foundation.models import ReasonBlock, Rubric
 from atelier.gateway.cli.commands._dev import dev_command as _dev_command
 from atelier.gateway.cli.commands._shared import (
@@ -206,6 +221,319 @@ _ATELIER_MCP_JSON_TEMPLATE = """{
   }
   """
 
+_RUNTIME_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "general", "explore", "plan", "research", "review")
+_HOST_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "explore", "plan", "research", "review")
+_CUSTOM_MODEL_OPTION = "Others (Enter model)"
+
+
+def _is_interactive_terminal() -> bool:
+    return bool(sys.stdin.isatty() and sys.stdout.isatty())
+
+
+def _supports_interactive_selector() -> bool:
+    return bool(sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM") not in (None, "", "dumb"))
+
+
+def _clear_rendered_lines(count: int) -> None:
+    if count > 0:
+        click.echo(f"\x1b[{count}A\x1b[J", nl=False)
+
+
+def _read_selector_key() -> str:
+    key = click.getchar()
+    if key != "\x1b":
+        return key
+    second = click.getchar()
+    if second in ("[", "O"):
+        return key + second + click.getchar()
+    return key + second
+
+
+def _selector_action(key: str) -> str:
+    if key in ("\r", "\n"):
+        return "enter"
+    if key in ("k", "K", "\x1b[A", "\x1bOA"):
+        return "up"
+    if key in ("j", "J", "\x1b[B", "\x1bOB"):
+        return "down"
+    return "other"
+
+
+def _interactive_single_select(prompt: str, options: tuple[str, ...], *, default: str | None = None) -> str:
+    selected = options.index(default) if default in options else 0
+    click.echo("")
+    click.secho(prompt, fg="magenta")
+    rendered = 0
+    while True:
+        if rendered:
+            _clear_rendered_lines(rendered)
+        lines = [
+            *(f"  {'▸ ●' if index == selected else '  ○'}  {option}" for index, option in enumerate(options)),
+            "",
+            "  ↑↓ navigate  ·  enter select",
+        ]
+        for line in lines:
+            click.echo(line)
+        rendered = len(lines)
+        action = _selector_action(_read_selector_key())
+        if action == "up":
+            selected = (selected - 1) % len(options)
+        elif action == "down":
+            selected = (selected + 1) % len(options)
+        elif action == "enter":
+            break
+    _clear_rendered_lines(rendered)
+    click.echo(f"  ●  {options[selected]}")
+    return options[selected]
+
+
+def _normalize_model_choice(default: str) -> str:
+    return default if default in TOP_MODEL_CHOICES else TOP_MODEL_CHOICES[0]
+
+
+def _is_printable_key(key: str) -> bool:
+    return len(key) == 1 and key.isprintable() and key not in ("\r", "\n")
+
+
+def _interactive_model_select(label: str, *, default: str, allow_auto: bool, show_auto: bool) -> str:
+    options = (("auto",) if show_auto else ()) + TOP_MODEL_CHOICES + (_CUSTOM_MODEL_OPTION,)
+    selected = options.index(default) if default in options else 0
+    rendered = 0
+    custom_value = ""
+
+    click.echo("")
+    click.secho(label, fg="magenta")
+    while True:
+        if rendered:
+            _clear_rendered_lines(rendered)
+
+        lines: list[str] = []
+        for index, option in enumerate(options):
+            marker = "▸ ●" if index == selected else "  ○"
+            if option == _CUSTOM_MODEL_OPTION and index == selected:
+                value = custom_value or click.style("Type custom model...", dim=True)
+                if custom_value:
+                    value = custom_value
+                lines.append(f"  {marker}  {value}")
+            else:
+                lines.append(f"  {marker}  {option}")
+        if options[selected] == _CUSTOM_MODEL_OPTION:
+            lines.extend(["", "  type to edit  ·  enter confirm  ·  esc cancel"])
+        else:
+            lines.extend(["", "  ↑↓ navigate  ·  enter select"])
+
+        for line in lines:
+            click.echo(line)
+        rendered = len(lines)
+
+        key = _read_selector_key()
+        if options[selected] == _CUSTOM_MODEL_OPTION:
+            if key in ("\r", "\n"):
+                if custom_value.strip():
+                    _clear_rendered_lines(rendered)
+                    click.echo(f"  ●  {custom_value.strip()}")
+                    return custom_value.strip()
+                continue
+            if key in ("\x7f", "\b"):
+                custom_value = custom_value[:-1]
+                continue
+            if key == "\x1b":
+                custom_value = ""
+                continue
+            if _is_printable_key(key):
+                custom_value += key
+                continue
+            action = _selector_action(key)
+            if action == "up":
+                selected = (selected - 1) % len(options)
+                continue
+            if action == "down":
+                selected = (selected + 1) % len(options)
+                continue
+            continue
+
+        action = _selector_action(key)
+        if action == "up":
+            selected = (selected - 1) % len(options)
+        elif action == "down":
+            selected = (selected + 1) % len(options)
+        elif action == "enter":
+            _clear_rendered_lines(rendered)
+            click.echo(f"  ●  {options[selected]}")
+            return options[selected]
+
+
+def _prompt_custom_model_value(label: str, *, default: str) -> str:
+    while True:
+        value = str(click.prompt(f"{label} value", default=default, show_default=True)).strip()
+        if value:
+            return value
+
+
+def _prompt_model_select(label: str, *, default: str, allow_auto: bool, show_auto: bool = True) -> str:
+    resolved_default = default if allow_auto and default == "auto" else _normalize_model_choice(default)
+    if _supports_interactive_selector():
+        selector_default = "auto" if show_auto else resolved_default
+        selection = _interactive_model_select(
+            label,
+            default=selector_default,
+            allow_auto=allow_auto,
+            show_auto=show_auto,
+        )
+        if selection == "auto" and not allow_auto:
+            return _normalize_model_choice(default)
+        return selection
+    while True:
+        value = str(click.prompt(label, default=default, show_default=True)).strip()
+        if not value:
+            continue
+        if value == "auto" and not allow_auto:
+            return _normalize_model_choice(default)
+        return value
+
+
+def _confirm_customize_models() -> bool:
+    if _supports_interactive_selector():
+        selection = _interactive_single_select(
+            "Customize role models",
+            ("Customize now", "Keep current defaults"),
+            default="Customize now",
+        )
+        return selection == "Customize now"
+    return click.confirm("Customize role models?", default=True)
+
+
+def _confirm_optional(prompt: str, *, default: bool, yes_label: str, no_label: str) -> bool:
+    if _supports_interactive_selector():
+        options = (yes_label, no_label) if default else (no_label, yes_label)
+        selection = _interactive_single_select(
+            prompt,
+            options,
+            default=yes_label if default else no_label,
+        )
+        return selection == yes_label
+    return click.confirm(prompt, default=default)
+
+
+def _detected_workspace_hosts(workspace_root: Path) -> tuple[str, ...]:
+    checks: tuple[tuple[str, bool], ...] = (
+        (
+            "copilot",
+            bool(
+                shutil.which("code") or (workspace_root / ".github").exists() or (workspace_root / ".vscode").exists()
+            ),
+        ),
+        ("claude", bool(shutil.which("claude") or (workspace_root / ".claude").exists())),
+        ("codex", bool(shutil.which("codex") or (workspace_root / ".codex").exists())),
+        (
+            "opencode",
+            bool(
+                shutil.which("opencode")
+                or (workspace_root / "opencode.json").exists()
+                or (workspace_root / ".opencode").exists()
+            ),
+        ),
+        ("antigravity", bool(shutil.which("antigravity") or shutil.which("agy"))),
+        ("cursor", bool((workspace_root / ".cursor").exists())),
+        (
+            "hermes",
+            bool(os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or shutil.which("hermes")),
+        ),
+    )
+    return tuple(host for host, present in checks if present)
+
+
+def _host_label(host: str) -> str:
+    return {
+        "copilot": "Copilot/VS Code",
+        "claude": "Claude Code",
+        "codex": "Codex CLI",
+        "opencode": "OpenCode",
+        "antigravity": "Antigravity",
+        "cursor": "Cursor",
+        "hermes": "Hermes",
+    }.get(host, host.title())
+
+
+def _prompt_workspace_model_config(workspace_root: Path) -> dict[str, Any] | None:
+    click.echo("")
+    click.echo("Atelier workspace model configuration.")
+    if not _confirm_customize_models():
+        return None
+
+    runtime_models = _prompt_runtime_role_models(workspace_root)
+    payload = build_runtime_settings_payload(runtime_models)
+    configurable_hosts = _detected_workspace_hosts(workspace_root)
+    if configurable_hosts and _confirm_optional(
+        "Customize host-specific models as well",
+        default=False,
+        yes_label="Customize host overrides",
+        no_label="No - inherit runtime defaults",
+    ):
+        for host in configurable_hosts:
+            if _confirm_optional(
+                f"Customize {_host_label(host)} models",
+                default=False,
+                yes_label="Yes - customize",
+                no_label="No - inherit runtime defaults",
+            ):
+                host_models = _prompt_host_role_models(host, workspace_root=workspace_root)
+                payload = set_host_role_models(payload, host=host, models=host_models)
+    return payload
+
+
+def _prompt_runtime_role_models(workspace_root: Path) -> dict[str, str]:
+    click.echo("Runtime/default role models")
+    resolved: dict[str, str] = {}
+    for role_id in _RUNTIME_ROLE_PROMPT_ORDER:
+        default = resolve_runtime_model(role_id, workspace_root)
+        resolved[role_id] = _prompt_model_select(f"  {role_id}", default=default, allow_auto=False, show_auto=True)
+    click.echo("")
+    return resolved
+
+
+def _prompt_host_role_models(
+    host: str,
+    *,
+    workspace_root: Path,
+) -> dict[str, str]:
+    click.echo(f"{host.title()} host role models")
+    models = {}
+    for role_id in _HOST_ROLE_PROMPT_ORDER:
+        current = resolve_host_model(host, role_id, workspace_root=workspace_root)
+        default = current if current is not None else "auto"
+        models[role_id] = _prompt_model_select(f"  {role_id}", default=default, allow_auto=True, show_auto=True)
+    click.echo("")
+    return models
+
+
+def _apply_workspace_model_config(
+    workspace_root: Path,
+    payload: dict[str, Any],
+    *,
+    detected_hosts: tuple[str, ...] | None = None,
+) -> dict[str, list[str]]:
+    results: dict[str, list[str]] = {}
+    detected = set(detected_hosts or _detected_workspace_hosts(workspace_root))
+    settings_path = write_workspace_model_settings(workspace_root, payload)
+    results["model_settings"] = [f"wrote {settings_path}"]
+    if "copilot" in detected:
+        copilot_agents = write_workspace_copilot_agents(workspace_root)
+        results["copilot"] = [f"updated {len(copilot_agents)} workspace-local Copilot files"]
+    if "claude" in detected:
+        claude_paths = write_workspace_claude_overrides(workspace_root)
+        results["claude"] = [f"updated {len(claude_paths)} workspace-local Claude files"]
+    if "opencode" in detected:
+        opencode_agents = write_workspace_opencode_agents(workspace_root)
+        results["opencode"] = [f"updated {len(opencode_agents)} workspace-local OpenCode agents"]
+    if "codex" in detected:
+        codex_agents = write_workspace_codex_agents(workspace_root)
+        results["codex"] = [f"updated {len(codex_agents)} workspace-local Codex agents"]
+    if "cursor" in detected:
+        cursor_rules = write_workspace_cursor_rules(workspace_root)
+        results["cursor"] = [f"updated {len(cursor_rules)} workspace-local Cursor rule files"]
+    return results
+
 
 def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
     """Run project-scoped init steps inside a git repo.
@@ -377,8 +705,21 @@ def _parse_since_arg(value: str) -> datetime:
     is_flag=True,
     help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md, .mcp.json.",
 )
+@click.option(
+    "--configure-models/--no-configure-models",
+    default=None,
+    help="Prompt for project-local role/host model settings when running inside a git repo.",
+)
 @click.pass_context
-def init(ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, index: bool, project: bool) -> None:
+def init(
+    ctx: click.Context,
+    seed: bool,
+    stack: str | None,
+    show_stacks: bool,
+    index: bool,
+    project: bool,
+    configure_models: bool | None,
+) -> None:
     """Initialize the runtime store at --root."""
     if show_stacks:
         from atelier.core.capabilities.starter_packs import list_stacks
@@ -435,11 +776,17 @@ def init(ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, i
     if index:
         git_root = _detect_git_root(Path.cwd())
         if git_root is not None:
-            click.echo(f"bootstrapping code index for {git_root} ...")
-            from atelier.gateway.cli.commands.code import _code_context_engine
+            from atelier.gateway.cli.commands.code import (
+                _code_context_engine,
+                _index_repo_with_progress,
+            )
 
             engine = _code_context_engine(str(git_root))
-            stats = engine.index_repo().model_dump(mode="json")
+            stats = _index_repo_with_progress(
+                engine,
+                description="Bootstrapping code index",
+                success_description="Code index ready",
+            )
             click.echo(
                 f"indexed {stats['files_indexed']} files, "
                 f"{stats['symbols_indexed']} symbols "
@@ -447,8 +794,21 @@ def init(ctx: click.Context, seed: bool, stack: str | None, show_stacks: bool, i
             )
         else:
             click.echo("code index skipped (no git repository detected in current directory)")
+    git_root = _detect_git_root(Path.cwd())
+    should_offer_model_config = bool(git_root is not None and _is_interactive_terminal())
+    if configure_models and not should_offer_model_config:
+        raise click.ClickException("--configure-models requires an interactive terminal inside a git repository.")
+    if should_offer_model_config and configure_models is not False:
+        assert git_root is not None
+        payload = _prompt_workspace_model_config(git_root)
+        if payload is not None:
+            results = _apply_workspace_model_config(
+                git_root, payload, detected_hosts=_detected_workspace_hosts(git_root)
+            )
+            for section, messages in results.items():
+                for msg in messages:
+                    click.echo(f"  [{section}] {msg}")
     if project:
-        git_root = _detect_git_root(Path.cwd())
         if git_root is not None:
             click.echo("running project-scoped setup ...")
             results = _project_init_setup(git_root)
