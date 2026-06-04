@@ -207,8 +207,7 @@ if $PRINT_ONLY; then
         echo "Step 3 - Ensure project-level MCP and agent rules (run once per project):"
         echo "  bash scripts/install_agents.sh --workspace '${WORKSPACE}'"
         echo ""
-        echo "Step 4 - Optional project setting:"
-        echo "  set env.CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
+        echo "Step 4 - Project local Claude agents are projected into ${WORKSPACE}/.claude/agents"
     else
         echo "Step 3 - Register MCP in Claude user scope:"
         echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
@@ -427,7 +426,17 @@ print("[atelier:claude] CLAUDE_WORKSPACE_ROOT written to ${CLAUDE_LOCAL_SETTINGS
 PYEOF
     fi
 
-    # Workspace installs are managed separately by install_agents.sh
+    if $DRY_RUN; then
+        echo "  [dry-run] project workspace-local Claude agents into ${WORKSPACE}/.claude/agents"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_claude_overrides
+
+written = write_workspace_claude_overrides(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:claude] projected {len(written)} workspace-local Claude files into ${WORKSPACE}/.claude")
+PYEOF
+    fi
 fi
 
 # ---- Claude hook settings ---------------------------------------------------
@@ -499,7 +508,7 @@ data["agent"] = "atelier:code"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 print("[atelier:claude] statusLine set → ${STATUSLINE_SCRIPT}")
 print("[atelier:claude] subagentStatusLine set → ${STATUSLINE_SCRIPT}")
-print("[atelier:claude] default agent set → atelier-code")
+print("[atelier:claude] default agent set → atelier:code")
 PYEOF2
 else
     warn "statusline.sh not found at ${STATUSLINE_SCRIPT} — skipping statusLine"
