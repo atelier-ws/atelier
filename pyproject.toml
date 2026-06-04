@@ -100,6 +100,7 @@ packages = ["src/atelier", "src/benchmarks"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/atelier/core/service/telemetry/frustration_lexicon.yaml" = "atelier/core/service/telemetry/frustration_lexicon.yaml"
 "templates/reasonblocks" = "atelier/templates/reasonblocks"
+"integrations" = "atelier/integrations"
 
 [tool.ruff]
 line-length = 100
