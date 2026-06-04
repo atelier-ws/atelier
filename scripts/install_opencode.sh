@@ -172,20 +172,10 @@ fi
 # ---- install opencode atelier agent ----------------------------------------
 AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:opencode"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
-STAGING_DIR="${HOME}/.atelier/opencode-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/opencode"
 run "mkdir -p '$STAGING_DIR'"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full agent instructions with task loop"
-    atelier_write_managed_copy "${AGENT_SRC/.md/.dev.md}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
-else
-    info "Install profile: stable; staging stable agent instructions"
-    atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
-fi
+info "Staging opencode agent instructions"
+atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
 AGENT_SRC="$STAGING_DIR/atelier.md"
 
 if $DRY_RUN; then

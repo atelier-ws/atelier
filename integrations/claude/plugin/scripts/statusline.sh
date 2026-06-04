@@ -158,6 +158,7 @@ else
   TOK_OUT_F=$(fmt_tok "${LIVE_DISPLAY_OUT:-0}")
 fi
 TOK_DISPLAY="I: ${TOK_IN_F} C: ${TOK_CACHE_F} O: ${TOK_OUT_F}"
+ACTUAL_CTX_F="${TOK_IN_F}"
 # Calls-saved counter intentionally not shown in the statusline.
 SAVED_CALLS_SEG=""
 if [ -n "${STATUS_TEXT:-}" ]; then
@@ -172,10 +173,9 @@ else
   ROUTING_SEG=""
 fi
 
-printf '%s%s%s %s %s%s ctx %s%% %s %s(%s) ↓ %s%s(%s)%s%s %s %dm%02ds\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s)%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
-  "$PIPE" "$MODEL" "$STATUS_SEG" "$PCT_INT" \
+  "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
   "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
-  "$ROUTING_SEG" \
-  "$PIPE" "$MINS" "$SECS"
+  "$ROUTING_SEG"

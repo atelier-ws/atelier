@@ -350,7 +350,9 @@ def swarm_apply(
     ]
 
     for commit in selected_commits:
-        header = f"  - {commit['child_id']} ({commit['commit_ref'][:8]})"
+        commit_ref = str(commit.get("commit_ref") or "")
+        ref_display = commit_ref[:8] if commit_ref else "pending"
+        header = f"  - {commit['child_id']} ({ref_display})"
         if commit.get("score") is not None:
             header += f" score={commit['score']:.1f}"
         lines.append(header)

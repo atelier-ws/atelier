@@ -87,10 +87,6 @@ atelier:review     Verifier/gatekeeper
 ├─ Tools: context, verify + read-only
 └─ Hard rules: Never edit
 
-atelier:repair     Repair specialist (on repeated failures)
-├─ Trigger: Same error fails 2x OR monitor alert
-├─ Tools: All (code + MCP + shell)
-└─ Hard rules: No repeated hypotheses, stop after 2 failures
 ```
 
 ## 🔧 MCP Tools (13 total)
@@ -186,7 +182,7 @@ atelier tool-mode set shadow
 .atelier/runs/<session_id>.json contains:
 ─────────────────────────────────────────────────
 session_id                  Unique run identifier
-agent                   "atelier:code" | "atelier:repair" | ...
+agent                   "atelier:code" | "atelier:execute" | "atelier:explore" | ...
 task                    One-sentence task description
 domain                  beseam.shopify.publish | ... | null
 status                  in_progress | success | failed | partial
@@ -285,7 +281,7 @@ Q: I need to investigate code without editing
 A: Use atelier:explore agent
 
 Q: My task keeps failing the same way
-A: Activate atelier:repair agent
+A: Call rescue, change approach, and do not retry a third time
 
 Q: I want to see the current run status
 A: Use /atelier:status

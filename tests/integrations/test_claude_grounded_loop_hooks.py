@@ -36,11 +36,10 @@ def _set_bench_mode(monkeypatch: pytest.MonkeyPatch, mode: str | None) -> None:
     monkeypatch.setattr(bench_mode, "_mode", None)
 
 
-def test_pre_tool_use_risky_edit_gets_grounded_batching_nudge(
+def test_pre_tool_use_risky_edit_always_allowed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: True)
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",
@@ -49,33 +48,6 @@ def test_pre_tool_use_risky_edit_gets_grounded_batching_nudge(
                 {
                     "tool_name": "Edit",
                     "tool_input": {"file_path": "shopify/catalog/product.py"},
-                }
-            )
-        ),
-    )
-
-    assert pre_tool_use.main() == 0
-
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["decision"] == "ask"
-    assert "search" in payload["reason"]
-    assert "read" in payload["reason"]
-    assert "batch" in payload["reason"]
-
-
-def test_pre_tool_use_low_risk_edit_stays_soft_and_allows_through(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: True)
-    monkeypatch.setattr(
-        PRE_TOOL_USE.sys,
-        "stdin",
-        io.StringIO(
-            json.dumps(
-                {
-                    "tool_name": "Edit",
-                    "tool_input": {"file_path": "src/runtime.py"},
                 }
             )
         ),
@@ -96,7 +68,6 @@ def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
     _set_bench_mode(monkeypatch, "on")
-    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
     _write_session_state(root, workspace, {"session_id": "bench-session"})
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
@@ -120,7 +91,6 @@ def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
     _set_bench_mode(monkeypatch, "on")
-    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
     _write_session_state(
         root,
         workspace,
@@ -157,7 +127,6 @@ def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
     _set_bench_mode(monkeypatch, "off")
-    monkeypatch.setattr(pre_tool_use, "_is_dev_mode", lambda: False)
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",

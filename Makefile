@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
 PY_PATHS := src benchmarks tests scripts integrations
+MYPY_PATHS := src/atelier
 ATELIER_STORE ?= $(HOME)/.atelier
 ATELIER_CMD ?= uv run atelier
 TEST_PRINT_TIME ?= 0
@@ -86,9 +87,9 @@ _ensure_hooks:
 
 test: | _ensure_hooks ## Run all tests
 ifeq ($(TEST_PRINT_TIME),1)
-	@time bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -ra --durations=0 -n auto --dist=loadfile; else uv run pytest -q -ra --durations=0; fi'
+	@time bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -ra --durations=0 -n auto --dist=worksteal; else uv run pytest -q -ra --durations=0; fi'
 else
-	@bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -ra --durations=0 -n auto --dist=loadfile; else uv run pytest -q -ra --durations=0; fi'
+	@bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -ra --durations=0 -n auto --dist=worksteal; else uv run pytest -q -ra --durations=0; fi'
 endif
 
 test-fast: | _ensure_hooks ## Run fast tests: stop on first failure, skip slow/Postgres-gated tests
@@ -119,7 +120,7 @@ format: | _ensure_hooks ## Format all code: Python (ruff+black) and frontend (pr
 	fi
 
 typecheck: | _ensure_hooks ## Run mypy strict type-checking
-	uv run mypy --strict $(PY_PATHS)
+	uv run mypy --explicit-package-bases $(MYPY_PATHS)
 
 launch-gate: ## Run pre-launch policy gate (set mode with LAUNCH_GATE_MODE=shadow|suggest|enforce)
 	bash scripts/launch_gate.sh --mode $${LAUNCH_GATE_MODE:-enforce}

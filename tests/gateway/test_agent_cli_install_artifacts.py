@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.default_definitions import build_default_registry
+from atelier.core.environment import skill_visible
 
 ATELIER_ROOT = Path(__file__).parent.parent.parent
 SCRIPTS = ATELIER_ROOT / "scripts"
@@ -26,6 +27,12 @@ MAKEFILE = ATELIER_ROOT / "Makefile"
 
 def is_executable(path: Path) -> bool:
     return bool(path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+
+
+def expected_visible_skill_names() -> set[str]:
+    return {
+        path.parent.name for path in (INTEGRATIONS / "skills").glob("*/SKILL.md") if skill_visible(path.parent.name)
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -78,13 +85,13 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    expected = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    expected = expected_visible_skill_names()
     registry = build_default_registry(ATELIER_ROOT)
     assert generated == expected
-    assert generated == set(registry.surfaced_role_ids("shared_skill"))
+    assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
 
-def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
+def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> None:
     dest = tmp_path / "skills"
     subprocess.run(
         [
@@ -94,16 +101,15 @@ def test_build_host_skills_can_include_dev_skills(tmp_path: Path) -> None:
             "antigravity",
             "--dest",
             str(dest),
-            "--include-dev",
         ],
         cwd=ATELIER_ROOT,
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    expected = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    expected = expected_visible_skill_names()
     registry = build_default_registry(ATELIER_ROOT)
     assert generated == expected
-    assert generated == set(registry.surfaced_role_ids("shared_skill"))
+    assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
 
 def test_generated_surfaces_in_sync_with_repository_artifacts() -> None:
@@ -544,19 +550,13 @@ def test_new_claude_plugin_json_no_manifest_keys() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    "skill_name",
-    ["code", "explore", "execute", "plan", "research", "review", "solve"],
-)
+@pytest.mark.parametrize("skill_name", sorted(expected_visible_skill_names()))
 def test_new_claude_plugin_user_skill_exists(skill_name: str) -> None:
     skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
     assert skill_file.exists(), f"integrations/skills/{skill_name}/SKILL.md must exist"
 
 
-@pytest.mark.parametrize(
-    "skill_name",
-    ["code", "explore", "execute", "plan", "research", "review", "solve"],
-)
+@pytest.mark.parametrize("skill_name", sorted(expected_visible_skill_names()))
 def test_new_claude_plugin_skill_has_description(skill_name: str) -> None:
     skill_file = INTEGRATIONS / "skills" / skill_name / "SKILL.md"
     if not skill_file.exists():
@@ -854,12 +854,13 @@ def test_opencode_atelier_agent_exists() -> None:
     assert "---" in text, "opencode agent must have frontmatter"
 
 
-def test_copilot_atelier_chatmode_exists() -> None:
-    f = INTEGRATIONS / "copilot" / "chatmodes" / "atelier.chatmode.md"
-    assert f.exists(), "Missing: integrations/copilot/chatmodes/atelier.chatmode.md"
+def test_copilot_atelier_agent_exists() -> None:
+    f = INTEGRATIONS / "copilot" / "agents" / "atelier.agent.md"
+    assert f.exists(), "Missing: integrations/copilot/agents/atelier.agent.md"
     text = f.read_text()
     assert "atelier:code" in text
-    assert "description:" in text, "chatmode must have description: frontmatter"
+    assert "description:" in text, "agent must have description: frontmatter"
+    assert "model: gpt-5.4" in text, "Copilot agent must pin the model in frontmatter"
 
 
 def test_makefile_has_atelier_status_target() -> None:

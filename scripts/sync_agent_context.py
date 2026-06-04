@@ -25,6 +25,9 @@ from atelier.core.capabilities.default_definitions import (  # noqa: E402
     build_default_registry,
     load_mode_docs,
 )
+from atelier.core.environment import skill_visible  # noqa: E402
+
+_AGENT_DISPLAY_ORDER = ("code", "explore", "plan", "execute", "research", "review", "solve")
 
 DOC_LINKS = [
     ("Agent OS", ROOT / "docs/agent-os/README.md"),
@@ -82,7 +85,7 @@ SESSION_TEMPLATE = (
     "Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.\n"
     "Restate working context in under 10 bullets before editing or after compaction.\n"
     "If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.\n"
-    "If the same approach fails twice, call rescue or change approach; do not retry a third time.\n"
+    "If the same approach fails twice, change approach; do not retry a third time.\n"
 )
 
 
@@ -119,7 +122,7 @@ def budget_section() -> str:
             "- Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.",
             "- Restate working context in under 10 bullets before editing or after compaction.",
             "- If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.",
-            "- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.",
+            "- If the same approach fails twice, change approach; do not retry a third time.",
         ]
     )
 
@@ -159,10 +162,10 @@ def tool_substitution_table() -> str:
         [
             "## Tool substitution — mandatory",
             "",
-            "- Shared docs use plain tool names like `context`, `read`, `search`, and `trace`.",
+            "- Shared docs use plain tool names like `read`, `search`, `grep`, and `edit`.",
             "- Some hosts expose the same tools as handles like `mcp__atelier__context`; use the name shown by your host when invoking one explicitly.",
             "- `read` for file reads; `search` / `grep` for discovery; `edit` for file changes.",
-            "- `symbols` / `node` / `callers` / `callees` / `usages` / `impact` / `explore` for code intelligence.",
+            "- `symbols` / `node` / `callers` / `usages` / `explore` for code intelligence.",
             "- `shell` only for commands without a better Atelier equivalent.",
         ]
     )
@@ -184,9 +187,8 @@ def distribution_sections(host: str | None = None) -> list[str]:
     lines = [
         "## Operating loop",
         "",
-        "1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it. Use the host-displayed handle if it adds an `mcp__atelier__` prefix.",
-        "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. Use `route` or `rescue` when the same approach fails twice.",
-        "3. **Record**: Call `trace` when the task is done.",
+        "1. **Understand**: Read the relevant source of truth before changing anything; ground every change in real code.",
+        "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change approach — do not retry a third time.",
         "",
         tool_substitution_table(),
         "",
@@ -206,8 +208,8 @@ def implement_line(output_path: Path) -> str:
     return (
         "2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work "
         f"(see [Tool substitution]({tool_sub_link})). Use native host tools only when Atelier "
-        "returns `noop`, is hidden, or is unavailable. Use `route` or `rescue` when the same "
-        "approach fails twice."
+        "returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change "
+        "approach — do not retry a third time."
     )
 
 
@@ -225,11 +227,10 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "",
         "## Operating loop",
         "",
-        "1. **Context** — call `context` with `task`, `files`, and `domain` before touching any file. Use the host-displayed handle if it adds an `mcp__atelier__` prefix.",
+        "1. **Understand** — read the relevant source of truth before touching any file; ground every change in real code.",
         "2. **Implement** — use Atelier tools for ALL file I/O and shell ops "
-        f"(see [Tool substitution]({tool_sub_link})). Use `route` to get model recommendations "
-        "before expensive steps. Use `rescue` on repeated failures.",
-        "3. **Record** — call `trace` at completion.",
+        f"(see [Tool substitution]({tool_sub_link})). If the same approach fails twice, change "
+        "approach — do not retry a third time.",
         "",
         tool_substitution_table(),
         "",
@@ -268,12 +269,11 @@ def render_copilot_body(output_path: Path) -> str:
                 "",
                 "## Atelier - Copilot Instructions",
                 "",
-                "Use the Atelier 3-step process for every task:",
-                "1. **Context**: call `context` with the task, domain, and tools.",
+                "Use the Atelier process for every task:",
+                "1. **Understand**: read the relevant source of truth first; ground every change in real code.",
                 f"2. **Implement**: use Atelier MCP tools for file I/O, search, edits, and shell work "
                 f"(see [Tool substitution]({tool_sub_link})). Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable. "
-                "Use `route` or `rescue` when needed.",
-                "3. **Record**: call `record` when the work is done.",
+                "If the same approach fails twice, change approach — do not retry a third time.",
                 "",
                 tool_substitution_table(),
                 "",
@@ -329,6 +329,7 @@ def render_copilot_agent(output_path: Path) -> str:
             [
                 "---",
                 'description: "Atelier - Agent Reasoning Runtime coding agent"',
+                "model: gpt-5.4",
                 "tools:",
                 "  [",
                 '    "atelier/*",',
@@ -363,12 +364,12 @@ def render_copilot_agent(output_path: Path) -> str:
                 "",
                 "## Operating loop",
                 "",
-                "1. **Context** - call MCP tool `context` with task, domain, files, and tools.",
+                "1. **Understand** - read the relevant source of truth first; ground every change in real code.",
                 "2. **Plan** - keep the plan small and concrete.",
                 "3. **Execute** - use Atelier MCP tools for file I/O, search, edits, and shell work. "
                 "Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable.",
-                "4. **Recover** - call `rescue` after two failed attempts.",
-                "5. **Record** - call `record` with the observable result.",
+                "4. **Recover** - if the same approach fails twice, change approach; do not retry a third time.",
+                "5. **Continue** - after completing a task, always present the user with a question about what to do next before ending the turn.",
                 "",
                 budget_section(),
                 "",
@@ -540,13 +541,31 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
     )
 
 
+def _extra_shared_skill_paths(repo_root: Path, generated_role_ids: set[str]) -> dict[str, Path]:
+    skills_root = repo_root / "integrations" / "skills"
+    extras: dict[str, Path] = {}
+    if not skills_root.exists():
+        return extras
+    for skill_dir in sorted(skills_root.iterdir()):
+        skill_path = skill_dir / "SKILL.md"
+        if not skill_dir.is_dir() or not skill_path.is_file():
+            continue
+        if skill_dir.name in generated_role_ids:
+            continue
+        if not skill_visible(skill_dir.name):
+            continue
+        extras[skill_dir.name] = skill_path
+    return extras
+
+
 def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
     repo_root = ROOT if root is None else root
     registry = build_default_registry(repo_root)
     mode_docs = load_mode_docs(repo_root)
     outputs: dict[Path, str] = {}
+    generated_role_ids = set(registry.surfaced_role_ids("shared_skill"))
 
-    for role_id in registry.surfaced_role_ids("shared_skill"):
+    for role_id in sorted(generated_role_ids):
         role = registry.roles[role_id]
         mode_doc = mode_docs[role_id]
 
@@ -563,10 +582,6 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
         )
         outputs[stable_path] = render_claude_agent(role, mode_doc, stable_projection)
 
-        dev_projection = registry.projection(role_id, "claude_agent_dev")
-        dev_path = repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{dev_projection.output_name}.md"
-        outputs[dev_path] = render_claude_agent(role, mode_doc, dev_projection)
-
         antigravity_projection = registry.projection(role_id, "antigravity_agent")
         antigravity_path = (
             repo_root
@@ -582,15 +597,87 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
         opencode_path = repo_root / "integrations" / "opencode" / "agents" / f"{opencode_projection.output_name}.md"
         outputs[opencode_path] = render_simple_agent(role, mode_doc, opencode_projection)
 
+    for skill_name, skill_path in _extra_shared_skill_paths(repo_root, generated_role_ids).items():
+        content = skill_path.read_text(encoding="utf-8")
+        for host_dir in HOST_SKILL_DIRS.values():
+            host_skill_path = host_dir / skill_name / "SKILL.md"
+            outputs[host_skill_path] = content
+
     for output_path, content in outputs.items():
         if "{{" in content:
             raise ValueError(f"unexpanded template token in generated surface: {output_path}")
     return outputs
 
 
+def _role_model_summary(registry: Any) -> str:
+    grouped: dict[str, list[str]] = {}
+    for role_id in _AGENT_DISPLAY_ORDER:
+        model = registry.roles[role_id].model_default
+        grouped.setdefault(model, []).append(role_id)
+    parts = []
+    for model, role_ids in grouped.items():
+        labels = ", ".join(f"`{role_id}`" for role_id in role_ids)
+        parts.append(f"{labels} use **`{model}`**")
+    return "; ".join(parts)
+
+
+def render_agents_overview(output_path: Path) -> str:
+    """Generate the agent/skill comparison surface from the canonical registry."""
+    registry = build_default_registry(ROOT)
+    rows: list[str] = []
+    agent_lines: list[str] = []
+    skill_lines: list[str] = []
+    for role_id in _AGENT_DISPLAY_ORDER:
+        role = registry.roles[role_id]
+        projection = registry.projection(role_id, "claude_agent")
+        disallowed = next((value for key, value in projection.frontmatter if key == "disallowedTools"), [])
+        denies = ", ".join(role.tool_policy.denied_actions) or "—"
+        disallowed_text = ", ".join(f"`{tool}`" for tool in disallowed)
+        rows.append(
+            f"| `{role_id}` | `{role.model_default}` | {role.effort_default} | {role.max_turns} | {role.max_tokens:,} | "
+            f"{role.read_mode_hint} | {denies} | {disallowed_text} |"
+        )
+        agent_lines.append(f"- **`atelier:{role_id}`** — {role.agent_description}")
+        skill_lines.append(f"- **`/{role_id}`** — {role.skill_description}")
+    lines = [
+        generated_notice(output_path),
+        "",
+        "# Atelier Agents & Skills",
+        "",
+        "Seven canonical roles, declared once in `src/atelier/core/capabilities/default_definitions.py` and "
+        "generated into every host (Claude agents, OpenCode, Antigravity, and shared skills). Each role's full "
+        "behavior body lives in [`modes/`](modes/); the agent and its matching `/`-skill share that body.",
+        "",
+        f"Role defaults are workload-aware: {_role_model_summary(registry)}. These registry defaults feed owned-"
+        "runtime fallback and routing; generated Claude host agents inherit the host-selected model and only "
+        "project `maxTurns` into frontmatter, while the generated Copilot agent is pinned to `gpt-5.4`. The "
+        "`disallowedTools` deny-list is derived from each role's tool policy: every role forces MCP-grounded file "
+        "I/O (native `Read`/`Edit`/`Write`/`Grep`/`Glob` are denied); read-only roles additionally lose mutation "
+        "(`mcp__atelier__edit`) and sub-agent spawning (`Agent`); **shell is never denied**.",
+        "",
+        "## Comparison",
+        "",
+        "| Role | Model | Effort | Max turns | Max tokens | Read mode | Policy denies | Claude `disallowedTools` |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        *rows,
+        "",
+        "## Agents",
+        "",
+        *agent_lines,
+        "",
+        "## Skills",
+        "",
+        "Each role is also a `/`-skill with the same body and a `Switch to …` description:",
+        "",
+        *skill_lines,
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def build_outputs() -> dict[Path, str]:
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
+        ROOT / "docs/agent-os/agents.md": render_agents_overview(ROOT / "docs/agent-os/agents.md"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / ".github/agents/atelier.agent.md": render_copilot_agent(ROOT / ".github/agents/atelier.agent.md"),
         ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
