@@ -27,7 +27,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from atelier.gateway.cli.progress import ProgressReporter
-
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
 from benchmarks.mcp_tools.bench_code import _impact_query, _symbol_arg, _tool_name_for_case_args
 from benchmarks.mcp_tools.bench_context import _preseed_bootstrap

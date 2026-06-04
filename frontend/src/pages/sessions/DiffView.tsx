@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
-import { type FileEditRecord } from "../../api";
+import { api, type FileEditRecord } from "../../api";
 import { cx } from "../../components/WorkbenchUI";
 
 // ---------------------------------------------------------------------------
@@ -62,10 +62,18 @@ function parseSideBySideFromUnifiedDiff(diff: string): SBSRow[] {
       for (let r = 0; r < maxLen; r++) {
         result.push({
           left: removes[r]
-            ? { num: removes[r].num, content: removes[r].content, type: "remove" }
+            ? {
+                num: removes[r].num,
+                content: removes[r].content,
+                type: "remove",
+              }
             : null,
           right: inserts[r]
-            ? { num: inserts[r].num, content: inserts[r].content, type: "insert" }
+            ? {
+                num: inserts[r].num,
+                content: inserts[r].content,
+                type: "insert",
+              }
             : null,
         });
       }
@@ -91,7 +99,13 @@ function parseSideBySideFromUnifiedDiff(diff: string): SBSRow[] {
 // ---------------------------------------------------------------------------
 
 type LineDiffOp =
-  | { op: "equal"; oldLine: string; newLine: string; oldNum: number; newNum: number }
+  | {
+      op: "equal";
+      oldLine: string;
+      newLine: string;
+      oldNum: number;
+      newNum: number;
+    }
   | { op: "remove"; oldLine: string; oldNum: number }
   | { op: "insert"; newLine: string; newNum: number };
 
@@ -105,12 +119,23 @@ function computeLineDiff(oldStr: string, newStr: string): LineDiffOp[] {
   // Guard: skip O(n*m) LCS for very large inputs
   if (m > 1500 || n > 1500) {
     return [
-      ...oldLines.map((line, i) => ({ op: "remove" as const, oldLine: line, oldNum: i + 1 })),
-      ...newLines.map((line, j) => ({ op: "insert" as const, newLine: line, newNum: j + 1 })),
+      ...oldLines.map((line, i) => ({
+        op: "remove" as const,
+        oldLine: line,
+        oldNum: i + 1,
+      })),
+      ...newLines.map((line, j) => ({
+        op: "insert" as const,
+        newLine: line,
+        newNum: j + 1,
+      })),
     ];
   }
 
-  const dp: Uint32Array[] = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1));
+  const dp: Uint32Array[] = Array.from(
+    { length: m + 1 },
+    () => new Uint32Array(n + 1)
+  );
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       dp[i][j] =
@@ -125,7 +150,13 @@ function computeLineDiff(oldStr: string, newStr: string): LineDiffOp[] {
   let j = n;
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-      ops.push({ op: "equal", oldLine: oldLines[i - 1], newLine: newLines[j - 1], oldNum: i, newNum: j });
+      ops.push({
+        op: "equal",
+        oldLine: oldLines[i - 1],
+        newLine: newLines[j - 1],
+        oldNum: i,
+        newNum: j,
+      });
       i--;
       j--;
     } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
@@ -166,8 +197,20 @@ function lcsOpsToRows(ops: LineDiffOp[]): SBSRow[] {
       const maxLen = Math.max(removes.length, inserts.length);
       for (let r = 0; r < maxLen; r++) {
         result.push({
-          left: removes[r] ? { num: removes[r].num, content: removes[r].content, type: "remove" } : null,
-          right: inserts[r] ? { num: inserts[r].num, content: inserts[r].content, type: "insert" } : null,
+          left: removes[r]
+            ? {
+                num: removes[r].num,
+                content: removes[r].content,
+                type: "remove",
+              }
+            : null,
+          right: inserts[r]
+            ? {
+                num: inserts[r].num,
+                content: inserts[r].content,
+                type: "insert",
+              }
+            : null,
         });
       }
     }
@@ -220,7 +263,12 @@ export function getFileEditInfo(turn: any): FileEditInfo | null {
   if (turn.content) {
     const jsonEdit = tryParseJsonEditPayload(String(turn.content));
     if (jsonEdit) {
-      return { path: jsonEdit.path, diff: null, oldString: jsonEdit.oldString, newString: jsonEdit.newString };
+      return {
+        path: jsonEdit.path,
+        diff: null,
+        oldString: jsonEdit.oldString,
+        newString: jsonEdit.newString,
+      };
     }
   }
 
@@ -234,7 +282,9 @@ export function getFileEditInfo(turn: any): FileEditInfo | null {
         : path;
     return {
       path: summaryPath,
-      diff: diff || (turn.content?.includes("@@") ? turn.content : turn.content || null),
+      diff:
+        diff ||
+        (turn.content?.includes("@@") ? turn.content : turn.content || null),
     };
   }
 
@@ -244,12 +294,24 @@ export function getFileEditInfo(turn: any): FileEditInfo | null {
     payload.path || payload.file_path || payload.filename || payload.file || "";
   const payloadDiff: string | null = payload.diff ?? null;
 
-  if (payloadDiff && payloadPath) return { path: payloadPath, diff: payloadDiff };
+  if (payloadDiff && payloadPath)
+    return { path: payloadPath, diff: payloadDiff };
 
   // 3. Edit-like kind strings
-  const FILE_EDIT_KINDS = ["edit_file", "file_write", "write_file", "file_patch", "str_replace", "file_create", "create_file"];
+  const FILE_EDIT_KINDS = [
+    "edit_file",
+    "file_write",
+    "write_file",
+    "file_patch",
+    "str_replace",
+    "file_create",
+    "create_file",
+  ];
   if (FILE_EDIT_KINDS.some((k) => kind.includes(k))) {
-    return { path: payloadPath, diff: payloadDiff || (turn.content?.includes("@@") ? turn.content : null) };
+    return {
+      path: payloadPath,
+      diff: payloadDiff || (turn.content?.includes("@@") ? turn.content : null),
+    };
   }
 
   return null;
@@ -270,7 +332,9 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
               key={idx}
               className={cx(
                 "flex items-start",
-                row.left.type === "remove" ? "bg-red-950/25 border-l-2 border-l-red-600/50" : ""
+                row.left.type === "remove"
+                  ? "bg-red-950/25 border-l-2 border-l-red-600/50"
+                  : ""
               )}
             >
               <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-700 select-none text-[9px] leading-5 border-r border-neutral-800/20">
@@ -279,7 +343,9 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
               <span
                 className={cx(
                   "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
-                  row.left.type === "remove" ? "text-red-300/80" : "text-neutral-400"
+                  row.left.type === "remove"
+                    ? "text-red-300/80"
+                    : "text-neutral-400"
                 )}
               >
                 {row.left.type === "remove" && (
@@ -302,7 +368,9 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
               key={idx}
               className={cx(
                 "flex items-start",
-                row.right.type === "insert" ? "bg-emerald-950/25 border-l-2 border-l-emerald-600/50" : ""
+                row.right.type === "insert"
+                  ? "bg-emerald-950/25 border-l-2 border-l-emerald-600/50"
+                  : ""
               )}
             >
               <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-700 select-none text-[9px] leading-5 border-r border-neutral-800/20">
@@ -311,11 +379,15 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
               <span
                 className={cx(
                   "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
-                  row.right.type === "insert" ? "text-emerald-300/80" : "text-neutral-400"
+                  row.right.type === "insert"
+                    ? "text-emerald-300/80"
+                    : "text-neutral-400"
                 )}
               >
                 {row.right.type === "insert" && (
-                  <span className="text-emerald-500/40 select-none mr-1">+</span>
+                  <span className="text-emerald-500/40 select-none mr-1">
+                    +
+                  </span>
                 )}
                 {row.right.content}
               </span>
@@ -333,7 +405,9 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
 function SBSLabels() {
   return (
     <div className="flex sticky top-0 z-10 bg-[#080d08] border-b border-neutral-800/40 font-mono text-[8px] uppercase tracking-widest text-neutral-600">
-      <div className="w-1/2 px-3 py-1.5 border-r border-neutral-800/40">Before</div>
+      <div className="w-1/2 px-3 py-1.5 border-r border-neutral-800/40">
+        Before
+      </div>
       <div className="w-1/2 px-3 py-1.5">After</div>
     </div>
   );
@@ -457,21 +531,36 @@ function DiffShell({
           </span>
           {(addCount > 0 || delCount > 0) && (
             <div className="flex items-center gap-1.5 text-[9px] font-mono font-black flex-shrink-0">
-              {addCount > 0 && <span className="text-emerald-600">+{addCount}</span>}
-              {delCount > 0 && <span className="text-red-600">-{delCount}</span>}
+              {addCount > 0 && (
+                <span className="text-emerald-600">+{addCount}</span>
+              )}
+              {delCount > 0 && (
+                <span className="text-red-600">-{delCount}</span>
+              )}
             </div>
           )}
         </div>
         <div className="flex items-center gap-3 ml-4 flex-shrink-0">
           {path && (
-            <a
-              href={`/api/v1/files/content?path=${encodeURIComponent(path)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[9px] text-neutral-500 hover:text-emerald-500 font-black uppercase tracking-widest transition-colors flex items-center gap-1"
-            >
-              View <ExternalLink size={10} />
-            </a>
+            <>
+              <a
+                href={api.fileProjectionInspectUrl(path, { view: "compact" })}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[9px] text-neutral-500 hover:text-cyan-300 font-black uppercase tracking-widest transition-colors"
+                title="Inspect compact projection metadata"
+              >
+                Projection
+              </a>
+              <a
+                href={`/api/v1/files/content?path=${encodeURIComponent(path)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[9px] text-neutral-500 hover:text-emerald-500 font-black uppercase tracking-widest transition-colors flex items-center gap-1"
+              >
+                View <ExternalLink size={10} />
+              </a>
+            </>
           )}
           {!forceExpand && (
             <button
@@ -533,12 +622,25 @@ export function FileDetail({
           </span>
           {diff && (addCount > 0 || delCount > 0) && (
             <div className="flex items-center gap-1.5 text-[9px] font-mono font-black flex-shrink-0">
-              {addCount > 0 && <span className="text-emerald-600">+{addCount}</span>}
-              {delCount > 0 && <span className="text-red-600">-{delCount}</span>}
+              {addCount > 0 && (
+                <span className="text-emerald-600">+{addCount}</span>
+              )}
+              {delCount > 0 && (
+                <span className="text-red-600">-{delCount}</span>
+              )}
             </div>
           )}
         </button>
         <div className="flex items-center gap-3 ml-4">
+          <a
+            href={api.fileProjectionInspectUrl(path, { view: "compact" })}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[9px] text-neutral-500 font-black tracking-widest hover:text-cyan-300 transition-colors uppercase"
+            title="Inspect compact projection metadata"
+          >
+            Projection
+          </a>
           <a
             href={`/api/v1/files/content?path=${encodeURIComponent(path)}`}
             target="_blank"

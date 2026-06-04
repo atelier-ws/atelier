@@ -9,21 +9,15 @@ from unittest.mock import patch
 
 import pytest
 
-from atelier.core.foundation.store import ContextStore
-
 if TYPE_CHECKING:
+    from atelier.core.foundation.store import ContextStore
+    from atelier.core.runtime import AtelierRuntimeCore
     from atelier.gateway.adapters.runtime import ContextRuntime
 
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    """Isolate tests from host workspace env vars and default runtime roots.
-
-    Without an explicit ATELIER_ROOT, code paths that fall back to ``~/.atelier`` can
-    still derive project-local lessons from the current working directory. That lets
-    tests mutate the repository's tracked ``.lessons/`` tree even when host workspace
-    env vars are cleared.
-    """
+    """Isolate tests from host workspace env vars and default runtime roots."""
     for env_var in (
         "ATELIER_WORKSPACE_ROOT",
         "CLAUDE_WORKSPACE_ROOT",
@@ -66,11 +60,26 @@ def _no_ollama() -> Iterator[None]:
         yield
 
 
+@pytest.fixture(scope="session")
+def retrieval_eval_runtime(tmp_path_factory: pytest.TempPathFactory) -> AtelierRuntimeCore:
+    """Initialize atelier runtime and seed blocks once per session for retrieval evaluation."""
+    from tests.core.test_retriever_eval import _ensure_eval_blocks_exist, _init_runtime
+
+    # Note: Using tmp_path_factory to get a persistent session directory
+    root = tmp_path_factory.mktemp("retrieval_eval_session")
+    runtime = _init_runtime(root)
+    _ensure_eval_blocks_exist(runtime)
+    return runtime
+
+
 @pytest.fixture()
 def store(tmp_path: Path) -> ContextStore:
-    s = ContextStore(tmp_path / "atelier")
-    s.init()
-    return s
+    from atelier.core.foundation.store import ContextStore
+
+    root = tmp_path / "atelier"
+    store = ContextStore(root)
+    store.init()
+    return store
 
 
 @pytest.fixture()

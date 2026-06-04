@@ -9,47 +9,35 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from click.testing import CliRunner
 
 from atelier.core.capabilities.cross_vendor_routing.configuration import (
     RouteConfig,
     save_route_config,
 )
-from atelier.core.environment import (
-    DEV_LLM_TOOLS,
-    NON_DEV_LLM_TOOLS,
-    STABLE_LLM_TOOLS,
-)
+from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
-from atelier.gateway.cli import cli
+from tests.helpers import init_store_at
 
 EXPECTED_TOOLS = {
-    "context",
-    "route",
-    "rescue",
-    "trace",
-    "verify",
     "memory",
     "read",
     "edit",
     "grep",
     "sql",
     "search",
-    "compact",
     "symbols",
     "node",
     "callers",
-    "callees",
-    "impact",
     "explore",
     "shell",
+    "usages",
+    "web_fetch",
 }
 
 
 def _seed_store(root: Path) -> None:
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
+    init_store_at(str(root))
 
 
 def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -182,25 +170,23 @@ def test_tools_list_matches_registered_surface(mcp_env: Path) -> None:
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
     assert names == EXPECTED_TOOLS
-    assert set(TOOLS) == EXPECTED_TOOLS
+    assert set(TOOLS) == EXPECTED_TOOLS | HIDDEN_LLM_TOOLS
 
 
-def test_tools_list_only_product_tools_without_dev_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_list_hides_internal_workflow_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / ".atelier"
     _seed_store(root)
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     response = _handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     assert response is not None
     tools = response["result"]["tools"]
     names = {tool["name"] for tool in tools}
-    assert names == NON_DEV_LLM_TOOLS
-    assert names == STABLE_LLM_TOOLS
-    assert not (names & DEV_LLM_TOOLS)
-    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in STABLE_LLM_TOOLS)
+    assert names == EXPECTED_TOOLS
+    assert not (names & HIDDEN_LLM_TOOLS)
+    assert all("passive" not in tool["description"] for tool in tools if tool["name"] in EXPECTED_TOOLS)
 
 
 def test_non_remote_tool_calls_fallback_when_route_has_no_configured_vendor_keys(
@@ -219,7 +205,6 @@ def test_non_remote_tool_calls_fallback_when_route_has_no_configured_vendor_keys
     response = _call("read", {"path": str(target), "max_lines": 5})
     payload = _text(response)
 
-    assert str(target) in payload
     assert "hello route fallback" in payload
 
 

@@ -164,13 +164,8 @@ configure_project_enforcement() {
     }
 
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:claude"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
 uv run python "$MODE_RENDERER" >/dev/null || python3 "$MODE_RENDERER" >/dev/null
-STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/claude-plugin"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".
 run "rm -rf '$STAGING_DIR'"
@@ -178,25 +173,14 @@ run "mkdir -p '$STAGING_DIR/.claude-plugin'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"
 run "mkdir -p '$STAGING_DIR/agents'"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full plugin with task loop"
-    for agent in code explore plan execute review research solve; do
-        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
-    done
-else
-    info "Install profile: stable; staging stable plugin without dev-only task loop"
-    for agent in code explore plan execute review research solve; do
-        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
-    done
-fi
+info "Staging Claude plugin"
+for agent in code explore plan execute review research solve; do
+    atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
+done
 run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/scripts' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/workflows' '$STAGING_DIR/'"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills' --include-dev"
-else
-    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills'"
-fi
+run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills'"
 run "cp '${SOURCE_PLUGIN_DIR}/settings.json' '$STAGING_DIR/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
 # Ensure runnable bits on hook + script entrypoints, even if source perms got
@@ -340,7 +324,7 @@ refresh_atelier_tool() {
 
     if $DRY_RUN; then
         echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
-        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper (exports ATELIER_DEV_MODE)"
+        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper"
         return 0
     fi
 
@@ -352,8 +336,7 @@ refresh_atelier_tool() {
         }
 
     # uv replaces atelier-mcp with the raw Python entry point. Restore the
-    # bash wrapper that exports ATELIER_DEV_MODE so the MCP server's
-    # dev-mode flag stays the default-off it shipped with.
+    # bash wrapper so local installs keep a stable entrypoint path.
     local mcp_path="${bin_dir}/atelier-mcp"
     local wrapped_path="${bin_dir}/atelier-mcp.real"
     local real_target="${tool_dir}/atelier/bin/atelier-mcp"
@@ -362,7 +345,6 @@ refresh_atelier_tool() {
         ln -s "$real_target" "$wrapped_path"
         cat > "$mcp_path" <<EOF
 #!/usr/bin/env bash
-export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"

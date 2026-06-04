@@ -47,8 +47,11 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
 def _render_search(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
     if not isinstance(items, list):
-        return "no matches"
-    rows: list[str] = []
+        return "### search\n- no matches"
+    rows: list[str] = ["### search"]
+    provenance = str(payload.get("provenance") or "").strip()
+    if provenance:
+        rows.append(f"- provenance: {provenance}")
     sorted_items = sorted(
         (item for item in items if isinstance(item, Mapping)),
         key=lambda item: (
@@ -66,7 +69,9 @@ def _render_search(payload: Mapping[str, Any]) -> str:
             rows.append(f"- {file_path}:{line} — {name} [{kind}]")
         else:
             rows.append(f"- {file_path} — {name} [{kind}]")
-    return "\n".join(rows) if rows else "no matches"
+    if len(rows) == 1 + (1 if provenance else 0):
+        rows.append("- no matches")
+    return "\n".join(rows)
 
 
 def _render_symbol(payload: Mapping[str, Any]) -> str:
@@ -77,7 +82,7 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
     symbol = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or symbol_id or "?")
     kind = str(payload.get("kind") or "?")
     signature = str(payload.get("signature") or "").strip()
-    lines = [f"- {symbol} [{kind}]"]
+    lines = ["### symbol", f"- id: {symbol_id or '?'}", f"- {symbol} [{kind}]"]
     if start_line > 0 and end_line >= start_line:
         lines.append(f"- location: {file_path}:{start_line}-{end_line}")
     else:
@@ -90,8 +95,8 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
 def _render_outline(payload: Mapping[str, Any]) -> str:
     files = payload.get("files")
     if not isinstance(files, Mapping):
-        return "no symbols"
-    lines: list[str] = []
+        return "### outline\n- no symbols"
+    lines: list[str] = ["### outline"]
     for file_path in sorted(str(key) for key in files):
         entries = files.get(file_path)
         if not isinstance(entries, list):
@@ -118,7 +123,7 @@ def _render_outline(payload: Mapping[str, Any]) -> str:
             if signature:
                 summary = f"{summary} — {signature}"
             lines.append(summary)
-    return "\n".join(lines) if lines else "no symbols"
+    return "\n".join(lines) if len(lines) > 1 else "### outline\n- no symbols"
 
 
 def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
@@ -131,9 +136,13 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
         t_line = int(target.get("line") or target.get("start_line") or 0)
         if t_file and t_line > 0:
             target_loc = f" ({t_file}:{t_line})"
-    lines = [f"- target: {target_name}{target_loc}"]
+    lines = [f"### {op}", f"- target: {target_name}{target_loc}"]
+    provenance = str(payload.get("provenance") or "").strip()
+    if provenance:
+        lines.append(f"- provenance: {provenance}")
     meta_line_count = len(lines)
     if op == "usages":
+        lines.append("- group_by: file")
         refs = _flatten_usages(payload.get("references"))
         for ref in refs:
             file_path = str(ref.get("path") or ref.get("file_path") or "?")
@@ -218,7 +227,15 @@ def _render_impact(payload: Mapping[str, Any]) -> str:
                 target_label = f"symbol {(target.get('query') or '?')!s}"
         else:
             target_label = str(target.get("path") or payload.get("file_path") or "?")
-    lines = [f"- target: {target_label}", f"- risk: {(payload.get('risk_level') or 'unknown')!s}"]
+    lines = [
+        "### impact",
+        f"- target: {target_label}",
+        f"- target_type: {(payload.get('target_type') or 'file')!s}",
+        f"- risk: {(payload.get('risk_level') or 'unknown')!s}",
+    ]
+    provenance = str(payload.get("provenance") or "").strip()
+    if provenance:
+        lines.append(f"- provenance: {provenance}")
     grouped: dict[str, list[str]] = defaultdict(list)
     for label, key in (
         ("direct", "direct_importers"),
@@ -285,13 +302,16 @@ def _render_index(payload: Mapping[str, Any]) -> str:
     symbols_indexed = int(payload.get("symbols_indexed") or 0)
     imports_indexed = int(payload.get("imports_indexed") or 0)
     index_version = int(payload.get("index_version") or 0)
-    return "\n".join(
-        [
-            f"- repo: {(payload.get('repo_id') or '?')!s}",
-            f"- version: {index_version}",
-            f"- counts: files={files_indexed}, symbols={symbols_indexed}, imports={imports_indexed}",
-        ]
-    )
+    lines = [
+        "### index",
+        f"- repo: {(payload.get('repo_id') or '?')!s}",
+        f"- version: {index_version}",
+        f"- counts: files={files_indexed}, symbols={symbols_indexed}, imports={imports_indexed}",
+    ]
+    provenance = str(payload.get("provenance") or "").strip()
+    if provenance:
+        lines.append(f"- provenance: {provenance}")
+    return "\n".join(lines)
 
 
 def _render_cache_status(payload: Mapping[str, Any]) -> str:
@@ -308,6 +328,7 @@ def _render_cache_status(payload: Mapping[str, Any]) -> str:
             if len(entries) > 4:
                 tool_summary = f"{tool_summary}, +{len(entries) - 4} more"
     lines = [
+        "### cache_status",
         f"- repo: {(payload.get('repo_id') or '?')!s}",
         f"- index_version: {index_version}",
         f"- entries: {entry_count}",
@@ -325,22 +346,31 @@ def _render_context(payload: Mapping[str, Any]) -> str:
     import_neighbors = payload.get("import_neighbors")
     lines: list[str] = []
 
-    for row in (entry_points or [])[:_CONTEXT_ENTRY_CAP]:
-        lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
+    if entry_points:
+        lines.append("#### entry_points")
+        for row in (entry_points or [])[:_CONTEXT_ENTRY_CAP]:
+            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
 
     if related_symbols:
+        lines.append("#### related_symbols")
         for row in related_symbols[:_CONTEXT_RELATED_CAP]:
             lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
     elif isinstance(import_neighbors, list) and import_neighbors:
+        lines.append("#### related_symbols")
         for item in sorted(str(value) for value in import_neighbors[:_CONTEXT_RELATED_CAP]):
             lines.append(f"- {item}")
 
     if code_blocks:
+        lines.append("#### code_blocks")
         for block in code_blocks[:_CONTEXT_CODE_BLOCK_CAP]:
             lines.append(
                 f"- {block['qualified_name']} ({block['file_path']}:{block['start_line']}-{block['end_line']})"
             )
+            language = str(block.get("language") or "")
+            fence = f"```{language}" if language else "```"
+            lines.append(fence)
             lines.append(str(block["source"]).rstrip())
+            lines.append("```")
 
     return "\n".join(lines) if lines else "no context"
 

@@ -181,7 +181,7 @@ def test_fresh_workflow_step_does_not_inherit_parent_or_prior_attempt_history() 
         role_id="research",
         phase_prompt_id="owned-explore-phase",
         effort="medium",
-        read_mode_hint="minified",
+        read_mode_hint="compact",
         fork_from="explore",
         context_mode="fresh",
     )

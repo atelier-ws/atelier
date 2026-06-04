@@ -4,16 +4,15 @@
 
 ## Operating loop
 
-1. **Context**: Call `context` with task, domain, files, tools, and errors when the host supports it. Use the host-displayed handle if it adds an `mcp__atelier__` prefix.
-2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. Use `route` or `rescue` when the same approach fails twice.
-3. **Record**: Call `trace` when the task is done.
+1. **Understand**: Read the relevant source of truth before changing anything; ground every change in real code.
+2. **Implement**: Use Atelier MCP tools for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change approach — do not retry a third time.
 
 ## Tool substitution — mandatory
 
-- Shared docs use plain tool names like `context`, `read`, `search`, and `trace`.
+- Shared docs use plain tool names like `read`, `search`, `grep`, and `edit`.
 - Some hosts expose the same tools as handles like `mcp__atelier__context`; use the name shown by your host when invoking one explicitly.
 - `read` for file reads; `search` / `grep` for discovery; `edit` for file changes.
-- `symbols` / `node` / `callers` / `callees` / `usages` / `impact` / `explore` for code intelligence.
+- `symbols` / `node` / `callers` / `usages` / `explore` for code intelligence.
 - `shell` only for commands without a better Atelier equivalent.
 
 ## Always prefer Atelier MCP tools
@@ -28,7 +27,7 @@
 - Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.
 - Restate working context in under 10 bullets before editing or after compaction.
 - If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.
-- If the same approach fails twice, call `rescue` or change approach; do not retry a third time.
+- If the same approach fails twice, change approach; do not retry a third time.
 
 ## Coding Guidelines
 

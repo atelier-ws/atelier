@@ -57,6 +57,7 @@ Atelier reduces token spend at every layer of the agent loop — context loading
 | **Model Routing**                        | Sends each task to the right model (Haiku/Sonnet/Opus or cross-vendor) based on complexity, budget, and quality policy. Includes counterfactual pricing simulation. | Routes simple work to cheap models, hard work to capable ones.                                                                          |
 | **Tool Supervision**                     | Cached reads, memoized searches, batch edits with rollback, injection-guarded grep — fewer redundant tool calls.                                                    | Removes duplicate filesystem and search work.                                                                                           |
 | **Outline-mode reads**                   | `mcp__atelier__read` returns signatures/structure instead of full bodies for files over ~200 LOC.                                                                   | Large file reads are compressed substantially; see the benchmark harness and calibration store for current measured ratios by language. |
+| **Source projection**                    | `read` can return truthful `summary` / `outline` / `compact` / `range` / `exact` views, and compact reads can carry mapping metadata for safe exact-span edits.    | Keeps discovery cheap while preserving a clean handoff back to untransformed source text.                                               |
 | **Token-budgeted search/grep**           | `search` and `grep` pack results to fit an explicit token budget, ranking by relevance instead of dumping raw output.                                               | Bounded output — no accidental 50K-token grep results.                                                                                  |
 | **SCIP-indexed code intel**              | Symbol lookup, callers, callees, impact, and routes come from a pre-built SCIP index, not repeated `grep`/`cat` passes.                                             | Up to ~100× fewer tokens for symbol-level questions vs. textual search.                                                                 |
 | **Specialized sub-agents**               | Read-only `explore`/`review`/`research` are tool-scoped (no edit access); the spawning agent picks the model per task (cheap for lookups, stronger for precision work).                                | Right-sized model + least-privilege tools per delegated task.                                                                           |
@@ -140,6 +141,39 @@ Detect execution pathologies — thrashing, second-guessing, repeated failures �
 
 Cached reads, memoized searches, injection-guarded grep, smart search, batch editing with rollback, shell command inspection, and symbol-level rename across the workspace.
 
+### Source Projection Workflow
+
+Atelier now treats compact reads as a **projection layer**, not just a minifier:
+
+1. `read` chooses the cheapest truthful view for the task: `summary`, `outline`, `compact`, `range`, or `exact`.
+2. Transformed reads carry a projection notice so the agent knows whether it saw structure-only or whitespace-transformed content.
+3. Compact reads with `include_meta=true` can return `projection_mapping`, which records stable segment metadata for exact projected spans.
+4. The `edit` tool accepts `kind: "projection"` descriptors for **exactly resolvable compact spans** and applies those edits back onto untransformed source text.
+5. If the mapping is stale or the projected span is ambiguous, the edit fails closed and returns machine-readable `retry_with` guidance for an exact reread.
+6. The service API exposes the same structured surface at `/v1/files/projection?path=...&view=compact`, so the UI can inspect `projection`, `projection_delta`, and `projection_mapping` without scraping tool output.
+
+This keeps discovery cheap without turning transformed reads into an unsafe write surface.
+
+Example projection inspection:
+
+```bash
+curl "http://localhost:8000/api/v1/files/projection?path=/repo/main.go&view=compact"
+```
+
+Example ambiguous edit fallback:
+
+```json
+{
+  "code": "ambiguous_projected_range",
+  "retry_with": {
+    "tool": "read",
+    "path": "/repo/main.go",
+    "range": "L10-L14",
+    "include_meta": true
+  }
+}
+```
+
 ### Context Compression
 
 Summarise long-running agent ledgers into compact reusable state, reducing context window pressure.
@@ -189,19 +223,19 @@ Per-host install guides:
 
 Atelier ships a fixed set of seven specialised sub-agents across every supported host (Claude Code, opencode, Antigravity). They share one task loop, one ledger, and one set of MCP tools — only the toolset and model assignment differ.
 
-| Agent          | Purpose                                                                                                                          | Default model   | Tooling                                                                           |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------- |
-| **`code`**     | Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop.                                  | Inherits parent | All tools (Atelier MCP preferred over native I/O)                                 |
-| **`explore`**  | Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.                                                    | Inherits parent | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,search,read,grep,node,symbols,usages,explore,memory}` |
-| **`plan`**     | Read-only planner. Turns grounded context into a concrete implementation plan.                                                   | Inherits parent | Read/search/code-intel tools; edits disallowed                                   |
-| **`execute`**  | Focused executor. Applies an accepted plan or narrow task with the smallest verified edit set.                                   | Inherits parent | All tools                                                                         |
-| **`research`** | External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.  | Inherits parent | `WebFetch`, `WebSearch`, `mcp__atelier__{context,search,read,memory}`             |
-| **`review`**   | Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.                      | Inherits parent | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,read,search,verify,trace,memory}` |
-| **`solve`**    | Benchmark solver. Produces artifacts early, iterates against checks, and keeps the workspace clean.                              | Inherits parent | All tools; sub-agent spawning disallowed                                          |
+| Agent          | Purpose                                                                                                                          | Registry default    | Tooling                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------- |
+| **`code`**     | Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop.                                  | `claude-opus-4.8`   | All tools (Atelier MCP preferred over native I/O)                                 |
+| **`explore`**  | Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.                                                    | `claude-sonnet-4.6` | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,search,read,grep,node,symbols,usages,explore,memory}` |
+| **`plan`**     | Read-only planner. Turns grounded context into a concrete implementation plan.                                                   | `claude-sonnet-4.6` | Read/search/code-intel tools; edits disallowed                                   |
+| **`execute`**  | Focused executor. Applies an accepted plan or narrow task with the smallest verified edit set.                                   | `claude-opus-4.8`   | All tools                                                                         |
+| **`research`** | External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.  | `claude-sonnet-4.6` | `WebFetch`, `WebSearch`, `mcp__atelier__{context,search,read,memory}`             |
+| **`review`**   | Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.                      | `claude-sonnet-4.6` | `Read`, `Grep`, `Glob`, `mcp__atelier__{context,read,search,verify,trace,memory}` |
+| **`solve`**    | Benchmark solver. Produces artifacts early, iterates against checks, and keeps the workspace clean.                              | `claude-opus-4.8`   | All tools; sub-agent spawning disallowed                                          |
 
 Agent source-of-truth definitions live under `docs/agent-os/modes/`. Host-specific files are generated by `scripts/sync_agent_context.py` into:
 
-- `integrations/claude/plugin/agents/` — Claude Code sub-agents (`code.md`, `explore.md`, `plan.md`, `execute.md`, `research.md`, `review.md`, `solve.md`, plus matching `*.dev.md` variants)
+- `integrations/claude/plugin/agents/` — Claude Code sub-agents (`code.md`, `explore.md`, `plan.md`, `execute.md`, `research.md`, `review.md`, `solve.md`)
 - `integrations/opencode/agents/` — opencode agents (`atelier.md`, `explore.md`, `plan.md`, `execute.md`, `research.md`, `review.md`, `solve.md`)
 - `integrations/antigravity/plugin/agents/` — Antigravity agents (`atelier-code.md`, `atelier-explore.md`, `atelier-plan.md`, `atelier-execute.md`, `atelier-research.md`, `atelier-review.md`, `atelier-solve.md`)
 

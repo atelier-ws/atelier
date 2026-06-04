@@ -488,6 +488,15 @@ def _matches_file_glob(path: str, pattern: str) -> bool:
         return True
     if "**/" in normalized_pattern and pure_path.match(normalized_pattern.replace("**/", "")):
         return True
+    if fnmatch.fnmatch(normalized_path, normalized_pattern):
+        return True
+    regex = re.escape(normalized_pattern)
+    regex = regex.replace(r"\*\*/", r"(?:.*/)?")
+    regex = regex.replace(r"\*\*", r".*")
+    regex = regex.replace(r"\*", r"[^/]*")
+    regex = regex.replace(r"\?", r"[^/]")
+    if re.fullmatch(regex, normalized_path):
+        return True
     return False
 
 
@@ -889,13 +898,14 @@ class CodeContextEngine:
         self._sync_symbol_intel()
         stats = self.index_repo(include_globs=include_globs, exclude_globs=exclude_globs, force=force)
         stats_payload = stats.model_dump(mode="json")
+        snapshot = self._index_snapshot()
         return self._pack_single_payload(
             {
                 "repo_id": stats_payload["repo_id"],
                 "index_version": stats_payload["index_version"],
-                "files_indexed": stats_payload["files_indexed"],
-                "symbols_indexed": stats_payload["symbols_indexed"],
-                "imports_indexed": stats_payload["imports_indexed"],
+                "files_indexed": snapshot["files_indexed"],
+                "symbols_indexed": snapshot["symbols_indexed"],
+                "imports_indexed": snapshot["imports_indexed"],
                 "provenance": _LOCAL_PROVENANCE,
             },
             budget_tokens=effective_budget_tokens,
@@ -4109,6 +4119,7 @@ class CodeContextEngine:
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA busy_timeout = 30000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -4118,8 +4129,9 @@ class CodeContextEngine:
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
-            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS engine_state (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL

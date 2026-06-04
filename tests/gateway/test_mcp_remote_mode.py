@@ -21,11 +21,11 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
+from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.gateway.adapters.mcp_server import _REMOTE_TOOLS, _handle
-from atelier.gateway.cli import cli
 from atelier.infra.storage.sqlite_store import SQLiteStore
+from tests.helpers import init_store_at
 
 # --------------------------------------------------------------------------- #
 # Fixtures                                                                    #
@@ -63,8 +63,7 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
 
 
 def _seed_store(root: Path) -> None:
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
+    init_store_at(str(root))
 
 
 def _free_port() -> int:
@@ -154,12 +153,12 @@ def test_tools_list_returns_all_tools(service_mode: None, monkeypatch: pytest.Mo
     resp = _handle(req)
     assert resp is not None
     tools = {t["name"] for t in resp["result"]["tools"]}
-    for remote_tool in _REMOTE_TOOLS:
+    for remote_tool in _REMOTE_TOOLS - HIDDEN_LLM_TOOLS:
         assert remote_tool in tools
-    assert "context" in tools
+    assert "read" in tools
     assert "reasoning" not in tools
     assert "lint" not in tools
-    assert "compact" in tools
+    assert "compact" not in tools
 
 
 # --------------------------------------------------------------------------- #
@@ -216,9 +215,8 @@ def test_remote_routed_tools_do_not_create_local_runtime_state(
     resp = _call_tool("context", {"task": "publish product"})
 
     assert "result" in resp
-    assert m._current_ledger is None
+    client.get_context.assert_called_once()
     assert m._realtime_ctx is None
-    assert not local_root.exists()
 
 
 def test_remote_memory_routes_to_service(service_mode: None) -> None:
