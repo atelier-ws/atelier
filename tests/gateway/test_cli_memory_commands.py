@@ -78,6 +78,62 @@ def test_cli_memory_upsert_and_get_round_trip(tmp_path: Path) -> None:
     assert repeated["id"] == payload["id"]
 
 
+def test_cli_memory_remember_and_vote_round_trip(tmp_path: Path) -> None:
+    _reset_remote_mode()
+    os.environ.pop("ATELIER_SERVICE_URL", None)
+    root = tmp_path / ".atelier"
+    runner = CliRunner()
+
+    remembered = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "memory",
+            "remember",
+            "Prefer host-neutral memory operations.",
+            "--subject",
+            "workflow preference",
+            "--scope",
+            "user",
+            "--agent-id",
+            "atelier:code",
+            "--citations",
+            'User input: "host-neutral"',
+            "--reason",
+            "Keeps CLI, MCP, SDK, and API aligned.",
+            "--json",
+        ],
+    )
+    assert remembered.exit_code == 0, remembered.output
+    payload = json.loads(remembered.output)
+    assert payload["fact"] == "Prefer host-neutral memory operations."
+    assert payload["scope"] == "user"
+
+    voted = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "memory",
+            "vote",
+            "Prefer host-neutral memory operations.",
+            "upvote",
+            "--reason",
+            "Verified by CLI round trip.",
+            "--scope",
+            "user",
+            "--agent-id",
+            "atelier:code",
+            "--json",
+        ],
+    )
+    assert voted.exit_code == 0, voted.output
+    vote_payload = json.loads(voted.output)
+    assert vote_payload["direction"] == "upvote"
+    assert vote_payload["fact"] == "Prefer host-neutral memory operations."
+
+
 def test_cli_memory_upsert_reads_value_from_file(tmp_path: Path) -> None:
     _reset_remote_mode()
     os.environ.pop("ATELIER_SERVICE_URL", None)

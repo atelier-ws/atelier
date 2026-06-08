@@ -147,17 +147,19 @@ def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> Non
     assert captured["proxy_upstream"] == "http://localhost:11434/v1"
 
 
-def test_benchmark_vix_wraps_runner(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -170,46 +172,48 @@ def test_benchmark_vix_wraps_runner(monkeypatch, tmp_path: Path) -> None:
             "--root",
             str(root),
             "benchmark",
-            "eval",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "atelierbench",
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
     cmd, label, env = calls[0]
-    assert label == "VIX benchmark"
-    assert cmd[:3] == ["python", "-m", "benchmarks.eval.run"]
+    assert label == "AtelierBench"
+    assert cmd[:3] == ["python", "-m", "benchmarks.atelierbench.run"]
     assert "--tasks" in cmd and cmd[cmd.index("--tasks") + 1] == "all"
     assert "--arms" in cmd
     assert cmd[cmd.index("--cli-driver") + 1] == "claude"
     assert cmd[cmd.index("--jobs") + 1] == "1"
     assert cmd[cmd.index("--parallel-scope") + 1] == "task"
-    assert env == {"VIX_EVAL_DIR": str(eval_dir.resolve())}
-    manifest = json.loads((tmp_path / "eval" / "benchmark-manifest.json").read_text("utf-8"))
-    assert manifest["suite"] == "eval"
+    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
+    manifest = json.loads((tmp_path / "atelierbench" / "benchmark-manifest.json").read_text("utf-8"))
+    assert manifest["suite"] == "atelierbench"
     assert manifest["protocol"]["baseline_arm"] == "baseline"
     assert manifest["corpus"]["tasks"][0]["id"] == "task1"
-    evidence = json.loads((tmp_path / "eval" / "benchmark-evidence.json").read_text("utf-8"))
-    assert evidence["suite"] == "eval"
+    evidence = json.loads((tmp_path / "atelierbench" / "benchmark-evidence.json").read_text("utf-8"))
+    assert evidence["suite"] == "atelierbench"
     assert evidence["artifacts"]["results_jsonl"]["path"].endswith("results.jsonl")
-    gate = json.loads((tmp_path / "eval" / "benchmark-gate.json").read_text("utf-8"))
-    assert gate["suite"] == "eval"
+    gate = json.loads((tmp_path / "atelierbench" / "benchmark-gate.json").read_text("utf-8"))
+    assert gate["suite"] == "atelierbench"
     assert gate["passed"] is False
 
 
-def test_benchmark_vix_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -222,7 +226,7 @@ def test_benchmark_vix_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Pa
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--arm",
             "baseline",
             "--arm",
@@ -238,33 +242,35 @@ def test_benchmark_vix_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Pa
             "--launch-ollama",
             "--bridge-wait",
             "0",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "VIX benchmark"
+    assert label == "AtelierBench"
     assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier", "eval"]
     assert cmd[cmd.index("--model") + 1] == "llama3.2"
     assert cmd[cmd.index("--transport") + 1] == "api"
     assert cmd[cmd.index("--api-provider") + 1] == "ollama"
     assert "--launch-ollama" in cmd
-    assert env == {"VIX_EVAL_DIR": str(eval_dir.resolve())}
+    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
 
 
-def test_benchmark_vix_judge_defaults_to_runner_transport(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_judge_defaults_to_runner_transport(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -277,14 +283,14 @@ def test_benchmark_vix_judge_defaults_to_runner_transport(monkeypatch, tmp_path:
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--transport",
             "cli",
             "--model",
             "claude-sonnet-4-6",
             "--judge",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
@@ -298,17 +304,19 @@ def test_benchmark_vix_judge_defaults_to_runner_transport(monkeypatch, tmp_path:
     assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-6"
 
 
-def test_benchmark_vix_openrouter_claude_preset_passes_agent_env(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -321,7 +329,7 @@ def test_benchmark_vix_openrouter_claude_preset_passes_agent_env(monkeypatch, tm
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--transport",
             "cli",
             "--model",
@@ -331,33 +339,35 @@ def test_benchmark_vix_openrouter_claude_preset_passes_agent_env(monkeypatch, tm
             "OPENROUTER_API_KEY",
             "--agent-env",
             "EXTRA_FLAG=1",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "VIX benchmark"
+    assert label == "AtelierBench"
     assert "--agent-env" in cmd
     assert "EXTRA_FLAG=1" in cmd
     assert "ANTHROPIC_BASE_URL=https://openrouter.ai/api" in cmd
     assert "ANTHROPIC_API_KEY=" in cmd
     assert "ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY" in cmd
-    assert env == {"VIX_EVAL_DIR": str(eval_dir.resolve())}
+    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
 
 
-def test_benchmark_vix_generic_claude_provider_flags_pass_through(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -370,7 +380,7 @@ def test_benchmark_vix_generic_claude_provider_flags_pass_through(monkeypatch, t
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--transport",
             "cli",
             "--model",
@@ -382,31 +392,33 @@ def test_benchmark_vix_generic_claude_provider_flags_pass_through(monkeypatch, t
             "--claude-api-key-env",
             "PROVIDER_API_KEY",
             "--clear-claude-api-key",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "VIX benchmark"
+    assert label == "AtelierBench"
     assert "ANTHROPIC_BASE_URL=https://provider.example/api" in cmd
     assert "ANTHROPIC_AUTH_TOKEN=PROVIDER_AUTH" in cmd
     assert "ANTHROPIC_API_KEY=PROVIDER_API_KEY" in cmd
-    assert env == {"VIX_EVAL_DIR": str(eval_dir.resolve())}
+    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
 
 
-def test_benchmark_vix_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -419,7 +431,7 @@ def test_benchmark_vix_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path)
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--cli-driver",
             "codex",
             "--jobs",
@@ -430,14 +442,14 @@ def test_benchmark_vix_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path)
             "-c",
             "--cli-extra-arg",
             'model_reasoning_effort="medium"',
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, _env = calls[0]
-    assert label == "VIX benchmark"
+    assert label == "AtelierBench"
     assert cmd[cmd.index("--cli-driver") + 1] == "codex"
     assert cmd[cmd.index("--jobs") + 1] == "3"
     assert cmd[cmd.index("--parallel-scope") + 1] == "arm"
@@ -445,17 +457,19 @@ def test_benchmark_vix_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path)
     assert '--cli-extra-arg=model_reasoning_effort="medium"' in cmd
 
 
-def test_benchmark_vix_named_aws_claude_preset_passes_env(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -468,33 +482,35 @@ def test_benchmark_vix_named_aws_claude_preset_passes_env(monkeypatch, tmp_path:
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--transport",
             "cli",
             "--cli-driver",
             "claude",
             "--claude-provider-preset",
             "aws-claude",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, _env = calls[0]
-    assert label == "VIX benchmark"
+    assert label == "AtelierBench"
     assert "CLAUDE_CODE_USE_BEDROCK=1" in cmd
     assert "AWS_REGION=AWS_REGION" in cmd
 
 
-def test_benchmark_vix_rejects_claude_flags_for_non_claude_driver(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
-    eval_dir = tmp_path / "eval-eval"
-    eval_dir.mkdir()
+    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
+    atelierbench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_ensure_eval_dir", lambda repo_root, path: eval_dir)
+    monkeypatch.setattr(
+        benchmark_cmds, "_ensure_atelierbench_tasks_dir", lambda repo_root, path: atelierbench_tasks_dir
+    )
 
     result = runner.invoke(
         cli,
@@ -502,14 +518,14 @@ def test_benchmark_vix_rejects_claude_flags_for_non_claude_driver(monkeypatch, t
             "--root",
             str(root),
             "benchmark",
-            "eval",
+            "atelierbench",
             "--transport",
             "cli",
             "--cli-driver",
             "copilot",
             "--openrouter-claude",
-            "--eval-eval-dir",
-            str(eval_dir),
+            "--task-source-dir",
+            str(atelierbench_tasks_dir),
         ],
     )
 

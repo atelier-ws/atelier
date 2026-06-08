@@ -21,7 +21,7 @@
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
 #   ATELIER_ADVANCED   If set to 1, enable Docker sidecar install (requires --memory)
 #   ATELIER_MEMORY_BACKEND  Memory sidecar to install: letta | openmemory (default: none)
-#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (default: 1)
+#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (default: 0)
 #   ATELIER_LOCAL      If set to 1, install from the current checkout in editable mode
 #   ATELIER_VERBOSE   If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
@@ -90,8 +90,8 @@ ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
 ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
 ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
-ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-0}"   # 1 = enable periodic optimize automation
-ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # 1 = install persistent Zoekt sidecar
+ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-1}"   # 1 = enable periodic optimize automation
+ATELIER_ZOEKT="${ATELIER_ZOEKT:-0}"                    # 1 = install persistent Zoekt sidecar
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 BINARY_SUFFIX="${OS_NAME}-${ARCH}"
@@ -806,41 +806,9 @@ interactive_multi_select() {
 }
 
 prompt_memory_selection() {
-    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
-    has_interactive_input || return 0
-    [[ -n "$ATELIER_MEMORY_BACKEND" || "$ATELIER_ADVANCED" == "1" ]] && return 0
-
-    local choice_index=0
-    if supports_interactive_selector; then
-        interactive_single_select \
-            "Choose memory backend:" \
-            choice_index \
-            0 \
-            "SQLite (default, local)" \
-            "letta (Docker)" \
-            "openmemory (Docker)"
-    else
-        echo ""
-        printf "◇  Choose memory backend:\n"
-        printf "│  0) SQLite      - local, no Docker needed (default)\n"
-        printf "│  1) letta       - Letta memory server (Docker)\n"
-        printf "│  2) openmemory  - OpenMemory MCP server (Docker + OpenAI key or ollama)\n"
-        printf "Choice [0/1/2, default: 0]: "
-        local choice
-        read -r choice </dev/tty
-        echo ""
-        case "$choice" in
-            1) choice_index=1 ;;
-            2) choice_index=2 ;;
-            *) choice_index=0 ;;
-        esac
-    fi
-
-    case "$choice_index" in
-        1) ATELIER_MEMORY_BACKEND="letta"; ATELIER_ADVANCED=1 ;;
-        2) ATELIER_MEMORY_BACKEND="openmemory"; ATELIER_ADVANCED=1 ;;
-        *) ATELIER_MEMORY_BACKEND="" ;;
-    esac
+    # SQLite is the default memory backend. Docker sidecars are opt-in via
+    # --memory letta|openmemory or ATELIER_MEMORY_BACKEND.
+    return 0
 }
 
 prompt_auto_optimize_selection() {
@@ -848,47 +816,25 @@ prompt_auto_optimize_selection() {
         ATELIER_AUTO_OPTIMIZE=0
         return 0
     fi
-    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
-    has_interactive_input || return 0
     case "${ATELIER_AUTO_OPTIMIZE}" in
         0|1) ;;
-        *) ATELIER_AUTO_OPTIMIZE=0 ;;
+        *) ATELIER_AUTO_OPTIMIZE=1 ;;
     esac
-
-    local enable_choice=0
-    if supports_interactive_selector; then
-        interactive_single_select \
-            "Enable periodic optimization checks?" \
-            enable_choice \
-            "$ATELIER_AUTO_OPTIMIZE" \
-            "No (default, safe)" \
-            "Yes (diagnose + gated proposal artifacts)"
-    else
-        echo ""
-        printf "◇  Enable periodic optimization checks?\n"
-        printf "│  0) No  - keep autonomous optimization disabled (default)\n"
-        printf "│  1) Yes - run optimizer periodically; proposal artifacts remain NI-gated\n"
-        printf "Choice [0/1, default: %s]: " "$ATELIER_AUTO_OPTIMIZE"
-        local choice
-        read -r choice </dev/tty
-        echo ""
-        case "$choice" in
-            1) enable_choice=1 ;;
-            0|"") enable_choice="${ATELIER_AUTO_OPTIMIZE:-0}" ;;
-            *) enable_choice=0 ;;
-        esac
-    fi
-    ATELIER_AUTO_OPTIMIZE="$enable_choice"
 }
 
 prompt_local_zoekt_selection() {
+    if [[ "$ATELIER_ZOEKT" != "1" ]]; then
+        INSTALL_ZOEKT_LOCAL=0
+        return 0
+    fi
+
     local zoekt_all_present=1
     local _z
     for _z in zoekt-git-index zoekt-index zoekt zoekt-webserver; do
         command -v "$_z" >/dev/null 2>&1 || zoekt_all_present=0
     done
 
-    # Auto-install if missing and ATELIER_ZOEKT_AUTO_INSTALL is on (default).
+    # Auto-install if selected, missing, and ATELIER_ZOEKT_AUTO_INSTALL is on.
     if [[ "$zoekt_all_present" == "0" && "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]]; then
         INSTALL_ZOEKT_LOCAL=1
     else
@@ -1197,7 +1143,7 @@ ensure_local_zoekt_runtime() {    # Kept for legacy --zoekt-auto-install flag pa
         fi
     done
     [[ ${#missing[@]} -eq 0 ]] && return
-    warn "Local Zoekt binaries missing — run: atelier zoekt install"
+    warn "Local Zoekt binaries missing — rerun the installer with ATELIER_ZOEKT_AUTO_INSTALL=1"
 }
 
 # Install Node.js to ~/.local/node via official tarball (self-contained, no sudo)
@@ -1282,6 +1228,13 @@ _install_go() {
     command -v go >/dev/null 2>&1
 }
 
+_install_zoekt_binaries() {
+    go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest &&
+        go install github.com/sourcegraph/zoekt/cmd/zoekt-index@latest &&
+        go install github.com/sourcegraph/zoekt/cmd/zoekt@latest &&
+        go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest
+}
+
 install_local_zoekt_if_selected() {
     [[ "$INSTALL_ZOEKT_LOCAL" != "1" ]] && return 0
     local atelier_cli="$1"
@@ -1319,10 +1272,13 @@ install_local_zoekt_if_selected() {
     fi
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] $atelier_cli zoekt install --auto"
+        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest"
+        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-index@latest"
+        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt@latest"
+        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest"
     else
-        spin "Installing Zoekt" "$atelier_cli" zoekt install --auto \
-            || warn "Zoekt install failed. Run: atelier zoekt install"
+        spin "Installing Zoekt" _install_zoekt_binaries \
+            || warn "Zoekt install failed. Ensure Go is working, then rerun the installer with ATELIER_ZOEKT_AUTO_INSTALL=1"
     fi
 }
 

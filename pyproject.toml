@@ -91,6 +91,7 @@ dev = [
 
 [project.scripts]
 atelier = "atelier.gateway.cli:main"
+atl = "atelier.gateway.cli:main"
 atelier-mcp = "atelier.gateway.adapters.mcp_server:main"
 
 [build-system]
