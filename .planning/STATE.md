@@ -1,42 +1,37 @@
 ---
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: complete
-last_updated: "2026-06-03T16:45:00Z"
-last_activity: 2026-06-03
+gsd_state_version: '1.0'  # placeholder; syncStateFrontmatter overwrites on first state.* call
+status: planning
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 17
-  completed_plans: 17
-  percent: 100
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-02)
+See: .planning/PROJECT.md (updated 2026-06-08)
 
-**Core value:** Achieve the highest solved-rate on frozen terminal-bench-style coding tasks, with non-inferior quality and lower cost where possible.
-**Current focus:** Milestone complete
+**Core value:** Phase-linear warm-prefix reuse — the Plan phase reads Survey's codebase context as a cache hit, not a cold re-read.
+**Current focus:** Phase 1 — Owned Session Core
 
 ## Current Position
 
-Phase: 4 of 4 (Benchmark Gate MVP)
-Plan: 3 of 3 in current phase
-Status: All four milestone phases are complete, including Phase 4 benchmark corpus freezing, evidence artifacts, and benchmark gating
-Last activity: 2026-06-03
+Phase: 1 of 5 (Owned Session Core)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-06-08 — Roadmap created (5 phases mapping M1–M5, 23 v1 requirements mapped)
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-
-- Total plans completed: 17
-- Average duration: 19 min
+- Total plans completed: 0
+- Average duration: — min
 - Total execution time: 0.0 hours
 
 **By Phase:**
@@ -46,13 +41,10 @@ Progress: [██████████] 100%
 | - | - | - | - |
 
 **Recent Trend:**
+- Last 5 plans: —
+- Trend: —
 
-- Last 5 plans: 03-03, 03-04, 04-01, 04-02, 04-03
-- Trend: Accelerating
-
-| Phase 01 P01 | 2 | 2 tasks | 7 files |
-| Phase 01 P02 | 10 | 2 tasks | 5 files |
-| Phase 01 P03 | 1 | 2 tasks | 5 files |
+*Updated after each plan completion*
 
 ## Accumulated Context
 
@@ -61,30 +53,27 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Init]: Benchmark-first terminal coding agent is the product target
-- [Init]: Eval is the execution-discipline reference; Augment is the context-quality reference
-- [Init]: Enforced routing is limited to Atelier-owned subcalls in milestone 1
-- [Phase 03 planned]: Explicit provider/model selection and `auto` selection are both first-class route modes; start with manual control, then make auto policy safer over time.
-- [Phase 03 planned]: Prompt-cache warmth is a routing signal. Preserve warm provider/model/session paths unless quality risk, provider health, or measured cost requires switching.
-- [Phase 01]: Keep Search-first orchestration in core and compose existing smart_search/search_read primitives instead of adding a new gateway surface.
-- [Phase 01]: Grounded seed files should bias code-intel ranking in CodeContextEngine while the gateway only forwards context.
-- [Phase 01]: Search responses must keep mode and provenance visible so semantic escalation remains discoverable.
-- [Phase 01]: Rewrite plain rg discovery habits to ranked search, but keep explicit regex-style usage on grep.
-- [Phase 01]: Phase 1 host nudges stay advisory; hard grounded-edit gates remain deferred to Phase 2.
-- [Phase 02]: Advisory workflow state is not enough for Eval parity; Phase 2 must add an owned workflow DAG runner, canonical default definitions, and benchmark solver/headless retry plans before routing and benchmark proof.
-- [Phase 02]: Adopt Eval's "stem agent" for owned execution — one generic system prompt, phase changes as user-turn prompts, later steps fork the prior step's conversation — so the prompt-cache prefix survives explore->plan->review->execute (separate per-phase system prompts would trip prefix invalidation and forfeit the cache win).
-- [Phase 02]: Promote the read-only half of Eval's VFS (structural minified reads) into milestone 1 as EXEC-14 / Plan 02-07; the edit/write round-trip stays deferred (v2 TOOL-01).
+- Command name `atelier run` (not `atelier code` — that group is taken by code-intel/zoekt).
+- JSONL session state under `~/.atelier/runs/` for v1 (SQLite deferred to v2).
+- litellm default transport (`cache_control` + `prompt_cache_key`); anthropic-direct 1h TTL deferred to v2.
+- Background keepalive thread (Aider's proven pattern) over piggyback.
+- Reuse existing `execute_owned_prompt`, `select_owned_route`, `cache_affinity_for_route`, `context_dedup` — no reinvention.
 
 ### Pending Todos
 
-- Archive or prepare the completed milestone for the next cycle.
+[From .planning/todos/pending/ — ideas captured during sessions]
+
+None yet.
 
 ### Blockers/Concerns
 
-- Repo-wide `make lint` still fails on pre-existing issues in `benchmarks/atelierbench/run.py` and `scripts/extract_flow.py`.
-- Repo-wide `make typecheck` still fails on the pre-existing duplicate `benchmarks` package discovery between `benchmarks/` and `src/benchmarks/`.
+[Issues that affect future work]
+
+None yet.
 
 ## Deferred Items
+
+Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
@@ -92,6 +81,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-06-03T00:00:00Z
-Stopped at: Phase 2 parity audit added owned runner/defaults/solver plans
+Last session: 2026-06-08
+Stopped at: Roadmap and STATE initialized; ready to plan Phase 1.
 Resume file: None
