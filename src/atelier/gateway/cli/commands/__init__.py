@@ -163,6 +163,13 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
+        from .run import run_group
+
+        cli.add_command(run_group)
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
         from .memory import memory_group_cli
 
         cli.add_command(memory_group_cli)
