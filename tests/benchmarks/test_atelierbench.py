@@ -25,15 +25,15 @@ def _ensure_benchmarks_package() -> None:
             benchmark_paths.append(path)
     benchmarks.__path__ = benchmark_paths
 
-    vix_pkg = sys.modules.get("benchmarks.eval")
-    if vix_pkg is None:
-        vix_pkg = types.ModuleType("benchmarks.eval")
-        sys.modules["benchmarks.eval"] = vix_pkg
-    vix_paths = list(getattr(vix_pkg, "__path__", []))
-    root_vix_path = str(ROOT / "benchmarks" / "eval")
-    if root_vix_path not in vix_paths:
-        vix_paths.append(root_vix_path)
-    vix_pkg.__path__ = vix_paths
+    atelierbench_pkg = sys.modules.get("benchmarks.atelierbench")
+    if atelierbench_pkg is None:
+        atelierbench_pkg = types.ModuleType("benchmarks.atelierbench")
+        sys.modules["benchmarks.atelierbench"] = atelierbench_pkg
+    atelierbench_paths = list(getattr(atelierbench_pkg, "__path__", []))
+    root_atelierbench_path = str(ROOT / "benchmarks" / "atelierbench")
+    if root_atelierbench_path not in atelierbench_paths:
+        atelierbench_paths.append(root_atelierbench_path)
+    atelierbench_pkg.__path__ = atelierbench_paths
 
 
 def _load(module_name: str) -> ModuleType:
@@ -42,13 +42,13 @@ def _load(module_name: str) -> ModuleType:
     return importlib.import_module(module_name)
 
 
-VIX = _load("benchmarks.eval.run")
-TASKS = _load("benchmarks.eval.tasks")
+ATELIERBENCH = _load("benchmarks.atelierbench.run")
+TASKS = _load("benchmarks.atelierbench.tasks")
 
 
 def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
     results = [
-        VIX.ArmResult(
+        ATELIERBENCH.ArmResult(
             task="task-1",
             arm="baseline",
             rep=0,
@@ -66,7 +66,7 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
             result_excerpt="ok",
             flow_path="baseline.flow",
         ),
-        VIX.ArmResult(
+        ATELIERBENCH.ArmResult(
             task="task-1",
             arm="atelier",
             rep=0,
@@ -84,7 +84,7 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
             result_excerpt="ok",
             flow_path="atelier.flow",
         ),
-        VIX.ArmResult(
+        ATELIERBENCH.ArmResult(
             task="task-1",
             arm="eval",
             rep=0,
@@ -104,7 +104,7 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
         ),
     ]
 
-    VIX.write_csv_artifacts(tmp_path, results)
+    ATELIERBENCH.write_csv_artifacts(tmp_path, results)
 
     with (tmp_path / "results.csv").open("r", encoding="utf-8", newline="") as handle:
         detail_rows = list(csv.DictReader(handle))
@@ -125,12 +125,12 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
 
 
 def test_task_prompt_prefers_variant_prompt_when_prompt_md_missing(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    vix_dir = tmp_path / "eval-eval"
-    task_dir = vix_dir / "tasks" / "task2_variant"
+    task_source_dir = tmp_path / "atelierbench-tasks"
+    task_dir = task_source_dir / "tasks" / "task2_variant"
     task_dir.mkdir(parents=True)
     (task_dir / "prompt_medium.md").write_text("medium prompt", encoding="utf-8")
     (task_dir / "prompt_hard.md").write_text("hard prompt", encoding="utf-8")
-    monkeypatch.setenv("VIX_EVAL_DIR", str(vix_dir))
+    monkeypatch.setenv("ATELIERBENCH_TASKS_DIR", str(task_source_dir))
 
     task = TASKS.Task("task2", "swift", ("empty",), 1, "task2_variant")
 
@@ -140,7 +140,7 @@ def test_task_prompt_prefers_variant_prompt_when_prompt_md_missing(tmp_path: Pat
 def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    existing = VIX.ArmResult(
+    existing = ATELIERBENCH.ArmResult(
         task="task-1",
         arm="baseline",
         rep=0,
@@ -161,8 +161,8 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
     (run_dir / "results.jsonl").write_text(json.dumps(existing.__dict__) + "\n", encoding="utf-8")
 
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
-    monkeypatch.setattr(VIX, "TASKS", [task])
-    monkeypatch.setattr(VIX, "BY_ID", {task.id: task})
+    monkeypatch.setattr(ATELIERBENCH, "TASKS", [task])
+    monkeypatch.setattr(ATELIERBENCH, "BY_ID", {task.id: task})
 
     calls: list[tuple[str, str, int]] = []
 
@@ -198,7 +198,7 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
             resume_state,
         )
         calls.append((task_obj.id, arm, rep))
-        return VIX.ArmResult(
+        return ATELIERBENCH.ArmResult(
             task=task_obj.id,
             arm=arm,
             rep=rep,
@@ -217,7 +217,7 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
             flow_path=f"{arm}.flow",
         )
 
-    monkeypatch.setattr(VIX, "run_arm", fake_run_arm)
+    monkeypatch.setattr(ATELIERBENCH, "run_arm", fake_run_arm)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -236,7 +236,7 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
         ],
     )
 
-    assert VIX.main() == 0
+    assert ATELIERBENCH.main() == 0
     assert calls == [("task-1", "atelier", 0)]
 
 
@@ -267,7 +267,7 @@ def test_parse_copilot_result_reads_jsonl_metrics() -> None:
         ]
     )
 
-    result = VIX._parse_cli_result(
+    result = ATELIERBENCH._parse_cli_result(
         stdout,
         Path("copilot.flow"),
         "task-1",
@@ -318,7 +318,7 @@ def test_parse_codex_result_prefers_token_count_totals() -> None:
         ]
     )
 
-    result = VIX._parse_cli_result(
+    result = ATELIERBENCH._parse_cli_result(
         stdout,
         Path("codex.flow"),
         "task-1",
@@ -353,7 +353,7 @@ def test_parse_codex_result_reads_item_completed_stream() -> None:
         ]
     )
 
-    result = VIX._parse_cli_result(
+    result = ATELIERBENCH._parse_cli_result(
         stdout,
         Path("codex-new.flow"),
         "task-1",
@@ -400,7 +400,7 @@ def test_parse_opencode_result_reads_normalized_events() -> None:
         ]
     )
 
-    result = VIX._parse_cli_result(
+    result = ATELIERBENCH._parse_cli_result(
         stdout,
         Path("opencode.flow"),
         "task-1",
@@ -449,9 +449,9 @@ def test_run_api_arm_uses_openai_compatible_endpoint(tmp_path: Path, monkeypatch
         captured["payload"] = json.loads(request.data.decode("utf-8"))
         return FakeResponse()
 
-    monkeypatch.setattr(VIX.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(ATELIERBENCH.urllib.request, "urlopen", fake_urlopen)
 
-    result = VIX.run_api_arm(
+    result = ATELIERBENCH.run_api_arm(
         task,
         "eval",
         0,
@@ -475,7 +475,7 @@ def test_run_api_arm_uses_openai_compatible_endpoint(tmp_path: Path, monkeypatch
 def test_validate_result_excerpt_rejects_placeholder_response() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "I'm ready to help! What would you like to work on?",
     )
@@ -487,7 +487,7 @@ def test_validate_result_excerpt_rejects_placeholder_response() -> None:
 def test_validate_result_excerpt_rejects_off_topic_research_response() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "I need to research how CLI coding agents detect the host IDE/terminal environment. "
         "I'll start by searching the web for Claude Code, Gemini CLI, Cody, and Aider.",
@@ -500,7 +500,7 @@ def test_validate_result_excerpt_rejects_off_topic_research_response() -> None:
 def test_validate_result_excerpt_rejects_harness_error() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "harness error: Command '['opencode', 'run', '...']' timed out after 60 seconds",
     )
@@ -510,14 +510,14 @@ def test_validate_result_excerpt_rejects_harness_error() -> None:
 
 
 def test_validate_result_excerpt_rejects_zero_overlap_response(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    vix_dir = tmp_path / "eval-eval"
-    task_dir = vix_dir / "tasks" / "task1"
+    task_source_dir = tmp_path / "atelierbench-tasks"
+    task_dir = task_source_dir / "tasks" / "task1"
     task_dir.mkdir(parents=True)
     (task_dir / "prompt.md").write_text("Build a Swift LRU cache", encoding="utf-8")
-    monkeypatch.setenv("VIX_EVAL_DIR", str(vix_dir))
+    monkeypatch.setenv("ATELIERBENCH_TASKS_DIR", str(task_source_dir))
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "Remember stable user preferences and summarize them into ~/.claude/skills/ for reuse.",
     )
@@ -529,7 +529,7 @@ def test_validate_result_excerpt_rejects_zero_overlap_response(tmp_path: Path, m
 def test_validate_result_excerpt_accepts_task_relevant_summary() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "Implemented the Swift LRU cache with disk-backed index persistence, atomic writes, "
         "and debounced access-date updates for get and promote.",
@@ -542,7 +542,7 @@ def test_validate_result_excerpt_accepts_task_relevant_summary() -> None:
 def test_validate_result_excerpt_accepts_error_handling_summary() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "Implemented the Swift LRU cache with persistence and explicit error handling for corrupted index recovery.",
     )
@@ -554,7 +554,7 @@ def test_validate_result_excerpt_accepts_error_handling_summary() -> None:
 def test_validate_result_excerpt_rejects_unnecessary_clarification() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "The workspace contains only the `CLAUDE.md` file. Could you tell me more about what task1 "
         "should do, or should I scaffold something new?",
@@ -567,7 +567,7 @@ def test_validate_result_excerpt_rejects_unnecessary_clarification() -> None:
 def test_validate_result_excerpt_rejects_generic_capability_intro() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = VIX._validate_result_excerpt(
+    valid, reason = ATELIERBENCH._validate_result_excerpt(
         task,
         "Hello! I can help with many tasks:\n\n"
         "- Code development: write and debug code\n"
@@ -581,7 +581,7 @@ def test_validate_result_excerpt_rejects_generic_capability_intro() -> None:
 
 
 def test_parse_agent_env_supports_empty_values() -> None:
-    parsed = VIX._parse_agent_env(
+    parsed = ATELIERBENCH._parse_agent_env(
         [
             "ANTHROPIC_BASE_URL=https://openrouter.ai/api",
             "ANTHROPIC_AUTH_TOKEN=secret",
@@ -599,7 +599,7 @@ def test_parse_agent_env_supports_empty_values() -> None:
 def test_parse_agent_env_from_host_reads_existing_env(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "secret")
 
-    parsed = VIX._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
+    parsed = ATELIERBENCH._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
 
     assert parsed == {"ANTHROPIC_AUTH_TOKEN": "secret"}
 
@@ -608,8 +608,8 @@ def test_parse_agent_env_from_host_reads_repo_env_file(tmp_path: Path, monkeypat
     env_path = tmp_path / ".env"
     env_path.write_text("export OPENROUTER_API_KEY=secret-from-file\n", encoding="utf-8")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setattr(VIX, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(ATELIERBENCH, "REPO_ROOT", tmp_path)
 
-    parsed = VIX._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
+    parsed = ATELIERBENCH._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
 
     assert parsed == {"ANTHROPIC_AUTH_TOKEN": "secret-from-file"}

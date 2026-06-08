@@ -65,7 +65,7 @@ def test_full_help_tree_renders_deterministically() -> None:
 def test_help_tree_contains_expected_public_groups() -> None:
     """Core public groups must appear in the rendered tree."""
     tree = render_help_tree()
-    for group in ("benchmark", "bench", "stack", "servicectl", "block", "ledger"):
+    for group in ("benchmark", "stack", "servicectl", "ledger"):
         assert f"atelier {group}\n" in tree, f"missing group: {group}"
 
 

@@ -13,7 +13,7 @@ def write_benchmark_manifest(run_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
-def build_vix_manifest(
+def build_atelierbench_manifest(
     *,
     tasks: list[dict[str, Any]],
     arms: list[str],
@@ -25,18 +25,18 @@ def build_vix_manifest(
     timeout: int,
     jobs: int,
     parallel_scope: str,
-    eval_dir: Path,
+    atelierbench_tasks_dir: Path,
     bridge_command: str | None,
 ) -> dict[str, Any]:
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     treatment_arms = [arm for arm in arms if arm != baseline_arm]
     return {
-        "suite": "eval",
+        "suite": "atelierbench",
         "frozen_at": datetime.now(UTC).isoformat(),
         "corpus": {
-            "dataset_name": "eval-eval",
+            "dataset_name": "atelierbench",
             "dataset_version": "ported-local",
-            "source_root": str(eval_dir.resolve()),
+            "source_root": str(atelierbench_tasks_dir.resolve()),
             "tasks": tasks,
         },
         "protocol": {
@@ -101,7 +101,7 @@ def build_terminalbench_manifest(
 
 
 __all__ = [
+    "build_atelierbench_manifest",
     "build_terminalbench_manifest",
-    "build_vix_manifest",
     "write_benchmark_manifest",
 ]

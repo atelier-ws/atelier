@@ -81,7 +81,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- Repo-wide `make lint` still fails on pre-existing issues in `benchmarks/eval/run.py` and `scripts/extract_flow.py`.
+- Repo-wide `make lint` still fails on pre-existing issues in `benchmarks/atelierbench/run.py` and `scripts/extract_flow.py`.
 - Repo-wide `make typecheck` still fails on the pre-existing duplicate `benchmarks` package discovery between `benchmarks/` and `src/benchmarks/`.
 
 ## Deferred Items
