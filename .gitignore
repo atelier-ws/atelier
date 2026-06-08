@@ -303,3 +303,7 @@ exports/
 /reports/
 .eval
 /installer/
+dist/
+*.spec
+bundle/
+build_dist/
