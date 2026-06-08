@@ -198,14 +198,41 @@ def _evaluate_proposal(
 
 def _proposal_fingerprint(*, advisor: dict[str, Any], verdict: dict[str, Any], threshold: int) -> str:
     payload = {
-        "recommended_preset": advisor.get("recommended_preset"),
-        "recommended_quality_floor": advisor.get("recommended_quality_floor"),
-        "recommended_confidence_required": advisor.get("recommended_confidence_required"),
+        "recommended_preset": _recommended_preset(advisor),
+        "recommended_quality_floor": _recommended_policy_field(advisor, "quality_floor", "recommended_quality_floor"),
+        "recommended_confidence_required": _recommended_policy_field(
+            advisor,
+            "confidence_required",
+            "recommended_confidence_required",
+        ),
         "weekly_savings_usd": advisor.get("weekly_savings_usd"),
         "delta_lower_bound": verdict.get("delta_lower_bound"),
         "threshold": threshold,
     }
     return hash_identifier(json.dumps(payload, sort_keys=True))
+
+
+def _recommended_policy(advisor: dict[str, Any]) -> dict[str, Any]:
+    policy = advisor.get("recommended_policy")
+    return dict(policy) if isinstance(policy, dict) else {}
+
+
+def _recommended_policy_field(advisor: dict[str, Any], field: str, legacy_field: str) -> Any:
+    policy = _recommended_policy(advisor)
+    if field in policy:
+        return policy[field]
+    return advisor.get(legacy_field)
+
+
+def _recommended_preset(advisor: dict[str, Any]) -> Any:
+    candidate_id = advisor.get("recommended_candidate_id")
+    if candidate_id:
+        return candidate_id
+    legacy = advisor.get("recommended_preset")
+    if legacy:
+        return legacy
+    policy = _recommended_policy(advisor)
+    return policy.get("preset")
 
 
 def _write_proposal_artifact(
@@ -225,12 +252,19 @@ def _write_proposal_artifact(
         "source": source,
         "fingerprint": fingerprint,
         "proposal": {
-            "recommended_preset": advisor.get("recommended_preset"),
-            "quality_floor": advisor.get("recommended_quality_floor"),
-            "confidence_required": advisor.get("recommended_confidence_required"),
+            "recommended_candidate_id": advisor.get("recommended_candidate_id"),
+            "recommended_preset": _recommended_preset(advisor),
+            "recommended_policy": _recommended_policy(advisor),
+            "quality_floor": _recommended_policy_field(advisor, "quality_floor", "recommended_quality_floor"),
+            "confidence_required": _recommended_policy_field(
+                advisor,
+                "confidence_required",
+                "recommended_confidence_required",
+            ),
             "weekly_savings_usd": advisor.get("weekly_savings_usd"),
             "estimated_tokens_saved": legacy_report.get("estimated_tokens_saved"),
             "minimum_projected_tokens_saved": automation.minimum_projected_tokens_saved,
+            "estimation": advisor.get("estimation"),
         },
         "non_inferiority": verdict,
         "advisor": advisor,
@@ -259,7 +293,7 @@ class OptimizationProposalPrBot:
         dry_run: bool = False,
     ) -> dict[str, Any]:
         branch = f"atelier/optimize-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-        title = f"Optimize policy: {advisor.get('recommended_preset', 'balanced')}"
+        title = f"Optimize policy: {_recommended_preset(advisor) or 'balanced'}"
         body = self._body(artifact_path=artifact_path, advisor=advisor, verdict=verdict)
         if dry_run:
             return {"branch": branch, "title": title, "body": body}
@@ -295,8 +329,8 @@ class OptimizationProposalPrBot:
             [
                 "## Optimization proposal",
                 f"- Artifact: `{artifact_path.relative_to(self.repo_root)}`",
-                f"- Recommended preset: `{advisor.get('recommended_preset', 'balanced')}`",
-                f"- Projected weekly savings: `${float(advisor.get('weekly_savings_usd', 0.0) or 0.0):.2f}`",
+                f"- Recommended preset: `{_recommended_preset(advisor) or 'balanced'}`",
+                f"- Estimated weekly savings: `${float(advisor.get('weekly_savings_usd', 0.0) or 0.0):.2f}`",
                 f"- NI delta lower bound: `{float(verdict.get('delta_lower_bound', 0.0) or 0.0):.4f}`",
             ]
         )

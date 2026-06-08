@@ -102,7 +102,7 @@ Each task was committed atomically:
 
 ## Issues Encountered
 - The repository commit hook reformatted the changed Python files with Black, so the feature commit was retried after restaging the hook-formatted result.
-- Repo-wide `make lint` and `make typecheck` still hit the known unrelated baseline failures (`benchmarks/eval/run.py`, `scripts/extract_flow.py`, duplicate `benchmarks` mypy module), so this slice was validated on the touched files plus focused workflow/progress tests.
+- Repo-wide `make lint` and `make typecheck` still hit the known unrelated baseline failures (`benchmarks/atelierbench/run.py`, `scripts/extract_flow.py`, duplicate `benchmarks` mypy module), so this slice was validated on the touched files plus focused workflow/progress tests.
 
 ## User Setup Required
 
