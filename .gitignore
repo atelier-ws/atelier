@@ -303,3 +303,7 @@ exports/
 /reports/
 .vix
 /installer/
+dist/
+*.spec
+bundle/
+build_dist/

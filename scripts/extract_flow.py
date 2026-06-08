@@ -7,7 +7,6 @@ Only shows the text/tool content - skips all raw request/response payloads.
 """
 
 import base64
-import binascii
 import json
 import os
 import re
@@ -25,7 +24,7 @@ def _iter_text_from_bedrock_stream(raw: bytes):
     for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
         try:
             chunk = json.loads(base64.b64decode(b64))
-        except (binascii.Error, json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
             continue
         t = chunk.get("type", "")
         if t == "content_block_delta":
