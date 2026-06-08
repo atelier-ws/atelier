@@ -1,149 +1,116 @@
-# Requirements: Atelier
+# Requirements: Atelier Owned Agent CLI
 
-**Defined:** 2026-06-02
-**Core Value:** Achieve the highest solved-rate on frozen terminal-bench-style coding tasks, with non-inferior quality and lower cost where possible.
+**Defined:** 2026-06-08
+**Core Value:** Phase-linear warm-prefix reuse — Plan reads Survey's codebase context as a cache hit, not a cold re-read
 
 ## v1 Requirements
 
-Requirements for the initial reset release. Each maps to roadmap phases.
+### Session Core
 
-### Grounding
+- [ ] **SESS-01**: User can run `atelier run "<task>"` to start an owned coding session on their own API credentials
+- [ ] **SESS-02**: Session routes to provider/model via `select_owned_route` with `--provider`, `--model`, or `--budget cheap|balanced|best`
+- [ ] **SESS-03**: Session executes Survey→Plan→Implement as a single phase-linear conversation using a generic stem-agent system prompt
+- [ ] **SESS-04**: Phase differentiation done via injected user messages (not system prompt changes) so prefix stays byte-stable
+- [ ] **SESS-05**: Session persists as JSONL under `~/.atelier/runs/<session-id>.jsonl`
+- [ ] **SESS-06**: User can resume a session with warm prefix via `atelier run resume <session-id>`
 
-- [x] **GRND-01**: User can inspect files, paths, and matches through a Search-first default path without manually choosing between overlapping discovery tools
-- [x] **GRND-02**: User can move from Search-first results into precise code-intel answers for symbols, callers, usages, and impact in the same session
-- [x] **GRND-03**: User can batch related edits and follow-up reads through a low-roundtrip grounded terminal workflow
+### Cache Control
 
-### Execution Kernel
+- [ ] **CACHE-01**: Stable system prefix is fixed at session start and never mutated mid-run; all per-phase intent goes in user turns
+- [ ] **CACHE-02**: Explicit `cache_control` ephemeral breakpoint placed after stable prefix (system + tools + pinned context)
+- [ ] **CACHE-03**: Cache affinity preserved — subsequent owned calls stay on the provider whose prefix is warm (`cache_affinity_for_route`)
+- [ ] **CACHE-04**: `--cache-policy inherit|fresh` flag supported (default `inherit`)
+- [ ] **CACHE-05**: `--phase-linear/--no-phase-linear` flag supported (default on)
+- [ ] **CACHE-06**: Background keepalive pings every 5 min when session is idle to prevent 5-min TTL expiry
+- [ ] **CACHE-07**: Within-session read dedup via existing `context_dedup` capability
 
-- [x] **EXEC-01**: User can move through explicit explore, plan, execute, and review workflow states inside one session
-- [ ] **EXEC-02**: User can approve, revise, or re-run a plan before execution starts
-- [x] **EXEC-03**: User can resume execution with current task state and prior task outputs preserved
-- [x] **EXEC-04**: User can inspect workflow events and task progress without reconstructing the session manually
-- [x] **EXEC-05**: User can only apply benchmark-path edits after the relevant file or code region has been grounded by a read, search, or code-intel step
-- [x] **EXEC-06**: User can run an Atelier-owned workflow DAG with agent, tool, and shell steps instead of only receiving advisory workflow state
-- [x] **EXEC-07**: User can reuse persistent per-step execution context and fork context from earlier workflow steps for plan -> review -> execute loops
-- [x] **EXEC-08**: User can execute safe independent tool work in parallel while writes, shell mutations, and interactive decisions stay serialized
-- [x] **EXEC-09**: User can run a dedicated benchmark solver profile with artifact-first, no-repeat-failure, cleanup, and command-discipline rules
-- [x] **EXEC-10**: User can reinvoke a failed benchmark attempt with the same task context and harness feedback instead of treating the first attempt as the final outcome
-- [x] **EXEC-11**: User can run the owned workflow/solver headlessly with JSON and stream-JSON artifacts that include step outputs, tokens, cache, cost, and duration
-- [x] **EXEC-12**: User can install or bootstrap default workflow, solver, agent, skill, and MCP definitions without overwriting project-local user changes
-- [x] **EXEC-13**: User can run owned explore/plan/review/execute phases on one generic ("stem") system prompt — with phase changes delivered as user-turn prompts and later steps forking the prior step's conversation — so the provider prompt-cache prefix is preserved across phases instead of invalidated at every boundary
-- [x] **EXEC-14**: User can read files through a more aggressive minified reader path (reader-profile only) that collapses intra-line whitespace for non-whitespace-significant languages — beyond today's trailing-whitespace/blank-run transform — with savings attributed through existing minification telemetry and byte-exact reads preserved for writer/execute profiles
+### Minified Reads
 
-### Defaults & Distribution
+- [ ] **READ-01**: Survey and Plan phases use whitespace-minified file reads (outline/compact projection via existing `atelier_read` outline mode)
+- [ ] **READ-02**: Implement/edit phase uses exact byte-for-byte file reads
 
-- [x] **DFLT-01**: User can inspect one canonical default-definition registry that covers agent roles, skills, workflows, prompts, MCP templates, tool policies, model/effort defaults, and benchmark profiles
-- [x] **DFLT-02**: User can regenerate Claude, Codex, OpenCode, Antigravity, shared skill, and benchmark-owned runtime surfaces from the canonical defaults without hand-editing generated artifacts
-- [x] **DFLT-03**: User can verify generated agent/skill/workflow/MCP surfaces are in sync with canonical defaults before release or benchmark runs
-- [x] **DFLT-04**: User can layer project-local defaults over packaged defaults while preserving existing local user changes and reporting created/skipped/changed files
+### Credentials & Safety
 
-### Routing
+- [ ] **CRED-01**: Credentials discovered from env / `.env` via `detect_api_key_vendors`; CLI exits with actionable message when no key configured
+- [ ] **CRED-02**: `--max-cost <usd>` flag aborts session if cost projection exceeds limit
+- [ ] **CRED-03**: `--yolo` flag skips edit approval prompts; default is to confirm destructive edits
+- [ ] **CRED-04**: `--dry-run` flag shows plan without executing edits
 
-- [x] **ROUT-01**: User can run Atelier-owned subcalls through an enforced provider/model routing layer
-- [x] **ROUT-02**: User can see which provider/model actually executed each Atelier-owned subcall
-- [x] **ROUT-03**: User can keep the top-level host conversation native while routed execution runs on owned subcalls
-- [x] **ROUT-04**: User can explicitly select provider and model as a first-class route mode for Atelier-owned subcalls and benchmark runs
-- [x] **ROUT-05**: User can choose `auto` mode when they want Atelier to select from task class, quality risk, provider health, price, latency, and cache warmth
-- [x] **ROUT-06**: User can preserve provider-side prompt-cache locality across related workflow steps and inspect cache read/write tokens, cache misses, and route-stickiness decisions
-- [ ] **ROUT-07**: User can run a shadow-safe local host router bridge for Claude-Code-compatible traffic before opting into broader host-level routing enforcement
+### Reporting
 
-### Benchmark Gate
-
-- [x] **BENC-01**: User can run a frozen paired benchmark set of terminal-bench-style coding tasks that compares the baseline path against Atelier under matched conditions
-- [x] **BENC-02**: User can inspect benchmark artifacts that report solved-rate, quality, token, latency, and cost deltas for each paired run
-- [x] **BENC-03**: User can make milestone decisions from a benchmark summary that rejects invalid or off-topic runs instead of counting them as wins
-- [x] **BENC-04**: User can trace each benchmark claim back to raw run artifacts, judge outputs, and the exact commit under test
-
-### Context & Intelligence
-
-- [x] **INTL-01**: User can keep using Atelier's existing memory and context-recall strengths while the benchmark-first reset ships
-- [x] **INTL-02**: User can keep using Atelier's existing code-intel strengths while the default terminal path gets simplified
-- [x] **INTL-03**: User can keep using current tracing, reporting, and host-enforcement surfaces during the reset
+- [ ] **RPT-01**: Per-run receipt shown at session end: cache-read tokens, cache-write tokens, fresh-input tokens, cache efficiency %, $ spent
+- [ ] **RPT-02**: $ vs naive (no-cache, per-phase-cold) baseline shown on receipt
+- [ ] **RPT-03**: `atelier run report <session-id>` command to retrieve receipt for a past session
+- [ ] **RPT-04**: Cache hit ratio reported and compared against Eval's 60-80% target
 
 ## v2 Requirements
 
-Deferred to a later release. Tracked but not in the current roadmap.
+### Transport
 
-### Tooling
+- **TRANS-01**: `--transport anthropic-direct` for pure-Claude users wanting 1-hour TTL
+- **TRANS-02**: `--ttl 1h` flag for headless/batch runs
+- **TRANS-03**: Multi-provider mid-session cost-vs-cache warning when provider switch would evict warm prefix
 
-- **TOOL-01**: User can use a minified **edit/write** round-trip path (match-against-minified + formatter-restore) for supported languages — the read-only half is promoted to v1 as EXEC-14; this v2 item is the harder write-side round-trip (Eval's tree-sitter VFS)
-- **TOOL-02**: User can see richer savings UX that ties per-session counters back to benchmark-backed truth
+### TUI
 
-### Routing
+- **TUI-01**: Bubble Tea / Textual TUI surface (like Eval)
+- **TUI-02**: Real-time token cost display during session
 
-- **ROUT-08**: User can compare shadow-routed and actively routed execution paths across more providers and hosts
-- **ROUT-09**: User can make local host-router enforcement the default once subcall routing and shadow routing have proven parity
+### Session Management
 
-### Product Shape
+- **SES2-01**: SQLite session state for richer `resume` and `report` queries
+- **SES2-02**: `atelier run list` to show past sessions with cost summaries
+- **SES2-03**: `atelier run diff <session-id>` to show files changed in a session
 
-- **PROD-01**: User can remove or slim secondary surfaces only after a measured parity review shows they are expendable
-- **PROD-02**: User can rely on broader "project brain" positioning only after the underlying workflow/context mechanisms are measurably real
+### Compaction
 
-### Intelligence
-
-- **INTL-01**: User can get deeper semantic parity beyond Python, TypeScript, and JavaScript where today's code-intel depth is strongest
-- **INTL-02**: User can import and reconstruct prior session traces with parity good enough to support smarter long-horizon project memory
+- **COMP-01**: Cache-safe compaction (prefix-preserving fork, agentcache PPF algorithm) when conversation prefix itself becomes the cost
+- **COMP-02**: `--max-context-ratio <0-1>` to control compaction trigger threshold
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
-
 | Feature | Reason |
 |---------|--------|
-| Clean-slate rewrite | Brownfield retrofit is locked; rewriting would throw away current strengths and delay proof |
-| Full provider enforcement for the top-level host chat in v1 | Too risky before Atelier-owned subcall routing is benchmarked and trusted |
-| Web-first/dashboard-first expansion | Milestone 1 is about terminal execution quality and cost discipline |
-| Removing current CLI/API/UI/SDK/integration surfaces before parity review | Cuts require evidence, not instinct |
-| Cost-saving claims based only on session counters | Benchmark-backed quality and spend evidence is the real gate |
-| Cloud-hosted multi-tenant Augment-style context platform parity in v1 | Atelier is local-first and milestone 1 is focused on terminal-core quality, not cloud product matching |
+| Atelier-hosted inference / key brokering | Security non-goal; strictly user's own creds |
+| Replacing host-CLI path | Claude Code/Codex users unaffected |
+| New/better models | Quality tracks underlying model exactly |
+| SQLite session state (v1) | JSONL sufficient; defer migration cost |
+| `--transport anthropic-direct` (v1) | litellm covers Anthropic; 1-hour TTL is v2+ |
+| Two-model Coordinator (DeepSeek-Reasonix pattern) | Premature; v1 uses single model per session |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRND-01 | Phase 1 | Complete |
-| GRND-02 | Phase 1 | Complete |
-| GRND-03 | Phase 1 | Complete |
-| EXEC-01 | Phase 2 | Complete |
-| EXEC-02 | Phase 2 | Pending |
-| EXEC-03 | Phase 2 | Complete |
-| EXEC-04 | Phase 2 | Complete |
-| EXEC-05 | Phase 2 | Complete |
-| EXEC-06 | Phase 2 | Complete |
-| EXEC-07 | Phase 2 | Complete |
-| EXEC-08 | Phase 2 | Complete |
-| EXEC-09 | Phase 2 | Complete |
-| EXEC-10 | Phase 2 | Complete |
-| EXEC-11 | Phase 2 | Complete |
-| EXEC-12 | Phase 2 | Complete |
-| EXEC-13 | Phase 2 | Complete |
-| EXEC-14 | Phase 2 | Complete |
-| DFLT-01 | Phase 2 | Complete |
-| DFLT-02 | Phase 2 | Complete |
-| DFLT-03 | Phase 2 | Complete |
-| DFLT-04 | Phase 2 | Complete |
-| ROUT-01 | Phase 3 | Complete |
-| ROUT-02 | Phase 3 | Complete |
-| ROUT-03 | Phase 3 | Complete |
-| ROUT-04 | Phase 3 | Complete |
-| ROUT-05 | Phase 3 | Complete |
-| ROUT-06 | Phase 3 | Complete |
-| ROUT-07 | Phase 3 | Pending |
-| BENC-01 | Phase 4 | Complete |
-| BENC-02 | Phase 4 | Complete |
-| BENC-03 | Phase 4 | Complete |
-| BENC-04 | Phase 4 | Complete |
-| INTL-01 | Phase 1 | Complete |
-| INTL-02 | Phase 1 | Complete |
-| INTL-03 | Phase 2 | Complete |
+| SESS-01 | Phase 1 | Pending |
+| SESS-02 | Phase 1 | Pending |
+| SESS-03 | Phase 2 | Pending |
+| SESS-04 | Phase 2 | Pending |
+| SESS-05 | Phase 1 | Pending |
+| SESS-06 | Phase 4 | Pending |
+| CACHE-01 | Phase 2 | Pending |
+| CACHE-02 | Phase 2 | Pending |
+| CACHE-03 | Phase 2 | Pending |
+| CACHE-04 | Phase 1 | Pending |
+| CACHE-05 | Phase 2 | Pending |
+| CACHE-06 | Phase 4 | Pending |
+| CACHE-07 | Phase 3 | Pending |
+| READ-01 | Phase 3 | Pending |
+| READ-02 | Phase 3 | Pending |
+| CRED-01 | Phase 1 | Pending |
+| CRED-02 | Phase 4 | Pending |
+| CRED-03 | Phase 1 | Pending |
+| CRED-04 | Phase 1 | Pending |
+| RPT-01 | Phase 5 | Pending |
+| RPT-02 | Phase 5 | Pending |
+| RPT-03 | Phase 5 | Pending |
+| RPT-04 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 32 total
-- Mapped to phases: 32
+- v1 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-06-02*
-*Last updated: 2026-06-03 after parity status reconciliation, defaults bootstrap surfacing, and benchmark gate consumption updates*
+*Requirements defined: 2026-06-08*
+*Last updated: 2026-06-08 after initial definition*
