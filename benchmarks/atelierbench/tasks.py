@@ -1,7 +1,8 @@
-"""The 7 vix-eval tasks, ported faithfully from kirby88/vix-eval.
+"""The seven AtelierBench tasks, adapted from kirby88/vix-eval.
 
-Prompts and bundled workspaces are read from a local checkout of vix-eval
-(default ``../benchmarks/<repo>/vix-eval``; override with ``VIX_EVAL_DIR``).
+Prompts and bundled workspaces are read from a local task-source checkout
+(default ``../benchmarks/<repo>/atelierbench-tasks``; override with
+``ATELIERBENCH_TASKS_DIR``).
 """
 
 from __future__ import annotations
@@ -16,12 +17,12 @@ TaskSource: TypeAlias = (  # noqa: UP040
 )
 
 
-def vix_eval_dir() -> Path:
-    root = os.environ.get("VIX_EVAL_DIR")
+def atelierbench_tasks_dir() -> Path:
+    root = os.environ.get("ATELIERBENCH_TASKS_DIR")
     if root:
         return Path(root)
     repo_root = Path(__file__).resolve().parents[2]
-    return repo_root.parent / "benchmarks" / repo_root.name / "vix-eval"
+    return repo_root.parent / "benchmarks" / repo_root.name / "atelierbench-tasks"
 
 
 @dataclass(frozen=True)
@@ -32,10 +33,10 @@ class Task:
     source: TaskSource
     # rough budget ordering for cheap-first runs
     weight: int  # 1=cheap (no clone) .. 3=heavy (large repo clone+build)
-    task_dir: str  # folder name under vix-eval/tasks/
+    task_dir: str  # folder name under atelierbench-tasks/tasks/
 
     def prompt_path(self) -> Path:
-        task_root = vix_eval_dir() / "tasks" / self.task_dir
+        task_root = atelierbench_tasks_dir() / "tasks" / self.task_dir
         candidates = (
             "prompt.md",
             "prompt_hard.md",
@@ -58,7 +59,7 @@ class Task:
 
     def workspace_src(self) -> Path | None:
         if self.source[0] == "workspace":
-            return vix_eval_dir() / "tasks" / self.task_dir / self.source[1]
+            return atelierbench_tasks_dir() / "tasks" / self.task_dir / self.source[1]
         return None
 
 

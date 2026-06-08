@@ -726,6 +726,10 @@ def eval_from_cluster(ctx: click.Context, cluster_id: str) -> None:
     click.echo(f"saved draft eval at {p}")
 
 
+failure.add_command(analyze_failures_cmd, name="analyze")
+eval_.add_command(eval_from_cluster, name="from-cluster")
+
+
 __all__ = [
     "_emit_lesson_inbox",
     "_eval_dir",

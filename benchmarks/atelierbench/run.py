@@ -11,25 +11,25 @@ Baseline uses an isolated CLAUDE_CONFIG_DIR with plugins/hooks/MCP stripped
 The Atelier arm adds the atelier stdio MCP server + a tool-discipline CLAUDE.md.
 
 Usage:
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --reps 1 --model sonnet
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --reps 1 --model sonnet
 
     # Cloud providers - reads credentials from .env or current env automatically:
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
         --provider aws --model us.anthropic.claude-sonnet-4-5-20250929-v1:0
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
         --provider gcp --model claude-sonnet-4-5@20250929
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
         --provider azure --model claude-sonnet-4-5
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms baseline atelier \
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms baseline atelier \
         --provider openrouter --model anthropic/claude-sonnet-4-5
 
     # Manual override (--agent-env takes precedence over --provider):
-    uv run python -m benchmarks.vix_eval.run --tasks task1 --arms baseline atelier \
+    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms baseline atelier \
         --model claude-opus-4-8 \
         --agent-env ANTHROPIC_BASE_URL=https://openrouter.ai/api \
         --agent-env-from-host ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY \
         --agent-env ANTHROPIC_API_KEY=
-    uv run python -m benchmarks.vix_eval.run --report results/<run_dir>
+    uv run python -m benchmarks.atelierbench.run --report results/<run_dir>
 """
 
 from __future__ import annotations
@@ -61,16 +61,18 @@ from atelier.core.capabilities.host_runners import (
 )
 from atelier.core.capabilities.pricing import usage_cost_usd
 
-from benchmarks.vix_eval.tasks import BY_ID, TASKS, Task
+from benchmarks.atelierbench.tasks import BY_ID, TASKS, Task
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_ROOT = REPO_ROOT / "benchmarks" / "vix_eval" / "results"
+RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
 VALID_ARMS = ("baseline", "atelier", "woz", "vix")
 PERSISTENT_WORKSPACE_ROOT = Path(
-    os.environ.get("VIX_EVAL_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "vix_eval_workspaces"))
+    os.environ.get(
+        "ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces")
+    )
 )
 PROVIDER_ALIASES: dict[str, str] = {
     "aws": "aws-claude",
@@ -182,6 +184,16 @@ You are running in a non-interactive benchmark environment.
 **Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
 Implement the task directly using your available tools and complete the full
 implementation without waiting for user input or approval.
+
+**Tools**: Use the Atelier MCP tools for all file I/O and shell work:
+`mcp__atelier__edit` to create/modify files, `mcp__atelier__read` to read them,
+`mcp__atelier__grep`/`mcp__atelier__search` to search, and `mcp__atelier__shell`
+for shell commands. The Bash, Write, and Edit tools are disabled — do not rely
+on them.
+
+**Scope**: Implement only the core source files and the tests. Do NOT create
+README, example, summary, checklist, or "deliverables" files, and do not print a
+summary banner. Every file you write must be required by the task.
 
 Work in the current directory. Deliver a complete, working implementation.
 """
@@ -338,7 +350,9 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
         url, commit = task.source[1], task.source[2]
         subprocess.run(["git", "clone", "--quiet", url, str(ws)], check=True, timeout=900)
         if commit:
-            subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120)
+            subprocess.run(
+                ["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120
+            )
     else:
         raise ValueError(f"unknown source kind {kind}")
     return ws
@@ -374,7 +388,9 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
     try:
         d = json.loads(stdout)
     except json.JSONDecodeError:
-        return ArmResult(task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path))
+        return ArmResult(
+            task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path)
+        )
     u = d.get("usage", {}) or {}
     return ArmResult(
         task=task,
@@ -611,14 +627,19 @@ def _parse_codex_result(
             if not isinstance(total_usage, dict):
                 continue
             token_count_seen = True
-            input_total = _usage_int(total_usage.get("input_tokens") or total_usage.get("inputTokens"))
+            input_total = _usage_int(
+                total_usage.get("input_tokens") or total_usage.get("inputTokens")
+            )
             cache_read_tokens = _usage_int(
                 total_usage.get("cached_input_tokens") or total_usage.get("cachedInputTokens")
             )
             cache_creation_tokens = _usage_int(
-                total_usage.get("cache_creation_input_tokens") or total_usage.get("cacheCreationInputTokens")
+                total_usage.get("cache_creation_input_tokens")
+                or total_usage.get("cacheCreationInputTokens")
             )
-            output_tokens = _usage_int(total_usage.get("output_tokens") or total_usage.get("outputTokens"))
+            output_tokens = _usage_int(
+                total_usage.get("output_tokens") or total_usage.get("outputTokens")
+            )
             input_tokens = max(input_total - cache_read_tokens, 0)
         elif event_type == "item.completed":
             item = event.get("item")
@@ -633,7 +654,9 @@ def _parse_codex_result(
             if not isinstance(usage, dict):
                 continue
             output_tokens = _usage_int(usage.get("output_tokens") or usage.get("outputTokens"))
-            cache_read_tokens = _usage_int(usage.get("cached_input_tokens") or usage.get("cachedInputTokens"))
+            cache_read_tokens = _usage_int(
+                usage.get("cached_input_tokens") or usage.get("cachedInputTokens")
+            )
             input_total = _usage_int(usage.get("input_tokens") or usage.get("inputTokens"))
             input_tokens = max(input_total - cache_read_tokens, 0)
     excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
@@ -695,7 +718,9 @@ def _parse_opencode_result(
             input_total = _usage_int(tokens.get("input"))
             input_tokens = max(input_total - cache_read, 0)
             cache_read_tokens = cache_read
-            cache_creation_tokens = _usage_int((cache or {}).get("write") if isinstance(cache, dict) else 0)
+            cache_creation_tokens = _usage_int(
+                (cache or {}).get("write") if isinstance(cache, dict) else 0
+            )
             output_tokens = _usage_int(tokens.get("output"))
     excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
     return ArmResult(
@@ -769,8 +794,12 @@ def _parse_vix_result(
     model = str(payload.get("model") or "").strip()
     model_for_pricing = model or "claude-sonnet-4.6"
     input_tokens = _usage_int(usage_dict.get("input_tokens") or usage_dict.get("inputTokens"))
-    cache_read_tokens = _usage_int(usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens"))
-    cache_creation_tokens = _usage_int(usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens"))
+    cache_read_tokens = _usage_int(
+        usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens")
+    )
+    cache_creation_tokens = _usage_int(
+        usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens")
+    )
     output_tokens = _usage_int(usage_dict.get("output_tokens") or usage_dict.get("outputTokens"))
     return ArmResult(
         task=task,
@@ -786,7 +815,8 @@ def _parse_vix_result(
         ),
         duration_ms=duration_ms or wall_duration_ms,
         duration_api_ms=duration_ms or wall_duration_ms,
-        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns")) or (1 if result else 0),
+        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns"))
+        or (1 if result else 0),
         input_tokens=input_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,
@@ -853,7 +883,9 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str]:
     response_keywords = _extract_keywords(text)
     overlap = task_keywords & response_keywords
     list_item_count = sum(
-        1 for line in text.splitlines() if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
+        1
+        for line in text.splitlines()
+        if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
     )
     if len(overlap) == 0 and list_item_count >= 3:
         return False, f"off-task capability/list response (list_items={list_item_count})"
@@ -902,7 +934,7 @@ def _env_file_candidates() -> tuple[Path, ...]:
     return (
         REPO_ROOT / ".env",
         REPO_ROOT / "benchmarks" / ".env",
-        REPO_ROOT / "benchmarks" / "vix_eval" / ".env",
+        REPO_ROOT / "benchmarks" / "atelierbench" / ".env",
     )
 
 
@@ -942,10 +974,14 @@ def _parse_agent_env_from_host(entries: list[str] | None) -> dict[str, str]:
     for entry in entries or []:
         dest, sep, source = entry.partition("=")
         if not sep or not dest or not source:
-            raise ValueError(f"invalid --agent-env-from-host entry: {entry!r}; expected DEST_KEY=SOURCE_ENV")
+            raise ValueError(
+                f"invalid --agent-env-from-host entry: {entry!r}; expected DEST_KEY=SOURCE_ENV"
+            )
         value = _resolve_host_env_value(source)
         if value is None:
-            raise ValueError(f"missing host environment variable for --agent-env-from-host: {source}")
+            raise ValueError(
+                f"missing host environment variable for --agent-env-from-host: {source}"
+            )
         parsed[dest] = value
     return parsed
 
@@ -956,14 +992,17 @@ def _resolve_provider_env(provider: str | None) -> dict[str, str]:
         return {}
     preset_key = PROVIDER_ALIASES.get(provider.lower())
     if preset_key is None:
-        raise ValueError(f"unknown --provider {provider!r}; choices: {', '.join(sorted(PROVIDER_ALIASES))}")
+        raise ValueError(
+            f"unknown --provider {provider!r}; choices: {', '.join(sorted(PROVIDER_ALIASES))}"
+        )
     preset = CLAUDE_PROVIDER_PRESETS[preset_key]
     result: dict[str, str] = dict(preset.env)
     for dest, source in preset.env_from_host.items():
         value = _resolve_host_env_value(source)
         if value is None:
             raise ValueError(
-                f"--provider {provider!r} requires {source!r} but it was not found " f"in the environment or .env files"
+                f"--provider {provider!r} requires {source!r} but it was not found "
+                f"in the environment or .env files"
             )
         result[dest] = value
     return result
@@ -1066,7 +1105,9 @@ def run_arm(
         if cli_driver == "claude":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
-                prompt="Continue from where you left off." if should_resume_session else task.prompt(),
+                prompt="Continue from where you left off."
+                if should_resume_session
+                else task.prompt(),
                 model=model,
                 workspace=str(ws),
                 agent_command=agent_command,
@@ -1078,8 +1119,20 @@ def run_arm(
                 cmd += ["--add-dir", str(ws)]
             if arm == "atelier":
                 (ws / "CLAUDE.md").write_text(ATELIER_CLAUDE_MD)
-            # Arms are labels only for claude driver; install/uninstall plugin between runs.
-            # Only inject CLAUDE.md; MCP comes from globally installed plugin.
+                # Wire the Atelier MCP server explicitly (do not rely on a
+                # globally installed plugin) and disable the native Bash/Write/
+                # Edit tools so the agent uses mcp__atelier__* (including
+                # mcp__atelier__shell) instead of falling back to Bash heredocs.
+                # Workflow/Agent stay enabled — Atelier has no in-host replacement
+                # for subagent spawning / deterministic orchestration.
+                cmd.extend(
+                    [
+                        "--mcp-config",
+                        json.dumps(_atelier_mcp_config("claude")),
+                        "--strict-mcp-config",
+                    ]
+                )
+                cmd.extend(["--disallowedTools", "Bash", "Write", "Edit"])
         elif cli_driver == "copilot":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
@@ -1136,7 +1189,9 @@ def run_arm(
             timeout=timeout,
         )
         wall_duration_ms = int((time.time() - started) * 1000)
-        res = _parse_cli_result(proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms)
+        res = _parse_cli_result(
+            proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms
+        )
         if not res.ok and not proc.stdout.strip():
             res.result_excerpt = (proc.stderr or "")[:200]
         return _apply_result_validity(task, res)
@@ -1323,7 +1378,7 @@ def _task_description(task: Task) -> str:
 
 
 def _judge_prompt(task: Task, result: ArmResult) -> str:
-    return f"""You are grading a VIX benchmark response.
+    return f"""You are grading an AtelierBench response.
 
 Return ONLY compact JSON with these keys:
 {{"correct": boolean, "score": number, "reason": string}}
@@ -1428,7 +1483,9 @@ def _agg(results: list[ArmResult], arm: str) -> dict[str, float | int]:
         "ok": sum(1 for r in rs if r.ok),
         "valid": sum(1 for r in rs if r.valid),
         "correct": sum(1 for r in rs if r.correct is True),
-        "avg_score": round(sum(float(r.score or 0.0) for r in judged) / len(judged), 3) if judged else 0.0,
+        "avg_score": round(sum(float(r.score or 0.0) for r in judged) / len(judged), 3)
+        if judged
+        else 0.0,
         "cost_usd": round(sum(r.cost_usd for r in rs), 4),
         "duration_ms": sum(r.duration_ms for r in rs),
         "output_tokens": sum(r.output_tokens for r in rs),
@@ -1442,7 +1499,7 @@ def report(results: list[ArmResult]) -> str:
     baseline = aggregates.get("baseline")
     lines = [
         "",
-        "=== vix-eval head-to-head ===",
+        "=== AtelierBench head-to-head ===",
         f"{'metric':<16}" + "".join(f"{arm:>14}" for arm in arms),
     ]
 
@@ -1453,14 +1510,18 @@ def report(results: list[ArmResult]) -> str:
     lines.append(row("cost_usd", [_as_float(aggregates[arm]["cost_usd"]) for arm in arms]))
     lines.append(row("duration_ms", [_as_float(aggregates[arm]["duration_ms"]) for arm in arms]))
     lines.append(row("input_tokens", [_as_float(aggregates[arm]["input_tokens"]) for arm in arms]))
-    lines.append(row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms]))
+    lines.append(
+        row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms])
+    )
     if baseline:
         lines.append("")
         for arm in arms:
             if arm == "baseline":
                 continue
             current = aggregates[arm]
-            cost_save = _savings_pct(_as_float(baseline["cost_usd"]), _as_float(current["cost_usd"]))
+            cost_save = _savings_pct(
+                _as_float(baseline["cost_usd"]), _as_float(current["cost_usd"])
+            )
             time_save = _savings_pct(
                 _as_float(baseline["duration_ms"]),
                 _as_float(current["duration_ms"]),
@@ -1472,7 +1533,9 @@ def report(results: list[ArmResult]) -> str:
     valid_parts = [f"{arm} {aggregates[arm]['valid']}/{aggregates[arm]['runs']}" for arm in arms]
     lines.append(f"Valid       : {'  '.join(valid_parts)}")
     if any(result.valid is False for result in results):
-        lines.append("Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful.")
+        lines.append(
+            "Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful."
+        )
     if any(result.score is not None for result in results):
         score_parts = [
             f"{arm} {aggregates[arm]['correct']}/{aggregates[arm]['runs']} avg={aggregates[arm]['avg_score']}"
@@ -1488,7 +1551,11 @@ def _detail_rows(results: list[ArmResult]) -> list[dict[str, object]]:
 
 def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    baseline = _summary_row(results, "baseline") if any(result.arm == "baseline" for result in results) else None
+    baseline = (
+        _summary_row(results, "baseline")
+        if any(result.arm == "baseline" for result in results)
+        else None
+    )
     for arm in _ordered_arms(results):
         row = _summary_row(results, arm)
         if baseline is None:
@@ -1608,7 +1675,9 @@ def _load_existing_results(run_dir: Path) -> list[ArmResult]:
     if not results_path.exists():
         return []
     return [
-        ArmResult(**json.loads(line)) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ArmResult(**json.loads(line))
+        for line in results_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
     ]
 
 
@@ -1689,7 +1758,9 @@ def _run_task_rep(
     task = BY_ID[task_id]
     results: list[ArmResult] = []
     for arm in arms:
-        print(f"[run] {task_id} {arm} rep{rep} (model={model}, driver={cli_driver}) ...", flush=True)
+        print(
+            f"[run] {task_id} {arm} rep{rep} (model={model}, driver={cli_driver}) ...", flush=True
+        )
         t0 = time.time()
         try:
             result = run_arm(
@@ -1780,7 +1851,7 @@ def _run_single_arm(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="vix-eval head-to-head runner")
+    p = argparse.ArgumentParser(description="AtelierBench head-to-head runner")
     p.add_argument("--tasks", nargs="*", default=["all"], help="task ids or 'all'")
     p.add_argument("--arms", nargs="*", default=["baseline", "atelier"])
     p.add_argument("--reps", type=int, default=1)
@@ -1788,7 +1859,9 @@ def main() -> int:
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--transport", choices=["cli", "api"], default="cli")
     p.add_argument("--cli-driver", choices=CLI_DRIVERS, default="claude")
-    p.add_argument("--jobs", type=int, default=1, help="Parallel task/rep workers; arms stay serial per worker")
+    p.add_argument(
+        "--jobs", type=int, default=1, help="Parallel task/rep workers; arms stay serial per worker"
+    )
     p.add_argument(
         "--parallel-scope",
         choices=["task", "arm"],
@@ -1798,7 +1871,9 @@ def main() -> int:
     p.add_argument("--api-provider", choices=["openai", "litellm", "ollama"], default="ollama")
     p.add_argument("--api-base-url", default=None)
     p.add_argument("--api-key-env", default=None)
-    p.add_argument("--launch-ollama", action="store_true", help="Start 'ollama serve' before API runs")
+    p.add_argument(
+        "--launch-ollama", action="store_true", help="Start 'ollama serve' before API runs"
+    )
     p.add_argument("--judge", action="store_true", help="Score correctness with an LLM judge")
     p.add_argument("--judge-transport", choices=["cli", "api"], default=None)
     p.add_argument("--judge-provider", choices=["openai", "litellm", "ollama"], default=None)
@@ -1806,7 +1881,9 @@ def main() -> int:
     p.add_argument("--judge-agent-command", default=None)
     p.add_argument("--judge-api-base-url", default=None)
     p.add_argument("--judge-api-key-env", default=None)
-    p.add_argument("--agent-command", default="claude", help="Claude-compatible command to run each arm")
+    p.add_argument(
+        "--agent-command", default="claude", help="Claude-compatible command to run each arm"
+    )
     p.add_argument(
         "--agent-env",
         action="append",
@@ -1835,10 +1912,16 @@ def main() -> int:
         default=[],
         help="Extra CLI argument passed to the selected driver; repeatable.",
     )
-    p.add_argument("--bridge-command", default=None, help="Optional background bridge command to launch first")
-    p.add_argument("--bridge-wait", type=float, default=3.0, help="Seconds to wait after launching the bridge")
+    p.add_argument(
+        "--bridge-command", default=None, help="Optional background bridge command to launch first"
+    )
+    p.add_argument(
+        "--bridge-wait", type=float, default=3.0, help="Seconds to wait after launching the bridge"
+    )
     p.add_argument("--out", type=Path, default=None, help="directory for run artifacts")
-    p.add_argument("--resume", action="store_true", help="append to existing out dir and skip done runs")
+    p.add_argument(
+        "--resume", action="store_true", help="append to existing out dir and skip done runs"
+    )
     p.add_argument(
         "--retry-failed",
         action="store_true",
@@ -1893,7 +1976,11 @@ def main() -> int:
     bridge_command = args.bridge_command
     if args.launch_ollama and bridge_command is None:
         bridge_command = "ollama serve"
-    bridge = subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT)) if bridge_command else None
+    bridge = (
+        subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT))
+        if bridge_command
+        else None
+    )
     if bridge is not None and args.bridge_wait > 0:
         time.sleep(args.bridge_wait)
     existing_results = _load_existing_results(run_dir) if args.resume else []
