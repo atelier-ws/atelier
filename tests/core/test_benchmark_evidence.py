@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from atelier.core.capabilities.benchmark_evidence import (
+    build_atelierbench_evidence,
     build_terminalbench_evidence,
-    build_vix_evidence,
 )
 
 
@@ -36,8 +36,8 @@ def test_build_terminalbench_evidence_embeds_summary_and_artifact_paths(tmp_path
     assert evidence["summary"]["delta_on_minus_off"]["pass_rate"] == 0.2
 
 
-def test_build_vix_evidence_summarizes_results_and_judge_fields(tmp_path: Path) -> None:
-    run_dir = tmp_path / "eval"
+def test_build_atelierbench_evidence_summarizes_results_and_judge_fields(tmp_path: Path) -> None:
+    run_dir = tmp_path / "atelierbench"
     run_dir.mkdir()
     manifest_path = run_dir / "benchmark-manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
@@ -72,7 +72,7 @@ def test_build_vix_evidence_summarizes_results_and_judge_fields(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    evidence = build_vix_evidence(
+    evidence = build_atelierbench_evidence(
         run_dir=run_dir,
         manifest_path=manifest_path,
         repo_state={"commit": "def456", "dirty": True},

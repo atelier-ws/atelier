@@ -205,16 +205,27 @@ def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     help="Force re-import all sessions, ignoring timestamp dedup.",
 )
 @click.option(
+    "--path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override the selected host's sessions root. Requires --host.",
+)
+@click.option(
     "--export-dir",
     type=click.Path(path_type=Path),
     default=None,
     help="Export reconstructed session logs (JSONL) to this directory.",
 )
 @click.pass_context
-def global_import(ctx: click.Context, host: str | None, force: bool, export_dir: Path | None) -> None:
+def global_import(
+    ctx: click.Context, host: str | None, force: bool, path: Path | None, export_dir: Path | None
+) -> None:
     """Unified import for ALL agent sessions (Claude, Gemini, Codex, etc.)."""
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
+
+    if path is not None and host is None:
+        raise click.ClickException("--path requires --host")
 
     _ensure_import_progress_logging()
     store = _load_store(ctx.obj["root"])
@@ -236,7 +247,8 @@ def global_import(ctx: click.Context, host: str | None, force: bool, export_dir:
                 continue
 
             try:
-                ids = importer_cls(store).import_all(force=force)
+                importer = importer_cls(store)
+                ids = importer.import_all(path, force=force) if path is not None else importer.import_all(force=force)
                 count = len(ids)
                 total += count
                 all_imported_ids.extend(ids)
@@ -267,6 +279,7 @@ def global_import(ctx: click.Context, host: str | None, force: bool, export_dir:
                 logging.exception("global importer failed for host %s", name)
                 click.secho(f"FATAL: {name} importer raised: {e!r}", fg="red", err=True)
 
+    click.echo(f"imported {total} sessions")
     if total > 0:
         pct = (reconstructable / total) * 100
         click.echo(f"\nAudit: {reconstructable}/{total} sessions ({pct:.1f}%) 100% reconstructable.")

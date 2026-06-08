@@ -36,6 +36,7 @@ from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     record_grounding_evidence,
 )
 from atelier.core.capabilities.host_runners import resolve_swarm_runner_command
+from atelier.core.capabilities.memory import MemoryService
 from atelier.core.capabilities.model_settings import normalize_model_for_host, resolve_host_model
 from atelier.core.capabilities.owned_execution_cache_affinity import (
     cache_affinity_hint,
@@ -1399,7 +1400,7 @@ def _inspect_workflow_runtime(session_state: dict[str, Any]) -> dict[str, Any]:
     spawn_summary = runtime_state.get("spawn_summary") if isinstance(runtime_state.get("spawn_summary"), dict) else {}
     return {
         **status,
-        "spawn_summary": dict(spawn_summary),
+        "spawn_summary": spawn_summary,
         "step_spawns": step_spawns,
     }
 
@@ -3052,25 +3053,21 @@ def _memory_recall(
     since: str | None = None,
 ) -> dict[str, Any]:
     """Recall relevant archival memory passages."""
-    since_dt = datetime.fromisoformat(since) if since else None
-    passages, _ = _archival_recall().recall(
-        agent_id=agent_id,
-        query=query,
-        top_k=top_k,
-        tags=tags or None,
-        since=since_dt,
+    return (
+        _memory_service()
+        .recall(
+            agent_id=agent_id,
+            query=query,
+            top_k=top_k,
+            tags=tags or None,
+            since=since,
+        )
+        .model_dump(mode="json")
     )
-    return {
-        "passages": [
-            {
-                "id": passage.id,
-                "text": passage.text,
-                "source_ref": passage.source_ref,
-                "tags": passage.tags,
-            }
-            for passage in passages
-        ],
-    }
+
+
+def _memory_service() -> MemoryService:
+    return MemoryService(store=_memory_store(), embedder=make_embedder(), redactor=redact)
 
 
 def _memory_store_fact(
@@ -3083,98 +3080,18 @@ def _memory_store_fact(
     scope: str,
 ) -> dict[str, Any]:
     """Store a durable fact with Copilot-memory-like fields in Atelier memory."""
-    clean_subject = _redact_memory_input(subject, "subject").strip()
-    clean_fact = _redact_memory_input(fact, "fact").strip()
-    clean_citations = _redact_memory_input(citations, "citations").strip()
-    clean_reason = _redact_memory_input(reason, "reason").strip()
-    clean_scope = scope.strip().lower()
-    if clean_scope not in {"repository", "user"}:
-        raise ValueError("scope must be one of: repository, user")
-    if not clean_subject:
-        raise ValueError("subject is required for memory op=store_fact")
-    if not clean_fact:
-        raise ValueError("fact is required for memory op=store_fact")
-    # citations and reason are optional — they default to empty string.
-    clean_citations = clean_citations or ""
-    clean_reason = clean_reason or ""
-
-    target_agent = agent_id or "shared"
-    store = _memory_store()
-    existing_blocks = store.list_blocks(target_agent, include_tombstoned=False, limit=500)
-    existing: MemoryBlock | None = None
-    for block in existing_blocks:
-        block_metadata = block.metadata or {}
-        if (
-            block_metadata.get("kind") == "memory_fact"
-            and str(block_metadata.get("fact", "")) == clean_fact
-            and str(block_metadata.get("scope", "")) == clean_scope
-        ):
-            existing = block
-            break
-
-    if existing is None:
-        subject_slug = re.sub(r"[^a-z0-9]+", "-", clean_subject.lower()).strip("-") or "memory"
-        digest = sha256(f"{clean_scope}:{clean_subject}:{clean_fact}".encode()).hexdigest()[:12]
-        label = f"memory-fact/{clean_scope}/{subject_slug}/{digest}"
-        fact_metadata: dict[str, Any] = {
-            "kind": "memory_fact",
-            "subject": clean_subject,
-            "fact": clean_fact,
-            "citations": clean_citations,
-            "reason": clean_reason,
-            "scope": clean_scope,
-            "votes": {"upvote": 0, "downvote": 0},
-            "vote_history": [],
-        }
-        upsert = _memory_upsert_block(
-            agent_id=target_agent,
-            label=label,
-            value=clean_fact,
-            metadata=fact_metadata,
-            pinned=True,
+    return (
+        _memory_service()
+        .store_fact(
+            agent_id=agent_id,
+            subject=_redact_memory_input(subject, "subject"),
+            fact=_redact_memory_input(fact, "fact"),
+            citations=_redact_memory_input(citations, "citations"),
+            reason=_redact_memory_input(reason, "reason"),
+            scope=scope,
         )
-        return {
-            "id": upsert["id"],
-            "subject": clean_subject,
-            "fact": clean_fact,
-            "scope": clean_scope,
-            "citations": clean_citations,
-            "reason": clean_reason,
-        }
-
-    metadata = dict(existing.metadata or {})
-    votes = dict(metadata.get("votes") or {})
-    metadata.update(
-        {
-            "kind": "memory_fact",
-            "subject": clean_subject,
-            "fact": clean_fact,
-            "citations": clean_citations,
-            "reason": clean_reason,
-            "scope": clean_scope,
-            "votes": {
-                "upvote": int(votes.get("upvote", 0) or 0),
-                "downvote": int(votes.get("downvote", 0) or 0),
-            },
-            "vote_history": list(metadata.get("vote_history") or []),
-        }
+        .model_dump(mode="json")
     )
-    updated = _memory_upsert_block(
-        agent_id=existing.agent_id,
-        label=existing.label,
-        value=clean_fact,
-        metadata=metadata,
-        expected_version=existing.version,
-        pinned=True,
-    )
-    return {
-        "id": updated["id"],
-        "subject": clean_subject,
-        "fact": clean_fact,
-        "scope": clean_scope,
-        "citations": clean_citations,
-        "reason": clean_reason,
-    }
 
 
 def _memory_vote_fact(
@@ -3186,75 +3103,17 @@ def _memory_vote_fact(
     scope: str | None,
 ) -> dict[str, Any]:
     """Vote on an existing stored fact by exact fact text."""
-    clean_fact = _redact_memory_input(fact, "fact").strip()
-    clean_reason = _redact_memory_input(reason, "reason").strip()
-    clean_direction = direction.strip().lower()
-    clean_scope = (scope or "").strip().lower()
-    if clean_direction not in {"upvote", "downvote"}:
-        raise ValueError("direction must be one of: upvote, downvote")
-    if not clean_fact:
-        raise ValueError("fact is required for memory op=vote_fact")
-    if not clean_reason:
-        raise ValueError("reason is required for memory op=vote_fact")
-    if clean_scope and clean_scope not in {"repository", "user"}:
-        raise ValueError("scope must be one of: repository, user")
-
-    target_agent = agent_id or "shared"
-    store = _memory_store()
-    blocks = store.list_blocks(target_agent, include_tombstoned=False, limit=500)
-    match: MemoryBlock | None = None
-    for block in blocks:
-        metadata = block.metadata or {}
-        if metadata.get("kind") != "memory_fact":
-            continue
-        if str(metadata.get("fact", "")) != clean_fact:
-            continue
-        if clean_scope and str(metadata.get("scope", "")) != clean_scope:
-            continue
-        match = block
-        break
-
-    if match is None:
-        raise ValueError("no matching stored fact found for vote_fact")
-
-    metadata = dict(match.metadata or {})
-    votes = dict(metadata.get("votes") or {})
-    up = int(votes.get("upvote", 0) or 0)
-    down = int(votes.get("downvote", 0) or 0)
-    if clean_direction == "upvote":
-        up += 1
-    else:
-        down += 1
-    history = list(metadata.get("vote_history") or [])
-    history.append(
-        {
-            "direction": clean_direction,
-            "reason": clean_reason,
-            "at": datetime.now(UTC).isoformat(),
-        }
+    return (
+        _memory_service()
+        .vote_fact(
+            agent_id=agent_id,
+            fact=_redact_memory_input(fact, "fact"),
+            direction=direction,
+            reason=_redact_memory_input(reason, "reason"),
+            scope=scope,
+        )
+        .model_dump(mode="json")
     )
-    metadata["votes"] = {"upvote": up, "downvote": down}
-    metadata["vote_history"] = history[-20:]
-    metadata["last_vote"] = {
-        "direction": clean_direction,
-        "reason": clean_reason,
-        "at": datetime.now(UTC).isoformat(),
-    }
-
-    updated = _memory_upsert_block(
-        agent_id=match.agent_id,
-        label=match.label,
-        value=match.value,
-        metadata=metadata,
-        expected_version=match.version,
-    )
-    return {
-        "id": updated["id"],
-        "fact": clean_fact,
-        "scope": metadata.get("scope", ""),
-        "direction": clean_direction,
-        "reason": clean_reason,
-    }
 
 
 @mcp_tool(

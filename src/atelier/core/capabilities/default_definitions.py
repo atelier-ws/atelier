@@ -852,17 +852,20 @@ def _role_read_hint(role_id: str) -> str:
 # keeping the frontmatter small: ``tools: ["*"]`` already grants every MCP tool,
 # so an explicit allow-list is unnecessary. ``MultiEdit``/``NotebookEdit`` are
 # intentionally omitted (``Edit``/``Write`` plus ``mcp__atelier__edit`` cover the
-# real write paths) so the list stays short. Native ``Bash`` and
-# ``mcp__atelier__shell`` are never denied: read-only roles still need shell to
-# run checks and probes (``git diff``, ``pytest``, ``ls``), the Atelier shell is
-# the path they should prefer, and read-only is enforced by denying the write
-# tools, not by removing shell.
+# real write paths) so the list stays short. Native ``Bash`` is denied so all
+# shell work flows through ``mcp__atelier__shell`` (the supervised path) instead
+# of native heredocs; without this, agents bypass every Atelier file/search tool
+# by doing all I/O through ``Bash``. ``mcp__atelier__shell`` is never denied:
+# read-only roles still need shell to run checks and probes (``git diff``,
+# ``pytest``, ``ls``), and read-only is enforced by denying the write tools, not
+# by removing shell.
 _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Read",
     "Edit",
     "Write",
     "Grep",
     "Glob",
+    "Bash",
 ]
 
 

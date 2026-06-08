@@ -16,16 +16,11 @@ def register(cli: click.Group) -> None:
         cli.add_command(admin_commands.init)
         cli.add_command(admin_commands.uninstall)
         cli.add_command(admin_commands.env_group)
-        cli.add_command(admin_commands.deprecate)
-        cli.add_command(admin_commands.quarantine)
         cli.add_command(admin_commands.login_cmd)
         cli.add_command(admin_commands.logout_cmd)
         cli.add_command(admin_commands.status_cmd)
         cli.add_command(admin_commands.share_cmd)
         cli.add_command(admin_commands.plugin_settings_group)
-        cli.add_command(cast("click.Command", admin_commands.detect_loop_cmd))
-        cli.add_command(admin_commands.loop_report_cmd)
-        cli.add_command(admin_commands.tool_report_cmd)
         doctor_cmd = getattr(admin_commands, "doctor_cmd", None)
         if doctor_cmd is not None:
             cli.add_command(cast("click.Command", doctor_cmd))
@@ -40,23 +35,10 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
-        from .blocks import (
-            add_block,
-            block_group,
-            domain_group,
-            import_style_guide_cmd,
-            list_blocks_cmd,
-            reembed,
-            report_cmd,
-        )
+        from .blocks import domain_group, report_cmd
 
-        cli.add_command(cast("click.Command", reembed))
-        cli.add_command(cast("click.Command", add_block))
         cli.add_command(domain_group)
         cli.add_command(report_cmd)
-        cli.add_command(import_style_guide_cmd)
-        cli.add_command(block_group)
-        cli.add_command(list_blocks_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -64,20 +46,6 @@ def register(cli: click.Group) -> None:
         from .telemetry import telemetry_group
 
         cli.add_command(telemetry_group)
-    except (ModuleNotFoundError, ImportError):
-        pass
-
-    try:
-        from .letta import letta_group
-
-        cli.add_command(letta_group)
-    except (ModuleNotFoundError, ImportError):
-        pass
-
-    try:
-        from .openmemory import openmemory_group
-
-        cli.add_command(openmemory_group)
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -107,29 +75,23 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
+        from . import admin as admin_commands
         from .tools import tool_mode, tools_group
 
-        cli.add_command(tool_mode)
+        tools_group.add_command(tool_mode, name="mode")
+        tools_group.add_command(admin_commands.tool_report_cmd, name="report")
         cli.add_command(tools_group)
     except (ModuleNotFoundError, ImportError):
         pass
 
     try:
         from .savings import (
-            external_report_cmd,
-            external_status_cmd,
             optimize_group,
             savings_cmd,
-            savings_detail,
-            savings_reset,
         )
 
         cli.add_command(savings_cmd)
         cli.add_command(optimize_group)
-        cli.add_command(external_status_cmd)
-        cli.add_command(external_report_cmd)
-        cli.add_command(savings_detail)
-        cli.add_command(savings_reset)
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -137,7 +99,6 @@ def register(cli: click.Group) -> None:
         from .benchmark import benchmark_group
 
         cli.add_command(benchmark_group)
-        cli.add_command(benchmark_group, name="bench")
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -149,39 +110,30 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
-        from .code import code_group, zoekt_group
+        from .code import code_group
 
         cli.add_command(code_group)
-        cli.add_command(zoekt_group)
     except (ModuleNotFoundError, ImportError):
         pass
 
     try:
-        from .route import proof_group, route_public_group
+        from .route import route_public_group
 
         cli.add_command(route_public_group)
-        cli.add_command(proof_group)
     except (ModuleNotFoundError, ImportError):
         pass
 
     try:
-        from .hosts import claude, codex, copilot, gemini, global_import, opencode
+        from .hosts import global_import
 
-        cli.add_command(copilot)
-        cli.add_command(claude)
-        cli.add_command(codex)
-        cli.add_command(opencode)
-        cli.add_command(gemini)
         cli.add_command(global_import)
     except (ModuleNotFoundError, ImportError):
         pass
 
     try:
         from .lessons import (
-            analyze_failures_cmd,
             checkpoint,
             eval_,
-            eval_from_cluster,
             failure,
             ledger,
             lesson,
@@ -191,17 +143,14 @@ def register(cli: click.Group) -> None:
         cli.add_command(checkpoint)
         cli.add_command(failure)
         cli.add_command(lesson)
-        cli.add_command(analyze_failures_cmd)
         cli.add_command(eval_)
-        cli.add_command(eval_from_cluster)
     except (ModuleNotFoundError, ImportError):
         pass
 
     try:
-        from .sessions import outcomes_group, runs_group, session_group
+        from .sessions import runs_group, session_group
 
         cli.add_command(runs_group)
-        cli.add_command(outcomes_group)
         cli.add_command(session_group)
     except (ModuleNotFoundError, ImportError):
         pass
