@@ -1,8 +1,8 @@
-# Roadmap: Atelier
+# Roadmap: Atelier Owned Agent CLI
 
 ## Overview
 
-This roadmap turns Atelier into a benchmark-first terminal coding agent through four coarse vertical slices: grounded terminal interaction, explicit execution discipline, real routed subcall execution, and an artifact-backed benchmark gate. Each phase exists to improve solved-rate, grounding, execution coherence, or cost-under-parity on frozen terminal-bench-style tasks.
+This roadmap delivers `atelier run` — a user-owned coding-agent CLI built for maximum cache control. The journey starts with a single-shot owned session (route → execute → receipt) on the user's own API credentials, then grows the phase-linear Survey→Plan→Implement conversation that is the project's core value: the Plan phase reads Survey's ingested codebase context as a cheap cache hit instead of a cold re-read. From there we add minified reads and within-session dedup to shrink the warm prefix, harden the CLI with resume / keepalive / cost guardrails, and close with cache-economics reporting that proves the savings against a naive baseline. Each phase maps directly to a milestone (M1–M5) from `docs/plans/owned-agent-cli.md` and builds on existing owned-execution, cache-affinity, and dedup infrastructure rather than reinventing it.
 
 ## Phases
 
@@ -10,103 +10,76 @@ This roadmap turns Atelier into a benchmark-first terminal coding agent through 
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [x] **Phase 1: Grounded Terminal Loop MVP** - Search-first default path with semantic escalation (completed 2026-06-02)
-- [x] **Phase 2: Execution Kernel MVP** - Owned workflow runner, default definitions, solver loop, explicit plan review, grounded edit discipline, and read-only structural minification (completed 2026-06-03)
-- [x] **Phase 3: Routed Execution MVP** - Explicit or auto provider/model routing for Atelier-owned subcalls, plus prompt-cache affinity and a shadow-safe local host router bridge (completed 2026-06-03)
-- [x] **Phase 4: Benchmark Gate MVP** - Frozen paired benchmarks and artifact-backed proof (completed 2026-06-03)
+- [ ] **Phase 1: Owned Session Core** - Single-shot `atelier run "<task>"` owned session: route → execute → receipt with a stable prefix and one cache breakpoint
+- [ ] **Phase 2: Phase-Linear Stem Agent** - Survey→Plan→Implement in one byte-stable conversation so Plan reads Survey's context as a cache hit
+- [ ] **Phase 3: Minified Reads + Dedup** - Whitespace-minified reads on Survey/Plan, exact bytes on Implement, plus within-session read dedup
+- [ ] **Phase 4: CLI Hardening** - Session resume with warm prefix, background keepalive pings, and cost guardrails
+- [ ] **Phase 5: Reporting** - Per-run cache-economics receipt: cache-hit ratio and $ saved vs naive baseline
 
 ## Phase Details
 
-### Phase 1: Grounded Terminal Loop MVP
-**Goal:** As a terminal coding agent user, I want a grounded Search-first workflow with semantic escalation, so that I can solve repo tasks faster without losing precision.
-**Mode:** mvp
+### Phase 1: Owned Session Core
+**Goal**: User can run a single-shot owned coding session on their own credentials that routes to a provider, executes, and persists as a replayable JSONL run with a stable cache-friendly prefix.
 **Depends on**: Nothing (first phase)
-**Requirements**: GRND-01, GRND-02, GRND-03, INTL-01, INTL-02
+**Requirements**: SESS-01, SESS-02, SESS-05, CACHE-04, CRED-01, CRED-03, CRED-04
 **Success Criteria** (what must be TRUE):
-  1. User can use a Search-first default path for file/path/match discovery without manually picking among overlapping tools.
-  2. User can escalate grounded results into precise symbol, caller, usage, and impact answers in the same session.
-  3. User can batch related edits and follow-up reads while existing memory and code-intel strengths still work.
-**Plans**: 3 plans
+  1. User can run `atelier run "<task>"` and get a completed owned session using their own API key, with provider/model selectable via `--provider`, `--model`, or `--budget cheap|balanced|best`.
+  2. When no API key is configured, the CLI exits with an actionable message naming which env vars / `.env` vendors to set.
+  3. User can run `--dry-run` to preview the plan without edits, and `--yolo` to skip edit-approval prompts (default confirms destructive edits).
+  4. Each run persists to `~/.atelier/runs/<session-id>.jsonl` with a fixed stable prefix and one `cache_control` breakpoint, controllable via `--cache-policy inherit|fresh`.
+**Plans**: TBD
 
-Plans:
-- [x] 01-01: Compose Search-first grounding over existing read/search/edit/memory surfaces
-- [x] 01-02: Preserve code-intel escalation paths inside the simplified terminal loop
-- [x] 01-03: Add low-roundtrip ergonomics and batching nudges without regressing existing smart context
-
-### Phase 2: Execution Kernel MVP
-**Goal:** As a terminal coding agent user, I want an owned workflow runner with explicit state and benchmark solver discipline, so that multi-step tasks stay coherent from plan through execution and can be retried from harness feedback.
-**Mode:** mvp
+### Phase 2: Phase-Linear Stem Agent
+**Goal**: User gets a single byte-stable Survey→Plan→Implement conversation where the Plan phase reads Survey's ingested context as a cache hit rather than a cold re-read — the project's core savings lever.
 **Depends on**: Phase 1
-**Requirements**: EXEC-01, EXEC-02, EXEC-03, EXEC-04, EXEC-05, EXEC-06, EXEC-07, EXEC-08, EXEC-09, EXEC-10, EXEC-11, EXEC-12, EXEC-13, EXEC-14, DFLT-01, DFLT-02, DFLT-03, DFLT-04, INTL-03
+**Requirements**: SESS-03, SESS-04, CACHE-01, CACHE-02, CACHE-03, CACHE-05
 **Success Criteria** (what must be TRUE):
-  1. User can move through explicit explore, plan, execute, and review workflow states in one session.
-  2. User can approve or revise a plan before execution starts.
-  3. User can resume execution with current-task state and prior task outputs preserved.
-  4. User can only apply benchmark-path edits after the relevant code has been grounded by read/search/code-intel steps.
-  5. User can run an Atelier-owned workflow DAG with persistent/forkable step context, safe tool scheduling, and per-step telemetry.
-  6. User can inspect and regenerate default agent, skill, workflow, prompt, MCP, and benchmark-profile definitions from one canonical source.
-  7. User can run a benchmark solver profile headlessly, retry from harness feedback, and emit artifact-backed JSON/stream-JSON outputs.
-  8. User can run owned explore/plan/review/execute on one generic stem system prompt with phase-pivot user prompts and conversation-forking steps, preserving the prompt-cache prefix across phases.
-  9. User can read files through a structural minified reader path that cuts explore-time tokens while writer/execute reads stay byte-exact.
-**Plans**: 7 plans
+  1. A single `atelier run` executes Survey→Plan→Implement as one conversation using a generic stem-agent system prompt, with phase intent injected via user turns (not system-prompt mutation).
+  2. The stable system prefix is fixed at session start and never mutated mid-run; the `cache_control` ephemeral breakpoint sits after the stable prefix (system + tools + pinned context).
+  3. Cache reporting shows the Plan phase reading Survey's context as cache-read tokens (a warm-prefix hit), and subsequent calls stay on the provider whose prefix is warm.
+  4. User can toggle `--phase-linear/--no-phase-linear` (default on) to compare phase-linear vs per-phase-cold behavior.
+**Plans**: TBD
 
-Plans:
-- [x] 02-01: Introduce typed session workflow state and task-local carry-forward outputs
-- [x] 02-02: Add plan review, progress, and workflow event surfaces through existing tracing/reporting
-- [x] 02-03: Enforce grounded edit gates on the benchmark execution path
-- [x] 02-04: Add owned workflow DAG execution with persistent/forkable step context
-- [x] 02-05: Add canonical default definitions and generated host/runtime surfaces (incl. stem-agent prompt set, phase-pivot prompts, reviewer verdict contract, and Eval solver command-discipline rules)
-- [x] 02-06: Add benchmark solver profile, conversation-fork harness-feedback retry, and headless run artifacts
-- [x] 02-07: Add read-only structural minification on the explore read path (the read half of Eval's VFS)
-
-### Phase 3: Routed Execution MVP
-**Goal:** As a terminal coding agent user, I want Atelier-owned subcalls to run through an explicit provider/model I choose or an auto-selected route, while preserving prompt-cache locality, so that I can control important runs and still let policy choose when appropriate.
-**Mode:** mvp
+### Phase 3: Minified Reads + Dedup
+**Goal**: User's Survey/Plan phases read files in compact/minified form while Implement uses exact bytes, and repeated reads within a session are deduplicated — shrinking the warm prefix without losing edit fidelity.
 **Depends on**: Phase 2
-**Requirements**: ROUT-01, ROUT-02, ROUT-03, ROUT-04, ROUT-05, ROUT-06, ROUT-07
+**Requirements**: CACHE-07, READ-01, READ-02
 **Success Criteria** (what must be TRUE):
-  1. User can execute Atelier-owned subcalls through enforced provider/model routing rather than advisory-only routing.
-  2. User can explicitly select provider and model as a first-class route mode for owned subcalls and benchmarks.
-  3. User can choose `auto` mode when they want policy to select from task class, provider health, quality risk, price, latency, and cache warmth.
-  4. User can preserve provider-side prompt-cache affinity across explore -> plan -> review -> execute loops when the selected or auto route is cache-compatible.
-  5. User can inspect actual provider/model/cache provenance for each routed subcall.
-  6. User can keep the top-level host conversation native while routed execution runs safely on owned subcalls.
-  7. User can shadow a Claude-Code-compatible local router bridge before opting into broader host-level routing.
-**Plans**: 4 plans
+  1. During Survey and Plan, file reads come back whitespace-minified (outline/compact projection via existing `atelier_read` outline mode).
+  2. During Implement/edit, file reads are exact byte-for-byte so edits apply cleanly.
+  3. Re-reading the same file within a session is served from `context_dedup` rather than re-ingested, visible as reduced fresh-input tokens in the receipt.
+**Plans**: TBD
 
-Plans:
-- [x] 03-01: Add provider catalog and explicit/auto route selection modes for owned execution
-- [x] 03-02: Add provider execution lanes for Atelier-owned subcalls using existing routing foundations
-- [x] 03-03: Add prompt-cache affinity, cache-token accounting, and warm-route stickiness
-- [x] 03-04: Add a shadow-safe local host router bridge for Claude-Code-compatible traffic
-
-### Phase 4: Benchmark Gate MVP
-**Goal:** As a benchmark-driven maintainer, I want paired artifact-backed terminal benchmarks, so that Atelier can prove higher solved-rate with non-inferior quality and lower cost where possible.
-**Mode:** mvp
+### Phase 4: CLI Hardening
+**Goal**: User can resume a session with its warm prefix intact, long idle sessions stay cached, and runs respect a cost ceiling.
 **Depends on**: Phase 3
-**Requirements**: BENC-01, BENC-02, BENC-03, BENC-04
+**Requirements**: SESS-06, CACHE-06, CRED-02
 **Success Criteria** (what must be TRUE):
-  1. User can run a frozen paired benchmark set under matched baseline and treatment conditions.
-  2. User can inspect raw run artifacts, judge outputs, and the exact commit under test for every benchmark claim.
-  3. User can reject invalid or off-topic runs instead of counting them as wins.
-  4. User can use a benchmark summary that reports solved-rate, quality, token, latency, and cost deltas to decide whether the reset succeeded.
-**Plans**: 3 plans
+  1. User can run `atelier run resume <session-id>` to continue a session and observe cache-read hits against the still-warm prefix.
+  2. While a session sits idle, background keepalive pings fire every 5 min so the 5-min cache TTL does not expire before resume.
+  3. `--max-cost <usd>` aborts the session when the projected cost exceeds the limit, before incurring it.
+**Plans**: TBD
 
-Plans:
-- [x] 04-01: Freeze benchmark corpus and matched baseline protocol for terminal-bench-style tasks
-- [x] 04-02: Capture paired run artifacts, judge outputs, and benchmark summaries
-- [x] 04-03: Gate milestone claims on solved-rate, quality, and cost-under-parity
+### Phase 5: Reporting
+**Goal**: User can see, at session end and on demand, exactly how much the cache control saved versus a naive no-cache baseline.
+**Depends on**: Phase 4
+**Requirements**: RPT-01, RPT-02, RPT-03, RPT-04
+**Success Criteria** (what must be TRUE):
+  1. At session end the receipt shows cache-read tokens, cache-write tokens, fresh-input tokens, cache efficiency %, and $ spent.
+  2. The receipt shows $ spent vs a naive (no-cache, per-phase-cold) baseline so the savings are explicit.
+  3. User can run `atelier run report <session-id>` to retrieve the receipt for any past session.
+  4. The receipt reports the cache-hit ratio and compares it against Eval's 60–80% target.
+**Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Grounded Terminal Loop MVP | 3/3 | Complete   | 2026-06-02 |
-| 2. Execution Kernel MVP | 7/7 | Complete | 2026-06-03 |
-| 3. Routed Execution MVP | 4/4 | Complete | 2026-06-03 |
-| 4. Benchmark Gate MVP | 3/3 | Complete | 2026-06-03 |
+| 1. Owned Session Core | 0/TBD | Not started | - |
+| 2. Phase-Linear Stem Agent | 0/TBD | Not started | - |
+| 3. Minified Reads + Dedup | 0/TBD | Not started | - |
+| 4. CLI Hardening | 0/TBD | Not started | - |
+| 5. Reporting | 0/TBD | Not started | - |
