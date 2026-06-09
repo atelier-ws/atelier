@@ -236,6 +236,35 @@ pub struct GitFile {
     pub path: String,
 }
 
+/// A single commit in the Git history (file list loaded lazily on expand).
+#[derive(Debug, Clone)]
+pub struct GitCommit {
+    pub hash: String,
+    pub short_hash: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+    pub expanded: bool,
+    pub files: Vec<String>,
+}
+
+/// What a clickable row in the Git tab maps to (rebuilt each frame).
+#[derive(Debug, Clone)]
+pub enum GitRowKind {
+    Commit(usize),
+    CommitFile(usize, String),
+}
+
+/// Stored layout rectangles for mouse hit-testing (rebuilt each frame).
+#[derive(Debug, Clone, Default)]
+pub struct PaneRects {
+    pub left: Rect,
+    pub middle: Rect,
+    pub right_top: Rect,
+    pub right_bottom: Rect,
+    pub input: Rect,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FocusedPane {
     Input,
@@ -533,7 +562,10 @@ pub struct App<'a> {
     pub left_tab: LeftTab,
     pub left_hidden: bool,
     pub git_status: Vec<GitFile>,
-    pub git_log: Vec<String>,
+    pub git_commits: Vec<GitCommit>,
+    pub git_commit_selected: usize,
+    /// Maps each rendered Git-tab row (before scroll) to a clickable target.
+    pub git_row_targets: Vec<Option<GitRowKind>>,
     // Middle pane (tabbed)
     pub middle_tabs: Vec<TabContent>,
     pub middle_tab_idx: usize,
@@ -559,6 +591,11 @@ pub struct App<'a> {
     pub file_tree: Vec<TreeNode>,
     pub file_tree_selected: usize,
     pub gitignore_patterns: Vec<String>,
+    // Mouse hit-testing
+    pub pane_rects: Option<PaneRects>,
+    pub hovered_file_idx: Option<usize>,
+    /// First file-tree index rendered in the Files tab (set each frame for hit-testing).
+    pub files_view_offset: usize,
 }
 
 impl<'a> App<'a> {
@@ -613,7 +650,9 @@ impl<'a> App<'a> {
             left_tab: LeftTab::Sessions,
             left_hidden: false,
             git_status: Vec::new(),
-            git_log: Vec::new(),
+            git_commits: Vec::new(),
+            git_commit_selected: 0,
+            git_row_targets: Vec::new(),
             middle_tabs: vec![TabContent::Conversation],
             middle_tab_idx: 0,
             middle_tab_scroll: vec![0],
@@ -632,6 +671,9 @@ impl<'a> App<'a> {
             file_tree,
             file_tree_selected: 0,
             gitignore_patterns,
+            pane_rects: None,
+            hovered_file_idx: None,
+            files_view_offset: 0,
         };
         app.refresh_git_status();
         app
@@ -749,12 +791,61 @@ impl<'a> App<'a> {
                 .collect();
         }
         let log_output = std::process::Command::new("git")
-            .args(["log", "--oneline", "-15", "--no-color"])
+            .args(["log", "--pretty=format:%H|%h|%s|%an|%ar", "-15", "--no-color"])
             .current_dir(&self.project_root)
             .output();
         if let Ok(out) = log_output {
             let text = String::from_utf8_lossy(&out.stdout);
-            self.git_log = text.lines().map(|l| l.to_string()).collect();
+            self.git_commits = text
+                .lines()
+                .filter_map(|line| {
+                    let parts: Vec<&str> = line.splitn(5, '|').collect();
+                    if parts.len() >= 5 {
+                        Some(GitCommit {
+                            hash: parts[0].to_string(),
+                            short_hash: parts[1].to_string(),
+                            message: parts[2].to_string(),
+                            author: parts[3].to_string(),
+                            date: parts[4].to_string(),
+                            expanded: false,
+                            files: Vec::new(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            self.git_commit_selected = self
+                .git_commit_selected
+                .min(self.git_commits.len().saturating_sub(1));
+        }
+    }
+
+    /// Expand/collapse a commit, lazily loading its changed-file list on expand.
+    pub fn git_commit_toggle(&mut self, idx: usize) {
+        let Some(commit) = self.git_commits.get_mut(idx) else {
+            return;
+        };
+        commit.expanded = !commit.expanded;
+        if !commit.expanded || !commit.files.is_empty() {
+            return;
+        }
+        let hash = commit.hash.clone();
+        let files = if let Ok(output) = std::process::Command::new("git")
+            .args(["show", "--name-only", "--pretty=format:", &hash])
+            .current_dir(&self.project_root)
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            text.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.to_string())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if let Some(commit) = self.git_commits.get_mut(idx) {
+            commit.files = files;
         }
     }
 
