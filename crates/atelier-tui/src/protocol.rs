@@ -105,6 +105,44 @@ pub enum BackendEvent {
         cache_write_tokens: u64,
         fresh_tokens: u64,
     },
+    #[serde(rename = "context.usage.updated")]
+    ContextUsageUpdated {
+        session_id: String,
+        input_tokens: u64,
+        cache_read_tokens: u64,
+        cache_write_tokens: u64,
+        output_tokens: u64,
+        #[serde(default = "default_context_window")]
+        model_context_window: u64,
+        #[serde(default)]
+        cache_efficiency_pct: f64,
+        #[serde(default)]
+        cost_usd: f64,
+    },
+    #[serde(rename = "shell.started")]
+    ShellStarted { id: String, command: String },
+    #[serde(rename = "shell.output")]
+    ShellOutput { id: String, chunk: String },
+    #[serde(rename = "shell.finished")]
+    ShellFinished {
+        id: String,
+        exit_code: i32,
+        ok: bool,
+    },
+    #[serde(rename = "task.created")]
+    TaskCreated { id: String, name: String },
+    #[serde(rename = "task.updated")]
+    TaskUpdated { id: String, status: String },
+    #[serde(rename = "checkpoint.created")]
+    CheckpointCreated {
+        id: String,
+        label: String,
+        timestamp: String,
+    },
+}
+
+fn default_context_window() -> u64 {
+    200_000
 }
 
 /// Commands sent to the Python backend (one JSON object per line on stdin).

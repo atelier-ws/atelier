@@ -30,7 +30,13 @@ Usage:
         --agent-env-from-host ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY \
         --agent-env ANTHROPIC_API_KEY=
     uv run python -m benchmarks.atelierbench.run --report results/<run_dir>
-"""
+
+    # Owned-agent arm (Atelier runs the loop itself on YOUR API key; different
+    # price/savings profile than the host-plugin "atelier" arm). Requires a real
+    # provider key, e.g. ANTHROPIC_API_KEY, and an explicit --model:
+    uv run python -m benchmarks.atelierbench.run --tasks task1 \
+        --cli-driver atelier-run --arms atelier-tui --model claude-sonnet-4-5
+    """
 
 from __future__ import annotations
 
@@ -68,7 +74,7 @@ RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
-VALID_ARMS = ("baseline", "atelier", "feature", "eval")
+VALID_ARMS = ("baseline", "atelier", "atelier-tui", "feature", "eval")
 PERSISTENT_WORKSPACE_ROOT = Path(
     os.environ.get(
         "ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces")
@@ -82,7 +88,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     "azure": "azure-claude",
     "openrouter": "openrouter-claude",
 }
-CLI_DRIVERS = ("claude", "copilot", "codex", "opencode", "eval")
+CLI_DRIVERS = ("claude", "copilot", "codex", "opencode", "eval", "atelier-run")
 PLACEHOLDER_RESPONSE_MARKERS = (
     "i'm ready to help",
     "what would you like to work on",
@@ -191,6 +197,28 @@ implementation without waiting for user input or approval.
 for shell commands. The Bash, Write, and Edit tools are disabled — do not rely
 on them.
 
+**Navigate cheaply**: prefer the code-intelligence tools over reading whole
+files — `mcp__atelier__symbols` to locate a definition, `mcp__atelier__node` to
+read one symbol's source, `mcp__atelier__callers`/`mcp__atelier__usages` for the
+call graph, and `mcp__atelier__explore` for grouped context. Use ranged/outline
+`mcp__atelier__read` instead of pulling entire large files. This keeps context
+small and your edits precisely targeted.
+
+**Scope**: Implement only the core source files and the tests. Do NOT create
+README, example, summary, checklist, or "deliverables" files, and do not print a
+summary banner. Every file you write must be required by the task.
+
+Work in the current directory. Deliver a complete, working implementation.
+"""
+BASELINE_CLAUDE_MD = """\
+# Benchmark Instructions
+
+You are running in a non-interactive benchmark environment.
+
+**Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
+Implement the task directly and complete the full implementation without waiting
+for user input or approval.
+
 **Scope**: Implement only the core source files and the tests. Do NOT create
 README, example, summary, checklist, or "deliverables" files, and do not print a
 summary banner. Every file you write must be required by the task.
@@ -248,9 +276,16 @@ def _wait_port(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
-def _make_baseline_config() -> Path:
-    """Isolated CLAUDE_CONFIG_DIR: real auth, no plugins/hooks/MCP."""
-    cfg = Path(_mktemp("cfg-"))
+def _make_baseline_config(dest: Path | None = None) -> Path:
+    """Isolated CLAUDE_CONFIG_DIR: real auth, no plugins/hooks/MCP.
+
+    Idempotent when *dest* is given: an already-populated config dir is reused
+    so ``--resume`` can still find the prior session transcript.
+    """
+    cfg = dest or Path(_mktemp("cfg-"))
+    cfg.mkdir(parents=True, exist_ok=True)
+    if (cfg / ".claude.json").exists():
+        return cfg
     src = Path.home() / ".claude.json"
     data = json.loads(src.read_text())
     for k in ("enabledPlugins", "hooks", "mcpServers"):
@@ -392,12 +427,27 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
             task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path)
         )
     u = d.get("usage", {}) or {}
+    model_usage = d.get("modelUsage", {}) or {}
+    cost_usd = float(d.get("total_cost_usd", 0.0) or 0.0)
+    if cost_usd <= 0.0 and u:
+        # Bedrock/Vertex and some gateways report total_cost_usd=0; recompute
+        # from token usage via the shared pricing catalog so savings math works.
+        model_id = next(iter(model_usage), "") or ""
+        if model_id:
+            with contextlib.suppress(Exception):
+                cost_usd = usage_cost_usd(
+                    model_id,
+                    input_tokens=int(u.get("input_tokens", 0) or 0),
+                    output_tokens=int(u.get("output_tokens", 0) or 0),
+                    cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
+                    cache_write_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
+                )
     return ArmResult(
         task=task,
         arm=arm,
         rep=rep,
         ok=not d.get("is_error", False),
-        cost_usd=float(d.get("total_cost_usd", 0.0) or 0.0),
+        cost_usd=cost_usd,
         duration_ms=int(d.get("duration_ms", 0) or 0),
         duration_api_ms=int(d.get("duration_api_ms", 0) or 0),
         num_turns=int(d.get("num_turns", 0) or 0),
@@ -405,7 +455,7 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
         cache_creation_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
         output_tokens=int(u.get("output_tokens", 0) or 0),
-        models=list((d.get("modelUsage", {}) or {}).keys()),
+        models=list(model_usage.keys()),
         is_error=bool(d.get("is_error", False)),
         result_excerpt=str(d.get("result", ""))[:4000],
         flow_path=str(flow_path),
@@ -828,6 +878,65 @@ def _parse_vix_result(
     )
 
 
+def _parse_atelier_run_result(
+    stdout: str,
+    flow_path: Path,
+    task: str,
+    arm: str,
+    rep: int,
+    wall_duration_ms: int,
+) -> ArmResult:
+    """Parse the `atelier run start` headless owned-agent receipt from stdout.
+
+    `atelier run report` rebuilds an empty receipt, so the only populated token/
+    cost figures live in the `format_receipt()` block printed by `run start`.
+    """
+    text = stdout or ""
+    session_match = re.search(r"session=(\S+)", text) or re.search(
+        r"^Session:\s*(\S+)", text, re.MULTILINE
+    )
+    session_id = session_match.group(1) if session_match else ""
+    model_match = re.search(r"model=(\S+)", text) or re.search(r"Provider:\s*\S+\s*/\s*(\S+)", text)
+    model = model_match.group(1) if model_match else ""
+
+    def _money(label: str) -> float:
+        m = re.search(rf"^{label}:\s*\$([0-9.]+)", text, re.MULTILINE)
+        return float(m.group(1)) if m else 0.0
+
+    cost_usd = _money("Cost")
+    input_tokens = cache_read = cache_write = output_tokens = 0
+    phase_lines = 0
+    for m in re.finditer(
+        r"input=\s*([\d,]+)\s+cache_read=\s*([\d,]+)"
+        r"\s+cache_write=\s*([\d,]+)\s+output=\s*([\d,]+)",
+        text,
+    ):
+        phase_lines += 1
+        input_tokens += int(m.group(1).replace(",", ""))
+        cache_read += int(m.group(2).replace(",", ""))
+        cache_write += int(m.group(3).replace(",", ""))
+        output_tokens += int(m.group(4).replace(",", ""))
+    ok = bool(session_id) and "Session saved:" in text
+    return ArmResult(
+        task=task,
+        arm=arm,
+        rep=rep,
+        ok=ok,
+        cost_usd=cost_usd,
+        duration_ms=wall_duration_ms,
+        duration_api_ms=wall_duration_ms,
+        num_turns=phase_lines,
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_write,
+        output_tokens=output_tokens,
+        models=[model] if model else [],
+        is_error=not ok,
+        result_excerpt=text.strip()[-4000:],
+        flow_path=str(flow_path),
+    )
+
+
 def _parse_cli_result(
     stdout: str,
     flow_path: Path,
@@ -852,6 +961,8 @@ def _parse_cli_result(
         return _parse_opencode_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     if cli_driver == "eval":
         return _parse_vix_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
+    if cli_driver == "atelier-run":
+        return _parse_atelier_run_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     raise ValueError(f"unsupported cli driver: {cli_driver}")
 
 
@@ -866,19 +977,28 @@ def _extract_keywords(text: str, *, limit: int = 24) -> set[str]:
     return {token for token, _count in ranked[:limit]}
 
 
-def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str]:
+def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]:
+    """Return ``(valid, reason, hard)``.
+
+    ``hard`` marks failures certain enough to flip ``ok`` (empty / error /
+    placeholder output). Soft failures — the keyword-overlap heuristics — are
+    advisory only: they set ``valid=False`` for reporting but MUST NOT fail an
+    otherwise-successful run, because terse-by-design output (e.g. the atelier
+    arm's "do not print a summary banner") legitimately has low prompt overlap
+    and was being scored as a failure, biasing the comparison against atelier.
+    """
     text = excerpt.strip()
     lowered = text.lower()
     if not text:
-        return False, "empty response"
+        return False, "empty response", True
     if lowered.startswith("harness error:"):
-        return False, "harness/runtime error"
+        return False, "harness/runtime error", True
     if any(marker in lowered for marker in RUNTIME_ERROR_MARKERS):
-        return False, "runtime/provider error surfaced in result"
+        return False, "runtime/provider error surfaced in result", True
     if any(marker in lowered for marker in PLACEHOLDER_RESPONSE_MARKERS):
-        return False, "generic placeholder response"
+        return False, "generic placeholder response", True
     if text.lstrip().startswith('{"title"'):
-        return False, "session-title payload instead of task response"
+        return False, "session-title payload instead of task response", True
     task_keywords = _extract_keywords(f"{task.prompt()}\n{_task_description(task)}")
     response_keywords = _extract_keywords(text)
     overlap = task_keywords & response_keywords
@@ -888,20 +1008,28 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str]:
         if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
     )
     if len(overlap) == 0 and list_item_count >= 3:
-        return False, f"off-task capability/list response (list_items={list_item_count})"
+        return False, f"off-task capability/list response (list_items={list_item_count})", False
     if any(marker in lowered for marker in META_ACTION_MARKERS) and len(overlap) < 2:
-        return False, f"off-topic planning/research response (keyword overlap={len(overlap)})"
+        return (
+            False,
+            f"off-topic planning/research response (keyword overlap={len(overlap)})",
+            False,
+        )
     if (
         any(marker in lowered for marker in CLARIFICATION_REQUEST_MARKERS)
         and len(task.prompt()) > 200
         and len(overlap) < 2
     ):
-        return False, f"unnecessary clarification request (keyword overlap={len(overlap)})"
+        return False, f"unnecessary clarification request (keyword overlap={len(overlap)})", False
     if any(marker in lowered for marker in WORKSPACE_CONFUSION_MARKERS) and len(overlap) < 2:
-        return False, f"workspace confusion overrode task prompt (keyword overlap={len(overlap)})"
+        return (
+            False,
+            f"workspace confusion overrode task prompt (keyword overlap={len(overlap)})",
+            False,
+        )
     if task_keywords and len(overlap) == 0:
-        return False, "no task keyword overlap"
-    return True, ""
+        return False, "no task keyword overlap", False
+    return True, "", False
 
 
 def _apply_result_validity(task: Task, result: ArmResult) -> ArmResult:
@@ -912,10 +1040,12 @@ def _apply_result_validity(task: Task, result: ArmResult) -> ArmResult:
         result.validity_reason = result.validity_reason or "trial execution failed (ok=False)"
         return result
 
-    valid, reason = _validate_result_excerpt(task, result.result_excerpt)
+    valid, reason, hard = _validate_result_excerpt(task, result.result_excerpt)
     result.valid = valid
     result.validity_reason = reason
-    if not valid:
+    # Only a hard failure flips ok; soft keyword-overlap heuristics stay advisory
+    # so terse correct runs (esp. the atelier arm) are not failed for low overlap.
+    if not valid and hard:
         result.ok = False
     return result
 
@@ -1113,10 +1243,27 @@ def run_arm(
                 agent_command=agent_command,
                 extra_args=cli_extra_args,
             )
+            if arm in {"baseline", "atelier"}:
+                # Contamination-free config: real subscription auth, but no
+                # globally-installed plugins/hooks/MCP. The ONLY A/B difference
+                # is then the Atelier MCP toolset + CLAUDE.md, not ambient host
+                # state. Persisted next to the workspace so --resume still finds
+                # the prior session transcript.
+                config_dir = _make_baseline_config(
+                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}"
+                    if row_state
+                    else None
+                )
+                env["CLAUDE_CONFIG_DIR"] = str(config_dir)
             if row_state:
                 session_id = str(row_state["session_id"])
                 cmd += ["--resume" if should_resume_session else "--session-id", session_id]
                 cmd += ["--add-dir", str(ws)]
+            if arm == "baseline":
+                # Match the atelier arm's non-tool guidance (no plan mode, finish
+                # the task) so the measured delta is the toolset, not the prompt.
+                (ws / "CLAUDE.md").write_text(BASELINE_CLAUDE_MD)
+                cmd.extend(["--mcp-config", json.dumps(EMPTY_MCP), "--strict-mcp-config"])
             if arm == "atelier":
                 (ws / "CLAUDE.md").write_text(ATELIER_CLAUDE_MD)
                 # Wire the Atelier MCP server explicitly (do not rely on a
@@ -1163,6 +1310,15 @@ def run_arm(
                 cmd.append("--ignore-rules")
             if arm == "atelier":
                 (ws / _instruction_filename(cli_driver)).write_text(ATELIER_CLAUDE_MD)
+        elif cli_driver == "atelier-run":
+            # Owned-agent arm: Atelier runs the whole loop headlessly on your own
+            # API credentials (ANTHROPIC_API_KEY / OPENAI_API_KEY / …). Pricing
+            # and savings differ from the host-plugin "atelier" arm because here
+            # Atelier owns context assembly, model routing, and caching end-to-end.
+            cmd = ["atelier", "run", "start", task.prompt(), "--yolo"]
+            if model:
+                cmd += ["--model", model]
+            cmd += list(cli_extra_args)
         else:
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,

@@ -1,10 +1,10 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
-use crate::app::{App, CompletionMode, FocusedPane, PendingPermission, Role, ToolStatus};
+use crate::app::{App, CompletionMode, FocusedPane, PendingPermission, Role, TaskStatus, ToolStatus};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
@@ -33,11 +33,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(area);
 
-    let horizontal = Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)])
-        .split(vertical[0]);
+    let horizontal =
+        Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .split(vertical[0]);
 
-    draw_conversation(frame, app, horizontal[0]);
-    draw_tools(frame, app, horizontal[1]);
+    // Left column: sessions (40%) + context (60%)
+    let left = Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(horizontal[0]);
+
+    // Right column: conversation (60%) + tools (40%)
+    let right = Layout::vertical([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(horizontal[1]);
+
+    draw_sessions_pane(frame, app, left[0]);
+    draw_context_pane(frame, app, left[1]);
+    draw_conversation(frame, app, right[0]);
+    draw_tools(frame, app, right[1]);
     draw_input(frame, app, vertical[1]);
     draw_status_bar(frame, app, vertical[2]);
 
@@ -658,6 +669,140 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
+}
+
+fn draw_sessions_pane(frame: &mut Frame, app: &App, area: Rect) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    let current = if app.session_id.is_empty() {
+        "(starting…)".to_string()
+    } else {
+        let id: String = app.session_id.chars().take(20).collect();
+        id
+    };
+    lines.push(Line::from(vec![
+        Span::styled("\u{25cf} ", Style::default().fg(Color::Green)),
+        Span::raw(current),
+        Span::styled(" (active)", Style::default().fg(Color::DarkGray)),
+    ]));
+    lines.push(Line::from(Span::styled(
+        format!("  Background tasks: {}", app.background_tasks.len()),
+        Style::default().fg(Color::DarkGray),
+    )));
+    for task in &app.background_tasks {
+        let (marker, style) = match task.status {
+            TaskStatus::Running => ("\u{27f3}", Style::default().fg(Color::Yellow)),
+            TaskStatus::Done => ("\u{2713}", Style::default().fg(Color::Green)),
+            TaskStatus::Failed => ("\u{2717}", Style::default().fg(Color::Red)),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("   {marker} "), style),
+            Span::raw(task.name.clone()),
+        ]));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Past sessions:",
+        Style::default().fg(Color::DarkGray),
+    )));
+    if app.sessions_list.is_empty() {
+        for entry in app.session_list.iter().take(8) {
+            let id: String = entry.id.chars().take(18).collect();
+            lines.push(Line::from(Span::raw(format!("   {id}"))));
+        }
+    } else {
+        for s in app.sessions_list.iter().take(8) {
+            let id: String = s.id.chars().take(18).collect();
+            lines.push(Line::from(vec![
+                Span::raw(format!("   {id}  ")),
+                Span::styled(
+                    format!("${:.4}", s.cost_usd),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+    }
+
+    let block = Block::bordered()
+        .title(" Sessions ")
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Sessions)));
+    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: false }), area);
+}
+
+fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
+    let stats = &app.context_stats;
+    let block = Block::bordered()
+        .title(" Context / Route ")
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Context)));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Split into a header/info area, a gauge line, and a footer area.
+    let rows = Layout::vertical([
+        Constraint::Length(3), // provider/model
+        Constraint::Length(1), // cache gauge
+        Constraint::Min(0),    // rest
+    ])
+    .split(inner);
+
+    let provider = if stats.provider.is_empty() {
+        "—".to_string()
+    } else {
+        stats.provider.clone()
+    };
+    let model = if stats.model.is_empty() {
+        app.current_model.clone()
+    } else {
+        stats.model.clone()
+    };
+    let model_short: String = model.chars().take(28).collect();
+    let header = vec![
+        Line::from(vec![
+            Span::styled("\u{25c6} ", Style::default().fg(app.agent_mode.accent_color())),
+            Span::raw(provider),
+        ]),
+        Line::from(Span::styled(
+            format!("  {model_short}"),
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(header), rows[0]);
+
+    let ratio = (stats.cache_efficiency / 100.0).clamp(0.0, 1.0);
+    let gauge = Gauge::default()
+        .gauge_style(Style::default().fg(app.agent_mode.accent_color()))
+        .ratio(ratio)
+        .label(format!("Cache {:.0}%", stats.cache_efficiency));
+    frame.render_widget(gauge, rows[1]);
+
+    let used_k = (stats.input_tokens + stats.cache_read_tokens) as f64 / 1000.0;
+    let mut footer: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!("Cost   ${:.4}", stats.total_cost_usd),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            format!("Saved  ${:.4}", stats.total_savings_usd),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            format!("Tokens {used_k:.0}k ({:.0}%)", stats.estimated_context_pct),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Memory hits:",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    for hit in &stats.memory_hits {
+        footer.push(Line::from(Span::raw(format!(" \u{b7} {hit}"))));
+    }
+    frame.render_widget(
+        Paragraph::new(footer).wrap(Wrap { trim: false }),
+        rows[2],
+    );
 }
 
 fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {

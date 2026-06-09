@@ -707,6 +707,26 @@ async fn handle_key(
             app.input = TextArea::default();
             app.auto_scroll = true;
 
+            if let Some(shell_cmd) = text.strip_prefix('!') {
+                let shell_cmd = shell_cmd.trim().to_string();
+                if shell_cmd.is_empty() {
+                    return Ok(());
+                }
+                app.conversation.push(app::ConversationEntry {
+                    role: app::Role::System,
+                    text: format!("$ {shell_cmd}"),
+                });
+                send_command(
+                    writer,
+                    &FrontendCommand::UserCommand {
+                        name: "shell".to_string(),
+                        args: vec![shell_cmd],
+                    },
+                )
+                .await?;
+                return Ok(());
+            }
+
             if let Some(rest) = text.strip_prefix('/') {
                 let mut parts = rest.splitn(2, ' ');
                 let name = parts.next().unwrap_or("").to_string();
