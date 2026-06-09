@@ -139,6 +139,8 @@ pub enum BackendEvent {
         label: String,
         timestamp: String,
     },
+    #[serde(rename = "prompt.suggestion")]
+    PromptSuggestion { text: String },
 }
 
 fn default_context_window() -> u64 {
