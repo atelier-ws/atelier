@@ -668,8 +668,7 @@ class InteractiveRuntime:
                     )
                 ),
             )
-        elif name == "mode":
-            mode_name = args[0].lower() if args else ""
+        elif name in ("mode", "agents"):
             mode_name = args[0].lower() if args else ""
             tools_by_mode = {
                 "code": ["read", "edit", "shell", "grep", "explore"],
@@ -1193,6 +1192,7 @@ _HELP_TEXT = """
 
 Commands:
 - `/help` — show this help
+- `/agents` — switch agent mode (code, explore, research, plan)
 - `/exit`, `/quit` — exit
 - `/clear` — clear screen
 - `/tools` — list available tools
