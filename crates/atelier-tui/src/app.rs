@@ -470,6 +470,21 @@ pub struct BackgroundTask {
     pub status: TaskStatus,
 }
 
+#[derive(Debug, Clone)]
+pub struct DragState {
+    pub border: DragBorder,
+    pub start_col: u16,
+    pub start_pct: u16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DragBorder {
+    /// Right edge of the left pane.
+    LeftBorder,
+    /// Left edge of the right pane.
+    RightBorder,
+}
+
 pub struct App<'a> {
     pub conversation: Vec<ConversationEntry>,
     pub tools: Vec<ToolEntry>,
@@ -526,6 +541,11 @@ pub struct App<'a> {
     // Right pane
     pub right_tab: RightTab,
     pub right_hidden: bool,
+    // Draggable pane sizing (percentages of terminal width)
+    pub left_pane_pct: u16,
+    pub right_pane_pct: u16,
+    pub drag_state: Option<DragState>,
+    pub term_width: u16,
     // URL/QR header
     pub local_url: Option<String>,
     pub pinned_header: Option<String>,
@@ -599,6 +619,10 @@ impl<'a> App<'a> {
             middle_tab_scroll: vec![0],
             right_tab: RightTab::Tools,
             right_hidden: false,
+            left_pane_pct: 22,
+            right_pane_pct: 22,
+            drag_state: None,
+            term_width: 200,
             local_url: None,
             pinned_header: None,
             files_scroll: 0,

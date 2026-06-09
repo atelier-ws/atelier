@@ -20,14 +20,15 @@ fn border_color(app: &App, pane: FocusedPane) -> Color {
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    app.term_width = area.width;
 
     if app.needs_api_key {
         draw_api_key_setup(frame, app, area);
         return;
     }
 
-    let left_w = if app.left_hidden { 0 } else { 25 };
-    let right_w = if app.right_hidden { 0 } else { 25 };
+    let left_w = if app.left_hidden { 0 } else { app.left_pane_pct };
+    let right_w = if app.right_hidden { 0 } else { app.right_pane_pct };
     let mid_w = 100 - left_w - right_w;
 
     let input_line_count = app.input.lines().len().max(1) as u16;
@@ -756,7 +757,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Send message"),
         ]),
         Line::from(vec![
-            Span::styled("  Shift+Enter  ", Style::default().fg(Color::Cyan)),
+            Span::styled("  Alt+Enter    ", Style::default().fg(Color::Cyan)),
             Span::raw("New line in message"),
         ]),
         Line::from(vec![
@@ -1156,68 +1157,98 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     use crate::highlight::render_markdown_lines;
 
     if app.conversation.is_empty() && !app.is_streaming {
-        let model_line = if app.current_model.is_empty() {
-            "no model configured — type a message to set up".to_string()
-        } else {
-            app.current_model.clone()
-        };
-        let welcome_lines = vec![
+        let agent_color = app.agent_mode.accent_color();
+        let project_name = app
+            .project_root
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("project");
+        let logo_lines = [
+            "  ┌─────────────────────────────────────────────────┐",
+            "  │  ◆  ATELIER  —  Agent Coding Workspace          │",
+            "  └─────────────────────────────────────────────────┘",
+        ];
+
+        let mut welcome_lines: Vec<Line> = vec![
             Line::raw(""),
+            Line::from(Span::styled(logo_lines[0], Style::default().fg(agent_color))),
             Line::from(Span::styled(
-                "  ◆  ATELIER",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                logo_lines[1],
+                Style::default().fg(agent_color).add_modifier(Modifier::BOLD),
             )),
+            Line::from(Span::styled(logo_lines[2], Style::default().fg(agent_color))),
             Line::raw(""),
             Line::from(vec![
-                Span::styled("  Project  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(app.project_root.clone(), Style::default().fg(Color::White)),
+                Span::styled("  Project   ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    project_name.to_string(),
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
                 if !app.git_branch.is_empty() {
                     Span::styled(
                         format!("  [{}]", app.git_branch),
-                        Style::default().fg(Color::Yellow),
+                        Style::default().fg(agent_color),
                     )
                 } else {
                     Span::raw("")
                 },
             ]),
             Line::from(vec![
-                Span::styled("  Model    ", Style::default().fg(Color::DarkGray)),
-                Span::styled(model_line, Style::default().fg(Color::Cyan)),
+                Span::styled("  Model     ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    if app.current_model.is_empty() {
+                        "not set — /model or /auth".to_string()
+                    } else {
+                        app.current_model
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(&app.current_model)
+                            .to_string()
+                    },
+                    Style::default().fg(agent_color),
+                ),
             ]),
+            Line::from(vec![
+                Span::styled("  Agent     ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    app.agent_mode.name().to_string(),
+                    Style::default().fg(agent_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" (Tab to cycle)", Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::raw(""),
         ];
-        let mut welcome_lines = welcome_lines;
-        if let Some(port) = app.web_port {
-            let local_url = format!("http://localhost:{port}");
+
+        if let Some(ref url) = app.tunnel_url {
             welcome_lines.push(Line::from(vec![
-                Span::styled("  Web      ", Style::default().fg(Color::DarkGray)),
-                Span::styled(local_url, Style::default().fg(Color::Cyan)),
+                Span::styled("  Access    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(url.clone(), Style::default().fg(Color::Green)),
             ]));
-            if let Some(ref tunnel_url) = app.tunnel_url {
-                welcome_lines.push(Line::from(vec![
-                    Span::styled("  Public   ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(tunnel_url.clone(), Style::default().fg(Color::Green)),
-                ]));
-            } else {
-                welcome_lines.push(Line::from(Span::styled(
-                    "  Tunnel   connecting...",
+        } else if let Some(port) = app.web_port {
+            welcome_lines.push(Line::from(vec![
+                Span::styled("  Web       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("http://localhost:{port}"),
                     Style::default().fg(Color::DarkGray),
-                )));
-            }
+                ),
+                Span::styled("  (tunnel connecting...)", Style::default().fg(Color::DarkGray)),
+            ]));
         }
-        welcome_lines.push(Line::raw(""));
+
         if !app.qr_lines.is_empty() {
+            welcome_lines.push(Line::raw(""));
             for qr_line in &app.qr_lines {
                 welcome_lines.push(Line::from(Span::styled(
-                    format!("  {qr_line}"),
+                    format!("     {qr_line}"),
                     Style::default().fg(Color::DarkGray),
                 )));
             }
-            welcome_lines.push(Line::raw(""));
         }
+
+        welcome_lines.push(Line::raw(""));
         welcome_lines.push(Line::from(Span::styled(
-            "  Type a message to start · /help for commands",
+            "  Type a message to start · /help for commands · /agents to switch mode",
             Style::default().fg(Color::DarkGray),
         )));
         welcome_lines.push(Line::raw(""));
@@ -1280,6 +1311,21 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                     format!("  ◆ {}", entry.text),
                     match_marker.unwrap_or_else(|| Style::default().fg(Color::DarkGray)),
                 )));
+                // Render the QR code inline right after the public tunnel URL message.
+                if entry.text.contains("http") && !app.qr_lines.is_empty() {
+                    if let Some(ref url) = app.tunnel_url {
+                        if entry.text.contains(url.as_str()) {
+                            all_lines.push(Line::raw(""));
+                            for qr_line in &app.qr_lines {
+                                all_lines.push(Line::from(Span::styled(
+                                    format!("    {qr_line}"),
+                                    Style::default().fg(Color::DarkGray),
+                                )));
+                            }
+                            all_lines.push(Line::raw(""));
+                        }
+                    }
+                }
             }
         }
     }
