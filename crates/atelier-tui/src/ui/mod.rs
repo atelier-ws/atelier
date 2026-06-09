@@ -101,30 +101,62 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
             if files.is_empty() {
                 return;
             }
-            let popup_h = (files.len().min(8) + 2) as u16;
+
+            let visible = 12usize; // show more
+            let offset = if *selected >= visible {
+                selected - visible + 1
+            } else {
+                0
+            };
+            let visible_files: Vec<_> = files.iter().skip(offset).take(visible).enumerate().collect();
+
+            let popup_h = (visible_files.len().min(visible) + 2) as u16;
             let popup_y = anchor.y.saturating_sub(popup_h);
             let popup = Rect {
                 x: anchor.x,
                 y: popup_y,
-                width: anchor.width,
+                width: anchor.width.min(80),
                 height: popup_h,
             };
+
             frame.render_widget(Clear, popup);
-            let items: Vec<ListItem> = files
+            let items: Vec<ListItem> = visible_files
                 .iter()
-                .enumerate()
                 .map(|(i, path)| {
-                    let style = if i == *selected {
-                        Style::default().fg(Color::Black).bg(Color::Yellow)
-                    } else {
-                        Style::default().fg(Color::White)
+                    let abs_idx = i + offset;
+                    let is_selected = abs_idx == *selected;
+                    let is_recent = app.recent_files.contains(*path);
+                    let ext = path.split('.').next_back().unwrap_or("");
+                    let ext_color = match ext {
+                        "py" => Color::Yellow,
+                        "rs" => Color::Red,
+                        "ts" | "js" => Color::Cyan,
+                        "md" => Color::White,
+                        "json" | "toml" | "yaml" | "yml" => Color::Green,
+                        _ => Color::DarkGray,
                     };
-                    ListItem::new(Line::from(Span::styled(format!("  @{path}"), style)))
+                    let bg = if is_selected { Color::Yellow } else { Color::Reset };
+                    let fg = if is_selected { Color::Black } else { Color::White };
+                    let recent_marker = if is_recent { "★ " } else { "  " };
+                    let ext_badge = format!("[{ext:>4}]");
+
+                    ListItem::new(Line::from(vec![
+                        Span::styled(recent_marker.to_string(), Style::default().fg(Color::Yellow).bg(bg)),
+                        Span::styled(ext_badge, Style::default().fg(ext_color).bg(bg)),
+                        Span::styled(format!(" {path}"), Style::default().fg(fg).bg(bg)),
+                    ]))
                 })
                 .collect();
+
+            let title = if filter.is_empty() {
+                format!(" Files ({}) ", files.len())
+            } else {
+                format!(" Files matching '{}' ({}) ", filter, files.len())
+            };
+
             let list = List::new(items).block(
                 Block::bordered()
-                    .title(" Files ")
+                    .title(title.as_str())
                     .border_style(Style::default().fg(Color::Yellow)),
             );
             frame.render_widget(list, popup);
@@ -338,13 +370,13 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         .cache_efficiency
         .map(|v| format!("{v:.0}%"))
         .unwrap_or_else(|| "—".to_string());
-    let cost = if app.cost_usd > 0.0 {
-        format!("${:.4}", app.cost_usd)
+    let cost = if app.total_cost_usd > 0.0 {
+        format!("${:.4}", app.total_cost_usd)
     } else {
         "—".to_string()
     };
-    let saved = if app.savings_usd > 0.0 {
-        format!("${:.4}", app.savings_usd)
+    let saved = if app.total_savings_usd > 0.0 {
+        format!("${:.4}", app.total_savings_usd)
     } else {
         "—".to_string()
     };
@@ -356,7 +388,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled("  │  ", style),
         Span::styled(format!("cache {cache}"), style),
         Span::styled("  │  ", style),
-        Span::styled(format!("cost {cost}"), style),
+        Span::styled(format!("session {cost}"), style),
         Span::styled("  │  ", style),
         Span::styled(format!("saved {saved}"), style),
         Span::styled("  │  ", style),

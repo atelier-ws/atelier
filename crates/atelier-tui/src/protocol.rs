@@ -53,7 +53,13 @@ pub enum BackendEvent {
     #[serde(rename = "tool.output")]
     ToolOutput { id: String, chunk: String },
     #[serde(rename = "tool.finished")]
-    ToolFinished { id: String, name: String, ok: bool },
+    ToolFinished {
+        id: String,
+        name: String,
+        ok: bool,
+        #[serde(default)]
+        result: Option<Value>,
+    },
     #[serde(rename = "patch.proposed")]
     PatchProposed {
         id: String,

@@ -2,6 +2,79 @@
 
 use crate::protocol::BackendEvent;
 use ratatui_textarea::TextArea;
+use serde_json::Value;
+
+/// Extract a file path from a tool result payload (read/edit return `{"path": ...}` or similar).
+fn extract_path_from_result(result: &Option<Value>) -> Option<String> {
+    let v = result.as_ref()?;
+    if let Some(obj) = v.as_object() {
+        for key in ["path", "file", "file_path", "filename"] {
+            if let Some(Value::String(s)) = obj.get(key) {
+                if !s.is_empty() {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Fuzzy-match *path* against *query*, returning a higher score for better matches.
+pub fn fuzzy_score(path: &str, query: &str) -> i32 {
+    if query.is_empty() {
+        return 0;
+    }
+    let p = path.to_lowercase();
+    let q = query.to_lowercase();
+    // Exact match
+    if p == q {
+        return 100;
+    }
+    // Filename matches (give bonus to filename vs full path)
+    let filename = p.split('/').next_back().unwrap_or(&p);
+    if filename == q {
+        return 95;
+    }
+    if filename.starts_with(&q) {
+        return 85;
+    }
+    // Prefix match on full path
+    if p.starts_with(&q) {
+        return 80;
+    }
+    // Substring in filename
+    if filename.contains(&q) {
+        return 70;
+    }
+    // Substring in path
+    if p.contains(&q) {
+        return 60;
+    }
+    // Sequential character match (all chars of query appear in order in path)
+    let mut pi = p.chars();
+    let mut score = 0i32;
+    let mut matched = 0;
+    for qc in q.chars() {
+        loop {
+            match pi.next() {
+                Some(pc) if pc == qc => {
+                    matched += 1;
+                    score += 1;
+                    break;
+                }
+                Some(_) => {
+                    score -= 1;
+                }
+                None => return -1, // query char not found
+            }
+        }
+    }
+    if matched == q.chars().count() {
+        score.max(1)
+    } else {
+        -1
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FocusedPane {
@@ -35,7 +108,8 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("deny", "Deny pending permission request"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
-    ("context", "Run context capability"),
+    ("model", "Switch model: /model <provider/model-string>"),
+    ("context", "Show context stats (turns, tokens, tool results)"),
     ("background", "Show background service status"),
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
@@ -101,6 +175,11 @@ pub struct App<'a> {
     pub auto_scroll: bool,
     pub needs_api_key: bool,
     pub completion_mode: CompletionMode,
+    pub recent_files: Vec<String>,
+    pub message_history: Vec<String>,
+    pub history_cursor: Option<usize>,
+    pub total_cost_usd: f64,
+    pub total_savings_usd: f64,
 }
 
 impl<'a> App<'a> {
@@ -127,6 +206,11 @@ impl<'a> App<'a> {
             auto_scroll: true,
             needs_api_key: false,
             completion_mode: CompletionMode::None,
+            recent_files: Vec::new(),
+            message_history: Vec::new(),
+            history_cursor: None,
+            total_cost_usd: 0.0,
+            total_savings_usd: 0.0,
         }
     }
 
@@ -218,9 +302,16 @@ impl<'a> App<'a> {
                     t.output_preview = Some(preview);
                 }
             }
-            BackendEvent::ToolFinished { id, ok, .. } => {
+            BackendEvent::ToolFinished { id, name, ok, result } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
                     t.status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
+                }
+                if ok && (name == "read" || name == "edit") {
+                    if let Some(path) = extract_path_from_result(&result) {
+                        if !self.recent_files.contains(&path) {
+                            self.recent_files.push(path);
+                        }
+                    }
                 }
             }
             BackendEvent::PatchProposed { files, diff, .. } => {
@@ -253,6 +344,8 @@ impl<'a> App<'a> {
                 self.cache_efficiency = Some(cache_efficiency_pct);
                 self.cost_usd = cost_usd;
                 self.savings_usd = savings_usd;
+                self.total_cost_usd += cost_usd;
+                self.total_savings_usd += savings_usd;
             }
         }
     }
@@ -292,14 +385,57 @@ impl<'a> App<'a> {
 
     pub fn filtered_files(&self, filter: &str) -> Vec<String> {
         if let CompletionMode::FileRef { files, .. } = &self.completion_mode {
-            let f = filter.to_lowercase();
-            files
+            let mut scored: Vec<(i32, String)> = files
                 .iter()
-                .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
-                .cloned()
-                .collect()
+                .filter_map(|p| {
+                    let s = fuzzy_score(p, filter);
+                    if filter.is_empty() || s > 0 {
+                        Some((s, p.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            // Recent files at top, then by score desc
+            scored.sort_by(|a, b| {
+                let a_recent = self.recent_files.contains(&a.1);
+                let b_recent = self.recent_files.contains(&b.1);
+                match (a_recent, b_recent) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => b.0.cmp(&a.0),
+                }
+            });
+            scored.into_iter().map(|(_, p)| p).take(50).collect()
         } else {
             vec![]
+        }
+    }
+
+    pub fn history_up(&mut self) -> Option<String> {
+        if self.message_history.is_empty() {
+            return None;
+        }
+        let idx = match self.history_cursor {
+            None => self.message_history.len() - 1,
+            Some(0) => 0,
+            Some(i) => i - 1,
+        };
+        self.history_cursor = Some(idx);
+        self.message_history.get(idx).cloned()
+    }
+
+    pub fn history_down(&mut self) -> Option<String> {
+        match self.history_cursor {
+            None => None,
+            Some(i) if i + 1 >= self.message_history.len() => {
+                self.history_cursor = None;
+                Some(String::new()) // clear input
+            }
+            Some(i) => {
+                self.history_cursor = Some(i + 1);
+                self.message_history.get(i + 1).cloned()
+            }
         }
     }
 
@@ -319,10 +455,9 @@ impl<'a> App<'a> {
                 filter,
                 files,
             } => {
-                let f = filter.to_lowercase();
                 let count = files
                     .iter()
-                    .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
+                    .filter(|p| filter.is_empty() || fuzzy_score(p, filter) > 0)
                     .count();
                 if count > 0 {
                     *selected = selected.saturating_sub(1);
@@ -348,10 +483,9 @@ impl<'a> App<'a> {
                 filter,
                 files,
             } => {
-                let f = filter.to_lowercase();
                 let count = files
                     .iter()
-                    .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
+                    .filter(|p| filter.is_empty() || fuzzy_score(p, filter) > 0)
                     .count();
                 if count > 0 && *selected + 1 < count {
                     *selected += 1;
