@@ -17,36 +17,8 @@ defaults:
     shell: bash
 
 jobs:
-  build:
-    name: Build sdist + wheel
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Build package
-        run: uv build
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
   binary-build:
-    name: Build binaries (${{ matrix.os }})
+    name: Build release archive (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -70,18 +42,19 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Build binaries
+      - name: Build release archive
         run: bash scripts/bundle-prod.sh
 
-      - name: Upload artifacts
+      - name: Upload release archive
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.os }}
-          path: atelier-binaries-*.tar.gz
+          path: dist/atelier-binaries-*.tar.gz
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
-    needs: [build, binary-build]
+    needs: [binary-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -91,18 +64,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download built artifacts
+      - name: Download release archives
         uses: actions/download-artifact@v4
         with:
           pattern: binaries-*
           merge-multiple: true
           path: binaries/
-
-      - name: Download source artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
 
       - name: Generate release notes
         id: release_notes
@@ -112,18 +79,15 @@ jobs:
           cat <<EOF > RELEASE_NOTES.md
           ## Atelier ${VERSION}
 
-          **Full changelog:** https://github.com/atelier-runtime/atelier/compare/${TAG}
-
           ### Installation
 
-           \`\`\`bash
-           curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
-           \`\`\`
+          \`\`\`bash
+          curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+          \`\`\`
 
           ### Assets
-          - \`atelier-${VERSION}.tar.gz\` — source distribution
-          - \`atelier-${VERSION}-py3-none-any.whl\` — pure Python wheel
-          - Pre-compiled binaries for Linux/macOS in the release assets.
+          - \`install.sh\` — public installer script
+          - \`atelier-binaries-*.tar.gz\` — bundled production binaries for supported platforms
           EOF
 
       - name: Create Release in Public Repo
@@ -138,7 +102,7 @@ jobs:
           fi
 
           shopt -s nullglob
-          assets=(dist/* binaries/* scripts/install.sh)
+          assets=(binaries/* scripts/install.sh)
 
           if (( ${#assets[@]} == 0 )); then
             echo "::error::No release assets were found."
