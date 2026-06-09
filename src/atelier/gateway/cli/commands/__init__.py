@@ -224,3 +224,21 @@ def register(cli: click.Group) -> None:
         cli.add_command(chat_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
+
+    try:
+        import asyncio as _asyncio
+
+        import click as _click
+
+        @_click.command("tui-backend")
+        @_click.option("--project-root", default=None, help="Project root directory")
+        @_click.pass_obj
+        def tui_backend_cmd(obj: object, project_root: str | None) -> None:
+            """NDJSON backend server for the atelier-tui Rust frontend (internal)."""
+            from atelier.gateway.cli.server import run_ndjson_server
+
+            raise SystemExit(_asyncio.run(run_ndjson_server(project_root=project_root)))
+
+        cli.add_command(tui_backend_cmd, name="tui-backend")
+    except (ModuleNotFoundError, ImportError):
+        pass
