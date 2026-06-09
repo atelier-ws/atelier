@@ -236,6 +236,24 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
+        import click as _click
+
+        @_click.command("dashboard")
+        @_click.option("--port", default=8799, show_default=True, help="Dashboard port")
+        @_click.option(
+            "--no-browser", is_flag=True, default=False, help="Don't auto-open browser"
+        )
+        def dashboard_cmd(port: int, no_browser: bool) -> None:
+            """Open the Atelier analytics dashboard in your browser."""
+            from atelier.core.capabilities.analytics.dashboard import serve_dashboard
+
+            serve_dashboard(port=port)
+
+        cli.add_command(dashboard_cmd)
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
         import asyncio as _asyncio
 
         import click as _click

@@ -65,7 +65,7 @@ async fn handle_connection(
     let method = parts.next().unwrap_or("");
     let path = parts.next().unwrap_or("");
 
-    if method == "GET" && (path == "/" || path.starts_with("/?")) {
+    if method == "GET" && (path == "/" || path.starts_with("/?") || path.starts_with("/share/")) {
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             WEB_UI_HTML.len(),
@@ -177,6 +177,7 @@ pub const WEB_UI_HTML: &str = r#"<!DOCTYPE html>
   .choice-options { display:flex; flex-wrap:wrap; gap:8px; }
   .choice-btn { padding:8px 16px; background:#21262d; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:12px; font-family:inherit; color:var(--fg); }
   .choice-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .readonly-banner { background:rgba(188,140,255,0.12); border-bottom:1px solid var(--purple); color:var(--purple); font-size:12px; padding:10px 20px; text-align:center; }
 </style>
 </head>
 <body>
@@ -270,6 +271,15 @@ function send() {
     ? { type: 'user.command', name: text.slice(1).split(' ')[0], args: text.slice(1).split(' ').slice(1).filter(Boolean) }
     : { type: 'user.message', text };
   post(cmd); input.value = ''; input.style.height = '42px';
+}
+// If URL contains /share/, disable input and show banner (read-only observer).
+const isReadOnly = window.location.pathname.startsWith('/share/');
+if (isReadOnly) {
+  document.getElementById('input-area').style.display = 'none';
+  const banner = document.createElement('div');
+  banner.className = 'readonly-banner';
+  banner.innerHTML = '\u{1F441} Read-only session \u2014 observing live';
+  document.body.insertBefore(banner, document.getElementById('conversation'));
 }
 connect();
 </script>
