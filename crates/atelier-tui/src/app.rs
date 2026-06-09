@@ -62,6 +62,10 @@ pub struct App<'a> {
     pub current_model: String,
     pub streaming_text: String,
     pub is_streaming: bool,
+    pub pending_diff: Option<String>,
+    pub cache_efficiency: Option<f64>,
+    pub cost_usd: f64,
+    pub savings_usd: f64,
 }
 
 impl<'a> App<'a> {
@@ -80,6 +84,10 @@ impl<'a> App<'a> {
             current_model: String::new(),
             streaming_text: String::new(),
             is_streaming: false,
+            pending_diff: None,
+            cache_efficiency: None,
+            cost_usd: 0.0,
+            savings_usd: 0.0,
         }
     }
 
@@ -163,7 +171,8 @@ impl<'a> App<'a> {
                     t.status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
                 }
             }
-            BackendEvent::PatchProposed { files, .. } => {
+            BackendEvent::PatchProposed { files, diff, .. } => {
+                self.pending_diff = Some(format!("Files: {}\n\n{}", files.join(", "), diff));
                 self.push_system(format!("patch proposed: {}", files.join(", ")));
             }
             BackendEvent::PermissionRequested { id, action, risk } => {
@@ -182,6 +191,16 @@ impl<'a> App<'a> {
             BackendEvent::Error { message, details } => {
                 let d = details.map(|d| format!(" — {d}")).unwrap_or_default();
                 self.push_system(format!("error: {message}{d}"));
+            }
+            BackendEvent::CacheStats {
+                cache_efficiency_pct,
+                cost_usd,
+                savings_usd,
+                ..
+            } => {
+                self.cache_efficiency = Some(cache_efficiency_pct);
+                self.cost_usd = cost_usd;
+                self.savings_usd = savings_usd;
             }
         }
     }
