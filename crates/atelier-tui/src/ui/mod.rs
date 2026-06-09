@@ -1,6 +1,8 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
-use crate::app::{App, CompletionMode, FocusedPane, PendingPermission, Role, TaskStatus, ToolStatus};
+use crate::app::{
+    App, CompletionMode, FocusedPane, PendingPermission, Role, TaskStatus, ToolStatus,
+};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
@@ -33,9 +35,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(area);
 
-    let horizontal =
-        Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-            .split(vertical[0]);
+    let horizontal = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+        .split(vertical[0]);
 
     // Left column: sessions (40%) + context (60%)
     let left = Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -322,7 +323,9 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
                 return;
             }
             // Use up to most of the available height above the input.
-            let max_visible = (anchor.y.saturating_sub(2) as usize).max(4).min(commands.len());
+            let max_visible = (anchor.y.saturating_sub(2) as usize)
+                .max(4)
+                .min(commands.len());
             let offset = if *selected >= max_visible {
                 selected - max_visible + 1
             } else {
@@ -356,8 +359,16 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
                     } else {
                         Color::Reset
                     };
-                    let fg = if is_selected { Color::Black } else { Color::White };
-                    let dfg = if is_selected { Color::Black } else { Color::DarkGray };
+                    let fg = if is_selected {
+                        Color::Black
+                    } else {
+                        Color::White
+                    };
+                    let dfg = if is_selected {
+                        Color::Black
+                    } else {
+                        Color::DarkGray
+                    };
                     ListItem::new(Line::from(vec![
                         Span::styled(format!("  /{name:<18}"), Style::default().fg(fg).bg(bg)),
                         Span::styled(format!(" {desc}"), Style::default().fg(dfg).bg(bg)),
@@ -726,7 +737,12 @@ fn draw_sessions_pane(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::bordered()
         .title(" Sessions ")
         .border_style(Style::default().fg(border_color(app, FocusedPane::Sessions)));
-    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: false }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
@@ -759,7 +775,10 @@ fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
     let model_short: String = model.chars().take(28).collect();
     let header = vec![
         Line::from(vec![
-            Span::styled("\u{25c6} ", Style::default().fg(app.agent_mode.accent_color())),
+            Span::styled(
+                "\u{25c6} ",
+                Style::default().fg(app.agent_mode.accent_color()),
+            ),
             Span::raw(provider),
         ]),
         Line::from(Span::styled(
@@ -799,10 +818,7 @@ fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
     for hit in &stats.memory_hits {
         footer.push(Line::from(Span::raw(format!(" \u{b7} {hit}"))));
     }
-    frame.render_widget(
-        Paragraph::new(footer).wrap(Wrap { trim: false }),
-        rows[2],
-    );
+    frame.render_widget(Paragraph::new(footer).wrap(Wrap { trim: false }), rows[2]);
 }
 
 fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
