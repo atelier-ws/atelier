@@ -687,7 +687,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Scroll to bottom (auto-scroll)"),
         ]),
         Line::from(vec![
-            Span::styled("  Alt+[  Alt+] ", Style::default().fg(Color::Cyan)),
+            Span::styled("  Alt+h  Alt+l ", Style::default().fg(Color::Cyan)),
             Span::raw("Hide/show left and right panes"),
         ]),
         Line::raw(""),
@@ -718,8 +718,8 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("File picker (fuzzy search)"),
         ]),
         Line::from(vec![
-            Span::styled("  Shift+drag   ", Style::default().fg(Color::Cyan)),
-            Span::raw("Select text to copy (bypasses TUI mouse — works in any terminal)"),
+            Span::styled("  Drag to select", Style::default().fg(Color::Cyan)),
+            Span::raw("Select+copy text (mouse capture OFF — right-click/drag works natively)"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -1504,34 +1504,43 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let accent = app.agent_mode.accent_color();
     let mode_badge = format!("[{}]", app.agent_mode.name());
+
+    // Short model name — take last segment after /
     let model_text = if app.current_model.is_empty() {
-        "no model".to_string()
+        " /model to set".to_string()
     } else {
-        app.current_model.chars().take(30).collect()
+        let short = app.current_model.split('/').last().unwrap_or(&app.current_model);
+        format!(" {}", short.chars().take(25).collect::<String>())
     };
+
     let cache = app
         .cache_efficiency
+        .filter(|&v| v > 0.0)
         .map(|v| format!(" │ cache {v:.0}%"))
         .unwrap_or_default();
-    let cost = if app.total_cost_usd > 0.0 {
+
+    let cost = if app.total_cost_usd > 0.001 {
         format!(" │ ${:.4}", app.total_cost_usd)
     } else {
         String::new()
     };
+
     let saved = if app.total_savings_usd > 0.001 {
         format!(" │ saved ${:.4}", app.total_savings_usd)
     } else {
         String::new()
     };
-    let turns = if !app.conversation.is_empty() {
+
+    let turns = if app.conversation.len() > 1 {
         format!(" │ {} turns", app.conversation.len() / 2)
     } else {
         String::new()
     };
 
-    let text = format!(" {mode_badge} {model_text}{cache}{cost}{saved}{turns} │ ?");
-    let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
+    let text = format!(" {mode_badge}{model_text}{cache}{cost}{saved}{turns} │ ? help");
+    let para = Paragraph::new(Span::styled(text, Style::default().fg(accent)));
     frame.render_widget(para, area);
 }
 
