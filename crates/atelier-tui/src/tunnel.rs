@@ -44,6 +44,7 @@ async fn start_cloudflared(port: u16) -> Option<(String, tokio::process::Child)>
             "--url",
             &format!("http://localhost:{port}"),
             "--no-autoupdate",
+            "--accept-tos",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
