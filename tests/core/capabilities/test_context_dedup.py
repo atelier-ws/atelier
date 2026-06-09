@@ -16,7 +16,7 @@ def test_first_emit_is_not_stubbed_then_duplicate_is() -> None:
     out = d.stub_for(session_id="s", content=_BIG, epoch=0, force=False)
     assert out is not None
     stub, saved = out
-    assert "already returned" in stub
+    assert "read #" in stub
     assert saved > 0
 
 
