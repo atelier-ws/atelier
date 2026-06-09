@@ -585,23 +585,24 @@ async fn handle_key(
                             app.completion_mode = CompletionMode::None;
                         } else {
                             let filter = current_text.trim_start_matches('/').to_string();
-                            app.completion_mode = CompletionMode::SlashCommand { selected: 0, filter };
+                            app.completion_mode = CompletionMode::SlashCommand {
+                                selected: 0,
+                                filter,
+                            };
                         }
                     }
-                    CompletionMode::FileRef { files, .. } => {
-                        match current_text.rfind('@') {
-                            None => app.completion_mode = CompletionMode::None,
-                            Some(at_pos) => {
-                                let filter = current_text[at_pos + 1..].to_string();
-                                let files_clone = files.clone();
-                                app.completion_mode = CompletionMode::FileRef {
-                                    selected: 0,
-                                    filter,
-                                    files: files_clone,
-                                };
-                            }
+                    CompletionMode::FileRef { files, .. } => match current_text.rfind('@') {
+                        None => app.completion_mode = CompletionMode::None,
+                        Some(at_pos) => {
+                            let filter = current_text[at_pos + 1..].to_string();
+                            let files_clone = files.clone();
+                            app.completion_mode = CompletionMode::FileRef {
+                                selected: 0,
+                                filter,
+                                files: files_clone,
+                            };
                         }
-                    }
+                    },
                     CompletionMode::None => {}
                 }
                 return Ok(());
