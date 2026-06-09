@@ -87,7 +87,7 @@ def test_savings_usd_nonnegative() -> None:
 
 
 def test_keepalive_start_stop() -> None:
-    ka = KeepaliveThread(model="claude", interval_seconds=100.0)
+    ka = KeepaliveThread(model="anthropic/claude-opus-4-8", provider="anthropic")
     ka.start()
     ka.stop()
     ka._thread.join(timeout=2.0)

@@ -326,7 +326,7 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
         echo "  ${C_YELLOW}Install scope:${C_RESET}"
         echo ""
         echo "  ${C_PURPLE}1${C_RESET}) Global — available in all projects"
-        echo "  ${C_PURPLE}2${C_RESET}) Project — this directory only (via .mcp.json + AGENTS.md)"
+        echo "  ${C_PURPLE}2${C_RESET}) Project — this directory only (via AGENTS.md)"
         echo ""
         read -r -p "  Choice [1]: " scope_answer </dev/tty || scope_answer="1"
         scope_answer="${scope_answer:-1}"
@@ -516,11 +516,11 @@ if has_passthrough "--workspace"; then
     spinner_started=0
     echo ""
     emit_host_status "START" "agents"
-    spinner_start "Installing universal agents (.mcp.json + AGENTS.md)"
+    spinner_start "Installing universal agents (AGENTS.md)"
     if [[ -n "${_SPINNER_PID:-}" ]]; then
         spinner_started=1
     elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
-        print_active_line "Installing universal agents (.mcp.json + AGENTS.md)"
+        print_active_line "Installing universal agents (AGENTS.md)"
     fi
     UNIVERSAL_OUTPUT_FILE="$(mktemp "${TMPDIR:-/tmp}/atelier-agents.XXXXXX")"
     set +e

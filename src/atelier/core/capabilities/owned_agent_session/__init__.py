@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from atelier.core.capabilities.owned_agent_session.gemini_cache import GeminiContextCache
 from atelier.core.capabilities.owned_agent_session.keepalive import KeepaliveThread
 from atelier.core.capabilities.owned_agent_session.minified_reads import (
     exact_file_content,
@@ -13,6 +14,7 @@ from atelier.core.capabilities.owned_agent_session.receipt import PhaseTokens, S
 from atelier.core.capabilities.owned_agent_session.session import OwnedAgentSession
 
 __all__ = [
+    "GeminiContextCache",
     "KeepaliveThread",
     "OwnedAgentSession",
     "PhaseTokens",
