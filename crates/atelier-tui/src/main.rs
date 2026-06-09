@@ -72,8 +72,6 @@ async fn main() -> Result<()> {
     // Always start the web bridge on an available port.
     let web_port = find_available_port(7700).await;
 
-    eprintln!("\n  \u{25c6} Web interface: http://localhost:{web_port}\n  Tunnel: starting...\n");
-
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -946,14 +944,30 @@ async fn handle_key(
         KeyCode::F(3) => {
             app.right_tab = RightTab::Subagents;
         }
-        KeyCode::Char('[') if app.input.lines().join("").trim().is_empty() => {
+        // Alt+[ / Alt+] to hide/show panes (no conflict with typing brackets)
+        KeyCode::Char('[') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_hidden = !app.left_hidden;
         }
-        KeyCode::Char(']') if app.input.lines().join("").trim().is_empty() => {
+        KeyCode::Char(']') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_hidden = !app.right_hidden;
         }
+        KeyCode::Tab if matches!(app.focused_pane, FocusedPane::Input) => {
+            // Tab in input = cycle agent mode (code → explore → research → plan → code)
+            app.agent_mode = app.agent_mode.next();
+            send_command(writer, &FrontendCommand::UserCommand {
+                name: "mode".to_string(),
+                args: vec![app.agent_mode.name().to_lowercase()],
+            }).await?;
+        }
         KeyCode::Tab => {
+            // Tab outside input = cycle pane focus
             app.cycle_focus();
+        }
+        // Alt+Tab = insert literal tab into input
+        KeyCode::Tab if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.input.input(crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char('\t'), KeyModifiers::NONE
+            )));
         }
         KeyCode::Enter
             if matches!(app.focused_pane, FocusedPane::Sessions)
