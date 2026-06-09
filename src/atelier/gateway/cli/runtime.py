@@ -110,6 +110,7 @@ class InteractiveRuntime:
         ]
 
         total_input = total_output = total_cache_read = total_cache_write = 0
+        tool_call_counts: dict[str, int] = {}  # name -> count
 
         for _ in range(max_iterations):
             accumulated_text = ""
@@ -204,6 +205,24 @@ class InteractiveRuntime:
 
             tool_calls_list = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
             messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls_list})
+
+            looping = False
+            for tc in tool_calls_list:
+                tool_name = tc["function"]["name"]
+                tool_call_counts[tool_name] = tool_call_counts.get(tool_name, 0) + 1
+                if tool_call_counts[tool_name] > 3:
+                    yield RuntimeErrorEvent(
+                        type="error",
+                        message=(
+                            f"⚠ Loop detected: '{tool_name}' called "
+                            f"{tool_call_counts[tool_name]} times. "
+                            "Consider interrupting with Ctrl+C."
+                        ),
+                    )
+                    if tool_call_counts[tool_name] > 6:
+                        looping = True
+            if looping:
+                break
 
             for tc in tool_calls_list:
                 tool_id = tc["id"]
@@ -485,6 +504,130 @@ class InteractiveRuntime:
                     f"| Mode | `{self._current_mode}` |\n"
                 ),
             )
+        elif name == "mcp":
+            import json as _json
+
+            mcp_files = [
+                Path.cwd() / ".mcp.json",
+                Path.cwd() / ".claude" / "mcp.json",
+                Path.home() / ".atelier" / "tui" / ".mcp.json",
+                Path.home() / ".claude" / "claude_mcp_settings.json",
+            ]
+            all_servers: dict[str, dict[str, Any]] = {}
+            for mcp_file in mcp_files:
+                if mcp_file.exists():
+                    try:
+                        data = _json.loads(mcp_file.read_text())
+                        servers = data.get("mcpServers") or data.get("servers") or {}
+                        for name_key, cfg in servers.items():
+                            all_servers[name_key] = {"config": cfg, "source": str(mcp_file)}
+                    except Exception:  # noqa: BLE001 - config is best-effort
+                        pass
+
+            if all_servers:
+                lines = [f"**MCP Servers** ({len(all_servers)} configured)\n"]
+                for srv_name, info in all_servers.items():
+                    cfg = info["config"]
+                    cmd = cfg.get("command", "?")
+                    cmd_args = " ".join(str(a) for a in cfg.get("args", []))
+                    lines.append(
+                        f"- **{srv_name}** — `{cmd} {cmd_args}` _(from {info['source']})_"
+                    )
+                lines.append(
+                    "\nTo use MCP tools in conversations, start the server and reference its tools."
+                )
+                yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+            else:
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text=(
+                        "**No MCP servers configured.**\n\n"
+                        "Add servers to one of:\n"
+                        "- `.mcp.json` in your project root\n"
+                        "- `~/.atelier/tui/.mcp.json` (global)\n\n"
+                        "Format:\n```json\n"
+                        '{"mcpServers": {"my-server": {"command": "npx", '
+                        '"args": ["my-mcp-package"]}}}\n```'
+                    ),
+                )
+        elif name == "compact":
+            messages = self._sessions.get(session_id, [])
+            msg_count = len(messages)
+            summary_lines = [
+                "**Conversation compacted**\n",
+                f"(Previous: {msg_count} messages)\n",
+            ]
+            recent = messages[-4:] if len(messages) > 4 else messages
+            self._sessions[session_id] = list(recent)
+            yield AssistantMessage(type="assistant.message", text="\n".join(summary_lines))
+        elif name == "cost":
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    "**Session cost**\n\n"
+                    f"Model: `{self._override_model or '(auto-routed)'}`\n"
+                    f"Mode: `{self._current_mode}`\n\n"
+                    "Use `/analytics` for detailed breakdown."
+                ),
+            )
+        elif name == "doctor":
+            from atelier.core.capabilities.cross_vendor_routing.configuration import (
+                detect_api_key_vendors,
+            )
+
+            vendors = detect_api_key_vendors()
+            lines = ["**Atelier Health Check**\n"]
+            lines.append(
+                f"- API keys: {', '.join(vendors) if vendors else 'none configured ⚠'}"
+            )
+            try:
+                from atelier import __version__
+
+                lines.append(f"- Version: `{__version__}`")
+            except Exception:  # noqa: BLE001 - version is best-effort
+                lines.append("- Version: unknown")
+            import shutil
+
+            tools_status = {
+                "git": bool(shutil.which("git")),
+                "uv": bool(shutil.which("uv")),
+                "cargo": bool(shutil.which("cargo")),
+                "mitmdump": bool(shutil.which("mitmdump")),
+                "cloudflared": bool(shutil.which("cloudflared")),
+            }
+            for tool, ok in tools_status.items():
+                lines.append(f"- {tool}: {'✓' if ok else '✗ not found'}")
+            yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+        elif name == "allowed-tools":
+            tools = _get_litellm_tools()
+            active = self._active_tools
+            lines = [f"**Available tools** (mode: {self._current_mode})\n"]
+            for t in tools:
+                fn = t["function"]
+                is_active = active is None or fn["name"] in active
+                status = "✓" if is_active else "○ (inactive in this mode)"
+                lines.append(f"- `{fn['name']}` {status} — {fn['description'][:60]}")
+            yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+        elif name == "version":
+            try:
+                from atelier import __version__
+
+                yield AssistantMessage(
+                    type="assistant.message", text=f"Atelier `{__version__}`"
+                )
+            except Exception:  # noqa: BLE001 - version is best-effort
+                yield AssistantMessage(
+                    type="assistant.message", text="Atelier (version unknown)"
+                )
+        elif name == "newtask":
+            self._sessions[session_id] = []
+            yield AssistantMessage(
+                type="assistant.message",
+                text="✓ New task started. Conversation cleared.",
+            )
+        elif name == "resume":
+            async for ev in self.handle_slash_command(session_id, "sessions", []):
+                yield ev
         elif name in ("verify", "background", "diff"):
             yield AssistantMessage(
                 type="assistant.message",

@@ -23,7 +23,6 @@ pub async fn start_web_server(
     cmd_tx: mpsc::Sender<String>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
-    eprintln!("\n  \u{25c6} Atelier web interface: http://localhost:{port}\n");
 
     loop {
         let (stream, _) = listener.accept().await?;
