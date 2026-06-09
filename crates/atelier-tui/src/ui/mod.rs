@@ -301,16 +301,17 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
-    // Record tab hit-test areas using actual title widths (not equal division).
+    // Record tab hit-test areas. The Tabs widget renders each title as
+    // `padding_left(1) + title + padding_right(1)` with a 1-col divider between
+    // tabs, so advance x accordingly to match the real on-screen positions.
     if let Some(ref mut areas) = app.tab_click_areas {
         let mut x = layout[0].x;
-        for (i, (label, id, _)) in labels.iter().enumerate() {
-            let w = label.chars().count() as u16 + 1;
+        for (i, (_, id, _)) in labels.iter().enumerate() {
+            x = x.saturating_add(1); // padding_left
+            let w = tab_titles[i].width() as u16;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
-            x += w;
-            if i < labels.len() - 1 {
-                x += 1; // account for the 1-char divider between tabs
-            }
+            // title + padding_right(1) + divider(1) between tabs.
+            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
         }
     }
 
@@ -544,11 +545,14 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
-    // Record middle tab hit-test areas, advancing x by each rendered title width.
+    // Record middle tab hit-test areas. The Tabs widget renders each title as
+    // `padding_left(1) + title + padding_right(1)` with a 1-col divider between
+    // tabs, so advance x accordingly to match the real on-screen positions.
     // Also record a separate `middle_close_N` area over the `\u{00d7}` glyph.
     if let Some(ref mut areas) = app.tab_click_areas {
         let mut x = layout[0].x;
         for (idx, line) in tab_titles.iter().enumerate() {
+            x = x.saturating_add(1); // padding_left
             let w = line.width() as u16;
             // Push the close-button area first so it wins hit-testing over the tab.
             if app
@@ -570,8 +574,8 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
                 format!("middle_{idx}"),
                 Rect { x, y: layout[0].y, width: w, height: 1 },
             ));
-            // +1 for the divider rendered between tabs.
-            x = x.saturating_add(w).saturating_add(1);
+            // title + padding_right(1) + divider(1) between tabs.
+            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
         }
     }
 
@@ -704,13 +708,12 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if let Some(ref mut areas) = app.tab_click_areas {
         let mut x = layout[0].x;
-        for (i, (label, id, _)) in labels.iter().enumerate() {
-            let w = label.chars().count() as u16 + 1;
+        for (i, (_, id, _)) in labels.iter().enumerate() {
+            x = x.saturating_add(1); // padding_left
+            let w = tab_titles[i].width() as u16;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
-            x += w;
-            if i < labels.len() - 1 {
-                x += 1; // account for the default 1-char divider between tabs
-            }
+            // title + padding_right(1) + divider(1) between tabs.
+            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
         }
     }
 
@@ -934,6 +937,10 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  Ctrl+S       ", Style::default().fg(Color::Cyan)),
             Span::raw("Save current file (when FileView tab)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  File editor  ", Style::default().fg(Color::Cyan)),
+            Span::raw("When a file tab is focused, all keys go to the editor. Press Esc to return to input."),
         ]),
         Line::from(vec![
             Span::styled("  Right-click  ", Style::default().fg(Color::Cyan)),
