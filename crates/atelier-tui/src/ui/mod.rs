@@ -180,39 +180,11 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
-    let gitignore_patterns = load_gitignore_patterns(&app.project_root);
-
-    let all_files = crate::collect_repo_files(&app.project_root);
-    let files: Vec<&String> = all_files
-        .iter()
-        .filter(|f| !is_gitignored(f, &gitignore_patterns))
-        .filter(|f| {
-            app.file_filter.is_empty()
-                || f.to_lowercase().contains(&app.file_filter.to_lowercase())
-        })
-        .collect();
-
-    let visible = area.height as usize;
-    let offset = (app.files_scroll as usize).min(files.len().saturating_sub(1).max(0));
-
-    let display: Vec<Line> = files
-        .iter()
-        .skip(offset)
-        .take(visible)
-        .map(|f| {
-            let ext = f.split('.').next_back().unwrap_or("");
-            let (icon, color) = file_icon_color(ext);
-            Line::from(vec![
-                Span::styled(format!("  {icon} "), Style::default().fg(color)),
-                Span::styled(f.to_string(), Style::default().fg(Color::White)),
-            ])
-        })
-        .collect();
-
-    let para = Paragraph::new(display);
-    frame.render_widget(para, area);
+    use ratatui::widgets::FrameExt as _;
+    frame.render_widget_ref(app.file_explorer.widget(), area);
 }
 
+#[allow(dead_code)]
 fn file_icon_color(ext: &str) -> (&'static str, Color) {
     match ext {
         "py" => ("\u{1f40d}", Color::Yellow),
@@ -229,6 +201,7 @@ fn file_icon_color(ext: &str) -> (&'static str, Color) {
     }
 }
 
+#[allow(dead_code)]
 fn load_gitignore_patterns(root: &str) -> Vec<String> {
     let gitignore = std::path::Path::new(root).join(".gitignore");
     if !gitignore.exists() {
@@ -242,6 +215,7 @@ fn load_gitignore_patterns(root: &str) -> Vec<String> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn is_gitignored(path: &str, patterns: &[String]) -> bool {
     let path_lower = path.to_lowercase();
     patterns.iter().any(|p| {
@@ -254,34 +228,55 @@ fn is_gitignored(path: &str, patterns: &[String]) -> bool {
 }
 
 fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
-    if app.git_status.is_empty() {
-        let para = Paragraph::new(Span::styled(
-            "  Working tree clean",
-            Style::default().fg(Color::DarkGray),
-        ));
-        frame.render_widget(para, area);
-        return;
-    }
-    let items: Vec<Line> = app
-        .git_status
-        .iter()
-        .skip(app.git_scroll as usize)
-        .take(area.height as usize)
-        .map(|f| {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Status section
+    if !app.git_status.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Changes:",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+        for f in &app.git_status {
             let color = match f.status.as_str() {
-                "M" => Color::Yellow,
-                "A" | "AM" => Color::Green,
-                "D" => Color::Red,
-                "?" | "??" => Color::DarkGray,
+                s if s.contains('M') => Color::Yellow,
+                s if s.contains('A') => Color::Green,
+                s if s.contains('D') => Color::Red,
+                s if s.contains('?') => Color::DarkGray,
                 _ => Color::White,
             };
-            Line::from(vec![
-                Span::styled(format!(" {:2} ", f.status), Style::default().fg(color)),
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {:3}", f.status), Style::default().fg(color)),
                 Span::styled(f.path.clone(), Style::default().fg(Color::White)),
-            ])
-        })
-        .collect();
-    let para = Paragraph::new(items);
+            ]));
+        }
+        lines.push(Line::raw(""));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  Working tree clean \u{2713}",
+            Style::default().fg(Color::Green),
+        )));
+        lines.push(Line::raw(""));
+    }
+
+    // Log section
+    if !app.git_log.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Recent commits:",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )));
+        for log_line in &app.git_log {
+            if let Some((hash, rest)) = log_line.split_once(' ') {
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {hash} "), Style::default().fg(Color::DarkGray)),
+                    Span::styled(rest.to_string(), Style::default().fg(Color::White)),
+                ]));
+            } else {
+                lines.push(Line::from(Span::raw(format!("  {log_line}"))));
+            }
+        }
+    }
+
+    let para = Paragraph::new(lines).scroll((app.git_scroll, 0));
     frame.render_widget(para, area);
 }
 
@@ -718,8 +713,8 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("File picker (fuzzy search)"),
         ]),
         Line::from(vec![
-            Span::styled("  Drag to select", Style::default().fg(Color::Cyan)),
-            Span::raw("Select+copy text (mouse capture OFF — right-click/drag works natively)"),
+            Span::styled("  Shift+drag   ", Style::default().fg(Color::Cyan)),
+            Span::raw("Select text (Shift bypasses TUI mouse in xterm/iTerm2/kitty)"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -1476,12 +1471,6 @@ fn draw_subagents_content(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
-    let focused = app.focused_pane == FocusedPane::Input;
-    let color = if focused {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
     let input_title = if let Some(rs) = app.reverse_search.as_ref() {
         if rs.matches.is_empty() {
             format!(" reverse-search: '{}' (no matches) ", rs.query)
@@ -1498,7 +1487,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     };
     let block = Block::bordered()
         .title(input_title)
-        .border_style(Style::default().fg(color));
+        .border_style(Style::default().fg(app.agent_mode.accent_color()));
     app.input.set_block(block);
     frame.render_widget(&app.input, area);
 }
@@ -1539,8 +1528,19 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
-    let text = format!(" {mode_badge}{model_text}{cache}{cost}{saved}{turns} │ ? help");
-    let para = Paragraph::new(Span::styled(text, Style::default().fg(accent)));
+    let line = Line::from(vec![
+        Span::styled(
+            format!(" {mode_badge}"),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(model_text, Style::default().fg(Color::DarkGray)),
+        Span::styled(cache, Style::default().fg(Color::DarkGray)),
+        Span::styled(cost, Style::default().fg(Color::DarkGray)),
+        Span::styled(saved, Style::default().fg(Color::Green)),
+        Span::styled(turns, Style::default().fg(Color::DarkGray)),
+        Span::styled(" │ ? help", Style::default().fg(Color::DarkGray)),
+    ]);
+    let para = Paragraph::new(line);
     frame.render_widget(para, area);
 }
 

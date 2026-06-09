@@ -3,6 +3,7 @@
 use crate::protocol::BackendEvent;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use ratatui_explorer::FileExplorer;
 use ratatui_textarea::TextArea;
 use serde_json::Value;
 
@@ -210,8 +211,8 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
         "Show session analytics (turns, tools, tokens, mode)",
     ),
     (
-        "mode",
-        "Switch agent mode: /mode <code|explore|research|plan>",
+        "agents",
+        "Switch agent mode: /agents <code|explore|research|plan>",
     ),
     ("background", "Background the current session"),
     ("tasks", "List background tasks: /tasks"),
@@ -444,6 +445,7 @@ pub struct App<'a> {
     pub left_tab: LeftTab,
     pub left_hidden: bool,
     pub git_status: Vec<GitFile>,
+    pub git_log: Vec<String>,
     // Middle pane (tabbed)
     pub middle_tabs: Vec<TabContent>,
     pub middle_tab_idx: usize,
@@ -460,11 +462,13 @@ pub struct App<'a> {
     pub file_filter: String,
     // Mouse hit-test areas for clickable tabs (rebuilt each frame)
     pub tab_click_areas: Option<Vec<(String, Rect)>>,
+    pub file_explorer: FileExplorer,
 }
 
 impl<'a> App<'a> {
     pub fn new(project_root: String) -> Self {
-        App {
+        let file_explorer = FileExplorer::new().expect("failed to create file explorer");
+        let mut app = App {
             conversation: Vec::new(),
             tools: Vec::new(),
             pending_permission: None,
@@ -511,6 +515,7 @@ impl<'a> App<'a> {
             left_tab: LeftTab::Sessions,
             left_hidden: false,
             git_status: Vec::new(),
+            git_log: Vec::new(),
             middle_tabs: vec![TabContent::Conversation],
             middle_tab_idx: 0,
             middle_tab_scroll: vec![0],
@@ -522,7 +527,10 @@ impl<'a> App<'a> {
             git_scroll: 0,
             file_filter: String::new(),
             tab_click_areas: None,
-        }
+            file_explorer,
+        };
+        app.refresh_git_status();
+        app
     }
 
     fn push_system(&mut self, text: String) {
@@ -587,6 +595,14 @@ impl<'a> App<'a> {
                     }
                 })
                 .collect();
+        }
+        let log_output = std::process::Command::new("git")
+            .args(["log", "--oneline", "-15", "--no-color"])
+            .current_dir(&self.project_root)
+            .output();
+        if let Ok(out) = log_output {
+            let text = String::from_utf8_lossy(&out.stdout);
+            self.git_log = text.lines().map(|l| l.to_string()).collect();
         }
     }
 
