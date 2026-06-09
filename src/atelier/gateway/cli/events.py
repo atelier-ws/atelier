@@ -188,6 +188,12 @@ class CheckpointCreated:
     timestamp: str
 
 
+@dataclass(frozen=True)
+class PromptSuggestion:
+    type: Literal["prompt.suggestion"]
+    text: str
+
+
 AtelierEvent = (
     SessionStarted
     | AssistantDelta
@@ -211,6 +217,7 @@ AtelierEvent = (
     | TaskCreated
     | TaskUpdated
     | CheckpointCreated
+    | PromptSuggestion
 )
 
 
