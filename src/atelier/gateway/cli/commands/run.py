@@ -12,6 +12,46 @@ if TYPE_CHECKING:
     from atelier.core.capabilities.owned_agent_session import OwnedAgentSession
 
 
+# litellm provider-prefix map; bare model names get auto-prefixed
+_PROVIDER_LITELLM_PREFIX: dict[str, str] = {
+    "anthropic": "anthropic/",
+    "openai": "openai/",
+    "google": "gemini/",
+    "gemini": "gemini/",
+    "azure": "azure/",
+    "bedrock": "bedrock/",
+    "cohere": "cohere/",
+    "mistral": "mistral/",
+    "ollama": "ollama/",
+    "together": "together_ai/",
+    "groq": "groq/",
+    "fireworks": "fireworks_ai/",
+    "vertex": "vertex_ai/",
+    "huggingface": "huggingface/",
+    "replicate": "replicate/",
+    "deepinfra": "deepinfra/",
+    "perplexity": "perplexity/",
+}
+
+
+def _resolve_litellm_model(provider: str, model: str) -> str:
+    """Auto-prefix *model* with the litellm provider prefix when needed.
+
+    Examples::
+
+        _resolve_litellm_model("openai", "gpt-4o")          # "openai/gpt-4o"
+        _resolve_litellm_model("anthropic", "claude-opus-4-8")  # "anthropic/claude-opus-4-8"
+        _resolve_litellm_model("openai", "openai/gpt-4o")   # "openai/gpt-4o" (already prefixed)
+        _resolve_litellm_model("", "openai/gpt-4o")         # "openai/gpt-4o" (already prefixed)
+    """
+    if not model:
+        return model
+    if "/" in model:
+        return model  # already provider-prefixed
+    prefix = _PROVIDER_LITELLM_PREFIX.get(provider.lower(), "")
+    return f"{prefix}{model}" if prefix else model
+
+
 def _root_from_obj(obj: dict[str, Any]) -> Path:
     if isinstance(obj, dict):
         root = obj.get("root")
@@ -43,6 +83,7 @@ def _run_owned_session(
         run_phase_linear,
         run_single_shot,
     )
+    from atelier.core.capabilities.owned_agent_session.phase_runner import _provider_cache_style
     from atelier.core.capabilities.owned_execution_routing import (
         OwnedCachePolicy,
         OwnedRouteBudget,
@@ -56,9 +97,10 @@ def _run_owned_session(
         click.echo(
             "Error: No API key found.\n\n"
             "Set one of the following environment variables (or add to .env):\n"
-            "  ANTHROPIC_API_KEY   — for Anthropic / Claude models\n"
-            "  OPENAI_API_KEY      — for OpenAI models\n"
-            "  GOOGLE_API_KEY      — for Google / Gemini models\n",
+            "  ANTHROPIC_API_KEY   — Anthropic / Claude models\n"
+            "  OPENAI_API_KEY      — OpenAI / ChatGPT models\n"
+            "  GOOGLE_API_KEY      — Google / Gemini models\n"
+            "  (any other litellm-compatible key, e.g. GROQ_API_KEY, MISTRAL_API_KEY)\n",
             err=True,
         )
         sys.exit(1)
@@ -68,16 +110,19 @@ def _run_owned_session(
     )
     cache_policy_cast: OwnedCachePolicy = "fresh" if cache_policy == "fresh" else "inherit"
 
+    # Auto-prefix bare model names with litellm provider prefix
+    resolved_model = _resolve_litellm_model(provider, model)
+
     try:
         decision = select_owned_route(
             root,
             OwnedRouteRequest(
                 tool_name="run",
                 task_text=task,
-                mode="explicit" if (provider or model) else "auto",
+                mode="explicit" if (provider or resolved_model) else "auto",
                 budget=budget_cast,
                 provider=provider,
-                model=model,
+                model=resolved_model,
                 cache_policy=cache_policy_cast,
             ),
         )
@@ -85,36 +130,66 @@ def _run_owned_session(
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
+    # Ensure the final model is litellm-prefixed
+    litellm_model = _resolve_litellm_model(decision.provider, decision.model)
+
     session = OwnedAgentSession.new(
         provider=decision.provider,
-        model=decision.model,
+        model=litellm_model,
         transport=decision.transport,
         cache_policy=cache_policy_cast,
         phase_linear=phase_linear,
     )
 
-    click.echo(f"[atelier run] session={session.session_id}  " f"provider={decision.provider}  model={decision.model}")
+    click.echo(
+        f"[atelier run] session={session.session_id}  "
+        f"provider={decision.provider}  model={litellm_model}"
+    )
     if dry_run:
         click.echo("[atelier run] --dry-run: planning only, no edits will be applied")
 
+    # Gemini context cache (created before the session starts)
+    gemini_cached_content: str | None = None
+    if _provider_cache_style(decision.provider) == "gemini" and not dry_run:
+        try:
+            from atelier.core.capabilities.owned_agent_session.gemini_cache import (
+                GeminiContextCache,
+            )
+            from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_SYSTEM_PROMPT
+
+            gc = GeminiContextCache.create(model=litellm_model, system_prompt=STEM_SYSTEM_PROMPT)
+            gemini_cached_content = gc.name
+            click.echo(f"  Gemini context cache: {gc.name}")
+        except Exception as exc:  # noqa: BLE001
+            click.echo(f"  Warning: Gemini context cache creation failed ({exc}); continuing without it", err=True)
+            gc = None  # type: ignore[assignment]
+    else:
+        gc = None  # type: ignore[assignment]
+
+    # Start keepalive (provider-aware — no-op for OpenAI, skips thread for others)
     keepalive: KeepaliveThread | None = None
     if not dry_run:
-        keepalive = KeepaliveThread(model=decision.model)
+        keepalive = KeepaliveThread(
+            model=litellm_model,
+            provider=decision.provider,
+            gemini_cache=gc,
+        )
         keepalive.start()
 
     try:
         if phase_linear:
-            receipt = run_phase_linear(session, task, dry_run=dry_run)
+            receipt = run_phase_linear(session, task, dry_run=dry_run, gemini_cached_content=gemini_cached_content)
         else:
-            receipt = run_single_shot(session, task, dry_run=dry_run)
+            receipt = run_single_shot(session, task, dry_run=dry_run, gemini_cached_content=gemini_cached_content)
     finally:
         if keepalive is not None:
             keepalive.stop()
+        if gc is not None:
+            gc.delete()
 
-    # Cost guardrail check (post-hoc for now; pre-hoc requires token estimation)
     if max_cost is not None and receipt.cost_usd() > max_cost:
         click.echo(
-            f"\nWarning: session cost ${receipt.cost_usd():.4f} " f"exceeded --max-cost ${max_cost:.4f}",
+            f"\nWarning: session cost ${receipt.cost_usd():.4f} exceeded --max-cost ${max_cost:.4f}",
             err=True,
         )
 
@@ -131,8 +206,8 @@ def run_group() -> None:
 
 @run_group.command("start", context_settings={"ignore_unknown_options": False})
 @click.argument("task")
-@click.option("--provider", default="", help="Provider: anthropic, openai, google")
-@click.option("--model", default="", help="Explicit model name")
+@click.option("--provider", default="", help="Provider: anthropic, openai, google, groq, mistral, …")
+@click.option("--model", default="", help="Model name (bare or litellm-prefixed, e.g. gpt-4o or openai/gpt-4o)")
 @click.option(
     "--budget",
     type=click.Choice(["cheap", "balanced", "best"]),
@@ -189,10 +264,7 @@ def run_start(
 @click.pass_obj
 def run_resume(obj: dict[str, Any], session_id: str, task: str) -> None:
     """Resume a session with its warm prefix intact."""
-    from atelier.core.capabilities.owned_agent_session import (
-        OwnedAgentSession,
-        run_phase_linear,
-    )
+    from atelier.core.capabilities.owned_agent_session import OwnedAgentSession, run_phase_linear
 
     root = _root_from_obj(obj)
 
@@ -203,7 +275,8 @@ def run_resume(obj: dict[str, Any], session_id: str, task: str) -> None:
         sys.exit(1)
 
     click.echo(
-        f"[atelier run resume] session={session.session_id}  " f"provider={session.provider}  model={session.model}"
+        f"[atelier run resume] session={session.session_id}  "
+        f"provider={session.provider}  model={session.model}"
     )
     click.echo(f"  Restoring {len(session.messages)} turns from previous session")
 
@@ -234,7 +307,6 @@ def run_report(obj: dict[str, Any], session_id: str, as_json: bool) -> None:
         click.echo(f"Error: session {session_id!r} not found in {root / 'runs'}", err=True)
         sys.exit(1)
 
-    # Reconstruct a receipt from saved session metadata
     receipt = SessionReceipt(
         session_id=session.session_id,
         provider=session.provider,
@@ -259,3 +331,5 @@ def _print_receipt_from_session(session: OwnedAgentSession) -> None:
 
 
 __all__ = ["run_group"]
+
+

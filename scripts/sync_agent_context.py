@@ -542,6 +542,74 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
     )
 
 
+def _opencode_tool_discipline_section(prefix: str) -> str:
+    """Generate the ``## Tool discipline`` section for OpenCode.
+
+    Uses ``atelier_``-prefixed tool names (``atelier_read``, ``atelier_edit``,
+    etc.) and disallows native OpenCode tools by policy.
+    """
+    p = prefix
+    return "\n".join(
+        [
+            "## Tool discipline",
+            "",
+            f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
+            f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
+            f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
+            f"  `{p}symbols` / `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
+            f"- Use `{p}node`, `{p}callers`, `{p}usages`, or `{p}explore` first for code intelligence.",
+            f"- Use `{p}grep` or `{p}search` first for regex, glob, ranked discovery, and file/path lookup.",
+            f"- Use `{p}read` first for file reads and exact ranges.",
+            f"- Use `{p}edit` first for deterministic writes and grouped edits.",
+            f"- Use `{p}shell` only for commands with no better Atelier equivalent, such as git, build, test, and package-manager commands.",
+            "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
+            "  are disallowed by policy — always use the Atelier MCP counterparts.",
+            f"- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
+            "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
+        ]
+    )
+
+
+def _replace_tool_discipline_for_opencode(body: str, prefix: str) -> str:
+    """Replace a bare ``## Tool discipline`` section with the OpenCode variant.
+
+    Only the ``code`` mode doc has a dedicated ``## Tool discipline`` section
+    that lists bare tool names. For OpenCode we replace that section in-place
+    with one that uses ``atelier_``-prefixed names and disallows native tools.
+
+    Other mode docs (``explore``, ``execute``, etc.) do not have this section,
+    so the appended ``## OpenCode tool discipline`` appendix handles them.
+    """
+    p = prefix
+    old_start = "## Tool discipline"
+    if old_start not in body:
+        return body
+
+    # Locate the section boundaries.
+    lines = body.splitlines()
+    start_idx = None
+    end_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == old_start:
+            start_idx = i
+        elif start_idx is not None and stripped.startswith("## ") and i > start_idx:
+            end_idx = i
+            break
+    if start_idx is None:
+        return body
+    if end_idx is None:
+        end_idx = len(lines)
+
+    new_section = _opencode_tool_discipline_section(p)
+    before = lines[:start_idx]
+    after = lines[end_idx:]
+    # Preserve a blank line before the next section heading if needed.
+    if after and after[0].startswith("## "):
+        after.insert(0, "")
+    return "\n".join(before + [new_section] + after)
+
+
 def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
     """OpenCode agent that uses ``atelier_``-prefixed tool names.
 
@@ -551,6 +619,9 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
     """
     p = _OPENCODE_TOOL_PREFIX
     identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
+    body = _replace_tool_discipline_for_opencode(render_mode_body(mode_doc), p)
+    # Append an OpenCode-specific discipline appendix so roles that do not have
+    # a ``## Tool discipline`` section in the mode doc still get the guidance.
     tool_discipline = "\n".join(
         [
             "## OpenCode tool discipline",
@@ -573,7 +644,7 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
                 distribution_notice(),
                 "",
                 *identity_block,
-                render_mode_body(mode_doc),
+                body,
                 "",
                 tool_discipline,
             ]

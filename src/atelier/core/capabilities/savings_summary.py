@@ -45,7 +45,11 @@ def is_real_model(raw: object) -> bool:
     if not isinstance(raw, str):
         return False
     candidate = raw.strip()
-    return bool(candidate and not candidate.startswith("<") and candidate not in {"_default", "unknown", "none"})
+    return bool(
+        candidate
+        and not candidate.startswith("<")
+        and candidate not in {"_default", "unknown", "none"}
+    )
 
 
 def resolve_model_id(raw: str | None) -> str:
@@ -109,7 +113,9 @@ def claude_transcript_candidates(session_id: str) -> list[Path]:
     if not session_id:
         return []
     claude_root = os.environ.get("CLAUDE_CONFIG_DIR") or os.environ.get("CLAUDE_HOME") or ""
-    projects = Path(claude_root) / "projects" if claude_root else Path.home() / ".claude" / "projects"
+    projects = (
+        Path(claude_root) / "projects" if claude_root else Path.home() / ".claude" / "projects"
+    )
     if not projects.is_dir():
         return []
     paths: list[Path] = []
@@ -145,7 +151,12 @@ class TranscriptStats:
 
     @property
     def total_tokens(self) -> int:
-        return self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_write_tokens
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_write_tokens
+        )
 
     def savings_input_rate(self) -> float | None:
         """Weighted $/input-token rate across all models used in this session.
@@ -331,7 +342,9 @@ class SavingsSummary:
     status_text: str = ""
 
 
-def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
+def _read_claude_session_savings(
+    session_id: str, atelier_root: Path
+) -> tuple[int, int, float, int]:
     """Return ``(tokens_saved, calls_saved, usd_saved, unpriced_tokens)``.
 
     Each row is priced at the model stored in the row (set by the MCP server
@@ -375,6 +388,16 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
             # a pre-fce2110 inflation bug in native_search.py and must not be
             # shown to the user — silently drop the row.
             if t > 2_000_000:
+                continue
+            # Compaction-credit rows carry a pre-computed USD value priced at the
+            # cache-read rate (the per-turn cost of the context that compaction
+            # dropped). Add it directly — never re-price at the input rate, which
+            # would over-credit ~10x. Tokens still count toward ctx_saved.
+            if str(ev.get("kind") or "") == "compaction":
+                comp_usd = float(ev.get("usd") or 0.0)
+                if comp_usd > 0:
+                    priced_tokens += t
+                    usd_total += comp_usd
                 continue
             model_raw = str(ev.get("model") or "").strip()
             pricing = get_model_pricing(resolve_model_id(model_raw)) if model_raw else None
@@ -481,7 +504,9 @@ def compute_savings_summary(
                 continue
 
         if parent_id and parent_id != session_id:
-            priced_tokens, calls, row_usd, unpriced_tokens = _read_claude_session_savings(parent_id, root_path)
+            priced_tokens, calls, row_usd, unpriced_tokens = _read_claude_session_savings(
+                parent_id, root_path
+            )
             if priced_tokens > 0 or unpriced_tokens > 0 or calls > 0:
                 session_id = parent_id  # use the found session for transcript lookup too
 
@@ -552,7 +577,9 @@ def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
             return {}
 
     auth = _read("auth.json")
-    if ((not auth) or auth.get("authenticated") is False) and os.environ.get("ATELIER_HIDE_MISSING_LOGIN") != "1":
+    if ((not auth) or auth.get("authenticated") is False) and os.environ.get(
+        "ATELIER_HIDE_MISSING_LOGIN"
+    ) != "1":
         return "login"
     update = _read("update.json")
     if update.get("toVersion") and update.get("toVersion") != update.get("fromVersion"):

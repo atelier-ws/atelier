@@ -78,13 +78,34 @@ def detect_configured_vendors(env: Mapping[str, str] | None = None) -> tuple[str
     enabled: list[str] = []
     for vendor in SUPPORTED_ROUTE_VENDORS:
         has_env = any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
-        has_host_surface = any(shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor])
+        has_host_surface = any(
+            shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor]
+        )
         if has_env or has_host_surface:
             enabled.append(vendor)
     return tuple(enabled)
 
 
-def load_route_config(root: Path | str | None = None, *, path: Path | str | None = None) -> RouteConfig:
+def detect_api_key_vendors(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """Return vendors reachable via an API key in the environment.
+
+    Unlike :func:`detect_configured_vendors`, this ignores installed host CLIs:
+    owned execution runs through the litellm/openai HTTP transports, which need
+    a real API key, so a host-CLI subscription alone cannot execute an owned
+    turn. Used to seed a default route config that only enables vendors that can
+    actually run.
+    """
+    source = env if env is not None else os.environ
+    return tuple(
+        vendor
+        for vendor in SUPPORTED_ROUTE_VENDORS
+        if any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
+    )
+
+
+def load_route_config(
+    root: Path | str | None = None, *, path: Path | str | None = None
+) -> RouteConfig:
     config_path = Path(path).expanduser().resolve() if path is not None else route_config_path(root)
     if not config_path.exists():
         raise RouteConfigError(f"route config not found: {config_path}")
@@ -99,8 +120,41 @@ def load_route_config(root: Path | str | None = None, *, path: Path | str | None
     except ValidationError as exc:
         raise RouteConfigError(f"route config is invalid: {exc}") from exc
     if config.version != ROUTE_CONFIG_VERSION:
-        raise RouteConfigError(f"unsupported route config version {config.version}; expected {ROUTE_CONFIG_VERSION}")
+        raise RouteConfigError(
+            f"unsupported route config version {config.version}; expected {ROUTE_CONFIG_VERSION}"
+        )
     return config
+
+
+def load_route_config_or_default(
+    root: Path | str | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+    path: Path | str | None = None,
+) -> RouteConfig:
+    """Load ``route.yaml`` or synthesise a default from detected vendors.
+
+    Owned routing should work out of the box: when no ``route.yaml`` has been
+    written yet, build a low-risk config enabling every vendor reachable via an
+    API key. Host-CLI-only vendors are intentionally excluded — owned execution
+    runs over the litellm/openai HTTP transports and needs a real key, so a
+    bare CLI subscription cannot execute a turn. Re-raises ``RouteConfigError``
+    only when the file is genuinely missing *and* no API-key vendor is present,
+    or when the file exists but is invalid (so real config mistakes are never
+    silently masked).
+    """
+    try:
+        return load_route_config(root, path=path)
+    except RouteConfigError:
+        config_path = (
+            Path(path).expanduser().resolve() if path is not None else route_config_path(root)
+        )
+        if config_path.exists():
+            raise  # file present but invalid — surface the real error
+        vendors = list(detect_api_key_vendors(env))
+        if not vendors:
+            raise
+        return RouteConfig(enabled_vendors=vendors)
 
 
 def save_route_config(
