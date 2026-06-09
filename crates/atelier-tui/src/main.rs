@@ -59,6 +59,9 @@ async fn main() -> Result<()> {
         std::env::set_var("ATELIER_MITM", "1");
     }
 
+    // --no-web: skip all web/tunnel/PTY servers (used when running inside PTY bridge)
+    let no_web = std::env::args().any(|a| a == "--no-web");
+
     let (program, backend_args) = backend_command();
 
     let mut child = tokio::process::Command::new(&program)
@@ -71,15 +74,21 @@ async fn main() -> Result<()> {
     let child_stdin = child.stdin.take().expect("backend stdin missing");
     let child_stdout = child.stdout.take().expect("backend stdout missing");
 
-    // Always start the web bridge on an available port.
-    let web_port = find_available_port(7700).await;
+    // Always start the web bridge on an available port (unless --no-web).
+    let web_port = if no_web { 0u16 } else { find_available_port(7700).await };
 
     // Start the WebSocket PTY bridge on web_port + 1: serves a REAL terminal
-    // (xterm.js) over WebSocket, spawning the backend in a PTY like SSH.
-    let ws_pty_port = web_port + 1;
-    {
-        let (prog, prog_args) = backend_command();
-        let tui_cmd: Vec<String> = std::iter::once(prog).chain(prog_args).collect();
+    // (xterm.js) over WebSocket, spawning the TUI itself in a PTY like SSH.
+    if !no_web {
+        let ws_pty_port = web_port + 1;
+        // Spawn the TUI binary (not the backend) in the PTY so the browser sees the full
+        // visual Ratatui TUI — identical to SSH. Pass --no-web to avoid recursive web spawning.
+        let tui_binary = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("atelier-tui"));
+        let tui_cmd: Vec<String> = vec![
+            tui_binary.to_string_lossy().to_string(),
+            "--no-web".to_string(),
+        ];
         tokio::spawn(async move {
             if let Err(e) = terminal_bridge::start_ws_pty_server(ws_pty_port, tui_cmd).await {
                 eprintln!("WS PTY server error: {e}");
@@ -125,8 +134,10 @@ async fn run_app(
         .and_then(|pos| args.get(pos + 1).filter(|a| !a.starts_with("--")).cloned());
     let show_resume_picker = args.iter().any(|a| a == "--resume") && resume_id.is_none();
 
-    app.web_port = Some(web_port);
-    app.local_url = Some(format!("http://localhost:{web_port}"));
+    app.web_port = if web_port > 0 { Some(web_port) } else { None };
+    if web_port > 0 {
+        app.local_url = Some(format!("http://localhost:{web_port}"));
+    }
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BackendEvent>(100);
 
@@ -135,8 +146,8 @@ async fn run_app(
     // mpsc channel for commands arriving from browser clients (raw JSON lines).
     let (web_cmd_tx, mut web_cmd_rx) = tokio::sync::mpsc::channel::<String>(100);
 
-    // Always spawn the web bridge.
-    {
+    // Only spawn web/tunnel if we have a valid port (not --no-web mode).
+    if web_port > 0 {
         let event_tx = event_bcast.clone();
         tokio::spawn(async move {
             let _ = web::start_web_server(web_port, event_tx, web_cmd_tx).await;
@@ -146,7 +157,7 @@ async fn run_app(
     // Always try to start a tunnel; share the URL with the main loop.
     let tunnel_url_shared: std::sync::Arc<std::sync::Mutex<Option<String>>> =
         std::sync::Arc::new(std::sync::Mutex::new(None));
-    {
+    if web_port > 0 {
         let tunnel_url_for_task = tunnel_url_shared.clone();
         tokio::spawn(async move {
             if let Some((url, mut child)) = tunnel::try_start_tunnel(web_port).await {
