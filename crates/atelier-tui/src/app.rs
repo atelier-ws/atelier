@@ -145,10 +145,27 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
-    ("context", "Show context stats (turns, tokens, tool results)"),
-    ("analytics", "Show session analytics (turns, tools, tokens, mode)"),
-    ("mode", "Switch agent mode: /mode <code|explore|research|plan>"),
+    (
+        "context",
+        "Show context stats (turns, tokens, tool results)",
+    ),
+    (
+        "analytics",
+        "Show session analytics (turns, tools, tokens, mode)",
+    ),
+    (
+        "mode",
+        "Switch agent mode: /mode <code|explore|research|plan>",
+    ),
     ("background", "Show background service status"),
+    ("mcp", "List MCP servers"),
+    ("compact", "Compact/summarize conversation to free context"),
+    ("cost", "Show session cost"),
+    ("doctor", "System health check"),
+    ("allowed-tools", "List available tools (alias: /tools)"),
+    ("version", "Show Atelier version"),
+    ("newtask", "Clear conversation, start fresh"),
+    ("resume", "Resume a saved session (alias: /sessions)"),
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
 ];
@@ -292,6 +309,10 @@ pub struct App<'a> {
     pub session_list: Vec<SessionListEntry>,
     pub show_session_picker: bool,
     pub session_picker_selected: usize,
+    pub last_ctrl_c: Option<std::time::Instant>,
+    pub web_port: Option<u16>,
+    pub tunnel_url: Option<String>,
+    pub show_help: bool,
 }
 
 impl<'a> App<'a> {
@@ -329,6 +350,10 @@ impl<'a> App<'a> {
             session_list: Vec::new(),
             show_session_picker: false,
             session_picker_selected: 0,
+            last_ctrl_c: None,
+            web_port: None,
+            tunnel_url: None,
+            show_help: false,
         }
     }
 
@@ -366,6 +391,11 @@ impl<'a> App<'a> {
                 }
                 self.needs_api_key = !has_api_key.unwrap_or(true);
                 self.push_system(format!("session started: {session_id}"));
+                if let Some(port) = self.web_port {
+                    self.push_system(format!(
+                        "\u{25c6} Web interface: http://localhost:{port}  (use --tunnel for remote access)"
+                    ));
+                }
             }
             BackendEvent::RouteSelected {
                 provider,
@@ -432,9 +462,18 @@ impl<'a> App<'a> {
                     t.output_preview = Some(preview);
                 }
             }
-            BackendEvent::ToolFinished { id, name, ok, result } => {
+            BackendEvent::ToolFinished {
+                id,
+                name,
+                ok,
+                result,
+            } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
-                    t.status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
+                    t.status = if ok {
+                        ToolStatus::Done
+                    } else {
+                        ToolStatus::Failed
+                    };
                 }
                 if ok && (name == "read" || name == "edit") {
                     if let Some(path) = extract_path_from_result(&result) {
@@ -471,13 +510,25 @@ impl<'a> App<'a> {
                     input_mode: false,
                 });
             }
-            BackendEvent::VerificationResult { ok, rubric, details } => {
+            BackendEvent::VerificationResult {
+                ok,
+                rubric,
+                details,
+            } => {
                 let status = if ok { "ok" } else { "failed" };
                 let r = rubric.unwrap_or_default();
                 let d = details.unwrap_or_default();
                 self.push_system(format!("verification {status}: {r} {d}"));
             }
             BackendEvent::Error { message, details } => {
+                if message.contains("Loop detected") || message.contains("loop") {
+                    self.tools.push(ToolEntry {
+                        id: "supervision".to_string(),
+                        name: format!("\u{26a0} {message}"),
+                        status: ToolStatus::Failed,
+                        output_preview: None,
+                    });
+                }
                 let d = details.map(|d| format!(" — {d}")).unwrap_or_default();
                 self.push_system(format!("error: {message}{d}"));
             }
@@ -590,7 +641,9 @@ impl<'a> App<'a> {
             CompletionMode::SlashCommand { selected, filter } => {
                 let count = SLASH_COMMANDS
                     .iter()
-                    .filter(|(name, _)| filter.is_empty() || name.contains(filter.to_lowercase().as_str()))
+                    .filter(|(name, _)| {
+                        filter.is_empty() || name.contains(filter.to_lowercase().as_str())
+                    })
                     .count();
                 if count > 0 {
                     *selected = selected.saturating_sub(1);
@@ -618,7 +671,9 @@ impl<'a> App<'a> {
             CompletionMode::SlashCommand { selected, filter } => {
                 let count = SLASH_COMMANDS
                     .iter()
-                    .filter(|(name, _)| filter.is_empty() || name.contains(filter.to_lowercase().as_str()))
+                    .filter(|(name, _)| {
+                        filter.is_empty() || name.contains(filter.to_lowercase().as_str())
+                    })
                     .count();
                 if count > 0 && *selected + 1 < count {
                     *selected += 1;
