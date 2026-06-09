@@ -132,7 +132,7 @@ fi
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all|--claude|--codex|--cursor|--opencode|--copilot|--hermes|--antigravity)
+        --all|--claude|--codex|--cursor|--opencode|--copilot|--hermes|--antigravity|--atelier-tui)
             HOST_FLAGS+=("$1")
             ;;
         --local) ATELIER_LOCAL=1 ;;
@@ -869,6 +869,7 @@ contains_any_host_flag() {
     has_flag "--copilot" && return 0
     has_flag "--hermes" && return 0
     has_flag "--antigravity" && return 0
+    has_flag "--atelier-tui" && return 0
     return 1
 }
 
@@ -948,6 +949,16 @@ detect_hosts() {
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
+    if command -v atelier-tui >/dev/null 2>&1 || [[ -f "${HOME}/.atelier/bin/atelier-tui" ]]; then
+        HOST_SUMMARY+=("atelier-tui (detected)")
+        HOST_CHOICES+=("atelier-tui|detected")
+        HOST_DEFAULT_SELECTION+=(1)
+    else
+        HOST_SUMMARY+=("atelier-tui (not found)")
+        HOST_CHOICES+=("atelier-tui|not found")
+        HOST_DEFAULT_SELECTION+=(0)
+    fi
+
 }
 
 join_with_comma_space() {
@@ -997,6 +1008,7 @@ host_wizard() {
                     4) HOST_FLAGS+=(--antigravity) ;;
                     5) HOST_FLAGS+=(--cursor) ;;
                     6) HOST_FLAGS+=(--hermes) ;;
+                    7) HOST_FLAGS+=(--atelier-tui) ;;
                 esac
             done
             [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1010,6 +1022,7 @@ host_wizard() {
         printf "│  5) %s\n" "${HOST_SUMMARY[4]}"
         printf "│  6) %s\n" "${HOST_SUMMARY[5]}"
         printf "│  7) %s\n" "${HOST_SUMMARY[6]}"
+        printf "│  8) %s\n" "${HOST_SUMMARY[7]}"
         printf "│  a) All (default)\n"
         printf "│\n"
         printf "Choice [a]: "
@@ -1036,6 +1049,7 @@ host_wizard() {
                         5) HOST_FLAGS+=(--antigravity) ;;
                         6) HOST_FLAGS+=(--cursor) ;;
                         7) HOST_FLAGS+=(--hermes) ;;
+                        8) HOST_FLAGS+=(--atelier-tui) ;;
                     esac
                 done
                 [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1114,6 +1128,7 @@ host_target_for_name() {
         copilot)     printf "%s" "~/.config/Code" ;;
         hermes)      printf "%s" "~/.hermes" ;;
         antigravity) printf "%s" "~/.config/Antigravity" ;;
+        atelier-tui) printf "%s" "~/.atelier/tui" ;;
         *)           printf "%s" "~/.config" ;;
     esac
 }
