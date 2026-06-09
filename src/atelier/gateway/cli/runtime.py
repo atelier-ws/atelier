@@ -57,19 +57,28 @@ class InteractiveRuntime:
         return session_id
 
     def _start_mcp_servers(self) -> None:
-        from atelier.core.capabilities.mcp_integration.loader import (
-            MCPServerProcess,
-            discover_mcp_configs,
-        )
+        """Start MCP servers in a background thread to avoid blocking session start."""
+        import threading
 
-        configs = discover_mcp_configs()
-        for cfg in configs:
-            proc = MCPServerProcess(cfg)
-            if proc.start():
-                tools = proc.list_tools()
-                self._mcp_servers.append(proc)
-                self._mcp_tools.extend(tools)
-                logger.info("Started MCP server %s with %d tools", cfg.name, len(tools))
+        def _start() -> None:
+            try:
+                from atelier.core.capabilities.mcp_integration.loader import (
+                    MCPServerProcess,
+                    discover_mcp_configs,
+                )
+
+                configs = discover_mcp_configs()
+                for cfg in configs:
+                    proc = MCPServerProcess(cfg)
+                    if proc.start():
+                        tools = proc.list_tools()
+                        self._mcp_servers.append(proc)
+                        self._mcp_tools.extend(tools)
+                        logger.info("Started MCP server %s with %d tools", cfg.name, len(tools))
+            except Exception:  # noqa: BLE001
+                logger.debug("MCP server startup failed (non-blocking)", exc_info=True)
+
+        threading.Thread(target=_start, daemon=True).start()
 
     def shutdown(self) -> None:
         for server in self._mcp_servers:
