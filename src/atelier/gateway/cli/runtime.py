@@ -35,6 +35,8 @@ class InteractiveRuntime:
         self._sessions: dict[str, list[dict[str, Any]]] = {}
         self._pending_permissions: dict[str, dict[str, Any]] = {}
         self._override_model: str | None = None
+        self._active_tools: list[str] | None = None
+        self._current_mode: str = "code"
 
     async def start_session(self, project_root: str | None = None) -> str:
         session_id = uuid.uuid4().hex
@@ -101,7 +103,11 @@ class InteractiveRuntime:
     ) -> AsyncIterator[AtelierEvent]:
         import litellm
 
-        tools = _get_litellm_tools()
+        tools = [
+            t
+            for t in _get_litellm_tools()
+            if self._active_tools is None or t["function"]["name"] in self._active_tools
+        ]
 
         total_input = total_output = total_cache_read = total_cache_write = 0
 
@@ -323,20 +329,36 @@ class InteractiveRuntime:
             lines = [f"**{t['function']['name']}** — {t['function']['description'][:80]}" for t in tools]
             yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "sessions":
-            ids = list(self._sessions.keys())
-            past: list[str] = []
-            runs_dir = self._root / "runs"
-            if runs_dir.is_dir():
-                past = sorted(p.stem for p in runs_dir.glob("*.jsonl"))
-            lines = []
-            if ids:
-                lines.append("Active sessions:")
-                lines.extend(f"  {s}" for s in ids)
-            if past:
-                lines.append("Saved sessions (resume with --resume <id>):")
-                lines.extend(f"  {s}" for s in past)
-            text = "\n".join(lines) if lines else "No sessions."
-            yield AssistantMessage(type="assistant.message", text=text)
+            import datetime
+
+            from atelier.core.foundation.paths import default_store_root
+
+            runs_dir = default_store_root() / "runs"
+            sessions: list[dict[str, Any]] = []
+            if runs_dir.exists():
+                for f in sorted(
+                    runs_dir.glob("*.jsonl"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )[:20]:
+                    sessions.append(
+                        {
+                            "id": f.stem,
+                            "mtime": f.stat().st_mtime,
+                            "size_kb": round(f.stat().st_size / 1024, 1),
+                        }
+                    )
+            if sessions:
+                lines = ["**Recent sessions:**\n"]
+                for s in sessions:
+                    dt = datetime.datetime.fromtimestamp(s["mtime"]).strftime("%Y-%m-%d %H:%M")
+                    lines.append(f"- `{s['id']}` — {dt} ({s['size_kb']}KB)")
+                lines.append("\nResume: `atelier-tui --resume <session-id>`")
+                yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+            else:
+                yield AssistantMessage(
+                    type="assistant.message", text="No saved sessions found."
+                )
         elif name == "session":
             target = args[0] if args else ""
             if target in self._sessions:
@@ -415,6 +437,54 @@ class InteractiveRuntime:
                     f"- Tool results: {tool_results}\n"
                 ),
             )
+        elif name == "mode":
+            mode_name = args[0].lower() if args else ""
+            tools_by_mode = {
+                "code": ["read", "edit", "shell", "grep", "explore"],
+                "explore": ["read", "grep", "explore"],
+                "research": ["read", "grep", "explore"],
+                "plan": ["read", "grep"],
+            }
+            if mode_name in tools_by_mode:
+                self._active_tools = tools_by_mode[mode_name]
+                self._current_mode = mode_name
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text=(
+                        f"Switched to **{mode_name.upper()}** mode. "
+                        f"Tools: {', '.join(self._active_tools)}"
+                    ),
+                )
+            else:
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text="Available modes: code, explore, research, plan",
+                )
+        elif name == "analytics":
+            messages = self._sessions.get(session_id, [])
+            total_turns = len(
+                [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
+            )
+            total_tools = len(
+                [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
+            )
+            total_chars = sum(
+                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
+            )
+            approx_tokens = total_chars // 4
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    "**Session Analytics**\n\n"
+                    "| Metric | Value |\n"
+                    "|--------|-------|\n"
+                    f"| Turns | {total_turns} |\n"
+                    f"| Tool calls | {total_tools} |\n"
+                    f"| ~Total tokens | {approx_tokens:,} |\n"
+                    f"| Model | `{self._override_model or '(auto-routed)'}` |\n"
+                    f"| Mode | `{self._current_mode}` |\n"
+                ),
+            )
         elif name in ("verify", "background", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
@@ -476,6 +546,32 @@ class InteractiveRuntime:
 
     async def interrupt(self, session_id: str) -> None:
         return None
+
+    async def ask_choice(
+        self,
+        session_id: str,
+        question: str,
+        choices: list[str],
+        *,
+        allow_freeform: bool = True,
+    ) -> AsyncIterator[AtelierEvent]:
+        """Emit a ChoiceRequested event and wait for the frontend response."""
+        from atelier.gateway.cli.events import ChoiceRequested
+
+        choice_id = f"choice-{uuid.uuid4().hex[:8]}"
+        self._pending_permissions[choice_id] = {"approved": None, "response": None}
+        yield ChoiceRequested(
+            type="choice.requested",
+            id=choice_id,
+            question=question,
+            choices=choices,
+            allow_freeform=allow_freeform,
+        )
+        for _ in range(600):  # 60s timeout
+            await asyncio.sleep(0.1)
+            resp = self._pending_permissions.get(choice_id, {}).get("response")
+            if resp is not None:
+                break
 
 
 _HELP_TEXT = """
