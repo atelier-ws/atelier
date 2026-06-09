@@ -259,3 +259,71 @@ def register(cli: click.Group) -> None:
         cli.add_command(tui_backend_cmd, name="tui-backend")
     except (ModuleNotFoundError, ImportError):
         pass
+
+    try:
+        import click as _click
+
+        @_click.command("completions")
+        @_click.argument("shell", type=_click.Choice(["zsh", "bash", "fish"]))
+        def completions_cmd(shell: str) -> None:
+            """Print shell completion script.
+
+            \b
+            # zsh:  echo 'eval "$(atelier completions zsh)"'  >> ~/.zshrc
+            # bash: echo 'eval "$(atelier completions bash)"' >> ~/.bashrc
+            # fish: atelier completions fish > ~/.config/fish/completions/atelier.fish
+            """
+            scripts = {
+                "zsh": _ZSH_COMPLETION,
+                "bash": _BASH_COMPLETION,
+                "fish": _FISH_COMPLETION,
+            }
+            _click.echo(scripts[shell])
+
+        cli.add_command(completions_cmd)
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+
+_ZSH_COMPLETION = """
+#compdef atelier
+_atelier() {
+    local -a commands
+    commands=(
+        'tui:Start interactive workspace'
+        'workspace:Start interactive workspace (alias)'
+        'chat:Start interactive REPL'
+        'run:Run one-shot owned coding session'
+        'mcp:Start MCP server'
+        'completions:Print shell completion script'
+        'savings:Show cost/savings summary'
+        'sessions:Session management'
+        'context:Context operations'
+        'route:Routing operations'
+        'service:Service management'
+        'worker:Worker management'
+    )
+    _describe 'atelier commands' commands
+}
+compdef _atelier atelier
+"""
+
+_BASH_COMPLETION = """
+_atelier_completions() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local commands="tui workspace chat run mcp completions savings sessions context route service worker --help --version"
+    COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
+}
+complete -F _atelier_completions atelier
+"""
+
+_FISH_COMPLETION = """
+complete -c atelier -f
+complete -c atelier -n '__fish_use_subcommand' -a tui -d 'Start interactive workspace'
+complete -c atelier -n '__fish_use_subcommand' -a workspace -d 'Start interactive workspace (alias)'
+complete -c atelier -n '__fish_use_subcommand' -a chat -d 'Start interactive REPL'
+complete -c atelier -n '__fish_use_subcommand' -a run -d 'Run one-shot owned coding session'
+complete -c atelier -n '__fish_use_subcommand' -a mcp -d 'Start MCP server'
+complete -c atelier -n '__fish_use_subcommand' -a completions -d 'Print shell completion script'
+complete -c atelier -n '__fish_use_subcommand' -a savings -d 'Show cost/savings summary'
+"""
