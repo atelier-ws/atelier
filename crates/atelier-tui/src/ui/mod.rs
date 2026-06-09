@@ -279,13 +279,7 @@ fn draw_fuzzy_finder(frame: &mut Frame, ff: &FuzzyFinder, app: &App, area: Rect)
 }
 
 fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let sess_dot = if app.sessions_activity { "\u{25cf} " } else { "" };
-    let labels: [(String, &str, bool); 3] = [
-        (
-            format!("{sess_dot}\u{ebc7}  Sessions "),
-            "left_sessions",
-            matches!(app.left_tab, LeftTab::Sessions),
-        ),
+    let labels: [(String, &str, bool); 2] = [
         (" \u{f07b}  Files ".to_string(), "left_files", matches!(app.left_tab, LeftTab::Files)),
         (" \u{e702}  Git ".to_string(), "left_git", matches!(app.left_tab, LeftTab::Git)),
     ];
@@ -294,9 +288,8 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         .map(|(label, id, active)| styled_tab(app, label, id, *active))
         .collect();
     let selected = match app.left_tab {
-        LeftTab::Sessions => 0,
-        LeftTab::Files => 1,
-        LeftTab::Git => 2,
+        LeftTab::Files => 0,
+        LeftTab::Git => 1,
     };
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
@@ -333,8 +326,14 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(block, layout[1]);
 
     match app.left_tab {
-        LeftTab::Sessions => draw_sessions_content(frame, app, inner),
-        LeftTab::Files => draw_files_content(frame, app, inner),
+        LeftTab::Files => {
+            // Show the active file's code outline when one is open; otherwise the tree.
+            if !app.file_outline.is_empty() {
+                draw_outline_content(frame, app, inner);
+            } else {
+                draw_files_content(frame, app, inner);
+            }
+        }
         LeftTab::Git => draw_git_content(frame, app, inner),
     }
 }
@@ -1580,117 +1579,28 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn draw_sessions_content(frame: &mut Frame, app: &mut App, area: Rect) {
-    // If viewing a file, show its code outline instead of the sessions list.
-    if !app.file_outline.is_empty() {
-        let mut lines = vec![Line::from(Span::styled(
-            "  Outline",
-            Style::default().fg(Color::DarkGray),
-        ))];
-        for item in &app.file_outline {
-            let color = match item.kind.as_str() {
-                "fn" | "def" | "async def" => Color::Cyan,
-                "struct" | "class" => Color::Yellow,
-                "impl" | "trait" => Color::Magenta,
-                _ => Color::White,
-            };
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:4} ", item.line),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(format!("{} ", item.kind), Style::default().fg(Color::DarkGray)),
-                Span::styled(item.name.clone(), Style::default().fg(color)),
-            ]));
-        }
-        frame.render_widget(Paragraph::new(lines), area);
-        return;
-    }
-
-    let accent = app.agent_mode.accent_color();
-    let mut lines: Vec<Line> = Vec::new();
-    // (session index, display row) for each clickable session card.
-    let mut click_rows: Vec<(usize, usize)> = Vec::new();
-
-    for (idx, s) in app.sessions_list.iter().take(12).enumerate() {
-        let row = lines.len();
-        let id: String = s.id.chars().take(14).collect();
-        // Row 1: ● id  (current)
-        let dot_color = if s.is_current { Color::Green } else { accent };
-        let mut header = vec![
-            Span::styled("  \u{25cf}  ", Style::default().fg(dot_color)),
-            Span::styled(id, Style::default().add_modifier(Modifier::BOLD)),
-        ];
-        if s.is_current {
-            header.push(Span::styled(
-                "  (current)",
+fn draw_outline_content(frame: &mut Frame, app: &mut App, area: Rect) {
+    // Show the active file's code outline.
+    let mut lines = vec![Line::from(Span::styled(
+        "  Outline",
+        Style::default().fg(Color::DarkGray),
+    ))];
+    for item in &app.file_outline {
+        let color = match item.kind.as_str() {
+            "fn" | "def" | "async def" => Color::Cyan,
+            "struct" | "class" => Color::Yellow,
+            "impl" | "trait" => Color::Magenta,
+            _ => Color::White,
+        };
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:4} ", item.line),
                 Style::default().fg(Color::DarkGray),
-            ));
-        }
-        lines.push(Line::from(header));
-        // Row 2: label (first message), only if present and distinct from id.
-        if !s.label.is_empty() {
-            let label: String = s.label.chars().take(28).collect();
-            lines.push(Line::from(Span::styled(
-                format!("     {label}"),
-                Style::default().fg(Color::Gray),
-            )));
-        }
-        // Row 3: $cost  saved $savings  N turns
-        let mut stats = vec![Span::styled(
-            format!("     ${:.4}", s.cost_usd),
-            Style::default().fg(Color::DarkGray),
-        )];
-        if s.savings_usd > 0.0 {
-            stats.push(Span::styled(
-                format!("  saved ${:.4}", s.savings_usd),
-                Style::default().fg(Color::Green),
-            ));
-        }
-        if s.turns > 0 {
-            stats.push(Span::styled(
-                format!("  {} turns", s.turns),
-                Style::default().fg(Color::DarkGray),
-            ));
-        }
-        if s.tool_calls > 0 {
-            stats.push(Span::styled(
-                format!("  {} tools", s.tool_calls),
-                Style::default().fg(Color::DarkGray),
-            ));
-        }
-        lines.push(Line::from(stats));
-        // Row 4: modified time
-        if !s.modified.is_empty() {
-            lines.push(Line::from(Span::styled(
-                format!("     {}", s.modified),
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
-        lines.push(Line::from(""));
-        click_rows.push((idx, row));
+            ),
+            Span::styled(format!("{} ", item.kind), Style::default().fg(Color::DarkGray)),
+            Span::styled(item.name.clone(), Style::default().fg(color)),
+        ]));
     }
-
-    if app.sessions_list.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  No past sessions",
-            Style::default().fg(Color::DarkGray),
-        )));
-    }
-
-    // Register clickable hit areas for each session card (id row + body).
-    if let Some(ref mut areas) = app.tab_click_areas {
-        for (idx, row) in &click_rows {
-            let y = area.y.saturating_add(*row as u16);
-            if y < area.y + area.height {
-                areas.push((
-                    format!("session_{idx}"),
-                    Rect { x: area.x, y, width: area.width, height: 4 },
-                ));
-            }
-        }
-    }
-
     frame.render_widget(Paragraph::new(lines), area);
 }
 
@@ -1874,26 +1784,12 @@ fn draw_tasks_content(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
-fn draw_subagents_content(frame: &mut Frame, app: &App, area: Rect) {
-    if app.sessions_list.is_empty() {
-        let para = Paragraph::new(Span::styled(
-            "  No subagents running",
-            Style::default().fg(Color::DarkGray),
-        ));
-        frame.render_widget(para, area);
-        return;
-    }
-    let lines: Vec<Line> = app
-        .sessions_list
-        .iter()
-        .map(|s| {
-            Line::from(vec![
-                Span::styled(" \u{25c6} ", Style::default().fg(app.agent_mode.accent_color())),
-                Span::raw(s.label.clone()),
-            ])
-        })
-        .collect();
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+fn draw_subagents_content(frame: &mut Frame, _app: &App, area: Rect) {
+    let para = Paragraph::new(Span::styled(
+        "  No subagents running",
+        Style::default().fg(Color::DarkGray),
+    ));
+    frame.render_widget(para, area);
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {

@@ -483,37 +483,47 @@ class InteractiveRuntime:
             tools = _get_litellm_tools()
             lines = [f"**{t['function']['name']}** — {t['function']['description'][:80]}" for t in tools]
             yield AssistantMessage(type="assistant.message", text="\n".join(lines))
-        elif name == "sessions":
+        elif name in ("resume", "sessions"):
+            # `/resume <id>` loads a specific session; otherwise list available ones.
+            if name == "resume" and args and args[0].strip():
+                async for ev in self.handle_slash_command(session_id, "session", args):
+                    yield ev
+                return
+
             import datetime
 
             from atelier.core.foundation.paths import default_store_root
 
             runs_dir = default_store_root() / "runs"
-            sessions: list[dict[str, Any]] = []
-            if runs_dir.exists():
-                for f in sorted(
-                    runs_dir.glob("*.jsonl"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )[:20]:
-                    sessions.append(
-                        {
-                            "id": f.stem,
-                            "mtime": f.stat().st_mtime,
-                            "size_kb": round(f.stat().st_size / 1024, 1),
-                        }
-                    )
-            if sessions:
-                lines = ["**Recent sessions:**\n"]
-                for s in sessions:
-                    dt = datetime.datetime.fromtimestamp(s["mtime"]).strftime("%Y-%m-%d %H:%M")
-                    lines.append(f"- `{s['id']}` — {dt} ({s['size_kb']}KB)")
-                lines.append("\nResume: `atelier-tui --resume <session-id>`")
-                yield AssistantMessage(type="assistant.message", text="\n".join(lines))
-            else:
+            # Only show actual TUI sessions (not _context_savings files).
+            patterns = ["tui-*.jsonl", "atelier-run-*.jsonl"]
+            session_files: list[Path] = []
+            for pat in patterns:
+                session_files.extend(runs_dir.glob(pat))
+
+            # Sort by mtime descending.
+            session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+            if not session_files:
                 yield AssistantMessage(
-                    type="assistant.message", text="No saved sessions found."
+                    type="assistant.message",
+                    text=(
+                        "No saved TUI sessions found.\n\n"
+                        "Sessions are saved when you start a task in the TUI."
+                    ),
                 )
+                return
+
+            lines = ["**Saved sessions** (use `/resume <id>` to load one):\n"]
+            for f in session_files[:20]:
+                sid = f.stem
+                mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                size_kb = round(f.stat().st_size / 1024, 1)
+                lines.append(f"- `{sid}` — {mtime} ({size_kb}KB)")
+
+            yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "session":
             target = args[0] if args else ""
             if not target:
@@ -876,9 +886,6 @@ class InteractiveRuntime:
                 type="assistant.message",
                 text="✓ New task started. Conversation cleared.",
             )
-        elif name == "resume":
-            async for ev in self.handle_slash_command(session_id, "sessions", []):
-                yield ev
         elif name == "checkpoint":
             from atelier.core.capabilities.owned_agent_session.checkpoint import (
                 save_checkpoint,
