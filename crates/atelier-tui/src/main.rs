@@ -5,7 +5,7 @@ mod protocol;
 mod ui;
 
 use anyhow::Result;
-use app::{App, PendingPermission};
+use app::{App, FocusedPane, PendingPermission};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -184,6 +184,12 @@ async fn handle_key(
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             send_command(writer, &FrontendCommand::Interrupt {}).await?;
         }
+        KeyCode::Tab => {
+            app.cycle_focus();
+        }
+        KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            app.input.insert_newline();
+        }
         KeyCode::Enter => {
             let text = app.input.lines().join("\n").trim().to_string();
             if text.is_empty() {
@@ -210,8 +216,14 @@ async fn handle_key(
 
             send_command(writer, &cmd).await?;
         }
-        KeyCode::Up => app.scroll_up(),
-        KeyCode::Down => app.scroll_down(),
+        KeyCode::Up => match app.focused_pane {
+            FocusedPane::Tools => app.tool_scroll_up(),
+            _ => app.scroll_up(),
+        },
+        KeyCode::Down => match app.focused_pane {
+            FocusedPane::Tools => app.tool_scroll_down(),
+            _ => app.scroll_down(),
+        },
         KeyCode::PageUp => {
             for _ in 0..10 {
                 app.scroll_up();
@@ -223,7 +235,9 @@ async fn handle_key(
             }
         }
         _ => {
-            app.input.input(Event::Key(key));
+            if app.focused_pane == FocusedPane::Input {
+                app.input.input(Event::Key(key));
+            }
         }
     }
 

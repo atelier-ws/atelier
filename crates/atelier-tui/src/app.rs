@@ -4,6 +4,13 @@ use crate::protocol::BackendEvent;
 use ratatui_textarea::TextArea;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum FocusedPane {
+    Input,
+    Conversation,
+    Tools,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum PendingPermission {
     Waiting {
         id: String,
@@ -47,6 +54,8 @@ pub struct App<'a> {
     pub pending_permission: Option<PendingPermission>,
     pub input: TextArea<'a>,
     pub scroll: u16,
+    pub tool_scroll: u16,
+    pub focused_pane: FocusedPane,
     pub should_quit: bool,
     pub session_id: String,
     pub project_root: String,
@@ -63,6 +72,8 @@ impl<'a> App<'a> {
             pending_permission: None,
             input: TextArea::default(),
             scroll: 0,
+            tool_scroll: 0,
+            focused_pane: FocusedPane::Input,
             should_quit: false,
             session_id: String::new(),
             project_root,
@@ -181,5 +192,21 @@ impl<'a> App<'a> {
 
     pub fn scroll_down(&mut self) {
         self.scroll = self.scroll.saturating_add(3);
+    }
+
+    pub fn cycle_focus(&mut self) {
+        self.focused_pane = match self.focused_pane {
+            FocusedPane::Input => FocusedPane::Conversation,
+            FocusedPane::Conversation => FocusedPane::Tools,
+            FocusedPane::Tools => FocusedPane::Input,
+        };
+    }
+
+    pub fn tool_scroll_up(&mut self) {
+        self.tool_scroll = self.tool_scroll.saturating_sub(1);
+    }
+
+    pub fn tool_scroll_down(&mut self) {
+        self.tool_scroll = self.tool_scroll.saturating_add(1);
     }
 }
