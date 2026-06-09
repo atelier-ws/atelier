@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{ActiveOverlay, AgentMode, App, CompletionMode, DragBorder, DragState, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
+use app::{ActiveOverlay, AgentMode, App, CompletionMode, DragBorder, DragState, FocusedPane, GitRowKind, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -19,6 +19,7 @@ use crossterm::terminal::{
 };
 use protocol::{BackendEvent, FrontendCommand};
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 use ratatui::Terminal;
 use ratatui_textarea::TextArea;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -286,11 +287,13 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
-    // Alt+Enter inserts a newline — checked first so no other handler can swallow it.
-    // Alt+Enter is used instead of Shift+Enter because many terminals don't
-    // distinguish Shift+Enter from Enter (both send `\r`), while Alt+Enter
-    // reliably arrives as `ESC+\r`.
-    if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::ALT) {
+    // Support BOTH Shift+Enter and Alt+Enter for multiline input — checked first
+    // so no other handler can swallow it. Alt+Enter reliably arrives as `ESC+\r`;
+    // Shift+Enter works in terminals that report the SHIFT modifier on Enter.
+    if key.code == KeyCode::Enter
+        && (key.modifiers.contains(KeyModifiers::SHIFT)
+            || key.modifiers.contains(KeyModifiers::ALT))
+    {
         app.input.insert_newline();
         return Ok(());
     }
@@ -1014,11 +1017,7 @@ async fn handle_key(
             if matches!(app.focused_pane, FocusedPane::Sessions)
                 && matches!(app.left_tab, LeftTab::Git) =>
         {
-            if let Some(git_file) = app.git_status.get(app.git_scroll as usize) {
-                let path = git_file.path.clone();
-                let diff = get_file_diff(&path);
-                app.open_diff_tab(path, diff);
-            }
+            app.git_commit_toggle(app.git_commit_selected);
         }
         KeyCode::Enter => {
             let text = app.input.lines().join("\n").trim().to_string();
@@ -1202,12 +1201,13 @@ async fn handle_key(
         KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
             && matches!(app.left_tab, LeftTab::Git) =>
         {
-            app.git_scroll = app.git_scroll.saturating_sub(1);
+            app.git_commit_selected = app.git_commit_selected.saturating_sub(1);
         }
         KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
             && matches!(app.left_tab, LeftTab::Git) =>
         {
-            app.git_scroll = app.git_scroll.saturating_add(1);
+            app.git_commit_selected =
+                (app.git_commit_selected + 1).min(app.git_commits.len().saturating_sub(1));
         }
         KeyCode::End => {
             app.auto_scroll = true;
@@ -1318,7 +1318,7 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
             if hit_tab {
                 return;
             }
-            // Otherwise, detect a click near a pane border to start a drag-resize.
+            // Detect a click near a pane border to start a drag-resize (takes priority).
             let term_width = app.term_width.max(1);
             let left_border_col = app.left_pane_pct * term_width / 100;
             let right_border_col = (100 - app.right_pane_pct) * term_width / 100;
@@ -1328,12 +1328,104 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                     start_col: col,
                     start_pct: app.left_pane_pct,
                 });
+                return;
             } else if !app.right_hidden && (col as i32 - right_border_col as i32).abs() <= 2 {
                 app.drag_state = Some(DragState {
                     border: DragBorder::RightBorder,
                     start_col: col,
                     start_pct: app.right_pane_pct,
                 });
+                return;
+            }
+
+            // Activate the clicked pane.
+            if let Some(rects) = app.pane_rects.clone() {
+                let in_rect = |r: &Rect| {
+                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
+                };
+                if in_rect(&rects.input) {
+                    app.focused_pane = FocusedPane::Input;
+                } else if in_rect(&rects.middle) {
+                    app.focused_pane = FocusedPane::Conversation;
+                } else if !app.right_hidden && in_rect(&rects.right_top) {
+                    app.focused_pane = FocusedPane::Tools;
+                } else if !app.right_hidden && in_rect(&rects.right_bottom) {
+                    app.focused_pane = FocusedPane::Context;
+                } else if !app.left_hidden && in_rect(&rects.left) {
+                    app.focused_pane = FocusedPane::Sessions;
+                }
+
+                // Left-pane content clicks: file tree open / git commit toggle.
+                if !app.left_hidden && in_rect(&rects.left) {
+                    let content_y = rects.left.y + 2; // skip tab bar + top border
+                    match app.left_tab {
+                        LeftTab::Files => {
+                            let idx = (row as i32 - content_y as i32) as usize + app.files_view_offset;
+                            if let Some(node) = app.file_tree.get(idx) {
+                                if node.is_dir {
+                                    app.file_tree_selected = idx;
+                                    app.file_tree_toggle();
+                                } else {
+                                    app.file_tree_selected = idx;
+                                    let path = node.path.clone();
+                                    app.open_file_tab(path);
+                                    app.focused_pane = FocusedPane::Conversation;
+                                }
+                            }
+                        }
+                        LeftTab::Git => {
+                            if row >= content_y {
+                                let line_idx =
+                                    (row - content_y) as usize + app.git_scroll as usize;
+                                if let Some(Some(target)) =
+                                    app.git_row_targets.get(line_idx).cloned()
+                                {
+                                    match target {
+                                        GitRowKind::Commit(i) => {
+                                            app.git_commit_selected = i;
+                                            app.git_commit_toggle(i);
+                                        }
+                                        GitRowKind::CommitFile(i, file) => {
+                                            if let Some(commit) = app.git_commits.get(i) {
+                                                let hash = commit.hash.clone();
+                                                let diff = std::process::Command::new("git")
+                                                    .args(["show", "--no-color", &hash, "--", &file])
+                                                    .current_dir(&app.project_root)
+                                                    .output()
+                                                    .map(|o| {
+                                                        String::from_utf8_lossy(&o.stdout)
+                                                            .to_string()
+                                                    })
+                                                    .unwrap_or_default();
+                                                app.open_diff_tab(file.clone(), diff);
+                                                app.focused_pane = FocusedPane::Conversation;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        LeftTab::Sessions => {}
+                    }
+                }
+            }
+        }
+        MouseEventKind::Moved => {
+            // Track hover over the file tree for underline highlighting.
+            app.hovered_file_idx = None;
+            if !app.left_hidden && matches!(app.left_tab, LeftTab::Files) {
+                if let Some(rects) = app.pane_rects.clone() {
+                    let content_y = rects.left.y + 2;
+                    if col >= rects.left.x
+                        && col < rects.left.x + rects.left.width
+                        && row >= content_y
+                    {
+                        let idx = (row - content_y) as usize + app.files_view_offset;
+                        if idx < app.file_tree.len() {
+                            app.hovered_file_idx = Some(idx);
+                        }
+                    }
+                }
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
