@@ -263,6 +263,18 @@ async fn run_app(
             });
         }
 
+        // Resume a past session if the user clicked one in the Sessions pane.
+        if let Some(id) = app.resume_request.take() {
+            send_command(
+                &mut writer,
+                &FrontendCommand::UserCommand {
+                    name: "session".to_string(),
+                    args: vec![id],
+                },
+            )
+            .await?;
+        }
+
         // Pick up the tunnel URL once it becomes available.
         if app.tunnel_url.is_none() {
             if let Ok(guard) = tunnel_url_shared.try_lock() {
@@ -967,6 +979,7 @@ async fn handle_key(
     if matches!(app.focused_pane, FocusedPane::Sessions)
         && matches!(app.left_tab, LeftTab::Files)
         && !matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
+        && !key.modifiers.contains(KeyModifiers::ALT)
     {
         match key.code {
             KeyCode::Enter => {
@@ -982,9 +995,47 @@ async fn handle_key(
             KeyCode::Down | KeyCode::Char('j') => app.file_tree_down(),
             KeyCode::Right | KeyCode::Char('l') => app.file_tree_toggle(),
             KeyCode::Left | KeyCode::Char('h') => app.file_tree_toggle(),
+            KeyCode::PageUp => {
+                for _ in 0..10 {
+                    app.file_tree_up();
+                }
+            }
+            KeyCode::PageDown => {
+                for _ in 0..10 {
+                    app.file_tree_down();
+                }
+            }
             _ => {}
         }
         return Ok(());
+    }
+
+    // When the middle pane is focused on a FileView tab, route editing keys to
+    // its TextArea. Esc returns to the input; Ctrl/Alt combos and Tab fall
+    // through to global shortcuts (save, tab switching, nav history).
+    if matches!(app.focused_pane, FocusedPane::Conversation)
+        && matches!(
+            app.middle_tabs.get(app.middle_tab_idx),
+            Some(TabContent::FileView { .. })
+        )
+    {
+        if matches!(key.code, KeyCode::Esc) {
+            app.focused_pane = FocusedPane::Input;
+            return Ok(());
+        }
+        let is_global = matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
+            || key.modifiers.contains(KeyModifiers::CONTROL)
+            || key.modifiers.contains(KeyModifiers::ALT);
+        if !is_global {
+            if let Some(TabContent::FileView { editor, dirty, .. }) =
+                app.middle_tabs.get_mut(app.middle_tab_idx)
+            {
+                if editor.input(crossterm::event::Event::Key(key)) {
+                    *dirty = true;
+                }
+            }
+            return Ok(());
+        }
     }
 
     match key.code {
@@ -1071,22 +1122,30 @@ async fn handle_key(
             app.fuzzy_finder = Some(FuzzyFinder::new(files));
         }
         KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if let Some(TabContent::FileView { path, content, dirty }) =
-                app.middle_tabs.get_mut(app.middle_tab_idx)
-            {
-                if *dirty {
-                    if let Err(e) = std::fs::write(&path, content.as_bytes()) {
-                        let msg = format!("\u{2717} Save failed: {e}");
+            let path_clone = match app.middle_tabs.get(app.middle_tab_idx) {
+                Some(TabContent::FileView { path, .. }) => Some(path.clone()),
+                _ => None,
+            };
+            if let Some(path) = path_clone {
+                if let Some(TabContent::FileView {
+                    editor,
+                    dirty,
+                    content_cache,
+                    ..
+                }) = app.middle_tabs.get_mut(app.middle_tab_idx)
+                {
+                    let new_content = editor.lines().join("\n");
+                    if let Err(e) = std::fs::write(&path, &new_content) {
                         app.conversation.push(ConversationEntry {
                             role: Role::System,
-                            text: msg,
+                            text: format!("\u{2717} Save failed: {e}"),
                         });
                     } else {
                         *dirty = false;
-                        let msg = format!("\u{2713} Saved {path}");
+                        *content_cache = new_content;
                         app.conversation.push(ConversationEntry {
                             role: Role::System,
-                            text: msg,
+                            text: format!("\u{2713} Saved {path}"),
                         });
                     }
                 }
@@ -1102,6 +1161,7 @@ async fn handle_key(
         KeyCode::Tab if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if !app.middle_tabs.is_empty() {
                 app.middle_tab_idx = (app.middle_tab_idx + 1) % app.middle_tabs.len();
+                app.nav_push(app.middle_tab_idx);
                 app.build_outline_for_current_file();
             }
         }
@@ -1112,6 +1172,7 @@ async fn handle_key(
                 } else {
                     app.middle_tab_idx - 1
                 };
+                app.nav_push(app.middle_tab_idx);
                 app.build_outline_for_current_file();
             }
         }
@@ -1365,6 +1426,22 @@ async fn handle_key(
                 }
             }
         }
+        KeyCode::Left if key.modifiers.contains(KeyModifiers::ALT) => {
+            if app.nav_pos > 0 {
+                app.nav_pos -= 1;
+                app.middle_tab_idx =
+                    app.nav_history[app.nav_pos].min(app.middle_tabs.len().saturating_sub(1));
+                app.build_outline_for_current_file();
+            }
+        }
+        KeyCode::Right if key.modifiers.contains(KeyModifiers::ALT) => {
+            if app.nav_pos + 1 < app.nav_history.len() {
+                app.nav_pos += 1;
+                app.middle_tab_idx =
+                    app.nav_history[app.nav_pos].min(app.middle_tabs.len().saturating_sub(1));
+                app.build_outline_for_current_file();
+            }
+        }
         KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
             && matches!(app.left_tab, LeftTab::Files) =>
         {
@@ -1501,7 +1578,19 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                 if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
                                     if idx < app.middle_tabs.len() {
                                         app.middle_tab_idx = idx;
+                                        app.nav_push(idx);
                                         app.build_outline_for_current_file();
+                                    }
+                                }
+                            }
+                            _ if tab_id.starts_with("session_") => {
+                                if let Ok(idx) = tab_id["session_".len()..].parse::<usize>() {
+                                    if let Some(s) = app.sessions_list.get(idx) {
+                                        let id = s.id.clone();
+                                        app.push_system_pub(format!(
+                                            "\u{27f3} Resuming session {id}..."
+                                        ));
+                                        app.resume_request = Some(id);
                                     }
                                 }
                             }

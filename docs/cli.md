@@ -260,6 +260,5 @@ is command-specific rather than universal.
 ## Related References
 
 - [README.md](../README.md)
-- [docs/quickstart.md](quickstart.md)
 - [docs/installation.md](installation.md)
 - [docs/sdk/mcp.md](sdk/mcp.md)

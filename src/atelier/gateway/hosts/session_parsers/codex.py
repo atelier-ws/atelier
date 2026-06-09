@@ -129,10 +129,10 @@ def _int_or_zero(val: Any) -> int:
         return 0
 
 
-def _extract_flat_usage(usage: Any) -> tuple[int, int, int, int, int]:
-    """Return (input, output, thinking, cached_read, cache_write) for flat Codex usage payloads."""
+def _extract_flat_usage(usage: Any) -> tuple[int, int, int, int, int, int]:
+    """Return input, output, reasoning-output, thinking, cache-read, cache-write."""
     if not isinstance(usage, dict):
-        return (0, 0, 0, 0, 0)
+        return (0, 0, 0, 0, 0, 0)
 
     input_tokens = _int_or_zero(
         usage.get("input_tokens") or usage.get("inputTokens") or usage.get("prompt_tokens") or usage.get("promptTokens")
@@ -143,8 +143,23 @@ def _extract_flat_usage(usage: Any) -> tuple[int, int, int, int, int]:
         or usage.get("completion_tokens")
         or usage.get("completionTokens")
     )
-    # Codex/OpenAI reports reasoning as a subset of output tokens, so mapping it
-    # to thinking_tokens would make Atelier price the same tokens twice.
+    reasoning_output_tokens = _int_or_zero(
+        usage.get("reasoning_output_tokens")
+        or usage.get("reasoningOutputTokens")
+        or usage.get("reasoning_tokens")
+        or usage.get("reasoningTokens")
+    )
+    output_details = usage.get("output_tokens_details") or usage.get("outputTokensDetails")
+    if reasoning_output_tokens == 0 and isinstance(output_details, dict):
+        reasoning_output_tokens = _int_or_zero(
+            output_details.get("reasoning_tokens")
+            or output_details.get("reasoningTokens")
+            or output_details.get("reasoning_output_tokens")
+            or output_details.get("reasoningOutputTokens")
+        )
+    reasoning_output_tokens = min(reasoning_output_tokens, output_tokens)
+    # Codex/OpenAI reasoning is a subset of output. thinking_tokens remains for
+    # providers that bill thinking separately from output.
     thinking_tokens = 0
     cached_tokens = _int_or_zero(
         usage.get("cached_input_tokens")
@@ -178,7 +193,14 @@ def _extract_flat_usage(usage: Any) -> tuple[int, int, int, int, int]:
                 or input_details.get("cacheWriteTokens")
             )
 
-    return (input_tokens, output_tokens, thinking_tokens, cached_tokens, cache_write_tokens)
+    return (
+        input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        thinking_tokens,
+        cached_tokens,
+        cache_write_tokens,
+    )
 
 
 # Prefixes that mark system-injected content blocks to skip for task extraction
@@ -422,7 +444,7 @@ class CodexImporter:
         # reasoning_output_tokens is a SUBSET of output_tokens.
         final_total_in = 0
         final_total_out = 0
-        final_total_think = 0
+        final_total_reasoning = 0
         final_total_cached = 0
         model_seen = ""
         models_seen: set[str] = set()
@@ -486,17 +508,29 @@ class CodexImporter:
                     info = payload.get("info") or {}
                     last = info.get("last_token_usage") if isinstance(info, dict) else None
                     last = last or {}
-                    turn_in, turn_out, turn_think, turn_cached, turn_cache_write = _extract_flat_usage(last)
+                    (
+                        turn_in,
+                        turn_out,
+                        turn_reasoning,
+                        turn_think,
+                        turn_cached,
+                        turn_cache_write,
+                    ) = _extract_flat_usage(last)
                     tot = info.get("total_token_usage") if isinstance(info, dict) else None
                     if isinstance(tot, dict):
-                        final_total_in = int(tot.get("input_tokens", 0) or 0)
-                        final_total_out = int(tot.get("output_tokens", 0) or 0)
-                        final_total_think = 0
-                        final_total_cached = int(tot.get("cached_input_tokens", 0) or 0)
+                        (
+                            final_total_in,
+                            final_total_out,
+                            final_total_reasoning,
+                            _total_thinking,
+                            final_total_cached,
+                            _total_cache_write,
+                        ) = _extract_flat_usage(tot)
                     usage_entry = make_llm_usage_entry(
                         model=model_seen,
                         input_tokens=max(turn_in - turn_cached, 0),
                         output_tokens=turn_out,
+                        reasoning_output_tokens=turn_reasoning,
                         thinking_tokens=turn_think,
                         cached_input_tokens=turn_cached,
                         cache_creation_input_tokens=turn_cache_write,
@@ -609,24 +643,24 @@ class CodexImporter:
             else:
                 files_enriched.append(f)
 
-        if any((final_total_in, final_total_out, final_total_think, final_total_cached)) and len(models_seen) <= 1:
+        if any((final_total_in, final_total_out, final_total_reasoning, final_total_cached)) and len(models_seen) <= 1:
             usage_entries = []
             fallback_usage = make_llm_usage_entry(
                 model=model_seen,
                 input_tokens=max(final_total_in - final_total_cached, 0),
                 output_tokens=final_total_out,
-                thinking_tokens=final_total_think,
+                reasoning_output_tokens=final_total_reasoning,
                 cached_input_tokens=final_total_cached,
                 source_type="codex.event_msg.total_token_usage",
             )
             if fallback_usage is not None:
                 usage_entries.append(fallback_usage)
-        elif not usage_entries and any((final_total_in, final_total_out, final_total_think, final_total_cached)):
+        elif not usage_entries and any((final_total_in, final_total_out, final_total_reasoning, final_total_cached)):
             fallback_usage = make_llm_usage_entry(
                 model=model_seen,
                 input_tokens=max(final_total_in - final_total_cached, 0),
                 output_tokens=final_total_out,
-                thinking_tokens=final_total_think,
+                reasoning_output_tokens=final_total_reasoning,
                 cached_input_tokens=final_total_cached,
                 source_type="codex.event_msg.total_token_usage",
             )
@@ -664,6 +698,7 @@ class CodexImporter:
             input_tokens=usage_summary["input_tokens"],
             user_prompt_tokens=user_prompt_tokens,
             output_tokens=usage_summary["output_tokens"],
+            reasoning_output_tokens=usage_summary["reasoning_output_tokens"],
             thinking_tokens=usage_summary["thinking_tokens"],
             cached_input_tokens=usage_summary["cached_input_tokens"],
             cache_creation_input_tokens=usage_summary["cache_creation_input_tokens"],
@@ -743,11 +778,19 @@ class CodexImporter:
                     first_ts_set = True
 
                 if ev.get("role") == "assistant":
-                    turn_in, turn_out, turn_think, turn_cached, turn_cache_write = _extract_flat_usage(ev.get("usage"))
+                    (
+                        turn_in,
+                        turn_out,
+                        turn_reasoning,
+                        turn_think,
+                        turn_cached,
+                        turn_cache_write,
+                    ) = _extract_flat_usage(ev.get("usage"))
                     usage_entry = make_llm_usage_entry(
                         model=model_seen,
                         input_tokens=max(turn_in - turn_cached, 0),
                         output_tokens=turn_out,
+                        reasoning_output_tokens=turn_reasoning,
                         thinking_tokens=turn_think,
                         cached_input_tokens=turn_cached,
                         cache_creation_input_tokens=turn_cache_write,
@@ -829,6 +872,7 @@ class CodexImporter:
             reasoning=reasoning_snippets,
             input_tokens=usage_summary["input_tokens"],
             output_tokens=usage_summary["output_tokens"],
+            reasoning_output_tokens=usage_summary["reasoning_output_tokens"],
             thinking_tokens=usage_summary["thinking_tokens"],
             cached_input_tokens=usage_summary["cached_input_tokens"],
             cache_creation_input_tokens=usage_summary["cache_creation_input_tokens"],
