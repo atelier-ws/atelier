@@ -475,7 +475,7 @@ def test_run_api_arm_uses_openai_compatible_endpoint(tmp_path: Path, monkeypatch
 def test_validate_result_excerpt_rejects_placeholder_response() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "I'm ready to help! What would you like to work on?",
     )
@@ -487,7 +487,7 @@ def test_validate_result_excerpt_rejects_placeholder_response() -> None:
 def test_validate_result_excerpt_rejects_off_topic_research_response() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "I need to research how CLI coding agents detect the host IDE/terminal environment. "
         "I'll start by searching the web for Claude Code, Gemini CLI, Cody, and Aider.",
@@ -500,7 +500,7 @@ def test_validate_result_excerpt_rejects_off_topic_research_response() -> None:
 def test_validate_result_excerpt_rejects_harness_error() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "harness error: Command '['opencode', 'run', '...']' timed out after 60 seconds",
     )
@@ -517,7 +517,7 @@ def test_validate_result_excerpt_rejects_zero_overlap_response(tmp_path: Path, m
     monkeypatch.setenv("ATELIERBENCH_TASKS_DIR", str(task_source_dir))
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "Remember stable user preferences and summarize them into ~/.claude/skills/ for reuse.",
     )
@@ -529,7 +529,7 @@ def test_validate_result_excerpt_rejects_zero_overlap_response(tmp_path: Path, m
 def test_validate_result_excerpt_accepts_task_relevant_summary() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "Implemented the Swift LRU cache with disk-backed index persistence, atomic writes, "
         "and debounced access-date updates for get and promote.",
@@ -542,7 +542,7 @@ def test_validate_result_excerpt_accepts_task_relevant_summary() -> None:
 def test_validate_result_excerpt_accepts_error_handling_summary() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "Implemented the Swift LRU cache with persistence and explicit error handling for corrupted index recovery.",
     )
@@ -554,7 +554,7 @@ def test_validate_result_excerpt_accepts_error_handling_summary() -> None:
 def test_validate_result_excerpt_rejects_unnecessary_clarification() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "The workspace contains only the `CLAUDE.md` file. Could you tell me more about what task1 "
         "should do, or should I scaffold something new?",
@@ -567,7 +567,7 @@ def test_validate_result_excerpt_rejects_unnecessary_clarification() -> None:
 def test_validate_result_excerpt_rejects_generic_capability_intro() -> None:
     task = TASKS.Task("task-1", "swift", ("empty",), 1, "task1")
 
-    valid, reason = ATELIERBENCH._validate_result_excerpt(
+    valid, reason, _hard = ATELIERBENCH._validate_result_excerpt(
         task,
         "Hello! I can help with many tasks:\n\n"
         "- Code development: write and debug code\n"

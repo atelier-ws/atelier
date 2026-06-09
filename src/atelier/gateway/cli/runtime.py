@@ -332,6 +332,18 @@ class InteractiveRuntime:
                 cache_write_tokens=total_cache_write,
                 fresh_tokens=total_input,
             )
+            from atelier.gateway.cli.events import ContextUsageUpdated
+
+            yield ContextUsageUpdated(
+                type="context.usage.updated",
+                session_id=session_id,
+                input_tokens=total_input,
+                cache_read_tokens=total_cache_read,
+                cache_write_tokens=total_cache_write,
+                output_tokens=total_output,
+                cache_efficiency_pct=efficiency,
+                cost_usd=cost,
+            )
 
         self._sessions[session_id] = messages
 
@@ -480,30 +492,40 @@ class InteractiveRuntime:
                     text="Available modes: code, explore, research, plan",
                 )
         elif name == "analytics":
-            messages = self._sessions.get(session_id, [])
-            total_turns = len(
-                [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
-            )
-            total_tools = len(
-                [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
-            )
-            total_chars = sum(
-                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
-            )
-            approx_tokens = total_chars // 4
-            yield AssistantMessage(
-                type="assistant.message",
-                text=(
-                    "**Session Analytics**\n\n"
-                    "| Metric | Value |\n"
-                    "|--------|-------|\n"
-                    f"| Turns | {total_turns} |\n"
-                    f"| Tool calls | {total_tools} |\n"
-                    f"| ~Total tokens | {approx_tokens:,} |\n"
-                    f"| Model | `{self._override_model or '(auto-routed)'}` |\n"
-                    f"| Mode | `{self._current_mode}` |\n"
-                ),
-            )
+            try:
+                from atelier.core.capabilities.analytics.store import AnalyticsStore
+
+                store = AnalyticsStore()
+                stats = store.summary_stats()
+                recent_sessions = store.recent_sessions(5)
+                store.close()
+
+                lines = ["**Session Analytics**\n"]
+                lines.append("| Metric | Value |")
+                lines.append("|--------|-------|")
+                lines.append(f"| Total sessions | {stats.get('total_sessions', 0)} |")
+                lines.append(f"| Total cost | ${stats.get('total_cost_usd', 0):.4f} |")
+                lines.append(
+                    f"| Total savings | ${stats.get('total_savings_usd', 0):.4f} |"
+                )
+                lines.append(
+                    f"| Avg cache efficiency | {stats.get('avg_cache_efficiency_pct', 0):.1f}% |"
+                )
+                lines.append(f"| Total turns | {stats.get('total_turns', 0)} |")
+                lines.append("")
+                if recent_sessions:
+                    lines.append("**Recent sessions:**")
+                    for sess in recent_sessions:
+                        lines.append(
+                            f"- `{sess.session_id}` — {sess.mode} — ${sess.total_cost_usd:.4f}"
+                        )
+                yield AssistantMessage(
+                    type="assistant.message", text="\n".join(lines)
+                )
+            except Exception as exc:  # noqa: BLE001 - analytics is best-effort
+                yield AssistantMessage(
+                    type="assistant.message", text=f"Analytics unavailable: {exc}"
+                )
         elif name == "mcp":
             import json as _json
 
@@ -628,6 +650,74 @@ class InteractiveRuntime:
         elif name == "resume":
             async for ev in self.handle_slash_command(session_id, "sessions", []):
                 yield ev
+        elif name == "checkpoint":
+            from atelier.core.capabilities.owned_agent_session.checkpoint import (
+                save_checkpoint,
+            )
+
+            messages = self._sessions.get(session_id, [])
+            label = " ".join(args) if args else ""
+            cp = save_checkpoint(session_id, messages, label=label)
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    f"✓ Checkpoint saved: `{cp.id}` — {cp.message_count} messages\n\n"
+                    f"Restore: `/rewind {cp.id}`"
+                ),
+            )
+        elif name == "rewind":
+            cp_id = args[0] if args else ""
+            if not cp_id:
+                from atelier.core.capabilities.owned_agent_session.checkpoint import (
+                    list_checkpoints,
+                )
+
+                cps = list_checkpoints(session_id)
+                if cps:
+                    lines = ["**Checkpoints:**\n"]
+                    for cp in cps:
+                        lines.append(
+                            f"- `{cp.id}` — {cp.label} ({cp.message_count} messages) — {cp.created_at[:16]}"
+                        )
+                    lines.append("\nRestore: `/rewind <id>`")
+                    yield AssistantMessage(
+                        type="assistant.message", text="\n".join(lines)
+                    )
+                else:
+                    yield AssistantMessage(
+                        type="assistant.message",
+                        text="No checkpoints. Create one: `/checkpoint [label]`",
+                    )
+            else:
+                try:
+                    from atelier.core.capabilities.owned_agent_session.checkpoint import (
+                        load_checkpoint,
+                    )
+
+                    messages = load_checkpoint(cp_id, session_id)
+                    self._sessions[session_id] = messages
+                    yield AssistantMessage(
+                        type="assistant.message",
+                        text=f"✓ Rewound to checkpoint `{cp_id}` — {len(messages)} messages restored",
+                    )
+                except FileNotFoundError:
+                    yield RuntimeErrorEvent(
+                        type="error", message=f"Checkpoint `{cp_id}` not found"
+                    )
+        elif name == "shell":
+            cmd = " ".join(args) if args else ""
+            if cmd:
+                from atelier.gateway.adapters.mcp_server import tool_shell
+
+                try:
+                    result = await asyncio.to_thread(tool_shell, {"command": cmd, "timeout": 30})
+                    yield AssistantMessage(
+                        type="assistant.message", text=f"```\n{result}\n```"
+                    )
+                except Exception as exc:  # noqa: BLE001 - shell is best-effort
+                    yield RuntimeErrorEvent(type="error", message=f"Shell failed: {exc}")
+            else:
+                yield RuntimeErrorEvent(type="error", message="Usage: !<command>")
         elif name in ("verify", "background", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
