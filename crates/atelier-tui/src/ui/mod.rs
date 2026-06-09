@@ -7,7 +7,9 @@ use crate::app::{
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{
+    Block, BorderType, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap,
+};
 use ratatui::Frame;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
@@ -15,6 +17,15 @@ fn border_color(app: &App, pane: FocusedPane) -> Color {
         app.agent_mode.accent_color()
     } else {
         Color::DarkGray
+    }
+}
+
+/// Rounded border for the focused pane, plain (thin) for inactive panes.
+fn border_type_for_pane(app: &App, pane: FocusedPane) -> BorderType {
+    if app.focused_pane == pane {
+        BorderType::Rounded
+    } else {
+        BorderType::Plain
     }
 }
 
@@ -302,10 +313,9 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         .divider(" ");
     frame.render_widget(tabs, layout[0]);
 
-    let block = Block::bordered().border_style(Style::default().fg(border_color(
-        app,
-        FocusedPane::Sessions,
-    )));
+    let block = Block::bordered()
+        .border_type(border_type_for_pane(app, FocusedPane::Sessions))
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Sessions)));
     let inner = block.inner(layout[1]);
     frame.render_widget(block, layout[1]);
 
@@ -555,10 +565,9 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(tabs, layout[0]);
 
     let content_area = layout[1];
-    let block = Block::bordered().border_style(Style::default().fg(border_color(
-        app,
-        FocusedPane::Conversation,
-    )));
+    let block = Block::bordered()
+        .border_type(border_type_for_pane(app, FocusedPane::Conversation))
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
     let inner = block.inner(content_area);
     frame.render_widget(block, content_area);
 
@@ -755,10 +764,9 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         .highlight_style(Style::default().fg(app.agent_mode.accent_color()));
     frame.render_widget(tabs, layout[0]);
 
-    let block = Block::bordered().border_style(Style::default().fg(border_color(
-        app,
-        FocusedPane::Tools,
-    )));
+    let block = Block::bordered()
+        .border_type(border_type_for_pane(app, FocusedPane::Tools))
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Tools)));
     let inner = block.inner(layout[1]);
     frame.render_widget(block, layout[1]);
 
@@ -1619,78 +1627,108 @@ fn draw_sessions_content(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
     let stats = &app.context_stats;
-    let block = Block::bordered()
-        .title(" Context / Route ")
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Context)));
+    let accent = app.agent_mode.accent_color();
 
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    // Split into a header/info area, a gauge line, and a footer area.
-    let rows = Layout::vertical([
-        Constraint::Length(3), // provider/model
-        Constraint::Length(1), // cache gauge
-        Constraint::Min(0),    // rest
-    ])
-    .split(inner);
-
-    let provider = if stats.provider.is_empty() {
-        "—".to_string()
+    let model_short = if stats.model.is_empty() {
+        app.current_model
+            .split('/')
+            .next_back()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("no model")
     } else {
-        stats.provider.clone()
+        stats.model.split('/').next_back().unwrap_or(&stats.model)
     };
-    let model = if stats.model.is_empty() {
-        app.current_model.clone()
-    } else {
-        stats.model.clone()
-    };
-    let model_short: String = model.chars().take(28).collect();
-    let header = vec![
+
+    let mut lines: Vec<Line> = vec![
+        Line::raw(""),
         Line::from(vec![
+            Span::styled("  \u{25c6} ", Style::default().fg(accent)),
             Span::styled(
-                "\u{25c6} ",
-                Style::default().fg(app.agent_mode.accent_color()),
+                model_short.to_string(),
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             ),
-            Span::raw(provider),
         ]),
-        Line::from(Span::styled(
-            format!("  {model_short}"),
-            Style::default().fg(Color::DarkGray),
-        )),
     ];
-    frame.render_widget(Paragraph::new(header), rows[0]);
 
-    let ratio = (stats.cache_efficiency / 100.0).clamp(0.0, 1.0);
-    let gauge = Gauge::default()
-        .gauge_style(Style::default().fg(app.agent_mode.accent_color()))
-        .ratio(ratio)
-        .label(format!("Cache {:.0}%", stats.cache_efficiency));
-    frame.render_widget(gauge, rows[1]);
+    if !stats.provider.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("    {}", stats.provider),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    lines.push(Line::raw(""));
+
+    // Cache bar
+    let eff = stats.cache_efficiency;
+    let bar_w = 10usize;
+    let filled = ((eff / 100.0) * bar_w as f64).clamp(0.0, bar_w as f64) as usize;
+    let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(bar_w - filled);
+    let eff_color = if eff > 60.0 {
+        Color::Green
+    } else if eff > 30.0 {
+        Color::Yellow
+    } else {
+        Color::Red
+    };
+    lines.push(Line::from(vec![
+        Span::styled("  Cache  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(bar, Style::default().fg(eff_color)),
+        Span::styled(format!("  {eff:.0}%"), Style::default().fg(eff_color)),
+    ]));
+
+    if app.total_cost_usd > 0.0 {
+        lines.push(Line::from(vec![
+            Span::styled("  Cost   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", app.total_cost_usd),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+    }
+    if app.total_savings_usd > 0.001 {
+        lines.push(Line::from(vec![
+            Span::styled("  Saved  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", app.total_savings_usd),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+    }
 
     let used_k = (stats.input_tokens + stats.cache_read_tokens) as f64 / 1000.0;
-    let mut footer: Vec<Line> = vec![
-        Line::from(Span::styled(
-            format!("Cost   ${:.4}", stats.total_cost_usd),
+    lines.push(Line::from(vec![
+        Span::styled("  Tokens ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{used_k:.0}k ({:.0}%)", stats.estimated_context_pct),
+            Style::default().fg(Color::White),
+        ),
+    ]));
+
+    if !stats.memory_hits.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "  Memory:",
             Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(Span::styled(
-            format!("Saved  ${:.4}", stats.total_savings_usd),
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(Span::styled(
-            format!("Tokens {used_k:.0}k ({:.0}%)", stats.estimated_context_pct),
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Memory hits:",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ];
-    for hit in &stats.memory_hits {
-        footer.push(Line::from(Span::raw(format!(" \u{b7} {hit}"))));
+        )));
+        for hit in stats.memory_hits.iter().take(4) {
+            lines.push(Line::from(vec![
+                Span::styled("  \u{21aa} ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    hit.chars().take(25).collect::<String>(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
     }
-    frame.render_widget(Paragraph::new(footer).wrap(Wrap { trim: false }), rows[2]);
+
+    let block = Block::bordered()
+        .border_type(border_type_for_pane(app, FocusedPane::Context))
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Context)))
+        .title(Span::styled(
+            " Context ",
+            Style::default().fg(border_color(app, FocusedPane::Context)),
+        ));
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(block), area);
 }
 
 fn draw_tools_content(frame: &mut Frame, app: &App, area: Rect) {
