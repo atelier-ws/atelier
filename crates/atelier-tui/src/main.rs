@@ -1163,6 +1163,9 @@ async fn handle_key(
                 app.middle_tab_idx = (app.middle_tab_idx + 1) % app.middle_tabs.len();
                 app.nav_push(app.middle_tab_idx);
                 app.build_outline_for_current_file();
+                if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::FileView { .. })) {
+                    app.focused_pane = FocusedPane::Conversation;
+                }
             }
         }
         KeyCode::BackTab if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1174,6 +1177,9 @@ async fn handle_key(
                 };
                 app.nav_push(app.middle_tab_idx);
                 app.build_outline_for_current_file();
+                if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::FileView { .. })) {
+                    app.focused_pane = FocusedPane::Conversation;
+                }
             }
         }
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1378,6 +1384,17 @@ async fn handle_key(
                     return Ok(());
                 }
 
+                // Switching sessions: clear the current conversation so the
+                // backend's replayed/loaded session replaces it (not appends).
+                if name == "session" && !args.is_empty() {
+                    app.conversation.clear();
+                    app.tools.clear();
+                    app.streaming_text.clear();
+                    app.is_streaming = false;
+                    send_command(writer, &FrontendCommand::UserCommand { name, args }).await?;
+                    return Ok(());
+                }
+
                 app.conversation.push(app::ConversationEntry {
                     role: app::Role::System,
                     text: format!("/{name} {}", args.join(" ")).trim_end().to_string(),
@@ -1541,12 +1558,16 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
             // First, handle clickable tabs.
             let mut hit_tab = false;
             if let Some(areas) = app.tab_click_areas.clone() {
+                // Allow a ±1 column tolerance so clicks on tab padding/divider
+                // still land on the intended tab.
+                let tab_hit = |r: &Rect| {
+                    col + 1 >= r.x
+                        && col <= r.x + r.width
+                        && row >= r.y
+                        && row < r.y + r.height
+                };
                 for (tab_id, rect) in &areas {
-                    if col >= rect.x
-                        && col < rect.x + rect.width
-                        && row >= rect.y
-                        && row < rect.y + rect.height
-                    {
+                    if tab_hit(rect) {
                         match tab_id.as_str() {
                             "left_sessions" => {
                                 app.left_tab = LeftTab::Sessions;
@@ -1580,6 +1601,9 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                         app.middle_tab_idx = idx;
                                         app.nav_push(idx);
                                         app.build_outline_for_current_file();
+                                        if matches!(app.middle_tabs.get(idx), Some(TabContent::FileView { .. })) {
+                                            app.focused_pane = FocusedPane::Conversation;
+                                        }
                                     }
                                 }
                             }

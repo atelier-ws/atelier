@@ -516,10 +516,39 @@ class InteractiveRuntime:
                 )
         elif name == "session":
             target = args[0] if args else ""
-            if target in self._sessions:
-                yield AssistantMessage(type="assistant.message", text=f"Switched to session {target}")
-            else:
-                yield RuntimeErrorEvent(type="error", message=f"Session {target!r} not found")
+            if not target:
+                async for ev in self.handle_slash_command(session_id, "sessions", []):
+                    yield ev
+                return
+            # Try in-memory first; otherwise load from the JSONL run ledger.
+            if target not in self._sessions:
+                try:
+                    from atelier.core.capabilities.owned_agent_session.session import (
+                        OwnedAgentSession,
+                    )
+
+                    saved = OwnedAgentSession.load(target)
+                    self._sessions[target] = list(saved.messages)
+                except FileNotFoundError:
+                    yield RuntimeErrorEvent(
+                        type="error",
+                        message=f"Session '{target}' not found in runs/",
+                    )
+                    return
+            # Replace the current session's conversation with the loaded messages.
+            loaded_messages = self._sessions.get(target, [])
+            self._sessions[session_id] = list(loaded_messages)
+            turn_count = len(
+                [
+                    m
+                    for m in loaded_messages
+                    if isinstance(m, dict) and m.get("role") == "user"
+                ]
+            )
+            yield AssistantMessage(
+                type="assistant.message",
+                text=f"\u2713 Loaded session `{target}` ({turn_count} turns). Conversation replaced.",
+            )
         elif name == "memory":
             async for event in self._run_memory_search(" ".join(args)):
                 yield event
