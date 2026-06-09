@@ -7,9 +7,6 @@
 # Usage:
 #   curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
 #
-# Or from the main branch (latest development build):
-#   curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
-#
 # For a comprehensive developer install (with uv, git, node, host
 # integrations, etc.) use scripts/dev.sh from the repo checkout or:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh) --local
