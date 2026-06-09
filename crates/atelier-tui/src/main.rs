@@ -10,7 +10,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{ActiveOverlay, AgentMode, App, CompletionMode, ContextAction, ContextItem, ContextMenu, ConversationEntry, DragBorder, DragState, FocusedPane, FuzzyFinder, GitRowKind, LeftTab, PendingPermission, ReverseSearch, RightTab, Role, SearchState, TabContent};
+use app::{ActiveOverlay, AgentMode, App, CompletionMode, ContextAction, ContextItem, ContextMenu, ConversationEntry, FocusedPane, PendingPermission, ReverseSearch, Role, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
@@ -302,17 +302,6 @@ async fn run_app(
 
     Ok(())
 }
-
-/// Run `git diff` for a single file relative to the given repo root.
-fn get_file_diff_in_root(path: &str, root: &str) -> String {
-    std::process::Command::new("git")
-        .args(["diff", "--no-color", "--", path])
-        .current_dir(root)
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default()
-}
-
 async fn find_available_port(start: u16) -> u16 {
     for port in start..start.saturating_add(100) {
         if tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
@@ -388,52 +377,6 @@ async fn handle_key(
                     app.context_menu = None;
                     execute_context_action(app, action, writer).await?;
                 }
-                return Ok(());
-            }
-            _ => return Ok(()),
-        }
-    }
-
-    // Fuzzy file finder (Ctrl+P) captures keys while open.
-    if let Some(ff) = app.fuzzy_finder.as_mut() {
-        match key.code {
-            KeyCode::Esc => {
-                app.fuzzy_finder = None;
-                return Ok(());
-            }
-            KeyCode::Enter => {
-                if let Some(path) = ff.filtered.get(ff.selected).cloned() {
-                    let abs = std::path::Path::new(&app.project_root)
-                        .join(&path)
-                        .to_string_lossy()
-                        .to_string();
-                    app.open_file_tab(abs);
-                    app.focused_pane = FocusedPane::Conversation;
-                }
-                app.fuzzy_finder = None;
-                return Ok(());
-            }
-            KeyCode::Up => {
-                if ff.selected > 0 {
-                    ff.selected -= 1;
-                }
-                return Ok(());
-            }
-            KeyCode::Down => {
-                ff.selected = (ff.selected + 1).min(ff.filtered.len().saturating_sub(1));
-                return Ok(());
-            }
-            KeyCode::Backspace => {
-                ff.query.pop();
-                ff.update_filter();
-                return Ok(());
-            }
-            KeyCode::Char(c)
-                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                ff.query.push(c);
-                ff.update_filter();
                 return Ok(());
             }
             _ => return Ok(()),
@@ -961,70 +904,6 @@ async fn handle_key(
         }
     }
 
-    // File tree navigation: route keys to the manual tree when the Files tab
-    // is focused (Tab/BackTab still cycle pane focus so the user can leave).
-    if matches!(app.focused_pane, FocusedPane::Sessions)
-        && matches!(app.left_tab, LeftTab::Files)
-        && !matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
-        && !key.modifiers.contains(KeyModifiers::ALT)
-    {
-        match key.code {
-            KeyCode::Enter => {
-                if let Some((path, is_dir)) = app.file_tree_selected_path() {
-                    if is_dir {
-                        app.file_tree_toggle();
-                    } else {
-                        app.open_file_tab(path);
-                    }
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') => app.file_tree_up(),
-            KeyCode::Down | KeyCode::Char('j') => app.file_tree_down(),
-            KeyCode::Right | KeyCode::Char('l') => app.file_tree_toggle(),
-            KeyCode::Left | KeyCode::Char('h') => app.file_tree_toggle(),
-            KeyCode::PageUp => {
-                for _ in 0..10 {
-                    app.file_tree_up();
-                }
-            }
-            KeyCode::PageDown => {
-                for _ in 0..10 {
-                    app.file_tree_down();
-                }
-            }
-            _ => {}
-        }
-        return Ok(());
-    }
-
-    // When the middle pane is focused on a FileView tab, route editing keys to
-    // its TextArea. Esc returns to the input; Ctrl/Alt combos and Tab fall
-    // through to global shortcuts (save, tab switching, nav history).
-    if matches!(app.focused_pane, FocusedPane::Conversation)
-        && matches!(
-            app.middle_tabs.get(app.middle_tab_idx),
-            Some(TabContent::FileView { .. })
-        )
-    {
-        if matches!(key.code, KeyCode::Esc) {
-            app.focused_pane = FocusedPane::Input;
-            return Ok(());
-        }
-        let is_global = matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
-            || key.modifiers.contains(KeyModifiers::CONTROL)
-            || key.modifiers.contains(KeyModifiers::ALT);
-        if !is_global {
-            if let Some(TabContent::FileView { editor, dirty, .. }) =
-                app.middle_tabs.get_mut(app.middle_tab_idx)
-            {
-                if editor.input(crossterm::event::Event::Key(key)) {
-                    *dirty = true;
-                }
-            }
-            return Ok(());
-        }
-    }
-
     match key.code {
         #[cfg(feature = "clipboard")]
         KeyCode::Char('c' | 'C')
@@ -1051,24 +930,6 @@ async fn handle_key(
             }
         }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // If there's a text selection, Ctrl+C copies it (editor behavior)
-            if let Some(ref sel) = app.text_selection {
-                if !sel.selected_text.is_empty() {
-                    #[cfg(feature = "clipboard")]
-                    {
-                        use arboard::Clipboard;
-                        if let Ok(mut cb) = Clipboard::new() {
-                            let _ = cb.set_text(&sel.selected_text);
-                            app.conversation.push(app::ConversationEntry {
-                                role: app::Role::System,
-                                text: format!("\u{1f4cb} Copied {} chars", sel.selected_text.len()),
-                            });
-                        }
-                    }
-                    app.text_selection = None;
-                    return Ok(());
-                }
-            }
             let now = std::time::Instant::now();
             let double_press = app
                 .last_ctrl_c
@@ -1122,110 +983,12 @@ async fn handle_key(
                 current_match: 0,
             });
         }
-        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            let files = collect_files_for_display(&app.project_root);
-            app.fuzzy_finder = Some(FuzzyFinder::new(files));
-        }
-        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            let path_clone = match app.middle_tabs.get(app.middle_tab_idx) {
-                Some(TabContent::FileView { path, .. }) => Some(path.clone()),
-                _ => None,
-            };
-            if let Some(path) = path_clone {
-                if let Some(TabContent::FileView {
-                    editor,
-                    dirty,
-                    content_cache,
-                    ..
-                }) = app.middle_tabs.get_mut(app.middle_tab_idx)
-                {
-                    let new_content = editor.lines().join("\n");
-                    if let Err(e) = std::fs::write(&path, &new_content) {
-                        app.conversation.push(ConversationEntry {
-                            role: Role::System,
-                            text: format!("\u{2717} Save failed: {e}"),
-                        });
-                    } else {
-                        *dirty = false;
-                        *content_cache = new_content;
-                        app.conversation.push(ConversationEntry {
-                            role: Role::System,
-                            text: format!("\u{2713} Saved {path}"),
-                        });
-                    }
-                }
-            }
-        }
         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.reverse_search = Some(ReverseSearch {
                 query: String::new(),
                 matches: vec![],
                 current: 0,
             });
-        }
-        KeyCode::Tab if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if !app.middle_tabs.is_empty() {
-                app.middle_tab_idx = (app.middle_tab_idx + 1) % app.middle_tabs.len();
-                app.nav_push(app.middle_tab_idx);
-                app.build_outline_for_current_file();
-                if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::FileView { .. })) {
-                    app.focused_pane = FocusedPane::Conversation;
-                }
-            }
-        }
-        KeyCode::BackTab if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if !app.middle_tabs.is_empty() {
-                app.middle_tab_idx = if app.middle_tab_idx == 0 {
-                    app.middle_tabs.len() - 1
-                } else {
-                    app.middle_tab_idx - 1
-                };
-                app.nav_push(app.middle_tab_idx);
-                app.build_outline_for_current_file();
-                if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::FileView { .. })) {
-                    app.focused_pane = FocusedPane::Conversation;
-                }
-            }
-        }
-        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.close_tab(app.middle_tab_idx);
-        }
-        KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.left_tab = LeftTab::Files;
-        }
-        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.left_tab = LeftTab::Git;
-            app.refresh_git_status();
-            app.load_commit_detail(app.git_commit_selected);
-        }
-        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.right_tab = RightTab::Tools;
-            app.tools_activity = false;
-        }
-        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.right_tab = RightTab::Tasks;
-            app.tasks_activity = false;
-        }
-        KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.right_tab = RightTab::Subagents;
-        }
-        KeyCode::F(1) => {
-            app.right_tab = RightTab::Tools;
-            app.tools_activity = false;
-        }
-        KeyCode::F(2) => {
-            app.right_tab = RightTab::Tasks;
-            app.tasks_activity = false;
-        }
-        KeyCode::F(3) => {
-            app.right_tab = RightTab::Subagents;
-        }
-        // Alt+h / Alt+l to hide/show panes (Alt+[ doesn't work — ESC [ is ANSI escape prefix)
-        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.left_hidden = !app.left_hidden;
-        }
-        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.right_hidden = !app.right_hidden;
         }
         KeyCode::Tab if matches!(app.focused_pane, FocusedPane::Input) => {
             // Tab in input = cycle agent mode (code → explore → research → plan → code)
@@ -1236,34 +999,10 @@ async fn handle_key(
             }).await?;
         }
         KeyCode::Tab => {
-            // Tab outside input = cycle pane focus
+            // Tab outside input = toggle focus between input and conversation
             app.cycle_focus();
         }
-        // Alt+Tab = insert literal tab into input
-        KeyCode::Tab if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.input.input(crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
-                KeyCode::Char('\t'), KeyModifiers::NONE
-            )));
-        }
-        KeyCode::Enter
-            if matches!(app.focused_pane, FocusedPane::Sessions)
-                && matches!(app.left_tab, LeftTab::Files) =>
-        {
-            let files = collect_files_for_display(&app.project_root);
-            if let Some(path) = files.get(app.files_scroll as usize) {
-                let abs = std::path::Path::new(&app.project_root)
-                    .join(path)
-                    .to_string_lossy()
-                    .to_string();
-                app.open_file_tab(abs);
-            }
-        }
-        KeyCode::Enter
-            if matches!(app.focused_pane, FocusedPane::Sessions)
-                && matches!(app.left_tab, LeftTab::Git) =>
-        {
-            app.git_commit_toggle(app.git_commit_selected);
-        }
+
         KeyCode::Enter => {
             let text = app.input.lines().join("\n").trim().to_string();
             if text.is_empty() {
@@ -1444,60 +1183,15 @@ async fn handle_key(
                 }
             }
         }
-        KeyCode::Left if key.modifiers.contains(KeyModifiers::ALT) => {
-            if app.nav_pos > 0 {
-                app.nav_pos -= 1;
-                app.middle_tab_idx =
-                    app.nav_history[app.nav_pos].min(app.middle_tabs.len().saturating_sub(1));
-                app.build_outline_for_current_file();
-            }
-        }
-        KeyCode::Right if key.modifiers.contains(KeyModifiers::ALT) => {
-            if app.nav_pos + 1 < app.nav_history.len() {
-                app.nav_pos += 1;
-                app.middle_tab_idx =
-                    app.nav_history[app.nav_pos].min(app.middle_tabs.len().saturating_sub(1));
-                app.build_outline_for_current_file();
-            }
-        }
-        KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
-            && matches!(app.left_tab, LeftTab::Files) =>
-        {
-            app.files_scroll = app.files_scroll.saturating_sub(1);
-        }
-        KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
-            && matches!(app.left_tab, LeftTab::Files) =>
-        {
-            app.files_scroll = app.files_scroll.saturating_add(1);
-        }
-        KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
-            && matches!(app.left_tab, LeftTab::Git) =>
-        {
-            app.git_commit_selected = app.git_commit_selected.saturating_sub(1);
-            app.load_commit_detail(app.git_commit_selected);
-        }
-        KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
-            && matches!(app.left_tab, LeftTab::Git) =>
-        {
-            app.git_commit_selected =
-                (app.git_commit_selected + 1).min(app.git_commits.len().saturating_sub(1));
-            app.load_commit_detail(app.git_commit_selected);
-        }
         KeyCode::End => {
             app.auto_scroll = true;
             app.scroll = u16::MAX;
         }
         KeyCode::Up => {
             app.auto_scroll = false;
-            match app.focused_pane {
-                FocusedPane::Tools => app.tool_scroll_up(),
-                _ => app.scroll_up(),
-            }
+            app.scroll_up();
         }
-        KeyCode::Down => match app.focused_pane {
-            FocusedPane::Tools => app.tool_scroll_down(),
-            _ => app.scroll_down(),
-        },
+        KeyCode::Down => app.scroll_down(),
         KeyCode::PageUp => {
             app.auto_scroll = false;
             for _ in 0..10 {
@@ -1554,471 +1248,92 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
     use crossterm::event::{MouseButton, MouseEventKind};
 
     let (col, row) = (mouse.column, mouse.row);
+    let in_rect = |r: &Rect| col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height;
+
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            // Context menu: click on item executes it; click outside dismisses
+            // Context menu: click on item executes it; click outside dismisses.
             if let Some(menu) = app.context_menu.take() {
-                let menu_w = menu.items.iter().map(|i| i.label.len() + 6).max().unwrap_or(20) as u16;
+                let menu_w =
+                    menu.items.iter().map(|i| i.label.len() + 6).max().unwrap_or(20) as u16;
                 let menu_h = menu.items.len() as u16 + 2;
-                let in_menu = col >= menu.x && col < menu.x + menu_w
-                    && row >= menu.y && row < menu.y + menu_h;
+                let in_menu = col >= menu.x
+                    && col < menu.x + menu_w
+                    && row >= menu.y
+                    && row < menu.y + menu_h;
                 if in_menu {
-                    let item_row = row.saturating_sub(menu.y + 1); // skip border
-                    let idx = item_row as usize;
+                    let idx = row.saturating_sub(menu.y + 1) as usize;
                     if let Some(item) = menu.items.get(idx) {
-                        // Store for async execution in the main loop (handle_mouse is sync)
                         app.pending_context_action = Some(item.action.clone());
                     }
                 }
-                // menu dropped (either action taken or click-outside)
                 return;
             }
-            // Clear text selection on any left click
-            app.text_selection = None;
-            // First, handle clickable tabs.
-            let mut hit_tab = false;
-            if let Some(areas) = app.tab_click_areas.clone() {
-                // Allow a ±1 column tolerance so clicks on tab padding/divider
-                // still land on the intended tab.
-                let tab_hit = |r: &Rect| {
-                    col + 1 >= r.x
-                        && col <= r.x + r.width
-                        && row >= r.y
-                        && row < r.y + r.height
-                };
-                for (tab_id, rect) in &areas {
-                    if tab_hit(rect) {
-                        match tab_id.as_str() {
-                            "left_files" => app.left_tab = LeftTab::Files,
-                            "left_git" => {
-                                app.left_tab = LeftTab::Git;
-                                app.refresh_git_status();
-                                app.load_commit_detail(app.git_commit_selected);
-                            }
-                            "right_tools" => {
-                                app.right_tab = RightTab::Tools;
-                                app.tools_activity = false;
-                            }
-                            "right_tasks" => {
-                                app.right_tab = RightTab::Tasks;
-                                app.tasks_activity = false;
-                            }
-                            "right_agents" => app.right_tab = RightTab::Subagents,
-                            _ if tab_id.starts_with("middle_close_") => {
-                                if let Ok(idx) =
-                                    tab_id["middle_close_".len()..].parse::<usize>()
-                                {
-                                    app.close_tab(idx);
-                                }
-                            }
-                            _ if tab_id.starts_with("middle_") => {
-                                if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
-                                    if idx < app.middle_tabs.len() {
-                                        app.middle_tab_idx = idx;
-                                        app.nav_push(idx);
-                                        app.build_outline_for_current_file();
-                                        if matches!(app.middle_tabs.get(idx), Some(TabContent::FileView { .. })) {
-                                            app.focused_pane = FocusedPane::Conversation;
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                        hit_tab = true;
-                        break;
-                    }
-                }
-            }
-            if hit_tab {
-                return;
-            }
-            // Detect a click near a pane border to start a drag-resize (takes priority).
-            let term_width = app.term_width.max(1);
-            let left_border_col = app.left_pane_pct * term_width / 100;
-            let right_border_col = (100 - app.right_pane_pct) * term_width / 100;
-            if !app.left_hidden && (col as i32 - left_border_col as i32).abs() <= 2 {
-                app.drag_state = Some(DragState {
-                    border: DragBorder::LeftBorder,
-                    start_col: col,
-                    start_pct: app.left_pane_pct,
-                });
-                return;
-            } else if !app.right_hidden && (col as i32 - right_border_col as i32).abs() <= 2 {
-                app.drag_state = Some(DragState {
-                    border: DragBorder::RightBorder,
-                    start_col: col,
-                    start_pct: app.right_pane_pct,
-                });
-                return;
-            }
-
             // Activate the clicked pane.
-            if let Some(rects) = app.pane_rects.clone() {
-                let in_rect = |r: &Rect| {
-                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
-                };
-                if in_rect(&rects.input) {
-                    app.focused_pane = FocusedPane::Input;
-                } else if in_rect(&rects.middle) {
-                    app.focused_pane = FocusedPane::Conversation;
-                    // Start a text selection when dragging over the conversation.
-                    if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::Conversation)) {
-                        let rel = row.saturating_sub(rects.middle.y);
-                        app.text_selection = Some(app::TextSelection {
-                            start_row: rel,
-                            end_row: rel,
-                            selected_text: String::new(),
-                        });
-                    }
-                } else if !app.right_hidden && in_rect(&rects.right_top) {
-                    app.focused_pane = FocusedPane::Tools;
-                } else if !app.right_hidden && in_rect(&rects.right_bottom) {
-                    app.focused_pane = FocusedPane::Context;
-                } else if !app.left_hidden && in_rect(&rects.left) {
-                    app.focused_pane = FocusedPane::Sessions;
-                }
-
-                // Left-pane content clicks: file tree open / git commit toggle.
-                if !app.left_hidden && in_rect(&rects.left) {
-                    let content_y = rects.left.y + 2; // skip tab bar + top border
-                    match app.left_tab {
-                        LeftTab::Files => {
-                            let idx = (row as i32 - content_y as i32) as usize + app.files_view_offset;
-                            if let Some(node) = app.file_tree.get(idx) {
-                                if node.is_dir {
-                                    app.file_tree_selected = idx;
-                                    app.file_tree_toggle();
-                                } else {
-                                    app.file_tree_selected = idx;
-                                    let path = node.path.clone();
-                                    app.open_file_tab(path);
-                                    app.focused_pane = FocusedPane::Conversation;
-                                }
-                            }
-                        }
-                        LeftTab::Git => {
-                            if row >= content_y {
-                                let line_idx =
-                                    (row - content_y) as usize + app.git_scroll as usize;
-                                if let Some(Some(target)) =
-                                    app.git_row_targets.get(line_idx).cloned()
-                                {
-                                    match target {
-                                        GitRowKind::StatusFile(i) => {
-                                            if let Some(git_file) = app.git_status.get(i) {
-                                                let path = git_file.path.clone();
-                                                let diff = get_file_diff_in_root(
-                                                    &path,
-                                                    &app.project_root,
-                                                );
-                                                app.open_diff_tab(path, diff);
-                                                app.focused_pane = FocusedPane::Conversation;
-                                            }
-                                        }
-                                        GitRowKind::Commit(i) => {
-                                            app.git_commit_selected = i;
-                                            app.git_commit_toggle(i);
-                                            app.load_commit_detail(i);
-                                        }
-                                        GitRowKind::CommitFile(i, file) => {
-                                            if let Some(commit) = app.git_commits.get(i) {
-                                                let hash = commit.hash.clone();
-                                                let diff = std::process::Command::new("git")
-                                                    .args(["show", "--no-color", &hash, "--", &file])
-                                                    .current_dir(&app.project_root)
-                                                    .output()
-                                                    .map(|o| {
-                                                        String::from_utf8_lossy(&o.stdout)
-                                                            .to_string()
-                                                    })
-                                                    .unwrap_or_default();
-                                                app.open_diff_tab(file.clone(), diff);
-                                                app.focused_pane = FocusedPane::Conversation;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            if in_rect(&app.input_rect) {
+                app.focused_pane = FocusedPane::Input;
+            } else if in_rect(&app.conv_rect) {
+                app.focused_pane = FocusedPane::Conversation;
             }
         }
         MouseEventKind::ScrollUp => {
-            if let Some(ref rects) = app.pane_rects {
-                let in_rect = |r: &Rect| {
-                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
-                };
-                if in_rect(&rects.middle) {
-                    if matches!(
-                        app.middle_tabs.get(app.middle_tab_idx),
-                        Some(TabContent::FileView { .. }) | Some(TabContent::DiffView(..))
-                    ) {
-                        if let Some(s) = app.middle_tab_scroll.get_mut(app.middle_tab_idx) {
-                            *s = s.saturating_sub(3);
-                        }
-                    } else {
-                        app.auto_scroll = false;
-                        app.scroll = app.scroll.saturating_sub(3);
-                    }
-                } else if !app.right_hidden && in_rect(&rects.right_top) {
-                    app.tool_scroll = app.tool_scroll.saturating_sub(2);
-                } else if !app.left_hidden && in_rect(&rects.left) {
-                    match app.left_tab {
-                        LeftTab::Files => app.files_scroll = app.files_scroll.saturating_sub(2),
-                        LeftTab::Git => app.git_scroll = app.git_scroll.saturating_sub(2),
-                    }
-                }
+            if in_rect(&app.conv_rect) {
+                app.auto_scroll = false;
+                app.scroll = app.scroll.saturating_sub(3);
             }
         }
         MouseEventKind::ScrollDown => {
-            if let Some(ref rects) = app.pane_rects {
-                let in_rect = |r: &Rect| {
-                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
-                };
-                if in_rect(&rects.middle) {
-                    if matches!(
-                        app.middle_tabs.get(app.middle_tab_idx),
-                        Some(TabContent::FileView { .. }) | Some(TabContent::DiffView(..))
-                    ) {
-                        if let Some(s) = app.middle_tab_scroll.get_mut(app.middle_tab_idx) {
-                            *s = s.saturating_add(3);
-                        }
-                    } else {
-                        app.auto_scroll = false;
-                        app.scroll = app.scroll.saturating_add(3);
-                    }
-                } else if !app.right_hidden && in_rect(&rects.right_top) {
-                    app.tool_scroll = app.tool_scroll.saturating_add(2);
-                } else if !app.left_hidden && in_rect(&rects.left) {
-                    match app.left_tab {
-                        LeftTab::Files => app.files_scroll = app.files_scroll.saturating_add(2),
-                        LeftTab::Git => app.git_scroll = app.git_scroll.saturating_add(2),
-                    }
-                }
-            }
-        }
-        MouseEventKind::Down(MouseButton::Middle) => {
-            // Middle click on a middle tab: close that tab.
-            if let Some(areas) = app.tab_click_areas.clone() {
-                for (id, rect) in &areas {
-                    if id.starts_with("middle_")
-                        && !id.starts_with("middle_close_")
-                        && col >= rect.x
-                        && col < rect.x + rect.width
-                        && row >= rect.y
-                        && row < rect.y + rect.height
-                    {
-                        if let Ok(idx) = id["middle_".len()..].parse::<usize>() {
-                            app.close_tab(idx);
-                        }
-                        break;
-                    }
-                }
+            if in_rect(&app.conv_rect) {
+                app.scroll = app.scroll.saturating_add(3);
             }
         }
         MouseEventKind::Down(MouseButton::Right) => {
-            let items = build_context_menu(app, col, row);
-            if !items.is_empty() {
+            if in_rect(&app.conv_rect) {
                 app.context_menu = Some(ContextMenu {
                     x: col,
                     y: row,
-                    items,
+                    items: build_context_menu(),
                     selected: 0,
                 });
             }
         }
         MouseEventKind::Moved => {
-            // Context menu hover — update selected item
             if let Some(ref mut menu) = app.context_menu {
                 let menu_y = menu.y + 1; // skip border
                 if row >= menu_y && (row - menu_y) < menu.items.len() as u16 {
                     menu.selected = (row - menu_y) as usize;
                 }
             }
-            // Track hover over tabs for underline highlighting.
-            let mut found_tab = None;
-            if let Some(ref areas) = app.tab_click_areas {
-                for (id, rect) in areas {
-                    if col >= rect.x
-                        && col < rect.x + rect.width
-                        && row >= rect.y
-                        && row < rect.y + rect.height
-                    {
-                        found_tab = Some(id.clone());
-                        break;
-                    }
-                }
-            }
-            app.hovered_tab = found_tab;
-            // Track hover over the file tree for underline highlighting.
-            app.hovered_file_idx = None;
-            if !app.left_hidden && matches!(app.left_tab, LeftTab::Files) {
-                if let Some(rects) = app.pane_rects.clone() {
-                    let content_y = rects.left.y + 2;
-                    if col >= rects.left.x
-                        && col < rects.left.x + rects.left.width
-                        && row >= content_y
-                    {
-                        let idx = (row - content_y) as usize + app.files_view_offset;
-                        if idx < app.file_tree.len() {
-                            app.hovered_file_idx = Some(idx);
-                        }
-                    }
-                }
-            }
-        }
-        MouseEventKind::Drag(MouseButton::Left) => {
-            if let Some(ref drag) = app.drag_state {
-                let term_width = app.term_width.max(1) as i32;
-                let delta = col as i32 - drag.start_col as i32;
-                let delta_pct = (delta * 100 / term_width) as i16;
-                match drag.border {
-                    DragBorder::LeftBorder => {
-                        app.left_pane_pct =
-                            (drag.start_pct as i16 + delta_pct).clamp(10, 40) as u16;
-                    }
-                    DragBorder::RightBorder => {
-                        app.right_pane_pct =
-                            (drag.start_pct as i16 - delta_pct).clamp(10, 40) as u16;
-                    }
-                }
-            } else if app.text_selection.is_some() {
-                // Extend the conversation text selection.
-                let middle_y = app.pane_rects.as_ref().map(|r| r.middle.y).unwrap_or(0);
-                let rel = row.saturating_sub(middle_y);
-                let off = app.scroll as usize;
-                let all_text = app
-                    .conversation
-                    .iter()
-                    .map(|e| e.text.clone())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let lines: Vec<&str> = all_text.lines().collect();
-                if let Some(ref mut sel) = app.text_selection {
-                    sel.end_row = rel;
-                    let min_row = sel.start_row.min(sel.end_row) as usize;
-                    let max_row = sel.start_row.max(sel.end_row) as usize;
-                    let start = (min_row + off).min(lines.len());
-                    let end = (max_row + off + 1).min(lines.len());
-                    sel.selected_text = if start < end {
-                        lines[start..end].join("\n")
-                    } else {
-                        String::new()
-                    };
-                }
-            }
-        }
-        MouseEventKind::Up(MouseButton::Left) => {
-            app.drag_state = None;
-            // Do NOT auto-copy on mouse up — keep selection visible for Ctrl+C
-            // text_selection stays until user presses Ctrl+C, types something, or clicks elsewhere
         }
         _ => {}
     }
 }
 
-fn build_context_menu(app: &App, col: u16, row: u16) -> Vec<ContextItem> {
+/// Build the conversation right-click context menu.
+fn build_context_menu() -> Vec<ContextItem> {
     use ContextAction::*;
-
-    if let Some(ref rects) = app.pane_rects {
-        let in_rect = |r: &Rect| {
-            col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
-        };
-
-        if in_rect(&rects.middle) {
-            match app.middle_tabs.get(app.middle_tab_idx) {
-                Some(TabContent::FileView { path, .. }) => {
-                    return vec![
-                        ContextItem {
-                            label: "Open in $EDITOR".to_string(),
-                            key: 'e',
-                            action: OpenInEditor(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Copy path".to_string(),
-                            key: 'c',
-                            action: CopyPath(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Show git diff".to_string(),
-                            key: 'd',
-                            action: ShowDiff(path.clone()),
-                        },
-                    ];
-                }
-                Some(TabContent::Conversation) => {
-                    return vec![
-                        ContextItem {
-                            label: "Copy last response".to_string(),
-                            key: 'c',
-                            action: CopyLastMessage,
-                        },
-                        ContextItem {
-                            label: "Search conversation".to_string(),
-                            key: 'f',
-                            action: SearchInConversation,
-                        },
-                        ContextItem {
-                            label: "Clear conversation".to_string(),
-                            key: 'x',
-                            action: ClearConversation,
-                        },
-                        ContextItem {
-                            label: "New task".to_string(),
-                            key: 'n',
-                            action: NewTask,
-                        },
-                    ];
-                }
-                _ => {}
-            }
-        } else if !app.left_hidden && in_rect(&rects.left) && matches!(app.left_tab, LeftTab::Files)
-        {
-            if let Some(node) = app.file_tree.get(app.file_tree_selected) {
-                let path = node.path.clone();
-                if node.is_dir {
-                    return vec![
-                        ContextItem {
-                            label: "Expand/collapse".to_string(),
-                            key: 'e',
-                            action: OpenFile(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Copy path".to_string(),
-                            key: 'c',
-                            action: CopyPath(path),
-                        },
-                    ];
-                } else {
-                    return vec![
-                        ContextItem {
-                            label: "Open in tab".to_string(),
-                            key: 'o',
-                            action: OpenFile(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Open in $EDITOR".to_string(),
-                            key: 'e',
-                            action: OpenInEditor(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Copy path".to_string(),
-                            key: 'c',
-                            action: CopyPath(path.clone()),
-                        },
-                        ContextItem {
-                            label: "Show git diff".to_string(),
-                            key: 'd',
-                            action: ShowDiff(path),
-                        },
-                    ];
-                }
-            }
-        }
-    }
-    vec![]
+    vec![
+        ContextItem {
+            label: "Copy last response".to_string(),
+            key: 'c',
+            action: CopyLastMessage,
+        },
+        ContextItem {
+            label: "Search conversation".to_string(),
+            key: 'f',
+            action: SearchInConversation,
+        },
+        ContextItem {
+            label: "Clear conversation".to_string(),
+            key: 'x',
+            action: ClearConversation,
+        },
+        ContextItem {
+            label: "New task".to_string(),
+            key: 'n',
+            action: NewTask,
+        },
+    ]
 }
 
 async fn execute_context_action(
@@ -2027,30 +1342,6 @@ async fn execute_context_action(
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
     match action {
-        ContextAction::OpenFile(path) => {
-            app.open_file_tab(path);
-            app.focused_pane = FocusedPane::Conversation;
-        }
-        ContextAction::CopyPath(path) => {
-            #[cfg(feature = "clipboard")]
-            {
-                use arboard::Clipboard;
-                if let Ok(mut cb) = Clipboard::new() {
-                    let _ = cb.set_text(&path);
-                }
-            }
-            app.conversation.push(ConversationEntry {
-                role: Role::System,
-                text: format!("\u{1f4cb} Copied: {path}"),
-            });
-        }
-        ContextAction::OpenInEditor(path) => {
-            app.open_editor = Some(path);
-        }
-        ContextAction::ShowDiff(path) => {
-            let diff = get_file_diff(&path);
-            app.open_diff_tab(path, diff);
-        }
         ContextAction::CopyLastMessage => {
             let last_text = app
                 .conversation
@@ -2097,18 +1388,6 @@ async fn execute_context_action(
         }
     }
     Ok(())
-}
-
-fn collect_files_for_display(root: &str) -> Vec<String> {
-    collect_repo_files(root)
-}
-
-fn get_file_diff(path: &str) -> String {
-    std::process::Command::new("git")
-        .args(["diff", "--no-color", path])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default()
 }
 
 fn collect_repo_files(root: &str) -> Vec<String> {

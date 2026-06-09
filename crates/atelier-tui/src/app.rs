@@ -5,79 +5,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui_textarea::TextArea;
 use serde_json::Value;
-use std::path::Path;
-
-/// A single row in the manual file tree (flat, with depth + expand state).
-pub struct TreeNode {
-    pub path: String,
-    pub name: String,
-    pub is_dir: bool,
-    pub depth: usize,
-    pub expanded: bool,
-    pub gitignored: bool,
-}
-
-/// Read `.gitignore` patterns from the project root (one per non-comment line).
-pub fn load_gitignore_patterns(root: &str) -> Vec<String> {    let gitignore = Path::new(root).join(".gitignore");
-    if !gitignore.exists() {
-        return vec![];
-    }
-    std::fs::read_to_string(gitignore)
-        .unwrap_or_default()
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .map(|l| l.trim().to_string())
-        .collect()
-}
-
-/// Coarse gitignore match against a relative path (substring/prefix heuristic).
-pub fn is_gitignored(rel_path: &str, patterns: &[String]) -> bool {
-    let path_lower = rel_path.to_lowercase();
-    patterns.iter().any(|p| {
-        let p_lower = p.to_lowercase().trim_end_matches('/').trim_start_matches('/').to_string();
-        if p_lower.is_empty() {
-            return false;
-        }
-        path_lower == p_lower
-            || path_lower.starts_with(&format!("{p_lower}/"))
-            || path_lower
-                .split('/')
-                .any(|seg| seg == p_lower)
-    })
-}
-
-/// Read one directory level into sorted tree nodes (dirs first, then files).
-/// Skips `.git`. Marks gitignored entries so the UI can render them greyed.
-fn read_dir_nodes(dir: &Path, depth: usize, root: &Path, patterns: &[String]) -> Vec<TreeNode> {
-    let mut entries: Vec<std::fs::DirEntry> =
-        std::fs::read_dir(dir).into_iter().flatten().flatten().collect();
-    entries.sort_by_key(|e| {
-        let is_dir = e.path().is_dir();
-        (!is_dir, e.file_name().to_string_lossy().to_lowercase())
-    });
-    entries
-        .into_iter()
-        .filter(|e| e.file_name().to_string_lossy() != ".git")
-        .map(|e| {
-            let path = e.path();
-            let is_dir = path.is_dir();
-            let name = e.file_name().to_string_lossy().to_string();
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .to_string();
-            TreeNode {
-                gitignored: is_gitignored(&rel, patterns),
-                path: path.to_string_lossy().to_string(),
-                name,
-                is_dir,
-                depth,
-                expanded: false,
-            }
-        })
-        .collect()
-}
 
 /// Expected line format: `- ``<id>`` — <date time> (<size>KB)`
 pub fn parse_session_list(text: &str) -> Vec<SessionListEntry> {
@@ -126,50 +53,6 @@ fn extract_path_from_result(result: &Option<Value>) -> Option<String> {
         }
     }
     None
-}
-
-/// Parse a very small code outline (top-level definitions) from file *content*.
-fn parse_outline(content: &str, ext: &str) -> Vec<OutlineItem> {
-    let mut items = Vec::new();
-    let patterns: &[(&str, &str)] = match ext {
-        "rs" => &[
-            ("fn ", "fn"),
-            ("struct ", "struct"),
-            ("enum ", "enum"),
-            ("impl ", "impl"),
-            ("trait ", "trait"),
-        ],
-        "py" => &[("async def ", "async def"), ("def ", "def"), ("class ", "class")],
-        "ts" | "js" | "tsx" | "jsx" => &[
-            ("export function ", "fn"),
-            ("function ", "fn"),
-            ("class ", "class"),
-            ("const ", "const"),
-        ],
-        _ => &[],
-    };
-
-    for (i, line) in content.lines().enumerate() {
-        let trimmed = line.trim();
-        for (prefix, kind) in patterns {
-            if trimmed.starts_with(prefix) {
-                let rest = &trimmed[prefix.len()..];
-                let name = rest
-                    .split(|c: char| !c.is_alphanumeric() && c != '_')
-                    .next()
-                    .unwrap_or(rest);
-                if !name.is_empty() {
-                    items.push(OutlineItem {
-                        line: i + 1,
-                        kind: kind.to_string(),
-                        name: name.to_string(),
-                    });
-                }
-                break;
-            }
-        }
-    }
-    items
 }
 
 /// Fuzzy-match *path* against *query*, returning a higher score for better matches.
@@ -229,48 +112,6 @@ pub fn fuzzy_score(path: &str, query: &str) -> i32 {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum TabContent {
-    Conversation, // permanent, can't close
-    FileView {
-        path: String,          // path to file
-        content_cache: String, // last-saved content (used for outline)
-        dirty: bool,           // unsaved changes?
-        editor: TextArea<'static>, // full-text editor
-    },
-    DiffView(String, String), // (filename, diff_text) side-by-side
-}
-
-impl TabContent {
-    pub fn title(&self) -> String {
-        match self {
-            Self::Conversation => "\u{f0e5}  Conversation".to_string(),
-            Self::FileView { path, dirty, .. } => {
-                let name = std::path::Path::new(path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.clone());
-                let (icon, _) = crate::ui::file_icon_color(path, false);
-                if *dirty {
-                    format!("\u{25cf} {icon}{name}")
-                } else {
-                    format!("{icon}{name}")
-                }
-            }
-            Self::DiffView(f, _) => format!(
-                "\u{f440}  \u{0394} {}",
-                std::path::Path::new(f)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| f.clone())
-            ),
-        }
-    }
-    pub fn closeable(&self) -> bool {
-        !matches!(self, Self::Conversation)
-    }
-}
-
 /// A right-click context menu anchored at a terminal cell.
 #[derive(Debug, Clone)]
 pub struct ContextMenu {
@@ -289,106 +130,16 @@ pub struct ContextItem {
 
 #[derive(Debug, Clone)]
 pub enum ContextAction {
-    OpenFile(String),
-    CopyPath(String),
-    OpenInEditor(String),
-    ShowDiff(String),
     CopyLastMessage,
     SearchInConversation,
     ClearConversation,
     NewTask,
 }
 
-/// Fuzzy file finder overlay state (Ctrl+P).
-#[derive(Debug, Clone)]
-pub struct FuzzyFinder {
-    pub query: String,
-    pub all_files: Vec<String>,
-    pub filtered: Vec<String>,
-    pub selected: usize,
-}
-
-impl FuzzyFinder {
-    pub fn new(all_files: Vec<String>) -> Self {
-        Self {
-            query: String::new(),
-            filtered: all_files.clone(),
-            all_files,
-            selected: 0,
-        }
-    }
-    pub fn update_filter(&mut self) {
-        let q = self.query.to_lowercase();
-        self.filtered = if q.is_empty() {
-            self.all_files.clone()
-        } else {
-            self.all_files
-                .iter()
-                .filter(|f| f.to_lowercase().contains(&q))
-                .cloned()
-                .collect()
-        };
-        self.selected = 0;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum LeftTab {
-    Files,
-    Git,
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum RightTab {
-    Tools,
-    Tasks,
-    Subagents,
-}
-
-#[derive(Debug, Clone)]
-pub struct GitFile {
-    pub status: String,
-    pub path: String,
-}
-
-/// A single commit in the Git history (file list loaded lazily on expand).
-#[derive(Debug, Clone)]
-pub struct GitCommit {
-    pub hash: String,
-    pub short_hash: String,
-    pub message: String,
-    pub author: String,
-    pub date: String,
-    pub expanded: bool,
-    pub files: Vec<String>,
-}
-
-/// What a clickable row in the Git tab maps to (rebuilt each frame).
-#[derive(Debug, Clone)]
-pub enum GitRowKind {
-    Commit(usize),
-    CommitFile(usize, String),
-    /// A changed file in the working tree (index into `git_status`).
-    StatusFile(usize),
-}
-
-/// Stored layout rectangles for mouse hit-testing (rebuilt each frame).
-#[derive(Debug, Clone, Default)]
-pub struct PaneRects {
-    pub left: Rect,
-    pub middle: Rect,
-    pub right_top: Rect,
-    pub right_bottom: Rect,
-    pub input: Rect,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum FocusedPane {
     Input,
     Conversation,
-    Tools,
-    Context,  // context/memory/route
-    Sessions, // sessions/agents
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -608,28 +359,12 @@ pub struct BackgroundTask {
     pub status: TaskStatus,
 }
 
-#[derive(Debug, Clone)]
-pub struct DragState {
-    pub border: DragBorder,
-    pub start_col: u16,
-    pub start_pct: u16,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DragBorder {
-    /// Right edge of the left pane.
-    LeftBorder,
-    /// Left edge of the right pane.
-    RightBorder,
-}
-
 pub struct App<'a> {
     pub conversation: Vec<ConversationEntry>,
     pub tools: Vec<ToolEntry>,
     pub pending_permission: Option<PendingPermission>,
     pub input: TextArea<'a>,
     pub scroll: u16,
-    pub tool_scroll: u16,
     pub focused_pane: FocusedPane,
     pub should_quit: bool,
     pub session_id: String,
@@ -666,91 +401,25 @@ pub struct App<'a> {
     pub background_tasks: Vec<BackgroundTask>,
     pub reverse_search: Option<ReverseSearch>,
     pub prompt_suggestions: Vec<String>,
-    // Left pane
-    pub left_tab: LeftTab,
-    pub left_hidden: bool,
-    pub git_status: Vec<GitFile>,
-    pub git_commits: Vec<GitCommit>,
-    pub git_commit_selected: usize,
-    /// Maps each rendered Git-tab row (before scroll) to a clickable target.
-    pub git_row_targets: Vec<Option<GitRowKind>>,
-    // Middle pane (tabbed)
-    pub middle_tabs: Vec<TabContent>,
-    pub middle_tab_idx: usize,
-    pub middle_tab_scroll: Vec<u16>,
-    // Tab navigation history (Alt+Left/Right back/forward)
-    pub nav_history: Vec<usize>,
-    pub nav_pos: usize,
-    // Right pane
-    pub right_tab: RightTab,
-    pub right_hidden: bool,
-    // Draggable pane sizing (percentages of terminal width)
-    pub left_pane_pct: u16,
-    pub right_pane_pct: u16,
-    pub drag_state: Option<DragState>,
-    pub term_width: u16,
     // URL/QR header
     pub local_url: Option<String>,
-    pub pinned_header: Option<String>,
-    // Left-pane file/git browser scrolling + filtering
-    pub files_scroll: u16,
-    pub git_scroll: u16,
-    pub file_filter: String,
-    // Mouse hit-test areas for clickable tabs (rebuilt each frame)
-    pub tab_click_areas: Option<Vec<(String, Rect)>>,
-    // Manual file tree (devicons-style colors, gitignored shown greyed).
-    pub file_tree: Vec<TreeNode>,
-    pub file_tree_selected: usize,
-    pub gitignore_patterns: Vec<String>,
-    // Mouse hit-testing
-    pub pane_rects: Option<PaneRects>,
-    pub hovered_file_idx: Option<usize>,
-    /// First file-tree index rendered in the Files tab (set each frame for hit-testing).
-    pub files_view_offset: usize,
-    // Mouse-driven overlays / hover state
+    pub term_width: u16,
+    // Mouse hit-testing rectangles for the conversation + input rows.
+    pub conv_rect: Rect,
+    pub input_rect: Rect,
+    // Mouse-driven context menu (right-click on conversation).
     pub context_menu: Option<ContextMenu>,
-    pub pending_context_action: Option<ContextAction>,  // set by handle_mouse, executed in main loop
-    pub hovered_tab: Option<String>,
-    pub fuzzy_finder: Option<FuzzyFinder>,
-    // Activity dots on tabs
-    pub tools_activity: bool, // true when any tool is Running
-    pub tasks_activity: bool, // true when a background task changed state recently
-    // Git commit detail (shown in right-top pane while browsing commits)
-    pub selected_commit_detail: Option<String>,
-    // Code outline of the active FileView tab (shown in the left pane)
-    pub file_outline: Vec<OutlineItem>,
-    /// Active mouse-drag text selection over the conversation pane.
-    pub text_selection: Option<TextSelection>,
-}
-
-/// One entry in a file's code outline (function/class/etc).
-#[derive(Debug, Clone)]
-pub struct OutlineItem {
-    pub line: usize,
-    pub kind: String,
-    pub name: String,
-}
-
-/// A mouse-drag text selection over the conversation pane.
-#[derive(Debug, Clone)]
-pub struct TextSelection {
-    pub start_row: u16,
-    pub end_row: u16,
-    pub selected_text: String,
+    pub pending_context_action: Option<ContextAction>,
 }
 
 impl<'a> App<'a> {
     pub fn new(project_root: String) -> Self {
-        let gitignore_patterns = load_gitignore_patterns(&project_root);
-        let root = Path::new(&project_root);
-        let file_tree = read_dir_nodes(root, 0, root, &gitignore_patterns);
-        let mut app = App {
+        App {
             conversation: Vec::new(),
             tools: Vec::new(),
             pending_permission: None,
             input: TextArea::default(),
             scroll: 0,
-            tool_scroll: 0,
             focused_pane: FocusedPane::Input,
             should_quit: false,
             session_id: String::new(),
@@ -787,94 +456,12 @@ impl<'a> App<'a> {
             background_tasks: Vec::new(),
             reverse_search: None,
             prompt_suggestions: Vec::new(),
-            left_tab: LeftTab::Files,
-            left_hidden: false,
-            git_status: Vec::new(),
-            git_commits: Vec::new(),
-            git_commit_selected: 0,
-            git_row_targets: Vec::new(),
-            middle_tabs: vec![TabContent::Conversation],
-            middle_tab_idx: 0,
-            middle_tab_scroll: vec![0],
-            nav_history: vec![0],
-            nav_pos: 0,
-            right_tab: RightTab::Tools,
-            right_hidden: false,
-            left_pane_pct: 22,
-            right_pane_pct: 22,
-            drag_state: None,
-            term_width: 200,
             local_url: None,
-            pinned_header: None,
-            files_scroll: 0,
-            git_scroll: 0,
-            file_filter: String::new(),
-            tab_click_areas: None,
-            file_tree,
-            file_tree_selected: 0,
-            gitignore_patterns,
-            pane_rects: None,
-            hovered_file_idx: None,
-            files_view_offset: 0,
+            term_width: 200,
+            conv_rect: Rect::default(),
+            input_rect: Rect::default(),
             context_menu: None,
             pending_context_action: None,
-            hovered_tab: None,
-            fuzzy_finder: None,
-            tools_activity: false,
-            tasks_activity: false,
-            selected_commit_detail: None,
-            file_outline: Vec::new(),
-            text_selection: None,
-        };
-        app.refresh_git_status();
-        app
-    }
-
-    /// Move the file-tree selection up one row.
-    pub fn file_tree_up(&mut self) {
-        self.file_tree_selected = self.file_tree_selected.saturating_sub(1);
-    }
-
-    /// Move the file-tree selection down one row.
-    pub fn file_tree_down(&mut self) {
-        if self.file_tree_selected + 1 < self.file_tree.len() {
-            self.file_tree_selected += 1;
-        }
-    }
-
-    /// Path + is_dir of the currently selected tree node, if any.
-    pub fn file_tree_selected_path(&self) -> Option<(String, bool)> {
-        self.file_tree
-            .get(self.file_tree_selected)
-            .map(|n| (n.path.clone(), n.is_dir))
-    }
-
-    /// Expand or collapse the selected directory. No-op on files.
-    pub fn file_tree_toggle(&mut self) {
-        let i = self.file_tree_selected;
-        let Some(node) = self.file_tree.get(i) else {
-            return;
-        };
-        if !node.is_dir {
-            return;
-        }
-        let depth = node.depth;
-        if node.expanded {
-            self.file_tree[i].expanded = false;
-            let mut j = i + 1;
-            while j < self.file_tree.len() && self.file_tree[j].depth > depth {
-                j += 1;
-            }
-            self.file_tree.drain(i + 1..j);
-        } else {
-            let path = node.path.clone();
-            let root = Path::new(&self.project_root).to_path_buf();
-            let children =
-                read_dir_nodes(Path::new(&path), depth + 1, &root, &self.gitignore_patterns);
-            self.file_tree[i].expanded = true;
-            for (k, child) in children.into_iter().enumerate() {
-                self.file_tree.insert(i + 1 + k, child);
-            }
         }
     }
 
@@ -887,180 +474,6 @@ impl<'a> App<'a> {
 
     pub fn push_system_pub(&mut self, text: String) {
         self.push_system(text);
-    }
-
-    pub fn open_file_tab(&mut self, path: String) {
-        if let Some(idx) = self
-            .middle_tabs
-            .iter()
-            .position(|t| matches!(t, TabContent::FileView { path: p, .. } if *p == path))
-        {
-            self.middle_tab_idx = idx;
-            self.nav_push(idx);
-            self.build_outline_for_current_file();
-            // Auto-focus the editor so arrow keys edit immediately.
-            self.focused_pane = FocusedPane::Conversation;
-            return;
-        }
-        let content =
-            std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
-        let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-        let mut editor = TextArea::from(lines);
-        editor.set_line_number_style(
-            ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
-        );
-        self.middle_tabs.push(TabContent::FileView {
-            path,
-            content_cache: content,
-            dirty: false,
-            editor,
-        });
-        self.middle_tab_scroll.push(0);
-        self.middle_tab_idx = self.middle_tabs.len() - 1;
-        self.nav_push(self.middle_tab_idx);
-        self.build_outline_for_current_file();
-        // Auto-focus the editor so arrow keys edit immediately.
-        self.focused_pane = FocusedPane::Conversation;
-    }
-
-    /// Record a tab activation in the navigation history (truncating any
-    /// forward entries), so Alt+Left/Right can move back/forward.
-    pub fn nav_push(&mut self, idx: usize) {
-        if self.nav_history.get(self.nav_pos) == Some(&idx) {
-            return;
-        }
-        if self.nav_pos + 1 < self.nav_history.len() {
-            self.nav_history.truncate(self.nav_pos + 1);
-        }
-        self.nav_history.push(idx);
-        self.nav_pos = self.nav_history.len() - 1;
-    }
-
-    pub fn open_diff_tab(&mut self, filename: String, diff: String) {
-        self.middle_tabs.push(TabContent::DiffView(filename, diff));
-        self.middle_tab_scroll.push(0);
-        self.middle_tab_idx = self.middle_tabs.len() - 1;
-        self.nav_push(self.middle_tab_idx);
-        self.build_outline_for_current_file();
-    }
-
-    pub fn close_tab(&mut self, idx: usize) {
-        if idx < self.middle_tabs.len() && self.middle_tabs[idx].closeable() {
-            self.middle_tabs.remove(idx);
-            if idx < self.middle_tab_scroll.len() {
-                self.middle_tab_scroll.remove(idx);
-            }
-            self.middle_tab_idx = self
-                .middle_tab_idx
-                .saturating_sub(1)
-                .min(self.middle_tabs.len().saturating_sub(1));
-            self.build_outline_for_current_file();
-        }
-    }
-
-    pub fn refresh_git_status(&mut self) {
-        let output = std::process::Command::new("git")
-            .args(["status", "--porcelain"])
-            .current_dir(&self.project_root)
-            .output();
-        if let Ok(out) = output {
-            let text = String::from_utf8_lossy(&out.stdout);
-            self.git_status = text
-                .lines()
-                .filter_map(|l| {
-                    if l.len() >= 4 {
-                        Some(GitFile {
-                            status: l[0..2].trim().to_string(),
-                            path: l[3..].to_string(),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-        }
-        let log_output = std::process::Command::new("git")
-            .args(["log", "--pretty=format:%H|%h|%s|%an|%ar", "-15", "--no-color"])
-            .current_dir(&self.project_root)
-            .output();
-        if let Ok(out) = log_output {
-            let text = String::from_utf8_lossy(&out.stdout);
-            self.git_commits = text
-                .lines()
-                .filter_map(|line| {
-                    let parts: Vec<&str> = line.splitn(5, '|').collect();
-                    if parts.len() >= 5 {
-                        Some(GitCommit {
-                            hash: parts[0].to_string(),
-                            short_hash: parts[1].to_string(),
-                            message: parts[2].to_string(),
-                            author: parts[3].to_string(),
-                            date: parts[4].to_string(),
-                            expanded: false,
-                            files: Vec::new(),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            self.git_commit_selected = self
-                .git_commit_selected
-                .min(self.git_commits.len().saturating_sub(1));
-        }
-    }
-
-    /// Expand/collapse a commit, lazily loading its changed-file list on expand.
-    pub fn git_commit_toggle(&mut self, idx: usize) {
-        let Some(commit) = self.git_commits.get_mut(idx) else {
-            return;
-        };
-        commit.expanded = !commit.expanded;
-        if !commit.expanded || !commit.files.is_empty() {
-            return;
-        }
-        let hash = commit.hash.clone();
-        let files = if let Ok(output) = std::process::Command::new("git")
-            .args(["show", "--name-only", "--pretty=format:", &hash])
-            .current_dir(&self.project_root)
-            .output()
-        {
-            let text = String::from_utf8_lossy(&output.stdout);
-            text.lines()
-                .filter(|l| !l.trim().is_empty())
-                .map(|l| l.to_string())
-                .collect()
-        } else {
-            Vec::new()
-        };
-        if let Some(commit) = self.git_commits.get_mut(idx) {
-            commit.files = files;
-        }
-    }
-
-    /// Load the full message + stats for a commit into `selected_commit_detail`.
-    pub fn load_commit_detail(&mut self, idx: usize) {
-        if let Some(commit) = self.git_commits.get(idx) {
-            let output = std::process::Command::new("git")
-                .args(["show", "--stat", "--no-color", &commit.hash])
-                .current_dir(&self.project_root)
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-                .unwrap_or_default();
-            self.selected_commit_detail = Some(output);
-        }
-    }
-
-    /// Rebuild the code outline for the currently active middle tab (if a FileView).
-    pub fn build_outline_for_current_file(&mut self) {
-        if let Some(TabContent::FileView { path, content_cache, .. }) =
-            self.middle_tabs.get(self.middle_tab_idx)
-        {
-            let ext = path.split('.').next_back().unwrap_or("");
-            self.file_outline = parse_outline(content_cache, ext);
-        } else {
-            self.file_outline.clear();
-        }
     }
 
     /// Apply an incoming backend event to the app state.
@@ -1156,7 +569,6 @@ impl<'a> App<'a> {
                 });
             }
             BackendEvent::ToolStarted { id, name } => {
-                self.tools_activity = true;
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
                     t.status = ToolStatus::Running;
                 } else {
@@ -1194,8 +606,6 @@ impl<'a> App<'a> {
                         }
                     }
                 }
-                self.tools_activity =
-                    self.tools.iter().any(|t| matches!(t.status, ToolStatus::Running));
             }
             BackendEvent::PatchProposed { files, diff, .. } => {
                 self.pending_diff = Some(format!("Files: {}\n\n{}", files.join(", "), diff));
@@ -1312,7 +722,6 @@ impl<'a> App<'a> {
                 }
             }
             BackendEvent::TaskCreated { id, name } => {
-                self.tasks_activity = true;
                 self.background_tasks.push(BackgroundTask {
                     id,
                     name,
@@ -1320,7 +729,6 @@ impl<'a> App<'a> {
                 });
             }
             BackendEvent::TaskUpdated { id, status } => {
-                self.tasks_activity = true;
                 if let Some(t) = self.background_tasks.iter_mut().find(|t| t.id == id) {
                     t.status = match status.as_str() {
                         "done" => TaskStatus::Done,
@@ -1352,19 +760,8 @@ impl<'a> App<'a> {
     pub fn cycle_focus(&mut self) {
         self.focused_pane = match self.focused_pane {
             FocusedPane::Input => FocusedPane::Conversation,
-            FocusedPane::Conversation => FocusedPane::Tools,
-            FocusedPane::Tools => FocusedPane::Context,
-            FocusedPane::Context => FocusedPane::Input,
-            FocusedPane::Sessions => FocusedPane::Input,
+            FocusedPane::Conversation => FocusedPane::Input,
         };
-    }
-
-    pub fn tool_scroll_up(&mut self) {
-        self.tool_scroll = self.tool_scroll.saturating_sub(1);
-    }
-
-    pub fn tool_scroll_down(&mut self) {
-        self.tool_scroll = self.tool_scroll.saturating_add(1);
     }
 
     pub fn filtered_slash_commands(&self, filter: &str) -> Vec<(&'static str, &'static str)> {
