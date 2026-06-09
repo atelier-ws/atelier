@@ -217,11 +217,12 @@ opencode.jsonc*
 !integrations/**/opencode.jsonc
 
 # -----------------------
-# Documentation Site
+# Documentation & Landing Sites
 # -----------------------
 docs-site/node_modules/
 docs-site/.docusaurus/
 docs-site/build/
+landing/
 
 # -----------------------
 # Start Master Aggregated Rules (Global Union)
