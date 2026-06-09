@@ -564,7 +564,7 @@ def _opencode_tool_discipline_section(prefix: str) -> str:
             f"- Use `{p}shell` only for commands with no better Atelier equivalent, such as git, build, test, and package-manager commands.",
             "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
             "  are disallowed by policy — always use the Atelier MCP counterparts.",
-            f"- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
+            "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
             "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
         ]
     )
@@ -607,7 +607,7 @@ def _replace_tool_discipline_for_opencode(body: str, prefix: str) -> str:
     # Preserve a blank line before the next section heading if needed.
     if after and after[0].startswith("## "):
         after.insert(0, "")
-    return "\n".join(before + [new_section] + after)
+    return "\n".join([*before, new_section, *after])
 
 
 def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:

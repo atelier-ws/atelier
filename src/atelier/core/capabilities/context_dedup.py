@@ -77,13 +77,7 @@ class ContextDedup:
         if force or seen_ordinal is None:
             self._record(st, content_hash)
             return None
-        stub = (
-            "[atelier dedup] This exact content was already returned earlier in this "
-            f"session (read #{seen_ordinal}) and is still in your context above — scroll "
-            f"up to reuse it instead of re-reading. Omitted {len(content)} chars to avoid "
-            "re-paying input/cache cost. Re-request the same call with force=true if you "
-            "truly need the full text re-emitted."
-        )
+        stub = "[atelier dedup] read #" f"{seen_ordinal} — {len(content)} chars omitted. " "force=true re-emits."
         return stub, len(content) - len(stub)
 
 
