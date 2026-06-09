@@ -74,19 +74,77 @@ This roadmap delivers `atelier run` — a user-owned coding-agent CLI built for 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → … → 9 → 10 → 11 → 12 → 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owned Session Core | ✓ | Complete | 2026-06-08 |
-| 2. Phase-Linear Stem Agent | ✓ | Complete | 2026-06-08 |
-| 3. Minified Reads + Dedup | ✓ | Complete | 2026-06-08 |
-| 4. CLI Hardening | ✓ | Complete | 2026-06-09 |
-| 5. Reporting | ✓ | Complete | 2026-06-09 |
-| 6. 4-Pane Layout + Expanded Protocol | 0/TBD | Not started | - |
-| 7. MCP Integration + Background Tasks | 0/TBD | Not started | - |
-| 8. Analytics + CI + Checkpoint | 0/TBD | Not started | - |
-| 9. Advanced Commands + Savings Panel | 0/TBD | Not started | - |
+| 1-5. Owned Session Core → Reporting | ✓ | Complete | 2026-06-08 |
+| 6. 4-Pane Layout + Expanded Protocol | ✓ | Complete | 2026-06-09 |
+| 7. MCP Integration + Background Tasks | ✓ | Complete | 2026-06-09 |
+| 8. Analytics + CI + Checkpoint | ✓ | Complete | 2026-06-09 |
+| 9. Advanced Commands + Savings Panel | ✓ | Complete | 2026-06-09 |
+| 10. Tab-Based Pane System | 0/TBD | Not started | - |
+| 11. Provider Authentication Wizard | 0/TBD | Not started | - |
+| 12. UX Polish: Tunnel + Selection + QR | 0/TBD | Not started | - |
+| 13. Stem Agent + Shared Context Engine | 0/TBD | Not started | - |
+
+---
+
+### Phase 10: Tab-Based Pane System
+**Goal**: Upgrade the 4-pane layout to a fully tabbed workspace — left tabs (Sessions/Files/Git), middle tabs (Conversation + closeable file/diff tabs), right-top tabs (Tools/Tasks/Subagents). File/diff clicks open new tabs. Both side panes are hideable.
+**Depends on**: Phase 6
+**Requirements**: Ratatui Tabs widget, ratatui-explorer file tree, similar crate for diff, side-by-side diff view, mouse/keyboard tab management
+**Success Criteria**:
+  1. Left pane has 3 tabs: Sessions (list), Files (ratatui-explorer tree), Git (git status)
+  2. Middle pane has Conversation (permanent) + closeable File and Diff tabs opened by clicking files/git status
+  3. Right top pane has Tools/Tasks/Subagents tabs; right bottom is Context/Route (30%)
+  4. Pressing `[` / `]` hides/shows left and right panes respectively
+  5. Side-by-side diff renders correctly for any modified file
+**Plans**: TBD
+
+### Phase 11: Provider Authentication Wizard
+**Goal**: First-run interactive wizard that guides users through selecting a provider, entering credentials, validating them, and picking a default model. Saves to `~/.atelier/.env` for persistence.
+**Depends on**: Phase 10
+**Requirements**: Provider-specific auth forms (API key, base URL, service account, AWS profile), credential validation via litellm, model listing after auth, save to `~/.atelier/.env`
+**Provider auth mechanisms**:
+  - Anthropic: `ANTHROPIC_API_KEY` (console.anthropic.com)
+  - OpenAI: `OPENAI_API_KEY` (platform.openai.com)
+  - Google/Gemini: `GOOGLE_API_KEY` or `GEMINI_API_KEY` (ai.google.dev)
+  - AWS Bedrock: `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_REGION_NAME` (or `AWS_PROFILE`)
+  - GCP Vertex: `VERTEXAI_PROJECT` + `VERTEXAI_LOCATION` + `GOOGLE_APPLICATION_CREDENTIALS`
+  - Azure OpenAI: `AZURE_API_KEY` + `AZURE_API_BASE` + `AZURE_API_VERSION`
+  - OpenRouter: `OPENROUTER_API_KEY` (openrouter.ai)
+  - Groq: `GROQ_API_KEY` (console.groq.com)
+  - Mistral: `MISTRAL_API_KEY` (console.mistral.ai)
+  - Ollama: `OLLAMA_HOST` (default http://localhost:11434, no key needed)
+  - Together: `TOGETHER_API_KEY` (api.together.xyz)
+  - Fireworks: `FIREWORKS_API_KEY` (fireworks.ai)
+**Success Criteria**:
+  1. On first run (no API keys), shows provider selection menu with all 12 providers
+  2. Each provider shows exactly what credentials are needed with links
+  3. Credentials are validated before saving (test API call)
+  4. After auth, models are loaded from provider and shown in a picker
+  5. Selected model + credentials saved to `~/.atelier/.env`
+
+### Phase 12: UX Polish — Tunnel, Selection, QR Visibility
+**Goal**: Fix tunnel URL visibility, cloudflared ToS issue, add text selection/copy, make web/QR visible inside TUI from the start.
+**Depends on**: Phase 10
+**Requirements**: arboard clipboard, mouse event handling for selection, cloudflared `--accept-tos`, pinned URL/QR banner in conversation
+**Success Criteria**:
+  1. Tunnel URL + QR code shown as pinned header at the TOP of the conversation pane (always visible, updates when tunnel connects)
+  2. Cloudflared connects without pointing to ToS page (`--accept-tos` flag)
+  3. Conversation text is selectable with mouse; Ctrl+C copies selection to clipboard
+  4. Tunnel URL is clickable (OSC 8 hyperlink escape sequence where terminal supports it)
+
+### Phase 13: Stem Agent + Shared Context Engine
+**Goal**: One large generic system prompt shared across all modes/turns for maximum cache reuse. Role differentiation via minimal per-turn user messages, never via system prompt mutation.
+**Depends on**: Phase 9
+**Requirements**: New `StemAgentPrompt` class, stable immutable system prefix across entire session, role context injected as user message prefix
+**Success Criteria**:
+  1. System prompt is set once at session start and NEVER modified (even between modes)
+  2. Mode/role context injected as `[MODE: explore]` prefix in user messages
+  3. Cache hit rate measurably improves across multi-turn sessions (>70% target)
+  4. New `STEM_PROMPT_VERSION` field in context stats pane
 
 ---
 
