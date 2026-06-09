@@ -605,39 +605,29 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     match app.middle_tabs.get(app.middle_tab_idx).cloned() {
         Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
         Some(TabContent::FileView { .. }) => {}
-        Some(TabContent::DiffView(_, diff)) => draw_side_by_side_diff(frame, diff, inner),
+        Some(TabContent::DiffView(_, diff)) => {
+            let scroll = app.middle_tab_scroll.get(app.middle_tab_idx).copied().unwrap_or(0);
+            draw_side_by_side_diff(frame, diff, scroll, inner);
+        }
         None => {}
     }
 }
 
-fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
+fn draw_side_by_side_diff(frame: &mut Frame, diff: String, scroll: u16, area: Rect) {
     let half_w = area.width / 2;
-    let left_area = Rect {
-        width: half_w,
-        ..area
-    };
-    let right_area = Rect {
-        x: area.x + half_w,
-        width: area.width - half_w,
-        ..area
-    };
+    let left_area = Rect { width: half_w, ..area };
+    let right_area = Rect { x: area.x + half_w, width: area.width - half_w, ..area };
 
     let mut old_lines: Vec<Line> = Vec::new();
     let mut new_lines: Vec<Line> = Vec::new();
 
     for line in diff.lines() {
         if line.starts_with('-') && !line.starts_with("---") {
-            old_lines.push(Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Red),
-            )));
+            old_lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red))));
             new_lines.push(Line::raw(""));
         } else if line.starts_with('+') && !line.starts_with("+++") {
             old_lines.push(Line::raw(""));
-            new_lines.push(Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Green),
-            )));
+            new_lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green))));
         } else if line.starts_with("@@") {
             let span = Span::styled(line.to_string(), Style::default().fg(Color::Cyan));
             old_lines.push(Line::from(span.clone()));
@@ -648,23 +638,15 @@ fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
         }
     }
 
-    let left_block = Block::bordered()
-        .title(" Before ")
-        .border_style(Style::default().fg(Color::Red));
-    let right_block = Block::bordered()
-        .title(" After ")
-        .border_style(Style::default().fg(Color::Green));
+    let left_block = Block::bordered().title(" Before ").border_style(Style::default().fg(Color::Red));
+    let right_block = Block::bordered().title(" After ").border_style(Style::default().fg(Color::Green));
 
     frame.render_widget(
-        Paragraph::new(old_lines)
-            .block(left_block)
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(old_lines).block(left_block).scroll((scroll, 0)),
         left_area,
     );
     frame.render_widget(
-        Paragraph::new(new_lines)
-            .block(right_block)
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(new_lines).block(right_block).scroll((scroll, 0)),
         right_area,
     );
 }
