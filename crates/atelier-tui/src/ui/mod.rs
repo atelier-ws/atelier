@@ -57,6 +57,36 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_completion_popup(frame, app, vertical[1]);
     }
 
+    if !app.prompt_suggestions.is_empty() && app.completion_mode == CompletionMode::None {
+        let sugg_area = Rect {
+            y: vertical[1]
+                .y
+                .saturating_sub(app.prompt_suggestions.len() as u16 + 2),
+            height: app.prompt_suggestions.len() as u16 + 2,
+            ..vertical[1]
+        };
+        if sugg_area.y >= 1 {
+            frame.render_widget(Clear, sugg_area);
+            let items: Vec<ListItem> = app
+                .prompt_suggestions
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    ListItem::new(Line::from(Span::styled(
+                        format!("  {} {s}", i + 1),
+                        Style::default().fg(Color::DarkGray),
+                    )))
+                })
+                .collect();
+            let list = List::new(items).block(
+                Block::bordered()
+                    .title(" Suggestions (Tab to accept) ")
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            );
+            frame.render_widget(list, sugg_area);
+        }
+    }
+
     if app.show_session_picker {
         draw_session_picker(frame, app, area);
     } else if app.pending_choice.is_some() {
@@ -869,8 +899,22 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         Color::DarkGray
     };
+    let input_title = if let Some(rs) = app.reverse_search.as_ref() {
+        if rs.matches.is_empty() {
+            format!(" reverse-search: '{}' (no matches) ", rs.query)
+        } else {
+            format!(
+                " reverse-search: '{}' ({}/{}) ",
+                rs.query,
+                rs.current + 1,
+                rs.matches.len()
+            )
+        }
+    } else {
+        " atelier> ".to_string()
+    };
     let block = Block::bordered()
-        .title(" atelier> ")
+        .title(input_title)
         .border_style(Style::default().fg(color));
     app.input.set_block(block);
     frame.render_widget(&app.input, area);
