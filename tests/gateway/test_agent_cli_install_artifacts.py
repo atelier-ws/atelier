@@ -133,7 +133,7 @@ def test_install_agent_clis_references_all_hosts() -> None:
 
 
 def test_host_installers_stream_output_instead_of_buffering() -> None:
-    install_content = (SCRIPTS / "install.sh").read_text()
+    install_content = (SCRIPTS / "dev.sh").read_text()
     host_content = (SCRIPTS / "install_agent_clis.sh").read_text()
 
     assert 'host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh"' not in install_content
@@ -167,10 +167,10 @@ def test_verify_agent_clis_references_all_hosts() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_makefile_has_single_install_target() -> None:
+def test_makefile_has_single_dev_target() -> None:
     content = MAKEFILE.read_text()
-    assert "install:" in content
-    assert "scripts/install.sh" in content
+    assert "dev:" in content
+    assert "scripts/dev.sh" in content
 
 
 def test_makefile_has_single_verify_target() -> None:
@@ -419,8 +419,8 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         ), f"{script_name} must use the shared managed context helper"
 
 
-def test_install_sh_bootstraps_atelier_before_host_installers() -> None:
-    content = (SCRIPTS / "install.sh").read_text()
+def test_dev_sh_bootstraps_atelier_before_host_installers() -> None:
+    content = (SCRIPTS / "dev.sh").read_text()
     install_pos = content.index('step_start "Installing Atelier"')
     hosts_pos = content.index('step_start "Installing host integrations"')
 
@@ -429,17 +429,17 @@ def test_install_sh_bootstraps_atelier_before_host_installers() -> None:
     # in the current script flow — both orderings are valid.
 
 
-def test_install_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
-    content = (SCRIPTS / "install.sh").read_text()
+def test_dev_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
+    content = (SCRIPTS / "dev.sh").read_text()
     assert "tool install" in content
     assert "UV_TOOL_BIN_DIR" in content
     assert "mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry" in content
 
 
-def test_install_sh_has_only_local_and_remote_source_modes() -> None:
-    content = (SCRIPTS / "install.sh").read_text()
+def test_dev_sh_has_only_local_and_remote_source_modes() -> None:
+    content = (SCRIPTS / "dev.sh").read_text()
     assert "ATELIER_USE_CURRENT_REPO" not in content
-    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/install.sh" ]]' not in content
+    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/dev.sh" ]]' not in content
     assert "--local) ATELIER_LOCAL=1" in content
     assert "--remote|--no-local) ATELIER_LOCAL=0" in content
     assert 'if [[ "$ATELIER_LOCAL" == "1" ]]; then' in content
@@ -723,7 +723,7 @@ def test_root_marketplace_json_source_points_to_new_plugin() -> None:
 
 def test_makefile_has_claude_targets() -> None:
     content = MAKEFILE.read_text()
-    assert "install:" in content
+    assert "dev:" in content
     assert "verify:" in content
     assert "scripts/install_claude.sh" not in content
 
