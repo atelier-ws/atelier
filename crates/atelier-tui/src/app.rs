@@ -709,6 +709,7 @@ pub struct App<'a> {
     pub files_view_offset: usize,
     // Mouse-driven overlays / hover state
     pub context_menu: Option<ContextMenu>,
+    pub pending_context_action: Option<ContextAction>,  // set by handle_mouse, executed in main loop
     pub hovered_tab: Option<String>,
     pub fuzzy_finder: Option<FuzzyFinder>,
     // Activity dots on tabs
@@ -816,6 +817,7 @@ impl<'a> App<'a> {
             hovered_file_idx: None,
             files_view_offset: 0,
             context_menu: None,
+            pending_context_action: None,
             hovered_tab: None,
             fuzzy_finder: None,
             tools_activity: false,
