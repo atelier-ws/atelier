@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Check out repository
@@ -127,14 +127,27 @@ jobs:
           EOF
 
       - name: Create Release in Public Repo
-        uses: softprops/action-gh-release@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        with:
-          repository: atelier-runtime/atelier
-          body_path: RELEASE_NOTES.md
-          files: |
-            dist/*
-            binaries/*
-            scripts/install.sh
-          generate_release_notes: false
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_PAT is required to create releases in atelier-runtime/atelier. Use a fine-grained PAT with Contents: read/write on atelier-runtime/atelier."
+            exit 1
+          fi
+
+          shopt -s nullglob
+          assets=(dist/* binaries/* scripts/install.sh)
+
+          if (( ${#assets[@]} == 0 )); then
+            echo "::error::No release assets were found."
+            exit 1
+          fi
+
+          gh release create "${TAG}" \
+            --repo atelier-runtime/atelier \
+            --target main \
+            --title "Atelier ${TAG}" \
+            --notes-file RELEASE_NOTES.md \
+            "${assets[@]}"
