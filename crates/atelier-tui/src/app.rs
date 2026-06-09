@@ -86,7 +86,29 @@ fn read_dir_nodes(dir: &Path, depth: usize, root: &Path, patterns: &[String]) ->
         .collect()
 }
 
-/// Parse `/sessions` markdown output into session list entries.
+/// Convert an ISO-8601 timestamp (`2026-06-09T14:20:16.570389`) into a short
+/// human-readable label like `Jun 9 14:20`. Falls back to the first 16 chars.
+pub fn humanize_iso(ts: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let date_time = ts.split('.').next().unwrap_or(ts);
+    let mut parts = date_time.splitn(2, 'T');
+    let date = parts.next().unwrap_or("");
+    let time = parts.next().unwrap_or("");
+    let d: Vec<&str> = date.split('-').collect();
+    if d.len() == 3 {
+        if let (Ok(month), Ok(day)) = (d[1].parse::<usize>(), d[2].parse::<u32>()) {
+            if (1..=12).contains(&month) {
+                let hm: String = time.chars().take(5).collect();
+                return format!("{} {} {}", MONTHS[month - 1], day, hm).trim_end().to_string();
+            }
+        }
+    }
+    ts.chars().take(16).collect()
+}
+
+
 /// Expected line format: `- ``<id>`` — <date time> (<size>KB)`
 pub fn parse_session_list(text: &str) -> Vec<SessionListEntry> {
     let mut out = Vec::new();
@@ -237,13 +259,14 @@ pub fn fuzzy_score(path: &str, query: &str) -> i32 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TabContent {
     Conversation, // permanent, can't close
     FileView {
-        path: String,    // path to file
-        content: String, // loaded file content (also original for diff)
-        dirty: bool,     // unsaved changes?
+        path: String,          // path to file
+        content_cache: String, // last-saved content (used for outline)
+        dirty: bool,           // unsaved changes?
+        editor: TextArea<'static>, // full-text editor
     },
     DiffView(String, String), // (filename, diff_text) side-by-side
 }
@@ -605,9 +628,13 @@ pub struct ContextStats {
 #[derive(Debug, Clone)]
 pub struct SessionSummary {
     pub id: String,
-    pub label: String, // truncated first message or timestamp
+    pub label: String, // first message or truncated ID
     pub is_current: bool,
     pub cost_usd: f64,
+    pub savings_usd: f64,
+    pub turns: u32,
+    pub tool_calls: u32,
+    pub modified: String, // human-readable date/time
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -695,6 +722,9 @@ pub struct App<'a> {
     pub middle_tabs: Vec<TabContent>,
     pub middle_tab_idx: usize,
     pub middle_tab_scroll: Vec<u16>,
+    // Tab navigation history (Alt+Left/Right back/forward)
+    pub nav_history: Vec<usize>,
+    pub nav_pos: usize,
     // Right pane
     pub right_tab: RightTab,
     pub right_hidden: bool,
@@ -735,6 +765,8 @@ pub struct App<'a> {
     pub file_outline: Vec<OutlineItem>,
     /// Last time past sessions were loaded; used to throttle periodic refresh.
     pub sessions_refresh_timer: std::time::Instant,
+    /// Set when the user clicks a past session; the run loop sends the resume command.
+    pub resume_request: Option<String>,
 }
 
 /// One entry in a file's code outline (function/class/etc).
@@ -803,6 +835,8 @@ impl<'a> App<'a> {
             middle_tabs: vec![TabContent::Conversation],
             middle_tab_idx: 0,
             middle_tab_scroll: vec![0],
+            nav_history: vec![0],
+            nav_pos: 0,
             right_tab: RightTab::Tools,
             right_hidden: false,
             left_pane_pct: 22,
@@ -830,6 +864,7 @@ impl<'a> App<'a> {
             selected_commit_detail: None,
             file_outline: Vec::new(),
             sessions_refresh_timer: std::time::Instant::now(),
+            resume_request: None,
         };
         app.refresh_git_status();
         app.load_sessions();
@@ -897,6 +932,10 @@ impl<'a> App<'a> {
                         label,
                         is_current: id == self.session_id,
                         cost_usd: 0.0,
+                        savings_usd: 0.0,
+                        turns: 0,
+                        tool_calls: 0,
+                        modified: String::new(),
                     });
                 }
             }
@@ -912,18 +951,23 @@ impl<'a> App<'a> {
 
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(mut stmt) = conn.prepare(
-                "SELECT session_id, total_cost_usd FROM sessions ORDER BY started_at DESC LIMIT 20",
+                "SELECT session_id, total_cost_usd, total_savings_usd, turns, tool_calls, started_at \
+                 FROM sessions ORDER BY started_at DESC LIMIT 20",
             ) {
                 if let Ok(rows) = stmt.query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, f64>(1).unwrap_or(0.0),
+                        row.get::<_, f64>(2).unwrap_or(0.0),
+                        row.get::<_, i64>(3).unwrap_or(0) as u32,
+                        row.get::<_, i64>(4).unwrap_or(0) as u32,
+                        row.get::<_, String>(5).unwrap_or_default(),
                     ))
                 }) {
                     let current_id = self.session_id.clone();
                     return rows
                         .filter_map(|r| r.ok())
-                        .map(|(id, cost)| {
+                        .map(|(id, cost, savings, turns, tool_calls, started_at)| {
                             let is_current = id == current_id;
                             let label = id.chars().take(20).collect();
                             SessionSummary {
@@ -931,6 +975,10 @@ impl<'a> App<'a> {
                                 label,
                                 is_current,
                                 cost_usd: cost,
+                                savings_usd: savings,
+                                turns,
+                                tool_calls,
+                                modified: humanize_iso(&started_at),
                             }
                         })
                         .collect();
@@ -1006,25 +1054,47 @@ impl<'a> App<'a> {
             .position(|t| matches!(t, TabContent::FileView { path: p, .. } if *p == path))
         {
             self.middle_tab_idx = idx;
+            self.nav_push(idx);
             self.build_outline_for_current_file();
             return;
         }
         let content =
             std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
+        let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+        let mut editor = TextArea::from(lines);
+        editor.set_line_number_style(
+            ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+        );
         self.middle_tabs.push(TabContent::FileView {
             path,
-            content,
+            content_cache: content,
             dirty: false,
+            editor,
         });
         self.middle_tab_scroll.push(0);
         self.middle_tab_idx = self.middle_tabs.len() - 1;
+        self.nav_push(self.middle_tab_idx);
         self.build_outline_for_current_file();
+    }
+
+    /// Record a tab activation in the navigation history (truncating any
+    /// forward entries), so Alt+Left/Right can move back/forward.
+    pub fn nav_push(&mut self, idx: usize) {
+        if self.nav_history.get(self.nav_pos) == Some(&idx) {
+            return;
+        }
+        if self.nav_pos + 1 < self.nav_history.len() {
+            self.nav_history.truncate(self.nav_pos + 1);
+        }
+        self.nav_history.push(idx);
+        self.nav_pos = self.nav_history.len() - 1;
     }
 
     pub fn open_diff_tab(&mut self, filename: String, diff: String) {
         self.middle_tabs.push(TabContent::DiffView(filename, diff));
         self.middle_tab_scroll.push(0);
         self.middle_tab_idx = self.middle_tabs.len() - 1;
+        self.nav_push(self.middle_tab_idx);
         self.build_outline_for_current_file();
     }
 
@@ -1137,11 +1207,11 @@ impl<'a> App<'a> {
 
     /// Rebuild the code outline for the currently active middle tab (if a FileView).
     pub fn build_outline_for_current_file(&mut self) {
-        if let Some(TabContent::FileView { path, content, .. }) =
+        if let Some(TabContent::FileView { path, content_cache, .. }) =
             self.middle_tabs.get(self.middle_tab_idx)
         {
             let ext = path.split('.').next_back().unwrap_or("");
-            self.file_outline = parse_outline(content, ext);
+            self.file_outline = parse_outline(content_cache, ext);
         } else {
             self.file_outline.clear();
         }
