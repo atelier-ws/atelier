@@ -373,7 +373,49 @@ class InteractiveRuntime:
                 )
             else:
                 yield RuntimeErrorEvent(type="error", message="Usage: /set-model <model>")
-        elif name in ("context", "verify", "background", "diff"):
+        elif name == "model":
+            if args and args[0]:
+                model_str = args[0]
+                self._override_model = model_str
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text=f"Model switched to `{model_str}`. Changes take effect on your next message.",
+                )
+            else:
+                current = self._override_model or "(auto-routed)"
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text=(
+                        f"Current model: `{current}`\n\n"
+                        "Usage: `/model <model-string>`\n\n"
+                        "Examples:\n"
+                        "- `/model anthropic/claude-opus-4-8`\n"
+                        "- `/model openrouter/anthropic/claude-opus-4-8`\n"
+                        "- `/model bedrock/anthropic.claude-sonnet-4-5-v1:0`\n"
+                        "- `/model azure/gpt-4o`"
+                    ),
+                )
+        elif name == "context":
+            messages = self._sessions.get(session_id, [])
+            turns = len(messages) // 2
+            total_chars = sum(
+                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
+            )
+            approx_tokens = total_chars // 4
+            tool_results = len(
+                [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
+            )
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    "**Context stats**\n\n"
+                    f"- Turns: {turns}\n"
+                    f"- Messages: {len(messages)}\n"
+                    f"- Estimated tokens: ~{approx_tokens:,}\n"
+                    f"- Tool results: {tool_results}\n"
+                ),
+            )
+        elif name in ("verify", "background", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
                 text=f"/{name} not yet wired. Use plain message instead.",

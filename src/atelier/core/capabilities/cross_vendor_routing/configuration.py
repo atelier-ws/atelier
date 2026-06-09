@@ -14,7 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from atelier.core.foundation.paths import default_store_root
 
 ROUTE_CONFIG_VERSION = 1
-SUPPORTED_ROUTE_VENDORS = ("anthropic", "openai", "google", "bedrock", "vertex", "azure")
+SUPPORTED_ROUTE_VENDORS = (
+    "anthropic",
+    "openai",
+    "google",
+    "bedrock",
+    "vertex",
+    "azure",
+    "openrouter",
+)
 _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
@@ -22,6 +30,7 @@ _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
     "bedrock": ("AWS_ACCESS_KEY_ID", "AWS_PROFILE"),
     "vertex": ("VERTEXAI_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT"),
     "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
+    "openrouter": ("OPENROUTER_API_KEY",),
 }
 _VENDOR_HOST_COMMANDS: dict[str, tuple[str, ...]] = {
     "anthropic": ("claude",),
@@ -30,6 +39,7 @@ _VENDOR_HOST_COMMANDS: dict[str, tuple[str, ...]] = {
     "bedrock": (),
     "vertex": (),
     "azure": (),
+    "openrouter": (),
 }
 
 EditMode = Literal["pin-actual-vendor", "allow-cross-vendor"]
