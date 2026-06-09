@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from benchmarks.swe.savings_bench import _SUITE_YAML, _load_suite, run_savings_bench
 
 

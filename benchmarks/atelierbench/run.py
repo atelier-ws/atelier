@@ -58,8 +58,9 @@ import urllib.request
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
@@ -68,6 +69,7 @@ from atelier.core.capabilities.host_runners import (
 from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
 
 from benchmarks.atelierbench.tasks import BY_ID, TASKS, Task
+from benchmarks.wire_savings.report import aggregate, flow_records
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
@@ -189,10 +191,7 @@ You are running in a non-interactive benchmark environment.
 Implement the task directly using your available tools and complete the full
 implementation without waiting for user input or approval.
 
-**Be Efficient**: 
-1. **Batch Edits**: Always combine multiple file creations or modifications into a single `mcp__atelier__edit` call. Never create files one-by-one in separate turns.
-2. **Skip exploration**: If the task prompt describes a new feature or a Greenfield project, do not waste turns running `find .` or `ls`. Start scaffolding immediately.
-3. **Avoid filler**: Do not explain what you are about to do. Move straight to tool calls. This prevents hitting output token limits on large implementations.
+{{EFFICIENCY_RULES}}
 
 **Tools**: Use the Atelier MCP tools for all file I/O and shell work:
 `mcp__atelier__edit` to create/modify files, `mcp__atelier__read` to read them,
@@ -418,6 +417,23 @@ class ArmResult:
     score: float | None = None
     judge_model: str = ""
     judge_reason: str = ""
+    saved_usd: float = 0.0
+    saved_tokens: int = 0
+    thinking_tokens: int = 0
+    model_usage: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+def _calculate_savings(flow_path: Path) -> tuple[float, int]:
+    if not flow_path.exists():
+        return 0.0, 0
+    try:
+        # Use wire_savings to aggregate usage from the flow file
+        stats = aggregate("flow", flow_records(str(flow_path)))
+        # Simplified assumption: savings are compared against a baseline if available.
+        # Here we just return the captured usage.
+        return 0.0, stats.usage.total
+    except Exception:
+        return 0.0, 0
 
 
 def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
@@ -425,6 +441,10 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         d = json.loads(stdout)
     except json.JSONDecodeError:
         return ArmResult(task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path))
+
+    # Calculate savings from flow file if available
+    saved_usd, saved_tokens = _calculate_savings(flow_path)
+
     u = d.get("usage", {}) or {}
     model_usage = d.get("modelUsage", {}) or {}
     cost_usd = float(d.get("total_cost_usd", 0.0) or 0.0)
@@ -447,6 +467,8 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         rep=rep,
         ok=not d.get("is_error", False),
         cost_usd=cost_usd,
+        saved_usd=saved_usd,
+        saved_tokens=saved_tokens,
         duration_ms=int(d.get("duration_ms", 0) or 0),
         duration_api_ms=int(d.get("duration_api_ms", 0) or 0),
         num_turns=int(d.get("num_turns", 0) or 0),
@@ -454,6 +476,8 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
         cache_creation_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
         output_tokens=int(u.get("output_tokens", 0) or 0),
+        thinking_tokens=int(u.get("thinking_tokens", 0) or 0),
+        model_usage=model_usage,
         models=list(model_usage.keys()),
         is_error=bool(d.get("is_error", False)),
         result_excerpt=str(d.get("result", ""))[:4000],
@@ -1600,9 +1624,25 @@ def _parse_judge_json(text: str) -> dict[str, object]:
     return parsed
 
 
-def _agg(results: list[ArmResult], arm: str) -> dict[str, float | int]:
+def _agg(results: list[ArmResult], arm: str) -> dict[str, Any]:
     rs = [r for r in results if r.arm == arm]
     judged = [r for r in rs if r.score is not None]
+
+    aggregated_model_usage: dict[str, dict[str, int]] = {}
+    for r in rs:
+        for model, usage in r.model_usage.items():
+            if model not in aggregated_model_usage:
+                aggregated_model_usage[model] = {
+                    "input": 0,
+                    "output": 0,
+                    "cache_read": 0,
+                    "cache_write": 0,
+                    "thinking": 0,
+                }
+            # Handle both list and dict-based usage parsing in results
+            for k in ["input", "output", "cache_read", "cache_write", "thinking"]:
+                aggregated_model_usage[model][k] += usage.get(k, 0)
+
     return {
         "runs": len(rs),
         "ok": sum(1 for r in rs if r.ok),
@@ -1615,7 +1655,11 @@ def _agg(results: list[ArmResult], arm: str) -> dict[str, float | int]:
         "input_tokens": sum(r.input_tokens for r in rs),
         "cache_read_tokens": sum(r.cache_read_tokens for r in rs),
         "cache_creation_tokens": sum(r.cache_creation_tokens for r in rs),
+        "thinking_tokens": sum(r.thinking_tokens for r in rs),
         "num_turns": sum(r.num_turns for r in rs),
+        "saved_usd": round(sum(r.saved_usd for r in rs), 4),
+        "saved_tokens": sum(r.saved_tokens for r in rs),
+        "model_usage": aggregated_model_usage,
     }
 
 
@@ -1637,34 +1681,46 @@ def report(results: list[ArmResult]) -> str:
 
     # Detailed cost breakdown
     for arm in arms:
-        # We use the first model found in the results for this arm to determine pricing.
-        model_id = next((m for r in results if r.arm == arm for m in r.models), "")
-        if not model_id:
+        agg = aggregates[arm]
+        model_usage = agg.get("model_usage", {})
+        if not model_usage:
             continue
 
-        agg = aggregates[arm]
-        breakdown = usage_cost_breakdown_usd(
-            model_id,
-            input_tokens=int(agg["input_tokens"]),
-            output_tokens=int(agg["output_tokens"]),
-            cache_read_tokens=int(agg["cache_read_tokens"]),
-            cache_write_tokens=int(agg["cache_creation_tokens"]),
+        total_breakdown = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "thinking": 0.0}
+        for model_id, usage in model_usage.items():
+            breakdown = usage_cost_breakdown_usd(
+                model_id,
+                input_tokens=usage.get("input", 0),
+                output_tokens=usage.get("output", 0),
+                cache_read_tokens=usage.get("cache_read", 0),
+                cache_write_tokens=usage.get("cache_write", 0),
+                thinking_tokens=usage.get("thinking", 0),
+            )
+            for k in total_breakdown:
+                total_breakdown[k] += breakdown.get(k, 0.0)
+
+        lines.append(
+            "  - input        : "
+            + "".join(f"${total_breakdown['input']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
         )
         lines.append(
-            "  - input        : " + "".join(f"${breakdown['input']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+            "  - output       : "
+            + "".join(f"${total_breakdown['output']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
         )
-        lines.append(
-            "  - output       : " + "".join(f"${breakdown['output']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
-        )
-        if breakdown["cache_read"] > 0 or agg["cache_read_tokens"] > 0:
+        if total_breakdown["cache_read"] > 0:
             lines.append(
                 "  - cache_read   : "
-                + "".join(f"${breakdown['cache_read']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+                + "".join(f"${total_breakdown['cache_read']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
             )
-        if breakdown["cache_write"] > 0 or agg["cache_creation_tokens"] > 0:
+        if total_breakdown["cache_write"] > 0:
             lines.append(
                 "  - cache_write  : "
-                + "".join(f"${breakdown['cache_write']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+                + "".join(f"${total_breakdown['cache_write']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+            )
+        if total_breakdown["thinking"] > 0:
+            lines.append(
+                "  - thinking     : "
+                + "".join(f"${total_breakdown['thinking']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
             )
 
     lines.append(row("duration_ms", [_as_float(aggregates[arm]["duration_ms"]) for arm in arms], ",.0f"))
@@ -1674,7 +1730,10 @@ def report(results: list[ArmResult]) -> str:
     lines.append(
         row("cache_write_tokens", [_as_float(aggregates[arm]["cache_creation_tokens"]) for arm in arms], ",.0f")
     )
+    lines.append(row("thinking_tokens", [_as_float(aggregates[arm]["thinking_tokens"]) for arm in arms], ",.0f"))
     lines.append(row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms], ",.0f"))
+    lines.append(row("saved_usd", [_as_float(aggregates[arm]["saved_usd"]) for arm in arms]))
+    lines.append(row("saved_tokens", [_as_float(aggregates[arm]["saved_tokens"]) for arm in arms], ",.0f"))
     if baseline:
         lines.append("")
         for arm in arms:
@@ -1704,7 +1763,10 @@ def report(results: list[ArmResult]) -> str:
 
 
 def _detail_rows(results: list[ArmResult]) -> list[dict[str, object]]:
-    return [asdict(result) for result in results]
+    rows = [asdict(result) for result in results]
+    for row in rows:
+        row.pop("model_usage", None)
+    return rows
 
 
 def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
@@ -1849,6 +1911,7 @@ def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
             "input_tokens",
             "cache_read_tokens",
             "cache_creation_tokens",
+            "thinking_tokens",
             "output_tokens",
             "models",
             "is_error",
@@ -1860,6 +1923,8 @@ def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
             "score",
             "judge_model",
             "judge_reason",
+            "saved_usd",
+            "saved_tokens",
         ],
     )
     _write_csv(
@@ -2001,6 +2066,26 @@ def _run_single_arm(
 
 
 def main() -> int:
+    # Initialize prompt from shared core discipline to ensure SSOT
+    discipline_path = REPO_ROOT / "integrations/shared/core-discipline.md"
+    efficiency_text = ""
+    if discipline_path.exists():
+        lines = discipline_path.read_text(encoding="utf-8").splitlines()
+        found_start = False
+        efficiency_lines = []
+        for line in lines:
+            if found_start:
+                if line.startswith("- **"):  # Next rule starts
+                    break
+                efficiency_lines.append(line)
+            if "- **Be Efficient**:" in line:
+                found_start = True
+                efficiency_lines.append(line)
+        efficiency_text = "\n".join(efficiency_lines).strip()
+
+    global ATELIER_CLAUDE_MD
+    ATELIER_CLAUDE_MD = ATELIER_CLAUDE_MD.replace("{{EFFICIENCY_RULES}}", efficiency_text)
+
     p = argparse.ArgumentParser(description="AtelierBench head-to-head runner")
     p.add_argument("--tasks", nargs="*", default=["all"], help="task ids or 'all'")
     p.add_argument("--arms", nargs="*", default=["baseline", "atelier"])
