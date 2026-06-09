@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from benchmarks.code_intel.external_scope_bench import run_external_scope_bench
 
 pytestmark = pytest.mark.slow

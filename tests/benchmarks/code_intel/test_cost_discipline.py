@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
+from benchmarks.code_intel.cost_discipline import run_cost_discipline_bench
 
 from atelier.gateway.adapters.mcp_server import tool_code
-from benchmarks.code_intel.cost_discipline import run_cost_discipline_bench
 
 pytestmark = pytest.mark.slow
 

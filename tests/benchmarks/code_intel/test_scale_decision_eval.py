@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import pytest
-
-import atelier.core.service.usage_sync  # noqa: F401
 from benchmarks.code_intel.scale_decision_eval import (
     evaluate_default_candidates,
     render_checkpoint_appendix,
     select_recommended_candidate,
 )
+
+import atelier.core.service.usage_sync  # noqa: F401
 
 pytestmark = pytest.mark.slow
 
