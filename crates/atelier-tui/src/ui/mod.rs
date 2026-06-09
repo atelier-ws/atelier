@@ -1,15 +1,13 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
 use crate::app::{
-    ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, FuzzyFinder, GitRowKind, LeftTab,
-    PendingPermission, RightTab, Role, TabContent, TaskStatus, ToolStatus,
+    ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, PendingPermission, Role,
+    ToolStatus,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{
-    Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap,
-};
+use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
@@ -29,23 +27,6 @@ fn border_type_for_pane(app: &App, pane: FocusedPane) -> BorderType {
     }
 }
 
-/// Build a styled tab title. The active tab is highlighted via color/bold only;
-/// no leading dot (activity dots are prepended to the label by the caller).
-fn styled_tab(app: &App, label: &str, id: &str, is_active: bool) -> Line<'static> {
-    let text = format!(" {label}");
-    let mut style = if is_active {
-        Style::default()
-            .fg(app.agent_mode.accent_color())
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    if app.hovered_tab.as_deref() == Some(id) {
-        style = style.add_modifier(Modifier::UNDERLINED);
-    }
-    Line::from(Span::styled(text, style))
-}
-
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     app.term_width = area.width;
@@ -55,61 +36,27 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
 
-    let left_w = if app.left_hidden { 0 } else { app.left_pane_pct };
-    let right_w = if app.right_hidden { 0 } else { app.right_pane_pct };
-    let mid_w = 100 - left_w - right_w;
-
     let input_line_count = app.input.lines().len().max(1) as u16;
     let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
 
-    // Vertical: content + input + status
+    // Simple 3-row layout: conversation + input + status bar.
     let vertical = Layout::vertical([
-        Constraint::Min(0),               // content row
+        Constraint::Min(0),               // conversation
         Constraint::Length(input_height), // input
         Constraint::Length(1),            // status bar
     ])
     .split(area);
 
-    let content_horizontal = Layout::horizontal([
-        Constraint::Percentage(left_w),
-        Constraint::Percentage(mid_w),
-        Constraint::Percentage(right_w),
-    ])
-    .split(vertical[0]);
+    app.conv_rect = vertical[0];
+    app.input_rect = vertical[1];
 
-    // Reset tab hit-test areas each frame; pane drawers repopulate them.
-    app.tab_click_areas = Some(Vec::new());
-
-    if !app.left_hidden {
-        draw_left_pane(frame, app, content_horizontal[0]);
-    }
-
-    draw_middle_pane(frame, app, content_horizontal[1]);
-
-    if !app.right_hidden {
-        let right_split = Layout::vertical([
-            Constraint::Percentage(70),
-            Constraint::Percentage(30),
-        ])
-        .split(content_horizontal[2]);
-        draw_right_top_pane(frame, app, right_split[0]);
-        draw_context_pane(frame, app, right_split[1]);
-        app.pane_rects = Some(crate::app::PaneRects {
-            left: content_horizontal[0],
-            middle: content_horizontal[1],
-            right_top: right_split[0],
-            right_bottom: right_split[1],
-            input: vertical[1],
-        });
-    } else {
-        app.pane_rects = Some(crate::app::PaneRects {
-            left: content_horizontal[0],
-            middle: content_horizontal[1],
-            right_top: Rect::default(),
-            right_bottom: Rect::default(),
-            input: vertical[1],
-        });
-    }
+    // Conversation pane (full width, bordered).
+    let block = Block::bordered()
+        .border_type(border_type_for_pane(app, FocusedPane::Conversation))
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
+    let inner = block.inner(vertical[0]);
+    frame.render_widget(block, vertical[0]);
+    draw_conversation_content(frame, app, inner);
 
     draw_input(frame, app, vertical[1]);
     draw_status_bar(frame, app, vertical[2]);
@@ -171,11 +118,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    // Fuzzy finder (Ctrl+P) renders above panes but below the context menu.
-    if let Some(ref ff) = app.fuzzy_finder {
-        draw_fuzzy_finder(frame, ff, app, area);
-    }
-
     // Context menu renders LAST, on top of everything else.
     if let Some(ref menu) = app.context_menu {
         draw_context_menu(frame, menu, app);
@@ -224,533 +166,6 @@ fn draw_context_menu(frame: &mut Frame, menu: &ContextMenu, app: &App) {
         Block::bordered().border_style(Style::default().fg(app.agent_mode.accent_color())),
     );
     frame.render_widget(list, popup);
-}
-
-fn draw_fuzzy_finder(frame: &mut Frame, ff: &FuzzyFinder, app: &App, area: Rect) {
-    let popup = centered_rect(70, 70, area);
-    frame.render_widget(Clear, popup);
-
-    let layout = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(popup);
-
-    // Search input
-    let input_text = format!(" \u{1f50d} {}_", ff.query);
-    let input_block = Block::bordered()
-        .title(" Find File  Ctrl+P ")
-        .border_style(Style::default().fg(app.agent_mode.accent_color()));
-    frame.render_widget(Paragraph::new(input_text).block(input_block), layout[0]);
-
-    // File list
-    let visible = layout[1].height.saturating_sub(2) as usize;
-    let offset = if ff.selected >= visible {
-        ff.selected - visible + 1
-    } else {
-        0
-    };
-
-    let items: Vec<ListItem> = ff
-        .filtered
-        .iter()
-        .skip(offset)
-        .take(visible)
-        .enumerate()
-        .map(|(i, path)| {
-            let abs_idx = i + offset;
-            let (_, color) = file_icon_color(path, false);
-            let bg = if abs_idx == ff.selected {
-                app.agent_mode.accent_color()
-            } else {
-                Color::Reset
-            };
-            let fg = if abs_idx == ff.selected { Color::Black } else { color };
-            ListItem::new(Line::from(Span::styled(
-                format!("  {path}"),
-                Style::default().fg(fg).bg(bg),
-            )))
-        })
-        .collect();
-
-    let title = format!(" {} results ", ff.filtered.len());
-    let list = List::new(items).block(
-        Block::bordered()
-            .title(title.as_str())
-            .border_style(Style::default().fg(app.agent_mode.accent_color())),
-    );
-    frame.render_widget(list, layout[1]);
-}
-
-fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let labels: [(String, &str, bool); 2] = [
-        (" \u{f07b}  Files ".to_string(), "left_files", matches!(app.left_tab, LeftTab::Files)),
-        (" \u{e702}  Git ".to_string(), "left_git", matches!(app.left_tab, LeftTab::Git)),
-    ];
-    let tab_titles: Vec<Line> = labels
-        .iter()
-        .map(|(label, id, active)| styled_tab(app, label, id, *active))
-        .collect();
-    let selected = match app.left_tab {
-        LeftTab::Files => 0,
-        LeftTab::Git => 1,
-    };
-
-    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-
-    // Record tab hit-test areas. The Tabs widget renders each title as
-    // `padding_left(1) + title + padding_right(1)` with a 1-col divider between
-    // tabs, so advance x accordingly to match the real on-screen positions.
-    if let Some(ref mut areas) = app.tab_click_areas {
-        let mut x = layout[0].x;
-        for (i, (_, id, _)) in labels.iter().enumerate() {
-            x = x.saturating_add(1); // padding_left
-            let w = tab_titles[i].width() as u16;
-            areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
-            // title + padding_right(1) + divider(1) between tabs.
-            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
-        }
-    }
-
-    let tabs = Tabs::new(tab_titles)
-        .select(selected)
-        .style(Style::default().fg(Color::DarkGray))
-        .highlight_style(
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::BOLD),
-        )
-        .divider(" ");
-    frame.render_widget(tabs, layout[0]);
-
-    let block = Block::bordered()
-        .border_type(border_type_for_pane(app, FocusedPane::Sessions))
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Sessions)));
-    let inner = block.inner(layout[1]);
-    frame.render_widget(block, layout[1]);
-
-    match app.left_tab {
-        LeftTab::Files => {
-            // Show the active file's code outline when one is open; otherwise the tree.
-            if !app.file_outline.is_empty() {
-                draw_outline_content(frame, app, inner);
-            } else {
-                draw_files_content(frame, app, inner);
-            }
-        }
-        LeftTab::Git => draw_git_content(frame, app, inner),
-    }
-}
-
-fn draw_files_content(frame: &mut Frame, app: &mut App, area: Rect) {
-    let height = area.height as usize;
-    if height == 0 {
-        return;
-    }
-    let sel = app.file_tree_selected;
-    let offset = if sel >= height { sel - height + 1 } else { 0 };
-    app.files_view_offset = offset;
-
-    let mut lines: Vec<Line> = Vec::new();
-    for (i, node) in app.file_tree.iter().enumerate().skip(offset).take(height) {
-        let (icon, mut color) = file_icon_color(&node.name, node.is_dir);
-        if node.gitignored {
-            color = Color::DarkGray;
-        }
-        let is_hovered = app.hovered_file_idx == Some(i);
-        let name_style = if i == sel {
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::BOLD)
-        } else if is_hovered {
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::UNDERLINED)
-        } else {
-            Style::default().fg(color)
-        };
-
-        let mut spans: Vec<Span> = vec![Span::raw("  ".repeat(node.depth))];
-        if node.is_dir {
-            let chevron = if node.expanded { "\u{25be} " } else { "\u{25b8} " };
-            spans.push(Span::styled(chevron, Style::default().fg(Color::DarkGray)));
-        } else {
-            spans.push(Span::raw("  "));
-        }
-        spans.push(Span::styled(icon, Style::default().fg(color)));
-        spans.push(Span::styled(node.name.clone(), name_style));
-        lines.push(Line::from(spans));
-    }
-
-    frame.render_widget(Paragraph::new(lines), area);
-}
-
-/// Devicons-style icon + color per file type. Directories get a folder glyph.
-pub(crate) fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
-    if is_dir {
-        return ("\u{f024b} ", Color::Cyan); // nf-md-folder
-    }
-    let ext = filename.rsplit('.').next().unwrap_or("");
-    let lower_name = filename.to_lowercase();
-
-    // Special filenames
-    if lower_name == "readme.md" || lower_name == "readme" {
-        return ("\u{f00ba} ", Color::LightBlue);
-    }
-    if lower_name.starts_with("cargo") {
-        return ("\u{f1617} ", Color::Red);
-    }
-    if lower_name == "package.json" || lower_name == "package-lock.json" {
-        return ("\u{f0399} ", Color::Green);
-    }
-    if lower_name == "dockerfile" || lower_name.starts_with("docker-compose") {
-        return ("\u{f0868} ", Color::Blue);
-    }
-    if lower_name == ".gitignore" || lower_name == ".gitattributes" {
-        return ("\u{f02a2} ", Color::Red);
-    }
-    if lower_name == "makefile" {
-        return ("\u{f1064} ", Color::Yellow);
-    }
-    if lower_name == ".env" || lower_name.starts_with(".env.") {
-        return ("\u{f0669} ", Color::Yellow);
-    }
-
-    match ext {
-        "rs" => ("\u{f1617} ", Color::Red),
-        "py" => ("\u{e606} ", Color::Yellow),
-        "ts" | "tsx" => ("\u{f06e6} ", Color::Cyan),
-        "js" | "jsx" | "mjs" => ("\u{f031e} ", Color::Yellow),
-        "go" => ("\u{f07d3} ", Color::Cyan),
-        "sh" | "bash" | "zsh" => ("\u{f489} ", Color::Green),
-        "md" | "mdx" => ("\u{f0354} ", Color::LightBlue),
-        "json" => ("\u{f0626} ", Color::Yellow),
-        "toml" => ("\u{e6b2} ", Color::Red),
-        "yaml" | "yml" => ("\u{f066e} ", Color::Red),
-        "html" => ("\u{f031d} ", Color::Red),
-        "css" | "scss" => ("\u{f031c} ", Color::Cyan),
-        "sql" => ("\u{f1632} ", Color::Cyan),
-        "lua" => ("\u{e620} ", Color::Blue),
-        "vim" => ("\u{e62b} ", Color::Green),
-        "c" | "h" => ("\u{e61e} ", Color::Blue),
-        "cpp" | "hpp" => ("\u{e61d} ", Color::Blue),
-        "java" => ("\u{e738} ", Color::Red),
-        "kt" => ("\u{e634} ", Color::Magenta),
-        "swift" => ("\u{e755} ", Color::Red),
-        "dart" => ("\u{e798} ", Color::Cyan),
-        "rb" => ("\u{e791} ", Color::Red),
-        "php" => ("\u{e73d} ", Color::Magenta),
-        "lock" => ("\u{f023} ", Color::DarkGray),
-        "log" => ("\u{f0331} ", Color::DarkGray),
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" => ("\u{f0469} ", Color::LightBlue),
-        "pdf" => ("\u{f0219} ", Color::Red),
-        "zip" | "tar" | "gz" => ("\u{f410} ", Color::Yellow),
-        _ => ("\u{f0214} ", Color::Gray),
-    }
-}
-
-fn draw_git_content(frame: &mut Frame, app: &mut App, area: Rect) {
-    let mut lines: Vec<Line> = Vec::new();
-    let mut targets: Vec<Option<GitRowKind>> = Vec::new();
-    let mut targets_status_idx: usize = 0;
-
-    // Status section
-    if !app.git_status.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  Changes",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-        )));
-        targets.push(None);
-        for f in &app.git_status {
-            let color = match f.status.as_str() {
-                s if s.contains('M') => Color::Yellow,
-                s if s.contains('A') => Color::Green,
-                s if s.contains('D') => Color::Red,
-                s if s.contains('?') => Color::DarkGray,
-                _ => Color::White,
-            };
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {:3} ", f.status), Style::default().fg(color)),
-                Span::styled(f.path.clone(), Style::default().fg(color)),
-            ]));
-            targets.push(Some(GitRowKind::StatusFile(targets_status_idx)));
-            targets_status_idx += 1;
-        }
-        lines.push(Line::raw(""));
-        targets.push(None);
-    }
-
-    // History section
-    lines.push(Line::from(Span::styled(
-        "  History",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-    )));
-    targets.push(None);
-
-    for (i, commit) in app.git_commits.iter().enumerate() {
-        let is_selected = i == app.git_commit_selected;
-        let expand_arrow = if commit.expanded { "\u{25be}" } else { "\u{25b8}" };
-        let msg_style = if is_selected {
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        lines.push(Line::from(vec![
-            Span::styled(format!("  {expand_arrow} "), Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{} ", commit.short_hash), Style::default().fg(Color::Yellow)),
-            Span::styled(commit.message.chars().take(40).collect::<String>(), msg_style),
-            Span::styled(format!("  {}", commit.date), Style::default().fg(Color::DarkGray)),
-        ]));
-        targets.push(Some(GitRowKind::Commit(i)));
-
-        if commit.expanded {
-            for file in &commit.files {
-                lines.push(Line::from(vec![
-                    Span::styled("      \u{f0214} ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(file.clone(), Style::default().fg(Color::Cyan)),
-                ]));
-                targets.push(Some(GitRowKind::CommitFile(i, file.clone())));
-            }
-        }
-    }
-
-    app.git_row_targets = targets;
-    let para = Paragraph::new(lines).scroll((app.git_scroll, 0));
-    frame.render_widget(para, area);
-}
-
-fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let tab_titles: Vec<Line> = app
-        .middle_tabs
-        .iter()
-        .enumerate()
-        .map(|(idx, t)| {
-            let title = t.title();
-            let close = if t.closeable() { " \u{00d7}" } else { "" };
-            let is_active = idx == app.middle_tab_idx;
-            // No active dot — activity is shown via color/bold only.
-            let label = format!("  {title}{close} ");
-            let mut style = if is_active {
-                Style::default()
-                    .fg(app.agent_mode.accent_color())
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            };
-            if app.hovered_tab.as_deref() == Some(format!("middle_{idx}").as_str()) {
-                style = style.add_modifier(Modifier::UNDERLINED);
-            }
-            Line::from(Span::styled(label, style))
-        })
-        .collect();
-
-    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-
-    // Record middle tab hit-test areas. The Tabs widget renders each title as
-    // `padding_left(1) + title + padding_right(1)` with a 1-col divider between
-    // tabs, so advance x accordingly to match the real on-screen positions.
-    // Also record a separate `middle_close_N` area over the `\u{00d7}` glyph.
-    if let Some(ref mut areas) = app.tab_click_areas {
-        let mut x = layout[0].x;
-        for (idx, line) in tab_titles.iter().enumerate() {
-            x = x.saturating_add(1); // padding_left
-            let w = line.width() as u16;
-            // Push the close-button area first so it wins hit-testing over the tab.
-            if app
-                .middle_tabs
-                .get(idx)
-                .map(|t| t.closeable())
-                .unwrap_or(false)
-                && w >= 2
-            {
-                // Layout is "  {title}{close} ": close = " \u{00d7}", so the
-                // \u{00d7} sits at w-2 and a trailing space at w-1. Cover both
-                // columns so the click reliably lands on the close button.
-                areas.push((
-                    format!("middle_close_{idx}"),
-                    Rect { x: x + w - 2, y: layout[0].y, width: 2, height: 1 },
-                ));
-            }
-            areas.push((
-                format!("middle_{idx}"),
-                Rect { x, y: layout[0].y, width: w, height: 1 },
-            ));
-            // title + padding_right(1) + divider(1) between tabs.
-            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
-        }
-    }
-
-    let tabs = Tabs::new(tab_titles)
-        .select(app.middle_tab_idx)
-        .style(Style::default().fg(Color::DarkGray))
-        .highlight_style(
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::BOLD),
-        )
-        .divider("\u{258f}");
-    frame.render_widget(tabs, layout[0]);
-
-    let content_area = layout[1];
-    let block = Block::bordered()
-        .border_type(border_type_for_pane(app, FocusedPane::Conversation))
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
-    let inner = block.inner(content_area);
-    frame.render_widget(block, content_area);
-
-    // Render the active FileView's editor widget directly (full editing).
-    if let Some(TabContent::FileView { editor, .. }) = app.middle_tabs.get(app.middle_tab_idx) {
-        frame.render_widget(editor, inner);
-        return;
-    }
-
-    match app.middle_tabs.get(app.middle_tab_idx).cloned() {
-        Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
-        Some(TabContent::FileView { .. }) => {}
-        Some(TabContent::DiffView(_, diff)) => {
-            let scroll = app.middle_tab_scroll.get(app.middle_tab_idx).copied().unwrap_or(0);
-            draw_side_by_side_diff(frame, diff, scroll, inner);
-        }
-        None => {}
-    }
-}
-
-fn draw_side_by_side_diff(frame: &mut Frame, diff: String, scroll: u16, area: Rect) {
-    let half_w = area.width / 2;
-    let left_area = Rect { width: half_w, ..area };
-    let right_area = Rect { x: area.x + half_w, width: area.width - half_w, ..area };
-
-    let mut old_lines: Vec<Line> = Vec::new();
-    let mut new_lines: Vec<Line> = Vec::new();
-
-    for line in diff.lines() {
-        if line.starts_with('-') && !line.starts_with("---") {
-            old_lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red))));
-            new_lines.push(Line::raw(""));
-        } else if line.starts_with('+') && !line.starts_with("+++") {
-            old_lines.push(Line::raw(""));
-            new_lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green))));
-        } else if line.starts_with("@@") {
-            let span = Span::styled(line.to_string(), Style::default().fg(Color::Cyan));
-            old_lines.push(Line::from(span.clone()));
-            new_lines.push(Line::from(span));
-        } else {
-            old_lines.push(Line::raw(line.to_string()));
-            new_lines.push(Line::raw(line.to_string()));
-        }
-    }
-
-    let left_block = Block::bordered().title(" Before ").border_style(Style::default().fg(Color::Red));
-    let right_block = Block::bordered().title(" After ").border_style(Style::default().fg(Color::Green));
-
-    frame.render_widget(
-        Paragraph::new(old_lines).block(left_block).scroll((scroll, 0)),
-        left_area,
-    );
-    frame.render_widget(
-        Paragraph::new(new_lines).block(right_block).scroll((scroll, 0)),
-        right_area,
-    );
-}
-
-fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    // If user is browsing git commits, show commit details instead of normal tools.
-    if matches!(app.left_tab, LeftTab::Git) {
-        if let Some(detail) = app.selected_commit_detail.clone() {
-            draw_commit_detail(frame, app, &detail, area);
-            return;
-        }
-    }
-
-    let tools_dot = if app.tools_activity { "\u{25cf} " } else { "" };
-    let tasks_dot = if app.tasks_activity { "\u{25cf} " } else { "" };
-    let labels: [(String, &str, bool); 3] = [
-        (
-            format!("{tools_dot}\u{e28f}  Tools "),
-            "right_tools",
-            matches!(app.right_tab, RightTab::Tools),
-        ),
-        (
-            format!("{tasks_dot}\u{f0ae}  Tasks "),
-            "right_tasks",
-            matches!(app.right_tab, RightTab::Tasks),
-        ),
-        (" \u{f007}  Subagents ".to_string(), "right_agents", matches!(app.right_tab, RightTab::Subagents)),
-    ];
-    let tab_titles: Vec<Line> = labels
-        .iter()
-        .map(|(label, id, active)| styled_tab(app, label, id, *active))
-        .collect();
-    let selected = match app.right_tab {
-        RightTab::Tools => 0,
-        RightTab::Tasks => 1,
-        RightTab::Subagents => 2,
-    };
-
-    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-
-    if let Some(ref mut areas) = app.tab_click_areas {
-        let mut x = layout[0].x;
-        for (i, (_, id, _)) in labels.iter().enumerate() {
-            x = x.saturating_add(1); // padding_left
-            let w = tab_titles[i].width() as u16;
-            areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
-            // title + padding_right(1) + divider(1) between tabs.
-            x = x.saturating_add(w).saturating_add(1).saturating_add(1);
-        }
-    }
-
-    let tabs = Tabs::new(tab_titles)
-        .select(selected)
-        .style(Style::default().fg(Color::DarkGray))
-        .highlight_style(
-            Style::default()
-                .fg(app.agent_mode.accent_color())
-                .add_modifier(Modifier::BOLD),
-        );
-    frame.render_widget(tabs, layout[0]);
-
-    let block = Block::bordered()
-        .border_type(border_type_for_pane(app, FocusedPane::Tools))
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Tools)));
-    let inner = block.inner(layout[1]);
-    frame.render_widget(block, layout[1]);
-
-    match app.right_tab {
-        RightTab::Tools => draw_tools_content(frame, app, inner),
-        RightTab::Tasks => draw_tasks_content(frame, app, inner),
-        RightTab::Subagents => draw_subagents_content(frame, app, inner),
-    }
-}
-
-fn draw_commit_detail(frame: &mut Frame, app: &App, detail: &str, area: Rect) {
-    let lines: Vec<Line> = detail
-        .lines()
-        .map(|l| {
-            if l.starts_with('+') && !l.starts_with("+++") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Green)))
-            } else if l.starts_with('-') && !l.starts_with("---") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
-            } else if l.starts_with("commit ") {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                ))
-            } else {
-                Line::from(Span::raw(l.to_string()))
-            }
-        })
-        .collect();
-
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(app.agent_mode.accent_color()))
-        .title(Span::styled(
-            " Commit Details ",
-            Style::default().fg(app.agent_mode.accent_color()),
-        ));
-    frame.render_widget(
-        Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
-        area,
-    );
 }
 
 fn draw_agent_picker(frame: &mut Frame, app: &App, selected: usize, area: Rect) {
@@ -893,11 +308,11 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         )]),
         Line::from(vec![
             Span::styled("  Tab          ", Style::default().fg(Color::Cyan)),
-            Span::raw("In input: cycle agent mode  │  Outside input: cycle pane focus"),
+            Span::raw("In input: cycle agent mode  │  Outside input: focus conversation"),
         ]),
         Line::from(vec![
             Span::styled("  ↑ ↓          ", Style::default().fg(Color::Cyan)),
-            Span::raw("Scroll focused pane"),
+            Span::raw("Scroll conversation"),
         ]),
         Line::from(vec![
             Span::styled("  PgUp/PgDn    ", Style::default().fg(Color::Cyan)),
@@ -908,28 +323,12 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Scroll to bottom (auto-scroll)"),
         ]),
         Line::from(vec![
-            Span::styled("  Alt+h  Alt+l ", Style::default().fg(Color::Cyan)),
-            Span::raw("Hide/show left and right panes"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Ctrl+P       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Fuzzy file finder"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Ctrl+S       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Save current file (when FileView tab)"),
-        ]),
-        Line::from(vec![
-            Span::styled("  File editor  ", Style::default().fg(Color::Cyan)),
-            Span::raw("When a file tab is focused, all keys go to the editor. Press Esc to return to input."),
-        ]),
-        Line::from(vec![
             Span::styled("  Right-click  ", Style::default().fg(Color::Cyan)),
-            Span::raw("Context menu (open, copy, diff, edit...)"),
+            Span::raw("Context menu (copy, search, clear...)"),
         ]),
         Line::from(vec![
             Span::styled("  Scroll wheel ", Style::default().fg(Color::Cyan)),
-            Span::raw("Scroll focused pane"),
+            Span::raw("Scroll conversation"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -957,10 +356,6 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  @            ", Style::default().fg(Color::Cyan)),
             Span::raw("File picker (fuzzy search)"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Shift+drag   ", Style::default().fg(Color::Cyan)),
-            Span::raw("Select text (Shift bypasses TUI mouse in xterm/iTerm2/kitty)"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -1545,6 +940,36 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
+    // Compact inline tool timeline: show the last few tool calls below the stream.
+    if !app.tools.is_empty() {
+        for tool in app.tools.iter().rev().take(5).rev() {
+            let (icon, color) = match tool.status {
+                ToolStatus::Requested => ("\u{25cc}", Color::DarkGray),
+                ToolStatus::Running => ("\u{27f3}", Color::Yellow),
+                ToolStatus::Done => ("\u{2713}", Color::Green),
+                ToolStatus::Failed => ("\u{2717}", Color::Red),
+            };
+            let detail = tool
+                .output_preview
+                .as_deref()
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .unwrap_or("");
+            all_lines.push(Line::from(vec![
+                Span::styled(format!("  {icon} "), Style::default().fg(color)),
+                Span::styled(tool.name.clone(), Style::default().fg(Color::Gray)),
+                Span::styled(
+                    if detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  {detail}")
+                    },
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+    }
+
     let content_height = all_lines.len() as u16;
     let visible_height = area.height;
     let max_scroll = content_height.saturating_sub(visible_height);
@@ -1559,219 +984,6 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
-}
-
-fn draw_outline_content(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Show the active file's code outline.
-    let mut lines = vec![Line::from(Span::styled(
-        "  Outline",
-        Style::default().fg(Color::DarkGray),
-    ))];
-    for item in &app.file_outline {
-        let color = match item.kind.as_str() {
-            "fn" | "def" | "async def" => Color::Cyan,
-            "struct" | "class" => Color::Yellow,
-            "impl" | "trait" => Color::Magenta,
-            _ => Color::White,
-        };
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {:4} ", item.line),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Span::styled(format!("{} ", item.kind), Style::default().fg(Color::DarkGray)),
-            Span::styled(item.name.clone(), Style::default().fg(color)),
-        ]));
-    }
-    frame.render_widget(Paragraph::new(lines), area);
-}
-
-fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
-    let stats = &app.context_stats;
-    let accent = app.agent_mode.accent_color();
-
-    let model_short = if stats.model.is_empty() {
-        app.current_model
-            .split('/')
-            .next_back()
-            .filter(|s| !s.is_empty())
-            .unwrap_or("no model")
-    } else {
-        stats.model.split('/').next_back().unwrap_or(&stats.model)
-    };
-
-    let mut lines: Vec<Line> = vec![
-        Line::raw(""),
-        Line::from(vec![
-            Span::styled("  \u{25c6} ", Style::default().fg(accent)),
-            Span::styled(
-                model_short.to_string(),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
-
-    if !stats.provider.is_empty() {
-        lines.push(Line::from(Span::styled(
-            format!("    {}", stats.provider),
-            Style::default().fg(Color::DarkGray),
-        )));
-    }
-    lines.push(Line::raw(""));
-
-    // Cache bar
-    let eff = stats.cache_efficiency;
-    let bar_w = 10usize;
-    let filled = ((eff / 100.0) * bar_w as f64).clamp(0.0, bar_w as f64) as usize;
-    let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(bar_w - filled);
-    let eff_color = if eff > 60.0 {
-        Color::Green
-    } else if eff > 30.0 {
-        Color::Yellow
-    } else {
-        Color::Red
-    };
-    lines.push(Line::from(vec![
-        Span::styled("  Cache  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(bar, Style::default().fg(eff_color)),
-        Span::styled(format!("  {eff:.0}%"), Style::default().fg(eff_color)),
-    ]));
-
-    if app.total_cost_usd > 0.0 {
-        lines.push(Line::from(vec![
-            Span::styled("  Cost   ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("${:.4}", app.total_cost_usd),
-                Style::default().fg(Color::White),
-            ),
-        ]));
-    }
-    if app.total_savings_usd > 0.001 {
-        lines.push(Line::from(vec![
-            Span::styled("  Saved  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("${:.4}", app.total_savings_usd),
-                Style::default().fg(Color::Green),
-            ),
-        ]));
-    }
-
-    let used_k = (stats.input_tokens + stats.cache_read_tokens) as f64 / 1000.0;
-    lines.push(Line::from(vec![
-        Span::styled("  Tokens ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            format!("{used_k:.0}k ({:.0}%)", stats.estimated_context_pct),
-            Style::default().fg(Color::White),
-        ),
-    ]));
-
-    if !stats.memory_hits.is_empty() {
-        lines.push(Line::raw(""));
-        lines.push(Line::from(Span::styled(
-            "  Memory:",
-            Style::default().fg(Color::DarkGray),
-        )));
-        for hit in stats.memory_hits.iter().take(4) {
-            lines.push(Line::from(vec![
-                Span::styled("  \u{21aa} ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    hit.chars().take(25).collect::<String>(),
-                    Style::default().fg(Color::White),
-                ),
-            ]));
-        }
-    }
-
-    let block = Block::bordered()
-        .border_type(border_type_for_pane(app, FocusedPane::Context))
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Context)))
-        .title(Span::styled(
-            " Context ",
-            Style::default().fg(border_color(app, FocusedPane::Context)),
-        ));
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(block), area);
-}
-
-fn draw_tools_content(frame: &mut Frame, app: &App, area: Rect) {
-    let items: Vec<ListItem> = app
-        .tools
-        .iter()
-        .map(|tool| {
-            let (icon, icon_color) = match tool.status {
-                ToolStatus::Requested => ("\u{25cc}", Color::DarkGray),
-                ToolStatus::Running => ("\u{27f3}", Color::Yellow),
-                ToolStatus::Done => ("\u{2713}", Color::Green),
-                ToolStatus::Failed => ("\u{2717}", Color::Red),
-            };
-            let detail = tool
-                .output_preview
-                .as_deref()
-                .map(|p| p.trim())
-                .filter(|p| !p.is_empty())
-                .unwrap_or("");
-            ListItem::new(Line::from(vec![
-                Span::styled(format!("  {icon} "), Style::default().fg(icon_color)),
-                Span::styled(
-                    tool.name.clone(),
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    if detail.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" {detail}")
-                    },
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]))
-        })
-        .collect();
-
-    let list = List::new(items);
-
-    let mut state = ListState::default();
-    let offset = app.tool_scroll as usize;
-    *state.offset_mut() = offset;
-    if !app.tools.is_empty() {
-        state.select(Some(offset.min(app.tools.len().saturating_sub(1))));
-    }
-
-    frame.render_stateful_widget(list, area, &mut state);
-}
-
-fn draw_tasks_content(frame: &mut Frame, app: &App, area: Rect) {
-    if app.background_tasks.is_empty() {
-        let para = Paragraph::new(Span::styled(
-            "  No background tasks",
-            Style::default().fg(Color::DarkGray),
-        ));
-        frame.render_widget(para, area);
-        return;
-    }
-    let lines: Vec<Line> = app
-        .background_tasks
-        .iter()
-        .map(|task| {
-            let (marker, style) = match task.status {
-                TaskStatus::Running => ("\u{27f3}", Style::default().fg(Color::Yellow)),
-                TaskStatus::Done => ("\u{2713}", Style::default().fg(Color::Green)),
-                TaskStatus::Failed => ("\u{2717}", Style::default().fg(Color::Red)),
-            };
-            Line::from(vec![
-                Span::styled(format!(" {marker} "), style),
-                Span::raw(task.name.clone()),
-            ])
-        })
-        .collect();
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
-}
-
-fn draw_subagents_content(frame: &mut Frame, _app: &App, area: Rect) {
-    let para = Paragraph::new(Span::styled(
-        "  No subagents running",
-        Style::default().fg(Color::DarkGray),
-    ));
-    frame.render_widget(para, area);
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
