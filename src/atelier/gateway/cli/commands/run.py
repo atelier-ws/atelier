@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -204,6 +205,105 @@ def _run_owned_session(
     click.echo(receipt.format_receipt())
 
 
+def _run_ci_session(
+    task: str,
+    *,
+    provider: str,
+    model: str,
+    budget: str,
+    cache_policy: str,
+    phase_linear: bool,
+    output_format: str,
+    root: Path,
+) -> None:
+    """Non-interactive CI session — outputs JSON."""
+    import asyncio
+
+    async def _run() -> None:
+        from atelier.core.capabilities.cross_vendor_routing.configuration import (
+            detect_api_key_vendors,
+        )
+        from atelier.core.capabilities.cross_vendor_routing.router import (
+            NoFeasibleRouteError,
+        )
+        from atelier.core.capabilities.owned_agent_session import (
+            OwnedAgentSession,
+            run_phase_linear,
+            run_single_shot,
+        )
+        from atelier.core.capabilities.owned_execution_routing import (
+            OwnedCachePolicy,
+            OwnedRouteBudget,
+            OwnedRouteRequest,
+            select_owned_route,
+        )
+
+        vendors = detect_api_key_vendors()
+        if not vendors:
+            sys.stdout.write(
+                json.dumps(
+                    {"error": "no_api_key", "message": "No API key configured"}
+                )
+                + "\n"
+            )
+            raise SystemExit(1)
+
+        budget_cast: OwnedRouteBudget = (
+            budget if budget in ("cheap", "balanced", "best") else "balanced"  # type: ignore[assignment]
+        )
+        cache_policy_cast: OwnedCachePolicy = (
+            "fresh" if cache_policy == "fresh" else "inherit"
+        )
+
+        try:
+            decision = select_owned_route(
+                root,
+                OwnedRouteRequest(
+                    tool_name="run",
+                    task_text=task,
+                    mode="explicit" if (provider or model) else "auto",
+                    budget=budget_cast,
+                    provider=provider,
+                    model=model,
+                    cache_policy=cache_policy_cast,
+                ),
+            )
+        except NoFeasibleRouteError as exc:
+            sys.stdout.write(
+                json.dumps({"error": "no_route", "message": str(exc)}) + "\n"
+            )
+            raise SystemExit(1) from exc
+
+        litellm_model = _resolve_litellm_model(decision.provider, decision.model)
+        session = OwnedAgentSession.new(
+            provider=decision.provider,
+            model=litellm_model,
+            transport=decision.transport,
+            cache_policy=cache_policy_cast,
+            phase_linear=phase_linear,
+        )
+
+        if phase_linear:
+            receipt = run_phase_linear(session, task)
+        else:
+            receipt = run_single_shot(session, task)
+
+        session_path = session.save()
+
+        output = {
+            "session_id": session.session_id,
+            "model": litellm_model,
+            "provider": decision.provider,
+            "phases": [p.phase for p in receipt.phases],
+            "receipt": receipt.to_dict(),
+            "session_path": str(session_path),
+            "exit_code": 0,
+        }
+        sys.stdout.write(json.dumps(output) + "\n")
+
+    asyncio.run(_run())
+
+
 @click.group("run")
 def run_group() -> None:
     """Run an owned coding session on your own API credentials."""
@@ -234,6 +334,18 @@ def run_group() -> None:
 @click.option("--max-cost", type=float, default=None, help="Abort if cost exceeds this USD amount")
 @click.option("--yolo", is_flag=True, default=False, help="Skip edit-approval prompts")
 @click.option("--dry-run", is_flag=True, default=False, help="Preview plan without applying edits")
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    default=False,
+    help="Output structured JSON (for CI pipelines)",
+)
+@click.option(
+    "--output-format",
+    type=click.Choice(["text", "json", "stream-json"]),
+    default="text",
+)
 @click.pass_obj
 def run_start(
     obj: dict[str, Any],
@@ -246,9 +358,23 @@ def run_start(
     max_cost: float | None,
     yolo: bool,
     dry_run: bool,
+    output_json: bool,
+    output_format: str,
 ) -> None:
     """Run an owned coding session. TASK is the coding task description."""
     root = _root_from_obj(obj)
+    if output_json or output_format in ("json", "stream-json"):
+        _run_ci_session(
+            task,
+            provider=provider,
+            model=model,
+            budget=budget,
+            cache_policy=cache_policy,
+            phase_linear=phase_linear,
+            output_format="json" if output_json else output_format,
+            root=root,
+        )
+        return
     _run_owned_session(
         task,
         provider=provider,
