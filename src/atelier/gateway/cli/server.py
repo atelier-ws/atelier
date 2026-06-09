@@ -193,6 +193,8 @@ async def run_ndjson_server(
 
             stop_mitmdump(mitm_proc)
 
+        runtime.shutdown()
+
         messages = runtime._sessions.get(session_id, [])
         analytics.upsert_session(
             SessionRecord(
