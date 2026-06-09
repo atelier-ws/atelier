@@ -16,3 +16,18 @@ atelier = { workspace = true }
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "agents",
+    "antigravity",
+    "claude",
+    "codex",
+    "copilot",
+    "copilot-cli",
+    "cursor",
+    "hermes",
+    "opencode",
+    "shared",
+    "skills"
+]
