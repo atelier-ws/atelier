@@ -183,10 +183,14 @@ async fn run_app(
 
     loop {
         if crossterm::event::poll(std::time::Duration::from_millis(16))? {
-            if let Event::Key(key) = crossterm::event::read()? {
-                if key.kind == KeyEventKind::Press {
+            match crossterm::event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
                     handle_key(&mut app, key, &mut writer).await?;
                 }
+                Event::Mouse(mouse) => {
+                    handle_mouse(&mut app, mouse);
+                }
+                _ => {}
             }
         }
 
@@ -822,6 +826,15 @@ async fn handle_key(
             app.left_tab = LeftTab::Git;
             app.refresh_git_status();
         }
+        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.right_tab = RightTab::Tools;
+        }
+        KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.right_tab = RightTab::Tasks;
+        }
+        KeyCode::Char('6') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.right_tab = RightTab::Subagents;
+        }
         KeyCode::F(1) => {
             app.right_tab = RightTab::Tools;
         }
@@ -842,6 +855,29 @@ async fn handle_key(
         }
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
             app.input.insert_newline();
+        }
+        KeyCode::Enter
+            if matches!(app.focused_pane, FocusedPane::Sessions)
+                && matches!(app.left_tab, LeftTab::Files) =>
+        {
+            let files = collect_files_for_display(&app.project_root);
+            if let Some(path) = files.get(app.files_scroll as usize) {
+                let abs = std::path::Path::new(&app.project_root)
+                    .join(path)
+                    .to_string_lossy()
+                    .to_string();
+                app.open_file_tab(abs);
+            }
+        }
+        KeyCode::Enter
+            if matches!(app.focused_pane, FocusedPane::Sessions)
+                && matches!(app.left_tab, LeftTab::Git) =>
+        {
+            if let Some(git_file) = app.git_status.get(app.git_scroll as usize) {
+                let path = git_file.path.clone();
+                let diff = get_file_diff(&path);
+                app.open_diff_tab(path, diff);
+            }
         }
         KeyCode::Enter => {
             let text = app.input.lines().join("\n").trim().to_string();
@@ -978,6 +1014,26 @@ async fn handle_key(
                 }
             }
         }
+        KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
+            && matches!(app.left_tab, LeftTab::Files) =>
+        {
+            app.files_scroll = app.files_scroll.saturating_sub(1);
+        }
+        KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
+            && matches!(app.left_tab, LeftTab::Files) =>
+        {
+            app.files_scroll = app.files_scroll.saturating_add(1);
+        }
+        KeyCode::Up if matches!(app.focused_pane, FocusedPane::Sessions)
+            && matches!(app.left_tab, LeftTab::Git) =>
+        {
+            app.git_scroll = app.git_scroll.saturating_sub(1);
+        }
+        KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
+            && matches!(app.left_tab, LeftTab::Git) =>
+        {
+            app.git_scroll = app.git_scroll.saturating_add(1);
+        }
         KeyCode::End => {
             app.auto_scroll = true;
             app.scroll = u16::MAX;
@@ -1043,6 +1099,56 @@ async fn handle_key(
     }
 
     Ok(())
+}
+
+fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
+    use crossterm::event::{MouseButton, MouseEventKind};
+
+    if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+        let (col, row) = (mouse.column, mouse.row);
+        if let Some(areas) = app.tab_click_areas.clone() {
+            for (tab_id, rect) in &areas {
+                if col >= rect.x
+                    && col < rect.x + rect.width
+                    && row >= rect.y
+                    && row < rect.y + rect.height
+                {
+                    match tab_id.as_str() {
+                        "left_sessions" => app.left_tab = LeftTab::Sessions,
+                        "left_files" => app.left_tab = LeftTab::Files,
+                        "left_git" => {
+                            app.left_tab = LeftTab::Git;
+                            app.refresh_git_status();
+                        }
+                        "right_tools" => app.right_tab = RightTab::Tools,
+                        "right_tasks" => app.right_tab = RightTab::Tasks,
+                        "right_agents" => app.right_tab = RightTab::Subagents,
+                        _ if tab_id.starts_with("middle_") => {
+                            if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
+                                if idx < app.middle_tabs.len() {
+                                    app.middle_tab_idx = idx;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn collect_files_for_display(root: &str) -> Vec<String> {
+    collect_repo_files(root)
+}
+
+fn get_file_diff(path: &str) -> String {
+    std::process::Command::new("git")
+        .args(["diff", "--no-color", path])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default()
 }
 
 fn collect_repo_files(root: &str) -> Vec<String> {
