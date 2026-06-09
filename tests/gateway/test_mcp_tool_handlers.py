@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -1906,3 +1907,22 @@ def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.Monkey
     stdout = result["stdout"]
     # The last line must be visible (line-299)
     assert "line-299" in stdout, f"tail not preserved for failing command; stdout tail:\n{stdout[-500:]}"
+
+
+def test_shell_timeout_terminates_child_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    marker = tmp_path / "child-finished"
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    result = _run_shell_tool(
+        f"python3 -c \"import time; time.sleep(2); open({str(marker)!r}, 'w').write('done')\"",
+        timeout=1,
+    )
+    time.sleep(1.5)
+
+    assert result["exit_code"] == -1
+    assert "timed out after 1s" in result["stderr"]
+    assert not marker.exists()

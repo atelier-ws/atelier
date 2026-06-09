@@ -113,11 +113,6 @@ pub fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
     lines
 }
 
-/// Render a single file line with syntect highlighting.
-pub fn render_file_line(line: &str, ext: &str) -> Vec<Span<'static>> {
-    highlight_line_syntect(line, ext)
-}
-
 fn render_prose_line(line: &str) -> Line<'static> {
     if line.starts_with("# ") {
         Line::from(Span::styled(

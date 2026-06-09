@@ -532,7 +532,14 @@ def benchmark_swe_cmd(
 )
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
-@click.option("--timeout", type=int, default=900, show_default=True)
+@click.option("--timeout", type=int, default=1800, show_default=True)
+@click.option(
+    "--rate-limit-rpm",
+    type=click.FloatRange(min=0),
+    default=0,
+    show_default=True,
+    help="Maximum model inference requests per minute; 0 disables throttling.",
+)
 @click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
     "--cli-driver",
@@ -643,7 +650,6 @@ def benchmark_swe_cmd(
     type=click.Path(path_type=Path, file_okay=False),
     default=None,
 )
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option(
     "--require-pass/--allow-failed-gate",
     default=False,
@@ -666,6 +672,7 @@ def benchmark_atelierbench_cmd(
     reps: int,
     model: str,
     timeout: int,
+    rate_limit_rpm: float,
     transport: str,
     cli_driver: str,
     jobs: int,
@@ -695,13 +702,12 @@ def benchmark_atelierbench_cmd(
     bridge_command: str | None,
     bridge_wait: float,
     atelierbench_tasks_dir: Path | None,
-    out: Path | None,
     require_pass: bool,
     provider: str | None,
 ) -> None:
     """Run AtelierBench and write a head-to-head report."""
     repo_root = Path.cwd().resolve()
-    run_dir = _run_dir("atelierbench", out)
+    run_dir = _atelierbench_run_dir(repo_root)
     resolved_atelierbench_tasks_dir = _ensure_atelierbench_tasks_dir(repo_root, atelierbench_tasks_dir)
     env = {"ATELIERBENCH_TASKS_DIR": str(resolved_atelierbench_tasks_dir)}
     bridge_args = []
@@ -811,6 +817,8 @@ def benchmark_atelierbench_cmd(
             model,
             "--timeout",
             str(timeout),
+            "--rate-limit-rpm",
+            str(rate_limit_rpm),
             "--cli-driver",
             cli_driver,
             "--jobs",
@@ -855,6 +863,13 @@ def benchmark_atelierbench_cmd(
             raise click.ClickException(str(exc)) from exc
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
+
+
+def _atelierbench_run_dir(repo_root: Path) -> Path:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = repo_root.resolve() / "benchmarks" / "atelierbench" / "results" / timestamp
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> Path:

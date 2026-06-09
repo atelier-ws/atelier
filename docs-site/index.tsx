@@ -65,13 +65,6 @@ function HomepageHeader() {
           }}
         >
           <Link
-            className="button button--primary button--lg"
-            to="/docs/quickstart"
-            style={{ backgroundColor: "#9B75D9", borderColor: "#9B75D9" }}
-          >
-            Quickstart →
-          </Link>
-          <Link
             className="button button--secondary button--lg"
             to="/docs/installation"
           >

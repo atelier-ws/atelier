@@ -37,7 +37,6 @@ If you are using Atelier as a product, start here and stay in this set unless yo
 | Doc                                                | What it covers                                          |
 | -------------------------------------------------- | ------------------------------------------------------- |
 | [installation.md](installation.md)                 | Install script, background services, modes, and storage |
-| [quickstart.md](quickstart.md)                     | 5-minute walkthrough using installed `atelier` commands |
 | [cli.md](cli.md)                                   | Current public CLI reference                            |
 | [troubleshooting.md](troubleshooting.md)           | Common install, runtime, and background service issues  |
 | [production-readiness.md](production-readiness.md) | Production and self-hosted deployment checklist         |

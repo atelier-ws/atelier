@@ -1213,6 +1213,8 @@ def run_arm(
                 str(flow_path),
                 "--listen-port",
                 str(port),
+                "-s",
+                str(REPO_ROOT / "benchmarks" / "atelierbench" / "rate_limit.py"),
                 "-q",
             ],
             cwd=str(REPO_ROOT),
@@ -2012,7 +2014,13 @@ def main() -> int:
     p.add_argument("--arms", nargs="*", default=["baseline", "atelier"])
     p.add_argument("--reps", type=int, default=1)
     p.add_argument("--model", default="sonnet")
-    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--timeout", type=int, default=1800)
+    p.add_argument(
+        "--rate-limit-rpm",
+        type=float,
+        default=0,
+        help="Maximum model inference requests per minute; 0 disables throttling",
+    )
     p.add_argument("--transport", choices=["cli", "api"], default="cli")
     p.add_argument("--cli-driver", choices=CLI_DRIVERS, default="claude")
     p.add_argument(
@@ -2085,6 +2093,9 @@ def main() -> int:
     )
     p.add_argument("--report", default=None, help="path to a results dir to re-report")
     args = p.parse_args()
+    if args.rate_limit_rpm < 0:
+        p.error("--rate-limit-rpm must be >= 0")
+    os.environ["ATELIERBENCH_RATE_LIMIT_RPM"] = str(args.rate_limit_rpm)
     agent_env = {
         **_resolve_provider_env(args.provider),
         **_parse_agent_env(args.agent_env),
