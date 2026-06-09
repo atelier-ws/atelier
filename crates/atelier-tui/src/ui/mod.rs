@@ -147,10 +147,13 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     if let Some(ref mut areas) = app.tab_click_areas {
         let tab_labels = [(" Sessions ", "left_sessions"), (" Files ", "left_files"), (" Git ", "left_git")];
         let mut x = layout[0].x;
-        for (label, id) in &tab_labels {
-            let w = label.len() as u16;
+        for (i, (label, id)) in tab_labels.iter().enumerate() {
+            let w = label.chars().count() as u16;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
+            if i < tab_labels.len() - 1 {
+                x += 1; // account for the 1-char divider between tabs
+            }
         }
     }
 
@@ -180,51 +183,104 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
-    use ratatui::widgets::FrameExt as _;
-    frame.render_widget_ref(app.file_explorer.widget(), area);
-}
-
-#[allow(dead_code)]
-fn file_icon_color(ext: &str) -> (&'static str, Color) {
-    match ext {
-        "py" => ("\u{1f40d}", Color::Yellow),
-        "rs" => ("\u{1f980}", Color::Red),
-        "ts" | "tsx" => ("\u{1f4d8}", Color::Cyan),
-        "js" | "jsx" => ("\u{1f4d2}", Color::Yellow),
-        "md" => ("\u{1f4dd}", Color::White),
-        "json" => ("\u{1f4cb}", Color::Green),
-        "toml" | "yaml" | "yml" => ("\u{2699}\u{fe0f} ", Color::Green),
-        "sh" => ("\u{1f4bb}", Color::Green),
-        "html" => ("\u{1f310}", Color::Red),
-        "css" => ("\u{1f3a8}", Color::Cyan),
-        _ => ("\u{1f4c4}", Color::Gray),
+    let height = area.height as usize;
+    if height == 0 {
+        return;
     }
-}
+    let sel = app.file_tree_selected;
+    let offset = if sel >= height { sel - height + 1 } else { 0 };
 
-#[allow(dead_code)]
-fn load_gitignore_patterns(root: &str) -> Vec<String> {
-    let gitignore = std::path::Path::new(root).join(".gitignore");
-    if !gitignore.exists() {
-        return vec![];
-    }
-    std::fs::read_to_string(gitignore)
-        .unwrap_or_default()
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .map(|l| l.trim().to_string())
-        .collect()
-}
-
-#[allow(dead_code)]
-fn is_gitignored(path: &str, patterns: &[String]) -> bool {
-    let path_lower = path.to_lowercase();
-    patterns.iter().any(|p| {
-        let p_lower = p.to_lowercase().trim_end_matches('/').to_string();
-        if p_lower.is_empty() {
-            return false;
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, node) in app.file_tree.iter().enumerate().skip(offset).take(height) {
+        let (icon, mut color) = file_icon_color(&node.name, node.is_dir);
+        if node.gitignored {
+            color = Color::DarkGray;
         }
-        path_lower.contains(&p_lower) || path_lower.starts_with(&p_lower)
-    })
+        let name_style = if i == sel {
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(color)
+        };
+
+        let mut spans: Vec<Span> = vec![Span::raw("  ".repeat(node.depth))];
+        if node.is_dir {
+            let chevron = if node.expanded { "\u{25be} " } else { "\u{25b8} " };
+            spans.push(Span::styled(chevron, Style::default().fg(Color::DarkGray)));
+        } else {
+            spans.push(Span::raw("  "));
+        }
+        spans.push(Span::styled(icon, Style::default().fg(color)));
+        spans.push(Span::styled(node.name.clone(), name_style));
+        lines.push(Line::from(spans));
+    }
+
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Devicons-style icon + color per file type. Directories get a folder glyph.
+fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
+    if is_dir {
+        return ("\u{f024b} ", Color::Cyan); // nf-md-folder
+    }
+    let ext = filename.rsplit('.').next().unwrap_or("");
+    let lower_name = filename.to_lowercase();
+
+    // Special filenames
+    if lower_name == "readme.md" || lower_name == "readme" {
+        return ("\u{f00ba} ", Color::LightBlue);
+    }
+    if lower_name.starts_with("cargo") {
+        return ("\u{f1617} ", Color::Red);
+    }
+    if lower_name == "package.json" || lower_name == "package-lock.json" {
+        return ("\u{f0399} ", Color::Green);
+    }
+    if lower_name == "dockerfile" || lower_name.starts_with("docker-compose") {
+        return ("\u{f0868} ", Color::Blue);
+    }
+    if lower_name == ".gitignore" || lower_name == ".gitattributes" {
+        return ("\u{f02a2} ", Color::Red);
+    }
+    if lower_name == "makefile" {
+        return ("\u{f1064} ", Color::Yellow);
+    }
+    if lower_name == ".env" || lower_name.starts_with(".env.") {
+        return ("\u{f0669} ", Color::Yellow);
+    }
+
+    match ext {
+        "rs" => ("\u{f1617} ", Color::Red),
+        "py" => ("\u{e606} ", Color::Yellow),
+        "ts" | "tsx" => ("\u{f06e6} ", Color::Cyan),
+        "js" | "jsx" | "mjs" => ("\u{f031e} ", Color::Yellow),
+        "go" => ("\u{f07d3} ", Color::Cyan),
+        "sh" | "bash" | "zsh" => ("\u{f489} ", Color::Green),
+        "md" | "mdx" => ("\u{f0354} ", Color::LightBlue),
+        "json" => ("\u{f0626} ", Color::Yellow),
+        "toml" => ("\u{e6b2} ", Color::Red),
+        "yaml" | "yml" => ("\u{f066e} ", Color::Red),
+        "html" => ("\u{f031d} ", Color::Red),
+        "css" | "scss" => ("\u{f031c} ", Color::Cyan),
+        "sql" => ("\u{f1632} ", Color::Cyan),
+        "lua" => ("\u{e620} ", Color::Blue),
+        "vim" => ("\u{e62b} ", Color::Green),
+        "c" | "h" => ("\u{e61e} ", Color::Blue),
+        "cpp" | "hpp" => ("\u{e61d} ", Color::Blue),
+        "java" => ("\u{e738} ", Color::Red),
+        "kt" => ("\u{e634} ", Color::Magenta),
+        "swift" => ("\u{e755} ", Color::Red),
+        "dart" => ("\u{e798} ", Color::Cyan),
+        "rb" => ("\u{e791} ", Color::Red),
+        "php" => ("\u{e73d} ", Color::Magenta),
+        "lock" => ("\u{f023} ", Color::DarkGray),
+        "log" => ("\u{f0331} ", Color::DarkGray),
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" => ("\u{f0469} ", Color::LightBlue),
+        "pdf" => ("\u{f0219} ", Color::Red),
+        "zip" | "tar" | "gz" => ("\u{f410} ", Color::Yellow),
+        _ => ("\u{f0214} ", Color::Gray),
+    }
 }
 
 fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
@@ -500,10 +556,13 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         // Use actual tab label widths for accurate hit detection
         let tab_labels = [(" Tools ", "right_tools"), (" Tasks ", "right_tasks"), (" Agents ", "right_agents")];
         let mut x = layout[0].x;
-        for (label, id) in &tab_labels {
-            let w = label.len() as u16;
+        for (i, (label, id)) in tab_labels.iter().enumerate() {
+            let w = label.chars().count() as u16;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
+            if i < tab_labels.len() - 1 {
+                x += 1; // account for the default 1-char divider between tabs
+            }
         }
     }
 
