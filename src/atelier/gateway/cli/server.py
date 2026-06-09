@@ -90,6 +90,15 @@ async def run_ndjson_server(
 
     load_env_into_process()
 
+    # Best-effort telemetry init: never let a telemetry/SQLite failure (e.g. WAL
+    # pragma errors or a locked database) prevent the backend from starting.
+    try:
+        from atelier.core.service.telemetry import init_product_telemetry
+
+        init_product_telemetry()
+    except Exception:  # noqa: BLE001 - telemetry is best-effort
+        pass
+
     runtime = InteractiveRuntime()
 
     mitm_proc = None

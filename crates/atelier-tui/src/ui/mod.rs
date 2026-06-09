@@ -49,6 +49,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(vertical[0]);
 
+    // Reset tab hit-test areas each frame; pane drawers repopulate them.
+    app.tab_click_areas = Some(Vec::new());
+
     if !app.left_hidden {
         draw_left_pane(frame, app, content_horizontal[0]);
     }
@@ -119,7 +122,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 }
 
-fn draw_left_pane(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles: Vec<Line> = vec![
         Line::from(" Sessions "),
         Line::from(" Files "),
@@ -132,6 +135,23 @@ fn draw_left_pane(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+
+    // Record tab hit-test areas (three equal-width slots across the tab row).
+    if let Some(ref mut areas) = app.tab_click_areas {
+        let tab_w = (layout[0].width / 3).max(1);
+        areas.push((
+            "left_sessions".to_string(),
+            Rect { x: layout[0].x, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+        areas.push((
+            "left_files".to_string(),
+            Rect { x: layout[0].x + tab_w, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+        areas.push((
+            "left_git".to_string(),
+            Rect { x: layout[0].x + tab_w * 2, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+    }
 
     let tabs = Tabs::new(tab_titles)
         .select(selected)
@@ -159,29 +179,77 @@ fn draw_left_pane(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
-    let files = crate::collect_repo_files(&app.project_root);
-    let display_files: Vec<Line> = files
+    let gitignore_patterns = load_gitignore_patterns(&app.project_root);
+
+    let all_files = crate::collect_repo_files(&app.project_root);
+    let files: Vec<&String> = all_files
         .iter()
-        .take(40)
-        .map(|f| {
-            let ext = f.split('.').next_back().unwrap_or("");
-            let color = match ext {
-                "py" => Color::Yellow,
-                "rs" => Color::Red,
-                "ts" | "js" => Color::Cyan,
-                "md" => Color::White,
-                "json" | "toml" | "yaml" => Color::Green,
-                _ => Color::Gray,
-            };
-            Line::from(Span::styled(
-                format!("  {f}"),
-                Style::default().fg(color),
-            ))
+        .filter(|f| !is_gitignored(f, &gitignore_patterns))
+        .filter(|f| {
+            app.file_filter.is_empty()
+                || f.to_lowercase().contains(&app.file_filter.to_lowercase())
         })
         .collect();
 
-    let para = Paragraph::new(display_files);
+    let visible = area.height as usize;
+    let offset = (app.files_scroll as usize).min(files.len().saturating_sub(1).max(0));
+
+    let display: Vec<Line> = files
+        .iter()
+        .skip(offset)
+        .take(visible)
+        .map(|f| {
+            let ext = f.split('.').next_back().unwrap_or("");
+            let (icon, color) = file_icon_color(ext);
+            Line::from(vec![
+                Span::styled(format!("  {icon} "), Style::default().fg(color)),
+                Span::styled(f.to_string(), Style::default().fg(Color::White)),
+            ])
+        })
+        .collect();
+
+    let para = Paragraph::new(display);
     frame.render_widget(para, area);
+}
+
+fn file_icon_color(ext: &str) -> (&'static str, Color) {
+    match ext {
+        "py" => ("\u{1f40d}", Color::Yellow),
+        "rs" => ("\u{1f980}", Color::Red),
+        "ts" | "tsx" => ("\u{1f4d8}", Color::Cyan),
+        "js" | "jsx" => ("\u{1f4d2}", Color::Yellow),
+        "md" => ("\u{1f4dd}", Color::White),
+        "json" => ("\u{1f4cb}", Color::Green),
+        "toml" | "yaml" | "yml" => ("\u{2699}\u{fe0f} ", Color::Green),
+        "sh" => ("\u{1f4bb}", Color::Green),
+        "html" => ("\u{1f310}", Color::Red),
+        "css" => ("\u{1f3a8}", Color::Cyan),
+        _ => ("\u{1f4c4}", Color::Gray),
+    }
+}
+
+fn load_gitignore_patterns(root: &str) -> Vec<String> {
+    let gitignore = std::path::Path::new(root).join(".gitignore");
+    if !gitignore.exists() {
+        return vec![];
+    }
+    std::fs::read_to_string(gitignore)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+fn is_gitignored(path: &str, patterns: &[String]) -> bool {
+    let path_lower = path.to_lowercase();
+    patterns.iter().any(|p| {
+        let p_lower = p.to_lowercase().trim_end_matches('/').to_string();
+        if p_lower.is_empty() {
+            return false;
+        }
+        path_lower.contains(&p_lower) || path_lower.starts_with(&p_lower)
+    })
 }
 
 fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
@@ -196,6 +264,8 @@ fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
     let items: Vec<Line> = app
         .git_status
         .iter()
+        .skip(app.git_scroll as usize)
+        .take(area.height as usize)
         .map(|f| {
             let color = match f.status.as_str() {
                 "M" => Color::Yellow,
@@ -227,6 +297,20 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
+    // Record middle tab hit-test areas, advancing x by each rendered title width.
+    if let Some(ref mut areas) = app.tab_click_areas {
+        let mut x = layout[0].x;
+        for (idx, line) in tab_titles.iter().enumerate() {
+            let w = line.width() as u16;
+            areas.push((
+                format!("middle_{idx}"),
+                Rect { x, y: layout[0].y, width: w, height: 1 },
+            ));
+            // +1 for the divider rendered between tabs.
+            x = x.saturating_add(w).saturating_add(1);
+        }
+    }
+
     let tabs = Tabs::new(tab_titles)
         .select(app.middle_tab_idx)
         .style(Style::default().fg(Color::DarkGray))
@@ -247,30 +331,104 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     match app.middle_tabs.get(app.middle_tab_idx).cloned() {
         Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
-        Some(TabContent::FileView(path)) => draw_file_content(frame, path, inner),
+        Some(TabContent::FileView(path)) => {
+            let scroll = app
+                .middle_tab_scroll
+                .get(app.middle_tab_idx)
+                .copied()
+                .unwrap_or(0);
+            draw_file_content(frame, path, scroll, inner)
+        }
         Some(TabContent::DiffView(_, diff)) => draw_side_by_side_diff(frame, diff, inner),
         None => {}
     }
 }
 
-fn draw_file_content(frame: &mut Frame, path: String, area: Rect) {
+fn draw_file_content(frame: &mut Frame, path: String, scroll: u16, area: Rect) {
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
+    let ext = path.split('.').next_back().unwrap_or("");
     let lines: Vec<Line> = content
         .lines()
         .enumerate()
         .map(|(i, l)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{:4} \u{2502} ", i + 1),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::raw(l.to_string()),
-            ])
+            let mut spans = vec![Span::styled(
+                format!("{:4} \u{2502} ", i + 1),
+                Style::default().fg(Color::DarkGray),
+            )];
+            spans.extend(highlight_line(l, ext));
+            Line::from(spans)
         })
         .collect();
-    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
+    let para = Paragraph::new(lines)
+        .scroll((scroll, 0))
+        .wrap(Wrap { trim: false });
     frame.render_widget(para, area);
+}
+
+fn highlight_line(line: &str, ext: &str) -> Vec<Span<'static>> {
+    let keywords_color: Option<(&[&str], Color)> = match ext {
+        "py" => Some((
+            &[
+                "def ", "class ", "import ", "from ", "return ", "if ", "else:", "elif ", "for ",
+                "while ", "with ", "async ", "await ", "lambda ", "yield ",
+            ],
+            Color::Cyan,
+        )),
+        "rs" => Some((
+            &[
+                "fn ", "let ", "mut ", "pub ", "use ", "impl ", "struct ", "enum ", "trait ",
+                "async ", "await ", "match ", "if ", "else ", "for ", "while ", "return ", "mod ",
+            ],
+            Color::Cyan,
+        )),
+        "ts" | "js" => Some((
+            &[
+                "function ", "const ", "let ", "var ", "class ", "import ", "export ", "return ",
+                "if ", "else ", "for ", "while ", "async ", "await ", "new ",
+            ],
+            Color::Cyan,
+        )),
+        _ => None,
+    };
+
+    let comment_prefix = match ext {
+        "py" | "sh" | "yaml" | "toml" => "#",
+        "rs" | "ts" | "js" | "cpp" | "c" => "//",
+        _ => "",
+    };
+
+    let trimmed = line.trim_start();
+
+    if !comment_prefix.is_empty() && trimmed.starts_with(comment_prefix) {
+        return vec![Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::DarkGray),
+        )];
+    }
+
+    if let Some((keywords, kw_color)) = keywords_color {
+        for kw in keywords {
+            if trimmed.starts_with(kw) {
+                let indent_len = line.len() - trimmed.len();
+                let indent = &line[..indent_len];
+                return vec![
+                    Span::raw(indent.to_string()),
+                    Span::styled(kw.to_string(), Style::default().fg(kw_color)),
+                    Span::raw(trimmed[kw.len()..].to_string()),
+                ];
+            }
+        }
+    }
+
+    if (trimmed.starts_with('"') || trimmed.starts_with('\'')) && trimmed.len() > 1 {
+        return vec![Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::Green),
+        )];
+    }
+
+    vec![Span::raw(line.to_string())]
 }
 
 fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
@@ -332,7 +490,7 @@ fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
     );
 }
 
-fn draw_right_top_pane(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles = [" Tools ", " Tasks ", " Agents "];
     let selected = match app.right_tab {
         RightTab::Tools => 0,
@@ -341,6 +499,22 @@ fn draw_right_top_pane(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+
+    if let Some(ref mut areas) = app.tab_click_areas {
+        let tab_w = (layout[0].width / 3).max(1);
+        areas.push((
+            "right_tools".to_string(),
+            Rect { x: layout[0].x, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+        areas.push((
+            "right_tasks".to_string(),
+            Rect { x: layout[0].x + tab_w, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+        areas.push((
+            "right_agents".to_string(),
+            Rect { x: layout[0].x + tab_w * 2, y: layout[0].y, width: tab_w, height: 1 },
+        ));
+    }
 
     let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
         .select(selected)
@@ -363,14 +537,29 @@ fn draw_right_top_pane(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_url_header(frame: &mut Frame, app: &App, area: Rect) {
-    let local = app
-        .local_url
-        .clone()
-        .or_else(|| app.web_port.map(|p| format!("http://localhost:{p}")))
-        .unwrap_or_default();
-    let tunnel = app.tunnel_url.as_deref().unwrap_or("connecting...");
-    let text = format!(" \u{25c6} Local: {local}  \u{2502}  Public: {tunnel}  \u{2502}  ? for help ");
-    let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
+    let text = match &app.tunnel_url {
+        Some(url) => format!(" \u{25c6} {url} "),
+        None => {
+            let local = app
+                .local_url
+                .clone()
+                .or_else(|| app.web_port.map(|p| format!("http://localhost:{p}")))
+                .unwrap_or_default();
+            if local.is_empty() {
+                " \u{25c6} Starting web interface... ".to_string()
+            } else {
+                format!(" \u{25c6} {local}  (tunnel connecting...) ")
+            }
+        }
+    };
+    let style = if app.tunnel_url.is_some() {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let para = Paragraph::new(Span::styled(text, style));
     frame.render_widget(para, area);
 }
 
