@@ -19,6 +19,7 @@ import threading
 import time
 import uuid as _uuid_mod
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from functools import wraps
 from hashlib import sha256
@@ -207,6 +208,10 @@ _sampling_seq: int = 0
 _MCP_ID: str = f"atelier-mcp-{_uuid_mod.uuid4().hex[:16]}"
 _cached_claude_session_id: str = ""
 _cached_mcp_model: str = ""
+_STDOUT_LOCK = threading.Lock()
+_STATE_LOCK = threading.RLock()
+_DEFAULT_MCP_MAX_WORKERS = 16
+_MAX_MCP_MAX_WORKERS = 64
 
 
 def _service_backed_state() -> bool:
@@ -256,25 +261,28 @@ def _detect_agent() -> str:
 
 def _get_ledger() -> RunLedger:
     global _current_ledger
-    if _current_ledger is None:
-        root = _atelier_root()
-        _current_ledger = RunLedger(root=root, agent=_detect_agent())
+    with _STATE_LOCK:
+        if _current_ledger is None:
+            root = _atelier_root()
+            _current_ledger = RunLedger(root=root, agent=_detect_agent())
     return _current_ledger
 
 
 def _get_realtime_context() -> RealtimeContextManager:
     global _realtime_ctx
-    if _realtime_ctx is None:
-        _realtime_ctx = RealtimeContextManager(_atelier_root())
+    with _STATE_LOCK:
+        if _realtime_ctx is None:
+            _realtime_ctx = RealtimeContextManager(_atelier_root())
     return _realtime_ctx
 
 
 def _get_product_session_id() -> str:
     global _product_session_id
-    if _product_session_id is None:
-        from atelier.core.foundation.identity import new_session_id
+    with _STATE_LOCK:
+        if _product_session_id is None:
+            from atelier.core.foundation.identity import new_session_id
 
-        _product_session_id = new_session_id()
+            _product_session_id = new_session_id()
     return _product_session_id
 
 
@@ -580,8 +588,9 @@ _context_budget_recorder: Any = None
 
 def _runtime() -> ContextRuntime:
     global _runtime_cache
-    if _runtime_cache is None:
-        _runtime_cache = ContextRuntime(_atelier_root())
+    with _STATE_LOCK:
+        if _runtime_cache is None:
+            _runtime_cache = ContextRuntime(_atelier_root())
     return _runtime_cache
 
 
@@ -6226,10 +6235,11 @@ _remote_client: Any = None
 
 def _get_remote_client() -> Any:
     global _remote_client
-    if _remote_client is None:
-        from atelier.gateway.adapters.remote_client import RemoteClient
+    with _STATE_LOCK:
+        if _remote_client is None:
+            from atelier.gateway.adapters.remote_client import RemoteClient
 
-        _remote_client = RemoteClient()
+            _remote_client = RemoteClient()
     return _remote_client
 
 
@@ -7157,7 +7167,42 @@ def _tool_error_code(exc: Exception) -> int:
     return -32000
 
 
+def _mcp_max_workers() -> int:
+    raw = os.environ.get("ATELIER_MCP_MAX_WORKERS", str(_DEFAULT_MCP_MAX_WORKERS))
+    try:
+        configured = int(raw)
+    except ValueError:
+        _log.warning(
+            "invalid ATELIER_MCP_MAX_WORKERS=%r; using %d",
+            raw,
+            _DEFAULT_MCP_MAX_WORKERS,
+        )
+        return _DEFAULT_MCP_MAX_WORKERS
+    return max(1, min(configured, _MAX_MCP_MAX_WORKERS))
+
+
+def _write_jsonrpc(message: dict[str, Any]) -> None:
+    payload = json.dumps(message, ensure_ascii=False) + "\n"
+    with _STDOUT_LOCK:
+        sys.stdout.write(payload)
+        sys.stdout.flush()
+
+
+def _handle_and_write(request: dict[str, Any]) -> None:
+    try:
+        response = _handle(request)
+    except Exception as exc:  # noqa: BLE001 - JSON-RPC worker boundary must return an error.
+        _log.exception("unhandled MCP request failure")
+        response = _err(request.get("id"), -32603, f"internal error: {exc}")
+    if response is not None:
+        _write_jsonrpc(response)
+
+
 def serve() -> None:
+    executor = ThreadPoolExecutor(
+        max_workers=_mcp_max_workers(),
+        thread_name_prefix="atelier-mcp",
+    )
     try:
         for line in sys.stdin:
             line = line.strip()
@@ -7166,14 +7211,16 @@ def serve() -> None:
             try:
                 req = json.loads(line)
             except json.JSONDecodeError as exc:
-                sys.stdout.write(json.dumps(_err(None, -32700, f"parse error: {exc}")) + "\n")
-                sys.stdout.flush()
+                _write_jsonrpc(_err(None, -32700, f"parse error: {exc}"))
                 continue
-            resp = _handle(req)
-            if resp is not None:
-                sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
+            # Initialization establishes client capabilities and must complete
+            # before later requests can observe them.
+            if req.get("method") in {"initialize", "notifications/initialized"}:
+                _handle_and_write(req)
+                continue
+            executor.submit(_handle_and_write, req)
     finally:
+        executor.shutdown(wait=True, cancel_futures=False)
         _emit_mcp_session_end()
         from atelier.core.service.telemetry import shutdown_otel
 

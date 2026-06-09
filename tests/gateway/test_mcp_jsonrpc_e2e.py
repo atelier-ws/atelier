@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sqlite3
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -295,6 +297,51 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
 
     search_payload = json.loads(responses[2]["result"]["content"][0]["text"])
     assert search_payload["matches"]
+
+
+def test_stdio_server_processes_requests_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+
+    def fake_handle(request: dict[str, Any]) -> dict[str, Any]:
+        if request["id"] == 1:
+            slow_started.set()
+            assert release_slow.wait(timeout=2)
+        return {"jsonrpc": "2.0", "id": request["id"], "result": {"ok": True}}
+
+    class RecordingStdout(io.StringIO):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fast_written = threading.Event()
+
+        def write(self, value: str) -> int:
+            written = super().write(value)
+            if '"id": 2' in value:
+                self.fast_written.set()
+            return written
+
+    stdout = RecordingStdout()
+    requests = "\n".join(
+        [
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call"}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        ]
+    )
+    monkeypatch.setattr(mcp_server, "_handle", fake_handle)
+    monkeypatch.setattr(mcp_server.sys, "stdin", io.StringIO(requests + "\n"))
+    monkeypatch.setattr(mcp_server.sys, "stdout", stdout)
+    monkeypatch.setenv("ATELIER_MCP_MAX_WORKERS", "2")
+
+    server_thread = threading.Thread(target=mcp_server.serve)
+    server_thread.start()
+    assert slow_started.wait(timeout=1)
+    assert stdout.fast_written.wait(timeout=1)
+    release_slow.set()
+    server_thread.join(timeout=2)
+
+    assert not server_thread.is_alive()
+    responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    assert [response["id"] for response in responses] == [2, 1]
 
 
 def test_memory_task_and_remote_memory_limits_e2e(mcp_env: Path) -> None:

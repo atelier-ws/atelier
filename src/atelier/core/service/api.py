@@ -591,6 +591,7 @@ def _usage_total_tokens(usage: dict[str, Any]) -> int:
             "cache_creation_input_tokens",
             "output_tokens",
             "thinking_tokens",
+            # reasoning_output_tokens is a subset of output_tokens.
         )
     )
 
@@ -634,6 +635,10 @@ def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") ->
         "model": model_id,
         "input_tokens": int(raw_entry.get("input_tokens") or 0),
         "output_tokens": int(raw_entry.get("output_tokens") or 0),
+        "reasoning_output_tokens": min(
+            int(raw_entry.get("reasoning_output_tokens") or 0),
+            int(raw_entry.get("output_tokens") or 0),
+        ),
         "thinking_tokens": int(raw_entry.get("thinking_tokens") or 0),
         "cached_input_tokens": int(raw_entry.get("cached_input_tokens") or 0),
         "cache_creation_input_tokens": int(raw_entry.get("cache_creation_input_tokens") or 0),
@@ -643,6 +648,7 @@ def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") ->
     token_fields = (
         entry["input_tokens"],
         entry["output_tokens"],
+        entry["reasoning_output_tokens"],
         entry["thinking_tokens"],
         entry["cached_input_tokens"],
         entry["cache_creation_input_tokens"],
@@ -680,6 +686,7 @@ def _trace_usage_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "model": fallback_model,
             "input_tokens": payload.get("input_tokens") or 0,
             "output_tokens": payload.get("output_tokens") or 0,
+            "reasoning_output_tokens": payload.get("reasoning_output_tokens") or 0,
             "thinking_tokens": payload.get("thinking_tokens") or 0,
             "cached_input_tokens": payload.get("cached_input_tokens") or 0,
             "cache_creation_input_tokens": payload.get("cache_creation_input_tokens") or 0,
@@ -697,6 +704,7 @@ def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
         usage: dict[str, Any] = {
             "input_tokens": int(raw_entry.get("input_tokens") or 0),
             "output_tokens": int(raw_entry.get("output_tokens") or 0),
+            "reasoning_output_tokens": int(raw_entry.get("reasoning_output_tokens") or 0),
             "thinking_tokens": int(raw_entry.get("thinking_tokens") or 0),
             "cached_input_tokens": int(raw_entry.get("cached_input_tokens") or 0),
             "cache_creation_input_tokens": int(raw_entry.get("cache_creation_input_tokens") or 0),
@@ -3903,6 +3911,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 json_extract(payload, '$.model') AS model,
                 CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
                 CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
+                CAST(json_extract(payload, '$.reasoning_output_tokens') AS INTEGER) AS reasoning_output_tokens,
                 CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
                 CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
                 CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
@@ -3942,6 +3951,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     "model": d.get("model") or "",
                     "input_tokens": d.get("input_tokens") or 0,
                     "output_tokens": d.get("output_tokens") or 0,
+                    "reasoning_output_tokens": d.get("reasoning_output_tokens") or 0,
                     "thinking_tokens": d.get("thinking_tokens") or 0,
                     "cached_input_tokens": d.get("cached_tokens") or 0,
                     "cache_creation_input_tokens": d.get("cache_write_tokens") or 0,
@@ -3952,6 +3962,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
                 in_t = d.get("input_tokens") or 0
                 out_t = d.get("output_tokens") or 0
+                reasoning_out_t = min(d.get("reasoning_output_tokens") or 0, out_t)
                 think_t = d.get("thinking_tokens") or 0
                 cache_r = d.get("cached_tokens") or 0
                 cache_w = d.get("cache_write_tokens") or 0
@@ -3971,6 +3982,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         "created_at": d.get("created_at") or "",
                         "input_tokens": in_t,
                         "output_tokens": out_t,
+                        "reasoning_output_tokens": reasoning_out_t,
+                        "visible_output_tokens": max(out_t - reasoning_out_t, 0),
+                        "reasoning_output_ratio": (
+                            round(reasoning_out_t / out_t, 4) if out_t else 0.0
+                        ),
                         "thinking_tokens": think_t,
                         "cached_tokens": cache_r,
                         "cache_write_tokens": cache_w,
@@ -5030,6 +5046,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "raw_artifact_ids": trace.raw_artifact_ids,
                 "input_tokens": trace.input_tokens,
                 "output_tokens": trace.output_tokens,
+                "reasoning_output_tokens": trace.reasoning_output_tokens,
                 "thinking_tokens": trace.thinking_tokens,
                 "cached_input_tokens": trace.cached_input_tokens,
                 "cache_creation_input_tokens": trace.cache_creation_input_tokens,
@@ -5518,6 +5535,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "total_turns": 0,
             "input_tokens": 0,
             "output_tokens": 0,
+            "reasoning_output_tokens": 0,
             "thinking_tokens": 0,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
@@ -5546,6 +5564,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "total_turns",
                 "input_tokens",
                 "output_tokens",
+                "reasoning_output_tokens",
                 "thinking_tokens",
                 "cached_input_tokens",
                 "cache_creation_input_tokens",

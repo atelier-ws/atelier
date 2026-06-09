@@ -376,7 +376,7 @@ rescue = client.rescue_failure(task="Apply config update", error="cert expired")
 
 ## Docs by Audience
 
-- **End users**: [installation.md](docs/installation.md), [quickstart.md](docs/quickstart.md), [troubleshooting.md](docs/troubleshooting.md)
+- **End users**: [installation.md](docs/installation.md), [troubleshooting.md](docs/troubleshooting.md)
 - **Integrators**: [hosts/](docs/hosts/), [sdk/mcp.md](docs/sdk/mcp.md), [sdk/python.md](docs/sdk/python.md)
 - **Contributors**: [engineering/contributing.md](docs/engineering/contributing.md)
 
