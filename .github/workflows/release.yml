@@ -84,6 +84,9 @@ jobs:
     needs: [build, binary-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+      releases: write
 
     steps:
       - name: Check out repository
@@ -127,9 +130,8 @@ jobs:
       - name: Create Release in Public Repo
         uses: softprops/action-gh-release@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          repository: atelier-runtime/atelier
           body_path: RELEASE_NOTES.md
           files: |
             dist/*
