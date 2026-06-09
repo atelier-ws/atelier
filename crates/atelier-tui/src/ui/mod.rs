@@ -1,8 +1,8 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
 use crate::app::{
-    App, CompletionMode, FocusedPane, LeftTab, PendingPermission, RightTab, Role, TabContent,
-    TaskStatus, ToolStatus,
+    ActiveOverlay, App, CompletionMode, FocusedPane, LeftTab, PendingPermission, RightTab, Role,
+    TabContent, TaskStatus, ToolStatus,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -33,10 +33,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let input_line_count = app.input.lines().len().max(1) as u16;
     let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
 
-    // Vertical: content + pinned header + input + status
+    // Vertical: content + input + status
     let vertical = Layout::vertical([
         Constraint::Min(0),               // content row
-        Constraint::Length(1),            // pinned URL/QR header
         Constraint::Length(input_height), // input
         Constraint::Length(1),            // status bar
     ])
@@ -68,21 +67,20 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_context_pane(frame, app, right_split[1]);
     }
 
-    draw_url_header(frame, app, vertical[1]);
-    draw_input(frame, app, vertical[2]);
-    draw_status_bar(frame, app, vertical[3]);
+    draw_input(frame, app, vertical[1]);
+    draw_status_bar(frame, app, vertical[2]);
 
     if app.completion_mode != CompletionMode::None {
-        draw_completion_popup(frame, app, vertical[2]);
+        draw_completion_popup(frame, app, vertical[1]);
     }
 
     if !app.prompt_suggestions.is_empty() && app.completion_mode == CompletionMode::None {
         let sugg_area = Rect {
-            y: vertical[2]
+            y: vertical[1]
                 .y
                 .saturating_sub(app.prompt_suggestions.len() as u16 + 2),
             height: app.prompt_suggestions.len() as u16 + 2,
-            ..vertical[2]
+            ..vertical[1]
         };
         if sugg_area.y >= 1 {
             frame.render_widget(Clear, sugg_area);
@@ -117,8 +115,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_diff_overlay(frame, app, area);
     }
 
-    if app.show_help {
-        draw_help_overlay(frame, app, area);
+    match &app.active_overlay {
+        ActiveOverlay::None => {}
+        ActiveOverlay::Help => draw_help_overlay(frame, app, area),
+        ActiveOverlay::AgentPicker { selected } => draw_agent_picker(frame, app, *selected, area),
+        ActiveOverlay::ModelPicker { selected, models } => {
+            draw_model_picker(frame, app, *selected, models, area)
+        }
+        ActiveOverlay::AuthPicker { selected, providers } => {
+            draw_auth_picker(frame, app, *selected, providers, area)
+        }
     }
 }
 
@@ -536,31 +542,124 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn draw_url_header(frame: &mut Frame, app: &App, area: Rect) {
-    let text = match &app.tunnel_url {
-        Some(url) => format!(" \u{25c6} {url} "),
-        None => {
-            let local = app
-                .local_url
-                .clone()
-                .or_else(|| app.web_port.map(|p| format!("http://localhost:{p}")))
-                .unwrap_or_default();
-            if local.is_empty() {
-                " \u{25c6} Starting web interface... ".to_string()
+fn draw_agent_picker(frame: &mut Frame, app: &App, selected: usize, area: Rect) {
+    let popup = centered_rect(60, 50, area);
+    frame.render_widget(Clear, popup);
+
+    let modes = [
+        ("code", "Full tools — read, edit, shell, grep, explore"),
+        ("explore", "Read-only — read, grep, explore (no edits)"),
+        ("research", "Research — read, grep, explore (no edits)"),
+        ("plan", "Planning — read, grep only"),
+    ];
+
+    let items: Vec<ListItem> = modes
+        .iter()
+        .enumerate()
+        .map(|(i, (name, desc))| {
+            let current = app.agent_mode.name().to_lowercase() == *name;
+            let bg = if i == selected {
+                app.agent_mode.accent_color()
             } else {
-                format!(" \u{25c6} {local}  (tunnel connecting...) ")
-            }
-        }
-    };
-    let style = if app.tunnel_url.is_some() {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    let para = Paragraph::new(Span::styled(text, style));
-    frame.render_widget(para, area);
+                Color::Reset
+            };
+            let fg = if i == selected { Color::Black } else { Color::White };
+            let desc_fg = if i == selected {
+                Color::Black
+            } else {
+                Color::DarkGray
+            };
+            let marker = if current { " \u{25cf}" } else { "  " };
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{marker} {name:10} "),
+                    Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(desc.to_string(), Style::default().fg(desc_fg).bg(bg)),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(" Agent Mode  \u{2191}\u{2193} select \u{b7} Enter switch \u{b7} Esc close ")
+            .border_style(Style::default().fg(app.agent_mode.accent_color())),
+    );
+    frame.render_widget(list, popup);
+}
+
+fn draw_model_picker(
+    frame: &mut Frame,
+    app: &App,
+    selected: usize,
+    models: &[(String, String)],
+    area: Rect,
+) {
+    let popup = centered_rect(70, 60, area);
+    frame.render_widget(Clear, popup);
+
+    let items: Vec<ListItem> = models
+        .iter()
+        .enumerate()
+        .map(|(i, (model_id, desc))| {
+            let current = model_id == &app.current_model;
+            let bg = if i == selected {
+                app.agent_mode.accent_color()
+            } else {
+                Color::Reset
+            };
+            let fg = if i == selected { Color::Black } else { Color::White };
+            let desc_fg = if i == selected {
+                Color::Black
+            } else {
+                Color::DarkGray
+            };
+            let marker = if current { " \u{25cf}" } else { "  " };
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{marker} {model_id:45} "),
+                    Style::default().fg(fg).bg(bg),
+                ),
+                Span::styled(desc.to_string(), Style::default().fg(desc_fg).bg(bg)),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(" Model Picker  \u{2191}\u{2193} select \u{b7} Enter switch \u{b7} Esc close ")
+            .border_style(Style::default().fg(app.agent_mode.accent_color())),
+    );
+    frame.render_widget(list, popup);
+}
+
+fn draw_auth_picker(frame: &mut Frame, app: &App, selected: usize, providers: &[String], area: Rect) {
+    let popup = centered_rect(60, 60, area);
+    frame.render_widget(Clear, popup);
+
+    let items: Vec<ListItem> = providers
+        .iter()
+        .enumerate()
+        .map(|(i, provider)| {
+            let bg = if i == selected {
+                app.agent_mode.accent_color()
+            } else {
+                Color::Reset
+            };
+            let fg = if i == selected { Color::Black } else { Color::White };
+            ListItem::new(Line::from(Span::styled(
+                format!("  {provider} "),
+                Style::default().fg(fg).bg(bg),
+            )))
+        })
+        .collect();
+
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(" Configure Provider  \u{2191}\u{2193} select \u{b7} Enter \u{b7} Esc close ")
+            .border_style(Style::default().fg(app.agent_mode.accent_color())),
+    );
+    frame.render_widget(list, popup);
 }
 
 fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
@@ -1056,6 +1155,15 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         welcome_lines.push(Line::raw(""));
+        if !app.qr_lines.is_empty() {
+            for qr_line in &app.qr_lines {
+                welcome_lines.push(Line::from(Span::styled(
+                    format!("  {qr_line}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            welcome_lines.push(Line::raw(""));
+        }
         welcome_lines.push(Line::from(Span::styled(
             "  Type a message to start · /help for commands",
             Style::default().fg(Color::DarkGray),
@@ -1398,52 +1506,30 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let mut model = if app.current_model.is_empty() {
-        "—".to_string()
+    let mode_badge = format!("[{}]", app.agent_mode.name());
+    let model_text = if app.current_model.is_empty() {
+        "no model".to_string()
     } else {
-        app.current_model.clone()
+        app.current_model.chars().take(28).collect()
     };
-    if model.chars().count() > 30 {
-        model = model.chars().take(30).collect();
-    }
     let cache = app
         .cache_efficiency
-        .map(|v| format!("{v:.0}%"))
-        .unwrap_or_else(|| "—".to_string());
+        .map(|v| format!(" \u{2502} cache {v:.0}%"))
+        .unwrap_or_default();
     let cost = if app.total_cost_usd > 0.0 {
-        format!("${:.4}", app.total_cost_usd)
+        format!(" \u{2502} ${:.4}", app.total_cost_usd)
     } else {
-        "—".to_string()
+        String::new()
     };
-    let saved = if app.total_savings_usd > 0.0 {
-        format!("${:.4}", app.total_savings_usd)
-    } else {
-        "—".to_string()
+    let tunnel = match &app.tunnel_url {
+        Some(url) => format!(" \u{2502} {}", url.chars().take(35).collect::<String>()),
+        None => String::new(),
     };
-    let turns = app.conversation.len() / 2;
+    let hint = " \u{2502} ?";
 
-    let style = Style::default().fg(Color::DarkGray);
-    let mode = app.agent_mode;
-    let spans = vec![
-        Span::styled(
-            format!("  [{}]", mode.name()),
-            Style::default()
-                .fg(mode.accent_color())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(format!("  ◆ {model}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("cache {cache}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("session {cost}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("saved {saved}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("ctx {turns} turns"), style),
-        Span::styled("  │  ", style),
-        Span::styled("↑↓ scroll · Tab focus · Shift+Enter newline", style),
-    ];
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    let text = format!(" {mode_badge} {model_text}{cache}{cost}{tunnel}{hint}");
+    let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
+    frame.render_widget(para, area);
 }
 
 fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {

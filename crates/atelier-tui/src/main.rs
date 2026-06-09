@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{App, CompletionMode, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
+use app::{ActiveOverlay, AgentMode, App, CompletionMode, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -72,14 +72,7 @@ async fn main() -> Result<()> {
     // Always start the web bridge on an available port.
     let web_port = find_available_port(7700).await;
 
-    // Print web info + QR code BEFORE entering raw mode so it stays readable.
-    let qr_lines = qr::render_qr(&format!("http://localhost:{web_port}"));
-    eprintln!();
-    eprintln!("  \u{25c6} Web interface: http://localhost:{web_port}");
-    for line in &qr_lines {
-        eprintln!("  {line}");
-    }
-    eprintln!("  Starting tunnel...\n");
+    eprintln!("\n  \u{25c6} Web interface: http://localhost:{web_port}\n  Tunnel: starting...\n");
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -229,9 +222,10 @@ async fn run_app(
             if let Ok(guard) = tunnel_url_shared.try_lock() {
                 if let Some(ref url) = *guard {
                     app.tunnel_url = Some(url.clone());
+                    app.qr_lines = qr::render_qr(url);
                     app.conversation.push(app::ConversationEntry {
                         role: app::Role::System,
-                        text: format!("\u{25c6} Public URL: {url}  (QR code printed above)"),
+                        text: format!("\u{25c6} {url}"),
                     });
                     app.auto_scroll = true;
                 }
@@ -294,6 +288,125 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
+    // Shift+Enter inserts a newline — checked first so no other handler can swallow it.
+    if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::SHIFT) {
+        app.input.insert_newline();
+        return Ok(());
+    }
+
+    // Interactive overlays (agent/model/auth pickers + help) capture keys first.
+    match &app.active_overlay {
+        ActiveOverlay::AgentPicker { .. }
+        | ActiveOverlay::ModelPicker { .. }
+        | ActiveOverlay::AuthPicker { .. } => {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    app.active_overlay = ActiveOverlay::None;
+                    return Ok(());
+                }
+                KeyCode::Up => {
+                    match &mut app.active_overlay {
+                        ActiveOverlay::AgentPicker { selected } => {
+                            if *selected > 0 {
+                                *selected -= 1;
+                            }
+                        }
+                        ActiveOverlay::ModelPicker { selected, .. } => {
+                            if *selected > 0 {
+                                *selected -= 1;
+                            }
+                        }
+                        ActiveOverlay::AuthPicker { selected, .. } => {
+                            if *selected > 0 {
+                                *selected -= 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    match &mut app.active_overlay {
+                        ActiveOverlay::AgentPicker { selected } => {
+                            *selected = (*selected + 1).min(3);
+                        }
+                        ActiveOverlay::ModelPicker { selected, models } => {
+                            *selected = (*selected + 1).min(models.len().saturating_sub(1));
+                        }
+                        ActiveOverlay::AuthPicker { selected, providers } => {
+                            *selected = (*selected + 1).min(providers.len().saturating_sub(1));
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    match app.active_overlay.clone() {
+                        ActiveOverlay::AgentPicker { selected } => {
+                            let modes = ["code", "explore", "research", "plan"];
+                            if let Some(mode) = modes.get(selected) {
+                                app.agent_mode = match *mode {
+                                    "code" => AgentMode::Code,
+                                    "explore" => AgentMode::Explore,
+                                    "research" => AgentMode::Research,
+                                    "plan" => AgentMode::Plan,
+                                    _ => AgentMode::Code,
+                                };
+                                send_command(
+                                    writer,
+                                    &FrontendCommand::UserCommand {
+                                        name: "mode".to_string(),
+                                        args: vec![mode.to_string()],
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
+                        ActiveOverlay::ModelPicker { selected, models } => {
+                            if let Some((model_id, _)) = models.get(selected) {
+                                app.current_model = model_id.clone();
+                                send_command(
+                                    writer,
+                                    &FrontendCommand::UserCommand {
+                                        name: "model".to_string(),
+                                        args: vec![model_id.clone()],
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
+                        ActiveOverlay::AuthPicker { selected, providers } => {
+                            if let Some(provider) = providers.get(selected) {
+                                send_command(
+                                    writer,
+                                    &FrontendCommand::UserCommand {
+                                        name: "auth".to_string(),
+                                        args: vec![provider.clone()],
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
+                        _ => {}
+                    }
+                    app.active_overlay = ActiveOverlay::None;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+        ActiveOverlay::Help => {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::None => {}
+    }
+
     // Session picker overlay takes top priority.
     if app.show_session_picker {
         match key.code {
@@ -628,17 +741,6 @@ async fn handle_key(
         }
     }
 
-    // Help overlay: when open, only respond to close keys.
-    if app.show_help {
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
-                app.show_help = false;
-            }
-            _ => {}
-        }
-        return Ok(());
-    }
-
     // Reverse search (Ctrl+R) takes priority over normal input handling.
     if app.reverse_search.is_some() {
         // Esc / Ctrl+G cancels.
@@ -853,9 +955,6 @@ async fn handle_key(
         KeyCode::Tab => {
             app.cycle_focus();
         }
-        KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            app.input.insert_newline();
-        }
         KeyCode::Enter
             if matches!(app.focused_pane, FocusedPane::Sessions)
                 && matches!(app.left_tab, LeftTab::Files) =>
@@ -935,6 +1034,40 @@ async fn handle_key(
                 // Handle exit/quit locally — never send to backend.
                 if name == "exit" || name == "quit" {
                     app.should_quit = true;
+                    return Ok(());
+                }
+
+                // Interactive overlays handled locally — never sent to backend.
+                if name == "?" || name == "help" {
+                    app.active_overlay = ActiveOverlay::Help;
+                    return Ok(());
+                }
+                if name == "agents" || name == "mode" {
+                    app.active_overlay = ActiveOverlay::AgentPicker { selected: 0 };
+                    return Ok(());
+                }
+                if name == "model" {
+                    let models = vec![
+                        ("anthropic/claude-opus-4-8".to_string(), "Anthropic, frontier, $15/Mtok".to_string()),
+                        ("anthropic/claude-sonnet-4-5".to_string(), "Anthropic, balanced, $3/Mtok".to_string()),
+                        ("openai/gpt-4o".to_string(), "OpenAI, balanced, $2.5/Mtok".to_string()),
+                        ("openai/gpt-4o-mini".to_string(), "OpenAI, cheap, $0.15/Mtok".to_string()),
+                        ("groq/llama-3.3-70b-versatile".to_string(), "Groq, fast, $0.59/Mtok".to_string()),
+                        ("ollama/llama3.2".to_string(), "Local, free, needs Ollama".to_string()),
+                        ("openrouter/anthropic/claude-opus-4-8".to_string(), "OpenRouter \u{2192} Claude".to_string()),
+                        ("bedrock/anthropic.claude-sonnet-4-5-v1:0".to_string(), "AWS Bedrock Claude".to_string()),
+                    ];
+                    app.active_overlay = ActiveOverlay::ModelPicker { selected: 0, models };
+                    return Ok(());
+                }
+                if name == "auth" {
+                    let providers = vec![
+                        "anthropic".to_string(), "openai".to_string(), "google".to_string(),
+                        "groq".to_string(), "mistral".to_string(), "openrouter".to_string(),
+                        "ollama".to_string(), "bedrock".to_string(), "azure".to_string(),
+                        "vertex".to_string(), "together".to_string(), "fireworks".to_string(),
+                    ];
+                    app.active_overlay = ActiveOverlay::AuthPicker { selected: 0, providers };
                     return Ok(());
                 }
 
@@ -1075,7 +1208,7 @@ async fn handle_key(
         KeyCode::Char('?') => {
             let current = app.input.lines().join("");
             if current.trim().is_empty() {
-                app.show_help = true;
+                app.active_overlay = ActiveOverlay::Help;
             } else if app.focused_pane == FocusedPane::Input {
                 app.input.input(Event::Key(key));
             }
