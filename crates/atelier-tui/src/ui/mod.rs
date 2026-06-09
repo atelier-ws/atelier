@@ -33,8 +33,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(area);
 
-    let horizontal =
-        Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]).split(vertical[0]);
+    let horizontal = Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)])
+        .split(vertical[0]);
 
     draw_conversation(frame, app, horizontal[0]);
     draw_tools(frame, app, horizontal[1]);
@@ -54,6 +54,146 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     } else if app.pending_diff.is_some() {
         draw_diff_overlay(frame, app, area);
     }
+
+    // Help overlay renders last, on top of everything.
+    if app.show_help {
+        draw_help_overlay(frame, app, area);
+    }
+}
+
+fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
+    let popup = centered_rect(75, 80, area);
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::from(Span::styled(
+            "  Keyboard Shortcuts",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            "  Navigation",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::styled("  Tab          ", Style::default().fg(Color::Cyan)),
+            Span::raw("Cycle pane focus (Input → Conversation → Tools)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  ↑ ↓          ", Style::default().fg(Color::Cyan)),
+            Span::raw("Scroll focused pane"),
+        ]),
+        Line::from(vec![
+            Span::styled("  PgUp/PgDn    ", Style::default().fg(Color::Cyan)),
+            Span::raw("Scroll faster"),
+        ]),
+        Line::from(vec![
+            Span::styled("  End          ", Style::default().fg(Color::Cyan)),
+            Span::raw("Scroll to bottom (auto-scroll)"),
+        ]),
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            "  Input",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::styled("  Enter        ", Style::default().fg(Color::Cyan)),
+            Span::raw("Send message"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Shift+Enter  ", Style::default().fg(Color::Cyan)),
+            Span::raw("New line in message"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Alt+↑ ↓      ", Style::default().fg(Color::Cyan)),
+            Span::raw("Navigate message history"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /            ", Style::default().fg(Color::Cyan)),
+            Span::raw("Show command picker (filter by typing)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  @            ", Style::default().fg(Color::Cyan)),
+            Span::raw("File picker (fuzzy search)"),
+        ]),
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            "  Actions",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::styled("  Ctrl+C       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Interrupt agent (double: exit)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+D       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Exit"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+F       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Search conversation"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+M       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Cycle agent mode (code/explore/research/plan)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+L       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Clear screen"),
+        ]),
+        Line::from(vec![
+            Span::styled("  y / n / a    ", Style::default().fg(Color::Cyan)),
+            Span::raw("Approve/Deny (when permission prompt shown)"),
+        ]),
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            "  Commands",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::styled("  /help        ", Style::default().fg(Color::DarkGray)),
+            Span::raw("List all commands"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /model <m>   ", Style::default().fg(Color::DarkGray)),
+            Span::raw("Switch model"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /mcp         ", Style::default().fg(Color::DarkGray)),
+            Span::raw("List MCP servers"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /analytics   ", Style::default().fg(Color::DarkGray)),
+            Span::raw("Session analytics"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /doctor      ", Style::default().fg(Color::DarkGray)),
+            Span::raw("Health check"),
+        ]),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Press ? or Esc to close",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let block = Block::bordered()
+        .title(" Help — Atelier TUI ")
+        .border_style(Style::default().fg(app.agent_mode.accent_color()));
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, popup);
 }
 
 fn draw_choice_overlay(frame: &mut Frame, app: &App, area: Rect) {
@@ -109,7 +249,9 @@ fn draw_choice_overlay(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::bordered()
         .title(" Choose ")
         .border_style(Style::default().fg(accent));
-    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(para, overlay);
 }
 
@@ -154,7 +296,9 @@ fn draw_session_picker(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::bordered()
         .title(" Sessions ")
         .border_style(Style::default().fg(accent));
-    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(para, overlay);
 }
 
@@ -202,7 +346,9 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
             );
             frame.render_widget(list, popup);
         }
-        CompletionMode::FileRef { selected, filter, .. } => {
+        CompletionMode::FileRef {
+            selected, filter, ..
+        } => {
             let files = app.filtered_files(filter);
             if files.is_empty() {
                 return;
@@ -214,7 +360,12 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
             } else {
                 0
             };
-            let visible_files: Vec<_> = files.iter().skip(offset).take(visible).enumerate().collect();
+            let visible_files: Vec<_> = files
+                .iter()
+                .skip(offset)
+                .take(visible)
+                .enumerate()
+                .collect();
 
             let popup_h = (visible_files.len().min(visible) + 2) as u16;
             let popup_y = anchor.y.saturating_sub(popup_h);
@@ -241,13 +392,24 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
                         "json" | "toml" | "yaml" | "yml" => Color::Green,
                         _ => Color::DarkGray,
                     };
-                    let bg = if is_selected { Color::Yellow } else { Color::Reset };
-                    let fg = if is_selected { Color::Black } else { Color::White };
+                    let bg = if is_selected {
+                        Color::Yellow
+                    } else {
+                        Color::Reset
+                    };
+                    let fg = if is_selected {
+                        Color::Black
+                    } else {
+                        Color::White
+                    };
                     let recent_marker = if is_recent { "★ " } else { "  " };
                     let ext_badge = format!("[{ext:>4}]");
 
                     ListItem::new(Line::from(vec![
-                        Span::styled(recent_marker.to_string(), Style::default().fg(Color::Yellow).bg(bg)),
+                        Span::styled(
+                            recent_marker.to_string(),
+                            Style::default().fg(Color::Yellow).bg(bg),
+                        ),
                         Span::styled(ext_badge, Style::default().fg(ext_color).bg(bg)),
                         Span::styled(format!(" {path}"), Style::default().fg(fg).bg(bg)),
                     ]))
@@ -279,11 +441,17 @@ fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
         .lines()
         .map(|l| {
             if l.starts_with('+') && !l.starts_with("+++") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Green)))
+                Line::from(Span::styled(
+                    l.to_string(),
+                    Style::default().fg(Color::Green),
+                ))
             } else if l.starts_with('-') && !l.starts_with("---") {
                 Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
             } else if l.starts_with("@@") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Cyan)))
+                Line::from(Span::styled(
+                    l.to_string(),
+                    Style::default().fg(Color::Cyan),
+                ))
             } else {
                 Line::from(Span::raw(l.to_string()))
             }
@@ -293,7 +461,9 @@ fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::bordered()
         .title(" Proposed Changes — press 'a' to apply, 'd' to dismiss ")
         .border_style(Style::default().fg(Color::Yellow));
-    let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup_area);
 }
 
@@ -328,7 +498,9 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
             Line::raw(""),
             Line::from(Span::styled(
                 "  ◆  ATELIER",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::raw(""),
             Line::from(vec![
@@ -382,7 +554,9 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
                 all_lines.push(Line::from(Span::styled(
                     "▶ You".to_string(),
                     match_marker.unwrap_or_else(|| {
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD)
                     }),
                 )));
                 for line in entry.text.lines() {
@@ -397,7 +571,9 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
                 all_lines.push(Line::from(Span::styled(
                     "◉ Atelier",
                     match_marker.unwrap_or_else(|| {
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
                     }),
                 )));
                 for hl_line in render_markdown_lines(&entry.text) {
@@ -417,7 +593,9 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     if app.is_streaming && !app.streaming_text.is_empty() {
         all_lines.push(Line::from(Span::styled(
             "◉ Atelier",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         for hl_line in render_markdown_lines(&app.streaming_text) {
             all_lines.push(hl_line);
@@ -484,7 +662,11 @@ fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focused_pane == FocusedPane::Input;
-    let color = if focused { Color::Cyan } else { Color::DarkGray };
+    let color = if focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
     let block = Block::bordered()
         .title(" atelier> ")
         .border_style(Style::default().fg(color));
@@ -549,7 +731,9 @@ fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {
         Line::raw(""),
         Line::from(Span::styled(
             "  ⚠  No API key configured",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::raw(""),
         Line::from(Span::styled(
@@ -584,7 +768,9 @@ fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::bordered()
         .title(" Atelier Setup ")
         .border_style(Style::default().fg(Color::Yellow));
-    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(para, popup);
 
     let input_area = Rect {
@@ -611,7 +797,9 @@ fn draw_permission_overlay(frame: &mut Frame, app: &App, area: Rect) {
     let lines = vec![
         Line::from(Span::styled(
             "⚠  Permission Required",
-            Style::default().fg(border_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(border_color)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(format!("{action} ({risk} risk)")),
