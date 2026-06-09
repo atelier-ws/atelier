@@ -35,38 +35,90 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if app.pending_permission.is_some() {
         draw_permission_overlay(frame, app, area);
+    } else if app.pending_diff.is_some() {
+        draw_diff_overlay(frame, app, area);
     }
 }
 
-fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
-    let mut lines: Vec<Line> = Vec::new();
+fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
+    let popup_area = centered_rect(80, 70, area);
+    frame.render_widget(Clear, popup_area);
 
+    let diff_text = app.pending_diff.as_deref().unwrap_or("");
+    let lines: Vec<Line> = diff_text
+        .lines()
+        .map(|l| {
+            if l.starts_with('+') && !l.starts_with("+++") {
+                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Green)))
+            } else if l.starts_with('-') && !l.starts_with("---") {
+                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
+            } else if l.starts_with("@@") {
+                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Cyan)))
+            } else {
+                Line::from(Span::raw(l.to_string()))
+            }
+        })
+        .collect();
+
+    let block = Block::bordered()
+        .title(" Proposed Changes — press 'a' to apply, 'd' to dismiss ")
+        .border_style(Style::default().fg(Color::Yellow));
+    let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, popup_area);
+}
+
+fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
+    use crate::highlight::render_markdown_lines;
+
+    let mut all_lines: Vec<Line> = Vec::new();
     for entry in &app.conversation {
-        let (label, style) = match entry.role {
-            Role::User => ("You", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            Role::Assistant => ("Atelier", Style::default().fg(Color::White)),
-            Role::System => ("·", Style::default().fg(Color::DarkGray)),
-        };
-        lines.push(Line::from(Span::styled(format!("{label}:"), style)));
-        for text_line in entry.text.lines() {
-            let body_style = match entry.role {
-                Role::System => Style::default().fg(Color::DarkGray),
-                _ => Style::default(),
-            };
-            lines.push(Line::from(Span::styled(text_line.to_string(), body_style)));
+        match entry.role {
+            Role::User => {
+                all_lines.push(Line::from(Span::styled(
+                    "▶ You".to_string(),
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                )));
+                for line in entry.text.lines() {
+                    all_lines.push(Line::from(Span::styled(
+                        format!("  {line}"),
+                        Style::default().fg(Color::Green),
+                    )));
+                }
+                all_lines.push(Line::raw(""));
+            }
+            Role::Assistant => {
+                all_lines.push(Line::from(Span::styled(
+                    "◉ Atelier",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )));
+                for hl_line in render_markdown_lines(&entry.text) {
+                    all_lines.push(hl_line);
+                }
+                all_lines.push(Line::raw(""));
+            }
+            Role::System => {
+                all_lines.push(Line::from(Span::styled(
+                    format!("  ◆ {}", entry.text),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
         }
-        lines.push(Line::from(""));
     }
 
     if app.is_streaming && !app.streaming_text.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "Atelier:",
-            Style::default().fg(Color::White),
+        all_lines.push(Line::from(Span::styled(
+            "◉ Atelier",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )));
-        for text_line in app.streaming_text.lines() {
-            lines.push(Line::from(text_line.to_string()));
+        for hl_line in render_markdown_lines(&app.streaming_text) {
+            all_lines.push(hl_line);
         }
     }
+
+    let content_height = all_lines.len() as u16;
+    let visible_height = area.height.saturating_sub(2);
+    let max_scroll = content_height.saturating_sub(visible_height);
+    let scroll = app.scroll.min(max_scroll);
 
     let title = if app.current_model.is_empty() {
         " Conversation ".to_string()
@@ -78,11 +130,10 @@ fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
         .title(title)
         .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
 
-    let paragraph = Paragraph::new(Text::from(lines))
+    let paragraph = Paragraph::new(all_lines)
+        .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((app.scroll, 0))
-        .block(block);
-
+        .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -149,18 +200,27 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         app.current_model.clone()
     };
     let style = Style::default().fg(Color::DarkGray);
-    let line = Line::from(vec![
+    let mut spans = vec![
         Span::styled(format!(" session: {session}"), style),
         Span::styled("  │  ", style),
         Span::styled(format!("model: {model}"), style),
         Span::styled("  │  ", style),
         Span::styled(format!("tools: {}", app.tools.len()), style),
-        Span::styled("  │  ", style),
-        Span::styled(
-            "↑↓ scroll · Tab focus · Shift+Enter newline",
-            style,
-        ),
-    ]);
+    ];
+    if let Some(eff) = app.cache_efficiency {
+        spans.push(Span::styled("  │  ", style));
+        spans.push(Span::styled(format!("cache: {eff:.0}%"), style));
+        spans.push(Span::styled("  │  ", style));
+        spans.push(Span::styled(format!("cost: ${:.4}", app.cost_usd), style));
+        spans.push(Span::styled("  │  ", style));
+        spans.push(Span::styled(format!("saved: ${:.4}", app.savings_usd), style));
+    }
+    spans.push(Span::styled("  │  ", style));
+    spans.push(Span::styled(
+        "↑↓ scroll · Tab focus · Shift+Enter newline",
+        style,
+    ));
+    let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);
 }
 
