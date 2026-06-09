@@ -1899,6 +1899,11 @@ main() {
             info "Detected project root: not found (no git repository in current directory)"
             echo "[dry-run] skip code index (run inside a git repo)"
         fi
+        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
+            echo "[dry-run] $atelier_cli optimize auto enable"
+        else
+            echo "[dry-run] $atelier_cli optimize auto disable"
+        fi
     else
         spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
@@ -1911,16 +1916,6 @@ main() {
             info "Index target: not detected (no git repository in current directory)"
             info "Skipped code indexing (no git repository detected)."
         fi
-    fi
-    step_done
-    step_start "Persisting optimize automation"
-    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
-            echo "[dry-run] $atelier_cli optimize auto enable"
-        else
-            echo "[dry-run] $atelier_cli optimize auto disable"
-        fi
-    else
         if [[ "$ATELIER_AUTO_OPTIMIZE" == "1" ]]; then
             "$atelier_cli" optimize auto enable >>"$ATELIER_INSTALL_LOG_FILE" 2>&1 \
                 || degrade "Failed to persist auto optimize settings"

@@ -55,19 +55,20 @@ Phase-linear warm-prefix reuse — the Plan phase reads Survey's codebase contex
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| `atelier run` not `atelier code` | `code` group already exists for code-intel/zoekt | — Pending |
-| JSONL session state | Simplest; matches existing run_ledger; can migrate to SQLite for M4+ | — Pending |
-| litellm default transport | Broad provider reach; existing infra already uses it | — Pending |
-| Background keepalive thread | Simpler than piggyback; Aider's proven pattern | — Pending |
-| Line-oriented REPL | Faster to build; TUI deferred to v2 | — Pending |
+| Decision                         | Rationale                                                            | Outcome   |
+| -------------------------------- | -------------------------------------------------------------------- | --------- |
+| `atelier run` not `atelier code` | `code` group already exists for code-intel/zoekt                     | — Pending |
+| JSONL session state              | Simplest; matches existing run_ledger; can migrate to SQLite for M4+ | — Pending |
+| litellm default transport        | Broad provider reach; existing infra already uses it                 | — Pending |
+| Background keepalive thread      | Simpler than piggyback; Aider's proven pattern                       | — Pending |
+| Line-oriented REPL               | Faster to build; TUI deferred to v2                                  | — Pending |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 **After each phase transition** (via `/gsd-transition`):
+
 1. Requirements invalidated? → Move to Out of Scope with reason
 2. Requirements validated? → Move to Validated with phase reference
 3. New requirements emerged? → Add to Active
@@ -75,10 +76,12 @@ This document evolves at phase transitions and milestone boundaries.
 5. "What This Is" still accurate? → Update if drifted
 
 **After each milestone** (via `/gsd-complete-milestone`):
+
 1. Full review of all sections
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-08 after initialization*
+
+_Last updated: 2026-06-08 after initialization_
