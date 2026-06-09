@@ -3849,6 +3849,39 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
         return _build_analytics_summary(filtered, days=days)
 
+    @app.get("/analytics/tui-sessions", tags=["analytics"])
+    async def get_tui_sessions(limit: int = 50) -> dict[str, Any]:
+        """Return recent TUI coding sessions with cost/cache analytics."""
+        try:
+            from atelier.core.capabilities.analytics.store import AnalyticsStore
+
+            tui_store = AnalyticsStore()
+            sessions = [
+                {
+                    "session_id": s.session_id,
+                    "started_at": s.started_at,
+                    "ended_at": s.ended_at,
+                    "model": s.model,
+                    "provider": s.provider,
+                    "mode": s.mode,
+                    "total_cost_usd": s.total_cost_usd,
+                    "total_savings_usd": s.total_savings_usd,
+                    "cache_efficiency_pct": s.cache_efficiency_pct,
+                    "input_tokens": s.input_tokens,
+                    "output_tokens": s.output_tokens,
+                    "cache_read_tokens": s.cache_read_tokens,
+                    "cache_write_tokens": s.cache_write_tokens,
+                    "turns": s.turns,
+                    "tool_calls": s.tool_calls,
+                }
+                for s in tui_store.recent_sessions(limit)
+            ]
+            stats = tui_store.summary_stats()
+            tui_store.close()
+            return {"sessions": sessions, "summary": stats}
+        except Exception as exc:
+            return {"sessions": [], "summary": {}, "error": str(exc)}
+
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
     def analytics_dashboard(
         days: int = Query(30, ge=1, le=365),

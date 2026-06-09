@@ -41,7 +41,7 @@
 - [ ] **RPT-01**: Per-run receipt shown at session end: cache-read tokens, cache-write tokens, fresh-input tokens, cache efficiency %, $ spent
 - [ ] **RPT-02**: $ vs naive (no-cache, per-phase-cold) baseline shown on receipt
 - [ ] **RPT-03**: `atelier run report <session-id>` command to retrieve receipt for a past session
-- [ ] **RPT-04**: Cache hit ratio reported and compared against Eval's 60-80% target
+- [ ] **RPT-04**: Cache hit ratio reported (target: >60% cache efficiency)
 
 ## v2 Requirements
 
@@ -53,7 +53,7 @@
 
 ### TUI
 
-- **TUI-01**: Bubble Tea / Textual TUI surface (like Eval)
+- **TUI-01**: Rich terminal UI
 - **TUI-02**: Real-time token cost display during session
 
 ### Session Management

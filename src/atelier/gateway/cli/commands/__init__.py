@@ -239,15 +239,32 @@ def register(cli: click.Group) -> None:
         import click as _click
 
         @_click.command("dashboard")
-        @_click.option("--port", default=8799, show_default=True, help="Dashboard port")
-        @_click.option(
-            "--no-browser", is_flag=True, default=False, help="Don't auto-open browser"
-        )
-        def dashboard_cmd(port: int, no_browser: bool) -> None:
+        @_click.option("--port", default=8787, show_default=True, help="Atelier service port (default: 8787)")
+        @_click.option("--dev", is_flag=True, default=False, help="Open the Vite dev server (port 3125) instead")
+        def dashboard_cmd(port: int, dev: bool) -> None:
             """Open the Atelier analytics dashboard in your browser."""
-            from atelier.core.capabilities.analytics.dashboard import serve_dashboard
+            import urllib.request
+            import webbrowser
 
-            serve_dashboard(port=port)
+            target_port = 3125 if dev else port
+            url = f"http://localhost:{target_port}/analytics"
+
+            # Check if service is running
+            try:
+                urllib.request.urlopen(f"http://localhost:{target_port}/health", timeout=2)
+                _click.echo(f"  \u25c6 Opening Atelier dashboard: {url}")
+                webbrowser.open(url)
+            except Exception:
+                # Service not running
+                dev_hint = "\n  Dev mode: cd frontend && npm run dev" if not dev else ""
+                _click.echo(
+                    f"  Atelier service not running on port {target_port}.\n\n"
+                    f"  Start it with:\n"
+                    f"    atelier service start\n"
+                    f"  Or in Docker:\n"
+                    f"    docker compose up{dev_hint}\n\n"
+                    f"  Then run: atelier dashboard"
+                )
 
         cli.add_command(dashboard_cmd)
     except (ModuleNotFoundError, ImportError):

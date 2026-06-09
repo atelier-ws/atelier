@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Atelier as a user-owned coding-agent CLI with maximum cache control. Users run `atelier run "<task>"` on their own API credentials; the CLI executes a phase-linear Survey→Plan→Implement conversation with explicit `cache_control` breakpoints, so the Plan phase reads Survey's ingested context as cheap cache hits (~0.1×) instead of fresh input (1×). Validated by Eval's production benchmarks: 47% cost reduction, 40% time reduction vs Claude Code.
+Atelier as a user-owned coding-agent CLI with maximum cache control. Users run `atelier run "<task>"` on their own API credentials; the CLI executes a phase-linear Survey→Plan→Implement conversation with explicit `cache_control` breakpoints, so the Plan phase reads Survey's ingested context as cheap cache hits (~0.1×) instead of fresh input (1×). Validated by production benchmarks from comparable CLI coding agents: 40-50% cost reduction.
 
 ## Core Value
 
@@ -39,7 +39,7 @@ Phase-linear warm-prefix reuse — the Plan phase reads Survey's codebase contex
 ## Context
 
 - **Existing infrastructure**: `owned_execution_routing.select_owned_route`, `owned_execution_lanes.execute_owned_prompt`, `owned_execution_cache_affinity`, `context_dedup`, `context_compression`, `savings_summary` — all exist and must be reused, not reinvented.
-- **Validated by Eval (github.com/get-eval/eval)**: 47% cost reduction, 40% time reduction, 90.2% Terminal-Bench 2.0 #1. Cache hit: 60-80%+ on Plan reading Explore's context.
+- **Validated by production benchmarks from comparable CLI coding agents**: 40-50% cost reduction, strong time reduction, top-tier Terminal-Bench 2.0 results. Cache hit: 60-80%+ on Plan reading Explore's context.
 - **agentcache PPF algorithm**: 75.8% cache hit rate with prefix-preserving fork. Ref for cache-safe compaction.
 - **Command name**: `atelier run` (not `atelier code` — that group is taken by code-intel/zoekt).
 - **Transport**: litellm default (`cache_control` + `prompt_cache_key`); Anthropic Python SDK direct for pure-Claude 1-hour TTL (deferred).
