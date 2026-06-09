@@ -190,6 +190,8 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("memory", "Search Atelier memory: /memory <query>"),
     ("route", "Show routing decision: /route <task>"),
     ("approve", "Approve pending permission request"),
+    ("deny", "Deny pending permission request"),
+    ("auth", "Configure provider authentication: /auth [provider]"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
