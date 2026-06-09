@@ -22,6 +22,11 @@ SUPPORTED_ROUTE_VENDORS = (
     "vertex",
     "azure",
     "openrouter",
+    "groq",
+    "mistral",
+    "ollama",
+    "together",
+    "fireworks",
 )
 _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
     "anthropic": ("ANTHROPIC_API_KEY",),
@@ -31,6 +36,11 @@ _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
     "vertex": ("VERTEXAI_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT"),
     "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
     "openrouter": ("OPENROUTER_API_KEY",),
+    "groq": ("GROQ_API_KEY",),
+    "mistral": ("MISTRAL_API_KEY",),
+    "ollama": ("OLLAMA_HOST",),  # Ollama uses base URL, not API key
+    "together": ("TOGETHER_API_KEY",),
+    "fireworks": ("FIREWORKS_API_KEY",),
 }
 _VENDOR_HOST_COMMANDS: dict[str, tuple[str, ...]] = {
     "anthropic": ("claude",),
@@ -40,6 +50,11 @@ _VENDOR_HOST_COMMANDS: dict[str, tuple[str, ...]] = {
     "vertex": (),
     "azure": (),
     "openrouter": (),
+    "groq": (),
+    "mistral": (),
+    "ollama": ("ollama",),  # detect local ollama
+    "together": (),
+    "fireworks": (),
 }
 
 EditMode = Literal["pin-actual-vendor", "allow-cross-vendor"]
@@ -112,11 +127,17 @@ def detect_api_key_vendors(env: Mapping[str, str] | None = None) -> tuple[str, .
     actually run.
     """
     source = env if env is not None else os.environ
-    return tuple(
-        vendor
-        for vendor in SUPPORTED_ROUTE_VENDORS
-        if any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
-    )
+    enabled: list[str] = []
+    for vendor in SUPPORTED_ROUTE_VENDORS:
+        if vendor == "ollama":
+            has_host = bool(str(source.get("OLLAMA_HOST", "")).strip())
+            has_binary = shutil.which("ollama") is not None
+            if has_host or has_binary:
+                enabled.append(vendor)
+            continue
+        if any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor]):
+            enabled.append(vendor)
+    return tuple(enabled)
 
 
 def load_route_config(
