@@ -3,6 +3,7 @@
 mod app;
 mod highlight;
 mod protocol;
+mod tunnel;
 mod ui;
 mod web;
 
@@ -55,10 +56,19 @@ async fn main() -> Result<()> {
         std::env::set_var("ATELIER_MITM", "1");
     }
 
-    let (program, args) = backend_command();
+    let cli_args: Vec<String> = std::env::args().collect();
+    let web_port: Option<u16> = cli_args.iter().position(|a| a == "--web").map(|pos| {
+        cli_args
+            .get(pos + 1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(web::DEFAULT_WEB_PORT)
+    });
+    let tunnel_requested = cli_args.contains(&"--tunnel".to_string());
+
+    let (program, backend_args) = backend_command();
 
     let mut child = tokio::process::Command::new(&program)
-        .args(&args)
+        .args(&backend_args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
@@ -66,6 +76,31 @@ async fn main() -> Result<()> {
 
     let child_stdin = child.stdin.take().expect("backend stdin missing");
     let child_stdout = child.stdout.take().expect("backend stdout missing");
+
+    // Print web/tunnel info BEFORE entering raw mode so it stays readable.
+    if let Some(port) = web_port {
+        eprintln!("  \u{25c6} Web interface: http://localhost:{port}");
+        eprintln!("  \u{2192} Use --tunnel for public URL (requires cloudflared or bore)\n");
+    }
+    if tunnel_requested {
+        if let Some(port) = web_port {
+            eprintln!("  \u{25c6} Starting tunnel...");
+            tokio::spawn(async move {
+                match tunnel::try_start_tunnel(port).await {
+                    Some((url, mut tunnel_child)) => {
+                        eprintln!("  \u{25c6} Public URL: {url}");
+                        eprintln!("  \u{2192} Opens on any device (phone, tablet, remote)\n");
+                        let _ = tunnel_child.wait().await;
+                    }
+                    None => {
+                        eprintln!(
+                            "  \u{2717} No tunnel available. Install cloudflared: brew install cloudflared"
+                        );
+                    }
+                }
+            });
+        }
+    }
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -96,19 +131,18 @@ async fn run_app(
     let mut app = App::new(project_root);
 
     let args: Vec<String> = std::env::args().collect();
-    let web_port: Option<u16> = args
-        .iter()
-        .position(|a| a == "--web")
-        .map(|pos| {
-            args.get(pos + 1)
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(web::DEFAULT_WEB_PORT)
-        });
+    let web_port: Option<u16> = args.iter().position(|a| a == "--web").map(|pos| {
+        args.get(pos + 1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(web::DEFAULT_WEB_PORT)
+    });
     let resume_id: Option<String> = args
         .iter()
         .position(|a| a == "--resume")
         .and_then(|pos| args.get(pos + 1).filter(|a| !a.starts_with("--")).cloned());
     let show_resume_picker = args.iter().any(|a| a == "--resume") && resume_id.is_none();
+
+    app.web_port = web_port;
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BackendEvent>(100);
 
@@ -190,10 +224,7 @@ async fn run_app(
     Ok(())
 }
 
-async fn send_command(
-    writer: &mut BufWriter<ChildStdin>,
-    cmd: &FrontendCommand,
-) -> Result<()> {
+async fn send_command(writer: &mut BufWriter<ChildStdin>, cmd: &FrontendCommand) -> Result<()> {
     let line = serde_json::to_string(cmd)? + "\n";
     writer.write_all(line.as_bytes()).await?;
     writer.flush().await?;
@@ -410,13 +441,21 @@ async fn handle_key(
                 return Ok(());
             }
             KeyCode::Backspace => {
-                let mut q = app.search.as_ref().map(|s| s.query.clone()).unwrap_or_default();
+                let mut q = app
+                    .search
+                    .as_ref()
+                    .map(|s| s.query.clone())
+                    .unwrap_or_default();
                 q.pop();
                 app.search_conversation(&q);
                 return Ok(());
             }
             KeyCode::Char(c) => {
-                let mut q = app.search.as_ref().map(|s| s.query.clone()).unwrap_or_default();
+                let mut q = app
+                    .search
+                    .as_ref()
+                    .map(|s| s.query.clone())
+                    .unwrap_or_default();
                 q.push(c);
                 app.search_conversation(&q);
                 return Ok(());
@@ -455,7 +494,9 @@ async fn handle_key(
                             app.completion_mode = CompletionMode::None;
                         }
                     }
-                    CompletionMode::FileRef { selected, filter, .. } => {
+                    CompletionMode::FileRef {
+                        selected, filter, ..
+                    } => {
                         let files = app.filtered_files(&filter);
                         if let Some(file_path) = files.get(selected) {
                             let current = app.input.lines().join("\n");
@@ -481,7 +522,9 @@ async fn handle_key(
                         filter.push(c);
                         *selected = 0;
                     }
-                    CompletionMode::FileRef { filter, selected, .. } => {
+                    CompletionMode::FileRef {
+                        filter, selected, ..
+                    } => {
                         filter.push(c);
                         *selected = 0;
                     }
@@ -497,7 +540,9 @@ async fn handle_key(
                         *selected = 0;
                         true
                     }
-                    CompletionMode::FileRef { filter, selected, .. } => {
+                    CompletionMode::FileRef {
+                        filter, selected, ..
+                    } => {
                         filter.pop();
                         *selected = 0;
                         true
@@ -514,9 +559,53 @@ async fn handle_key(
         }
     }
 
+    // Help overlay: when open, only respond to close keys.
+    if app.show_help {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
+                app.show_help = false;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
     match key.code {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            send_command(writer, &FrontendCommand::Interrupt {}).await?;
+            let now = std::time::Instant::now();
+            let double_press = app
+                .last_ctrl_c
+                .map(|t| now.duration_since(t).as_millis() < 1000)
+                .unwrap_or(false);
+            app.last_ctrl_c = Some(now);
+
+            if double_press || !app.is_streaming {
+                // Exit on double Ctrl+C or when nothing is running.
+                app.should_quit = true;
+            } else {
+                // Single Ctrl+C while streaming: interrupt the agent.
+                send_command(writer, &FrontendCommand::Interrupt {}).await?;
+                app.conversation.push(app::ConversationEntry {
+                    role: app::Role::System,
+                    text: "\u{26a1} Interrupted".to_string(),
+                });
+                app.is_streaming = false;
+                app.streaming_text.clear();
+            }
+        }
+        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.should_quit = true;
+        }
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.conversation.clear();
+            app.tools.clear();
+            app.streaming_text.clear();
+            app.is_streaming = false;
+            app.search = None;
+            app.conversation.push(app::ConversationEntry {
+                role: app::Role::System,
+                text: "Screen cleared.".to_string(),
+            });
         }
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.agent_mode = app.agent_mode.next();
@@ -574,6 +663,27 @@ async fn handle_key(
                     .next()
                     .map(|s| vec![s.to_string()])
                     .unwrap_or_default();
+
+                // Handle exit/quit locally — never send to backend.
+                if name == "exit" || name == "quit" {
+                    app.should_quit = true;
+                    return Ok(());
+                }
+
+                // Handle clear locally.
+                if name == "clear" {
+                    app.conversation.clear();
+                    app.tools.clear();
+                    app.streaming_text.clear();
+                    app.is_streaming = false;
+                    app.search = None;
+                    app.conversation.push(app::ConversationEntry {
+                        role: app::Role::System,
+                        text: "Screen cleared.".to_string(),
+                    });
+                    return Ok(());
+                }
+
                 app.conversation.push(app::ConversationEntry {
                     role: app::Role::System,
                     text: format!("/{name} {}", args.join(" ")).trim_end().to_string(),
@@ -660,6 +770,14 @@ async fn handle_key(
                 app.input.input(Event::Key(key));
             }
         }
+        KeyCode::Char('?') => {
+            let current = app.input.lines().join("");
+            if current.trim().is_empty() {
+                app.show_help = true;
+            } else if app.focused_pane == FocusedPane::Input {
+                app.input.input(Event::Key(key));
+            }
+        }
         KeyCode::Char('@') => {
             let files = collect_repo_files(&app.project_root);
             app.completion_mode = CompletionMode::FileRef {
@@ -699,7 +817,14 @@ fn collect_files_recursive(
     if depth > 3 || files.len() >= 200 {
         return;
     }
-    let skip = ["target", ".git", "node_modules", "__pycache__", ".venv", "dist"];
+    let skip = [
+        "target",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "dist",
+    ];
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             if files.len() >= 200 {
