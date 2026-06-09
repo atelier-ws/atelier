@@ -1,8 +1,8 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
 use crate::app::{
-    ActiveOverlay, App, CompletionMode, FocusedPane, LeftTab, PendingPermission, RightTab, Role,
-    TabContent, TaskStatus, ToolStatus,
+    ActiveOverlay, App, CompletionMode, FocusedPane, GitRowKind, LeftTab, PendingPermission,
+    RightTab, Role, TabContent, TaskStatus, ToolStatus,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -66,6 +66,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(content_horizontal[2]);
         draw_right_top_pane(frame, app, right_split[0]);
         draw_context_pane(frame, app, right_split[1]);
+        app.pane_rects = Some(crate::app::PaneRects {
+            left: content_horizontal[0],
+            middle: content_horizontal[1],
+            right_top: right_split[0],
+            right_bottom: right_split[1],
+            input: vertical[1],
+        });
+    } else {
+        app.pane_rects = Some(crate::app::PaneRects {
+            left: content_horizontal[0],
+            middle: content_horizontal[1],
+            right_top: Rect::default(),
+            right_bottom: Rect::default(),
+            input: vertical[1],
+        });
     }
 
     draw_input(frame, app, vertical[1]);
@@ -183,13 +198,14 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_files_content(frame: &mut Frame, app: &mut App, area: Rect) {
     let height = area.height as usize;
     if height == 0 {
         return;
     }
     let sel = app.file_tree_selected;
     let offset = if sel >= height { sel - height + 1 } else { 0 };
+    app.files_view_offset = offset;
 
     let mut lines: Vec<Line> = Vec::new();
     for (i, node) in app.file_tree.iter().enumerate().skip(offset).take(height) {
@@ -197,10 +213,15 @@ fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
         if node.gitignored {
             color = Color::DarkGray;
         }
+        let is_hovered = app.hovered_file_idx == Some(i);
         let name_style = if i == sel {
             Style::default()
                 .fg(app.agent_mode.accent_color())
                 .add_modifier(Modifier::BOLD)
+        } else if is_hovered {
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::UNDERLINED)
         } else {
             Style::default().fg(color)
         };
@@ -284,15 +305,17 @@ fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
     }
 }
 
-fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_git_content(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
+    let mut targets: Vec<Option<GitRowKind>> = Vec::new();
 
     // Status section
     if !app.git_status.is_empty() {
         lines.push(Line::from(Span::styled(
-            "  Changes:",
+            "  Changes",
             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )));
+        targets.push(None);
         for f in &app.git_status {
             let color = match f.status.as_str() {
                 s if s.contains('M') => Color::Yellow,
@@ -302,37 +325,52 @@ fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
                 _ => Color::White,
             };
             lines.push(Line::from(vec![
-                Span::styled(format!("  {:3}", f.status), Style::default().fg(color)),
-                Span::styled(f.path.clone(), Style::default().fg(Color::White)),
+                Span::styled(format!("  {:3} ", f.status), Style::default().fg(color)),
+                Span::styled(f.path.clone(), Style::default().fg(color)),
             ]));
+            targets.push(None);
         }
         lines.push(Line::raw(""));
-    } else {
-        lines.push(Line::from(Span::styled(
-            "  Working tree clean \u{2713}",
-            Style::default().fg(Color::Green),
-        )));
-        lines.push(Line::raw(""));
+        targets.push(None);
     }
 
-    // Log section
-    if !app.git_log.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  Recent commits:",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        )));
-        for log_line in &app.git_log {
-            if let Some((hash, rest)) = log_line.split_once(' ') {
+    // History section
+    lines.push(Line::from(Span::styled(
+        "  History",
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+    )));
+    targets.push(None);
+
+    for (i, commit) in app.git_commits.iter().enumerate() {
+        let is_selected = i == app.git_commit_selected;
+        let expand_arrow = if commit.expanded { "\u{25be}" } else { "\u{25b8}" };
+        let msg_style = if is_selected {
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {expand_arrow} "), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{} ", commit.short_hash), Style::default().fg(Color::Yellow)),
+            Span::styled(commit.message.chars().take(40).collect::<String>(), msg_style),
+            Span::styled(format!("  {}", commit.date), Style::default().fg(Color::DarkGray)),
+        ]));
+        targets.push(Some(GitRowKind::Commit(i)));
+
+        if commit.expanded {
+            for file in &commit.files {
                 lines.push(Line::from(vec![
-                    Span::styled(format!("  {hash} "), Style::default().fg(Color::DarkGray)),
-                    Span::styled(rest.to_string(), Style::default().fg(Color::White)),
+                    Span::styled("      \u{f0214} ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(file.clone(), Style::default().fg(Color::Cyan)),
                 ]));
-            } else {
-                lines.push(Line::from(Span::raw(format!("  {log_line}"))));
+                targets.push(Some(GitRowKind::CommitFile(i, file.clone())));
             }
         }
     }
 
+    app.git_row_targets = targets;
     let para = Paragraph::new(lines).scroll((app.git_scroll, 0));
     frame.render_widget(para, area);
 }
@@ -757,7 +795,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Send message"),
         ]),
         Line::from(vec![
-            Span::styled("  Alt+Enter    ", Style::default().fg(Color::Cyan)),
+            Span::styled("  Shift/Alt+Enter ", Style::default().fg(Color::Cyan)),
             Span::raw("New line in message"),
         ]),
         Line::from(vec![
@@ -1223,7 +1261,10 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         if let Some(ref url) = app.tunnel_url {
             welcome_lines.push(Line::from(vec![
                 Span::styled("  Access    ", Style::default().fg(Color::DarkGray)),
-                Span::styled(url.clone(), Style::default().fg(Color::Green)),
+                Span::styled(
+                    url.clone(),
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                ),
             ]));
         } else if let Some(port) = app.web_port {
             welcome_lines.push(Line::from(vec![
@@ -1232,8 +1273,11 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                     format!("http://localhost:{port}"),
                     Style::default().fg(Color::DarkGray),
                 ),
-                Span::styled("  (tunnel connecting...)", Style::default().fg(Color::DarkGray)),
             ]));
+            welcome_lines.push(Line::from(Span::styled(
+                "  \u{27f3} Tunnel starting... (cloudflared / bore)",
+                Style::default().fg(Color::Yellow),
+            )));
         }
 
         if !app.qr_lines.is_empty() {
@@ -1241,7 +1285,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             for qr_line in &app.qr_lines {
                 welcome_lines.push(Line::from(Span::styled(
                     format!("     {qr_line}"),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(Color::White),
                 )));
             }
         }
@@ -1319,7 +1363,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                             for qr_line in &app.qr_lines {
                                 all_lines.push(Line::from(Span::styled(
                                     format!("    {qr_line}"),
-                                    Style::default().fg(Color::DarkGray),
+                                    Style::default().fg(Color::White),
                                 )));
                             }
                             all_lines.push(Line::raw(""));
