@@ -47,6 +47,7 @@ class InteractiveRuntime:
         self._mcp_servers: list[MCPServerProcess] = []
         self._mcp_tools: list[MCPTool] = []
         self._background_tasks: list[dict[str, Any]] = []  # {id, name, status, result}
+        self._share_tokens: dict[str, str] = {}
 
     async def start_session(self, project_root: str | None = None) -> str:
         session_id = uuid.uuid4().hex
@@ -1078,6 +1079,26 @@ class InteractiveRuntime:
                         type="assistant.message",
                         text=f"{msg}\n\nPlease check your credentials and try again.",
                     )
+        elif name == "share":
+            import secrets
+
+            token = secrets.token_urlsafe(12)
+            self._share_tokens[session_id] = token
+
+            local_url = (
+                f"http://localhost:{os.environ.get('ATELIER_WEB_PORT', '7700')}/share/{token}"
+            )
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    f"**Session shared (read-only)**\n\n"
+                    f"Share this URL with collaborators:\n\n"
+                    f"`{local_url}`\n\n"
+                    f"If tunnel is active, use the public URL instead:\n"
+                    f"`<tunnel_url>/share/{token}`\n\n"
+                    f"Collaborators can observe the conversation in real-time but cannot send commands."
+                ),
+            )
         elif name in ("verify", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
