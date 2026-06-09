@@ -1,12 +1,12 @@
 ---
 gsd_state_version: '1.0'  # placeholder; syncStateFrontmatter overwrites on first state.* call
-status: planning
+status: active
 progress:
-  total_phases: 5
-  completed_phases: 0
+  total_phases: 9
+  completed_phases: 5
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 55
 ---
 
 # Project State
@@ -16,7 +16,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Phase-linear warm-prefix reuse — the Plan phase reads Survey's codebase context as a cache hit, not a cold re-read.
-**Current focus:** Phase 1 — Owned Session Core
+**Current focus:** Phase 6 — 4-Pane Layout + Expanded Protocol
 
 ## Current Position
 
