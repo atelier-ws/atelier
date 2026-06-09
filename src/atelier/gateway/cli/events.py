@@ -142,6 +142,7 @@ class ContextUsageUpdated:
     model_context_window: int = 200_000
     cache_efficiency_pct: float = 0.0
     cost_usd: float = 0.0
+    stem_version: str = ""  # STEM_VERSION from stem_prompt.py
 
 
 @dataclass(frozen=True)

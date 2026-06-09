@@ -23,6 +23,7 @@ class OwnedAgentSession:
     phase_linear: bool = True
     messages: list[dict[str, Any]] = field(default_factory=list)
     current_phase: str = "init"
+    current_mode: str = "code"  # never changes the system prompt — only user turn prefix
 
     @classmethod
     def new(
