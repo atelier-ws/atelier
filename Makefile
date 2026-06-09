@@ -29,15 +29,14 @@ EXTERNAL_PERIODS ?= today week month
 #         make prod
 
 dev: ## Install Atelier in editable/dev mode
-	@# This target calls scripts/install.sh --local
-	bash scripts/install.sh --local
+	bash scripts/dev.sh --local
 
 release: ## Build and package for production distribution
 	bash scripts/bundle-prod.sh
 
 prod: ## Build and install from local production build
 	bash scripts/bundle-prod.sh
-	ATELIER_BINARY_MODE=0 ATELIER_LOCAL=1 bash scripts/install.sh
+	bash scripts/dev.sh --local
 
 
 
