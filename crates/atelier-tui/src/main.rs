@@ -74,9 +74,7 @@ async fn main() -> Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    // Do NOT enable MouseCapture — lets terminal handle native text selection
-    // (right-click drag, left-click drag) via Shift+click or terminal mouse mode
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -86,6 +84,7 @@ async fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
+        DisableMouseCapture,
     )?;
 
     child.kill().await.ok();
@@ -814,6 +813,25 @@ async fn handle_key(
         }
     }
 
+    // File explorer navigation: route keys to the explorer when the Files tab
+    // is focused (Tab/BackTab still cycle pane focus so the user can leave).
+    if matches!(app.focused_pane, FocusedPane::Sessions)
+        && matches!(app.left_tab, LeftTab::Files)
+        && !matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
+    {
+        if key.code == KeyCode::Enter {
+            let current = app.file_explorer.current();
+            if !current.is_dir {
+                let path = current.path.to_string_lossy().to_string();
+                app.open_file_tab(path);
+                return Ok(());
+            }
+        }
+        let event = crossterm::event::Event::Key(key);
+        app.file_explorer.handle(&event).ok();
+        return Ok(());
+    }
+
     match key.code {
         #[cfg(feature = "clipboard")]
         KeyCode::Char('c' | 'C')
@@ -1057,7 +1075,7 @@ async fn handle_key(
                     app.active_overlay = ActiveOverlay::Help;
                     return Ok(());
                 }
-                if name == "agents" || name == "mode" {
+                if name == "agents" {
                     app.active_overlay = ActiveOverlay::AgentPicker { selected: 0 };
                     return Ok(());
                 }
