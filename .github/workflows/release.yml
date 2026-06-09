@@ -114,9 +114,9 @@ jobs:
 
           ### Installation
 
-          \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
-          \`\`\`
+           \`\`\`bash
+           curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+           \`\`\`
 
           ### Assets
           - \`atelier-${VERSION}.tar.gz\` — source distribution
