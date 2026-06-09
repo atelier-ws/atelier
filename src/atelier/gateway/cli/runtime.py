@@ -106,7 +106,43 @@ class InteractiveRuntime:
                     stream=True,
                 )
             except Exception as exc:  # noqa: BLE001 - fall back gracefully
-                yield RuntimeErrorEvent(type="error", message=f"LLM call failed: {exc}")
+                err_str = str(exc)
+                if (
+                    "API_KEY_SERVICE_BLOCKED" in err_str
+                    or "PERMISSION_DENIED" in err_str
+                    or "403" in err_str
+                ):
+                    from atelier.core.capabilities.cross_vendor_routing.configuration import (
+                        detect_api_key_vendors,
+                    )
+
+                    other_vendors = [
+                        v for v in detect_api_key_vendors() if "google" not in v.lower()
+                    ]
+                    fallback_model = os.environ.get("ATELIER_LITELLM_MODEL", "gpt-4o-mini")
+                    if other_vendors and model != fallback_model:
+                        yield RuntimeErrorEvent(
+                            type="error",
+                            message=(
+                                f"Provider {model!r} blocked (API_KEY_SERVICE_BLOCKED). "
+                                f"Retrying with {fallback_model!r}."
+                            ),
+                        )
+                        async for event in self._agent_loop(
+                            session_id,
+                            messages,
+                            model=fallback_model,
+                            max_iterations=max_iterations - 1,
+                        ):
+                            yield event
+                    else:
+                        yield RuntimeErrorEvent(
+                            type="error", message=f"LLM call failed: {exc}"
+                        )
+                else:
+                    yield RuntimeErrorEvent(
+                        type="error", message=f"LLM call failed: {exc}"
+                    )
                 return
 
             for chunk in stream:
