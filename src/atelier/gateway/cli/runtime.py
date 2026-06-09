@@ -948,6 +948,104 @@ class InteractiveRuntime:
                 yield AssistantMessage(type="assistant.message", text=f"**(btw)** {content}")
             except Exception as exc:  # noqa: BLE001 - ephemeral call is best-effort
                 yield RuntimeErrorEvent(type="error", message=f"/btw failed: {exc}")
+        elif name == "auth":
+            from atelier.core.capabilities.auth.wizard import (
+                PROVIDER_CONFIGS,
+                list_provider_models,
+                load_saved_credentials,
+                save_credentials,
+                validate_provider,
+            )
+            from atelier.gateway.cli.events import ChoiceRequested
+
+            if not args:
+                saved = load_saved_credentials()
+                configured_keys = set(saved.keys())
+                lines = ["**Provider Authentication**\n"]
+                lines.append("| Provider | Status | Keys |")
+                lines.append("|----------|--------|------|")
+                for _pid, cfg in PROVIDER_CONFIGS.items():
+                    keys = [f["name"] for f in cfg["fields"]]
+                    has_all = all(k in configured_keys or k in os.environ for k in keys)
+                    status = "✓ configured" if has_all else "○ not set"
+                    lines.append(f"| {cfg['name'][:25]} | {status} | {', '.join(keys[:2])} |")
+                lines.append("\nTo configure a provider: `/auth <provider-id>`")
+                lines.append("Example: `/auth anthropic`, `/auth openai`, `/auth groq`")
+                lines.append(f"Supported: {', '.join(PROVIDER_CONFIGS.keys())}")
+                yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+                return
+
+            provider_id = args[0].lower()
+            cfg = PROVIDER_CONFIGS.get(provider_id)
+            if not cfg:
+                yield RuntimeErrorEvent(
+                    type="error",
+                    message=f"Unknown provider: {provider_id!r}. Try: {', '.join(PROVIDER_CONFIGS.keys())}",
+                )
+                return
+
+            fields_text = "\n".join(f"  • {f['label']}" for f in cfg["fields"])
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    f"**Configuring {cfg['name']}**\n\n"
+                    f"Required credentials:\n{fields_text}\n\n"
+                    f"Get your credentials at: {cfg['link']}\n\n"
+                    f"Enter credentials in order (one per message):"
+                ),
+            )
+
+            collected: dict[str, str] = {}
+            for field_cfg in cfg["fields"]:
+                field_name = field_cfg["name"]
+                default = field_cfg.get("default", "")
+                prompt_text = f"{field_cfg['label']}" + (
+                    f" [default: {default}]" if default else ""
+                )
+                choice_id = f"auth-{field_name}"
+                self._pending_permissions[choice_id] = {"approved": None, "response": None}
+                yield ChoiceRequested(
+                    type="choice.requested",
+                    id=choice_id,
+                    question=prompt_text,
+                    choices=[f"Use default ({default})"] if default else [],
+                    allow_freeform=True,
+                )
+                for _ in range(600):
+                    await asyncio.sleep(0.1)
+                    resp = self._pending_permissions.get(choice_id, {}).get("response")
+                    if resp is not None:
+                        break
+                val = str(
+                    self._pending_permissions.get(choice_id, {}).get("response", default)
+                    or default
+                )
+                if val:
+                    collected[field_name] = val
+
+            if collected:
+                ok, msg = validate_provider(provider_id, collected)
+                if ok:
+                    save_credentials(collected)
+                    for k, v in collected.items():
+                        os.environ[k] = v
+                    yield AssistantMessage(
+                        type="assistant.message",
+                        text=f"{msg}\n\nCredentials saved to `~/.atelier/.env`",
+                    )
+                    models = list_provider_models(provider_id)
+                    if models:
+                        yield AssistantMessage(
+                            type="assistant.message",
+                            text="Available models:\n"
+                            + "\n".join(f"- `{m}`" for m in models)
+                            + f"\n\nUse: `/model {models[0]}`",
+                        )
+                else:
+                    yield AssistantMessage(
+                        type="assistant.message",
+                        text=f"{msg}\n\nPlease check your credentials and try again.",
+                    )
         elif name in ("verify", "diff"):
             yield AssistantMessage(
                 type="assistant.message",

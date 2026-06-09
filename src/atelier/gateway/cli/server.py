@@ -86,6 +86,10 @@ async def run_ndjson_server(
     ``interrupt`` commands from stdin (one JSON object per line) and writes
     ``AtelierEvent`` objects to stdout as NDJSON.
     """
+    from atelier.core.capabilities.auth.wizard import load_env_into_process
+
+    load_env_into_process()
+
     runtime = InteractiveRuntime()
 
     mitm_proc = None
