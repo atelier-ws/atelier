@@ -123,6 +123,24 @@ IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${DISPLAY_IN_TOK:-}" ] && DISPLAY_IN_TOK="0"
 [ -z "${DISPLAY_CACHE_TOK:-}" ] && DISPLAY_CACHE_TOK="0"
 [ -z "${DISPLAY_OUT_TOK:-}" ] && DISPLAY_OUT_TOK="0"
+# Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
+# we snapshot the cumulative live cost at that moment and subtract it from then
+# on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
+# is process-cumulative and does not reset on /clear; the transcript buckets do.)
+if [ -n "${SESSION_ID:-}" ]; then
+  _ATELIER_COST_RESET="${ATELIER_STATUS_ROOT}/statusline_cost_reset/${SESSION_ID}"
+  _ATELIER_COST_BASE="${ATELIER_STATUS_ROOT}/statusline_cost_baseline/${SESSION_ID}"
+  if [ -f "${_ATELIER_COST_RESET}" ]; then
+    mkdir -p "${ATELIER_STATUS_ROOT}/statusline_cost_baseline" 2>/dev/null
+    printf '%s' "${COST:-0}" >"${_ATELIER_COST_BASE}" 2>/dev/null
+    rm -f "${_ATELIER_COST_RESET}" 2>/dev/null
+  fi
+  if [ -f "${_ATELIER_COST_BASE}" ]; then
+    _ATELIER_COST_BASE_VAL=$(cat "${_ATELIER_COST_BASE}" 2>/dev/null)
+    COST=$(awk "BEGIN { d=${COST:-0}-${_ATELIER_COST_BASE_VAL:-0}; if (d<0) d=0; printf \"%.6f\", d }" 2>/dev/null || printf '%s' "${COST}")
+  fi
+fi
+
 # Cost = max(transcript-derived, live Claude cost). Both are cumulative; we
 # trust whichever is larger so the very first frame of a resumed session
 TOTAL_COST=$(awk "BEGIN { a=${SESSION_BASE_COST:-0}; b=${COST:-0}; printf \"%.3f\", (a>b?a:b) }" 2>/dev/null || echo "0")
