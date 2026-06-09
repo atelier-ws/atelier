@@ -160,9 +160,10 @@ def _exec_rust_tui(root: Path) -> None:
     Forwarded CLI flags (passed through ``sys.argv``):
     - ``--resume [<session-id>]`` — resume a saved session, or show an
       interactive session picker when no id is given.
-    - ``--web [<port>]`` — also start a browser bridge (SSE) on ``<port>``
-      (default 7777) so the session is viewable at ``http://localhost:<port>``.
     - ``--mitm`` — capture LLM traffic via mitmdump.
+
+    The web browser bridge and public tunnel are started automatically by the
+    Rust binary on an available port; no flags are required.
     """
     import os
     import shutil
@@ -202,7 +203,7 @@ def _exec_rust_tui(root: Path) -> None:
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--web", "--resume"):
+        if arg == "--resume":
             forwarded.append(arg)
             nxt = argv[i + 1] if i + 1 < len(argv) else None
             if nxt is not None and not nxt.startswith("--"):
