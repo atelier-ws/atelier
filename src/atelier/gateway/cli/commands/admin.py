@@ -124,7 +124,7 @@ make check-agent-context  # verify generated files are up to date
 | Command | Description |
 |---|---|
 | ``uv run atelier init`` | Initialize project for Atelier (store, seed, index) |
-| ``uv run atelier init --project`` | Also set up .gitignore, CLAUDE.md, AGENTS.md, .mcp.json |
+| ``uv run atelier init --project`` | Also set up .gitignore, CLAUDE.md, AGENTS.md |
 | ``uv run atelier code index`` | Build or refresh code index |
 | ``uv run atelier search <query>`` | Semantic code search |
 | ``uv run atelier status`` | Show runtime status (runs dashboard) |
@@ -203,23 +203,13 @@ This project uses Atelier for code intelligence, context reuse, and agent reason
 
 | Command | Description |
 |---|---|
-| ``atelier init`` | Initialize project (gitignore, MCP config, host files) |
+| ``atelier init`` | Initialize project (gitignore, host files) |
 | ``atelier code index`` | Build or refresh code index |
 | ``atelier search <query>`` | Semantic search across the codebase |
 | ``atelier status`` | Show runtime status |
 | ``atelier doctor`` | Run diagnostics |
 """
 
-
-_ATELIER_MCP_JSON_TEMPLATE = """{
-  "mcpServers": {
-    "atelier": {
-      "command": "atelier-mcp",
-      "args": ["--host", "mcp"]
-    }
-  }
-  }
-  """
 
 _RUNTIME_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "general", "explore", "plan", "research", "review")
 _HOST_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "explore", "plan", "research", "review")
@@ -585,28 +575,6 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
         else:
             results["agents_md"] = ["AGENTS.md already has Atelier guidance"]
 
-    # .mcp.json
-    mcp_path = git_root / ".mcp.json"
-    if not mcp_path.exists():
-        mcp_path.write_text(_ATELIER_MCP_JSON_TEMPLATE.lstrip(), encoding="utf-8")
-        results["mcp_json"] = ["created .mcp.json"]
-    else:
-        try:
-            existing_mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
-            servers = existing_mcp.get("mcpServers", {})
-            if "atelier" in servers:
-                results["mcp_json"] = [".mcp.json already has atelier server"]
-            else:
-                atelier_config = json.loads(_ATELIER_MCP_JSON_TEMPLATE)
-                servers["atelier"] = atelier_config["mcpServers"]["atelier"]
-                mcp_path.write_text(
-                    json.dumps(existing_mcp, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-                results["mcp_json"] = ["added atelier server to existing .mcp.json"]
-        except (json.JSONDecodeError, KeyError):
-            results["mcp_json"] = [".mcp.json exists but could not be updated (parse error)"]
-
     return results
 
 
@@ -703,7 +671,7 @@ def _parse_since_arg(value: str) -> datetime:
 @click.option(
     "--project",
     is_flag=True,
-    help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md, .mcp.json.",
+    help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md.",
 )
 @click.option(
     "--configure-models/--no-configure-models",
