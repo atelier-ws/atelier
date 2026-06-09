@@ -3,9 +3,82 @@
 use crate::protocol::BackendEvent;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
-use ratatui_explorer::FileExplorer;
 use ratatui_textarea::TextArea;
 use serde_json::Value;
+use std::path::Path;
+
+/// A single row in the manual file tree (flat, with depth + expand state).
+pub struct TreeNode {
+    pub path: String,
+    pub name: String,
+    pub is_dir: bool,
+    pub depth: usize,
+    pub expanded: bool,
+    pub gitignored: bool,
+}
+
+/// Read `.gitignore` patterns from the project root (one per non-comment line).
+pub fn load_gitignore_patterns(root: &str) -> Vec<String> {
+    let gitignore = Path::new(root).join(".gitignore");
+    if !gitignore.exists() {
+        return vec![];
+    }
+    std::fs::read_to_string(gitignore)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+/// Coarse gitignore match against a relative path (substring/prefix heuristic).
+pub fn is_gitignored(rel_path: &str, patterns: &[String]) -> bool {
+    let path_lower = rel_path.to_lowercase();
+    patterns.iter().any(|p| {
+        let p_lower = p.to_lowercase().trim_end_matches('/').trim_start_matches('/').to_string();
+        if p_lower.is_empty() {
+            return false;
+        }
+        path_lower == p_lower
+            || path_lower.starts_with(&format!("{p_lower}/"))
+            || path_lower
+                .split('/')
+                .any(|seg| seg == p_lower)
+    })
+}
+
+/// Read one directory level into sorted tree nodes (dirs first, then files).
+/// Skips `.git`. Marks gitignored entries so the UI can render them greyed.
+fn read_dir_nodes(dir: &Path, depth: usize, root: &Path, patterns: &[String]) -> Vec<TreeNode> {
+    let mut entries: Vec<std::fs::DirEntry> =
+        std::fs::read_dir(dir).into_iter().flatten().flatten().collect();
+    entries.sort_by_key(|e| {
+        let is_dir = e.path().is_dir();
+        (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+    });
+    entries
+        .into_iter()
+        .filter(|e| e.file_name().to_string_lossy() != ".git")
+        .map(|e| {
+            let path = e.path();
+            let is_dir = path.is_dir();
+            let name = e.file_name().to_string_lossy().to_string();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            TreeNode {
+                gitignored: is_gitignored(&rel, patterns),
+                path: path.to_string_lossy().to_string(),
+                name,
+                is_dir,
+                depth,
+                expanded: false,
+            }
+        })
+        .collect()
+}
 
 /// Parse `/sessions` markdown output into session list entries.
 /// Expected line format: `- ``<id>`` — <date time> (<size>KB)`
@@ -462,12 +535,17 @@ pub struct App<'a> {
     pub file_filter: String,
     // Mouse hit-test areas for clickable tabs (rebuilt each frame)
     pub tab_click_areas: Option<Vec<(String, Rect)>>,
-    pub file_explorer: FileExplorer,
+    // Manual file tree (devicons-style colors, gitignored shown greyed).
+    pub file_tree: Vec<TreeNode>,
+    pub file_tree_selected: usize,
+    pub gitignore_patterns: Vec<String>,
 }
 
 impl<'a> App<'a> {
     pub fn new(project_root: String) -> Self {
-        let file_explorer = FileExplorer::new().expect("failed to create file explorer");
+        let gitignore_patterns = load_gitignore_patterns(&project_root);
+        let root = Path::new(&project_root);
+        let file_tree = read_dir_nodes(root, 0, root, &gitignore_patterns);
         let mut app = App {
             conversation: Vec::new(),
             tools: Vec::new(),
@@ -527,10 +605,60 @@ impl<'a> App<'a> {
             git_scroll: 0,
             file_filter: String::new(),
             tab_click_areas: None,
-            file_explorer,
+            file_tree,
+            file_tree_selected: 0,
+            gitignore_patterns,
         };
         app.refresh_git_status();
         app
+    }
+
+    /// Move the file-tree selection up one row.
+    pub fn file_tree_up(&mut self) {
+        self.file_tree_selected = self.file_tree_selected.saturating_sub(1);
+    }
+
+    /// Move the file-tree selection down one row.
+    pub fn file_tree_down(&mut self) {
+        if self.file_tree_selected + 1 < self.file_tree.len() {
+            self.file_tree_selected += 1;
+        }
+    }
+
+    /// Path + is_dir of the currently selected tree node, if any.
+    pub fn file_tree_selected_path(&self) -> Option<(String, bool)> {
+        self.file_tree
+            .get(self.file_tree_selected)
+            .map(|n| (n.path.clone(), n.is_dir))
+    }
+
+    /// Expand or collapse the selected directory. No-op on files.
+    pub fn file_tree_toggle(&mut self) {
+        let i = self.file_tree_selected;
+        let Some(node) = self.file_tree.get(i) else {
+            return;
+        };
+        if !node.is_dir {
+            return;
+        }
+        let depth = node.depth;
+        if node.expanded {
+            self.file_tree[i].expanded = false;
+            let mut j = i + 1;
+            while j < self.file_tree.len() && self.file_tree[j].depth > depth {
+                j += 1;
+            }
+            self.file_tree.drain(i + 1..j);
+        } else {
+            let path = node.path.clone();
+            let root = Path::new(&self.project_root).to_path_buf();
+            let children =
+                read_dir_nodes(Path::new(&path), depth + 1, &root, &self.gitignore_patterns);
+            self.file_tree[i].expanded = true;
+            for (k, child) in children.into_iter().enumerate() {
+                self.file_tree.insert(i + 1 + k, child);
+            }
+        }
     }
 
     fn push_system(&mut self, text: String) {
