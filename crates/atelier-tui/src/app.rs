@@ -113,6 +113,55 @@ pub fn fuzzy_score(path: &str, query: &str) -> i32 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TabContent {
+    Conversation,             // permanent, can't close
+    FileView(String),         // path to file
+    DiffView(String, String), // (filename, diff_text) side-by-side
+}
+
+impl TabContent {
+    pub fn title(&self) -> String {
+        match self {
+            Self::Conversation => "Conversation".to_string(),
+            Self::FileView(p) => std::path::Path::new(p)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| p.clone()),
+            Self::DiffView(f, _) => format!(
+                "\u{0394} {}",
+                std::path::Path::new(f)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| f.clone())
+            ),
+        }
+    }
+    pub fn closeable(&self) -> bool {
+        !matches!(self, Self::Conversation)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum LeftTab {
+    Sessions,
+    Files,
+    Git,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum RightTab {
+    Tools,
+    Tasks,
+    Subagents,
+}
+
+#[derive(Debug, Clone)]
+pub struct GitFile {
+    pub status: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum FocusedPane {
     Input,
     Conversation,
@@ -141,7 +190,6 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("memory", "Search Atelier memory: /memory <query>"),
     ("route", "Show routing decision: /route <task>"),
     ("approve", "Approve pending permission request"),
-    ("deny", "Deny pending permission request"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
@@ -378,6 +426,20 @@ pub struct App<'a> {
     pub background_tasks: Vec<BackgroundTask>,
     pub reverse_search: Option<ReverseSearch>,
     pub prompt_suggestions: Vec<String>,
+    // Left pane
+    pub left_tab: LeftTab,
+    pub left_hidden: bool,
+    pub git_status: Vec<GitFile>,
+    // Middle pane (tabbed)
+    pub middle_tabs: Vec<TabContent>,
+    pub middle_tab_idx: usize,
+    pub middle_tab_scroll: Vec<u16>,
+    // Right pane
+    pub right_tab: RightTab,
+    pub right_hidden: bool,
+    // URL/QR header
+    pub local_url: Option<String>,
+    pub pinned_header: Option<String>,
 }
 
 impl<'a> App<'a> {
@@ -425,6 +487,16 @@ impl<'a> App<'a> {
             background_tasks: Vec::new(),
             reverse_search: None,
             prompt_suggestions: Vec::new(),
+            left_tab: LeftTab::Sessions,
+            left_hidden: false,
+            git_status: Vec::new(),
+            middle_tabs: vec![TabContent::Conversation],
+            middle_tab_idx: 0,
+            middle_tab_scroll: vec![0],
+            right_tab: RightTab::Tools,
+            right_hidden: false,
+            local_url: None,
+            pinned_header: None,
         }
     }
 
@@ -437,6 +509,60 @@ impl<'a> App<'a> {
 
     pub fn push_system_pub(&mut self, text: String) {
         self.push_system(text);
+    }
+
+    pub fn open_file_tab(&mut self, path: String) {
+        if !self
+            .middle_tabs
+            .iter()
+            .any(|t| matches!(t, TabContent::FileView(p) if *p == path))
+        {
+            self.middle_tabs.push(TabContent::FileView(path));
+            self.middle_tab_scroll.push(0);
+        }
+        self.middle_tab_idx = self.middle_tabs.len() - 1;
+    }
+
+    pub fn open_diff_tab(&mut self, filename: String, diff: String) {
+        self.middle_tabs.push(TabContent::DiffView(filename, diff));
+        self.middle_tab_scroll.push(0);
+        self.middle_tab_idx = self.middle_tabs.len() - 1;
+    }
+
+    pub fn close_tab(&mut self, idx: usize) {
+        if idx < self.middle_tabs.len() && self.middle_tabs[idx].closeable() {
+            self.middle_tabs.remove(idx);
+            if idx < self.middle_tab_scroll.len() {
+                self.middle_tab_scroll.remove(idx);
+            }
+            self.middle_tab_idx = self
+                .middle_tab_idx
+                .saturating_sub(1)
+                .min(self.middle_tabs.len().saturating_sub(1));
+        }
+    }
+
+    pub fn refresh_git_status(&mut self) {
+        let output = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&self.project_root)
+            .output();
+        if let Ok(out) = output {
+            let text = String::from_utf8_lossy(&out.stdout);
+            self.git_status = text
+                .lines()
+                .filter_map(|l| {
+                    if l.len() >= 4 {
+                        Some(GitFile {
+                            status: l[0..2].trim().to_string(),
+                            path: l[3..].to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
     }
 
     /// Apply an incoming backend event to the app state.
