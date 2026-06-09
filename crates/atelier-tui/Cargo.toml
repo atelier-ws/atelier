@@ -25,6 +25,8 @@ tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
 portable-pty = "0.9"
 futures-util = "0.3"
 base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+dirs = "5"
 
 [features]
 default = ["clipboard"]

@@ -280,11 +280,20 @@ fn draw_fuzzy_finder(frame: &mut Frame, ff: &FuzzyFinder, app: &App, area: Rect)
 }
 
 fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let tab_titles: Vec<Line> = vec![
-        styled_tab(app, " Sessions ", "left_sessions", matches!(app.left_tab, LeftTab::Sessions)),
-        styled_tab(app, " Files ", "left_files", matches!(app.left_tab, LeftTab::Files)),
-        styled_tab(app, " Git ", "left_git", matches!(app.left_tab, LeftTab::Git)),
+    let sess_dot = if app.sessions_activity { "\u{25cf} " } else { "" };
+    let labels: [(String, &str, bool); 3] = [
+        (
+            format!("{sess_dot}\u{ebc7}  Sessions "),
+            "left_sessions",
+            matches!(app.left_tab, LeftTab::Sessions),
+        ),
+        (" \u{f07b}  Files ".to_string(), "left_files", matches!(app.left_tab, LeftTab::Files)),
+        (" \u{e702}  Git ".to_string(), "left_git", matches!(app.left_tab, LeftTab::Git)),
     ];
+    let tab_titles: Vec<Line> = labels
+        .iter()
+        .map(|(label, id, active)| styled_tab(app, label, id, *active))
+        .collect();
     let selected = match app.left_tab {
         LeftTab::Sessions => 0,
         LeftTab::Files => 1,
@@ -294,15 +303,13 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     // Record tab hit-test areas using actual title widths (not equal division).
-    // Left tabs: " Sessions " / " Files " / " Git " — measure each (+1 for the dot prefix).
     if let Some(ref mut areas) = app.tab_click_areas {
-        let tab_labels = [(" Sessions ", "left_sessions"), (" Files ", "left_files"), (" Git ", "left_git")];
         let mut x = layout[0].x;
-        for (i, (label, id)) in tab_labels.iter().enumerate() {
+        for (i, (label, id, _)) in labels.iter().enumerate() {
             let w = label.chars().count() as u16 + 1;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
-            if i < tab_labels.len() - 1 {
+            if i < labels.len() - 1 {
                 x += 1; // account for the 1-char divider between tabs
             }
         }
@@ -376,7 +383,7 @@ fn draw_files_content(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 /// Devicons-style icon + color per file type. Directories get a folder glyph.
-fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
+pub(crate) fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
     if is_dir {
         return ("\u{f024b} ", Color::Cyan); // nf-md-folder
     }
@@ -442,6 +449,7 @@ fn file_icon_color(filename: &str, is_dir: bool) -> (&'static str, Color) {
 fn draw_git_content(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
     let mut targets: Vec<Option<GitRowKind>> = Vec::new();
+    let mut targets_status_idx: usize = 0;
 
     // Status section
     if !app.git_status.is_empty() {
@@ -462,7 +470,8 @@ fn draw_git_content(frame: &mut Frame, app: &mut App, area: Rect) {
                 Span::styled(format!("  {:3} ", f.status), Style::default().fg(color)),
                 Span::styled(f.path.clone(), Style::default().fg(color)),
             ]));
-            targets.push(None);
+            targets.push(Some(GitRowKind::StatusFile(targets_status_idx)));
+            targets_status_idx += 1;
         }
         lines.push(Line::raw(""));
         targets.push(None);
@@ -600,6 +609,7 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_file_content(frame: &mut Frame, content: &str, ext: &str, scroll: u16, area: Rect) {
+    use crate::highlight::render_file_line;
     let lines: Vec<Line> = content
         .lines()
         .enumerate()
@@ -608,7 +618,7 @@ fn draw_file_content(frame: &mut Frame, content: &str, ext: &str, scroll: u16, a
                 format!("{:4} \u{2502} ", i + 1),
                 Style::default().fg(Color::DarkGray),
             )];
-            spans.extend(highlight_line(l, ext));
+            spans.extend(render_file_line(l, ext));
             Line::from(spans)
         })
         .collect();
@@ -616,71 +626,6 @@ fn draw_file_content(frame: &mut Frame, content: &str, ext: &str, scroll: u16, a
         .scroll((scroll, 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(para, area);
-}
-
-fn highlight_line(line: &str, ext: &str) -> Vec<Span<'static>> {
-    let keywords_color: Option<(&[&str], Color)> = match ext {
-        "py" => Some((
-            &[
-                "def ", "class ", "import ", "from ", "return ", "if ", "else:", "elif ", "for ",
-                "while ", "with ", "async ", "await ", "lambda ", "yield ",
-            ],
-            Color::Cyan,
-        )),
-        "rs" => Some((
-            &[
-                "fn ", "let ", "mut ", "pub ", "use ", "impl ", "struct ", "enum ", "trait ",
-                "async ", "await ", "match ", "if ", "else ", "for ", "while ", "return ", "mod ",
-            ],
-            Color::Cyan,
-        )),
-        "ts" | "js" => Some((
-            &[
-                "function ", "const ", "let ", "var ", "class ", "import ", "export ", "return ",
-                "if ", "else ", "for ", "while ", "async ", "await ", "new ",
-            ],
-            Color::Cyan,
-        )),
-        _ => None,
-    };
-
-    let comment_prefix = match ext {
-        "py" | "sh" | "yaml" | "toml" => "#",
-        "rs" | "ts" | "js" | "cpp" | "c" => "//",
-        _ => "",
-    };
-
-    let trimmed = line.trim_start();
-
-    if !comment_prefix.is_empty() && trimmed.starts_with(comment_prefix) {
-        return vec![Span::styled(
-            line.to_string(),
-            Style::default().fg(Color::DarkGray),
-        )];
-    }
-
-    if let Some((keywords, kw_color)) = keywords_color {
-        for kw in keywords {
-            if trimmed.starts_with(kw) {
-                let indent_len = line.len() - trimmed.len();
-                let indent = &line[..indent_len];
-                return vec![
-                    Span::raw(indent.to_string()),
-                    Span::styled(kw.to_string(), Style::default().fg(kw_color)),
-                    Span::raw(trimmed[kw.len()..].to_string()),
-                ];
-            }
-        }
-    }
-
-    if (trimmed.starts_with('"') || trimmed.starts_with('\'')) && trimmed.len() > 1 {
-        return vec![Span::styled(
-            line.to_string(),
-            Style::default().fg(Color::Green),
-        )];
-    }
-
-    vec![Span::raw(line.to_string())]
 }
 
 fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
@@ -743,11 +688,33 @@ fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
 }
 
 fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let tab_titles = [
-        styled_tab(app, " Tools ", "right_tools", matches!(app.right_tab, RightTab::Tools)),
-        styled_tab(app, " Tasks ", "right_tasks", matches!(app.right_tab, RightTab::Tasks)),
-        styled_tab(app, " Agents ", "right_agents", matches!(app.right_tab, RightTab::Subagents)),
+    // If user is browsing git commits, show commit details instead of normal tools.
+    if matches!(app.left_tab, LeftTab::Git) {
+        if let Some(detail) = app.selected_commit_detail.clone() {
+            draw_commit_detail(frame, app, &detail, area);
+            return;
+        }
+    }
+
+    let tools_dot = if app.tools_activity { "\u{25cf} " } else { "" };
+    let tasks_dot = if app.tasks_activity { "\u{25cf} " } else { "" };
+    let labels: [(String, &str, bool); 3] = [
+        (
+            format!("{tools_dot}\u{e28f}  Tools "),
+            "right_tools",
+            matches!(app.right_tab, RightTab::Tools),
+        ),
+        (
+            format!("{tasks_dot}\u{f0ae}  Tasks "),
+            "right_tasks",
+            matches!(app.right_tab, RightTab::Tasks),
+        ),
+        (" \u{f007}  Agents ".to_string(), "right_agents", matches!(app.right_tab, RightTab::Subagents)),
     ];
+    let tab_titles: Vec<Line> = labels
+        .iter()
+        .map(|(label, id, active)| styled_tab(app, label, id, *active))
+        .collect();
     let selected = match app.right_tab {
         RightTab::Tools => 0,
         RightTab::Tasks => 1,
@@ -757,20 +724,18 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     if let Some(ref mut areas) = app.tab_click_areas {
-        // Use actual tab label widths for accurate hit detection (+1 for the dot prefix)
-        let tab_labels = [(" Tools ", "right_tools"), (" Tasks ", "right_tasks"), (" Agents ", "right_agents")];
         let mut x = layout[0].x;
-        for (i, (label, id)) in tab_labels.iter().enumerate() {
+        for (i, (label, id, _)) in labels.iter().enumerate() {
             let w = label.chars().count() as u16 + 1;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
-            if i < tab_labels.len() - 1 {
+            if i < labels.len() - 1 {
                 x += 1; // account for the default 1-char divider between tabs
             }
         }
     }
 
-    let tabs = Tabs::new(tab_titles.to_vec())
+    let tabs = Tabs::new(tab_titles)
         .select(selected)
         .style(Style::default().fg(Color::DarkGray))
         .highlight_style(
@@ -791,6 +756,38 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         RightTab::Tasks => draw_tasks_content(frame, app, inner),
         RightTab::Subagents => draw_subagents_content(frame, app, inner),
     }
+}
+
+fn draw_commit_detail(frame: &mut Frame, app: &App, detail: &str, area: Rect) {
+    let lines: Vec<Line> = detail
+        .lines()
+        .map(|l| {
+            if l.starts_with('+') && !l.starts_with("+++") {
+                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Green)))
+            } else if l.starts_with('-') && !l.starts_with("---") {
+                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
+            } else if l.starts_with("commit ") {
+                Line::from(Span::styled(
+                    l.to_string(),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::raw(l.to_string()))
+            }
+        })
+        .collect();
+
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.agent_mode.accent_color()))
+        .title(Span::styled(
+            " Commit Details ",
+            Style::default().fg(app.agent_mode.accent_color()),
+        ));
+    frame.render_widget(
+        Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_agent_picker(frame: &mut Frame, app: &App, selected: usize, area: Rect) {
@@ -1598,6 +1595,32 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_sessions_content(frame: &mut Frame, app: &App, area: Rect) {
+    // If viewing a file, show its code outline instead of the sessions list.
+    if !app.file_outline.is_empty() {
+        let mut lines = vec![Line::from(Span::styled(
+            "  Outline",
+            Style::default().fg(Color::DarkGray),
+        ))];
+        for item in &app.file_outline {
+            let color = match item.kind.as_str() {
+                "fn" | "def" | "async def" => Color::Cyan,
+                "struct" | "class" => Color::Yellow,
+                "impl" | "trait" => Color::Magenta,
+                _ => Color::White,
+            };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {:4} ", item.line),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(format!("{} ", item.kind), Style::default().fg(Color::DarkGray)),
+                Span::styled(item.name.clone(), Style::default().fg(color)),
+            ]));
+        }
+        frame.render_widget(Paragraph::new(lines), area);
+        return;
+    }
+
     let mut lines: Vec<Line> = Vec::new();
 
     let current = if app.session_id.is_empty() {
