@@ -8,12 +8,6 @@ This page starts with the installed product flow. Source-checkout and contributo
 curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
 ```
 
-Or from the main branch (latest development build):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
-```
-
 What the production installer does:
 
 - downloads a pre-compiled Atelier binary for your platform from the latest release
