@@ -22,25 +22,29 @@ from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_SYSTE
 
 logger = logging.getLogger(__name__)
 
-_SURVEY_PROMPT = """\
-Phase: Survey
 
-Read the relevant files and understand the current codebase state. \
-Focus on what already exists that is relevant to the task. \
-Be thorough — the Plan phase will build on your findings here."""
+def _phase_user_message(phase: str, task: str, mode: str = "code") -> str:
+    """Build the user message for a phase, injecting mode context as a prefix.
 
-_PLAN_PROMPT = """\
-Phase: Plan
+    Mode context goes in the user turn, NOT in the system prompt.
+    This keeps the system prefix byte-stable for cache reuse.
+    """
+    mode_prefix = {
+        "code": "[MODE: code — read and edit files]",
+        "explore": "[MODE: explore — read-only, no edits]",
+        "research": "[MODE: research — read and search, no edits]",
+        "plan": "[MODE: plan — read-only, planning focus]",
+    }.get(mode, "[MODE: code]")
 
-Based on your survey above, outline a precise implementation plan. \
-List the files to change and what to do in each. \
-Be specific — the Implement phase will execute this plan exactly."""
+    phase_instructions = {
+        "survey": f"Phase: Survey\n\nRead relevant files and understand the current codebase state for this task:\n{task}",
+        "plan": "Phase: Plan\n\nBased on your survey, outline a precise implementation plan.",
+        "implement": "Phase: Implement\n\nExecute the plan. Make the file edits.",
+        "single": task,
+    }
 
-_IMPLEMENT_PROMPT = """\
-Phase: Implement
-
-Execute the plan you described above. \
-Make the file edits. Be precise and minimal."""
+    instr = phase_instructions.get(phase, task)
+    return f"{mode_prefix}\n\n{instr}"
 
 
 def _provider_cache_style(provider: str, model: str = "") -> str:
@@ -220,14 +224,9 @@ def run_phase_linear(
 
     working: list[dict[str, Any]] = [_system_message(session.provider, session.model)]
     phases = ["survey", "plan"] + ([] if dry_run else ["implement"])
-    phase_prompts = {
-        "survey": f"Task: {task}\n\n{_SURVEY_PROMPT}",
-        "plan": _PLAN_PROMPT,
-        "implement": _IMPLEMENT_PROMPT,
-    }
 
     for phase in phases:
-        prompt = phase_prompts[phase]
+        prompt = _phase_user_message(phase, task, mode=session.current_mode)
         working.append({"role": "user", "content": prompt})
         session.add_user_turn(prompt)
         session.current_phase = phase
@@ -279,7 +278,7 @@ def run_single_shot(
     )
     messages: list[dict[str, Any]] = [
         _system_message(session.provider, session.model),
-        {"role": "user", "content": task},
+        {"role": "user", "content": _phase_user_message("single", task, mode=session.current_mode)},
     ]
     session.add_user_turn(task)
 
