@@ -65,7 +65,7 @@ from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     build_vix_cli_command,
 )
-from atelier.core.capabilities.pricing import usage_cost_usd
+from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
 
 from benchmarks.atelierbench.tasks import BY_ID, TASKS, Task
 
@@ -76,9 +76,7 @@ CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
 VALID_ARMS = ("baseline", "atelier", "atelier-tui", "feature", "eval")
 PERSISTENT_WORKSPACE_ROOT = Path(
-    os.environ.get(
-        "ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces")
-    )
+    os.environ.get("ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces"))
 )
 PROVIDER_ALIASES: dict[str, str] = {
     "aws": "aws-claude",
@@ -190,6 +188,11 @@ You are running in a non-interactive benchmark environment.
 **Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
 Implement the task directly using your available tools and complete the full
 implementation without waiting for user input or approval.
+
+**Be Efficient**: 
+1. **Batch Edits**: Always combine multiple file creations or modifications into a single `mcp__atelier__edit` call. Never create files one-by-one in separate turns.
+2. **Skip exploration**: If the task prompt describes a new feature or a Greenfield project, do not waste turns running `find .` or `ls`. Start scaffolding immediately.
+3. **Avoid filler**: Do not explain what you are about to do. Move straight to tool calls. This prevents hitting output token limits on large implementations.
 
 **Tools**: Use the Atelier MCP tools for all file I/O and shell work:
 `mcp__atelier__edit` to create/modify files, `mcp__atelier__read` to read them,
@@ -385,9 +388,7 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
         url, commit = task.source[1], task.source[2]
         subprocess.run(["git", "clone", "--quiet", url, str(ws)], check=True, timeout=900)
         if commit:
-            subprocess.run(
-                ["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120
-            )
+            subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120)
     else:
         raise ValueError(f"unknown source kind {kind}")
     return ws
@@ -423,9 +424,7 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
     try:
         d = json.loads(stdout)
     except json.JSONDecodeError:
-        return ArmResult(
-            task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path)
-        )
+        return ArmResult(task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path))
     u = d.get("usage", {}) or {}
     model_usage = d.get("modelUsage", {}) or {}
     cost_usd = float(d.get("total_cost_usd", 0.0) or 0.0)
@@ -677,19 +676,14 @@ def _parse_codex_result(
             if not isinstance(total_usage, dict):
                 continue
             token_count_seen = True
-            input_total = _usage_int(
-                total_usage.get("input_tokens") or total_usage.get("inputTokens")
-            )
+            input_total = _usage_int(total_usage.get("input_tokens") or total_usage.get("inputTokens"))
             cache_read_tokens = _usage_int(
                 total_usage.get("cached_input_tokens") or total_usage.get("cachedInputTokens")
             )
             cache_creation_tokens = _usage_int(
-                total_usage.get("cache_creation_input_tokens")
-                or total_usage.get("cacheCreationInputTokens")
+                total_usage.get("cache_creation_input_tokens") or total_usage.get("cacheCreationInputTokens")
             )
-            output_tokens = _usage_int(
-                total_usage.get("output_tokens") or total_usage.get("outputTokens")
-            )
+            output_tokens = _usage_int(total_usage.get("output_tokens") or total_usage.get("outputTokens"))
             input_tokens = max(input_total - cache_read_tokens, 0)
         elif event_type == "item.completed":
             item = event.get("item")
@@ -704,9 +698,7 @@ def _parse_codex_result(
             if not isinstance(usage, dict):
                 continue
             output_tokens = _usage_int(usage.get("output_tokens") or usage.get("outputTokens"))
-            cache_read_tokens = _usage_int(
-                usage.get("cached_input_tokens") or usage.get("cachedInputTokens")
-            )
+            cache_read_tokens = _usage_int(usage.get("cached_input_tokens") or usage.get("cachedInputTokens"))
             input_total = _usage_int(usage.get("input_tokens") or usage.get("inputTokens"))
             input_tokens = max(input_total - cache_read_tokens, 0)
     excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
@@ -768,9 +760,7 @@ def _parse_opencode_result(
             input_total = _usage_int(tokens.get("input"))
             input_tokens = max(input_total - cache_read, 0)
             cache_read_tokens = cache_read
-            cache_creation_tokens = _usage_int(
-                (cache or {}).get("write") if isinstance(cache, dict) else 0
-            )
+            cache_creation_tokens = _usage_int((cache or {}).get("write") if isinstance(cache, dict) else 0)
             output_tokens = _usage_int(tokens.get("output"))
     excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
     return ArmResult(
@@ -844,12 +834,8 @@ def _parse_vix_result(
     model = str(payload.get("model") or "").strip()
     model_for_pricing = model or "claude-sonnet-4.6"
     input_tokens = _usage_int(usage_dict.get("input_tokens") or usage_dict.get("inputTokens"))
-    cache_read_tokens = _usage_int(
-        usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens")
-    )
-    cache_creation_tokens = _usage_int(
-        usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens")
-    )
+    cache_read_tokens = _usage_int(usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens"))
+    cache_creation_tokens = _usage_int(usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens"))
     output_tokens = _usage_int(usage_dict.get("output_tokens") or usage_dict.get("outputTokens"))
     return ArmResult(
         task=task,
@@ -865,8 +851,7 @@ def _parse_vix_result(
         ),
         duration_ms=duration_ms or wall_duration_ms,
         duration_api_ms=duration_ms or wall_duration_ms,
-        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns"))
-        or (1 if result else 0),
+        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns")) or (1 if result else 0),
         input_tokens=input_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,
@@ -892,9 +877,7 @@ def _parse_atelier_run_result(
     cost figures live in the `format_receipt()` block printed by `run start`.
     """
     text = stdout or ""
-    session_match = re.search(r"session=(\S+)", text) or re.search(
-        r"^Session:\s*(\S+)", text, re.MULTILINE
-    )
+    session_match = re.search(r"session=(\S+)", text) or re.search(r"^Session:\s*(\S+)", text, re.MULTILINE)
     session_id = session_match.group(1) if session_match else ""
     model_match = re.search(r"model=(\S+)", text) or re.search(r"Provider:\s*\S+\s*/\s*(\S+)", text)
     model = model_match.group(1) if model_match else ""
@@ -907,8 +890,7 @@ def _parse_atelier_run_result(
     input_tokens = cache_read = cache_write = output_tokens = 0
     phase_lines = 0
     for m in re.finditer(
-        r"input=\s*([\d,]+)\s+cache_read=\s*([\d,]+)"
-        r"\s+cache_write=\s*([\d,]+)\s+output=\s*([\d,]+)",
+        r"input=\s*([\d,]+)\s+cache_read=\s*([\d,]+)" r"\s+cache_write=\s*([\d,]+)\s+output=\s*([\d,]+)",
         text,
     ):
         phase_lines += 1
@@ -1003,9 +985,7 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]
     response_keywords = _extract_keywords(text)
     overlap = task_keywords & response_keywords
     list_item_count = sum(
-        1
-        for line in text.splitlines()
-        if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
+        1 for line in text.splitlines() if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
     )
     if len(overlap) == 0 and list_item_count >= 3:
         return False, f"off-task capability/list response (list_items={list_item_count})", False
@@ -1104,14 +1084,10 @@ def _parse_agent_env_from_host(entries: list[str] | None) -> dict[str, str]:
     for entry in entries or []:
         dest, sep, source = entry.partition("=")
         if not sep or not dest or not source:
-            raise ValueError(
-                f"invalid --agent-env-from-host entry: {entry!r}; expected DEST_KEY=SOURCE_ENV"
-            )
+            raise ValueError(f"invalid --agent-env-from-host entry: {entry!r}; expected DEST_KEY=SOURCE_ENV")
         value = _resolve_host_env_value(source)
         if value is None:
-            raise ValueError(
-                f"missing host environment variable for --agent-env-from-host: {source}"
-            )
+            raise ValueError(f"missing host environment variable for --agent-env-from-host: {source}")
         parsed[dest] = value
     return parsed
 
@@ -1122,17 +1098,14 @@ def _resolve_provider_env(provider: str | None) -> dict[str, str]:
         return {}
     preset_key = PROVIDER_ALIASES.get(provider.lower())
     if preset_key is None:
-        raise ValueError(
-            f"unknown --provider {provider!r}; choices: {', '.join(sorted(PROVIDER_ALIASES))}"
-        )
+        raise ValueError(f"unknown --provider {provider!r}; choices: {', '.join(sorted(PROVIDER_ALIASES))}")
     preset = CLAUDE_PROVIDER_PRESETS[preset_key]
     result: dict[str, str] = dict(preset.env)
     for dest, source in preset.env_from_host.items():
         value = _resolve_host_env_value(source)
         if value is None:
             raise ValueError(
-                f"--provider {provider!r} requires {source!r} but it was not found "
-                f"in the environment or .env files"
+                f"--provider {provider!r} requires {source!r} but it was not found " f"in the environment or .env files"
             )
         result[dest] = value
     return result
@@ -1237,9 +1210,7 @@ def run_arm(
         if cli_driver == "claude":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,
-                prompt="Continue from where you left off."
-                if should_resume_session
-                else task.prompt(),
+                prompt="Continue from where you left off." if should_resume_session else task.prompt(),
                 model=model,
                 workspace=str(ws),
                 agent_command=agent_command,
@@ -1252,9 +1223,7 @@ def run_arm(
                 # state. Persisted next to the workspace so --resume still finds
                 # the prior session transcript.
                 config_dir = _make_baseline_config(
-                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}"
-                    if row_state
-                    else None
+                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}" if row_state else None
                 )
                 env["CLAUDE_CONFIG_DIR"] = str(config_dir)
             if row_state:
@@ -1347,9 +1316,7 @@ def run_arm(
             timeout=timeout,
         )
         wall_duration_ms = int((time.time() - started) * 1000)
-        res = _parse_cli_result(
-            proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms
-        )
+        res = _parse_cli_result(proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms)
         if not res.ok and not proc.stdout.strip():
             res.result_excerpt = (proc.stderr or "")[:200]
         return _apply_result_validity(task, res)
@@ -1641,13 +1608,14 @@ def _agg(results: list[ArmResult], arm: str) -> dict[str, float | int]:
         "ok": sum(1 for r in rs if r.ok),
         "valid": sum(1 for r in rs if r.valid),
         "correct": sum(1 for r in rs if r.correct is True),
-        "avg_score": round(sum(float(r.score or 0.0) for r in judged) / len(judged), 3)
-        if judged
-        else 0.0,
+        "avg_score": round(sum(float(r.score or 0.0) for r in judged) / len(judged), 3) if judged else 0.0,
         "cost_usd": round(sum(r.cost_usd for r in rs), 4),
         "duration_ms": sum(r.duration_ms for r in rs),
         "output_tokens": sum(r.output_tokens for r in rs),
         "input_tokens": sum(r.input_tokens for r in rs),
+        "cache_read_tokens": sum(r.cache_read_tokens for r in rs),
+        "cache_creation_tokens": sum(r.cache_creation_tokens for r in rs),
+        "num_turns": sum(r.num_turns for r in rs),
     }
 
 
@@ -1658,28 +1626,62 @@ def report(results: list[ArmResult]) -> str:
     lines = [
         "",
         "=== AtelierBench head-to-head ===",
-        f"{'metric':<16}" + "".join(f"{arm:>14}" for arm in arms),
+        f"{'metric':<22}" + "".join(f"{arm:>14}" for arm in arms),
     ]
 
-    def row(label: str, values: list[float]) -> str:
-        rendered = [f"{value:,.4f}" for value in values]
-        return f"{label:<16}" + "".join(f"{value:>14}" for value in rendered)
+    def row(label: str, values: list[float], format: str = ",.4f") -> str:
+        rendered = [f"{value:{format}}" for value in values]
+        return f"{label:<22}" + "".join(f"{value:>14}" for value in rendered)
 
     lines.append(row("cost_usd", [_as_float(aggregates[arm]["cost_usd"]) for arm in arms]))
-    lines.append(row("duration_ms", [_as_float(aggregates[arm]["duration_ms"]) for arm in arms]))
-    lines.append(row("input_tokens", [_as_float(aggregates[arm]["input_tokens"]) for arm in arms]))
+
+    # Detailed cost breakdown
+    for arm in arms:
+        # We use the first model found in the results for this arm to determine pricing.
+        model_id = next((m for r in results if r.arm == arm for m in r.models), "")
+        if not model_id:
+            continue
+
+        agg = aggregates[arm]
+        breakdown = usage_cost_breakdown_usd(
+            model_id,
+            input_tokens=int(agg["input_tokens"]),
+            output_tokens=int(agg["output_tokens"]),
+            cache_read_tokens=int(agg["cache_read_tokens"]),
+            cache_write_tokens=int(agg["cache_creation_tokens"]),
+        )
+        lines.append(
+            "  - input        : " + "".join(f"${breakdown['input']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+        )
+        lines.append(
+            "  - output       : " + "".join(f"${breakdown['output']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+        )
+        if breakdown["cache_read"] > 0 or agg["cache_read_tokens"] > 0:
+            lines.append(
+                "  - cache_read   : "
+                + "".join(f"${breakdown['cache_read']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+            )
+        if breakdown["cache_write"] > 0 or agg["cache_creation_tokens"] > 0:
+            lines.append(
+                "  - cache_write  : "
+                + "".join(f"${breakdown['cache_write']:>13.4f}" if a == arm else f"{'':>14}" for a in arms)
+            )
+
+    lines.append(row("duration_ms", [_as_float(aggregates[arm]["duration_ms"]) for arm in arms], ",.0f"))
+    lines.append(row("num_turns", [_as_float(aggregates[arm]["num_turns"]) for arm in arms], ",.0f"))
+    lines.append(row("input_tokens", [_as_float(aggregates[arm]["input_tokens"]) for arm in arms], ",.0f"))
+    lines.append(row("cache_read_tokens", [_as_float(aggregates[arm]["cache_read_tokens"]) for arm in arms], ",.0f"))
     lines.append(
-        row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms])
+        row("cache_write_tokens", [_as_float(aggregates[arm]["cache_creation_tokens"]) for arm in arms], ",.0f")
     )
+    lines.append(row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms], ",.0f"))
     if baseline:
         lines.append("")
         for arm in arms:
             if arm == "baseline":
                 continue
             current = aggregates[arm]
-            cost_save = _savings_pct(
-                _as_float(baseline["cost_usd"]), _as_float(current["cost_usd"])
-            )
+            cost_save = _savings_pct(_as_float(baseline["cost_usd"]), _as_float(current["cost_usd"]))
             time_save = _savings_pct(
                 _as_float(baseline["duration_ms"]),
                 _as_float(current["duration_ms"]),
@@ -1691,9 +1693,7 @@ def report(results: list[ArmResult]) -> str:
     valid_parts = [f"{arm} {aggregates[arm]['valid']}/{aggregates[arm]['runs']}" for arm in arms]
     lines.append(f"Valid       : {'  '.join(valid_parts)}")
     if any(result.valid is False for result in results):
-        lines.append(
-            "Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful."
-        )
+        lines.append("Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful.")
     if any(result.score is not None for result in results):
         score_parts = [
             f"{arm} {aggregates[arm]['correct']}/{aggregates[arm]['runs']} avg={aggregates[arm]['avg_score']}"
@@ -1709,11 +1709,7 @@ def _detail_rows(results: list[ArmResult]) -> list[dict[str, object]]:
 
 def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    baseline = (
-        _summary_row(results, "baseline")
-        if any(result.arm == "baseline" for result in results)
-        else None
-    )
+    baseline = _summary_row(results, "baseline") if any(result.arm == "baseline" for result in results) else None
     for arm in _ordered_arms(results):
         row = _summary_row(results, arm)
         if baseline is None:
@@ -1833,9 +1829,7 @@ def _load_existing_results(run_dir: Path) -> list[ArmResult]:
     if not results_path.exists():
         return []
     return [
-        ArmResult(**json.loads(line))
-        for line in results_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        ArmResult(**json.loads(line)) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 
@@ -1916,9 +1910,7 @@ def _run_task_rep(
     task = BY_ID[task_id]
     results: list[ArmResult] = []
     for arm in arms:
-        print(
-            f"[run] {task_id} {arm} rep{rep} (model={model}, driver={cli_driver}) ...", flush=True
-        )
+        print(f"[run] {task_id} {arm} rep{rep} (model={model}, driver={cli_driver}) ...", flush=True)
         t0 = time.time()
         try:
             result = run_arm(
@@ -2016,16 +2008,26 @@ def main() -> int:
     p.add_argument("--model", default="sonnet")
     p.add_argument("--timeout", type=int, default=1800)
     p.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=8192,
+        help="Claude Code max output tokens per model request",
+    )
+    p.add_argument(
         "--rate-limit-rpm",
         type=float,
         default=0,
         help="Maximum model inference requests per minute; 0 disables throttling",
     )
+    p.add_argument(
+        "--rate-limit-tpm",
+        type=int,
+        default=0,
+        help="Maximum reserved output tokens per rolling minute; 0 disables throttling",
+    )
     p.add_argument("--transport", choices=["cli", "api"], default="cli")
     p.add_argument("--cli-driver", choices=CLI_DRIVERS, default="claude")
-    p.add_argument(
-        "--jobs", type=int, default=1, help="Parallel task/rep workers; arms stay serial per worker"
-    )
+    p.add_argument("--jobs", type=int, default=1, help="Parallel task/rep workers; arms stay serial per worker")
     p.add_argument(
         "--parallel-scope",
         choices=["task", "arm"],
@@ -2035,9 +2037,7 @@ def main() -> int:
     p.add_argument("--api-provider", choices=["openai", "litellm", "ollama"], default="ollama")
     p.add_argument("--api-base-url", default=None)
     p.add_argument("--api-key-env", default=None)
-    p.add_argument(
-        "--launch-ollama", action="store_true", help="Start 'ollama serve' before API runs"
-    )
+    p.add_argument("--launch-ollama", action="store_true", help="Start 'ollama serve' before API runs")
     p.add_argument("--judge", action="store_true", help="Score correctness with an LLM judge")
     p.add_argument("--judge-transport", choices=["cli", "api"], default=None)
     p.add_argument("--judge-provider", choices=["openai", "litellm", "ollama"], default=None)
@@ -2045,9 +2045,7 @@ def main() -> int:
     p.add_argument("--judge-agent-command", default=None)
     p.add_argument("--judge-api-base-url", default=None)
     p.add_argument("--judge-api-key-env", default=None)
-    p.add_argument(
-        "--agent-command", default="claude", help="Claude-compatible command to run each arm"
-    )
+    p.add_argument("--agent-command", default="claude", help="Claude-compatible command to run each arm")
     p.add_argument(
         "--agent-env",
         action="append",
@@ -2076,16 +2074,10 @@ def main() -> int:
         default=[],
         help="Extra CLI argument passed to the selected driver; repeatable.",
     )
-    p.add_argument(
-        "--bridge-command", default=None, help="Optional background bridge command to launch first"
-    )
-    p.add_argument(
-        "--bridge-wait", type=float, default=3.0, help="Seconds to wait after launching the bridge"
-    )
+    p.add_argument("--bridge-command", default=None, help="Optional background bridge command to launch first")
+    p.add_argument("--bridge-wait", type=float, default=3.0, help="Seconds to wait after launching the bridge")
     p.add_argument("--out", type=Path, default=None, help="directory for run artifacts")
-    p.add_argument(
-        "--resume", action="store_true", help="append to existing out dir and skip done runs"
-    )
+    p.add_argument("--resume", action="store_true", help="append to existing out dir and skip done runs")
     p.add_argument(
         "--retry-failed",
         action="store_true",
@@ -2095,12 +2087,18 @@ def main() -> int:
     args = p.parse_args()
     if args.rate_limit_rpm < 0:
         p.error("--rate-limit-rpm must be >= 0")
+    if args.rate_limit_tpm < 0:
+        p.error("--rate-limit-tpm must be >= 0")
+    if args.max_output_tokens < 1:
+        p.error("--max-output-tokens must be >= 1")
     os.environ["ATELIERBENCH_RATE_LIMIT_RPM"] = str(args.rate_limit_rpm)
+    os.environ["ATELIERBENCH_RATE_LIMIT_TPM"] = str(args.rate_limit_tpm)
     agent_env = {
         **_resolve_provider_env(args.provider),
         **_parse_agent_env(args.agent_env),
         **_parse_agent_env_from_host(args.agent_env_from_host),
     }
+    agent_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", str(args.max_output_tokens))
     judge_transport = args.judge_transport or args.transport
     judge_provider = args.judge_provider or args.api_provider
     judge_model = args.judge_model or args.model
@@ -2143,11 +2141,7 @@ def main() -> int:
     bridge_command = args.bridge_command
     if args.launch_ollama and bridge_command is None:
         bridge_command = "ollama serve"
-    bridge = (
-        subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT))
-        if bridge_command
-        else None
-    )
+    bridge = subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT)) if bridge_command else None
     if bridge is not None and args.bridge_wait > 0:
         time.sleep(args.bridge_wait)
     existing_results = _load_existing_results(run_dir) if args.resume else []

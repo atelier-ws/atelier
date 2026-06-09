@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import importlib
 import json
 import sys
+import time
 import types
+from itertools import pairwise
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -43,7 +46,47 @@ def _load(module_name: str) -> ModuleType:
 
 
 ATELIERBENCH = _load("benchmarks.atelierbench.run")
+RATE_LIMIT = _load("benchmarks.atelierbench.rate_limit")
 TASKS = _load("benchmarks.atelierbench.tasks")
+
+
+def test_rate_limiter_does_not_block_proxy_event_loop(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIERBENCH_RATE_LIMIT_RPM", "1200")
+    limiter = RATE_LIMIT.ModelRequestRateLimiter()
+    flow = types.SimpleNamespace(
+        request=types.SimpleNamespace(
+            path="/model/test/invoke-with-response-stream",
+            headers={},
+            get_text=lambda strict=False: '{"max_tokens": 32000}',
+        )
+    )
+    ticks: list[float] = []
+
+    async def heartbeat() -> None:
+        for _ in range(6):
+            ticks.append(time.monotonic())
+            await asyncio.sleep(0.01)
+
+    async def exercise() -> None:
+        await asyncio.gather(limiter.request(flow), limiter.request(flow), heartbeat())
+
+    asyncio.run(exercise())
+
+    assert len(ticks) == 6
+    assert max(later - earlier for earlier, later in pairwise(ticks)) < 0.04
+    assert flow.request.headers["Connection"] == "close"
+
+
+def test_rate_limiter_accounts_for_reserved_output_tokens(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ATELIERBENCH_RATE_LIMIT_RPM", "10")
+    monkeypatch.setenv("ATELIERBENCH_RATE_LIMIT_TPM", "100000")
+    limiter = RATE_LIMIT.ModelRequestRateLimiter()
+    limiter._token_reservations.extend([(100.0, 32000), (106.0, 32000), (112.0, 32000)])
+
+    assert limiter._token_delay(118.0, 32000) == 42.0
+    assert limiter._token_delay(160.0, 32000) == 0.0
 
 
 def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
