@@ -954,17 +954,7 @@ async fn handle_key(
         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
-        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.conversation.clear();
-            app.tools.clear();
-            app.streaming_text.clear();
-            app.is_streaming = false;
-            app.search = None;
-            app.conversation.push(app::ConversationEntry {
-                role: app::Role::System,
-                text: "Screen cleared.".to_string(),
-            });
-        }
+        // Ctrl+L removed — conversation is the persistent session history, clearing it would lose context
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.agent_mode = app.agent_mode.next();
             send_command(
@@ -999,8 +989,13 @@ async fn handle_key(
             }).await?;
         }
         KeyCode::Tab => {
-            // Tab outside input = toggle focus between input and conversation
-            app.cycle_focus();
+            // Tab cycles agent mode (code → explore → research → plan → code)
+            // Focus stays on input always
+            app.agent_mode = app.agent_mode.next();
+            send_command(writer, &FrontendCommand::UserCommand {
+                name: "mode".to_string(),
+                args: vec![app.agent_mode.name().to_lowercase()],
+            }).await?;
         }
 
         KeyCode::Enter => {
@@ -1269,12 +1264,7 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                 }
                 return;
             }
-            // Activate the clicked pane.
-            if in_rect(&app.input_rect) {
-                app.focused_pane = FocusedPane::Input;
-            } else if in_rect(&app.conv_rect) {
-                app.focused_pane = FocusedPane::Conversation;
-            }
+            // Input is always focused — clicking conversation doesn't steal focus
         }
         MouseEventKind::ScrollUp => {
             if in_rect(&app.conv_rect) {
