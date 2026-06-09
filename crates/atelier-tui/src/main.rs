@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{ActiveOverlay, AgentMode, App, CompletionMode, DragBorder, DragState, FocusedPane, GitRowKind, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
+use app::{ActiveOverlay, AgentMode, App, CompletionMode, ContextAction, ContextItem, ContextMenu, ConversationEntry, DragBorder, DragState, FocusedPane, FuzzyFinder, GitRowKind, LeftTab, PendingPermission, ReverseSearch, RightTab, Role, SearchState, TabContent};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -296,6 +296,87 @@ async fn handle_key(
     {
         app.input.insert_newline();
         return Ok(());
+    }
+
+    // Right-click context menu captures keys while open.
+    if let Some(menu) = app.context_menu.as_mut() {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.context_menu = None;
+                return Ok(());
+            }
+            KeyCode::Up => {
+                if menu.selected > 0 {
+                    menu.selected -= 1;
+                }
+                return Ok(());
+            }
+            KeyCode::Down => {
+                menu.selected = (menu.selected + 1).min(menu.items.len().saturating_sub(1));
+                return Ok(());
+            }
+            KeyCode::Enter => {
+                let action = menu.items[menu.selected].action.clone();
+                app.context_menu = None;
+                execute_context_action(app, action, writer).await?;
+                return Ok(());
+            }
+            KeyCode::Char(c) => {
+                if let Some(item) = menu.items.iter().find(|i| i.key == c) {
+                    let action = item.action.clone();
+                    app.context_menu = None;
+                    execute_context_action(app, action, writer).await?;
+                }
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+    }
+
+    // Fuzzy file finder (Ctrl+P) captures keys while open.
+    if let Some(ff) = app.fuzzy_finder.as_mut() {
+        match key.code {
+            KeyCode::Esc => {
+                app.fuzzy_finder = None;
+                return Ok(());
+            }
+            KeyCode::Enter => {
+                if let Some(path) = ff.filtered.get(ff.selected).cloned() {
+                    let abs = std::path::Path::new(&app.project_root)
+                        .join(&path)
+                        .to_string_lossy()
+                        .to_string();
+                    app.open_file_tab(abs);
+                    app.focused_pane = FocusedPane::Conversation;
+                }
+                app.fuzzy_finder = None;
+                return Ok(());
+            }
+            KeyCode::Up => {
+                if ff.selected > 0 {
+                    ff.selected -= 1;
+                }
+                return Ok(());
+            }
+            KeyCode::Down => {
+                ff.selected = (ff.selected + 1).min(ff.filtered.len().saturating_sub(1));
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                ff.query.pop();
+                ff.update_filter();
+                return Ok(());
+            }
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                ff.query.push(c);
+                ff.update_filter();
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
     }
 
     // Interactive overlays (agent/model/auth pickers + help) capture keys first.
@@ -923,6 +1004,32 @@ async fn handle_key(
                 current_match: 0,
             });
         }
+        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            let files = collect_files_for_display(&app.project_root);
+            app.fuzzy_finder = Some(FuzzyFinder::new(files));
+        }
+        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if let Some(TabContent::FileView { path, content, dirty }) =
+                app.middle_tabs.get_mut(app.middle_tab_idx)
+            {
+                if *dirty {
+                    if let Err(e) = std::fs::write(&path, content.as_bytes()) {
+                        let msg = format!("\u{2717} Save failed: {e}");
+                        app.conversation.push(ConversationEntry {
+                            role: Role::System,
+                            text: msg,
+                        });
+                    } else {
+                        *dirty = false;
+                        let msg = format!("\u{2713} Saved {path}");
+                        app.conversation.push(ConversationEntry {
+                            role: Role::System,
+                            text: msg,
+                        });
+                    }
+                }
+            }
+        }
         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.reverse_search = Some(ReverseSearch {
                 query: String::new(),
@@ -1301,6 +1408,13 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                             "right_tools" => app.right_tab = RightTab::Tools,
                             "right_tasks" => app.right_tab = RightTab::Tasks,
                             "right_agents" => app.right_tab = RightTab::Subagents,
+                            _ if tab_id.starts_with("middle_close_") => {
+                                if let Ok(idx) =
+                                    tab_id["middle_close_".len()..].parse::<usize>()
+                                {
+                                    app.close_tab(idx);
+                                }
+                            }
                             _ if tab_id.starts_with("middle_") => {
                                 if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
                                     if idx < app.middle_tabs.len() {
@@ -1410,7 +1524,89 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                 }
             }
         }
+        MouseEventKind::ScrollUp => {
+            if let Some(ref rects) = app.pane_rects {
+                let in_rect = |r: &Rect| {
+                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
+                };
+                if in_rect(&rects.middle) {
+                    if matches!(
+                        app.middle_tabs.get(app.middle_tab_idx),
+                        Some(TabContent::FileView { .. }) | Some(TabContent::DiffView(..))
+                    ) {
+                        if let Some(s) = app.middle_tab_scroll.get_mut(app.middle_tab_idx) {
+                            *s = s.saturating_sub(3);
+                        }
+                    } else {
+                        app.auto_scroll = false;
+                        app.scroll = app.scroll.saturating_sub(3);
+                    }
+                } else if !app.right_hidden && in_rect(&rects.right_top) {
+                    app.tool_scroll = app.tool_scroll.saturating_sub(2);
+                } else if !app.left_hidden && in_rect(&rects.left) {
+                    match app.left_tab {
+                        LeftTab::Files => app.files_scroll = app.files_scroll.saturating_sub(2),
+                        LeftTab::Git => app.git_scroll = app.git_scroll.saturating_sub(2),
+                        LeftTab::Sessions => app.scroll = app.scroll.saturating_sub(2),
+                    }
+                }
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if let Some(ref rects) = app.pane_rects {
+                let in_rect = |r: &Rect| {
+                    col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
+                };
+                if in_rect(&rects.middle) {
+                    if matches!(
+                        app.middle_tabs.get(app.middle_tab_idx),
+                        Some(TabContent::FileView { .. }) | Some(TabContent::DiffView(..))
+                    ) {
+                        if let Some(s) = app.middle_tab_scroll.get_mut(app.middle_tab_idx) {
+                            *s = s.saturating_add(3);
+                        }
+                    } else {
+                        app.auto_scroll = false;
+                        app.scroll = app.scroll.saturating_add(3);
+                    }
+                } else if !app.right_hidden && in_rect(&rects.right_top) {
+                    app.tool_scroll = app.tool_scroll.saturating_add(2);
+                } else if !app.left_hidden && in_rect(&rects.left) {
+                    match app.left_tab {
+                        LeftTab::Files => app.files_scroll = app.files_scroll.saturating_add(2),
+                        LeftTab::Git => app.git_scroll = app.git_scroll.saturating_add(2),
+                        LeftTab::Sessions => app.scroll = app.scroll.saturating_add(2),
+                    }
+                }
+            }
+        }
+        MouseEventKind::Down(MouseButton::Right) => {
+            let items = build_context_menu(app, col, row);
+            if !items.is_empty() {
+                app.context_menu = Some(ContextMenu {
+                    x: col,
+                    y: row,
+                    items,
+                    selected: 0,
+                });
+            }
+        }
         MouseEventKind::Moved => {
+            // Track hover over tabs for underline highlighting.
+            let mut found_tab = None;
+            if let Some(ref areas) = app.tab_click_areas {
+                for (id, rect) in areas {
+                    if col >= rect.x
+                        && col < rect.x + rect.width
+                        && row >= rect.y
+                        && row < rect.y + rect.height
+                    {
+                        found_tab = Some(id.clone());
+                        break;
+                    }
+                }
+            }
+            app.hovered_tab = found_tab;
             // Track hover over the file tree for underline highlighting.
             app.hovered_file_idx = None;
             if !app.left_hidden && matches!(app.left_tab, LeftTab::Files) {
@@ -1450,6 +1646,186 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
         }
         _ => {}
     }
+}
+
+fn build_context_menu(app: &App, col: u16, row: u16) -> Vec<ContextItem> {
+    use ContextAction::*;
+
+    if let Some(ref rects) = app.pane_rects {
+        let in_rect = |r: &Rect| {
+            col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
+        };
+
+        if in_rect(&rects.middle) {
+            match app.middle_tabs.get(app.middle_tab_idx) {
+                Some(TabContent::FileView { path, .. }) => {
+                    return vec![
+                        ContextItem {
+                            label: "Open in $EDITOR".to_string(),
+                            key: 'e',
+                            action: OpenInEditor(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Copy path".to_string(),
+                            key: 'c',
+                            action: CopyPath(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Show git diff".to_string(),
+                            key: 'd',
+                            action: ShowDiff(path.clone()),
+                        },
+                    ];
+                }
+                Some(TabContent::Conversation) => {
+                    return vec![
+                        ContextItem {
+                            label: "Copy last response".to_string(),
+                            key: 'c',
+                            action: CopyLastMessage,
+                        },
+                        ContextItem {
+                            label: "Search conversation".to_string(),
+                            key: 'f',
+                            action: SearchInConversation,
+                        },
+                        ContextItem {
+                            label: "Clear conversation".to_string(),
+                            key: 'x',
+                            action: ClearConversation,
+                        },
+                        ContextItem {
+                            label: "New task".to_string(),
+                            key: 'n',
+                            action: NewTask,
+                        },
+                    ];
+                }
+                _ => {}
+            }
+        } else if !app.left_hidden && in_rect(&rects.left) && matches!(app.left_tab, LeftTab::Files)
+        {
+            if let Some(node) = app.file_tree.get(app.file_tree_selected) {
+                let path = node.path.clone();
+                if node.is_dir {
+                    return vec![
+                        ContextItem {
+                            label: "Expand/collapse".to_string(),
+                            key: 'e',
+                            action: OpenFile(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Copy path".to_string(),
+                            key: 'c',
+                            action: CopyPath(path),
+                        },
+                    ];
+                } else {
+                    return vec![
+                        ContextItem {
+                            label: "Open in tab".to_string(),
+                            key: 'o',
+                            action: OpenFile(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Open in $EDITOR".to_string(),
+                            key: 'e',
+                            action: OpenInEditor(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Copy path".to_string(),
+                            key: 'c',
+                            action: CopyPath(path.clone()),
+                        },
+                        ContextItem {
+                            label: "Show git diff".to_string(),
+                            key: 'd',
+                            action: ShowDiff(path),
+                        },
+                    ];
+                }
+            }
+        }
+    }
+    vec![]
+}
+
+async fn execute_context_action(
+    app: &mut App<'_>,
+    action: ContextAction,
+    writer: &mut BufWriter<ChildStdin>,
+) -> Result<()> {
+    match action {
+        ContextAction::OpenFile(path) => {
+            app.open_file_tab(path);
+            app.focused_pane = FocusedPane::Conversation;
+        }
+        ContextAction::CopyPath(path) => {
+            #[cfg(feature = "clipboard")]
+            {
+                use arboard::Clipboard;
+                if let Ok(mut cb) = Clipboard::new() {
+                    let _ = cb.set_text(&path);
+                }
+            }
+            app.conversation.push(ConversationEntry {
+                role: Role::System,
+                text: format!("\u{1f4cb} Copied: {path}"),
+            });
+        }
+        ContextAction::OpenInEditor(path) => {
+            app.open_editor = Some(path);
+        }
+        ContextAction::ShowDiff(path) => {
+            let diff = get_file_diff(&path);
+            app.open_diff_tab(path, diff);
+        }
+        ContextAction::CopyLastMessage => {
+            let last_text = app
+                .conversation
+                .iter()
+                .rev()
+                .find(|e| matches!(e.role, Role::Assistant))
+                .map(|e| e.text.clone());
+            if let Some(text) = last_text {
+                #[cfg(feature = "clipboard")]
+                {
+                    use arboard::Clipboard;
+                    if let Ok(mut cb) = Clipboard::new() {
+                        let _ = cb.set_text(&text);
+                    }
+                }
+                let _ = text;
+                app.conversation.push(ConversationEntry {
+                    role: Role::System,
+                    text: "\u{1f4cb} Copied last response".to_string(),
+                });
+            }
+        }
+        ContextAction::SearchInConversation => {
+            app.search = Some(SearchState {
+                query: String::new(),
+                matches: vec![],
+                current_match: 0,
+            });
+        }
+        ContextAction::ClearConversation => {
+            app.conversation.clear();
+            app.tools.clear();
+            app.streaming_text.clear();
+        }
+        ContextAction::NewTask => {
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "newtask".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 fn collect_files_for_display(root: &str) -> Vec<String> {

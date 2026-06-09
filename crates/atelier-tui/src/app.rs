@@ -189,8 +189,12 @@ pub fn fuzzy_score(path: &str, query: &str) -> i32 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TabContent {
-    Conversation,             // permanent, can't close
-    FileView(String),         // path to file
+    Conversation, // permanent, can't close
+    FileView {
+        path: String,    // path to file
+        content: String, // loaded file content (also original for diff)
+        dirty: bool,     // unsaved changes?
+    },
     DiffView(String, String), // (filename, diff_text) side-by-side
 }
 
@@ -198,10 +202,17 @@ impl TabContent {
     pub fn title(&self) -> String {
         match self {
             Self::Conversation => "Conversation".to_string(),
-            Self::FileView(p) => std::path::Path::new(p)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| p.clone()),
+            Self::FileView { path, dirty, .. } => {
+                let name = std::path::Path::new(path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.clone());
+                if *dirty {
+                    format!("\u{25cf} {name}")
+                } else {
+                    name
+                }
+            }
             Self::DiffView(f, _) => format!(
                 "\u{0394} {}",
                 std::path::Path::new(f)
@@ -213,6 +224,67 @@ impl TabContent {
     }
     pub fn closeable(&self) -> bool {
         !matches!(self, Self::Conversation)
+    }
+}
+
+/// A right-click context menu anchored at a terminal cell.
+#[derive(Debug, Clone)]
+pub struct ContextMenu {
+    pub x: u16,
+    pub y: u16,
+    pub items: Vec<ContextItem>,
+    pub selected: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContextItem {
+    pub label: String,
+    pub key: char, // keyboard shortcut shown in menu
+    pub action: ContextAction,
+}
+
+#[derive(Debug, Clone)]
+pub enum ContextAction {
+    OpenFile(String),
+    CopyPath(String),
+    OpenInEditor(String),
+    ShowDiff(String),
+    CopyLastMessage,
+    SearchInConversation,
+    ClearConversation,
+    NewTask,
+}
+
+/// Fuzzy file finder overlay state (Ctrl+P).
+#[derive(Debug, Clone)]
+pub struct FuzzyFinder {
+    pub query: String,
+    pub all_files: Vec<String>,
+    pub filtered: Vec<String>,
+    pub selected: usize,
+}
+
+impl FuzzyFinder {
+    pub fn new(all_files: Vec<String>) -> Self {
+        Self {
+            query: String::new(),
+            filtered: all_files.clone(),
+            all_files,
+            selected: 0,
+        }
+    }
+    pub fn update_filter(&mut self) {
+        let q = self.query.to_lowercase();
+        self.filtered = if q.is_empty() {
+            self.all_files.clone()
+        } else {
+            self.all_files
+                .iter()
+                .filter(|f| f.to_lowercase().contains(&q))
+                .cloned()
+                .collect()
+        };
+        self.selected = 0;
     }
 }
 
@@ -596,6 +668,10 @@ pub struct App<'a> {
     pub hovered_file_idx: Option<usize>,
     /// First file-tree index rendered in the Files tab (set each frame for hit-testing).
     pub files_view_offset: usize,
+    // Mouse-driven overlays / hover state
+    pub context_menu: Option<ContextMenu>,
+    pub hovered_tab: Option<String>,
+    pub fuzzy_finder: Option<FuzzyFinder>,
 }
 
 impl<'a> App<'a> {
@@ -674,6 +750,9 @@ impl<'a> App<'a> {
             pane_rects: None,
             hovered_file_idx: None,
             files_view_offset: 0,
+            context_menu: None,
+            hovered_tab: None,
+            fuzzy_finder: None,
         };
         app.refresh_git_status();
         app
@@ -739,14 +818,22 @@ impl<'a> App<'a> {
     }
 
     pub fn open_file_tab(&mut self, path: String) {
-        if !self
+        if let Some(idx) = self
             .middle_tabs
             .iter()
-            .any(|t| matches!(t, TabContent::FileView(p) if *p == path))
+            .position(|t| matches!(t, TabContent::FileView { path: p, .. } if *p == path))
         {
-            self.middle_tabs.push(TabContent::FileView(path));
-            self.middle_tab_scroll.push(0);
+            self.middle_tab_idx = idx;
+            return;
         }
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
+        self.middle_tabs.push(TabContent::FileView {
+            path,
+            content,
+            dirty: false,
+        });
+        self.middle_tab_scroll.push(0);
         self.middle_tab_idx = self.middle_tabs.len() - 1;
     }
 

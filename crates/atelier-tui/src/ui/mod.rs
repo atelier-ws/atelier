@@ -1,8 +1,8 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
 use crate::app::{
-    ActiveOverlay, App, CompletionMode, FocusedPane, GitRowKind, LeftTab, PendingPermission,
-    RightTab, Role, TabContent, TaskStatus, ToolStatus,
+    ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, FuzzyFinder, GitRowKind, LeftTab,
+    PendingPermission, RightTab, Role, TabContent, TaskStatus, ToolStatus,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -15,6 +15,18 @@ fn border_color(app: &App, pane: FocusedPane) -> Color {
         app.agent_mode.accent_color()
     } else {
         Color::DarkGray
+    }
+}
+
+/// Build a tab title `Line`, underlined when the mouse is hovering its hit area.
+fn tab_line(app: &App, label: &str, id: &str) -> Line<'static> {
+    if app.hovered_tab.as_deref() == Some(id) {
+        Line::from(Span::styled(
+            label.to_string(),
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        ))
+    } else {
+        Line::from(label.to_string())
     }
 }
 
@@ -142,13 +154,119 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             draw_auth_picker(frame, app, *selected, providers, area)
         }
     }
+
+    // Fuzzy finder (Ctrl+P) renders above panes but below the context menu.
+    if let Some(ref ff) = app.fuzzy_finder {
+        draw_fuzzy_finder(frame, ff, app, area);
+    }
+
+    // Context menu renders LAST, on top of everything else.
+    if let Some(ref menu) = app.context_menu {
+        draw_context_menu(frame, menu, app);
+    }
+}
+
+fn draw_context_menu(frame: &mut Frame, menu: &ContextMenu, app: &App) {
+    let w = menu.items.iter().map(|i| i.label.len() + 6).max().unwrap_or(20) as u16;
+    let h = menu.items.len() as u16 + 2;
+    let popup = Rect {
+        x: menu.x.min(frame.area().width.saturating_sub(w)),
+        y: menu.y.min(frame.area().height.saturating_sub(h)),
+        width: w,
+        height: h,
+    };
+
+    frame.render_widget(Clear, popup);
+    let items: Vec<ListItem> = menu
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let bg = if i == menu.selected {
+                app.agent_mode.accent_color()
+            } else {
+                Color::Reset
+            };
+            let fg = if i == menu.selected {
+                Color::Black
+            } else {
+                Color::White
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(" {} ", item.key),
+                    Style::default().fg(Color::DarkGray).bg(bg),
+                ),
+                Span::styled(
+                    format!(" {} ", item.label),
+                    Style::default().fg(fg).bg(bg),
+                ),
+            ]))
+        })
+        .collect();
+    let list = List::new(items).block(
+        Block::bordered().border_style(Style::default().fg(app.agent_mode.accent_color())),
+    );
+    frame.render_widget(list, popup);
+}
+
+fn draw_fuzzy_finder(frame: &mut Frame, ff: &FuzzyFinder, app: &App, area: Rect) {
+    let popup = centered_rect(70, 70, area);
+    frame.render_widget(Clear, popup);
+
+    let layout = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(popup);
+
+    // Search input
+    let input_text = format!(" \u{1f50d} {}_", ff.query);
+    let input_block = Block::bordered()
+        .title(" Find File  Ctrl+P ")
+        .border_style(Style::default().fg(app.agent_mode.accent_color()));
+    frame.render_widget(Paragraph::new(input_text).block(input_block), layout[0]);
+
+    // File list
+    let visible = layout[1].height.saturating_sub(2) as usize;
+    let offset = if ff.selected >= visible {
+        ff.selected - visible + 1
+    } else {
+        0
+    };
+
+    let items: Vec<ListItem> = ff
+        .filtered
+        .iter()
+        .skip(offset)
+        .take(visible)
+        .enumerate()
+        .map(|(i, path)| {
+            let abs_idx = i + offset;
+            let (_, color) = file_icon_color(path, false);
+            let bg = if abs_idx == ff.selected {
+                app.agent_mode.accent_color()
+            } else {
+                Color::Reset
+            };
+            let fg = if abs_idx == ff.selected { Color::Black } else { color };
+            ListItem::new(Line::from(Span::styled(
+                format!("  {path}"),
+                Style::default().fg(fg).bg(bg),
+            )))
+        })
+        .collect();
+
+    let title = format!(" {} results ", ff.filtered.len());
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(title.as_str())
+            .border_style(Style::default().fg(app.agent_mode.accent_color())),
+    );
+    frame.render_widget(list, layout[1]);
 }
 
 fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles: Vec<Line> = vec![
-        Line::from(" Sessions "),
-        Line::from(" Files "),
-        Line::from(" Git "),
+        tab_line(app, " Sessions ", "left_sessions"),
+        tab_line(app, " Files ", "left_files"),
+        tab_line(app, " Git ", "left_git"),
     ];
     let selected = match app.left_tab {
         LeftTab::Sessions => 0,
@@ -379,20 +497,44 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles: Vec<Line> = app
         .middle_tabs
         .iter()
-        .map(|t| {
+        .enumerate()
+        .map(|(idx, t)| {
             let title = t.title();
             let close = if t.closeable() { " \u{00d7}" } else { "" };
-            Line::from(format!(" {title}{close} "))
+            let label = format!(" {title}{close} ");
+            if app.hovered_tab.as_deref() == Some(format!("middle_{idx}").as_str()) {
+                Line::from(Span::styled(
+                    label,
+                    Style::default().add_modifier(Modifier::UNDERLINED),
+                ))
+            } else {
+                Line::from(label)
+            }
         })
         .collect();
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     // Record middle tab hit-test areas, advancing x by each rendered title width.
+    // Also record a separate `middle_close_N` area over the `\u{00d7}` glyph.
     if let Some(ref mut areas) = app.tab_click_areas {
         let mut x = layout[0].x;
         for (idx, line) in tab_titles.iter().enumerate() {
             let w = line.width() as u16;
+            // Push the close-button area first so it wins hit-testing over the tab.
+            if app
+                .middle_tabs
+                .get(idx)
+                .map(|t| t.closeable())
+                .unwrap_or(false)
+                && w >= 2
+            {
+                // Layout is " {title} \u{00d7} ": the \u{00d7} sits at w-2 (trailing space at w-1).
+                areas.push((
+                    format!("middle_close_{idx}"),
+                    Rect { x: x + w - 2, y: layout[0].y, width: 1, height: 1 },
+                ));
+            }
             areas.push((
                 format!("middle_{idx}"),
                 Rect { x, y: layout[0].y, width: w, height: 1 },
@@ -422,23 +564,21 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     match app.middle_tabs.get(app.middle_tab_idx).cloned() {
         Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
-        Some(TabContent::FileView(path)) => {
+        Some(TabContent::FileView { path, content, .. }) => {
             let scroll = app
                 .middle_tab_scroll
                 .get(app.middle_tab_idx)
                 .copied()
                 .unwrap_or(0);
-            draw_file_content(frame, path, scroll, inner)
+            let ext = path.split('.').next_back().unwrap_or("").to_string();
+            draw_file_content(frame, &content, &ext, scroll, inner)
         }
         Some(TabContent::DiffView(_, diff)) => draw_side_by_side_diff(frame, diff, inner),
         None => {}
     }
 }
 
-fn draw_file_content(frame: &mut Frame, path: String, scroll: u16, area: Rect) {
-    let content =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
-    let ext = path.split('.').next_back().unwrap_or("");
+fn draw_file_content(frame: &mut Frame, content: &str, ext: &str, scroll: u16, area: Rect) {
     let lines: Vec<Line> = content
         .lines()
         .enumerate()
@@ -582,7 +722,11 @@ fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
 }
 
 fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
-    let tab_titles = [" Tools ", " Tasks ", " Agents "];
+    let tab_titles = [
+        tab_line(app, " Tools ", "right_tools"),
+        tab_line(app, " Tasks ", "right_tasks"),
+        tab_line(app, " Agents ", "right_agents"),
+    ];
     let selected = match app.right_tab {
         RightTab::Tools => 0,
         RightTab::Tasks => 1,
@@ -605,7 +749,7 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
+    let tabs = Tabs::new(tab_titles.to_vec())
         .select(selected)
         .style(Style::default().fg(Color::DarkGray))
         .highlight_style(Style::default().fg(app.agent_mode.accent_color()));
@@ -782,6 +926,22 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  Alt+h  Alt+l ", Style::default().fg(Color::Cyan)),
             Span::raw("Hide/show left and right panes"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+P       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Fuzzy file finder"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+S       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Save current file (when FileView tab)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Right-click  ", Style::default().fg(Color::Cyan)),
+            Span::raw("Context menu (open, copy, diff, edit...)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Scroll wheel ", Style::default().fg(Color::Cyan)),
+            Span::raw("Scroll focused pane"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
