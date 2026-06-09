@@ -19,6 +19,7 @@ dependencies = [
     "click>=8.1",
     "pyyaml>=6.0",
     "rich>=13.7",
+    "prompt-toolkit>=3.0",
     "litellm>=1.83.14",
     "tiktoken>=0.9",
     "blake3>=0.4.1",
