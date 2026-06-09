@@ -451,6 +451,7 @@ dependencies = [
     { name = "ortools" },
     { name = "pexpect" },
     { name = "prometheus-client" },
+    { name = "prompt-toolkit" },
     { name = "pybreaker" },
     { name = "pydantic", version = "2.11.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
     { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
@@ -576,6 +577,7 @@ requires-dist = [
     { name = "pexpect", specifier = ">=4.9.0" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.2" },
     { name = "prometheus-client", specifier = ">=0.21" },
+    { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
     { name = "pybreaker", specifier = ">=1.2" },
     { name = "pydantic", specifier = ">=2.6" },
@@ -7303,7 +7305,7 @@ name = "tree-sitter-languages"
 version = "1.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tree-sitter" },
+    { name = "tree-sitter", marker = "python_full_version < '3.13'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/bf/a9bd2d6ecbd053de0a5a50c150105b69c90eb49089f9e1d4fc4937e86adc/tree_sitter_languages-1.10.2-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:c0f4c8b2734c45859edc7fcaaeaab97a074114111b5ba51ab4ec7ed52104763c", size = 8884771, upload-time = "2024-02-04T10:28:39.655Z" },

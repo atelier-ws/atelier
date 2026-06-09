@@ -175,3 +175,52 @@ def register(cli: click.Group) -> None:
         cli.add_command(memory_group_cli)
     except (ModuleNotFoundError, ImportError):
         pass
+
+    try:
+        import asyncio
+        from pathlib import Path
+
+        import click as _click
+
+        from atelier.gateway.cli.interactive import run_interactive
+
+        @_click.command("tui")
+        @_click.option("--project-root", default=None, help="Project root directory")
+        @_click.option(
+            "--yolo", is_flag=True, default=False, help="Skip edit/shell approval prompts"
+        )
+        @_click.pass_obj
+        def tui_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
+            """Start the interactive Atelier terminal (REPL with streaming agent)."""
+            root = obj.get("root") if isinstance(obj, dict) else None
+            raise SystemExit(
+                asyncio.run(
+                    run_interactive(
+                        project_root=project_root,
+                        yolo=yolo,
+                        root=root if isinstance(root, Path) else None,
+                    )
+                )
+            )
+
+        @_click.command("chat")
+        @_click.option("--project-root", default=None)
+        @_click.option("--yolo", is_flag=True, default=False)
+        @_click.pass_obj
+        def chat_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
+            """Alias for ``atelier tui``."""
+            root = obj.get("root") if isinstance(obj, dict) else None
+            raise SystemExit(
+                asyncio.run(
+                    run_interactive(
+                        project_root=project_root,
+                        yolo=yolo,
+                        root=root if isinstance(root, Path) else None,
+                    )
+                )
+            )
+
+        cli.add_command(tui_cmd)
+        cli.add_command(chat_cmd)
+    except (ModuleNotFoundError, ImportError):
+        pass
