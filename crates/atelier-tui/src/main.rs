@@ -4,6 +4,7 @@ mod app;
 mod highlight;
 mod protocol;
 mod qr;
+mod terminal_bridge;
 mod tunnel;
 mod ui;
 mod web;
@@ -72,6 +73,21 @@ async fn main() -> Result<()> {
 
     // Always start the web bridge on an available port.
     let web_port = find_available_port(7700).await;
+
+    // Start the WebSocket PTY bridge on web_port + 1: serves a REAL terminal
+    // (xterm.js) over WebSocket, spawning the backend in a PTY like SSH.
+    let ws_pty_port = web_port + 1;
+    {
+        let (prog, prog_args) = backend_command();
+        let tui_cmd: Vec<String> = std::iter::once(prog).chain(prog_args).collect();
+        tokio::spawn(async move {
+            if let Err(e) = terminal_bridge::start_ws_pty_server(ws_pty_port, tui_cmd).await {
+                eprintln!("WS PTY server error: {e}");
+            }
+        });
+        eprintln!("  \u{25c6} Chat UI:     http://localhost:{web_port}");
+        eprintln!("  \u{25c6} Terminal UI: http://localhost:{web_port}/terminal  (xterm.js \u{2014} like SSH)");
+    }
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();

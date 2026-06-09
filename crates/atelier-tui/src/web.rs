@@ -35,7 +35,7 @@ pub async fn start_web_server(
                 tokio::spawn(async move {
                     // Wrap in catch-all so a single bad connection can't crash
                     // the accept loop — silently ignore per-connection errors.
-                    if let Err(e) = handle_connection(stream, event_tx, cmd_tx).await {
+                    if let Err(e) = handle_connection(stream, port, event_tx, cmd_tx).await {
                         let _ = e;
                     }
                 });
@@ -50,6 +50,7 @@ pub async fn start_web_server(
 
 async fn handle_connection(
     mut stream: tokio::net::TcpStream,
+    port: u16,
     event_tx: broadcast::Sender<String>,
     cmd_tx: mpsc::Sender<String>,
 ) -> anyhow::Result<()> {
@@ -84,6 +85,16 @@ async fn handle_connection(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             WEB_UI_HTML.len(),
             WEB_UI_HTML,
+        );
+        stream.write_all(response.as_bytes()).await?;
+        stream.flush().await?;
+    } else if method == "GET" && path == "/terminal" {
+        // Real terminal page: xterm.js connects to the WS PTY bridge on web_port+1.
+        let html = xterm_html(port + 1);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            html.len(),
+            html,
         );
         stream.write_all(response.as_bytes()).await?;
         stream.flush().await?;
@@ -299,3 +310,98 @@ connect();
 </script>
 </body>
 </html>"#;
+
+/// xterm.js terminal page. Connects to the WS PTY bridge on `ws_port`
+/// (web_port + 1) and renders the exact backend terminal — like SSH.
+fn xterm_html(ws_port: u16) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Atelier Terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"/>
+<style>
+  html, body {{ background: #0d1117; margin: 0; padding: 0; height: 100%; overflow: hidden; }}
+  #terminal {{ height: 100vh; padding: 8px; }}
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script>
+const term = new Terminal({{
+  cursorBlink: true,
+  fontSize: 14,
+  fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+  theme: {{
+    background: '#0d1117',
+    foreground: '#c9d1d9',
+    cursor: '#58a6ff',
+    cursorAccent: '#0d1117',
+    black: '#484f58',
+    red: '#ff7b72',
+    green: '#3fb950',
+    yellow: '#d29922',
+    blue: '#58a6ff',
+    magenta: '#bc8cff',
+    cyan: '#39c5cf',
+    white: '#b1bac4',
+    brightBlack: '#6e7681',
+    brightRed: '#ffa198',
+    brightGreen: '#56d364',
+    brightYellow: '#e3b341',
+    brightBlue: '#79c0ff',
+    brightMagenta: '#d2a8ff',
+    brightCyan: '#56d4dd',
+    brightWhite: '#f0f6fc',
+  }},
+  allowProposedApi: true,
+}});
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+
+const ws = new WebSocket('ws://' + location.hostname + ':{ws_port}');
+ws.binaryType = 'arraybuffer';
+
+ws.onopen = () => {{
+  term.write('\r\n  Connecting to Atelier...\r\n');
+  ws.send(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
+}};
+
+ws.onmessage = (e) => {{
+  if (e.data instanceof ArrayBuffer) {{
+    term.write(new Uint8Array(e.data));
+  }}
+}};
+
+ws.onclose = () => {{
+  term.write('\r\n\r\n  [Connection closed]\r\n');
+}};
+
+ws.onerror = () => {{
+  term.write('\r\n  [WebSocket error \u2014 is atelier-tui running?]\r\n');
+}};
+
+term.onData((data) => {{
+  if (ws.readyState === WebSocket.OPEN) {{
+    ws.send(new TextEncoder().encode(data));
+  }}
+}});
+
+term.onResize(( cols, rows ) => {{
+  if (ws.readyState === WebSocket.OPEN) {{
+    ws.send(JSON.stringify({{ type: 'resize', cols, rows }}));
+  }}
+}});
+
+window.addEventListener('resize', () => {{ fitAddon.fit(); }});
+</script>
+</body>
+</html>"#,
+        ws_port = ws_port
+    )
+}
