@@ -16,7 +16,8 @@ use futures_util::{SinkExt, StreamExt};
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
 /// Start the WebSocket PTY server on `ws_port`. Each connection gets its own PTY
 /// running `tui_backend_cmd` (e.g. `atelier tui-backend`).
@@ -41,7 +42,22 @@ pub async fn start_ws_pty_server(ws_port: u16, tui_backend_cmd: Vec<String>) -> 
 }
 
 async fn handle_ws_pty(stream: tokio::net::TcpStream, tui_cmd: Vec<String>) -> Result<()> {
-    let ws_stream = accept_async(stream).await?;
+    // Inspect the WebSocket Upgrade request to extract an optional `s=<session_id>`
+    // from the query string; if present we resume that session in the PTY.
+    let mut session_id: Option<String> = None;
+    let ws_stream = accept_hdr_async(stream, |req: &Request, resp: Response| {
+        if let Some(query) = req.uri().query() {
+            for kv in query.split('&') {
+                if let Some(id) = kv.strip_prefix("s=") {
+                    if !id.is_empty() {
+                        session_id = Some(id.to_string());
+                    }
+                }
+            }
+        }
+        Ok(resp)
+    })
+    .await?;
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     // Allocate a PTY.
@@ -54,8 +70,13 @@ async fn handle_ws_pty(stream: tokio::net::TcpStream, tui_cmd: Vec<String>) -> R
     })?;
 
     // Build the command and spawn it in the PTY slave.
-    let mut cmd = CommandBuilder::new(&tui_cmd[0]);
-    for arg in &tui_cmd[1..] {
+    let mut tui_cmd_final = tui_cmd.clone();
+    if let Some(ref id) = session_id {
+        tui_cmd_final.push("--resume".to_string());
+        tui_cmd_final.push(id.clone());
+    }
+    let mut cmd = CommandBuilder::new(&tui_cmd_final[0]);
+    for arg in &tui_cmd_final[1..] {
         cmd.arg(arg);
     }
     let _child = pair.slave.spawn_command(cmd)?;

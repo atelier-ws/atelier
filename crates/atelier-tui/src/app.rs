@@ -17,9 +17,15 @@ pub struct TreeNode {
     pub gitignored: bool,
 }
 
+/// Base Atelier state directory (`$ATELIER_ROOT` or `~/.atelier`).
+fn dirs_path() -> std::path::PathBuf {
+    std::env::var("ATELIER_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".atelier"))
+}
+
 /// Read `.gitignore` patterns from the project root (one per non-comment line).
-pub fn load_gitignore_patterns(root: &str) -> Vec<String> {
-    let gitignore = Path::new(root).join(".gitignore");
+pub fn load_gitignore_patterns(root: &str) -> Vec<String> {    let gitignore = Path::new(root).join(".gitignore");
     if !gitignore.exists() {
         return vec![];
     }
@@ -130,6 +136,50 @@ fn extract_path_from_result(result: &Option<Value>) -> Option<String> {
     None
 }
 
+/// Parse a very small code outline (top-level definitions) from file *content*.
+fn parse_outline(content: &str, ext: &str) -> Vec<OutlineItem> {
+    let mut items = Vec::new();
+    let patterns: &[(&str, &str)] = match ext {
+        "rs" => &[
+            ("fn ", "fn"),
+            ("struct ", "struct"),
+            ("enum ", "enum"),
+            ("impl ", "impl"),
+            ("trait ", "trait"),
+        ],
+        "py" => &[("async def ", "async def"), ("def ", "def"), ("class ", "class")],
+        "ts" | "js" | "tsx" | "jsx" => &[
+            ("export function ", "fn"),
+            ("function ", "fn"),
+            ("class ", "class"),
+            ("const ", "const"),
+        ],
+        _ => &[],
+    };
+
+    for (i, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        for (prefix, kind) in patterns {
+            if trimmed.starts_with(prefix) {
+                let rest = &trimmed[prefix.len()..];
+                let name = rest
+                    .split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .next()
+                    .unwrap_or(rest);
+                if !name.is_empty() {
+                    items.push(OutlineItem {
+                        line: i + 1,
+                        kind: kind.to_string(),
+                        name: name.to_string(),
+                    });
+                }
+                break;
+            }
+        }
+    }
+    items
+}
+
 /// Fuzzy-match *path* against *query*, returning a higher score for better matches.
 pub fn fuzzy_score(path: &str, query: &str) -> i32 {
     if query.is_empty() {
@@ -201,20 +251,21 @@ pub enum TabContent {
 impl TabContent {
     pub fn title(&self) -> String {
         match self {
-            Self::Conversation => "Conversation".to_string(),
+            Self::Conversation => "\u{f0e5}  Conversation".to_string(),
             Self::FileView { path, dirty, .. } => {
                 let name = std::path::Path::new(path)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.clone());
+                let (icon, _) = crate::ui::file_icon_color(path, false);
                 if *dirty {
-                    format!("\u{25cf} {name}")
+                    format!("\u{25cf} {icon}{name}")
                 } else {
-                    name
+                    format!("{icon}{name}")
                 }
             }
             Self::DiffView(f, _) => format!(
-                "\u{0394} {}",
+                "\u{f440}  \u{0394} {}",
                 std::path::Path::new(f)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -325,6 +376,8 @@ pub struct GitCommit {
 pub enum GitRowKind {
     Commit(usize),
     CommitFile(usize, String),
+    /// A changed file in the working tree (index into `git_status`).
+    StatusFile(usize),
 }
 
 /// Stored layout rectangles for mouse hit-testing (rebuilt each frame).
@@ -672,6 +725,24 @@ pub struct App<'a> {
     pub context_menu: Option<ContextMenu>,
     pub hovered_tab: Option<String>,
     pub fuzzy_finder: Option<FuzzyFinder>,
+    // Activity dots on tabs
+    pub tools_activity: bool,    // true when any tool is Running
+    pub tasks_activity: bool,    // true when a background task changed state recently
+    pub sessions_activity: bool, // true when a new message arrived while not on Sessions tab
+    // Git commit detail (shown in right-top pane while browsing commits)
+    pub selected_commit_detail: Option<String>,
+    // Code outline of the active FileView tab (shown in the left pane)
+    pub file_outline: Vec<OutlineItem>,
+    /// Last time past sessions were loaded; used to throttle periodic refresh.
+    pub sessions_refresh_timer: std::time::Instant,
+}
+
+/// One entry in a file's code outline (function/class/etc).
+#[derive(Debug, Clone)]
+pub struct OutlineItem {
+    pub line: usize,
+    pub kind: String,
+    pub name: String,
 }
 
 impl<'a> App<'a> {
@@ -753,9 +824,120 @@ impl<'a> App<'a> {
             context_menu: None,
             hovered_tab: None,
             fuzzy_finder: None,
+            tools_activity: false,
+            tasks_activity: false,
+            sessions_activity: false,
+            selected_commit_detail: None,
+            file_outline: Vec::new(),
+            sessions_refresh_timer: std::time::Instant::now(),
         };
         app.refresh_git_status();
+        app.load_sessions();
         app
+    }
+
+    /// Load past sessions into the Sessions pane. Prefers the analytics DB
+    /// (richer data) and falls back to scanning `~/.atelier/runs/*.jsonl`.
+    pub fn load_sessions(&mut self) {
+        use std::time::UNIX_EPOCH;
+
+        self.sessions_refresh_timer = std::time::Instant::now();
+
+        let analytics_sessions = self.load_sessions_from_db();
+        if !analytics_sessions.is_empty() {
+            self.sessions_list = analytics_sessions;
+            return;
+        }
+
+        let runs_dir = dirs_path().join("runs");
+        if !runs_dir.exists() {
+            return;
+        }
+
+        let mut sessions: Vec<SessionSummary> = Vec::new();
+        let read_dir = match std::fs::read_dir(&runs_dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+        let mut paths: Vec<_> = read_dir
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with("tui-") || name.starts_with("atelier-run-")
+            })
+            .collect();
+
+        paths.sort_by_key(|e| {
+            std::cmp::Reverse(
+                e.metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .unwrap_or(UNIX_EPOCH),
+            )
+        });
+
+        for entry in paths.iter().take(20) {
+            let path = entry.path();
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let first_line = content.lines().next().unwrap_or("");
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(first_line) {
+                    let label = v["session_id"]
+                        .as_str()
+                        .unwrap_or(&id)
+                        .chars()
+                        .take(20)
+                        .collect();
+                    sessions.push(SessionSummary {
+                        id: id.clone(),
+                        label,
+                        is_current: id == self.session_id,
+                        cost_usd: 0.0,
+                    });
+                }
+            }
+        }
+        self.sessions_list = sessions;
+    }
+
+    fn load_sessions_from_db(&self) -> Vec<SessionSummary> {
+        let db_path = dirs_path().join("analytics.db");
+        if !db_path.exists() {
+            return vec![];
+        }
+
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT session_id, total_cost_usd FROM sessions ORDER BY started_at DESC LIMIT 20",
+            ) {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, f64>(1).unwrap_or(0.0),
+                    ))
+                }) {
+                    let current_id = self.session_id.clone();
+                    return rows
+                        .filter_map(|r| r.ok())
+                        .map(|(id, cost)| {
+                            let is_current = id == current_id;
+                            let label = id.chars().take(20).collect();
+                            SessionSummary {
+                                id,
+                                label,
+                                is_current,
+                                cost_usd: cost,
+                            }
+                        })
+                        .collect();
+                }
+            }
+        }
+        vec![]
     }
 
     /// Move the file-tree selection up one row.
@@ -824,6 +1006,7 @@ impl<'a> App<'a> {
             .position(|t| matches!(t, TabContent::FileView { path: p, .. } if *p == path))
         {
             self.middle_tab_idx = idx;
+            self.build_outline_for_current_file();
             return;
         }
         let content =
@@ -835,12 +1018,14 @@ impl<'a> App<'a> {
         });
         self.middle_tab_scroll.push(0);
         self.middle_tab_idx = self.middle_tabs.len() - 1;
+        self.build_outline_for_current_file();
     }
 
     pub fn open_diff_tab(&mut self, filename: String, diff: String) {
         self.middle_tabs.push(TabContent::DiffView(filename, diff));
         self.middle_tab_scroll.push(0);
         self.middle_tab_idx = self.middle_tabs.len() - 1;
+        self.build_outline_for_current_file();
     }
 
     pub fn close_tab(&mut self, idx: usize) {
@@ -853,6 +1038,7 @@ impl<'a> App<'a> {
                 .middle_tab_idx
                 .saturating_sub(1)
                 .min(self.middle_tabs.len().saturating_sub(1));
+            self.build_outline_for_current_file();
         }
     }
 
@@ -933,6 +1119,31 @@ impl<'a> App<'a> {
         };
         if let Some(commit) = self.git_commits.get_mut(idx) {
             commit.files = files;
+        }
+    }
+
+    /// Load the full message + stats for a commit into `selected_commit_detail`.
+    pub fn load_commit_detail(&mut self, idx: usize) {
+        if let Some(commit) = self.git_commits.get(idx) {
+            let output = std::process::Command::new("git")
+                .args(["show", "--stat", "--no-color", &commit.hash])
+                .current_dir(&self.project_root)
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                .unwrap_or_default();
+            self.selected_commit_detail = Some(output);
+        }
+    }
+
+    /// Rebuild the code outline for the currently active middle tab (if a FileView).
+    pub fn build_outline_for_current_file(&mut self) {
+        if let Some(TabContent::FileView { path, content, .. }) =
+            self.middle_tabs.get(self.middle_tab_idx)
+        {
+            let ext = path.split('.').next_back().unwrap_or("");
+            self.file_outline = parse_outline(content, ext);
+        } else {
+            self.file_outline.clear();
         }
     }
 
@@ -1019,6 +1230,9 @@ impl<'a> App<'a> {
                     role: Role::Assistant,
                     text,
                 });
+                if !matches!(self.left_tab, LeftTab::Sessions) {
+                    self.sessions_activity = true;
+                }
             }
             BackendEvent::ToolRequested { id, name, .. } => {
                 self.tools.push(ToolEntry {
@@ -1029,6 +1243,7 @@ impl<'a> App<'a> {
                 });
             }
             BackendEvent::ToolStarted { id, name } => {
+                self.tools_activity = true;
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
                     t.status = ToolStatus::Running;
                 } else {
@@ -1066,6 +1281,8 @@ impl<'a> App<'a> {
                         }
                     }
                 }
+                self.tools_activity =
+                    self.tools.iter().any(|t| matches!(t.status, ToolStatus::Running));
             }
             BackendEvent::PatchProposed { files, diff, .. } => {
                 self.pending_diff = Some(format!("Files: {}\n\n{}", files.join(", "), diff));
@@ -1182,6 +1399,7 @@ impl<'a> App<'a> {
                 }
             }
             BackendEvent::TaskCreated { id, name } => {
+                self.tasks_activity = true;
                 self.background_tasks.push(BackgroundTask {
                     id,
                     name,
@@ -1189,6 +1407,7 @@ impl<'a> App<'a> {
                 });
             }
             BackendEvent::TaskUpdated { id, status } => {
+                self.tasks_activity = true;
                 if let Some(t) = self.background_tasks.iter_mut().find(|t| t.id == id) {
                     t.status = match status.as_str() {
                         "done" => TaskStatus::Done,

@@ -88,9 +88,15 @@ async fn handle_connection(
         );
         stream.write_all(response.as_bytes()).await?;
         stream.flush().await?;
-    } else if method == "GET" && path == "/terminal" {
+    } else if method == "GET" && (path == "/terminal" || path.starts_with("/terminal?")) {
         // Real terminal page: xterm.js connects to the WS PTY bridge on web_port+1.
-        let html = xterm_html(port + 1);
+        // Extract an optional `s=<session_id>` from the query string to resume a session.
+        let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+        let session_id: Option<String> = query
+            .split('&')
+            .find(|kv| kv.starts_with("s="))
+            .map(|kv| kv[2..].to_string());
+        let html = xterm_html(port + 1, session_id);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             html.len(),
@@ -313,7 +319,13 @@ connect();
 
 /// xterm.js terminal page. Connects to the WS PTY bridge on `ws_port`
 /// (web_port + 1) and renders the exact backend terminal — like SSH.
-fn xterm_html(ws_port: u16) -> String {
+/// When `session_id` is set, the WebSocket URL carries `?s=<id>` so the
+/// bridge resumes that session.
+fn xterm_html(ws_port: u16, session_id: Option<String>) -> String {
+    let ws_query = match session_id {
+        Some(ref id) if !id.is_empty() => format!("/?s={id}"),
+        _ => String::new(),
+    };
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -364,7 +376,7 @@ term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
 fitAddon.fit();
 
-const ws = new WebSocket('ws://' + location.hostname + ':{ws_port}');
+const ws = new WebSocket('ws://' + location.hostname + ':{ws_port}{ws_query}');
 ws.binaryType = 'arraybuffer';
 
 ws.onopen = () => {{
@@ -402,6 +414,7 @@ window.addEventListener('resize', () => {{ fitAddon.fit(); }});
 </script>
 </body>
 </html>"#,
-        ws_port = ws_port
+        ws_port = ws_port,
+        ws_query = ws_query
     )
 }
