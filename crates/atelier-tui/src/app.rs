@@ -166,10 +166,16 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("allowed-tools", "List available tools (alias: /tools)"),
     ("version", "Show Atelier version"),
     ("newtask", "Clear conversation, start fresh"),
-    ("checkpoint", "Save conversation checkpoint: /checkpoint [label]"),
+    (
+        "checkpoint",
+        "Save conversation checkpoint: /checkpoint [label]",
+    ),
     ("rewind", "Restore to checkpoint: /rewind [id]"),
     ("resume", "Resume a saved session (alias: /sessions)"),
-    ("shell", "Run a shell command directly: !<cmd> or /shell <cmd>"),
+    (
+        "shell",
+        "Run a shell command directly: !<cmd> or /shell <cmd>",
+    ),
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
 ];
