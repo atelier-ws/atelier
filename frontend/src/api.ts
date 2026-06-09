@@ -1701,6 +1701,36 @@ export interface TraceListResponse {
   };
 }
 
+export interface TUISession {
+  session_id: string;
+  started_at: string;
+  ended_at: string | null;
+  model: string;
+  provider: string;
+  mode: string;
+  total_cost_usd: number;
+  total_savings_usd: number;
+  cache_efficiency_pct: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  turns: number;
+  tool_calls: number;
+}
+
+export interface TUIAnalytics {
+  sessions: TUISession[];
+  summary: {
+    total_sessions: number;
+    total_cost_usd: number;
+    total_savings_usd: number;
+    avg_cache_efficiency_pct: number;
+    total_turns: number;
+    total_tool_calls: number;
+  };
+}
+
 export const api = {
   overview: (days?: number) => {
     const params = new URLSearchParams();
@@ -1945,6 +1975,7 @@ export const api = {
   sessions: (since = "7d", limit = 200) =>
     get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
   sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
+  getTuiSessions: () => get<TUIAnalytics>("/analytics/tui-sessions"),
   memoryFacts: (vendor?: string) => {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);

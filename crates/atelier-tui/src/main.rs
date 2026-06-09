@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{ActiveOverlay, AgentMode, App, CompletionMode, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
+use app::{ActiveOverlay, AgentMode, App, CompletionMode, DragBorder, DragState, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -286,8 +286,11 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
-    // Shift+Enter inserts a newline — checked first so no other handler can swallow it.
-    if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::SHIFT) {
+    // Alt+Enter inserts a newline — checked first so no other handler can swallow it.
+    // Alt+Enter is used instead of Shift+Enter because many terminals don't
+    // distinguish Shift+Enter from Enter (both send `\r`), while Alt+Enter
+    // reliably arrives as `ESC+\r`.
+    if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::ALT) {
         app.input.insert_newline();
         return Ok(());
     }
@@ -1276,38 +1279,84 @@ async fn handle_key(
 fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
     use crossterm::event::{MouseButton, MouseEventKind};
 
-    if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-        let (col, row) = (mouse.column, mouse.row);
-        if let Some(areas) = app.tab_click_areas.clone() {
-            for (tab_id, rect) in &areas {
-                if col >= rect.x
-                    && col < rect.x + rect.width
-                    && row >= rect.y
-                    && row < rect.y + rect.height
-                {
-                    match tab_id.as_str() {
-                        "left_sessions" => app.left_tab = LeftTab::Sessions,
-                        "left_files" => app.left_tab = LeftTab::Files,
-                        "left_git" => {
-                            app.left_tab = LeftTab::Git;
-                            app.refresh_git_status();
-                        }
-                        "right_tools" => app.right_tab = RightTab::Tools,
-                        "right_tasks" => app.right_tab = RightTab::Tasks,
-                        "right_agents" => app.right_tab = RightTab::Subagents,
-                        _ if tab_id.starts_with("middle_") => {
-                            if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
-                                if idx < app.middle_tabs.len() {
-                                    app.middle_tab_idx = idx;
+    let (col, row) = (mouse.column, mouse.row);
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            // First, handle clickable tabs.
+            let mut hit_tab = false;
+            if let Some(areas) = app.tab_click_areas.clone() {
+                for (tab_id, rect) in &areas {
+                    if col >= rect.x
+                        && col < rect.x + rect.width
+                        && row >= rect.y
+                        && row < rect.y + rect.height
+                    {
+                        match tab_id.as_str() {
+                            "left_sessions" => app.left_tab = LeftTab::Sessions,
+                            "left_files" => app.left_tab = LeftTab::Files,
+                            "left_git" => {
+                                app.left_tab = LeftTab::Git;
+                                app.refresh_git_status();
+                            }
+                            "right_tools" => app.right_tab = RightTab::Tools,
+                            "right_tasks" => app.right_tab = RightTab::Tasks,
+                            "right_agents" => app.right_tab = RightTab::Subagents,
+                            _ if tab_id.starts_with("middle_") => {
+                                if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
+                                    if idx < app.middle_tabs.len() {
+                                        app.middle_tab_idx = idx;
+                                    }
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
+                        hit_tab = true;
+                        break;
                     }
-                    break;
+                }
+            }
+            if hit_tab {
+                return;
+            }
+            // Otherwise, detect a click near a pane border to start a drag-resize.
+            let term_width = app.term_width.max(1);
+            let left_border_col = app.left_pane_pct * term_width / 100;
+            let right_border_col = (100 - app.right_pane_pct) * term_width / 100;
+            if !app.left_hidden && (col as i32 - left_border_col as i32).abs() <= 2 {
+                app.drag_state = Some(DragState {
+                    border: DragBorder::LeftBorder,
+                    start_col: col,
+                    start_pct: app.left_pane_pct,
+                });
+            } else if !app.right_hidden && (col as i32 - right_border_col as i32).abs() <= 2 {
+                app.drag_state = Some(DragState {
+                    border: DragBorder::RightBorder,
+                    start_col: col,
+                    start_pct: app.right_pane_pct,
+                });
+            }
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if let Some(ref drag) = app.drag_state {
+                let term_width = app.term_width.max(1) as i32;
+                let delta = col as i32 - drag.start_col as i32;
+                let delta_pct = (delta * 100 / term_width) as i16;
+                match drag.border {
+                    DragBorder::LeftBorder => {
+                        app.left_pane_pct =
+                            (drag.start_pct as i16 + delta_pct).clamp(10, 40) as u16;
+                    }
+                    DragBorder::RightBorder => {
+                        app.right_pane_pct =
+                            (drag.start_pct as i16 - delta_pct).clamp(10, 40) as u16;
+                    }
                 }
             }
         }
+        MouseEventKind::Up(MouseButton::Left) => {
+            app.drag_state = None;
+        }
+        _ => {}
     }
 }
 
