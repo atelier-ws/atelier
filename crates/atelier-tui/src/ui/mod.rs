@@ -9,7 +9,7 @@ use ratatui::Frame;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
     if app.focused_pane == pane {
-        Color::Cyan
+        app.agent_mode.accent_color()
     } else {
         Color::DarkGray
     }
@@ -45,11 +45,117 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_completion_popup(frame, app, vertical[2]);
     }
 
-    if app.pending_permission.is_some() {
+    if app.show_session_picker {
+        draw_session_picker(frame, app, area);
+    } else if app.pending_choice.is_some() {
+        draw_choice_overlay(frame, app, area);
+    } else if app.pending_permission.is_some() {
         draw_permission_overlay(frame, app, area);
     } else if app.pending_diff.is_some() {
         draw_diff_overlay(frame, app, area);
     }
+}
+
+fn draw_choice_overlay(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(choice) = &app.pending_choice else {
+        return;
+    };
+    let accent = app.agent_mode.accent_color();
+    let overlay = centered_rect(60, 40, area);
+    frame.render_widget(Clear, overlay);
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!("  ? {}", choice.question),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+    ];
+    for (i, c) in choice.choices.iter().enumerate() {
+        let selected = i == choice.selected && !choice.input_mode;
+        let marker = if selected { "►" } else { " " };
+        let style = if selected {
+            Style::default().fg(accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(Span::styled(
+            format!("  {marker} {}. {c}", i + 1),
+            style,
+        )));
+    }
+    lines.push(Line::raw(""));
+    if choice.input_mode {
+        lines.push(Line::from(Span::styled(
+            format!("  custom: {}_", choice.custom_input),
+            Style::default().fg(Color::Yellow),
+        )));
+        lines.push(Line::from(Span::styled(
+            "  Enter submit · Esc cancel",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        let hint = if choice.allow_freeform {
+            "  ↑↓ navigate · Enter select · type for custom"
+        } else {
+            "  ↑↓ navigate · Enter select"
+        };
+        lines.push(Line::from(Span::styled(
+            hint,
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let block = Block::bordered()
+        .title(" Choose ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    frame.render_widget(para, overlay);
+}
+
+fn draw_session_picker(frame: &mut Frame, app: &App, area: Rect) {
+    let accent = app.agent_mode.accent_color();
+    let overlay = centered_rect(70, 60, area);
+    frame.render_widget(Clear, overlay);
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            "  Resume a session",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+    ];
+    if app.session_list.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Loading sessions…",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (i, s) in app.session_list.iter().enumerate() {
+            let selected = i == app.session_picker_selected;
+            let marker = if selected { "►" } else { " " };
+            let style = if selected {
+                Style::default().fg(accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  {marker} {} — {} ({:.1}KB)", s.id, s.timestamp, s.size_kb),
+                style,
+            )));
+        }
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        "  ↑↓ navigate · Enter resume · Esc cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let block = Block::bordered()
+        .title(" Sessions ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    frame.render_widget(para, overlay);
 }
 
 fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
@@ -194,14 +300,23 @@ fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     use crate::highlight::render_markdown_lines;
 
-    let title = if app.current_model.is_empty() {
+    let title = if let Some(s) = &app.search {
+        let total = s.matches.len();
+        let pos = if total == 0 { 0 } else { s.current_match + 1 };
+        format!(" SEARCH: \"{}\" — {}/{} matches ", s.query, pos, total)
+    } else if app.current_model.is_empty() {
         " Conversation ".to_string()
     } else {
         format!(" Conversation — {} ", app.current_model)
     };
+    let border = if app.search.is_some() {
+        Color::Yellow
+    } else {
+        border_color(app, FocusedPane::Conversation)
+    };
     let block = Block::bordered()
         .title(title)
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
+        .border_style(Style::default().fg(border));
 
     if app.conversation.is_empty() && !app.is_streaming {
         let model_line = if app.current_model.is_empty() {
@@ -245,12 +360,30 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let mut all_lines: Vec<Line> = Vec::new();
-    for entry in &app.conversation {
+    let current_match_idx = app
+        .search
+        .as_ref()
+        .and_then(|s| s.matches.get(s.current_match).copied());
+    for (entry_idx, entry) in app.conversation.iter().enumerate() {
+        let is_match = app
+            .search
+            .as_ref()
+            .map(|s| s.matches.contains(&entry_idx))
+            .unwrap_or(false);
+        let match_marker = if Some(entry_idx) == current_match_idx {
+            Some(Style::default().bg(Color::Yellow).fg(Color::Black))
+        } else if is_match {
+            Some(Style::default().bg(Color::Rgb(60, 50, 0)))
+        } else {
+            None
+        };
         match entry.role {
             Role::User => {
                 all_lines.push(Line::from(Span::styled(
                     "▶ You".to_string(),
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                    match_marker.unwrap_or_else(|| {
+                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                    }),
                 )));
                 for line in entry.text.lines() {
                     all_lines.push(Line::from(Span::styled(
@@ -263,7 +396,9 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
             Role::Assistant => {
                 all_lines.push(Line::from(Span::styled(
                     "◉ Atelier",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    match_marker.unwrap_or_else(|| {
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    }),
                 )));
                 for hl_line in render_markdown_lines(&entry.text) {
                     all_lines.push(hl_line);
@@ -273,7 +408,7 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
             Role::System => {
                 all_lines.push(Line::from(Span::styled(
                     format!("  ◆ {}", entry.text),
-                    Style::default().fg(Color::DarkGray),
+                    match_marker.unwrap_or_else(|| Style::default().fg(Color::DarkGray)),
                 )));
             }
         }
@@ -383,7 +518,14 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let turns = app.conversation.len() / 2;
 
     let style = Style::default().fg(Color::DarkGray);
+    let mode = app.agent_mode;
     let spans = vec![
+        Span::styled(
+            format!("  [{}]", mode.name()),
+            Style::default()
+                .fg(mode.accent_color())
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(format!("  ◆ {model}"), style),
         Span::styled("  │  ", style),
         Span::styled(format!("cache {cache}"), style),

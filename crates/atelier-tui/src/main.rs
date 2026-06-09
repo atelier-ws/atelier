@@ -4,9 +4,10 @@ mod app;
 mod highlight;
 mod protocol;
 mod ui;
+mod web;
 
 use anyhow::Result;
-use app::{App, CompletionMode, FocusedPane, PendingPermission};
+use app::{App, CompletionMode, FocusedPane, PendingPermission, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -94,14 +95,46 @@ async fn run_app(
     let project_root = std::env::current_dir()?.to_string_lossy().to_string();
     let mut app = App::new(project_root);
 
+    let args: Vec<String> = std::env::args().collect();
+    let web_port: Option<u16> = args
+        .iter()
+        .position(|a| a == "--web")
+        .map(|pos| {
+            args.get(pos + 1)
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(web::DEFAULT_WEB_PORT)
+        });
+    let resume_id: Option<String> = args
+        .iter()
+        .position(|a| a == "--resume")
+        .and_then(|pos| args.get(pos + 1).filter(|a| !a.starts_with("--")).cloned());
+    let show_resume_picker = args.iter().any(|a| a == "--resume") && resume_id.is_none();
+
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BackendEvent>(100);
 
+    // Broadcast channel for the web bridge (raw serialized event lines).
+    let event_bcast = tokio::sync::broadcast::channel::<String>(256).0;
+    // mpsc channel for commands arriving from browser clients (raw JSON lines).
+    let (web_cmd_tx, mut web_cmd_rx) = tokio::sync::mpsc::channel::<String>(100);
+
+    if let Some(port) = web_port {
+        let event_tx = event_bcast.clone();
+        tokio::spawn(async move {
+            let _ = web::start_web_server(port, event_tx, web_cmd_tx).await;
+        });
+    }
+
+    let reader_bcast = event_bcast.clone();
+    let web_enabled = web_port.is_some();
     tokio::spawn(async move {
         let reader = BufReader::new(child_stdout);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
                 continue;
+            }
+            if web_enabled {
+                let _ = reader_bcast.send(line.clone());
             }
             if let Ok(event) = serde_json::from_str::<BackendEvent>(&line) {
                 if tx.send(event).await.is_err() {
@@ -112,6 +145,18 @@ async fn run_app(
     });
 
     let mut writer = BufWriter::new(child_stdin);
+
+    if show_resume_picker {
+        app.show_session_picker = true;
+        send_command(
+            &mut writer,
+            &FrontendCommand::UserCommand {
+                name: "sessions".to_string(),
+                args: vec![],
+            },
+        )
+        .await?;
+    }
 
     terminal.draw(|f| ui::draw(f, &mut app))?;
 
@@ -126,6 +171,13 @@ async fn run_app(
 
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
+        }
+
+        // Forward commands from browser clients to the backend.
+        while let Ok(raw) = web_cmd_rx.try_recv() {
+            let line = raw + "\n";
+            writer.write_all(line.as_bytes()).await?;
+            writer.flush().await?;
         }
 
         if app.should_quit {
@@ -153,6 +205,125 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
+    // Session picker overlay takes top priority.
+    if app.show_session_picker {
+        match key.code {
+            KeyCode::Up => {
+                app.session_picker_selected = app.session_picker_selected.saturating_sub(1);
+                return Ok(());
+            }
+            KeyCode::Down => {
+                if app.session_picker_selected + 1 < app.session_list.len() {
+                    app.session_picker_selected += 1;
+                }
+                return Ok(());
+            }
+            KeyCode::Esc => {
+                app.show_session_picker = false;
+                return Ok(());
+            }
+            KeyCode::Enter => {
+                if let Some(entry) = app.session_list.get(app.session_picker_selected) {
+                    let id = entry.id.clone();
+                    app.show_session_picker = false;
+                    app.push_system_pub(format!("resuming session {id}"));
+                    send_command(
+                        writer,
+                        &FrontendCommand::UserMessage {
+                            text: format!("Resume session {id}"),
+                        },
+                    )
+                    .await?;
+                }
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+    }
+
+    // Choice overlay takes priority next.
+    if let Some(choice) = app.pending_choice.clone() {
+        if choice.input_mode {
+            match key.code {
+                KeyCode::Enter => {
+                    let response = choice.custom_input.clone();
+                    app.pending_choice = None;
+                    send_command(
+                        writer,
+                        &FrontendCommand::ChoiceResponse {
+                            id: choice.id,
+                            response,
+                        },
+                    )
+                    .await?;
+                }
+                KeyCode::Esc => {
+                    if let Some(c) = app.pending_choice.as_mut() {
+                        c.input_mode = false;
+                        c.custom_input.clear();
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(c) = app.pending_choice.as_mut() {
+                        c.custom_input.pop();
+                    }
+                }
+                KeyCode::Char(ch) => {
+                    if let Some(c) = app.pending_choice.as_mut() {
+                        c.custom_input.push(ch);
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        match key.code {
+            KeyCode::Up => {
+                if let Some(c) = app.pending_choice.as_mut() {
+                    c.selected = c.selected.saturating_sub(1);
+                }
+                return Ok(());
+            }
+            KeyCode::Down => {
+                if let Some(c) = app.pending_choice.as_mut() {
+                    if c.selected + 1 < c.choices.len() {
+                        c.selected += 1;
+                    }
+                }
+                return Ok(());
+            }
+            KeyCode::Enter => {
+                let response = choice
+                    .choices
+                    .get(choice.selected)
+                    .cloned()
+                    .unwrap_or_default();
+                app.pending_choice = None;
+                send_command(
+                    writer,
+                    &FrontendCommand::ChoiceResponse {
+                        id: choice.id,
+                        response,
+                    },
+                )
+                .await?;
+                return Ok(());
+            }
+            KeyCode::Char(ch) if choice.allow_freeform => {
+                if let Some(c) = app.pending_choice.as_mut() {
+                    c.input_mode = true;
+                    c.custom_input.push(ch);
+                }
+                return Ok(());
+            }
+            KeyCode::Esc => {
+                app.pending_choice = None;
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+    }
+
     // Permission prompt takes priority.
     if let Some(PendingPermission::Waiting { id, .. }) = app.pending_permission.clone() {
         match key.code {
@@ -217,6 +388,37 @@ async fn handle_key(
             }
             KeyCode::Char('d') => {
                 app.pending_diff = None;
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+    }
+
+    // --- Search mode handling (Ctrl+F) ---
+    if app.search.is_some() {
+        match key.code {
+            KeyCode::Esc => {
+                app.search = None;
+                return Ok(());
+            }
+            KeyCode::Enter | KeyCode::Down => {
+                app.search_next();
+                return Ok(());
+            }
+            KeyCode::Up => {
+                app.search_prev();
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                let mut q = app.search.as_ref().map(|s| s.query.clone()).unwrap_or_default();
+                q.pop();
+                app.search_conversation(&q);
+                return Ok(());
+            }
+            KeyCode::Char(c) => {
+                let mut q = app.search.as_ref().map(|s| s.query.clone()).unwrap_or_default();
+                q.push(c);
+                app.search_conversation(&q);
                 return Ok(());
             }
             _ => return Ok(()),
@@ -315,6 +517,24 @@ async fn handle_key(
     match key.code {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             send_command(writer, &FrontendCommand::Interrupt {}).await?;
+        }
+        KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.agent_mode = app.agent_mode.next();
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "mode".to_string(),
+                    args: vec![app.agent_mode.name().to_lowercase()],
+                },
+            )
+            .await?;
+        }
+        KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.search = Some(SearchState {
+                query: String::new(),
+                matches: vec![],
+                current_match: 0,
+            });
         }
         KeyCode::Tab => {
             app.cycle_focus();

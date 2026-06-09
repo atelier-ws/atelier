@@ -155,7 +155,15 @@ def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[...
 
 
 def _exec_rust_tui(root: Path) -> None:
-    """Find and exec the atelier-tui Rust binary."""
+    """Find and exec the atelier-tui Rust binary.
+
+    Forwarded CLI flags (passed through ``sys.argv``):
+    - ``--resume [<session-id>]`` — resume a saved session, or show an
+      interactive session picker when no id is given.
+    - ``--web [<port>]`` — also start a browser bridge (SSE) on ``<port>``
+      (default 7777) so the session is viewable at ``http://localhost:<port>``.
+    - ``--mitm`` — capture LLM traffic via mitmdump.
+    """
     import os
     import shutil
 
@@ -185,7 +193,26 @@ def _exec_rust_tui(root: Path) -> None:
 
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(root)
-    os.execvpe(binary, [binary], env)
+
+    # Forward TUI passthrough flags (handled by the Rust binary's own argv parsing).
+    import sys
+
+    forwarded: list[str] = []
+    argv = sys.argv[1:]
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--web", "--resume"):
+            forwarded.append(arg)
+            nxt = argv[i + 1] if i + 1 < len(argv) else None
+            if nxt is not None and not nxt.startswith("--"):
+                forwarded.append(nxt)
+                i += 1
+        elif arg == "--mitm":
+            forwarded.append(arg)
+        i += 1
+
+    os.execvpe(binary, [binary, *forwarded], env)
 
 
 @click.group(
