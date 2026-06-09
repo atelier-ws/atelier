@@ -74,12 +74,64 @@ This roadmap delivers `atelier run` — a user-owned coding-agent CLI built for 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owned Session Core | 0/TBD | Not started | - |
-| 2. Phase-Linear Stem Agent | 0/TBD | Not started | - |
-| 3. Minified Reads + Dedup | 0/TBD | Not started | - |
-| 4. CLI Hardening | 0/TBD | Not started | - |
-| 5. Reporting | 0/TBD | Not started | - |
+| 1. Owned Session Core | ✓ | Complete | 2026-06-08 |
+| 2. Phase-Linear Stem Agent | ✓ | Complete | 2026-06-08 |
+| 3. Minified Reads + Dedup | ✓ | Complete | 2026-06-08 |
+| 4. CLI Hardening | ✓ | Complete | 2026-06-09 |
+| 5. Reporting | ✓ | Complete | 2026-06-09 |
+| 6. 4-Pane Layout + Expanded Protocol | 0/TBD | Not started | - |
+| 7. MCP Integration + Background Tasks | 0/TBD | Not started | - |
+| 8. Analytics + CI + Checkpoint | 0/TBD | Not started | - |
+| 9. Advanced Commands + Savings Panel | 0/TBD | Not started | - |
+
+---
+
+## Phase 6: 4-Pane Layout + Expanded Protocol
+**Goal**: Upgrade the Ratatui TUI to a 4-pane fullscreen workspace (Sessions/Agents | Conversation | Context/Memory/Route | Tools/Diffs) with an expanded event protocol covering shell execution, context usage, memory hits, tasks, subagents, and checkpoints.
+**Depends on**: Phase 5
+**Requirements**: 4-pane layout, !shell mode, context usage pane, memory hits display, expanded BackendEvent protocol
+**Success Criteria**:
+  1. 4-pane layout with Sessions sidebar, Conversation, Context/Route/Savings pane, Tools/Diffs pane
+  2. `!cmd` prefix in input executes shell commands and streams output into Tools pane
+  3. Context usage pane shows token counts, cache efficiency, savings in real-time
+  4. Memory hits appear in the Context pane when agent reads from Atelier memory
+  5. Expanded event protocol emitted by Python backend (context.usage.updated, memory.hit, shell.*, task.*)
+**Plans**: TBD
+
+### Phase 7: MCP Integration + Background Tasks
+**Goal**: Spawn and wire MCP servers from .mcp.json into the agent tool loop; add background task tracking so long-running operations don't block the TUI.
+**Depends on**: Phase 6
+**Requirements**: MCP server spawning, MCP tool exposure, /tasks command, background session support
+**Success Criteria**:
+  1. MCP servers from .mcp.json are auto-detected, spawned, and their tools are available to the agent
+  2. /tasks shows a list of background tasks with live status
+  3. Long-running tool calls can be backgrounded (! prefix or Ctrl+B)
+  4. Subagent cards show in Sessions pane when spawned
+**Plans**: TBD
+
+### Phase 8: Analytics + CI + Checkpoint/Rewind
+**Goal**: Persist session analytics to SQLite; add headless CI/JSON output mode; add checkpoint/rewind foundation.
+**Depends on**: Phase 7
+**Requirements**: SQLite analytics, `atelier run --json`, /checkpoint, /rewind, session collaboration
+**Success Criteria**:
+  1. `atelier run --json "<task>"` produces structured JSON output for CI pipelines
+  2. SQLite stores per-session cost, cache efficiency, model, duration
+  3. /checkpoint saves a snapshot; /rewind restores it
+  4. Read-only session share link for collaboration
+**Plans**: TBD
+
+### Phase 9: Advanced Commands + Savings Panel
+**Goal**: Complete the Claude Code feature parity with /plan, /btw, /usage, savings panel, Ctrl+R reverse search, and prompt suggestions.
+**Depends on**: Phase 8
+**Requirements**: /plan mode, /btw ephemeral questions, savings panel, Ctrl+R search, prompt suggestions
+**Success Criteria**:
+  1. /plan mode runs exploration-only with no edits
+  2. /btw asks an ephemeral question without polluting conversation history
+  3. Savings panel shows cache hits, VFS savings, routing savings vs naive baseline
+  4. Ctrl+R opens reverse search over prompt history
+  5. Prompt suggestions appear after warm-cache responses
+**Plans**: TBD
