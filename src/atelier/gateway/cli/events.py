@@ -96,6 +96,15 @@ class PermissionRequested:
 
 
 @dataclass(frozen=True)
+class ChoiceRequested:
+    type: Literal["choice.requested"]
+    id: str
+    question: str
+    choices: list[str]
+    allow_freeform: bool = True
+
+
+@dataclass(frozen=True)
 class VerificationResult:
     type: Literal["verification.result"]
     ok: bool
@@ -134,6 +143,7 @@ AtelierEvent = (
     | ToolFinished
     | PatchProposed
     | PermissionRequested
+    | ChoiceRequested
     | VerificationResult
     | RuntimeErrorEvent
     | CacheStats

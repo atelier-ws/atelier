@@ -167,6 +167,12 @@ async def run_ndjson_server(
                     ):
                         _write_event(event)
 
+                elif cmd_type == "choice.response":
+                    choice_id = str(cmd.get("id", ""))
+                    response = str(cmd.get("response", ""))
+                    if choice_id in runtime._pending_permissions:
+                        runtime._pending_permissions[choice_id]["response"] = response
+
                 elif cmd_type == "interrupt":
                     await runtime.interrupt(session_id)
 

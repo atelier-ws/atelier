@@ -73,6 +73,14 @@ pub enum BackendEvent {
         #[serde(default)]
         risk: Option<String>,
     },
+    #[serde(rename = "choice.requested")]
+    ChoiceRequested {
+        id: String,
+        question: String,
+        choices: Vec<String>,
+        #[serde(default)]
+        allow_freeform: Option<bool>,
+    },
     #[serde(rename = "verification.result")]
     VerificationResult {
         ok: bool,
@@ -113,6 +121,8 @@ pub enum FrontendCommand {
         approved: bool,
         scope: String,
     },
+    #[serde(rename = "choice.response")]
+    ChoiceResponse { id: String, response: String },
     #[serde(rename = "interrupt")]
     Interrupt {},
 }

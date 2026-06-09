@@ -1,8 +1,44 @@
 //! Application state for the Atelier TUI.
 
 use crate::protocol::BackendEvent;
+use ratatui::style::Color;
 use ratatui_textarea::TextArea;
 use serde_json::Value;
+
+/// Parse `/sessions` markdown output into session list entries.
+/// Expected line format: `- ``<id>`` — <date time> (<size>KB)`
+pub fn parse_session_list(text: &str) -> Vec<SessionListEntry> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with("- `") {
+            continue;
+        }
+        // id is between the first pair of backticks
+        let after = &line[3..];
+        let Some(end) = after.find('`') else { continue };
+        let id = after[..end].to_string();
+        let rest = &after[end + 1..];
+        // size: look for "(<n>KB)"
+        let size_kb = rest
+            .rfind('(')
+            .and_then(|i| rest[i + 1..].split("KB").next())
+            .and_then(|s| s.trim().parse::<f32>().ok())
+            .unwrap_or(0.0);
+        // timestamp: text between "— " and " ("
+        let timestamp = rest
+            .split('—')
+            .nth(1)
+            .map(|s| s.split('(').next().unwrap_or("").trim().to_string())
+            .unwrap_or_default();
+        out.push(SessionListEntry {
+            id,
+            timestamp,
+            size_kb,
+        });
+    }
+    out
+}
 
 /// Extract a file path from a tool result payload (read/edit return `{"path": ...}` or similar).
 fn extract_path_from_result(result: &Option<Value>) -> Option<String> {
@@ -110,6 +146,8 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
     ("context", "Show context stats (turns, tokens, tool results)"),
+    ("analytics", "Show session analytics (turns, tools, tokens, mode)"),
+    ("mode", "Switch agent mode: /mode <code|explore|research|plan>"),
     ("background", "Show background service status"),
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
@@ -122,6 +160,74 @@ pub enum PendingPermission {
         action: String,
         risk: String,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingChoice {
+    pub id: String,
+    pub question: String,
+    pub choices: Vec<String>,
+    pub selected: usize,
+    pub allow_freeform: bool,
+    pub custom_input: String, // for freeform
+    pub input_mode: bool,     // true = typing custom response
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum AgentMode {
+    Code,     // default — full tools, blue accent
+    Explore,  // read-only — read/grep/symbols, green
+    Research, // research — read/grep/web, purple
+    Plan,     // planning — read/grep only, orange
+}
+
+impl AgentMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Code => "CODE",
+            Self::Explore => "EXPLORE",
+            Self::Research => "RESEARCH",
+            Self::Plan => "PLAN",
+        }
+    }
+    pub fn accent_color(&self) -> Color {
+        match self {
+            Self::Code => Color::Cyan,
+            Self::Explore => Color::Green,
+            Self::Research => Color::Magenta,
+            Self::Plan => Color::Yellow,
+        }
+    }
+    pub fn tools(&self) -> &'static [&'static str] {
+        match self {
+            Self::Code => &["read", "edit", "shell", "grep", "explore"],
+            Self::Explore => &["read", "grep", "explore"],
+            Self::Research => &["read", "grep", "explore"],
+            Self::Plan => &["read", "grep"],
+        }
+    }
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Code => Self::Explore,
+            Self::Explore => Self::Research,
+            Self::Research => Self::Plan,
+            Self::Plan => Self::Code,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchState {
+    pub query: String,
+    pub matches: Vec<usize>,  // indices into conversation
+    pub current_match: usize, // index into matches
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionListEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub size_kb: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +286,12 @@ pub struct App<'a> {
     pub history_cursor: Option<usize>,
     pub total_cost_usd: f64,
     pub total_savings_usd: f64,
+    pub pending_choice: Option<PendingChoice>,
+    pub agent_mode: AgentMode,
+    pub search: Option<SearchState>,
+    pub session_list: Vec<SessionListEntry>,
+    pub show_session_picker: bool,
+    pub session_picker_selected: usize,
 }
 
 impl<'a> App<'a> {
@@ -211,6 +323,12 @@ impl<'a> App<'a> {
             history_cursor: None,
             total_cost_usd: 0.0,
             total_savings_usd: 0.0,
+            pending_choice: None,
+            agent_mode: AgentMode::Code,
+            search: None,
+            session_list: Vec::new(),
+            show_session_picker: false,
+            session_picker_selected: 0,
         }
     }
 
@@ -219,6 +337,10 @@ impl<'a> App<'a> {
             role: Role::System,
             text,
         });
+    }
+
+    pub fn push_system_pub(&mut self, text: String) {
+        self.push_system(text);
     }
 
     /// Apply an incoming backend event to the app state.
@@ -271,6 +393,14 @@ impl<'a> App<'a> {
                 self.is_streaming = false;
                 self.auto_scroll = true;
                 self.streaming_text.clear();
+                if self.show_session_picker {
+                    let parsed = parse_session_list(&text);
+                    if !parsed.is_empty() {
+                        self.session_list = parsed;
+                        self.session_picker_selected = 0;
+                        return;
+                    }
+                }
                 self.conversation.push(ConversationEntry {
                     role: Role::Assistant,
                     text,
@@ -323,6 +453,22 @@ impl<'a> App<'a> {
                     id,
                     action,
                     risk: risk.unwrap_or_else(|| "medium".to_string()),
+                });
+            }
+            BackendEvent::ChoiceRequested {
+                id,
+                question,
+                choices,
+                allow_freeform,
+            } => {
+                self.pending_choice = Some(PendingChoice {
+                    id,
+                    question,
+                    choices,
+                    selected: 0,
+                    allow_freeform: allow_freeform.unwrap_or(true),
+                    custom_input: String::new(),
+                    input_mode: false,
                 });
             }
             BackendEvent::VerificationResult { ok, rubric, details } => {
@@ -492,6 +638,56 @@ impl<'a> App<'a> {
                 }
             }
             CompletionMode::None => {}
+        }
+    }
+
+    pub fn search_conversation(&mut self, query: &str) {
+        let q = query.to_lowercase();
+        let matches: Vec<usize> = self
+            .conversation
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.text.to_lowercase().contains(&q))
+            .map(|(i, _)| i)
+            .collect();
+        let current = 0;
+        if !matches.is_empty() {
+            // Scroll to first match
+            self.auto_scroll = false;
+            self.scroll = (matches[0] as u16).saturating_mul(3); // rough estimate
+        }
+        self.search = Some(SearchState {
+            query: query.to_string(),
+            matches,
+            current_match: current,
+        });
+    }
+
+    pub fn search_next(&mut self) {
+        if let Some(ref mut s) = self.search {
+            if s.matches.is_empty() {
+                return;
+            }
+            s.current_match = (s.current_match + 1) % s.matches.len();
+            let msg_idx = s.matches[s.current_match];
+            self.auto_scroll = false;
+            self.scroll = (msg_idx as u16).saturating_mul(3);
+        }
+    }
+
+    pub fn search_prev(&mut self) {
+        if let Some(ref mut s) = self.search {
+            if s.matches.is_empty() {
+                return;
+            }
+            if s.current_match == 0 {
+                s.current_match = s.matches.len() - 1;
+            } else {
+                s.current_match -= 1;
+            }
+            let msg_idx = s.matches[s.current_match];
+            self.auto_scroll = false;
+            self.scroll = (msg_idx as u16).saturating_mul(3);
         }
     }
 }
