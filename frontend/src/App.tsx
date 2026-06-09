@@ -276,10 +276,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/overview" replace />} />
             <Route path="/overview" element={<Overview />} />
-            <Route
-              path="/quickstart"
-              element={<Navigate to="/system/hosts" replace />}
-            />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:id" element={<Sessions />} />
             <Route path="/runs" element={<Navigate to="/sessions" replace />} />

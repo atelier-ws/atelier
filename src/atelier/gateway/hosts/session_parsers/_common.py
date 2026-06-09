@@ -161,6 +161,7 @@ def make_assistant_message(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    reasoning_output_tokens: int = 0,
     timestamp: str | None = None,
     cache_read: int = 0,
     cache_write: int = 0,
@@ -186,6 +187,7 @@ def make_assistant_message(
             "usage": {
                 "input": input_tokens,
                 "output": output_tokens,
+                "reasoningOutput": min(reasoning_output_tokens, output_tokens),
                 "cacheRead": cache_read,
                 "cacheWrite": cache_write,
                 "thinking": thinking_tokens,
@@ -205,6 +207,7 @@ def make_llm_usage_entry(
     model: str | None,
     input_tokens: int = 0,
     output_tokens: int = 0,
+    reasoning_output_tokens: int = 0,
     thinking_tokens: int = 0,
     cached_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
@@ -216,6 +219,10 @@ def make_llm_usage_entry(
     usage_values = {
         "input_tokens": int(input_tokens or 0),
         "output_tokens": int(output_tokens or 0),
+        "reasoning_output_tokens": min(
+            int(reasoning_output_tokens or 0),
+            int(output_tokens or 0),
+        ),
         "thinking_tokens": int(thinking_tokens or 0),
         "cached_input_tokens": int(cached_input_tokens or 0),
         "cache_creation_input_tokens": int(cache_creation_input_tokens or 0),
@@ -235,6 +242,7 @@ def make_llm_usage_entry(
         model=model_id,
         input_tokens=usage_values["input_tokens"],
         output_tokens=usage_values["output_tokens"],
+        reasoning_output_tokens=usage_values["reasoning_output_tokens"],
         thinking_tokens=usage_values["thinking_tokens"],
         cached_input_tokens=usage_values["cached_input_tokens"],
         cache_creation_input_tokens=usage_values["cache_creation_input_tokens"],
@@ -286,6 +294,7 @@ def summarize_usage_entries(
     aggregated: dict[str, dict[str, int]] = {}
     total_input = 0
     total_output = 0
+    total_reasoning_output = 0
     total_thinking = 0
     total_cache_read = 0
     total_cache_write = 0
@@ -296,6 +305,7 @@ def summarize_usage_entries(
             continue
         total_input += int(entry.input_tokens or 0)
         total_output += int(entry.output_tokens or 0)
+        total_reasoning_output += int(entry.reasoning_output_tokens or 0)
         total_thinking += int(entry.thinking_tokens or 0)
         total_cache_read += int(entry.cached_input_tokens or 0)
         total_cache_write += int(entry.cache_creation_input_tokens or 0)
@@ -310,6 +320,7 @@ def summarize_usage_entries(
             (
                 entry.input_tokens,
                 entry.output_tokens,
+                entry.reasoning_output_tokens,
                 entry.thinking_tokens,
                 entry.cached_input_tokens,
                 entry.cache_creation_input_tokens,
@@ -322,6 +333,7 @@ def summarize_usage_entries(
             {
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "reasoning_output_tokens": 0,
                 "thinking_tokens": 0,
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0,
@@ -329,6 +341,7 @@ def summarize_usage_entries(
         )
         bucket["input_tokens"] += int(entry.input_tokens or 0)
         bucket["output_tokens"] += int(entry.output_tokens or 0)
+        bucket["reasoning_output_tokens"] += int(entry.reasoning_output_tokens or 0)
         bucket["thinking_tokens"] += int(entry.thinking_tokens or 0)
         bucket["cached_input_tokens"] += int(entry.cached_input_tokens or 0)
         bucket["cache_creation_input_tokens"] += int(entry.cache_creation_input_tokens or 0)
@@ -344,6 +357,7 @@ def summarize_usage_entries(
         "model_usages": model_usages,
         "input_tokens": total_input,
         "output_tokens": total_output,
+        "reasoning_output_tokens": min(total_reasoning_output, total_output),
         "thinking_tokens": total_thinking,
         "cached_input_tokens": total_cache_read,
         "cache_creation_input_tokens": total_cache_write,

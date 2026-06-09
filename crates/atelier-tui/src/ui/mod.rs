@@ -29,11 +29,10 @@ fn border_type_for_pane(app: &App, pane: FocusedPane) -> BorderType {
     }
 }
 
-/// Build a styled tab title with an active-dot prefix (`● ` active, `  ` inactive).
-/// The prefix is always 2 columns wide so click-area math stays consistent.
+/// Build a styled tab title. The active tab is highlighted via color/bold only;
+/// no leading dot (activity dots are prepended to the label by the caller).
 fn styled_tab(app: &App, label: &str, id: &str, is_active: bool) -> Line<'static> {
-    let prefix = if is_active { "\u{25cf}" } else { " " };
-    let text = format!("{prefix}{label}");
+    let text = format!(" {label}");
     let mut style = if is_active {
         Style::default()
             .fg(app.agent_mode.accent_color())
@@ -527,8 +526,8 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
             let title = t.title();
             let close = if t.closeable() { " \u{00d7}" } else { "" };
             let is_active = idx == app.middle_tab_idx;
-            let prefix = if is_active { "\u{25cf} " } else { "  " };
-            let label = format!("{prefix}{title}{close} ");
+            // No active dot — activity is shown via color/bold only.
+            let label = format!("  {title}{close} ");
             let mut style = if is_active {
                 Style::default()
                     .fg(app.agent_mode.accent_color())
@@ -559,10 +558,12 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
                 .unwrap_or(false)
                 && w >= 2
             {
-                // Layout is " {title} \u{00d7} ": the \u{00d7} sits at w-2 (trailing space at w-1).
+                // Layout is "  {title}{close} ": close = " \u{00d7}", so the
+                // \u{00d7} sits at w-2 and a trailing space at w-1. Cover both
+                // columns so the click reliably lands on the close button.
                 areas.push((
                     format!("middle_close_{idx}"),
-                    Rect { x: x + w - 2, y: layout[0].y, width: 1, height: 1 },
+                    Rect { x: x + w - 2, y: layout[0].y, width: 2, height: 1 },
                 ));
             }
             areas.push((
@@ -592,40 +593,18 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = block.inner(content_area);
     frame.render_widget(block, content_area);
 
+    // Render the active FileView's editor widget directly (full editing).
+    if let Some(TabContent::FileView { editor, .. }) = app.middle_tabs.get(app.middle_tab_idx) {
+        frame.render_widget(editor, inner);
+        return;
+    }
+
     match app.middle_tabs.get(app.middle_tab_idx).cloned() {
         Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
-        Some(TabContent::FileView { path, content, .. }) => {
-            let scroll = app
-                .middle_tab_scroll
-                .get(app.middle_tab_idx)
-                .copied()
-                .unwrap_or(0);
-            let ext = path.split('.').next_back().unwrap_or("").to_string();
-            draw_file_content(frame, &content, &ext, scroll, inner)
-        }
+        Some(TabContent::FileView { .. }) => {}
         Some(TabContent::DiffView(_, diff)) => draw_side_by_side_diff(frame, diff, inner),
         None => {}
     }
-}
-
-fn draw_file_content(frame: &mut Frame, content: &str, ext: &str, scroll: u16, area: Rect) {
-    use crate::highlight::render_file_line;
-    let lines: Vec<Line> = content
-        .lines()
-        .enumerate()
-        .map(|(i, l)| {
-            let mut spans = vec![Span::styled(
-                format!("{:4} \u{2502} ", i + 1),
-                Style::default().fg(Color::DarkGray),
-            )];
-            spans.extend(render_file_line(l, ext));
-            Line::from(spans)
-        })
-        .collect();
-    let para = Paragraph::new(lines)
-        .scroll((scroll, 0))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(para, area);
 }
 
 fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
@@ -709,7 +688,7 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
             "right_tasks",
             matches!(app.right_tab, RightTab::Tasks),
         ),
-        (" \u{f007}  Agents ".to_string(), "right_agents", matches!(app.right_tab, RightTab::Subagents)),
+        (" \u{f007}  Subagents ".to_string(), "right_agents", matches!(app.right_tab, RightTab::Subagents)),
     ];
     let tab_titles: Vec<Line> = labels
         .iter()
@@ -1594,7 +1573,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn draw_sessions_content(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_sessions_content(frame: &mut Frame, app: &mut App, area: Rect) {
     // If viewing a file, show its code outline instead of the sessions list.
     if !app.file_outline.is_empty() {
         let mut lines = vec![Line::from(Span::styled(
@@ -1621,58 +1600,91 @@ fn draw_sessions_content(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
+    let accent = app.agent_mode.accent_color();
     let mut lines: Vec<Line> = Vec::new();
+    // (session index, display row) for each clickable session card.
+    let mut click_rows: Vec<(usize, usize)> = Vec::new();
 
-    let current = if app.session_id.is_empty() {
-        "(starting…)".to_string()
-    } else {
-        let id: String = app.session_id.chars().take(20).collect();
-        id
-    };
-    lines.push(Line::from(vec![
-        Span::styled("\u{25cf} ", Style::default().fg(Color::Green)),
-        Span::raw(current),
-        Span::styled(" (active)", Style::default().fg(Color::DarkGray)),
-    ]));
-    lines.push(Line::from(Span::styled(
-        format!("  Background tasks: {}", app.background_tasks.len()),
-        Style::default().fg(Color::DarkGray),
-    )));
-    for task in &app.background_tasks {
-        let (marker, style) = match task.status {
-            TaskStatus::Running => ("\u{27f3}", Style::default().fg(Color::Yellow)),
-            TaskStatus::Done => ("\u{2713}", Style::default().fg(Color::Green)),
-            TaskStatus::Failed => ("\u{2717}", Style::default().fg(Color::Red)),
-        };
-        lines.push(Line::from(vec![
-            Span::styled(format!("   {marker} "), style),
-            Span::raw(task.name.clone()),
-        ]));
+    for (idx, s) in app.sessions_list.iter().take(12).enumerate() {
+        let row = lines.len();
+        let id: String = s.id.chars().take(14).collect();
+        // Row 1: ● id  (current)
+        let dot_color = if s.is_current { Color::Green } else { accent };
+        let mut header = vec![
+            Span::styled("  \u{25cf}  ", Style::default().fg(dot_color)),
+            Span::styled(id, Style::default().add_modifier(Modifier::BOLD)),
+        ];
+        if s.is_current {
+            header.push(Span::styled(
+                "  (current)",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        lines.push(Line::from(header));
+        // Row 2: label (first message), only if present and distinct from id.
+        if !s.label.is_empty() {
+            let label: String = s.label.chars().take(28).collect();
+            lines.push(Line::from(Span::styled(
+                format!("     {label}"),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+        // Row 3: $cost  saved $savings  N turns
+        let mut stats = vec![Span::styled(
+            format!("     ${:.4}", s.cost_usd),
+            Style::default().fg(Color::DarkGray),
+        )];
+        if s.savings_usd > 0.0 {
+            stats.push(Span::styled(
+                format!("  saved ${:.4}", s.savings_usd),
+                Style::default().fg(Color::Green),
+            ));
+        }
+        if s.turns > 0 {
+            stats.push(Span::styled(
+                format!("  {} turns", s.turns),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        if s.tool_calls > 0 {
+            stats.push(Span::styled(
+                format!("  {} tools", s.tool_calls),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        lines.push(Line::from(stats));
+        // Row 4: modified time
+        if !s.modified.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("     {}", s.modified),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        lines.push(Line::from(""));
+        click_rows.push((idx, row));
     }
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Past sessions:",
-        Style::default().fg(Color::DarkGray),
-    )));
+
     if app.sessions_list.is_empty() {
-        for entry in app.session_list.iter().take(8) {
-            let id: String = entry.id.chars().take(18).collect();
-            lines.push(Line::from(Span::raw(format!("   {id}"))));
-        }
-    } else {
-        for s in app.sessions_list.iter().take(8) {
-            let id: String = s.id.chars().take(18).collect();
-            lines.push(Line::from(vec![
-                Span::raw(format!("   {id}  ")),
-                Span::styled(
-                    format!("${:.4}", s.cost_usd),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
+        lines.push(Line::from(Span::styled(
+            "  No past sessions",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    // Register clickable hit areas for each session card (id row + body).
+    if let Some(ref mut areas) = app.tab_click_areas {
+        for (idx, row) in &click_rows {
+            let y = area.y.saturating_add(*row as u16);
+            if y < area.y + area.height {
+                areas.push((
+                    format!("session_{idx}"),
+                    Rect { x: area.x, y, width: area.width, height: 4 },
+                ));
+            }
         }
     }
 
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {

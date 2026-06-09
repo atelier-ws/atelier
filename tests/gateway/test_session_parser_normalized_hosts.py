@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from atelier.gateway.hosts.session_parsers._common import (
@@ -78,6 +80,35 @@ def test_extract_session_usage_summary_defaults_missing_normalized_token_buckets
     assert summary["total_turns"] == 1
     assert summary["input_tokens"] == 120
     assert summary["output_tokens"] == 40
+    assert summary["reasoning_output_tokens"] == 0
     assert summary["thinking_tokens"] == 0
     assert summary["cached_input_tokens"] == 0
     assert summary["cache_creation_input_tokens"] == 0
+
+
+def test_codex_reasoning_output_is_preserved_as_output_subset() -> None:
+    content = "\n".join(
+        [
+            json.dumps({"type": "turn_context", "payload": {"model": "gpt-5.4"}}),
+            json.dumps(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "gpt-5.4",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 40,
+                        "reasoning_tokens": 12,
+                        "input_tokens_details": {"cached_tokens": 20},
+                    },
+                }
+            ),
+        ]
+    )
+
+    summary = extract_session_usage_summary(content, "codex")
+
+    assert summary["input_tokens"] == 80
+    assert summary["cached_input_tokens"] == 20
+    assert summary["output_tokens"] == 40
+    assert summary["reasoning_output_tokens"] == 12

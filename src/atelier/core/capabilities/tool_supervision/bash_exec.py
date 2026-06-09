@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import re
 import shlex
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -220,18 +223,30 @@ def run_command(
         )
 
     started = time.perf_counter()
+    proc: subprocess.Popen[str] | None = None
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             ["bash", "-c", command],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
             cwd=cwd,
+            start_new_session=True,
         )
+        stdout, stderr = proc.communicate(timeout=timeout)
         exit_code = proc.returncode
-        raw_stdout = _strip_ansi(proc.stdout)
-        raw_stderr = _strip_ansi(proc.stderr)
+        raw_stdout = _strip_ansi(stdout)
+        raw_stderr = _strip_ansi(stderr)
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.communicate()
         exit_code = -1
         raw_stdout = ""
         raw_stderr = f"Command timed out after {timeout}s"
