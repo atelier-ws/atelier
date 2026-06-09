@@ -17,13 +17,6 @@ pub struct TreeNode {
     pub gitignored: bool,
 }
 
-/// Base Atelier state directory (`$ATELIER_ROOT` or `~/.atelier`).
-fn dirs_path() -> std::path::PathBuf {
-    std::env::var("ATELIER_ROOT")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".atelier"))
-}
-
 /// Read `.gitignore` patterns from the project root (one per non-comment line).
 pub fn load_gitignore_patterns(root: &str) -> Vec<String> {    let gitignore = Path::new(root).join(".gitignore");
     if !gitignore.exists() {
@@ -85,29 +78,6 @@ fn read_dir_nodes(dir: &Path, depth: usize, root: &Path, patterns: &[String]) ->
         })
         .collect()
 }
-
-/// Convert an ISO-8601 timestamp (`2026-06-09T14:20:16.570389`) into a short
-/// human-readable label like `Jun 9 14:20`. Falls back to the first 16 chars.
-pub fn humanize_iso(ts: &str) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let date_time = ts.split('.').next().unwrap_or(ts);
-    let mut parts = date_time.splitn(2, 'T');
-    let date = parts.next().unwrap_or("");
-    let time = parts.next().unwrap_or("");
-    let d: Vec<&str> = date.split('-').collect();
-    if d.len() == 3 {
-        if let (Ok(month), Ok(day)) = (d[1].parse::<usize>(), d[2].parse::<u32>()) {
-            if (1..=12).contains(&month) {
-                let hm: String = time.chars().take(5).collect();
-                return format!("{} {} {}", MONTHS[month - 1], day, hm).trim_end().to_string();
-            }
-        }
-    }
-    ts.chars().take(16).collect()
-}
-
 
 /// Expected line format: `- ``<id>`` — <date time> (<size>KB)`
 pub fn parse_session_list(text: &str) -> Vec<SessionListEntry> {
@@ -364,7 +334,6 @@ impl FuzzyFinder {
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum LeftTab {
-    Sessions,
     Files,
     Git,
 }
@@ -625,18 +594,6 @@ pub struct ContextStats {
     pub memory_hits: Vec<String>,   // recent memory hits
 }
 
-#[derive(Debug, Clone)]
-pub struct SessionSummary {
-    pub id: String,
-    pub label: String, // first message or truncated ID
-    pub is_current: bool,
-    pub cost_usd: f64,
-    pub savings_usd: f64,
-    pub turns: u32,
-    pub tool_calls: u32,
-    pub modified: String, // human-readable date/time
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskStatus {
     Running,
@@ -706,7 +663,6 @@ pub struct App<'a> {
     pub open_editor: Option<String>,
     pub active_overlay: ActiveOverlay,
     pub context_stats: ContextStats,
-    pub sessions_list: Vec<SessionSummary>,
     pub background_tasks: Vec<BackgroundTask>,
     pub reverse_search: Option<ReverseSearch>,
     pub prompt_suggestions: Vec<String>,
@@ -756,17 +712,14 @@ pub struct App<'a> {
     pub hovered_tab: Option<String>,
     pub fuzzy_finder: Option<FuzzyFinder>,
     // Activity dots on tabs
-    pub tools_activity: bool,    // true when any tool is Running
-    pub tasks_activity: bool,    // true when a background task changed state recently
-    pub sessions_activity: bool, // true when a new message arrived while not on Sessions tab
+    pub tools_activity: bool, // true when any tool is Running
+    pub tasks_activity: bool, // true when a background task changed state recently
     // Git commit detail (shown in right-top pane while browsing commits)
     pub selected_commit_detail: Option<String>,
     // Code outline of the active FileView tab (shown in the left pane)
     pub file_outline: Vec<OutlineItem>,
-    /// Last time past sessions were loaded; used to throttle periodic refresh.
-    pub sessions_refresh_timer: std::time::Instant,
-    /// Set when the user clicks a past session; the run loop sends the resume command.
-    pub resume_request: Option<String>,
+    /// Active mouse-drag text selection over the conversation pane.
+    pub text_selection: Option<TextSelection>,
 }
 
 /// One entry in a file's code outline (function/class/etc).
@@ -775,6 +728,14 @@ pub struct OutlineItem {
     pub line: usize,
     pub kind: String,
     pub name: String,
+}
+
+/// A mouse-drag text selection over the conversation pane.
+#[derive(Debug, Clone)]
+pub struct TextSelection {
+    pub start_row: u16,
+    pub end_row: u16,
+    pub selected_text: String,
 }
 
 impl<'a> App<'a> {
@@ -822,11 +783,10 @@ impl<'a> App<'a> {
             open_editor: None,
             active_overlay: ActiveOverlay::None,
             context_stats: ContextStats::default(),
-            sessions_list: Vec::new(),
             background_tasks: Vec::new(),
             reverse_search: None,
             prompt_suggestions: Vec::new(),
-            left_tab: LeftTab::Sessions,
+            left_tab: LeftTab::Files,
             left_hidden: false,
             git_status: Vec::new(),
             git_commits: Vec::new(),
@@ -860,132 +820,12 @@ impl<'a> App<'a> {
             fuzzy_finder: None,
             tools_activity: false,
             tasks_activity: false,
-            sessions_activity: false,
             selected_commit_detail: None,
             file_outline: Vec::new(),
-            sessions_refresh_timer: std::time::Instant::now(),
-            resume_request: None,
+            text_selection: None,
         };
         app.refresh_git_status();
-        app.load_sessions();
         app
-    }
-
-    /// Load past sessions into the Sessions pane. Prefers the analytics DB
-    /// (richer data) and falls back to scanning `~/.atelier/runs/*.jsonl`.
-    pub fn load_sessions(&mut self) {
-        use std::time::UNIX_EPOCH;
-
-        self.sessions_refresh_timer = std::time::Instant::now();
-
-        let analytics_sessions = self.load_sessions_from_db();
-        if !analytics_sessions.is_empty() {
-            self.sessions_list = analytics_sessions;
-            return;
-        }
-
-        let runs_dir = dirs_path().join("runs");
-        if !runs_dir.exists() {
-            return;
-        }
-
-        let mut sessions: Vec<SessionSummary> = Vec::new();
-        let read_dir = match std::fs::read_dir(&runs_dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-        let mut paths: Vec<_> = read_dir
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.starts_with("tui-") || name.starts_with("atelier-run-")
-            })
-            .collect();
-
-        paths.sort_by_key(|e| {
-            std::cmp::Reverse(
-                e.metadata()
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .unwrap_or(UNIX_EPOCH),
-            )
-        });
-
-        for entry in paths.iter().take(20) {
-            let path = entry.path();
-            let id = path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let first_line = content.lines().next().unwrap_or("");
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(first_line) {
-                    let label = v["session_id"]
-                        .as_str()
-                        .unwrap_or(&id)
-                        .chars()
-                        .take(20)
-                        .collect();
-                    sessions.push(SessionSummary {
-                        id: id.clone(),
-                        label,
-                        is_current: id == self.session_id,
-                        cost_usd: 0.0,
-                        savings_usd: 0.0,
-                        turns: 0,
-                        tool_calls: 0,
-                        modified: String::new(),
-                    });
-                }
-            }
-        }
-        self.sessions_list = sessions;
-    }
-
-    fn load_sessions_from_db(&self) -> Vec<SessionSummary> {
-        let db_path = dirs_path().join("analytics.db");
-        if !db_path.exists() {
-            return vec![];
-        }
-
-        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT session_id, total_cost_usd, total_savings_usd, turns, tool_calls, started_at \
-                 FROM sessions ORDER BY started_at DESC LIMIT 20",
-            ) {
-                if let Ok(rows) = stmt.query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, f64>(1).unwrap_or(0.0),
-                        row.get::<_, f64>(2).unwrap_or(0.0),
-                        row.get::<_, i64>(3).unwrap_or(0) as u32,
-                        row.get::<_, i64>(4).unwrap_or(0) as u32,
-                        row.get::<_, String>(5).unwrap_or_default(),
-                    ))
-                }) {
-                    let current_id = self.session_id.clone();
-                    return rows
-                        .filter_map(|r| r.ok())
-                        .map(|(id, cost, savings, turns, tool_calls, started_at)| {
-                            let is_current = id == current_id;
-                            let label = id.chars().take(20).collect();
-                            SessionSummary {
-                                id,
-                                label,
-                                is_current,
-                                cost_usd: cost,
-                                savings_usd: savings,
-                                turns,
-                                tool_calls,
-                                modified: humanize_iso(&started_at),
-                            }
-                        })
-                        .collect();
-                }
-            }
-        }
-        vec![]
     }
 
     /// Move the file-tree selection up one row.
@@ -1304,9 +1144,6 @@ impl<'a> App<'a> {
                     role: Role::Assistant,
                     text,
                 });
-                if !matches!(self.left_tab, LeftTab::Sessions) {
-                    self.sessions_activity = true;
-                }
             }
             BackendEvent::ToolRequested { id, name, .. } => {
                 self.tools.push(ToolEntry {
@@ -1515,7 +1352,7 @@ impl<'a> App<'a> {
             FocusedPane::Input => FocusedPane::Conversation,
             FocusedPane::Conversation => FocusedPane::Tools,
             FocusedPane::Tools => FocusedPane::Context,
-            FocusedPane::Context => FocusedPane::Sessions,
+            FocusedPane::Context => FocusedPane::Input,
             FocusedPane::Sessions => FocusedPane::Input,
         };
     }

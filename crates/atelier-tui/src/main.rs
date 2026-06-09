@@ -263,18 +263,6 @@ async fn run_app(
             });
         }
 
-        // Resume a past session if the user clicked one in the Sessions pane.
-        if let Some(id) = app.resume_request.take() {
-            send_command(
-                &mut writer,
-                &FrontendCommand::UserCommand {
-                    name: "session".to_string(),
-                    args: vec![id],
-                },
-            )
-            .await?;
-        }
-
         // Pick up the tunnel URL once it becomes available.
         if app.tunnel_url.is_none() {
             if let Ok(guard) = tunnel_url_shared.try_lock() {
@@ -292,11 +280,6 @@ async fn run_app(
 
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
-        }
-
-        // Periodically refresh the past-sessions list (every 30s).
-        if app.sessions_refresh_timer.elapsed() >= std::time::Duration::from_secs(30) {
-            app.load_sessions();
         }
 
         // Forward commands from browser clients to the backend.
@@ -1186,26 +1169,22 @@ async fn handle_key(
             app.close_tab(app.middle_tab_idx);
         }
         KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::ALT) => {
-            app.left_tab = LeftTab::Sessions;
-            app.sessions_activity = false;
-        }
-        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_tab = LeftTab::Files;
         }
-        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => {
+        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_tab = LeftTab::Git;
             app.refresh_git_status();
             app.load_commit_detail(app.git_commit_selected);
         }
-        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => {
+        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Tools;
             app.tools_activity = false;
         }
-        KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::ALT) => {
+        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Tasks;
             app.tasks_activity = false;
         }
-        KeyCode::Char('6') if key.modifiers.contains(KeyModifiers::ALT) => {
+        KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Subagents;
         }
         KeyCode::F(1) => {
@@ -1569,10 +1548,6 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                 for (tab_id, rect) in &areas {
                     if tab_hit(rect) {
                         match tab_id.as_str() {
-                            "left_sessions" => {
-                                app.left_tab = LeftTab::Sessions;
-                                app.sessions_activity = false;
-                            }
                             "left_files" => app.left_tab = LeftTab::Files,
                             "left_git" => {
                                 app.left_tab = LeftTab::Git;
@@ -1604,17 +1579,6 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                         if matches!(app.middle_tabs.get(idx), Some(TabContent::FileView { .. })) {
                                             app.focused_pane = FocusedPane::Conversation;
                                         }
-                                    }
-                                }
-                            }
-                            _ if tab_id.starts_with("session_") => {
-                                if let Ok(idx) = tab_id["session_".len()..].parse::<usize>() {
-                                    if let Some(s) = app.sessions_list.get(idx) {
-                                        let id = s.id.clone();
-                                        app.push_system_pub(format!(
-                                            "\u{27f3} Resuming session {id}..."
-                                        ));
-                                        app.resume_request = Some(id);
                                     }
                                 }
                             }
@@ -1657,6 +1621,15 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                     app.focused_pane = FocusedPane::Input;
                 } else if in_rect(&rects.middle) {
                     app.focused_pane = FocusedPane::Conversation;
+                    // Start a text selection when dragging over the conversation.
+                    if matches!(app.middle_tabs.get(app.middle_tab_idx), Some(TabContent::Conversation)) {
+                        let rel = row.saturating_sub(rects.middle.y);
+                        app.text_selection = Some(app::TextSelection {
+                            start_row: rel,
+                            end_row: rel,
+                            selected_text: String::new(),
+                        });
+                    }
                 } else if !app.right_hidden && in_rect(&rects.right_top) {
                     app.focused_pane = FocusedPane::Tools;
                 } else if !app.right_hidden && in_rect(&rects.right_bottom) {
@@ -1727,7 +1700,6 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                 }
                             }
                         }
-                        LeftTab::Sessions => {}
                     }
                 }
             }
@@ -1755,7 +1727,6 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                     match app.left_tab {
                         LeftTab::Files => app.files_scroll = app.files_scroll.saturating_sub(2),
                         LeftTab::Git => app.git_scroll = app.git_scroll.saturating_sub(2),
-                        LeftTab::Sessions => app.scroll = app.scroll.saturating_sub(2),
                     }
                 }
             }
@@ -1783,7 +1754,6 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                     match app.left_tab {
                         LeftTab::Files => app.files_scroll = app.files_scroll.saturating_add(2),
                         LeftTab::Git => app.git_scroll = app.git_scroll.saturating_add(2),
-                        LeftTab::Sessions => app.scroll = app.scroll.saturating_add(2),
                     }
                 }
             }
@@ -1866,10 +1836,49 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                             (drag.start_pct as i16 - delta_pct).clamp(10, 40) as u16;
                     }
                 }
+            } else if app.text_selection.is_some() {
+                // Extend the conversation text selection.
+                let middle_y = app.pane_rects.as_ref().map(|r| r.middle.y).unwrap_or(0);
+                let rel = row.saturating_sub(middle_y);
+                let off = app.scroll as usize;
+                let all_text = app
+                    .conversation
+                    .iter()
+                    .map(|e| e.text.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let lines: Vec<&str> = all_text.lines().collect();
+                if let Some(ref mut sel) = app.text_selection {
+                    sel.end_row = rel;
+                    let min_row = sel.start_row.min(sel.end_row) as usize;
+                    let max_row = sel.start_row.max(sel.end_row) as usize;
+                    let start = (min_row + off).min(lines.len());
+                    let end = (max_row + off + 1).min(lines.len());
+                    sel.selected_text = if start < end {
+                        lines[start..end].join("\n")
+                    } else {
+                        String::new()
+                    };
+                }
             }
         }
         MouseEventKind::Up(MouseButton::Left) => {
             app.drag_state = None;
+            if let Some(sel) = app.text_selection.take() {
+                if !sel.selected_text.is_empty() {
+                    #[cfg(feature = "clipboard")]
+                    {
+                        use arboard::Clipboard;
+                        if let Ok(mut cb) = Clipboard::new() {
+                            let _ = cb.set_text(&sel.selected_text);
+                            app.conversation.push(ConversationEntry {
+                                role: Role::System,
+                                text: format!("\u{1f4cb} Copied {} chars", sel.selected_text.len()),
+                            });
+                        }
+                    }
+                }
+            }
         }
         _ => {}
     }
