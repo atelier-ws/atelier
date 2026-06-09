@@ -22,15 +22,29 @@ pub async fn start_web_server(
     event_tx: broadcast::Sender<String>,
     cmd_tx: mpsc::Sender<String>,
 ) -> anyhow::Result<()> {
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    // Bind to 0.0.0.0 (not just 127.0.0.1) so cloudflared and other
+    // bridges (Docker, VMs) can connect to the origin server.
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
+    eprintln!("  \u{25c6} Web server listening on port {port}");
 
     loop {
-        let (stream, _) = listener.accept().await?;
-        let event_tx = event_tx.clone();
-        let cmd_tx = cmd_tx.clone();
-        tokio::spawn(async move {
-            let _ = handle_connection(stream, event_tx, cmd_tx).await;
-        });
+        match listener.accept().await {
+            Ok((stream, _addr)) => {
+                let event_tx = event_tx.clone();
+                let cmd_tx = cmd_tx.clone();
+                tokio::spawn(async move {
+                    // Wrap in catch-all so a single bad connection can't crash
+                    // the accept loop — silently ignore per-connection errors.
+                    if let Err(e) = handle_connection(stream, event_tx, cmd_tx).await {
+                        let _ = e;
+                    }
+                });
+            }
+            Err(_) => {
+                // Accept error — sleep briefly and retry rather than exiting.
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
     }
 }
 
