@@ -193,6 +193,7 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("approve", "Approve pending permission request"),
     ("deny", "Deny pending permission request"),
     ("auth", "Configure provider authentication: /auth [provider]"),
+    ("share", "Share read-only session link: /share"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
@@ -305,6 +306,15 @@ impl AgentMode {
             Self::Plan => Self::Code,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActiveOverlay {
+    None,
+    Help,
+    AgentPicker { selected: usize },
+    ModelPicker { selected: usize, models: Vec<(String, String)> },
+    AuthPicker { selected: usize, providers: Vec<String> },
 }
 
 #[derive(Debug, Clone)]
@@ -422,8 +432,9 @@ pub struct App<'a> {
     pub last_ctrl_c: Option<std::time::Instant>,
     pub web_port: Option<u16>,
     pub tunnel_url: Option<String>,
+    pub qr_lines: Vec<String>,
     pub open_editor: Option<String>,
-    pub show_help: bool,
+    pub active_overlay: ActiveOverlay,
     pub context_stats: ContextStats,
     pub sessions_list: Vec<SessionSummary>,
     pub background_tasks: Vec<BackgroundTask>,
@@ -489,8 +500,9 @@ impl<'a> App<'a> {
             last_ctrl_c: None,
             web_port: None,
             tunnel_url: None,
+            qr_lines: Vec::new(),
             open_editor: None,
-            show_help: false,
+            active_overlay: ActiveOverlay::None,
             context_stats: ContextStats::default(),
             sessions_list: Vec::new(),
             background_tasks: Vec::new(),
