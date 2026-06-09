@@ -137,4 +137,4 @@ jobs:
             dist/*
             binaries/*
             scripts/install.sh
-          generate_release_notes: true
+          generate_release_notes: false
