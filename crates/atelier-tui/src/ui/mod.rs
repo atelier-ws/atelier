@@ -8,7 +8,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, BorderType, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap,
+    Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap,
 };
 use ratatui::Frame;
 
@@ -29,16 +29,22 @@ fn border_type_for_pane(app: &App, pane: FocusedPane) -> BorderType {
     }
 }
 
-/// Build a tab title `Line`, underlined when the mouse is hovering its hit area.
-fn tab_line(app: &App, label: &str, id: &str) -> Line<'static> {
-    if app.hovered_tab.as_deref() == Some(id) {
-        Line::from(Span::styled(
-            label.to_string(),
-            Style::default().add_modifier(Modifier::UNDERLINED),
-        ))
+/// Build a styled tab title with an active-dot prefix (`● ` active, `  ` inactive).
+/// The prefix is always 2 columns wide so click-area math stays consistent.
+fn styled_tab(app: &App, label: &str, id: &str, is_active: bool) -> Line<'static> {
+    let prefix = if is_active { "\u{25cf}" } else { " " };
+    let text = format!("{prefix}{label}");
+    let mut style = if is_active {
+        Style::default()
+            .fg(app.agent_mode.accent_color())
+            .add_modifier(Modifier::BOLD)
     } else {
-        Line::from(label.to_string())
+        Style::default().fg(Color::DarkGray)
+    };
+    if app.hovered_tab.as_deref() == Some(id) {
+        style = style.add_modifier(Modifier::UNDERLINED);
     }
+    Line::from(Span::styled(text, style))
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -275,9 +281,9 @@ fn draw_fuzzy_finder(frame: &mut Frame, ff: &FuzzyFinder, app: &App, area: Rect)
 
 fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles: Vec<Line> = vec![
-        tab_line(app, " Sessions ", "left_sessions"),
-        tab_line(app, " Files ", "left_files"),
-        tab_line(app, " Git ", "left_git"),
+        styled_tab(app, " Sessions ", "left_sessions", matches!(app.left_tab, LeftTab::Sessions)),
+        styled_tab(app, " Files ", "left_files", matches!(app.left_tab, LeftTab::Files)),
+        styled_tab(app, " Git ", "left_git", matches!(app.left_tab, LeftTab::Git)),
     ];
     let selected = match app.left_tab {
         LeftTab::Sessions => 0,
@@ -288,12 +294,12 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     // Record tab hit-test areas using actual title widths (not equal division).
-    // Left tabs: " Sessions " / " Files " / " Git " — measure each.
+    // Left tabs: " Sessions " / " Files " / " Git " — measure each (+1 for the dot prefix).
     if let Some(ref mut areas) = app.tab_click_areas {
         let tab_labels = [(" Sessions ", "left_sessions"), (" Files ", "left_files"), (" Git ", "left_git")];
         let mut x = layout[0].x;
         for (i, (label, id)) in tab_labels.iter().enumerate() {
-            let w = label.chars().count() as u16;
+            let w = label.chars().count() as u16 + 1;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
             if i < tab_labels.len() - 1 {
@@ -511,15 +517,20 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
         .map(|(idx, t)| {
             let title = t.title();
             let close = if t.closeable() { " \u{00d7}" } else { "" };
-            let label = format!(" {title}{close} ");
-            if app.hovered_tab.as_deref() == Some(format!("middle_{idx}").as_str()) {
-                Line::from(Span::styled(
-                    label,
-                    Style::default().add_modifier(Modifier::UNDERLINED),
-                ))
+            let is_active = idx == app.middle_tab_idx;
+            let prefix = if is_active { "\u{25cf} " } else { "  " };
+            let label = format!("{prefix}{title}{close} ");
+            let mut style = if is_active {
+                Style::default()
+                    .fg(app.agent_mode.accent_color())
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Line::from(label)
+                Style::default().fg(Color::DarkGray)
+            };
+            if app.hovered_tab.as_deref() == Some(format!("middle_{idx}").as_str()) {
+                style = style.add_modifier(Modifier::UNDERLINED);
             }
+            Line::from(Span::styled(label, style))
         })
         .collect();
 
@@ -561,7 +572,8 @@ fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default()
                 .fg(app.agent_mode.accent_color())
                 .add_modifier(Modifier::BOLD),
-        );
+        )
+        .divider("\u{258f}");
     frame.render_widget(tabs, layout[0]);
 
     let content_area = layout[1];
@@ -732,9 +744,9 @@ fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
 
 fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab_titles = [
-        tab_line(app, " Tools ", "right_tools"),
-        tab_line(app, " Tasks ", "right_tasks"),
-        tab_line(app, " Agents ", "right_agents"),
+        styled_tab(app, " Tools ", "right_tools", matches!(app.right_tab, RightTab::Tools)),
+        styled_tab(app, " Tasks ", "right_tasks", matches!(app.right_tab, RightTab::Tasks)),
+        styled_tab(app, " Agents ", "right_agents", matches!(app.right_tab, RightTab::Subagents)),
     ];
     let selected = match app.right_tab {
         RightTab::Tools => 0,
@@ -745,11 +757,11 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     if let Some(ref mut areas) = app.tab_click_areas {
-        // Use actual tab label widths for accurate hit detection
+        // Use actual tab label widths for accurate hit detection (+1 for the dot prefix)
         let tab_labels = [(" Tools ", "right_tools"), (" Tasks ", "right_tasks"), (" Agents ", "right_agents")];
         let mut x = layout[0].x;
         for (i, (label, id)) in tab_labels.iter().enumerate() {
-            let w = label.chars().count() as u16;
+            let w = label.chars().count() as u16 + 1;
             areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
             x += w;
             if i < tab_labels.len() - 1 {
@@ -761,7 +773,11 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let tabs = Tabs::new(tab_titles.to_vec())
         .select(selected)
         .style(Style::default().fg(Color::DarkGray))
-        .highlight_style(Style::default().fg(app.agent_mode.accent_color()));
+        .highlight_style(
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::BOLD),
+        );
     frame.render_widget(tabs, layout[0]);
 
     let block = Block::bordered()
@@ -1488,33 +1504,40 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         };
         match entry.role {
             Role::User => {
-                all_lines.push(Line::from(Span::styled(
-                    "▶ You".to_string(),
-                    match_marker.unwrap_or_else(|| {
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD)
-                    }),
-                )));
+                all_lines.push(Line::from(vec![
+                    Span::styled("\u{258c} ", Style::default().fg(Color::Green)),
+                    Span::styled(
+                        "You",
+                        match_marker.unwrap_or_else(|| {
+                            Style::default()
+                                .fg(Color::Green)
+                                .add_modifier(Modifier::BOLD)
+                        }),
+                    ),
+                ]));
                 for line in entry.text.lines() {
-                    all_lines.push(Line::from(Span::styled(
-                        format!("  {line}"),
-                        Style::default().fg(Color::Green),
-                    )));
+                    all_lines.push(Line::from(vec![
+                        Span::styled("\u{258c} ", Style::default().fg(Color::Green)),
+                        Span::styled(line.to_string(), Style::default().fg(Color::White)),
+                    ]));
                 }
                 all_lines.push(Line::raw(""));
             }
             Role::Assistant => {
-                all_lines.push(Line::from(Span::styled(
-                    "◉ Atelier",
-                    match_marker.unwrap_or_else(|| {
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD)
-                    }),
-                )));
-                for hl_line in render_markdown_lines(&entry.text) {
-                    all_lines.push(hl_line);
+                let accent = app.agent_mode.accent_color();
+                all_lines.push(Line::from(vec![
+                    Span::styled("\u{258c} ", Style::default().fg(accent)),
+                    Span::styled(
+                        "Atelier",
+                        match_marker.unwrap_or_else(|| {
+                            Style::default().fg(accent).add_modifier(Modifier::BOLD)
+                        }),
+                    ),
+                ]));
+                for mut hl_line in render_markdown_lines(&entry.text) {
+                    let mut spans = vec![Span::styled("\u{258c} ", Style::default().fg(accent))];
+                    spans.extend(hl_line.spans.drain(..));
+                    all_lines.push(Line::from(spans));
                 }
                 all_lines.push(Line::raw(""));
             }
@@ -1543,14 +1566,18 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if app.is_streaming && !app.streaming_text.is_empty() {
-        all_lines.push(Line::from(Span::styled(
-            "◉ Atelier",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        for hl_line in render_markdown_lines(&app.streaming_text) {
-            all_lines.push(hl_line);
+        let accent = app.agent_mode.accent_color();
+        all_lines.push(Line::from(vec![
+            Span::styled("\u{258c} ", Style::default().fg(accent)),
+            Span::styled(
+                "Atelier",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        for mut hl_line in render_markdown_lines(&app.streaming_text) {
+            let mut spans = vec![Span::styled("\u{258c} ", Style::default().fg(accent))];
+            spans.extend(hl_line.spans.drain(..));
+            all_lines.push(Line::from(spans));
         }
     }
 
@@ -1736,23 +1763,33 @@ fn draw_tools_content(frame: &mut Frame, app: &App, area: Rect) {
         .tools
         .iter()
         .map(|tool| {
-            let (marker, style) = match tool.status {
-                ToolStatus::Requested => ("●", Style::default().fg(Color::DarkGray)),
-                ToolStatus::Running => ("⟳", Style::default().fg(Color::Yellow)),
-                ToolStatus::Done => ("✓", Style::default().fg(Color::Green)),
-                ToolStatus::Failed => ("✗", Style::default().fg(Color::Red)),
+            let (icon, icon_color) = match tool.status {
+                ToolStatus::Requested => ("\u{25cc}", Color::DarkGray),
+                ToolStatus::Running => ("\u{27f3}", Color::Yellow),
+                ToolStatus::Done => ("\u{2713}", Color::Green),
+                ToolStatus::Failed => ("\u{2717}", Color::Red),
             };
-            let mut lines = vec![Line::from(vec![
-                Span::styled(format!("{marker} "), style),
-                Span::raw(tool.name.clone()),
-            ])];
-            if let Some(preview) = &tool.output_preview {
-                lines.push(Line::from(Span::styled(
-                    format!("  {preview}"),
+            let detail = tool
+                .output_preview
+                .as_deref()
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .unwrap_or("");
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("  {icon} "), Style::default().fg(icon_color)),
+                Span::styled(
+                    tool.name.clone(),
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    if detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {detail}")
+                    },
                     Style::default().fg(Color::DarkGray),
-                )));
-            }
-            ListItem::new(lines)
+                ),
+            ]))
         })
         .collect();
 
@@ -1818,8 +1855,9 @@ fn draw_subagents_content(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
-    let input_title = if let Some(rs) = app.reverse_search.as_ref() {
-        if rs.matches.is_empty() {
+    let accent = app.agent_mode.accent_color();
+    if let Some(rs) = app.reverse_search.as_ref() {
+        let input_title = if rs.matches.is_empty() {
             format!(" reverse-search: '{}' (no matches) ", rs.query)
         } else {
             format!(
@@ -1828,14 +1866,29 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
                 rs.current + 1,
                 rs.matches.len()
             )
-        }
+        };
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(input_title)
+            .border_style(Style::default().fg(accent));
+        app.input.set_block(block);
     } else {
-        " atelier> ".to_string()
-    };
-    let block = Block::bordered()
-        .title(input_title)
-        .border_style(Style::default().fg(app.agent_mode.accent_color()));
-    app.input.set_block(block);
+        let mode_indicator = format!(" {} \u{203a} ", app.agent_mode.name());
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(accent))
+            .title(Line::from(vec![
+                Span::styled(
+                    mode_indicator,
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "Type a message or /command",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        app.input.set_block(block);
+    }
     frame.render_widget(&app.input, area);
 }
 
