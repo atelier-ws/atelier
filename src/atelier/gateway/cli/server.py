@@ -111,6 +111,13 @@ async def run_ndjson_server(
     else:
         session_id = await runtime.start_session(project_root=project_root)
 
+    import datetime
+
+    from atelier.core.capabilities.analytics.store import AnalyticsStore, SessionRecord
+
+    analytics = AnalyticsStore()
+    started_at = datetime.datetime.utcnow().isoformat()
+
     _write_event(_build_session_started(session_id, project_root))
 
     if mitm_proc is not None and mitm_flow is not None:
@@ -185,5 +192,39 @@ async def run_ndjson_server(
             from atelier.gateway.cli.mitm import stop_mitmdump
 
             stop_mitmdump(mitm_proc)
+
+        messages = runtime._sessions.get(session_id, [])
+        analytics.upsert_session(
+            SessionRecord(
+                session_id=session_id,
+                started_at=started_at,
+                ended_at=datetime.datetime.utcnow().isoformat(),
+                model=runtime._override_model or "",
+                provider="",
+                mode=runtime._current_mode,
+                total_cost_usd=0.0,
+                total_savings_usd=0.0,
+                cache_efficiency_pct=0.0,
+                input_tokens=0,
+                output_tokens=0,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+                turns=len(
+                    [
+                        m
+                        for m in messages
+                        if isinstance(m, dict) and m.get("role") == "user"
+                    ]
+                ),
+                tool_calls=len(
+                    [
+                        m
+                        for m in messages
+                        if isinstance(m, dict) and m.get("role") == "tool"
+                    ]
+                ),
+            )
+        )
+        analytics.close()
 
     return 0

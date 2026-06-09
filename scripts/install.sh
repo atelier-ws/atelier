@@ -950,12 +950,12 @@ detect_hosts() {
     fi
 
     if command -v atelier-tui >/dev/null 2>&1 || [[ -f "${HOME}/.atelier/bin/atelier-tui" ]]; then
-        HOST_SUMMARY+=("atelier-tui (detected)")
-        HOST_CHOICES+=("atelier-tui|detected")
+        HOST_SUMMARY+=("Atelier TUI (detected)")
+        HOST_CHOICES+=("Atelier TUI|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
-        HOST_SUMMARY+=("atelier-tui (not found)")
-        HOST_CHOICES+=("atelier-tui|not found")
+        HOST_SUMMARY+=("Atelier TUI (not found)")
+        HOST_CHOICES+=("Atelier TUI|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 

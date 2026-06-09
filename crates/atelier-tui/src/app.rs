@@ -117,6 +117,8 @@ pub enum FocusedPane {
     Input,
     Conversation,
     Tools,
+    Context,  // context/memory/route
+    Sessions, // sessions/agents
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -164,7 +166,10 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("allowed-tools", "List available tools (alias: /tools)"),
     ("version", "Show Atelier version"),
     ("newtask", "Clear conversation, start fresh"),
+    ("checkpoint", "Save conversation checkpoint: /checkpoint [label]"),
+    ("rewind", "Restore to checkpoint: /rewind [id]"),
     ("resume", "Resume a saved session (alias: /sessions)"),
+    ("shell", "Run a shell command directly: !<cmd> or /shell <cmd>"),
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
 ];
@@ -275,6 +280,42 @@ pub struct ToolEntry {
     pub output_preview: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ContextStats {
+    pub model: String,
+    pub provider: String,
+    pub cache_efficiency: f64,
+    pub total_cost_usd: f64,
+    pub total_savings_usd: f64,
+    pub input_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub estimated_context_pct: f64, // used context as % of model's window
+    pub memory_hits: Vec<String>,   // recent memory hits
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionSummary {
+    pub id: String,
+    pub label: String, // truncated first message or timestamp
+    pub is_current: bool,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskStatus {
+    Running,
+    Done,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct BackgroundTask {
+    pub id: String,
+    pub name: String,
+    pub status: TaskStatus,
+}
+
 pub struct App<'a> {
     pub conversation: Vec<ConversationEntry>,
     pub tools: Vec<ToolEntry>,
@@ -313,6 +354,9 @@ pub struct App<'a> {
     pub tunnel_url: Option<String>,
     pub open_editor: Option<String>,
     pub show_help: bool,
+    pub context_stats: ContextStats,
+    pub sessions_list: Vec<SessionSummary>,
+    pub background_tasks: Vec<BackgroundTask>,
 }
 
 impl<'a> App<'a> {
@@ -355,6 +399,9 @@ impl<'a> App<'a> {
             tunnel_url: None,
             open_editor: None,
             show_help: false,
+            context_stats: ContextStats::default(),
+            sessions_list: Vec::new(),
+            background_tasks: Vec::new(),
         }
     }
 
@@ -408,11 +455,27 @@ impl<'a> App<'a> {
                 }
                 let p = provider.unwrap_or_default();
                 let m = model.unwrap_or_default();
+                if !p.is_empty() {
+                    self.context_stats.provider = p.clone();
+                }
+                if !m.is_empty() {
+                    self.context_stats.model = m.clone();
+                }
                 let r = reason.map(|r| format!(" ({r})")).unwrap_or_default();
                 self.push_system(format!("route: {p}/{m}{r}"));
             }
             BackendEvent::MemoryHit { key, summary } => {
                 let s = summary.unwrap_or_default();
+                let label = if s.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{key}: {s}")
+                };
+                let preview: String = label.chars().take(60).collect();
+                self.context_stats.memory_hits.push(preview);
+                while self.context_stats.memory_hits.len() > 5 {
+                    self.context_stats.memory_hits.remove(0);
+                }
                 self.push_system(format!("memory[{key}]: {s}"));
             }
             BackendEvent::AssistantDelta { text } => {
@@ -544,6 +607,78 @@ impl<'a> App<'a> {
                 self.savings_usd = savings_usd;
                 self.total_cost_usd += cost_usd;
                 self.total_savings_usd += savings_usd;
+                self.context_stats.cache_efficiency = cache_efficiency_pct;
+                self.context_stats.total_cost_usd = self.total_cost_usd;
+                self.context_stats.total_savings_usd = self.total_savings_usd;
+            }
+            BackendEvent::ContextUsageUpdated {
+                input_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                output_tokens,
+                model_context_window,
+                cache_efficiency_pct,
+                cost_usd,
+                ..
+            } => {
+                self.context_stats.input_tokens = input_tokens;
+                self.context_stats.cache_read_tokens = cache_read_tokens;
+                self.context_stats.cache_write_tokens = cache_write_tokens;
+                if cache_efficiency_pct > 0.0 {
+                    self.context_stats.cache_efficiency = cache_efficiency_pct;
+                }
+                if cost_usd > 0.0 {
+                    self.context_stats.total_cost_usd = self.total_cost_usd;
+                }
+                if self.context_stats.model.is_empty() {
+                    self.context_stats.model = self.current_model.clone();
+                }
+                let used = input_tokens + cache_read_tokens + output_tokens;
+                let window = model_context_window.max(1);
+                self.context_stats.estimated_context_pct =
+                    (used as f64 / window as f64 * 100.0).min(100.0);
+            }
+            BackendEvent::ShellStarted { id, command } => {
+                self.tools.push(ToolEntry {
+                    id,
+                    name: format!("shell: {command}"),
+                    status: ToolStatus::Running,
+                    output_preview: None,
+                });
+            }
+            BackendEvent::ShellOutput { id, chunk } => {
+                if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
+                    let preview: String = chunk.chars().take(120).collect();
+                    t.output_preview = Some(preview);
+                }
+            }
+            BackendEvent::ShellFinished { id, ok, .. } => {
+                if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
+                    t.status = if ok {
+                        ToolStatus::Done
+                    } else {
+                        ToolStatus::Failed
+                    };
+                }
+            }
+            BackendEvent::TaskCreated { id, name } => {
+                self.background_tasks.push(BackgroundTask {
+                    id,
+                    name,
+                    status: TaskStatus::Running,
+                });
+            }
+            BackendEvent::TaskUpdated { id, status } => {
+                if let Some(t) = self.background_tasks.iter_mut().find(|t| t.id == id) {
+                    t.status = match status.as_str() {
+                        "done" => TaskStatus::Done,
+                        "failed" => TaskStatus::Failed,
+                        _ => TaskStatus::Running,
+                    };
+                }
+            }
+            BackendEvent::CheckpointCreated { label, .. } => {
+                self.push_system(format!("checkpoint: {label}"));
             }
         }
     }
@@ -560,7 +695,9 @@ impl<'a> App<'a> {
         self.focused_pane = match self.focused_pane {
             FocusedPane::Input => FocusedPane::Conversation,
             FocusedPane::Conversation => FocusedPane::Tools,
-            FocusedPane::Tools => FocusedPane::Input,
+            FocusedPane::Tools => FocusedPane::Context,
+            FocusedPane::Context => FocusedPane::Sessions,
+            FocusedPane::Sessions => FocusedPane::Input,
         };
     }
 

@@ -131,6 +131,63 @@ class CacheStats:
     fresh_tokens: int
 
 
+@dataclass(frozen=True)
+class ContextUsageUpdated:
+    type: Literal["context.usage.updated"]
+    session_id: str
+    input_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    output_tokens: int
+    model_context_window: int = 200_000
+    cache_efficiency_pct: float = 0.0
+    cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
+class ShellStarted:
+    type: Literal["shell.started"]
+    id: str
+    command: str
+
+
+@dataclass(frozen=True)
+class ShellOutput:
+    type: Literal["shell.output"]
+    id: str
+    chunk: str
+
+
+@dataclass(frozen=True)
+class ShellFinished:
+    type: Literal["shell.finished"]
+    id: str
+    exit_code: int
+    ok: bool
+
+
+@dataclass(frozen=True)
+class TaskCreated:
+    type: Literal["task.created"]
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class TaskUpdated:
+    type: Literal["task.updated"]
+    id: str
+    status: str  # "running" | "done" | "failed"
+
+
+@dataclass(frozen=True)
+class CheckpointCreated:
+    type: Literal["checkpoint.created"]
+    id: str
+    label: str
+    timestamp: str
+
+
 AtelierEvent = (
     SessionStarted
     | AssistantDelta
@@ -147,6 +204,13 @@ AtelierEvent = (
     | VerificationResult
     | RuntimeErrorEvent
     | CacheStats
+    | ContextUsageUpdated
+    | ShellStarted
+    | ShellOutput
+    | ShellFinished
+    | TaskCreated
+    | TaskUpdated
+    | CheckpointCreated
 )
 
 
