@@ -11,6 +11,16 @@ pub enum BackendEvent {
         session_id: String,
         #[serde(default)]
         project_root: Option<String>,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        provider: Option<String>,
+        #[serde(default)]
+        git_branch: Option<String>,
+        #[serde(default)]
+        atelier_version: Option<String>,
+        #[serde(default)]
+        has_api_key: Option<bool>,
     },
     #[serde(rename = "route.selected")]
     RouteSelected {
