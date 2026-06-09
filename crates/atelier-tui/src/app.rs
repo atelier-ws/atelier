@@ -1056,6 +1056,8 @@ impl<'a> App<'a> {
             self.middle_tab_idx = idx;
             self.nav_push(idx);
             self.build_outline_for_current_file();
+            // Auto-focus the editor so arrow keys edit immediately.
+            self.focused_pane = FocusedPane::Conversation;
             return;
         }
         let content =
@@ -1075,6 +1077,8 @@ impl<'a> App<'a> {
         self.middle_tab_idx = self.middle_tabs.len() - 1;
         self.nav_push(self.middle_tab_idx);
         self.build_outline_for_current_file();
+        // Auto-focus the editor so arrow keys edit immediately.
+        self.focused_pane = FocusedPane::Conversation;
     }
 
     /// Record a tab activation in the navigation history (truncating any
