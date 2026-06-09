@@ -98,7 +98,17 @@ class InteractiveRuntime:
         text: str,
     ) -> AsyncIterator[AtelierEvent]:
         messages = self._sessions.setdefault(session_id, [])
-        messages.append({"role": "user", "content": text})
+
+        # Inject mode prefix in the user message (NOT in the system prompt) so the
+        # system prefix stays byte-identical across modes for maximum cache reuse.
+        mode_prefix = {
+            "code": "[MODE: code]",
+            "explore": "[MODE: explore — no edits please]",
+            "research": "[MODE: research — no edits]",
+            "plan": "[MODE: plan — no edits]",
+        }.get(self._current_mode, "")
+        prefixed_text = f"{mode_prefix} {text}".strip() if mode_prefix else text
+        messages.append({"role": "user", "content": prefixed_text})
 
         if self._override_model:
             model = self._override_model
@@ -145,6 +155,17 @@ class InteractiveRuntime:
         max_iterations: int = 20,
     ) -> AsyncIterator[AtelierEvent]:
         import litellm
+
+        from atelier.core.capabilities.owned_agent_session.stem_prompt import (
+            stem_prompt_for_mode,
+        )
+
+        # Stable, immutable generic system prompt shared across ALL modes and turns.
+        # The mode is injected as a user-message prefix (see handle_user_message),
+        # never here — this keeps the system prefix byte-identical for cache reuse.
+        if not messages or messages[0].get("role") != "system":
+            system_content = stem_prompt_for_mode(self._current_mode)
+            messages.insert(0, {"role": "system", "content": system_content})
 
         tools = [
             t
@@ -395,6 +416,7 @@ class InteractiveRuntime:
                 cache_write_tokens=total_cache_write,
                 fresh_tokens=total_input,
             )
+            from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_VERSION
             from atelier.gateway.cli.events import ContextUsageUpdated
 
             yield ContextUsageUpdated(
@@ -406,6 +428,7 @@ class InteractiveRuntime:
                 output_tokens=total_output,
                 cache_efficiency_pct=efficiency,
                 cost_usd=cost,
+                stem_version=STEM_VERSION,
             )
 
         self._sessions[session_id] = messages
