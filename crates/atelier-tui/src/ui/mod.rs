@@ -18,6 +18,11 @@ fn border_color(app: &App, pane: FocusedPane) -> Color {
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
+    if app.needs_api_key {
+        draw_api_key_setup(frame, app, area);
+        return;
+    }
+
     let vertical = Layout::vertical([
         Constraint::Min(0),
         Constraint::Length(3),
@@ -67,8 +72,58 @@ fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, popup_area);
 }
 
-fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     use crate::highlight::render_markdown_lines;
+
+    let title = if app.current_model.is_empty() {
+        " Conversation ".to_string()
+    } else {
+        format!(" Conversation — {} ", app.current_model)
+    };
+    let block = Block::bordered()
+        .title(title)
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
+
+    if app.conversation.is_empty() && !app.is_streaming {
+        let model_line = if app.current_model.is_empty() {
+            "no model configured — type a message to set up".to_string()
+        } else {
+            app.current_model.clone()
+        };
+        let welcome_lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                "  ◆  ATELIER",
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            )),
+            Line::raw(""),
+            Line::from(vec![
+                Span::styled("  Project  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(app.project_root.clone(), Style::default().fg(Color::White)),
+                if !app.git_branch.is_empty() {
+                    Span::styled(
+                        format!("  [{}]", app.git_branch),
+                        Style::default().fg(Color::Yellow),
+                    )
+                } else {
+                    Span::raw("")
+                },
+            ]),
+            Line::from(vec![
+                Span::styled("  Model    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(model_line, Style::default().fg(Color::Cyan)),
+            ]),
+            Line::raw(""),
+            Line::from(Span::styled(
+                "  Type a message to start · /help for commands",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::raw(""),
+        ];
+        let para = Paragraph::new(welcome_lines).block(block);
+        frame.render_widget(para, area);
+        return;
+    }
 
     let mut all_lines: Vec<Line> = Vec::new();
     for entry in &app.conversation {
@@ -118,17 +173,12 @@ fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
     let content_height = all_lines.len() as u16;
     let visible_height = area.height.saturating_sub(2);
     let max_scroll = content_height.saturating_sub(visible_height);
-    let scroll = app.scroll.min(max_scroll);
-
-    let title = if app.current_model.is_empty() {
-        " Conversation ".to_string()
+    let scroll = if app.auto_scroll {
+        max_scroll
     } else {
-        format!(" Conversation — {} ", app.current_model)
+        app.scroll.min(max_scroll)
     };
-
-    let block = Block::bordered()
-        .title(title)
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
+    app.scroll = scroll;
 
     let paragraph = Paragraph::new(all_lines)
         .block(block)
@@ -189,39 +239,101 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let session = if app.session_id.is_empty() {
-        "—".to_string()
-    } else {
-        app.session_id.clone()
-    };
-    let model = if app.current_model.is_empty() {
+    let mut model = if app.current_model.is_empty() {
         "—".to_string()
     } else {
         app.current_model.clone()
     };
-    let style = Style::default().fg(Color::DarkGray);
-    let mut spans = vec![
-        Span::styled(format!(" session: {session}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("model: {model}"), style),
-        Span::styled("  │  ", style),
-        Span::styled(format!("tools: {}", app.tools.len()), style),
-    ];
-    if let Some(eff) = app.cache_efficiency {
-        spans.push(Span::styled("  │  ", style));
-        spans.push(Span::styled(format!("cache: {eff:.0}%"), style));
-        spans.push(Span::styled("  │  ", style));
-        spans.push(Span::styled(format!("cost: ${:.4}", app.cost_usd), style));
-        spans.push(Span::styled("  │  ", style));
-        spans.push(Span::styled(format!("saved: ${:.4}", app.savings_usd), style));
+    if model.chars().count() > 30 {
+        model = model.chars().take(30).collect();
     }
-    spans.push(Span::styled("  │  ", style));
-    spans.push(Span::styled(
-        "↑↓ scroll · Tab focus · Shift+Enter newline",
-        style,
-    ));
-    let line = Line::from(spans);
-    frame.render_widget(Paragraph::new(line), area);
+    let cache = app
+        .cache_efficiency
+        .map(|v| format!("{v:.0}%"))
+        .unwrap_or_else(|| "—".to_string());
+    let cost = if app.cost_usd > 0.0 {
+        format!("${:.4}", app.cost_usd)
+    } else {
+        "—".to_string()
+    };
+    let saved = if app.savings_usd > 0.0 {
+        format!("${:.4}", app.savings_usd)
+    } else {
+        "—".to_string()
+    };
+    let turns = app.conversation.len() / 2;
+
+    let style = Style::default().fg(Color::DarkGray);
+    let spans = vec![
+        Span::styled(format!("  ◆ {model}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("cache {cache}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("cost {cost}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("saved {saved}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("ctx {turns} turns"), style),
+        Span::styled("  │  ", style),
+        Span::styled("↑↓ scroll · Tab focus · Shift+Enter newline", style),
+    ];
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {
+    let popup = centered_rect(70, 60, area);
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  ⚠  No API key configured",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Set one of these environment variables:",
+            Style::default().fg(Color::White),
+        )),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled("    ANTHROPIC_API_KEY", Style::default().fg(Color::Cyan)),
+            Span::raw("  — Claude models"),
+        ]),
+        Line::from(vec![
+            Span::styled("    OPENAI_API_KEY   ", Style::default().fg(Color::Cyan)),
+            Span::raw("  — GPT-4o / o-series"),
+        ]),
+        Line::from(vec![
+            Span::styled("    GOOGLE_API_KEY   ", Style::default().fg(Color::Cyan)),
+            Span::raw("  — Gemini models"),
+        ]),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Or type a model string to continue (e.g. ollama/llama3):",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Press Ctrl-D to exit.",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let block = Block::bordered()
+        .title(" Atelier Setup ")
+        .border_style(Style::default().fg(Color::Yellow));
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    frame.render_widget(para, popup);
+
+    let input_area = Rect {
+        y: popup.y + popup.height,
+        height: 3,
+        ..popup
+    };
+    if input_area.y + input_area.height <= area.height {
+        frame.render_widget(&app.input, input_area);
+    }
 }
 
 fn draw_permission_overlay(frame: &mut Frame, app: &App, area: Rect) {

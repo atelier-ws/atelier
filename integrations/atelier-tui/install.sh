@@ -122,6 +122,26 @@ if [[ -n "$BIN_SRC" && "$BIN_SRC" == "${ATELIER_REPO}/crates/"* ]]; then
     info "installed binary -> ${BIN_DEST}"
 fi
 
+# ---- add ~/.atelier/bin to PATH in shell profiles -------------------------
+add_to_path() {
+    local profile_file="$1"
+    local path_line='export PATH="$HOME/.atelier/bin:$PATH"'
+    if [[ -f "$profile_file" ]] && ! grep -q ".atelier/bin" "$profile_file" 2>/dev/null; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "[dry-run] Would add PATH to $profile_file"
+        else
+            printf '\n# Atelier TUI binary\n%s\n' "$path_line" >> "$profile_file"
+            echo "  PATH update: $profile_file"
+        fi
+    fi
+}
+
+if [[ "$DRY_RUN" == "false" ]] && [[ "$PRINT_ONLY" == "false" ]]; then
+    [[ -f "${HOME}/.zshrc" ]] && add_to_path "${HOME}/.zshrc"
+    [[ -f "${HOME}/.bashrc" ]] && add_to_path "${HOME}/.bashrc"
+    [[ -f "${HOME}/.bash_profile" ]] && add_to_path "${HOME}/.bash_profile"
+fi
+
 # ---- success summary --------------------------------------------------------
 echo "atelier-tui host installed:"
 echo "  MCP config:  ${MCP_DEST}"
