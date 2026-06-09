@@ -100,6 +100,10 @@ def _run_owned_session(
             "  ANTHROPIC_API_KEY   — Anthropic / Claude models\n"
             "  OPENAI_API_KEY      — OpenAI / ChatGPT models\n"
             "  GOOGLE_API_KEY      — Google / Gemini models\n"
+            "  AWS_ACCESS_KEY_ID   — AWS Bedrock (+ AWS_SECRET_ACCESS_KEY)\n"
+            "  AWS_PROFILE         — AWS Bedrock (named profile)\n"
+            "  VERTEXAI_PROJECT    — GCP Vertex AI\n"
+            "  AZURE_API_KEY       — Azure OpenAI (+ AZURE_API_BASE)\n"
             "  (any other litellm-compatible key, e.g. GROQ_API_KEY, MISTRAL_API_KEY)\n",
             err=True,
         )
