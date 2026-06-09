@@ -101,9 +101,54 @@ _DEFAULT_CANDIDATES: tuple[CandidateModel, ...] = (
         pricing=ModelPricing(input=1.25, output=5.00),
         supports_tool_use=True,
     ),
+    # AWS Bedrock (Claude models via Bedrock — same pricing as direct but through AWS)
+    CandidateModel(
+        vendor="bedrock",
+        model_id="bedrock/anthropic.claude-haiku-4-5-v1:0",
+        tier="cheap",
+        pricing=ModelPricing(input=0.80, output=4.00),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="bedrock",
+        model_id="bedrock/anthropic.claude-sonnet-4-5-v1:0",
+        tier="high",
+        pricing=ModelPricing(input=3.00, output=15.00),
+        supports_tool_use=True,
+    ),
+    # GCP Vertex AI (Claude and Gemini on Vertex)
+    CandidateModel(
+        vendor="vertex",
+        model_id="vertex_ai/gemini-2.0-flash",
+        tier="cheap",
+        pricing=ModelPricing(input=0.075, output=0.30),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="vertex",
+        model_id="vertex_ai/claude-3-5-sonnet@20241022",
+        tier="high",
+        pricing=ModelPricing(input=3.00, output=15.00),
+        supports_tool_use=True,
+    ),
+    # Azure OpenAI
+    CandidateModel(
+        vendor="azure",
+        model_id="azure/gpt-4o-mini",
+        tier="cheap",
+        pricing=ModelPricing(input=0.15, output=0.60),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="azure",
+        model_id="azure/gpt-4o",
+        tier="high",
+        pricing=ModelPricing(input=2.50, output=10.00),
+        supports_tool_use=True,
+    ),
 )
 
-_DEFAULT_TABLE = PricingTable(version="2026-05-20", candidates=_DEFAULT_CANDIDATES)
+_DEFAULT_TABLE = PricingTable(version="2026-06-09", candidates=_DEFAULT_CANDIDATES)
 
 
 def load_pricing_table(_version: str | None = None) -> PricingTable:

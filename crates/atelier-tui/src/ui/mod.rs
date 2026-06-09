@@ -1,6 +1,6 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
-use crate::app::{App, FocusedPane, PendingPermission, Role, ToolStatus};
+use crate::app::{App, CompletionMode, FocusedPane, PendingPermission, Role, ToolStatus};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
@@ -23,10 +23,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
 
+    let input_line_count = app.input.lines().len().max(1) as u16;
+    let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
+
     let vertical = Layout::vertical([
         Constraint::Min(0),
-        Constraint::Length(3),
         Constraint::Length(1),
+        Constraint::Length(input_height),
     ])
     .split(area);
 
@@ -35,13 +38,97 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_conversation(frame, app, horizontal[0]);
     draw_tools(frame, app, horizontal[1]);
-    draw_input(frame, app, vertical[1]);
-    draw_status_bar(frame, app, vertical[2]);
+    draw_status_bar(frame, app, vertical[1]);
+    draw_input(frame, app, vertical[2]);
+
+    if app.completion_mode != CompletionMode::None {
+        draw_completion_popup(frame, app, vertical[2]);
+    }
 
     if app.pending_permission.is_some() {
         draw_permission_overlay(frame, app, area);
     } else if app.pending_diff.is_some() {
         draw_diff_overlay(frame, app, area);
+    }
+}
+
+fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
+    match &app.completion_mode {
+        CompletionMode::None => {}
+        CompletionMode::SlashCommand { selected, filter } => {
+            let commands = app.filtered_slash_commands(filter);
+            if commands.is_empty() {
+                return;
+            }
+            let popup_h = (commands.len().min(8) + 2) as u16;
+            let popup_y = anchor.y.saturating_sub(popup_h);
+            let popup = Rect {
+                x: anchor.x,
+                y: popup_y,
+                width: anchor.width,
+                height: popup_h,
+            };
+            frame.render_widget(Clear, popup);
+            let items: Vec<ListItem> = commands
+                .iter()
+                .enumerate()
+                .map(|(i, (name, desc))| {
+                    let style = if i == *selected {
+                        Style::default().fg(Color::Black).bg(Color::Cyan)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    let desc_style = if i == *selected {
+                        style.fg(Color::Black)
+                    } else {
+                        style.fg(Color::DarkGray)
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("  /{name:<15}"), style),
+                        Span::styled(format!(" {desc}"), desc_style),
+                    ]))
+                })
+                .collect();
+            let list = List::new(items).block(
+                Block::bordered()
+                    .title(" Commands ")
+                    .border_style(Style::default().fg(Color::Cyan)),
+            );
+            frame.render_widget(list, popup);
+        }
+        CompletionMode::FileRef { selected, filter, .. } => {
+            let files = app.filtered_files(filter);
+            if files.is_empty() {
+                return;
+            }
+            let popup_h = (files.len().min(8) + 2) as u16;
+            let popup_y = anchor.y.saturating_sub(popup_h);
+            let popup = Rect {
+                x: anchor.x,
+                y: popup_y,
+                width: anchor.width,
+                height: popup_h,
+            };
+            frame.render_widget(Clear, popup);
+            let items: Vec<ListItem> = files
+                .iter()
+                .enumerate()
+                .map(|(i, path)| {
+                    let style = if i == *selected {
+                        Style::default().fg(Color::Black).bg(Color::Yellow)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    ListItem::new(Line::from(Span::styled(format!("  @{path}"), style)))
+                })
+                .collect();
+            let list = List::new(items).block(
+                Block::bordered()
+                    .title(" Files ")
+                    .border_style(Style::default().fg(Color::Yellow)),
+            );
+            frame.render_widget(list, popup);
+        }
     }
 }
 

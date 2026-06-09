@@ -5,7 +5,7 @@ edition = "2021"
 description = "Atelier interactive terminal — Ratatui frontend for the Atelier coding agent"
 
 [[bin]]
-name = "atelier-workspace"
+name = "atelier-tui"
 path = "src/main.rs"
 
 [dependencies]

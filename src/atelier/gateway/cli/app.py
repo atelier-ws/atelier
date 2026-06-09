@@ -155,26 +155,26 @@ def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[...
 
 
 def _exec_rust_tui(root: Path) -> None:
-    """Find and exec the atelier-workspace Rust binary."""
+    """Find and exec the atelier-tui Rust binary."""
     import os
     import shutil
 
     # Search order: PATH, ~/.atelier/bin/, crates build dir
     candidates = [
-        shutil.which("atelier-workspace"),
         shutil.which("atelier-tui"),
-        str(Path.home() / ".atelier" / "bin" / "atelier-workspace"),
+        shutil.which("atelier-workspace"),
         str(Path.home() / ".atelier" / "bin" / "atelier-tui"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "release" / "atelier-workspace"),
+        str(Path.home() / ".atelier" / "bin" / "atelier-workspace"),
         str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "release" / "atelier-tui"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "debug" / "atelier-workspace"),
+        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "release" / "atelier-workspace"),
         str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "debug" / "atelier-tui"),
+        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "debug" / "atelier-workspace"),
     ]
     binary = next((c for c in candidates if c and os.path.isfile(c) and os.access(c, os.X_OK)), None)
 
     if binary is None:
         click.echo(
-            "atelier-workspace binary not found.\n\n"
+            "atelier-tui binary not found.\n\n"
             "Build it with:\n"
             "  cd crates/atelier-tui && cargo build --release\n\n"
             "Or install with:\n"
