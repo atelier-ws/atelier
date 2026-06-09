@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0
+## 0.3.1
 
 ### MCP Surface Consolidation (breaking)
 
