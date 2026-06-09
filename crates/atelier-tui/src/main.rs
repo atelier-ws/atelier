@@ -13,6 +13,7 @@ use anyhow::Result;
 use app::{ActiveOverlay, AgentMode, App, CompletionMode, ContextAction, ContextItem, ContextMenu, ConversationEntry, DragBorder, DragState, FocusedPane, FuzzyFinder, GitRowKind, LeftTab, PendingPermission, ReverseSearch, RightTab, Role, SearchState, TabContent};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -101,11 +102,30 @@ async fn main() -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    // Enable the kitty keyboard protocol when the terminal is known to support it,
+    // so Shift+Enter is reported as a distinct key event (not collapsed to plain Enter).
+    let kitty_supported = std::env::var("TERM_PROGRAM")
+        .map(|v| v == "WezTerm" || v == "kitty" || v == "iTerm.app")
+        .unwrap_or(false)
+        || std::env::var("COLORTERM")
+            .map(|v| v == "truecolor")
+            .unwrap_or(false);
+    if kitty_supported {
+        let _ = execute!(
+            stdout,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        );
+    }
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
+    if kitty_supported {
+        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
+    }
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -262,6 +282,11 @@ async fn run_app(
             app.handle_event(event);
         }
 
+        // Periodically refresh the past-sessions list (every 30s).
+        if app.sessions_refresh_timer.elapsed() >= std::time::Duration::from_secs(30) {
+            app.load_sessions();
+        }
+
         // Forward commands from browser clients to the backend.
         while let Ok(raw) = web_cmd_rx.try_recv() {
             let line = raw + "\n";
@@ -277,6 +302,16 @@ async fn run_app(
     }
 
     Ok(())
+}
+
+/// Run `git diff` for a single file relative to the given repo root.
+fn get_file_diff_in_root(path: &str, root: &str) -> String {
+    std::process::Command::new("git")
+        .args(["diff", "--no-color", "--", path])
+        .current_dir(root)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default()
 }
 
 async fn find_available_port(start: u16) -> u16 {
@@ -1067,6 +1102,7 @@ async fn handle_key(
         KeyCode::Tab if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if !app.middle_tabs.is_empty() {
                 app.middle_tab_idx = (app.middle_tab_idx + 1) % app.middle_tabs.len();
+                app.build_outline_for_current_file();
             }
         }
         KeyCode::BackTab if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1076,6 +1112,7 @@ async fn handle_key(
                 } else {
                     app.middle_tab_idx - 1
                 };
+                app.build_outline_for_current_file();
             }
         }
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1083,6 +1120,7 @@ async fn handle_key(
         }
         KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_tab = LeftTab::Sessions;
+            app.sessions_activity = false;
         }
         KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_tab = LeftTab::Files;
@@ -1090,21 +1128,26 @@ async fn handle_key(
         KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_tab = LeftTab::Git;
             app.refresh_git_status();
+            app.load_commit_detail(app.git_commit_selected);
         }
         KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Tools;
+            app.tools_activity = false;
         }
         KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Tasks;
+            app.tasks_activity = false;
         }
         KeyCode::Char('6') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_tab = RightTab::Subagents;
         }
         KeyCode::F(1) => {
             app.right_tab = RightTab::Tools;
+            app.tools_activity = false;
         }
         KeyCode::F(2) => {
             app.right_tab = RightTab::Tasks;
+            app.tasks_activity = false;
         }
         KeyCode::F(3) => {
             app.right_tab = RightTab::Subagents;
@@ -1336,12 +1379,14 @@ async fn handle_key(
             && matches!(app.left_tab, LeftTab::Git) =>
         {
             app.git_commit_selected = app.git_commit_selected.saturating_sub(1);
+            app.load_commit_detail(app.git_commit_selected);
         }
         KeyCode::Down if matches!(app.focused_pane, FocusedPane::Sessions)
             && matches!(app.left_tab, LeftTab::Git) =>
         {
             app.git_commit_selected =
                 (app.git_commit_selected + 1).min(app.git_commits.len().saturating_sub(1));
+            app.load_commit_detail(app.git_commit_selected);
         }
         KeyCode::End => {
             app.auto_scroll = true;
@@ -1426,14 +1471,24 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                         && row < rect.y + rect.height
                     {
                         match tab_id.as_str() {
-                            "left_sessions" => app.left_tab = LeftTab::Sessions,
+                            "left_sessions" => {
+                                app.left_tab = LeftTab::Sessions;
+                                app.sessions_activity = false;
+                            }
                             "left_files" => app.left_tab = LeftTab::Files,
                             "left_git" => {
                                 app.left_tab = LeftTab::Git;
                                 app.refresh_git_status();
+                                app.load_commit_detail(app.git_commit_selected);
                             }
-                            "right_tools" => app.right_tab = RightTab::Tools,
-                            "right_tasks" => app.right_tab = RightTab::Tasks,
+                            "right_tools" => {
+                                app.right_tab = RightTab::Tools;
+                                app.tools_activity = false;
+                            }
+                            "right_tasks" => {
+                                app.right_tab = RightTab::Tasks;
+                                app.tasks_activity = false;
+                            }
                             "right_agents" => app.right_tab = RightTab::Subagents,
                             _ if tab_id.starts_with("middle_close_") => {
                                 if let Ok(idx) =
@@ -1446,6 +1501,7 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                 if let Ok(idx) = tab_id["middle_".len()..].parse::<usize>() {
                                     if idx < app.middle_tabs.len() {
                                         app.middle_tab_idx = idx;
+                                        app.build_outline_for_current_file();
                                     }
                                 }
                             }
@@ -1522,9 +1578,21 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                                     app.git_row_targets.get(line_idx).cloned()
                                 {
                                     match target {
+                                        GitRowKind::StatusFile(i) => {
+                                            if let Some(git_file) = app.git_status.get(i) {
+                                                let path = git_file.path.clone();
+                                                let diff = get_file_diff_in_root(
+                                                    &path,
+                                                    &app.project_root,
+                                                );
+                                                app.open_diff_tab(path, diff);
+                                                app.focused_pane = FocusedPane::Conversation;
+                                            }
+                                        }
                                         GitRowKind::Commit(i) => {
                                             app.git_commit_selected = i;
                                             app.git_commit_toggle(i);
+                                            app.load_commit_detail(i);
                                         }
                                         GitRowKind::CommitFile(i, file) => {
                                             if let Some(commit) = app.git_commits.get(i) {
@@ -1603,6 +1671,25 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
                         LeftTab::Files => app.files_scroll = app.files_scroll.saturating_add(2),
                         LeftTab::Git => app.git_scroll = app.git_scroll.saturating_add(2),
                         LeftTab::Sessions => app.scroll = app.scroll.saturating_add(2),
+                    }
+                }
+            }
+        }
+        MouseEventKind::Down(MouseButton::Middle) => {
+            // Middle click on a middle tab: close that tab.
+            if let Some(areas) = app.tab_click_areas.clone() {
+                for (id, rect) in &areas {
+                    if id.starts_with("middle_")
+                        && !id.starts_with("middle_close_")
+                        && col >= rect.x
+                        && col < rect.x + rect.width
+                        && row >= rect.y
+                        && row < rect.y + rect.height
+                    {
+                        if let Ok(idx) = id["middle_".len()..].parse::<usize>() {
+                            app.close_tab(idx);
+                        }
+                        break;
                     }
                 }
             }

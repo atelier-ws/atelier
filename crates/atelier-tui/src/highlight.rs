@@ -1,10 +1,73 @@
-//! Syntax highlighting for code blocks in conversation entries.
+//! Syntax highlighting using syntect for accurate per-language coloring.
+
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use std::sync::OnceLock;
 
-/// Parse markdown text and return Vec<Line> with code blocks syntax-highlighted.
-/// Non-code text is returned as plain white Lines.
-/// Code blocks (```lang...```) get per-line Spans with basic token coloring.
+static SYNTAX_SET: OnceLock<syntect::parsing::SyntaxSet> = OnceLock::new();
+static THEME_SET: OnceLock<syntect::highlighting::ThemeSet> = OnceLock::new();
+
+fn syntax_set() -> &'static syntect::parsing::SyntaxSet {
+    SYNTAX_SET.get_or_init(syntect::parsing::SyntaxSet::load_defaults_newlines)
+}
+
+fn theme_set() -> &'static syntect::highlighting::ThemeSet {
+    THEME_SET.get_or_init(syntect::highlighting::ThemeSet::load_defaults)
+}
+
+fn syntect_color_to_ratatui(color: syntect::highlighting::Color) -> Color {
+    Color::Rgb(color.r, color.g, color.b)
+}
+
+/// Highlight a single line for the given file extension.
+/// Returns a Vec of styled Spans.
+pub fn highlight_line_syntect(line: &str, ext: &str) -> Vec<Span<'static>> {
+    use syntect::easy::HighlightLines;
+
+    let ss = syntax_set();
+    let ts = theme_set();
+
+    // Find syntax by extension.
+    let syntax = ss
+        .find_syntax_by_extension(ext)
+        .or_else(|| ss.find_syntax_by_extension("txt"))
+        .unwrap_or_else(|| ss.find_syntax_plain_text());
+
+    let theme = ts
+        .themes
+        .get("base16-ocean.dark")
+        .or_else(|| ts.themes.get("Solarized (dark)"))
+        .or_else(|| ts.themes.values().next())
+        .unwrap();
+
+    let mut h = HighlightLines::new(syntax, theme);
+
+    match h.highlight_line(line, ss) {
+        Ok(ranges) => ranges
+            .iter()
+            .map(|(style, text)| {
+                let fg = syntect_color_to_ratatui(style.foreground);
+                let mut ratatui_style = Style::default().fg(fg);
+                if style
+                    .font_style
+                    .contains(syntect::highlighting::FontStyle::BOLD)
+                {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
+                }
+                if style
+                    .font_style
+                    .contains(syntect::highlighting::FontStyle::ITALIC)
+                {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
+                }
+                Span::styled(text.to_string(), ratatui_style)
+            })
+            .collect(),
+        Err(_) => vec![Span::raw(line.to_string())],
+    }
+}
+
+/// Render markdown text into highlighted Lines (for conversation display).
 pub fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut in_code = false;
@@ -23,12 +86,26 @@ pub fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
                 in_code = false;
                 lang.clear();
                 lines.push(Line::from(Span::styled(
-                    "  ```".to_string(),
+                    "  ```",
                     Style::default().fg(Color::DarkGray),
                 )));
             }
         } else if in_code {
-            lines.push(highlight_code_line(raw_line, &lang));
+            // Use syntect for code blocks.
+            let ext = match lang.as_str() {
+                "python" | "py" => "py",
+                "rust" | "rs" => "rs",
+                "typescript" | "ts" => "ts",
+                "javascript" | "js" => "js",
+                "bash" | "sh" => "sh",
+                "json" => "json",
+                "yaml" | "yml" => "yaml",
+                "toml" => "toml",
+                other => other,
+            };
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(highlight_line_syntect(raw_line, ext));
+            lines.push(Line::from(spans));
         } else {
             lines.push(render_prose_line(raw_line));
         }
@@ -36,48 +113,9 @@ pub fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
     lines
 }
 
-fn highlight_code_line(line: &str, _lang: &str) -> Line<'static> {
-    let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")]; // indent
-
-    let keywords = [
-        "fn ", "let ", "mut ", "use ", "pub ", "impl ", "struct ", "enum ", "def ", "class ",
-        "import ", "from ", "return ", "if ", "else ", "for ", "while ", "match ", "async ",
-        "await ", "const ", "type ",
-    ];
-
-    let trimmed = line.trim_start();
-    let indent: String = " ".repeat(line.len() - trimmed.len() + 2);
-
-    if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("--") {
-        return Line::from(Span::styled(
-            format!("  {line}"),
-            Style::default().fg(Color::DarkGray),
-        ));
-    }
-
-    let starts_with_keyword = keywords.iter().any(|k| trimmed.starts_with(k));
-    if starts_with_keyword {
-        let kw = keywords.iter().find(|k| trimmed.starts_with(*k)).unwrap();
-        spans.clear();
-        spans.push(Span::raw(indent));
-        spans.push(Span::styled(kw.to_string(), Style::default().fg(Color::Cyan)));
-        spans.push(Span::raw(trimmed[kw.len()..].to_string()));
-    } else if (trimmed.starts_with('"') || trimmed.starts_with('\'')) && trimmed.len() > 1 {
-        spans.clear();
-        spans.push(Span::raw(indent));
-        spans.push(Span::styled(
-            trimmed.to_string(),
-            Style::default().fg(Color::Green),
-        ));
-    } else {
-        spans.clear();
-        spans.push(Span::styled(
-            format!("  {line}"),
-            Style::default().fg(Color::White),
-        ));
-    }
-
-    Line::from(spans)
+/// Render a single file line with syntect highlighting.
+pub fn render_file_line(line: &str, ext: &str) -> Vec<Span<'static>> {
+    highlight_line_syntect(line, ext)
 }
 
 fn render_prose_line(line: &str) -> Line<'static> {
@@ -91,7 +129,7 @@ fn render_prose_line(line: &str) -> Line<'static> {
             line.to_string(),
             Style::default().fg(Color::Cyan),
         ))
-    } else if line.starts_with("- ") || line.starts_with("* ") || line.starts_with("  - ") {
+    } else if line.starts_with("- ") || line.starts_with("* ") {
         let (bullet, rest) = line.split_once(' ').unwrap_or(("-", line));
         Line::from(vec![
             Span::styled(format!("{bullet} "), Style::default().fg(Color::Yellow)),
