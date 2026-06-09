@@ -228,6 +228,10 @@ async fn run_app(
                 }
                 Event::Mouse(mouse) => {
                     handle_mouse(&mut app, mouse);
+                    // Execute any context menu action that was queued by the mouse handler
+                    if let Some(action) = app.pending_context_action.take() {
+                        execute_context_action(&mut app, action, &mut writer).await?;
+                    }
                 }
                 _ => {}
             }
@@ -1047,6 +1051,24 @@ async fn handle_key(
             }
         }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // If there's a text selection, Ctrl+C copies it (editor behavior)
+            if let Some(ref sel) = app.text_selection {
+                if !sel.selected_text.is_empty() {
+                    #[cfg(feature = "clipboard")]
+                    {
+                        use arboard::Clipboard;
+                        if let Ok(mut cb) = Clipboard::new() {
+                            let _ = cb.set_text(&sel.selected_text);
+                            app.conversation.push(app::ConversationEntry {
+                                role: app::Role::System,
+                                text: format!("\u{1f4cb} Copied {} chars", sel.selected_text.len()),
+                            });
+                        }
+                    }
+                    app.text_selection = None;
+                    return Ok(());
+                }
+            }
             let now = std::time::Instant::now();
             let double_press = app
                 .last_ctrl_c
@@ -1534,6 +1556,25 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
     let (col, row) = (mouse.column, mouse.row);
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
+            // Context menu: click on item executes it; click outside dismisses
+            if let Some(menu) = app.context_menu.take() {
+                let menu_w = menu.items.iter().map(|i| i.label.len() + 6).max().unwrap_or(20) as u16;
+                let menu_h = menu.items.len() as u16 + 2;
+                let in_menu = col >= menu.x && col < menu.x + menu_w
+                    && row >= menu.y && row < menu.y + menu_h;
+                if in_menu {
+                    let item_row = row.saturating_sub(menu.y + 1); // skip border
+                    let idx = item_row as usize;
+                    if let Some(item) = menu.items.get(idx) {
+                        // Store for async execution in the main loop (handle_mouse is sync)
+                        app.pending_context_action = Some(item.action.clone());
+                    }
+                }
+                // menu dropped (either action taken or click-outside)
+                return;
+            }
+            // Clear text selection on any left click
+            app.text_selection = None;
             // First, handle clickable tabs.
             let mut hit_tab = false;
             if let Some(areas) = app.tab_click_areas.clone() {
@@ -1789,6 +1830,13 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
             }
         }
         MouseEventKind::Moved => {
+            // Context menu hover — update selected item
+            if let Some(ref mut menu) = app.context_menu {
+                let menu_y = menu.y + 1; // skip border
+                if row >= menu_y && (row - menu_y) < menu.items.len() as u16 {
+                    menu.selected = (row - menu_y) as usize;
+                }
+            }
             // Track hover over tabs for underline highlighting.
             let mut found_tab = None;
             if let Some(ref areas) = app.tab_click_areas {
@@ -1864,21 +1912,8 @@ fn handle_mouse(app: &mut App<'_>, mouse: crossterm::event::MouseEvent) {
         }
         MouseEventKind::Up(MouseButton::Left) => {
             app.drag_state = None;
-            if let Some(sel) = app.text_selection.take() {
-                if !sel.selected_text.is_empty() {
-                    #[cfg(feature = "clipboard")]
-                    {
-                        use arboard::Clipboard;
-                        if let Ok(mut cb) = Clipboard::new() {
-                            let _ = cb.set_text(&sel.selected_text);
-                            app.conversation.push(ConversationEntry {
-                                role: Role::System,
-                                text: format!("\u{1f4cb} Copied {} chars", sel.selected_text.len()),
-                            });
-                        }
-                    }
-                }
-            }
+            // Do NOT auto-copy on mouse up — keep selection visible for Ctrl+C
+            // text_selection stays until user presses Ctrl+C, types something, or clicks elsewhere
         }
         _ => {}
     }
