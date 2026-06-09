@@ -859,7 +859,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         match entry.role {
             Role::User => {
                 all_lines.push(Line::from(vec![
-                    Span::styled("◆ ", Style::default().fg(Color::Green)),
+                    Span::styled("▌ ", Style::default().fg(Color::Green)),
                     Span::styled(
                         "You",
                         match_marker.unwrap_or_else(|| {
@@ -871,7 +871,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                 ]));
                 for line in entry.text.lines() {
                     all_lines.push(Line::from(vec![
-                        Span::styled("◆ ", Style::default().fg(Color::Green)),
+                        Span::styled("▌ ", Style::default().fg(Color::Green)),
                         Span::styled(line.to_string(), Style::default().fg(Color::White)),
                     ]));
                 }
@@ -880,7 +880,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             Role::Assistant => {
                 let accent = app.agent_mode.accent_color();
                 all_lines.push(Line::from(vec![
-                    Span::styled("◆ ", Style::default().fg(accent)),
+                    Span::styled("▌ ", Style::default().fg(accent)),
                     Span::styled(
                         "Atelier",
                         match_marker.unwrap_or_else(|| {
@@ -889,7 +889,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                     ),
                 ]));
                 for mut hl_line in render_markdown_lines(&entry.text) {
-                    let mut spans = vec![Span::styled("◆ ", Style::default().fg(accent))];
+                    let mut spans = vec![Span::styled("▌ ", Style::default().fg(accent))];
                     spans.extend(hl_line.spans.drain(..));
                     all_lines.push(Line::from(spans));
                 }
@@ -922,14 +922,14 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     if app.is_streaming && !app.streaming_text.is_empty() {
         let accent = app.agent_mode.accent_color();
         all_lines.push(Line::from(vec![
-            Span::styled("◆ ", Style::default().fg(accent)),
+            Span::styled("▌ ", Style::default().fg(accent)),
             Span::styled(
                 "Atelier",
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
             ),
         ]));
         for mut hl_line in render_markdown_lines(&app.streaming_text) {
-            let mut spans = vec![Span::styled("◆ ", Style::default().fg(accent))];
+            let mut spans = vec![Span::styled("▌ ", Style::default().fg(accent))];
             spans.extend(hl_line.spans.drain(..));
             all_lines.push(Line::from(spans));
         }
@@ -1000,13 +1000,13 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
             .border_style(Style::default().fg(accent));
         app.input.set_block(block);
     } else {
-        let mode_indicator = format!(" {} \u{203a} ", app.agent_mode.name());
+        // Left side of input shows ◆ (atelier icon) instead of mode slug
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(accent))
             .title(Line::from(vec![
                 Span::styled(
-                    mode_indicator,
+                    " ◆ ",
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
