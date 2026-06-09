@@ -88,6 +88,7 @@ dev = [
     "black>=24.4",
     "mypy>=1.10",
     "types-PyYAML",
+    "pyinstaller>=6.10.0",
 ]
 
 [project.scripts]
@@ -193,4 +194,5 @@ dev = [
     "pytest-xdist>=3.8.0",
     "ruff>=0.5",
     "types-PyYAML",
+    "pyinstaller>=6.10.0",
 ]
