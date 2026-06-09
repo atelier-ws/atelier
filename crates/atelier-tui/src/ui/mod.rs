@@ -28,8 +28,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     let vertical = Layout::vertical([
         Constraint::Min(0),
-        Constraint::Length(1),
         Constraint::Length(input_height),
+        Constraint::Length(1),
     ])
     .split(area);
 
@@ -38,11 +38,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_conversation(frame, app, horizontal[0]);
     draw_tools(frame, app, horizontal[1]);
-    draw_status_bar(frame, app, vertical[1]);
-    draw_input(frame, app, vertical[2]);
+    draw_input(frame, app, vertical[1]);
+    draw_status_bar(frame, app, vertical[2]);
 
     if app.completion_mode != CompletionMode::None {
-        draw_completion_popup(frame, app, vertical[2]);
+        draw_completion_popup(frame, app, vertical[1]);
     }
 
     if app.show_session_picker {
@@ -310,7 +310,15 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
             if commands.is_empty() {
                 return;
             }
-            let popup_h = (commands.len().min(8) + 2) as u16;
+            // Use up to most of the available height above the input.
+            let max_visible = (anchor.y.saturating_sub(2) as usize).max(4).min(commands.len());
+            let offset = if *selected >= max_visible {
+                selected - max_visible + 1
+            } else {
+                0
+            };
+
+            let popup_h = (max_visible.min(commands.len()) + 2) as u16;
             let popup_y = anchor.y.saturating_sub(popup_h);
             let popup = Rect {
                 x: anchor.x,
@@ -319,30 +327,44 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
                 height: popup_h,
             };
             frame.render_widget(Clear, popup);
-            let items: Vec<ListItem> = commands
+
+            let visible_commands: Vec<_> = commands
                 .iter()
+                .skip(offset)
+                .take(max_visible)
                 .enumerate()
+                .collect();
+
+            let items: Vec<ListItem> = visible_commands
+                .iter()
                 .map(|(i, (name, desc))| {
-                    let style = if i == *selected {
-                        Style::default().fg(Color::Black).bg(Color::Cyan)
+                    let abs_idx = i + offset;
+                    let is_selected = abs_idx == *selected;
+                    let bg = if is_selected {
+                        app.agent_mode.accent_color()
                     } else {
-                        Style::default().fg(Color::White)
+                        Color::Reset
                     };
-                    let desc_style = if i == *selected {
-                        style.fg(Color::Black)
-                    } else {
-                        style.fg(Color::DarkGray)
-                    };
+                    let fg = if is_selected { Color::Black } else { Color::White };
+                    let dfg = if is_selected { Color::Black } else { Color::DarkGray };
                     ListItem::new(Line::from(vec![
-                        Span::styled(format!("  /{name:<15}"), style),
-                        Span::styled(format!(" {desc}"), desc_style),
+                        Span::styled(format!("  /{name:<18}"), Style::default().fg(fg).bg(bg)),
+                        Span::styled(format!(" {desc}"), Style::default().fg(dfg).bg(bg)),
                     ]))
                 })
                 .collect();
+
+            let scroll_hint = if commands.len() > max_visible {
+                format!(" {}/{} ↑↓ ", selected + 1, commands.len())
+            } else {
+                format!(" {} ", commands.len())
+            };
+            let title = format!(" Commands{scroll_hint}");
+
             let list = List::new(items).block(
                 Block::bordered()
-                    .title(" Commands ")
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .title(title.as_str())
+                    .border_style(Style::default().fg(app.agent_mode.accent_color())),
             );
             frame.render_widget(list, popup);
         }
@@ -519,13 +541,32 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
                 Span::styled("  Model    ", Style::default().fg(Color::DarkGray)),
                 Span::styled(model_line, Style::default().fg(Color::Cyan)),
             ]),
-            Line::raw(""),
-            Line::from(Span::styled(
-                "  Type a message to start · /help for commands",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::raw(""),
         ];
+        let mut welcome_lines = welcome_lines;
+        if let Some(port) = app.web_port {
+            let local_url = format!("http://localhost:{port}");
+            welcome_lines.push(Line::from(vec![
+                Span::styled("  Web      ", Style::default().fg(Color::DarkGray)),
+                Span::styled(local_url, Style::default().fg(Color::Cyan)),
+            ]));
+            if let Some(ref tunnel_url) = app.tunnel_url {
+                welcome_lines.push(Line::from(vec![
+                    Span::styled("  Public   ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(tunnel_url.clone(), Style::default().fg(Color::Green)),
+                ]));
+            } else {
+                welcome_lines.push(Line::from(Span::styled(
+                    "  Tunnel   connecting...",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
+        welcome_lines.push(Line::raw(""));
+        welcome_lines.push(Line::from(Span::styled(
+            "  Type a message to start · /help for commands",
+            Style::default().fg(Color::DarkGray),
+        )));
+        welcome_lines.push(Line::raw(""));
         let para = Paragraph::new(welcome_lines).block(block);
         frame.render_widget(para, area);
         return;

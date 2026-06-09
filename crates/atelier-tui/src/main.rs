@@ -3,6 +3,7 @@
 mod app;
 mod highlight;
 mod protocol;
+mod qr;
 mod tunnel;
 mod ui;
 mod web;
@@ -56,15 +57,6 @@ async fn main() -> Result<()> {
         std::env::set_var("ATELIER_MITM", "1");
     }
 
-    let cli_args: Vec<String> = std::env::args().collect();
-    let web_port: Option<u16> = cli_args.iter().position(|a| a == "--web").map(|pos| {
-        cli_args
-            .get(pos + 1)
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(web::DEFAULT_WEB_PORT)
-    });
-    let tunnel_requested = cli_args.contains(&"--tunnel".to_string());
-
     let (program, backend_args) = backend_command();
 
     let mut child = tokio::process::Command::new(&program)
@@ -77,30 +69,17 @@ async fn main() -> Result<()> {
     let child_stdin = child.stdin.take().expect("backend stdin missing");
     let child_stdout = child.stdout.take().expect("backend stdout missing");
 
-    // Print web/tunnel info BEFORE entering raw mode so it stays readable.
-    if let Some(port) = web_port {
-        eprintln!("  \u{25c6} Web interface: http://localhost:{port}");
-        eprintln!("  \u{2192} Use --tunnel for public URL (requires cloudflared or bore)\n");
+    // Always start the web bridge on an available port.
+    let web_port = find_available_port(7700).await;
+
+    // Print web info + QR code BEFORE entering raw mode so it stays readable.
+    let qr_lines = qr::render_qr(&format!("http://localhost:{web_port}"));
+    eprintln!();
+    eprintln!("  \u{25c6} Web interface: http://localhost:{web_port}");
+    for line in &qr_lines {
+        eprintln!("  {line}");
     }
-    if tunnel_requested {
-        if let Some(port) = web_port {
-            eprintln!("  \u{25c6} Starting tunnel...");
-            tokio::spawn(async move {
-                match tunnel::try_start_tunnel(port).await {
-                    Some((url, mut tunnel_child)) => {
-                        eprintln!("  \u{25c6} Public URL: {url}");
-                        eprintln!("  \u{2192} Opens on any device (phone, tablet, remote)\n");
-                        let _ = tunnel_child.wait().await;
-                    }
-                    None => {
-                        eprintln!(
-                            "  \u{2717} No tunnel available. Install cloudflared: brew install cloudflared"
-                        );
-                    }
-                }
-            });
-        }
-    }
+    eprintln!("  Starting tunnel...\n");
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -108,7 +87,7 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_app(&mut terminal, child_stdin, child_stdout).await;
+    let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
     disable_raw_mode()?;
     execute!(
@@ -126,23 +105,19 @@ async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     child_stdin: ChildStdin,
     child_stdout: ChildStdout,
+    web_port: u16,
 ) -> Result<()> {
     let project_root = std::env::current_dir()?.to_string_lossy().to_string();
     let mut app = App::new(project_root);
 
     let args: Vec<String> = std::env::args().collect();
-    let web_port: Option<u16> = args.iter().position(|a| a == "--web").map(|pos| {
-        args.get(pos + 1)
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(web::DEFAULT_WEB_PORT)
-    });
     let resume_id: Option<String> = args
         .iter()
         .position(|a| a == "--resume")
         .and_then(|pos| args.get(pos + 1).filter(|a| !a.starts_with("--")).cloned());
     let show_resume_picker = args.iter().any(|a| a == "--resume") && resume_id.is_none();
 
-    app.web_port = web_port;
+    app.web_port = Some(web_port);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BackendEvent>(100);
 
@@ -151,15 +126,28 @@ async fn run_app(
     // mpsc channel for commands arriving from browser clients (raw JSON lines).
     let (web_cmd_tx, mut web_cmd_rx) = tokio::sync::mpsc::channel::<String>(100);
 
-    if let Some(port) = web_port {
+    // Always spawn the web bridge.
+    {
         let event_tx = event_bcast.clone();
         tokio::spawn(async move {
-            let _ = web::start_web_server(port, event_tx, web_cmd_tx).await;
+            let _ = web::start_web_server(web_port, event_tx, web_cmd_tx).await;
+        });
+    }
+
+    // Always try to start a tunnel; share the URL with the main loop.
+    let tunnel_url_shared: std::sync::Arc<std::sync::Mutex<Option<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    {
+        let tunnel_url_for_task = tunnel_url_shared.clone();
+        tokio::spawn(async move {
+            if let Some((url, mut child)) = tunnel::try_start_tunnel(web_port).await {
+                *tunnel_url_for_task.lock().unwrap() = Some(url);
+                let _ = child.wait().await;
+            }
         });
     }
 
     let reader_bcast = event_bcast.clone();
-    let web_enabled = web_port.is_some();
     tokio::spawn(async move {
         let reader = BufReader::new(child_stdout);
         let mut lines = reader.lines();
@@ -167,9 +155,7 @@ async fn run_app(
             if line.trim().is_empty() {
                 continue;
             }
-            if web_enabled {
-                let _ = reader_bcast.send(line.clone());
-            }
+            let _ = reader_bcast.send(line.clone());
             if let Ok(event) = serde_json::from_str::<BackendEvent>(&line) {
                 if tx.send(event).await.is_err() {
                     break;
@@ -203,6 +189,49 @@ async fn run_app(
             }
         }
 
+        // Open a file in $EDITOR if requested by a /edit command.
+        if let Some(file) = app.open_editor.take() {
+            let editor = std::env::var("EDITOR")
+                .or_else(|_| std::env::var("VISUAL"))
+                .unwrap_or_else(|_| "vi".to_string());
+            disable_raw_mode()?;
+            execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            )?;
+            let status = std::process::Command::new(&editor).arg(&file).status();
+            enable_raw_mode()?;
+            execute!(
+                terminal.backend_mut(),
+                EnterAlternateScreen,
+                EnableMouseCapture
+            )?;
+            terminal.clear()?;
+            let msg = match status {
+                Ok(s) if s.success() => format!("\u{2713} Edited {file} in {editor}"),
+                Ok(s) => format!("\u{26a0} {editor} exited with {s}"),
+                Err(e) => format!("\u{2717} Failed to open {editor}: {e}"),
+            };
+            app.conversation.push(app::ConversationEntry {
+                role: app::Role::System,
+                text: msg,
+            });
+        }
+
+        // Pick up the tunnel URL once it becomes available.
+        if app.tunnel_url.is_none() {
+            if let Ok(guard) = tunnel_url_shared.try_lock() {
+                if let Some(ref url) = *guard {
+                    app.tunnel_url = Some(url.clone());
+                    app.conversation.push(app::ConversationEntry {
+                        role: app::Role::System,
+                        text: format!("\u{25c6} Public URL: {url}  (QR code printed above)"),
+                    });
+                }
+            }
+        }
+
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
         }
@@ -222,6 +251,18 @@ async fn run_app(
     }
 
     Ok(())
+}
+
+async fn find_available_port(start: u16) -> u16 {
+    for port in start..start.saturating_add(100) {
+        if tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .is_ok()
+        {
+            return port;
+        }
+    }
+    start
 }
 
 async fn send_command(writer: &mut BufWriter<ChildStdin>, cmd: &FrontendCommand) -> Result<()> {
@@ -534,24 +575,34 @@ async fn handle_key(
                 return Ok(());
             }
             KeyCode::Backspace => {
-                let still_active = match &mut app.completion_mode {
-                    CompletionMode::SlashCommand { filter, selected } => {
-                        filter.pop();
-                        *selected = 0;
-                        true
-                    }
-                    CompletionMode::FileRef {
-                        filter, selected, ..
-                    } => {
-                        filter.pop();
-                        *selected = 0;
-                        true
-                    }
-                    CompletionMode::None => false,
-                };
                 app.input.input(Event::Key(key));
-                if !still_active {
-                    app.completion_mode = CompletionMode::None;
+                // Re-sync completion mode against the resulting input text:
+                // if the trigger char was deleted, exit completion mode.
+                let current_text = app.input.lines().join("");
+                match &app.completion_mode {
+                    CompletionMode::SlashCommand { .. } => {
+                        if !current_text.starts_with('/') {
+                            app.completion_mode = CompletionMode::None;
+                        } else {
+                            let filter = current_text.trim_start_matches('/').to_string();
+                            app.completion_mode = CompletionMode::SlashCommand { selected: 0, filter };
+                        }
+                    }
+                    CompletionMode::FileRef { files, .. } => {
+                        match current_text.rfind('@') {
+                            None => app.completion_mode = CompletionMode::None,
+                            Some(at_pos) => {
+                                let filter = current_text[at_pos + 1..].to_string();
+                                let files_clone = files.clone();
+                                app.completion_mode = CompletionMode::FileRef {
+                                    selected: 0,
+                                    filter,
+                                    files: files_clone,
+                                };
+                            }
+                        }
+                    }
+                    CompletionMode::None => {}
                 }
                 return Ok(());
             }
@@ -681,6 +732,20 @@ async fn handle_key(
                         role: app::Role::System,
                         text: "Screen cleared.".to_string(),
                     });
+                    return Ok(());
+                }
+
+                // Handle edit locally: open the file in $EDITOR (done in run_app loop).
+                if name == "edit" {
+                    let file = args.first().cloned().unwrap_or_default();
+                    if !file.is_empty() {
+                        app.open_editor = Some(file);
+                    } else {
+                        app.conversation.push(app::ConversationEntry {
+                            role: app::Role::System,
+                            text: "Usage: /edit <file>".to_string(),
+                        });
+                    }
                     return Ok(());
                 }
 
