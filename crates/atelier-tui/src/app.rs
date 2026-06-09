@@ -138,13 +138,12 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("tools", "List available tools"),
     ("memory", "Search Atelier memory: /memory <query>"),
     ("route", "Show routing decision: /route <task>"),
-    ("sessions", "List saved sessions"),
-    ("session", "Switch session: /session <id>"),
     ("approve", "Approve pending permission request"),
     ("deny", "Deny pending permission request"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
+    ("edit", "Open a file in $EDITOR: /edit <file>"),
     (
         "context",
         "Show context stats (turns, tokens, tool results)",
@@ -312,6 +311,7 @@ pub struct App<'a> {
     pub last_ctrl_c: Option<std::time::Instant>,
     pub web_port: Option<u16>,
     pub tunnel_url: Option<String>,
+    pub open_editor: Option<String>,
     pub show_help: bool,
 }
 
@@ -353,6 +353,7 @@ impl<'a> App<'a> {
             last_ctrl_c: None,
             web_port: None,
             tunnel_url: None,
+            open_editor: None,
             show_help: false,
         }
     }
