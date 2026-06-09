@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{App, CompletionMode, FocusedPane, PendingPermission, ReverseSearch, SearchState};
+use app::{App, CompletionMode, FocusedPane, LeftTab, PendingPermission, ReverseSearch, RightTab, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -118,6 +118,7 @@ async fn run_app(
     let show_resume_picker = args.iter().any(|a| a == "--resume") && resume_id.is_none();
 
     app.web_port = Some(web_port);
+    app.local_url = Some(format!("http://localhost:{web_port}"));
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BackendEvent>(100);
 
@@ -228,6 +229,7 @@ async fn run_app(
                         role: app::Role::System,
                         text: format!("\u{25c6} Public URL: {url}  (QR code printed above)"),
                     });
+                    app.auto_scroll = true;
                 }
             }
         }
@@ -708,6 +710,30 @@ async fn handle_key(
     }
 
     match key.code {
+        #[cfg(feature = "clipboard")]
+        KeyCode::Char('c' | 'C')
+            if key
+                .modifiers
+                .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
+        {
+            let last_text = app
+                .conversation
+                .iter()
+                .rev()
+                .find(|e| matches!(e.role, app::Role::Assistant))
+                .map(|e| e.text.clone())
+                .unwrap_or_default();
+            if !last_text.is_empty() {
+                use arboard::Clipboard;
+                if let Ok(mut clipboard) = Clipboard::new() {
+                    let _ = clipboard.set_text(&last_text);
+                    app.conversation.push(app::ConversationEntry {
+                        role: app::Role::System,
+                        text: "\u{2713} Copied last response to clipboard".to_string(),
+                    });
+                }
+            }
+        }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             let now = std::time::Instant::now();
             let double_press = app
@@ -768,6 +794,48 @@ async fn handle_key(
                 matches: vec![],
                 current: 0,
             });
+        }
+        KeyCode::Tab if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if !app.middle_tabs.is_empty() {
+                app.middle_tab_idx = (app.middle_tab_idx + 1) % app.middle_tabs.len();
+            }
+        }
+        KeyCode::BackTab if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if !app.middle_tabs.is_empty() {
+                app.middle_tab_idx = if app.middle_tab_idx == 0 {
+                    app.middle_tabs.len() - 1
+                } else {
+                    app.middle_tab_idx - 1
+                };
+            }
+        }
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.close_tab(app.middle_tab_idx);
+        }
+        KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.left_tab = LeftTab::Sessions;
+        }
+        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.left_tab = LeftTab::Files;
+        }
+        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.left_tab = LeftTab::Git;
+            app.refresh_git_status();
+        }
+        KeyCode::F(1) => {
+            app.right_tab = RightTab::Tools;
+        }
+        KeyCode::F(2) => {
+            app.right_tab = RightTab::Tasks;
+        }
+        KeyCode::F(3) => {
+            app.right_tab = RightTab::Subagents;
+        }
+        KeyCode::Char('[') if app.input.lines().join("").trim().is_empty() => {
+            app.left_hidden = !app.left_hidden;
+        }
+        KeyCode::Char(']') if app.input.lines().join("").trim().is_empty() => {
+            app.right_hidden = !app.right_hidden;
         }
         KeyCode::Tab => {
             app.cycle_focus();

@@ -1,12 +1,13 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
 use crate::app::{
-    App, CompletionMode, FocusedPane, PendingPermission, Role, TaskStatus, ToolStatus,
+    App, CompletionMode, FocusedPane, LeftTab, PendingPermission, RightTab, Role, TabContent,
+    TaskStatus, ToolStatus,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
@@ -25,45 +26,60 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         return;
     }
 
+    let left_w = if app.left_hidden { 0 } else { 25 };
+    let right_w = if app.right_hidden { 0 } else { 25 };
+    let mid_w = 100 - left_w - right_w;
+
     let input_line_count = app.input.lines().len().max(1) as u16;
     let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
 
+    // Vertical: content + pinned header + input + status
     let vertical = Layout::vertical([
-        Constraint::Min(0),
-        Constraint::Length(input_height),
-        Constraint::Length(1),
+        Constraint::Min(0),               // content row
+        Constraint::Length(1),            // pinned URL/QR header
+        Constraint::Length(input_height), // input
+        Constraint::Length(1),            // status bar
     ])
     .split(area);
 
-    let horizontal = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-        .split(vertical[0]);
+    let content_horizontal = Layout::horizontal([
+        Constraint::Percentage(left_w),
+        Constraint::Percentage(mid_w),
+        Constraint::Percentage(right_w),
+    ])
+    .split(vertical[0]);
 
-    // Left column: sessions (40%) + context (60%)
-    let left = Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(horizontal[0]);
+    if !app.left_hidden {
+        draw_left_pane(frame, app, content_horizontal[0]);
+    }
 
-    // Right column: conversation (60%) + tools (40%)
-    let right = Layout::vertical([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(horizontal[1]);
+    draw_middle_pane(frame, app, content_horizontal[1]);
 
-    draw_sessions_pane(frame, app, left[0]);
-    draw_context_pane(frame, app, left[1]);
-    draw_conversation(frame, app, right[0]);
-    draw_tools(frame, app, right[1]);
-    draw_input(frame, app, vertical[1]);
-    draw_status_bar(frame, app, vertical[2]);
+    if !app.right_hidden {
+        let right_split = Layout::vertical([
+            Constraint::Percentage(70),
+            Constraint::Percentage(30),
+        ])
+        .split(content_horizontal[2]);
+        draw_right_top_pane(frame, app, right_split[0]);
+        draw_context_pane(frame, app, right_split[1]);
+    }
+
+    draw_url_header(frame, app, vertical[1]);
+    draw_input(frame, app, vertical[2]);
+    draw_status_bar(frame, app, vertical[3]);
 
     if app.completion_mode != CompletionMode::None {
-        draw_completion_popup(frame, app, vertical[1]);
+        draw_completion_popup(frame, app, vertical[2]);
     }
 
     if !app.prompt_suggestions.is_empty() && app.completion_mode == CompletionMode::None {
         let sugg_area = Rect {
-            y: vertical[1]
+            y: vertical[2]
                 .y
                 .saturating_sub(app.prompt_suggestions.len() as u16 + 2),
             height: app.prompt_suggestions.len() as u16 + 2,
-            ..vertical[1]
+            ..vertical[2]
         };
         if sugg_area.y >= 1 {
             frame.render_widget(Clear, sugg_area);
@@ -87,6 +103,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    // Overlays on top of everything.
     if app.show_session_picker {
         draw_session_picker(frame, app, area);
     } else if app.pending_choice.is_some() {
@@ -97,10 +114,264 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_diff_overlay(frame, app, area);
     }
 
-    // Help overlay renders last, on top of everything.
     if app.show_help {
         draw_help_overlay(frame, app, area);
     }
+}
+
+fn draw_left_pane(frame: &mut Frame, app: &App, area: Rect) {
+    let tab_titles: Vec<Line> = vec![
+        Line::from(" Sessions "),
+        Line::from(" Files "),
+        Line::from(" Git "),
+    ];
+    let selected = match app.left_tab {
+        LeftTab::Sessions => 0,
+        LeftTab::Files => 1,
+        LeftTab::Git => 2,
+    };
+
+    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+
+    let tabs = Tabs::new(tab_titles)
+        .select(selected)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::BOLD),
+        )
+        .divider(" ");
+    frame.render_widget(tabs, layout[0]);
+
+    let block = Block::bordered().border_style(Style::default().fg(border_color(
+        app,
+        FocusedPane::Sessions,
+    )));
+    let inner = block.inner(layout[1]);
+    frame.render_widget(block, layout[1]);
+
+    match app.left_tab {
+        LeftTab::Sessions => draw_sessions_content(frame, app, inner),
+        LeftTab::Files => draw_files_content(frame, app, inner),
+        LeftTab::Git => draw_git_content(frame, app, inner),
+    }
+}
+
+fn draw_files_content(frame: &mut Frame, app: &App, area: Rect) {
+    let files = crate::collect_repo_files(&app.project_root);
+    let display_files: Vec<Line> = files
+        .iter()
+        .take(40)
+        .map(|f| {
+            let ext = f.split('.').next_back().unwrap_or("");
+            let color = match ext {
+                "py" => Color::Yellow,
+                "rs" => Color::Red,
+                "ts" | "js" => Color::Cyan,
+                "md" => Color::White,
+                "json" | "toml" | "yaml" => Color::Green,
+                _ => Color::Gray,
+            };
+            Line::from(Span::styled(
+                format!("  {f}"),
+                Style::default().fg(color),
+            ))
+        })
+        .collect();
+
+    let para = Paragraph::new(display_files);
+    frame.render_widget(para, area);
+}
+
+fn draw_git_content(frame: &mut Frame, app: &App, area: Rect) {
+    if app.git_status.is_empty() {
+        let para = Paragraph::new(Span::styled(
+            "  Working tree clean",
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(para, area);
+        return;
+    }
+    let items: Vec<Line> = app
+        .git_status
+        .iter()
+        .map(|f| {
+            let color = match f.status.as_str() {
+                "M" => Color::Yellow,
+                "A" | "AM" => Color::Green,
+                "D" => Color::Red,
+                "?" | "??" => Color::DarkGray,
+                _ => Color::White,
+            };
+            Line::from(vec![
+                Span::styled(format!(" {:2} ", f.status), Style::default().fg(color)),
+                Span::styled(f.path.clone(), Style::default().fg(Color::White)),
+            ])
+        })
+        .collect();
+    let para = Paragraph::new(items);
+    frame.render_widget(para, area);
+}
+
+fn draw_middle_pane(frame: &mut Frame, app: &mut App, area: Rect) {
+    let tab_titles: Vec<Line> = app
+        .middle_tabs
+        .iter()
+        .map(|t| {
+            let title = t.title();
+            let close = if t.closeable() { " \u{00d7}" } else { "" };
+            Line::from(format!(" {title}{close} "))
+        })
+        .collect();
+
+    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+
+    let tabs = Tabs::new(tab_titles)
+        .select(app.middle_tab_idx)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(
+            Style::default()
+                .fg(app.agent_mode.accent_color())
+                .add_modifier(Modifier::BOLD),
+        );
+    frame.render_widget(tabs, layout[0]);
+
+    let content_area = layout[1];
+    let block = Block::bordered().border_style(Style::default().fg(border_color(
+        app,
+        FocusedPane::Conversation,
+    )));
+    let inner = block.inner(content_area);
+    frame.render_widget(block, content_area);
+
+    match app.middle_tabs.get(app.middle_tab_idx).cloned() {
+        Some(TabContent::Conversation) => draw_conversation_content(frame, app, inner),
+        Some(TabContent::FileView(path)) => draw_file_content(frame, path, inner),
+        Some(TabContent::DiffView(_, diff)) => draw_side_by_side_diff(frame, diff, inner),
+        None => {}
+    }
+}
+
+fn draw_file_content(frame: &mut Frame, path: String, area: Rect) {
+    let content =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Error reading {path}: {e}"));
+    let lines: Vec<Line> = content
+        .lines()
+        .enumerate()
+        .map(|(i, l)| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{:4} \u{2502} ", i + 1),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw(l.to_string()),
+            ])
+        })
+        .collect();
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
+    frame.render_widget(para, area);
+}
+
+fn draw_side_by_side_diff(frame: &mut Frame, diff: String, area: Rect) {
+    let half_w = area.width / 2;
+    let left_area = Rect {
+        width: half_w,
+        ..area
+    };
+    let right_area = Rect {
+        x: area.x + half_w,
+        width: area.width - half_w,
+        ..area
+    };
+
+    let mut old_lines: Vec<Line> = Vec::new();
+    let mut new_lines: Vec<Line> = Vec::new();
+
+    for line in diff.lines() {
+        if line.starts_with('-') && !line.starts_with("---") {
+            old_lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Red),
+            )));
+            new_lines.push(Line::raw(""));
+        } else if line.starts_with('+') && !line.starts_with("+++") {
+            old_lines.push(Line::raw(""));
+            new_lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Green),
+            )));
+        } else if line.starts_with("@@") {
+            let span = Span::styled(line.to_string(), Style::default().fg(Color::Cyan));
+            old_lines.push(Line::from(span.clone()));
+            new_lines.push(Line::from(span));
+        } else {
+            old_lines.push(Line::raw(line.to_string()));
+            new_lines.push(Line::raw(line.to_string()));
+        }
+    }
+
+    let left_block = Block::bordered()
+        .title(" Before ")
+        .border_style(Style::default().fg(Color::Red));
+    let right_block = Block::bordered()
+        .title(" After ")
+        .border_style(Style::default().fg(Color::Green));
+
+    frame.render_widget(
+        Paragraph::new(old_lines)
+            .block(left_block)
+            .wrap(Wrap { trim: false }),
+        left_area,
+    );
+    frame.render_widget(
+        Paragraph::new(new_lines)
+            .block(right_block)
+            .wrap(Wrap { trim: false }),
+        right_area,
+    );
+}
+
+fn draw_right_top_pane(frame: &mut Frame, app: &App, area: Rect) {
+    let tab_titles = [" Tools ", " Tasks ", " Agents "];
+    let selected = match app.right_tab {
+        RightTab::Tools => 0,
+        RightTab::Tasks => 1,
+        RightTab::Subagents => 2,
+    };
+
+    let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+
+    let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
+        .select(selected)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(Style::default().fg(app.agent_mode.accent_color()));
+    frame.render_widget(tabs, layout[0]);
+
+    let block = Block::bordered().border_style(Style::default().fg(border_color(
+        app,
+        FocusedPane::Tools,
+    )));
+    let inner = block.inner(layout[1]);
+    frame.render_widget(block, layout[1]);
+
+    match app.right_tab {
+        RightTab::Tools => draw_tools_content(frame, app, inner),
+        RightTab::Tasks => draw_tasks_content(frame, app, inner),
+        RightTab::Subagents => draw_subagents_content(frame, app, inner),
+    }
+}
+
+fn draw_url_header(frame: &mut Frame, app: &App, area: Rect) {
+    let local = app
+        .local_url
+        .clone()
+        .or_else(|| app.web_port.map(|p| format!("http://localhost:{p}")))
+        .unwrap_or_default();
+    let tunnel = app.tunnel_url.as_deref().unwrap_or("connecting...");
+    let text = format!(" \u{25c6} Local: {local}  \u{2502}  Public: {tunnel}  \u{2502}  ? for help ");
+    let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
+    frame.render_widget(para, area);
 }
 
 fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
@@ -541,26 +812,8 @@ fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, popup_area);
 }
 
-fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     use crate::highlight::render_markdown_lines;
-
-    let title = if let Some(s) = &app.search {
-        let total = s.matches.len();
-        let pos = if total == 0 { 0 } else { s.current_match + 1 };
-        format!(" SEARCH: \"{}\" — {}/{} matches ", s.query, pos, total)
-    } else if app.current_model.is_empty() {
-        " Conversation ".to_string()
-    } else {
-        format!(" Conversation — {} ", app.current_model)
-    };
-    let border = if app.search.is_some() {
-        Color::Yellow
-    } else {
-        border_color(app, FocusedPane::Conversation)
-    };
-    let block = Block::bordered()
-        .title(title)
-        .border_style(Style::default().fg(border));
 
     if app.conversation.is_empty() && !app.is_streaming {
         let model_line = if app.current_model.is_empty() {
@@ -619,8 +872,7 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default().fg(Color::DarkGray),
         )));
         welcome_lines.push(Line::raw(""));
-        let para = Paragraph::new(welcome_lines).block(block);
-        frame.render_widget(para, area);
+        frame.render_widget(Paragraph::new(welcome_lines), area);
         return;
     }
 
@@ -696,7 +948,7 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let content_height = all_lines.len() as u16;
-    let visible_height = area.height.saturating_sub(2);
+    let visible_height = area.height;
     let max_scroll = content_height.saturating_sub(visible_height);
     let scroll = if app.auto_scroll {
         max_scroll
@@ -706,13 +958,12 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     app.scroll = scroll;
 
     let paragraph = Paragraph::new(all_lines)
-        .block(block)
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
 }
 
-fn draw_sessions_pane(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_sessions_content(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
     let current = if app.session_id.is_empty() {
@@ -764,15 +1015,7 @@ fn draw_sessions_pane(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let block = Block::bordered()
-        .title(" Sessions ")
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Sessions)));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        area,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
 fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
@@ -851,7 +1094,7 @@ fn draw_context_pane(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(footer).wrap(Wrap { trim: false }), rows[2]);
 }
 
-fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_tools_content(frame: &mut Frame, app: &App, area: Rect) {
     let items: Vec<ListItem> = app
         .tools
         .iter()
@@ -876,11 +1119,7 @@ fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let block = Block::bordered()
-        .title(" Tools ")
-        .border_style(Style::default().fg(border_color(app, FocusedPane::Tools)));
-
-    let list = List::new(items).block(block);
+    let list = List::new(items);
 
     let mut state = ListState::default();
     let offset = app.tool_scroll as usize;
@@ -890,6 +1129,55 @@ fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     frame.render_stateful_widget(list, area, &mut state);
+}
+
+fn draw_tasks_content(frame: &mut Frame, app: &App, area: Rect) {
+    if app.background_tasks.is_empty() {
+        let para = Paragraph::new(Span::styled(
+            "  No background tasks",
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(para, area);
+        return;
+    }
+    let lines: Vec<Line> = app
+        .background_tasks
+        .iter()
+        .map(|task| {
+            let (marker, style) = match task.status {
+                TaskStatus::Running => ("\u{27f3}", Style::default().fg(Color::Yellow)),
+                TaskStatus::Done => ("\u{2713}", Style::default().fg(Color::Green)),
+                TaskStatus::Failed => ("\u{2717}", Style::default().fg(Color::Red)),
+            };
+            Line::from(vec![
+                Span::styled(format!(" {marker} "), style),
+                Span::raw(task.name.clone()),
+            ])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+}
+
+fn draw_subagents_content(frame: &mut Frame, app: &App, area: Rect) {
+    if app.sessions_list.is_empty() {
+        let para = Paragraph::new(Span::styled(
+            "  No subagents running",
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(para, area);
+        return;
+    }
+    let lines: Vec<Line> = app
+        .sessions_list
+        .iter()
+        .map(|s| {
+            Line::from(vec![
+                Span::styled(" \u{25c6} ", Style::default().fg(app.agent_mode.accent_color())),
+                Span::raw(s.label.clone()),
+            ])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
