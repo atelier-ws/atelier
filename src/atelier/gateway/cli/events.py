@@ -11,6 +11,11 @@ class SessionStarted:
     type: Literal["session.started"]
     session_id: str
     project_root: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    git_branch: str | None = None
+    atelier_version: str | None = None
+    has_api_key: bool = True
 
 
 @dataclass(frozen=True)

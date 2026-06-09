@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import os
+import subprocess
 import sys
+from pathlib import Path
 
-from atelier.gateway.cli.events import AtelierEvent, SessionStarted
+from atelier.gateway.cli.events import AssistantMessage, AtelierEvent, SessionStarted
 from atelier.gateway.cli.runtime import InteractiveRuntime
 from atelier.gateway.cli.slash import parse_input
 
@@ -17,6 +20,61 @@ def _write_event(event: AtelierEvent) -> None:
     payload = dataclasses.asdict(event)
     sys.stdout.write(json.dumps(payload) + "\n")
     sys.stdout.flush()
+
+
+def _build_session_started(session_id: str, project_root: str | None) -> SessionStarted:
+    """Assemble an enriched ``session.started`` event with environment context."""
+    git_branch: str | None = None
+    try:
+        git_branch = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=project_root or ".",
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:  # noqa: BLE001 - git is optional
+        pass
+
+    from atelier import __version__ as _ver
+    from atelier.core.capabilities.cross_vendor_routing.configuration import (
+        detect_api_key_vendors,
+    )
+
+    has_key = bool(detect_api_key_vendors())
+
+    resolved_model: str | None = None
+    resolved_provider: str | None = None
+    try:
+        from atelier.core.capabilities.owned_execution_routing import (
+            OwnedRouteRequest,
+            select_owned_route,
+        )
+        from atelier.core.foundation.paths import default_store_root
+
+        decision = select_owned_route(
+            default_store_root(),
+            OwnedRouteRequest(
+                tool_name="tui", task_text="hi", mode="auto", budget="balanced"
+            ),
+        )
+        resolved_model = decision.model
+        resolved_provider = decision.provider
+    except Exception:  # noqa: BLE001 - routing is best-effort
+        pass
+
+    return SessionStarted(
+        type="session.started",
+        session_id=session_id,
+        project_root=project_root,
+        model=resolved_model,
+        provider=resolved_provider,
+        git_branch=git_branch,
+        atelier_version=_ver,
+        has_api_key=has_key,
+    )
 
 
 async def run_ndjson_server(
@@ -29,6 +87,15 @@ async def run_ndjson_server(
     ``AtelierEvent`` objects to stdout as NDJSON.
     """
     runtime = InteractiveRuntime()
+
+    mitm_proc = None
+    mitm_flow: Path | None = None
+    if os.environ.get("ATELIER_MITM") == "1":
+        from atelier.gateway.cli.mitm import start_mitmdump
+
+        mitm_flow = Path.home() / ".atelier" / "mitm" / "pending.flow"
+        mitm_proc = start_mitmdump(mitm_flow)
+
     if session_id:
         # Resume existing session — load its message history.
         try:
@@ -44,62 +111,73 @@ async def run_ndjson_server(
     else:
         session_id = await runtime.start_session(project_root=project_root)
 
-    _write_event(
-        SessionStarted(
-            type="session.started",
-            session_id=session_id,
-            project_root=project_root,
+    _write_event(_build_session_started(session_id, project_root))
+
+    if mitm_proc is not None and mitm_flow is not None:
+        _write_event(
+            AssistantMessage(
+                type="assistant.message",
+                text=(
+                    f"🔍 mitmdump active — capturing to `{mitm_flow}`\n\n"
+                    f"Open with: `mitmweb --flow-file {mitm_flow}`"
+                ),
+            )
         )
-    )
 
     loop = asyncio.get_event_loop()
 
-    while True:
-        try:
-            line = await loop.run_in_executor(None, sys.stdin.readline)
-            if not line:  # EOF — frontend closed the pipe
-                break
-            line = line.strip()
-            if not line:
-                continue
-
+    try:
+        while True:
             try:
-                cmd = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+                line = await loop.run_in_executor(None, sys.stdin.readline)
+                if not line:  # EOF — frontend closed the pipe
+                    break
+                line = line.strip()
+                if not line:
+                    continue
 
-            cmd_type = cmd.get("type", "")
+                try:
+                    cmd = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
 
-            if cmd_type == "user.message":
-                text = str(cmd.get("text", ""))
-                async for event in runtime.handle_user_message(session_id, text):
-                    _write_event(event)
+                cmd_type = cmd.get("type", "")
 
-            elif cmd_type == "user.command":
-                name = str(cmd.get("name", ""))
-                args = [str(a) for a in cmd.get("args", [])]
-                parsed = parse_input("/" + (name + " " + " ".join(args)).strip())
-                if parsed.kind == "slash":
-                    async for event in runtime.handle_slash_command(
-                        session_id, parsed.name, parsed.args
+                if cmd_type == "user.message":
+                    text = str(cmd.get("text", ""))
+                    async for event in runtime.handle_user_message(session_id, text):
+                        _write_event(event)
+
+                elif cmd_type == "user.command":
+                    name = str(cmd.get("name", ""))
+                    args = [str(a) for a in cmd.get("args", [])]
+                    parsed = parse_input("/" + (name + " " + " ".join(args)).strip())
+                    if parsed.kind == "slash":
+                        async for event in runtime.handle_slash_command(
+                            session_id, parsed.name, parsed.args
+                        ):
+                            _write_event(event)
+
+                elif cmd_type == "permission.response":
+                    perm_id = str(cmd.get("id", ""))
+                    approved = bool(cmd.get("approved", False))
+                    scope = str(cmd.get("scope", "once"))
+                    async for event in runtime.respond_to_permission(
+                        session_id, perm_id, approved, scope
                     ):
                         _write_event(event)
 
-            elif cmd_type == "permission.response":
-                perm_id = str(cmd.get("id", ""))
-                approved = bool(cmd.get("approved", False))
-                scope = str(cmd.get("scope", "once"))
-                async for event in runtime.respond_to_permission(
-                    session_id, perm_id, approved, scope
-                ):
-                    _write_event(event)
+                elif cmd_type == "interrupt":
+                    await runtime.interrupt(session_id)
 
-            elif cmd_type == "interrupt":
-                await runtime.interrupt(session_id)
+            except KeyboardInterrupt:
+                break
+            except Exception:  # noqa: BLE001 - server must stay alive on per-command errors
+                pass
+    finally:
+        if mitm_proc is not None:
+            from atelier.gateway.cli.mitm import stop_mitmdump
 
-        except KeyboardInterrupt:
-            break
-        except Exception:  # noqa: BLE001 - server must stay alive on per-command errors
-            pass
+            stop_mitmdump(mitm_proc)
 
     return 0

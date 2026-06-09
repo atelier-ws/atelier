@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -33,9 +34,10 @@ class InteractiveRuntime:
         self._yolo = yolo
         self._sessions: dict[str, list[dict[str, Any]]] = {}
         self._pending_permissions: dict[str, dict[str, Any]] = {}
+        self._override_model: str | None = None
 
     async def start_session(self, project_root: str | None = None) -> str:
-        session_id = f"tui-{uuid.uuid4().hex[:8]}"
+        session_id = uuid.uuid4().hex
         self._sessions[session_id] = []
         if project_root:
             os.environ["CLAUDE_WORKSPACE_ROOT"] = project_root
@@ -53,6 +55,18 @@ class InteractiveRuntime:
         messages = self._sessions.setdefault(session_id, [])
         messages.append({"role": "user", "content": text})
 
+        if self._override_model:
+            model = self._override_model
+            yield RouteSelected(
+                type="route.selected",
+                provider=None,
+                model=model,
+                reason="user override (/set-model)",
+            )
+            async for event in self._agent_loop(session_id, messages, model=model):
+                yield event
+            return
+
         try:
             from atelier.core.capabilities.owned_execution_routing import (
                 OwnedRouteRequest,
@@ -62,9 +76,7 @@ class InteractiveRuntime:
 
             decision = select_owned_route(
                 self._root,
-                OwnedRouteRequest(
-                    tool_name="tui", task_text=text, mode="auto", budget="balanced"
-                ),
+                OwnedRouteRequest(tool_name="tui", task_text=text, mode="auto", budget="balanced"),
             )
             model = _resolve_litellm_model(decision.provider, decision.model)
             yield RouteSelected(
@@ -110,18 +122,12 @@ class InteractiveRuntime:
                 )
             except Exception as exc:  # noqa: BLE001 - fall back gracefully
                 err_str = str(exc)
-                if (
-                    "API_KEY_SERVICE_BLOCKED" in err_str
-                    or "PERMISSION_DENIED" in err_str
-                    or "403" in err_str
-                ):
+                if "API_KEY_SERVICE_BLOCKED" in err_str or "PERMISSION_DENIED" in err_str or "403" in err_str:
                     from atelier.core.capabilities.cross_vendor_routing.configuration import (
                         detect_api_key_vendors,
                     )
 
-                    other_vendors = [
-                        v for v in detect_api_key_vendors() if "google" not in v.lower()
-                    ]
+                    other_vendors = [v for v in detect_api_key_vendors() if "google" not in v.lower()]
                     fallback_model = os.environ.get("ATELIER_LITELLM_MODEL", "gpt-4o-mini")
                     if other_vendors and model != fallback_model:
                         yield RuntimeErrorEvent(
@@ -139,13 +145,9 @@ class InteractiveRuntime:
                         ):
                             yield event
                     else:
-                        yield RuntimeErrorEvent(
-                            type="error", message=f"LLM call failed: {exc}"
-                        )
+                        yield RuntimeErrorEvent(type="error", message=f"LLM call failed: {exc}")
                 else:
-                    yield RuntimeErrorEvent(
-                        type="error", message=f"LLM call failed: {exc}"
-                    )
+                    yield RuntimeErrorEvent(type="error", message=f"LLM call failed: {exc}")
                 return
 
             for chunk in stream:
@@ -185,9 +187,7 @@ class InteractiveRuntime:
                             if tc.function.name:
                                 tool_calls_acc[idx]["function"]["name"] = tc.function.name
                             if tc.function.arguments:
-                                tool_calls_acc[idx]["function"]["arguments"] += (
-                                    tc.function.arguments
-                                )
+                                tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
 
             if accumulated_text:
                 yield AssistantMessage(type="assistant.message", text=accumulated_text)
@@ -197,9 +197,7 @@ class InteractiveRuntime:
                 break
 
             tool_calls_list = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
-            messages.append(
-                {"role": "assistant", "content": None, "tool_calls": tool_calls_list}
-            )
+            messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls_list})
 
             for tc in tool_calls_list:
                 tool_id = tc["id"]
@@ -209,9 +207,7 @@ class InteractiveRuntime:
                 except json.JSONDecodeError:
                     tool_args = {}
 
-                yield ToolRequested(
-                    type="tool.requested", id=tool_id, name=tool_name, args=tool_args
-                )
+                yield ToolRequested(type="tool.requested", id=tool_id, name=tool_name, args=tool_args)
 
                 if not self._yolo and tool_name in ("edit", "shell"):
                     self._pending_permissions[tool_id] = {"approved": None}
@@ -227,9 +223,7 @@ class InteractiveRuntime:
                             break
                     if not self._pending_permissions.get(tool_id, {}).get("approved", False):
                         result_str = "[denied by user]"
-                        messages.append(
-                            {"role": "tool", "tool_call_id": tool_id, "content": result_str}
-                        )
+                        messages.append({"role": "tool", "tool_call_id": tool_id, "content": result_str})
                         yield ToolFinished(
                             type="tool.finished",
                             id=tool_id,
@@ -258,9 +252,29 @@ class InteractiveRuntime:
                     ok=ok,
                     result=result_str[:500],
                 )
-                messages.append(
-                    {"role": "tool", "tool_call_id": tool_id, "content": result_str}
-                )
+                messages.append({"role": "tool", "tool_call_id": tool_id, "content": result_str})
+
+                if tool_name == "edit" and ok:
+                    try:
+                        diff = subprocess.check_output(
+                            ["git", "diff", "--no-color"],
+                            cwd=os.getcwd(),
+                            stderr=subprocess.DEVNULL,
+                        ).decode(errors="replace")[:5000]
+                        if diff.strip():
+                            from atelier.gateway.cli.events import PatchProposed
+
+                            yield PatchProposed(
+                                type="patch.proposed",
+                                id=tool_id,
+                                files=[
+                                    str(e.get("file_path", "?"))
+                                    for e in tool_args.get("edits", [])
+                                ],
+                                diff=diff,
+                            )
+                    except Exception:  # noqa: BLE001 - diff is best-effort
+                        pass
 
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
@@ -306,19 +320,14 @@ class InteractiveRuntime:
             yield AssistantMessage(type="assistant.message", text=_HELP_TEXT)
         elif name in ("tools", "tool"):
             tools = _get_litellm_tools()
-            lines = [
-                f"**{t['function']['name']}** — {t['function']['description'][:80]}"
-                for t in tools
-            ]
+            lines = [f"**{t['function']['name']}** — {t['function']['description'][:80]}" for t in tools]
             yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "sessions":
             ids = list(self._sessions.keys())
             past: list[str] = []
             runs_dir = self._root / "runs"
             if runs_dir.is_dir():
-                past = sorted(
-                    p.stem for p in runs_dir.glob("*.jsonl")
-                )
+                past = sorted(p.stem for p in runs_dir.glob("*.jsonl"))
             lines = []
             if ids:
                 lines.append("Active sessions:")
@@ -331,13 +340,9 @@ class InteractiveRuntime:
         elif name == "session":
             target = args[0] if args else ""
             if target in self._sessions:
-                yield AssistantMessage(
-                    type="assistant.message", text=f"Switched to session {target}"
-                )
+                yield AssistantMessage(type="assistant.message", text=f"Switched to session {target}")
             else:
-                yield RuntimeErrorEvent(
-                    type="error", message=f"Session {target!r} not found"
-                )
+                yield RuntimeErrorEvent(type="error", message=f"Session {target!r} not found")
         elif name == "memory":
             async for event in self._run_memory_search(" ".join(args)):
                 yield event
@@ -348,24 +353,26 @@ class InteractiveRuntime:
             pending = list(self._pending_permissions.keys())
             if pending:
                 self._pending_permissions[pending[-1]]["approved"] = True
-                yield AssistantMessage(
-                    type="assistant.message", text=f"Approved: {pending[-1]}"
-                )
+                yield AssistantMessage(type="assistant.message", text=f"Approved: {pending[-1]}")
             else:
-                yield AssistantMessage(
-                    type="assistant.message", text="No pending permission requests."
-                )
+                yield AssistantMessage(type="assistant.message", text="No pending permission requests.")
         elif name == "deny":
             pending = list(self._pending_permissions.keys())
             if pending:
                 self._pending_permissions[pending[-1]]["approved"] = False
+                yield AssistantMessage(type="assistant.message", text=f"Denied: {pending[-1]}")
+            else:
+                yield AssistantMessage(type="assistant.message", text="No pending permission requests.")
+        elif name == "set-model":
+            model = args[0] if args else ""
+            if model:
+                self._override_model = model
                 yield AssistantMessage(
-                    type="assistant.message", text=f"Denied: {pending[-1]}"
+                    type="assistant.message",
+                    text=f"Model set to `{model}`. Type a message to start.",
                 )
             else:
-                yield AssistantMessage(
-                    type="assistant.message", text="No pending permission requests."
-                )
+                yield RuntimeErrorEvent(type="error", message="Usage: /set-model <model>")
         elif name in ("context", "verify", "background", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
@@ -384,20 +391,14 @@ class InteractiveRuntime:
         try:
             from atelier.gateway.adapters.mcp_server import tool_memory
 
-            result = await asyncio.to_thread(
-                tool_memory, {"op": "recall", "query": query, "top_k": 5}
-            )
+            result = await asyncio.to_thread(tool_memory, {"op": "recall", "query": query, "top_k": 5})
             yield MemoryHit(type="memory.hit", key=query, summary=str(result)[:2000])
         except Exception as exc:  # noqa: BLE001 - fall back gracefully
-            yield RuntimeErrorEvent(
-                type="error", message=f"Memory search failed: {exc}"
-            )
+            yield RuntimeErrorEvent(type="error", message=f"Memory search failed: {exc}")
 
     async def _run_route(self, task: str) -> AsyncIterator[AtelierEvent]:
         if not task:
-            yield RuntimeErrorEvent(
-                type="error", message="Usage: /route <task description>"
-            )
+            yield RuntimeErrorEvent(type="error", message="Usage: /route <task description>")
             return
         try:
             from atelier.core.capabilities.owned_execution_routing import (
@@ -407,9 +408,7 @@ class InteractiveRuntime:
 
             decision = select_owned_route(
                 self._root,
-                OwnedRouteRequest(
-                    tool_name="tui", task_text=task, mode="auto", budget="balanced"
-                ),
+                OwnedRouteRequest(tool_name="tui", task_text=task, mode="auto", budget="balanced"),
             )
             yield RouteSelected(
                 type="route.selected",
@@ -418,9 +417,7 @@ class InteractiveRuntime:
                 reason=decision.reason,
             )
         except Exception as exc:  # noqa: BLE001 - fall back gracefully
-            yield RuntimeErrorEvent(
-                type="error", message=f"Route selection failed: {exc}"
-            )
+            yield RuntimeErrorEvent(type="error", message=f"Route selection failed: {exc}")
 
     async def respond_to_permission(
         self,
@@ -489,20 +486,14 @@ def _get_litellm_tools() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "edit",
-                "description": (
-                    "Apply edits to files. Use {file_path, old_string, new_string} "
-                    "descriptors."
-                ),
+                "description": ("Apply edits to files. Use {file_path, old_string, new_string} " "descriptors."),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "edits": {
                             "type": "array",
                             "items": {"type": "object"},
-                            "description": (
-                                "List of edit descriptors. Each: "
-                                "{file_path, old_string, new_string}"
-                            ),
+                            "description": ("List of edit descriptors. Each: " "{file_path, old_string, new_string}"),
                         },
                     },
                     "required": ["edits"],
@@ -513,10 +504,7 @@ def _get_litellm_tools() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "shell",
-                "description": (
-                    "Run a shell command. Use sparingly — prefer read/grep/edit "
-                    "where possible."
-                ),
+                "description": ("Run a shell command. Use sparingly — prefer read/grep/edit " "where possible."),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -559,10 +547,7 @@ def _get_litellm_tools() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "explore",
-                "description": (
-                    "Explore a symbol or module: source, callers, callees, "
-                    "related symbols."
-                ),
+                "description": ("Explore a symbol or module: source, callers, callees, " "related symbols."),
                 "parameters": {
                     "type": "object",
                     "properties": {
