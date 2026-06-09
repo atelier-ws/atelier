@@ -1,6 +1,7 @@
 //! Application state for the Atelier TUI.
 
 use crate::protocol::BackendEvent;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui_textarea::TextArea;
 use serde_json::Value;
@@ -442,6 +443,12 @@ pub struct App<'a> {
     // URL/QR header
     pub local_url: Option<String>,
     pub pinned_header: Option<String>,
+    // Left-pane file/git browser scrolling + filtering
+    pub files_scroll: u16,
+    pub git_scroll: u16,
+    pub file_filter: String,
+    // Mouse hit-test areas for clickable tabs (rebuilt each frame)
+    pub tab_click_areas: Option<Vec<(String, Rect)>>,
 }
 
 impl<'a> App<'a> {
@@ -499,6 +506,10 @@ impl<'a> App<'a> {
             right_hidden: false,
             local_url: None,
             pinned_header: None,
+            files_scroll: 0,
+            git_scroll: 0,
+            file_filter: String::new(),
+            tab_click_areas: None,
         }
     }
 

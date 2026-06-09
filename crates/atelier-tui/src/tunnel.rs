@@ -39,36 +39,53 @@ async fn which_available(cmd: &str) -> bool {
 
 async fn start_cloudflared(port: u16) -> Option<(String, tokio::process::Child)> {
     let mut child = Command::new("cloudflared")
-        .args([
-            "tunnel",
-            "--url",
-            &format!("http://localhost:{port}"),
-            "--no-autoupdate",
-            "--accept-tos",
-        ])
+        .args(["tunnel", "--url", &format!("http://localhost:{port}")])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .ok()?;
 
+    // Spawn two tasks to read stdout and stderr concurrently — cloudflared may
+    // print the URL to either depending on version.
+    let stdout = child.stdout.take()?;
     let stderr = child.stderr.take()?;
-    let mut lines = BufReader::new(stderr).lines();
 
-    // cloudflared prints the URL to stderr
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    while tokio::time::Instant::now() < deadline {
-        match tokio::time::timeout(Duration::from_secs(2), lines.next_line()).await {
-            Ok(Ok(Some(line))) => {
-                // Look for URL pattern: https://....trycloudflare.com
-                if let Some(url) = extract_url(&line) {
-                    return Some((url, child));
+    let (url_tx, url_rx) = tokio::sync::oneshot::channel::<String>();
+    let url_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(url_tx)));
+
+    let tx1 = url_tx.clone();
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Some(url) = extract_url(&line) {
+                if let Some(tx) = tx1.lock().unwrap().take() {
+                    let _ = tx.send(url);
                 }
+                return;
             }
-            _ => break,
+        }
+    });
+
+    let tx2 = url_tx.clone();
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Some(url) = extract_url(&line) {
+                if let Some(tx) = tx2.lock().unwrap().take() {
+                    let _ = tx.send(url);
+                }
+                return;
+            }
+        }
+    });
+
+    match tokio::time::timeout(Duration::from_secs(20), url_rx).await {
+        Ok(Ok(url)) => Some((url, child)),
+        _ => {
+            child.kill().await.ok();
+            None
         }
     }
-    child.kill().await.ok();
-    None
 }
 
 async fn start_bore(port: u16) -> Option<(String, tokio::process::Child)> {
