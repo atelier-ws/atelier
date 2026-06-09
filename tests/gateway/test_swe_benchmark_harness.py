@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from click.testing import CliRunner
-
-from benchmarks.swe import BenchConfig, Mode, load_config, mode_specs
 from benchmarks.swe.agent_runner import MockAgent, build_agent
 from benchmarks.swe.config import BenchConfig as Cfg
 from benchmarks.swe.datasets import _MOCK_TASKS, gold_patch_lookup, load_tasks
@@ -17,10 +14,13 @@ from benchmarks.swe.metrics import RunMetrics, aggregate, read_metrics, write_me
 from benchmarks.swe.modes import get_spec
 from benchmarks.swe.patch_export import export_predictions
 from benchmarks.swe.prompts import system_prompt, task_prompt
-from benchmarks.swe.report import write_combined_report
 from benchmarks.swe.run_swe_bench import cli
 from benchmarks.swe.swebench_eval import mock_evaluate
 from benchmarks.swe.task_runner import run_one
+from click.testing import CliRunner
+
+from benchmarks.swe import BenchConfig, Mode, load_config, mode_specs
+from benchmarks.swe.report import write_combined_report
 
 # ----------------------------- config ------------------------------------- #
 
