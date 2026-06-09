@@ -533,12 +533,20 @@ def benchmark_swe_cmd(
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
 @click.option("--timeout", type=int, default=1800, show_default=True)
+@click.option("--max-output-tokens", type=click.IntRange(min=1), default=8192, show_default=True)
 @click.option(
     "--rate-limit-rpm",
     type=click.FloatRange(min=0),
     default=0,
     show_default=True,
     help="Maximum model inference requests per minute; 0 disables throttling.",
+)
+@click.option(
+    "--rate-limit-tpm",
+    type=click.IntRange(min=0),
+    default=0,
+    show_default=True,
+    help="Maximum reserved output tokens per rolling minute; 0 disables throttling.",
 )
 @click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
@@ -672,7 +680,9 @@ def benchmark_atelierbench_cmd(
     reps: int,
     model: str,
     timeout: int,
+    max_output_tokens: int,
     rate_limit_rpm: float,
+    rate_limit_tpm: int,
     transport: str,
     cli_driver: str,
     jobs: int,
@@ -817,8 +827,12 @@ def benchmark_atelierbench_cmd(
             model,
             "--timeout",
             str(timeout),
+            "--max-output-tokens",
+            str(max_output_tokens),
             "--rate-limit-rpm",
             str(rate_limit_rpm),
+            "--rate-limit-tpm",
+            str(rate_limit_tpm),
             "--cli-driver",
             cli_driver,
             "--jobs",

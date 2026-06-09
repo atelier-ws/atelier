@@ -1000,13 +1000,13 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
             .border_style(Style::default().fg(accent));
         app.input.set_block(block);
     } else {
-        // Left side of input shows ◆ (atelier icon) instead of mode slug
+        let mode_indicator = format!(" {} \u{203a} ", app.agent_mode.name());
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(accent))
             .title(Line::from(vec![
                 Span::styled(
-                    " ◆ ",
+                    mode_indicator,
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
@@ -1021,7 +1021,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let accent = app.agent_mode.accent_color();
-    let mode_badge = format!("[{}]", app.agent_mode.name());
+    let mode_badge = format!("{} \u{203a}", app.agent_mode.name());
 
     // Short model name — take last segment after /
     let model_text = if app.current_model.is_empty() {

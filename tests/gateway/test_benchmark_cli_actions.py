@@ -18,12 +18,7 @@ def test_benchmark_legacy_top_level_commands_are_removed(tmp_path: Path) -> None
     root = tmp_path / ".atelier"
 
     assert runner.invoke(cli, ["--root", str(root), "benchmark-core", "--json"]).exit_code != 0
-    assert (
-        runner.invoke(
-            cli, ["--root", str(root), "benchmark", "--prompt", "Fix PDP", "--json"]
-        ).exit_code
-        != 0
-    )
+    assert runner.invoke(cli, ["--root", str(root), "benchmark", "--prompt", "Fix PDP", "--json"]).exit_code != 0
 
 
 def test_help_command_shows_root_command_help(tmp_path: Path) -> None:
@@ -36,18 +31,14 @@ def test_help_command_shows_root_command_help(tmp_path: Path) -> None:
     assert "benchmark" in root_help.output
 
 
-def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -74,15 +65,11 @@ def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(
         "swe-bench-langcodes",
         "grid-pattern-transform",
     }
-    manifest = json.loads(
-        (tmp_path / "terminalbench" / "benchmark-manifest.json").read_text("utf-8")
-    )
+    manifest = json.loads((tmp_path / "terminalbench" / "benchmark-manifest.json").read_text("utf-8"))
     assert manifest["suite"] == "terminalbench"
     assert manifest["protocol"]["baseline_arm"] == "off"
     assert manifest["corpus"]["tasks"][0] == "hello-world"
-    evidence = json.loads(
-        (tmp_path / "terminalbench" / "benchmark-evidence.json").read_text("utf-8")
-    )
+    evidence = json.loads((tmp_path / "terminalbench" / "benchmark-evidence.json").read_text("utf-8"))
     assert evidence["suite"] == "terminalbench"
     assert evidence["artifacts"]["runs_jsonl"]["path"].endswith("runs.jsonl")
     gate = json.loads((tmp_path / "terminalbench" / "benchmark-gate.json").read_text("utf-8"))
@@ -99,18 +86,14 @@ def test_benchmark_terminalbench_require_pass_exits_nonzero_after_writing_artifa
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(
-        cli, ["--root", str(root), "benchmark", "terminalbench", "--require-pass"]
-    )
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench", "--require-pass"])
 
     assert result.exit_code != 0
     assert "no paired benchmark evidence is available" in result.output
@@ -125,15 +108,11 @@ def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) 
     run_dir = tmp_path / "terminalbench"
     run_dir.mkdir()
     (run_dir / "benchmark-gate.json").write_text(
-        json.dumps(
-            {"suite": "terminalbench", "passed": False, "reasons": ["candidate cost was higher"]}
-        ),
+        json.dumps({"suite": "terminalbench", "passed": False, "reasons": ["candidate cost was higher"]}),
         encoding="utf-8",
     )
 
-    ok = runner.invoke(
-        cli, ["--root", str(root), "benchmark", "gate", "--run-dir", str(run_dir), "--json"]
-    )
+    ok = runner.invoke(cli, ["--root", str(root), "benchmark", "gate", "--run-dir", str(run_dir), "--json"])
     assert ok.exit_code == 0, ok.output
     assert json.loads(ok.output)["suite"] == "terminalbench"
 
@@ -151,9 +130,7 @@ def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> Non
     captured: dict[str, object] = {}
 
     monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
 
     def fake_run_swe_eval(**kwargs: object) -> None:
         captured.update(kwargs)
@@ -179,9 +156,7 @@ def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -214,19 +189,17 @@ def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> Non
     assert "--arms" in cmd
     assert cmd[cmd.index("--cli-driver") + 1] == "claude"
     assert cmd[cmd.index("--timeout") + 1] == "1800"
+    assert cmd[cmd.index("--max-output-tokens") + 1] == "8192"
     assert cmd[cmd.index("--rate-limit-rpm") + 1] == "0.0"
+    assert cmd[cmd.index("--rate-limit-tpm") + 1] == "0"
     assert cmd[cmd.index("--jobs") + 1] == "1"
     assert cmd[cmd.index("--parallel-scope") + 1] == "task"
     assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
-    manifest = json.loads(
-        (tmp_path / "atelierbench" / "benchmark-manifest.json").read_text("utf-8")
-    )
+    manifest = json.loads((tmp_path / "atelierbench" / "benchmark-manifest.json").read_text("utf-8"))
     assert manifest["suite"] == "atelierbench"
     assert manifest["protocol"]["baseline_arm"] == "baseline"
     assert manifest["corpus"]["tasks"][0]["id"] == "task1"
-    evidence = json.loads(
-        (tmp_path / "atelierbench" / "benchmark-evidence.json").read_text("utf-8")
-    )
+    evidence = json.loads((tmp_path / "atelierbench" / "benchmark-evidence.json").read_text("utf-8"))
     assert evidence["suite"] == "atelierbench"
     assert evidence["artifacts"]["results_jsonl"]["path"].endswith("results.jsonl")
     gate = json.loads((tmp_path / "atelierbench" / "benchmark-gate.json").read_text("utf-8"))
@@ -234,9 +207,7 @@ def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> Non
     assert gate["passed"] is False
 
 
-def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
@@ -245,9 +216,7 @@ def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -297,9 +266,7 @@ def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(
     assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
 
 
-def test_benchmark_atelierbench_judge_defaults_to_runner_transport(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_judge_defaults_to_runner_transport(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
@@ -308,9 +275,7 @@ def test_benchmark_atelierbench_judge_defaults_to_runner_transport(
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -349,9 +314,7 @@ def test_benchmark_atelierbench_judge_defaults_to_runner_transport(
     assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-6"
 
 
-def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
@@ -360,9 +323,7 @@ def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -406,9 +367,7 @@ def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(
     assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
 
 
-def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
@@ -417,9 +376,7 @@ def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -472,9 +429,7 @@ def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_pa
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -518,9 +473,7 @@ def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_pa
     assert '--cli-extra-arg=model_reasoning_effort="medium"' in cmd
 
 
-def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
@@ -529,9 +482,7 @@ def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench"
-    )
+    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
     monkeypatch.setattr(
         benchmark_cmds,
         "_ensure_atelierbench_tasks_dir",
@@ -568,9 +519,7 @@ def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(
     assert "AWS_REGION=AWS_REGION" in cmd
 
 
-def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
@@ -601,9 +550,7 @@ def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(
     )
 
     assert result.exit_code != 0
-    assert (
-        "--openrouter-claude only applies to --transport cli --cli-driver claude." in result.output
-    )
+    assert "--openrouter-claude only applies to --transport cli --cli-driver claude." in result.output
 
 
 def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> None:
@@ -613,9 +560,7 @@ def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_resolve_mcp_jobs", lambda jobs, repo_root: 6)
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -636,9 +581,7 @@ def test_benchmark_mcp_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
@@ -672,9 +615,7 @@ def test_benchmark_providers_passes_parallel_jobs(monkeypatch, tmp_path: Path) -
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_workspace_dir",
@@ -703,9 +644,7 @@ def test_benchmark_providers_defaults_to_auto_and_cache_root(monkeypatch, tmp_pa
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(
-        benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite
-    )
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_workspace_dir",

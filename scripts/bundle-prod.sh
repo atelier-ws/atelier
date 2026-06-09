@@ -28,7 +28,7 @@ mv -f ./build_dist/atelier bundle/bin/
 
 .venv/bin/python -m PyInstaller --noconfirm --onefile --name atelier-mcp \
   --distpath ./build_dist \
-  src/atelier/gateway/adapters/web_fetch_mcp_server.py
+  src/atelier/gateway/adapters/mcp_server.py
 mv -f ./build_dist/atelier-mcp bundle/bin/
 
 # 4. Create Archive
