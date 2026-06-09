@@ -142,21 +142,16 @@ fn draw_left_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
-    // Record tab hit-test areas (three equal-width slots across the tab row).
+    // Record tab hit-test areas using actual title widths (not equal division).
+    // Left tabs: " Sessions " / " Files " / " Git " — measure each.
     if let Some(ref mut areas) = app.tab_click_areas {
-        let tab_w = (layout[0].width / 3).max(1);
-        areas.push((
-            "left_sessions".to_string(),
-            Rect { x: layout[0].x, y: layout[0].y, width: tab_w, height: 1 },
-        ));
-        areas.push((
-            "left_files".to_string(),
-            Rect { x: layout[0].x + tab_w, y: layout[0].y, width: tab_w, height: 1 },
-        ));
-        areas.push((
-            "left_git".to_string(),
-            Rect { x: layout[0].x + tab_w * 2, y: layout[0].y, width: tab_w, height: 1 },
-        ));
+        let tab_labels = [(" Sessions ", "left_sessions"), (" Files ", "left_files"), (" Git ", "left_git")];
+        let mut x = layout[0].x;
+        for (label, id) in &tab_labels {
+            let w = label.len() as u16;
+            areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
+            x += w;
+        }
     }
 
     let tabs = Tabs::new(tab_titles)
@@ -507,19 +502,14 @@ fn draw_right_top_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
 
     if let Some(ref mut areas) = app.tab_click_areas {
-        let tab_w = (layout[0].width / 3).max(1);
-        areas.push((
-            "right_tools".to_string(),
-            Rect { x: layout[0].x, y: layout[0].y, width: tab_w, height: 1 },
-        ));
-        areas.push((
-            "right_tasks".to_string(),
-            Rect { x: layout[0].x + tab_w, y: layout[0].y, width: tab_w, height: 1 },
-        ));
-        areas.push((
-            "right_agents".to_string(),
-            Rect { x: layout[0].x + tab_w * 2, y: layout[0].y, width: tab_w, height: 1 },
-        ));
+        // Use actual tab label widths for accurate hit detection
+        let tab_labels = [(" Tools ", "right_tools"), (" Tasks ", "right_tasks"), (" Agents ", "right_agents")];
+        let mut x = layout[0].x;
+        for (label, id) in &tab_labels {
+            let w = label.len() as u16;
+            areas.push((id.to_string(), Rect { x, y: layout[0].y, width: w.max(1), height: 1 }));
+            x += w;
+        }
     }
 
     let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
@@ -682,7 +672,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         )]),
         Line::from(vec![
             Span::styled("  Tab          ", Style::default().fg(Color::Cyan)),
-            Span::raw("Cycle pane focus (Input → Conversation → Tools)"),
+            Span::raw("In input: cycle agent mode  │  Outside input: cycle pane focus"),
         ]),
         Line::from(vec![
             Span::styled("  ↑ ↓          ", Style::default().fg(Color::Cyan)),
@@ -695,6 +685,10 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  End          ", Style::default().fg(Color::Cyan)),
             Span::raw("Scroll to bottom (auto-scroll)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Alt+[  Alt+] ", Style::default().fg(Color::Cyan)),
+            Span::raw("Hide/show left and right panes"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -722,6 +716,10 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  @            ", Style::default().fg(Color::Cyan)),
             Span::raw("File picker (fuzzy search)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Shift+drag   ", Style::default().fg(Color::Cyan)),
+            Span::raw("Select text to copy (bypasses TUI mouse — works in any terminal)"),
         ]),
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -1510,24 +1508,29 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let model_text = if app.current_model.is_empty() {
         "no model".to_string()
     } else {
-        app.current_model.chars().take(28).collect()
+        app.current_model.chars().take(30).collect()
     };
     let cache = app
         .cache_efficiency
-        .map(|v| format!(" \u{2502} cache {v:.0}%"))
+        .map(|v| format!(" │ cache {v:.0}%"))
         .unwrap_or_default();
     let cost = if app.total_cost_usd > 0.0 {
-        format!(" \u{2502} ${:.4}", app.total_cost_usd)
+        format!(" │ ${:.4}", app.total_cost_usd)
     } else {
         String::new()
     };
-    let tunnel = match &app.tunnel_url {
-        Some(url) => format!(" \u{2502} {}", url.chars().take(35).collect::<String>()),
-        None => String::new(),
+    let saved = if app.total_savings_usd > 0.001 {
+        format!(" │ saved ${:.4}", app.total_savings_usd)
+    } else {
+        String::new()
     };
-    let hint = " \u{2502} ?";
+    let turns = if !app.conversation.is_empty() {
+        format!(" │ {} turns", app.conversation.len() / 2)
+    } else {
+        String::new()
+    };
 
-    let text = format!(" {mode_badge} {model_text}{cache}{cost}{tunnel}{hint}");
+    let text = format!(" {mode_badge} {model_text}{cache}{cost}{saved}{turns} │ ?");
     let para = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
     frame.render_widget(para, area);
 }
