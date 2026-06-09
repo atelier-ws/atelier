@@ -1,16 +1,29 @@
 //! Rendering for the Atelier TUI: 3-pane layout + permission overlay.
 
-use crate::app::{App, PendingPermission, Role, ToolStatus};
+use crate::app::{App, FocusedPane, PendingPermission, Role, ToolStatus};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
+
+fn border_color(app: &App, pane: FocusedPane) -> Color {
+    if app.focused_pane == pane {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    }
+}
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
-    let vertical = Layout::vertical([Constraint::Min(0), Constraint::Length(3)]).split(area);
+    let vertical = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(3),
+        Constraint::Length(1),
+    ])
+    .split(area);
 
     let horizontal =
         Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]).split(vertical[0]);
@@ -18,6 +31,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_conversation(frame, app, horizontal[0]);
     draw_tools(frame, app, horizontal[1]);
     draw_input(frame, app, vertical[1]);
+    draw_status_bar(frame, app, vertical[2]);
 
     if app.pending_permission.is_some() {
         draw_permission_overlay(frame, app, area);
@@ -62,7 +76,7 @@ fn draw_conversation(frame: &mut Frame, app: &App, area: Rect) {
 
     let block = Block::bordered()
         .title(title)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Conversation)));
 
     let paragraph = Paragraph::new(Text::from(lines))
         .wrap(Wrap { trim: false })
@@ -99,18 +113,55 @@ fn draw_tools(frame: &mut Frame, app: &App, area: Rect) {
 
     let block = Block::bordered()
         .title(" Tools ")
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(border_color(app, FocusedPane::Tools)));
 
     let list = List::new(items).block(block);
-    frame.render_widget(list, area);
+
+    let mut state = ListState::default();
+    let offset = app.tool_scroll as usize;
+    *state.offset_mut() = offset;
+    if !app.tools.is_empty() {
+        state.select(Some(offset.min(app.tools.len().saturating_sub(1))));
+    }
+
+    frame.render_stateful_widget(list, area, &mut state);
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focused_pane == FocusedPane::Input;
+    let color = if focused { Color::Cyan } else { Color::DarkGray };
     let block = Block::bordered()
         .title(" atelier> ")
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(color));
     app.input.set_block(block);
     frame.render_widget(&app.input, area);
+}
+
+fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let session = if app.session_id.is_empty() {
+        "—".to_string()
+    } else {
+        app.session_id.clone()
+    };
+    let model = if app.current_model.is_empty() {
+        "—".to_string()
+    } else {
+        app.current_model.clone()
+    };
+    let style = Style::default().fg(Color::DarkGray);
+    let line = Line::from(vec![
+        Span::styled(format!(" session: {session}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("model: {model}"), style),
+        Span::styled("  │  ", style),
+        Span::styled(format!("tools: {}", app.tools.len()), style),
+        Span::styled("  │  ", style),
+        Span::styled(
+            "↑↓ scroll · Tab focus · Shift+Enter newline",
+            style,
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 fn draw_permission_overlay(frame: &mut Frame, app: &App, area: Rect) {
