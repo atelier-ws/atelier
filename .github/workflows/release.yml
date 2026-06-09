@@ -86,7 +86,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      releases: write
 
     steps:
       - name: Check out repository
