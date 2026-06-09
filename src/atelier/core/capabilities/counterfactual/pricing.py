@@ -146,9 +146,24 @@ _DEFAULT_CANDIDATES: tuple[CandidateModel, ...] = (
         pricing=ModelPricing(input=2.50, output=10.00),
         supports_tool_use=True,
     ),
+    # OpenRouter — access to multiple providers with one key
+    CandidateModel(
+        vendor="openrouter",
+        model_id="openrouter/anthropic/claude-haiku-4-5",
+        tier="cheap",
+        pricing=ModelPricing(input=0.90, output=4.50),  # slight markup over direct
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="openrouter",
+        model_id="openrouter/anthropic/claude-sonnet-4-5",
+        tier="high",
+        pricing=ModelPricing(input=3.30, output=16.50),
+        supports_tool_use=True,
+    ),
 )
 
-_DEFAULT_TABLE = PricingTable(version="2026-06-09", candidates=_DEFAULT_CANDIDATES)
+_DEFAULT_TABLE = PricingTable(version="2026-06-09-b", candidates=_DEFAULT_CANDIDATES)
 
 
 def load_pricing_table(_version: str | None = None) -> PricingTable:

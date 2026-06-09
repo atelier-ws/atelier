@@ -31,6 +31,7 @@ _PROVIDER_LITELLM_PREFIX: dict[str, str] = {
     "replicate": "replicate/",
     "deepinfra": "deepinfra/",
     "perplexity": "perplexity/",
+    "openrouter": "openrouter/",
 }
 
 
