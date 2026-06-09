@@ -74,7 +74,9 @@ async fn main() -> Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // Do NOT enable MouseCapture — lets terminal handle native text selection
+    // (right-click drag, left-click drag) via Shift+click or terminal mouse mode
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -84,7 +86,6 @@ async fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
     )?;
 
     child.kill().await.ok();
@@ -944,11 +945,11 @@ async fn handle_key(
         KeyCode::F(3) => {
             app.right_tab = RightTab::Subagents;
         }
-        // Alt+[ / Alt+] to hide/show panes (no conflict with typing brackets)
-        KeyCode::Char('[') if key.modifiers.contains(KeyModifiers::ALT) => {
+        // Alt+h / Alt+l to hide/show panes (Alt+[ doesn't work — ESC [ is ANSI escape prefix)
+        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.left_hidden = !app.left_hidden;
         }
-        KeyCode::Char(']') if key.modifiers.contains(KeyModifiers::ALT) => {
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::ALT) => {
             app.right_hidden = !app.right_hidden;
         }
         KeyCode::Tab if matches!(app.focused_pane, FocusedPane::Input) => {
