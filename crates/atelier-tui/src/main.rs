@@ -813,22 +813,28 @@ async fn handle_key(
         }
     }
 
-    // File explorer navigation: route keys to the explorer when the Files tab
+    // File tree navigation: route keys to the manual tree when the Files tab
     // is focused (Tab/BackTab still cycle pane focus so the user can leave).
     if matches!(app.focused_pane, FocusedPane::Sessions)
         && matches!(app.left_tab, LeftTab::Files)
         && !matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
     {
-        if key.code == KeyCode::Enter {
-            let current = app.file_explorer.current();
-            if !current.is_dir {
-                let path = current.path.to_string_lossy().to_string();
-                app.open_file_tab(path);
-                return Ok(());
+        match key.code {
+            KeyCode::Enter => {
+                if let Some((path, is_dir)) = app.file_tree_selected_path() {
+                    if is_dir {
+                        app.file_tree_toggle();
+                    } else {
+                        app.open_file_tab(path);
+                    }
+                }
             }
+            KeyCode::Up | KeyCode::Char('k') => app.file_tree_up(),
+            KeyCode::Down | KeyCode::Char('j') => app.file_tree_down(),
+            KeyCode::Right | KeyCode::Char('l') => app.file_tree_toggle(),
+            KeyCode::Left | KeyCode::Char('h') => app.file_tree_toggle(),
+            _ => {}
         }
-        let event = crossterm::event::Event::Key(key);
-        app.file_explorer.handle(&event).ok();
         return Ok(());
     }
 

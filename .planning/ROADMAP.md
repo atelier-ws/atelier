@@ -68,7 +68,7 @@ This roadmap delivers `atelier run` — a user-owned coding-agent CLI built for 
   1. At session end the receipt shows cache-read tokens, cache-write tokens, fresh-input tokens, cache efficiency %, and $ spent.
   2. The receipt shows $ spent vs a naive (no-cache, per-phase-cold) baseline so the savings are explicit.
   3. User can run `atelier run report <session-id>` to retrieve the receipt for any past session.
-  4. The receipt reports the cache-hit ratio and compares it against Eval's 60–80% target.
+  4. The receipt reports the cache-hit ratio against the >60% cache efficiency target.
 **Plans**: TBD
 
 ## Progress
