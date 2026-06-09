@@ -51,9 +51,13 @@ def _provider_cache_style(provider: str) -> str:
     p = provider.lower()
     if "anthropic" in p:
         return "anthropic"
+    if "bedrock" in p:
+        # Bedrock Claude models support the same cache_control API
+        return "anthropic"
     if "openai" in p or "azure" in p:
+        # Azure OpenAI has automatic prefix caching like OpenAI
         return "openai"
-    if "gemini" in p or "google" in p:
+    if "gemini" in p or "google" in p or "vertex" in p:
         return "gemini"
     return "none"
 
