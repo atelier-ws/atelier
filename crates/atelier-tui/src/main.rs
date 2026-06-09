@@ -9,7 +9,7 @@ mod ui;
 mod web;
 
 use anyhow::Result;
-use app::{App, CompletionMode, FocusedPane, PendingPermission, SearchState};
+use app::{App, CompletionMode, FocusedPane, PendingPermission, ReverseSearch, SearchState};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -270,6 +270,17 @@ async fn send_command(writer: &mut BufWriter<ChildStdin>, cmd: &FrontendCommand)
     writer.write_all(line.as_bytes()).await?;
     writer.flush().await?;
     Ok(())
+}
+
+/// Replace the entire textarea contents with the given string.
+fn set_input_text(input: &mut TextArea<'_>, text: &str) {
+    *input = TextArea::default();
+    for ch in text.chars() {
+        input.input(Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Char(ch),
+            KeyModifiers::NONE,
+        )));
+    }
 }
 
 async fn handle_key(
@@ -622,6 +633,80 @@ async fn handle_key(
         return Ok(());
     }
 
+    // Reverse search (Ctrl+R) takes priority over normal input handling.
+    if app.reverse_search.is_some() {
+        // Esc / Ctrl+G cancels.
+        if matches!(key.code, KeyCode::Esc)
+            || (matches!(key.code, KeyCode::Char('g'))
+                && key.modifiers.contains(KeyModifiers::CONTROL))
+        {
+            app.reverse_search = None;
+            app.input = TextArea::default();
+            return Ok(());
+        }
+        // Ctrl+R advances to the next match.
+        if matches!(key.code, KeyCode::Char('r'))
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            if let Some(ref mut rs) = app.reverse_search {
+                if !rs.matches.is_empty() {
+                    rs.current = (rs.current + 1) % rs.matches.len();
+                    let idx = rs.matches[rs.current];
+                    let line = app.message_history[idx].clone();
+                    set_input_text(&mut app.input, &line);
+                }
+            }
+            return Ok(());
+        }
+        // Enter accepts the current input and falls through to normal Enter.
+        if matches!(key.code, KeyCode::Enter) {
+            app.reverse_search = None;
+            // fall through to normal handling below
+        } else if let KeyCode::Char(c) = key.code {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) {
+                if let Some(ref mut rs) = app.reverse_search {
+                    rs.query.push(c);
+                    let q = rs.query.to_lowercase();
+                    rs.matches = app
+                        .message_history
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, m)| m.to_lowercase().contains(&q))
+                        .map(|(i, _)| i)
+                        .rev()
+                        .collect();
+                    rs.current = 0;
+                    let first = rs.matches.first().copied();
+                    if let Some(idx) = first {
+                        let line = app.message_history[idx].clone();
+                        set_input_text(&mut app.input, &line);
+                    }
+                }
+                return Ok(());
+            }
+        } else if matches!(key.code, KeyCode::Backspace) {
+            if let Some(ref mut rs) = app.reverse_search {
+                rs.query.pop();
+                let q = rs.query.to_lowercase();
+                rs.matches = app
+                    .message_history
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.to_lowercase().contains(&q))
+                    .map(|(i, _)| i)
+                    .rev()
+                    .collect();
+                rs.current = 0;
+                let first = rs.matches.first().copied();
+                if let Some(idx) = first {
+                    let line = app.message_history[idx].clone();
+                    set_input_text(&mut app.input, &line);
+                }
+            }
+            return Ok(());
+        }
+    }
+
     match key.code {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             let now = std::time::Instant::now();
@@ -675,6 +760,13 @@ async fn handle_key(
                 query: String::new(),
                 matches: vec![],
                 current_match: 0,
+            });
+        }
+        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.reverse_search = Some(ReverseSearch {
+                query: String::new(),
+                matches: vec![],
+                current: 0,
             });
         }
         KeyCode::Tab => {

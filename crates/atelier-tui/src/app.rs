@@ -150,6 +150,9 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
         "context",
         "Show context stats (turns, tokens, tool results)",
     ),
+    ("usage", "Detailed token/context usage breakdown"),
+    ("permissions", "Show/manage tool permissions: /permissions"),
+    ("yolo", "Toggle auto-approve all tool calls: /yolo"),
     (
         "analytics",
         "Show session analytics (turns, tools, tokens, mode)",
@@ -158,7 +161,10 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
         "mode",
         "Switch agent mode: /mode <code|explore|research|plan>",
     ),
-    ("background", "Show background service status"),
+    ("background", "Background the current session"),
+    ("tasks", "List background tasks: /tasks"),
+    ("plan", "Read-only exploration mode: /plan <task>"),
+    ("btw", "Ephemeral side question (not added to history): /btw <question>"),
     ("mcp", "List MCP servers"),
     ("compact", "Compact/summarize conversation to free context"),
     ("cost", "Show session cost"),
@@ -179,6 +185,13 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("clear", "Clear conversation"),
     ("exit", "Exit Atelier"),
 ];
+
+#[derive(Debug, Clone)]
+pub struct ReverseSearch {
+    pub query: String,
+    pub matches: Vec<usize>, // indices into message_history
+    pub current: usize,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PendingPermission {
@@ -363,6 +376,8 @@ pub struct App<'a> {
     pub context_stats: ContextStats,
     pub sessions_list: Vec<SessionSummary>,
     pub background_tasks: Vec<BackgroundTask>,
+    pub reverse_search: Option<ReverseSearch>,
+    pub prompt_suggestions: Vec<String>,
 }
 
 impl<'a> App<'a> {
@@ -408,6 +423,8 @@ impl<'a> App<'a> {
             context_stats: ContextStats::default(),
             sessions_list: Vec::new(),
             background_tasks: Vec::new(),
+            reverse_search: None,
+            prompt_suggestions: Vec::new(),
         }
     }
 
@@ -685,6 +702,12 @@ impl<'a> App<'a> {
             }
             BackendEvent::CheckpointCreated { label, .. } => {
                 self.push_system(format!("checkpoint: {label}"));
+            }
+            BackendEvent::PromptSuggestion { text } => {
+                self.prompt_suggestions.push(text);
+                if self.prompt_suggestions.len() > 3 {
+                    self.prompt_suggestions.remove(0);
+                }
             }
         }
     }

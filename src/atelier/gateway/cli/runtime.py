@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import uuid
@@ -11,6 +12,10 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.mcp_integration.loader import (
+    MCPServerProcess,
+    MCPTool,
+)
 from atelier.gateway.cli.events import (
     AssistantDelta,
     AssistantMessage,
@@ -25,6 +30,8 @@ from atelier.gateway.cli.events import (
     ToolStarted,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class InteractiveRuntime:
     """Own the agent loop, sessions, routing, and tool supervision for the CLI."""
@@ -37,13 +44,49 @@ class InteractiveRuntime:
         self._override_model: str | None = None
         self._active_tools: list[str] | None = None
         self._current_mode: str = "code"
+        self._mcp_servers: list[MCPServerProcess] = []
+        self._mcp_tools: list[MCPTool] = []
+        self._background_tasks: list[dict[str, Any]] = []  # {id, name, status, result}
 
     async def start_session(self, project_root: str | None = None) -> str:
         session_id = uuid.uuid4().hex
         self._sessions[session_id] = []
         if project_root:
             os.environ["CLAUDE_WORKSPACE_ROOT"] = project_root
+        self._start_mcp_servers()
         return session_id
+
+    def _start_mcp_servers(self) -> None:
+        from atelier.core.capabilities.mcp_integration.loader import (
+            MCPServerProcess,
+            discover_mcp_configs,
+        )
+
+        configs = discover_mcp_configs()
+        for cfg in configs:
+            proc = MCPServerProcess(cfg)
+            if proc.start():
+                tools = proc.list_tools()
+                self._mcp_servers.append(proc)
+                self._mcp_tools.extend(tools)
+                logger.info("Started MCP server %s with %d tools", cfg.name, len(tools))
+
+    def shutdown(self) -> None:
+        for server in self._mcp_servers:
+            server.stop()
+        self._mcp_servers.clear()
+        self._mcp_tools.clear()
+
+    def _dispatch_mcp_tool(self, tool_name: str, tool_args: dict[str, Any]) -> str:
+        """Route an ``mcp__<server>__<tool>`` call to the right MCP server."""
+        parts = tool_name.split("__", 2)
+        if len(parts) != 3:
+            return f"Error: malformed MCP tool name '{tool_name}'"
+        _, server_name, actual_tool = parts
+        for server in self._mcp_servers:
+            if server.config.name == server_name:
+                return server.call_tool(actual_tool, tool_args)
+        return f"Error: MCP server '{server_name}' not found"
 
     @property
     def session_ids(self) -> list[str]:
@@ -108,6 +151,20 @@ class InteractiveRuntime:
             for t in _get_litellm_tools()
             if self._active_tools is None or t["function"]["name"] in self._active_tools
         ]
+
+        # Add MCP tools as litellm-compatible tool defs
+        mcp_litellm_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": f"mcp__{t.server_name}__{t.name}",
+                    "description": f"[MCP:{t.server_name}] {t.description}",
+                    "parameters": t.input_schema or {"type": "object", "properties": {}},
+                },
+            }
+            for t in self._mcp_tools
+        ]
+        tools = tools + mcp_litellm_tools
 
         total_input = total_output = total_cache_read = total_cache_write = 0
         tool_call_counts: dict[str, int] = {}  # name -> count
@@ -261,9 +318,15 @@ class InteractiveRuntime:
                 yield ToolStarted(type="tool.started", id=tool_id, name=tool_name)
 
                 try:
-                    result = await asyncio.to_thread(_dispatch_tool, tool_name, tool_args)
-                    result_str = str(result)
-                    ok = True
+                    if tool_name.startswith("mcp__"):
+                        result_str = await asyncio.to_thread(
+                            self._dispatch_mcp_tool, tool_name, tool_args
+                        )
+                        ok = not result_str.startswith("Error:")
+                    else:
+                        result = await asyncio.to_thread(_dispatch_tool, tool_name, tool_args)
+                        result_str = str(result)
+                        ok = True
                 except Exception as exc:  # noqa: BLE001 - fall back gracefully
                     result_str = f"Error: {exc}"
                     ok = False
@@ -346,6 +409,34 @@ class InteractiveRuntime:
             )
 
         self._sessions[session_id] = messages
+
+        # Warm-cache prompt suggestions: when most of the input was served from
+        # cache, surface a few low-cost follow-up prompts.
+        if total_cache_read > total_input // 2 and total_input > 0:
+            last_assistant = next(
+                (
+                    m["content"]
+                    for m in reversed(messages)
+                    if isinstance(m, dict)
+                    and m.get("role") == "assistant"
+                    and isinstance(m.get("content"), str)
+                ),
+                "",
+            )
+            if last_assistant:
+                suggestions = []
+                lowered = last_assistant.lower()
+                if "error" in lowered or "failed" in lowered:
+                    suggestions.append("fix the error")
+                if "implement" in lowered or "edit" in lowered:
+                    suggestions.append("write tests for this")
+                suggestions.append("explain how this works")
+                from atelier.gateway.cli.events import (
+                    PromptSuggestion as PromptSuggestionEvent,
+                )
+
+                for s in suggestions[:3]:
+                    yield PromptSuggestionEvent(type="prompt.suggestion", text=s)
 
     async def handle_slash_command(
         self,
@@ -468,7 +559,84 @@ class InteractiveRuntime:
                     f"- Tool results: {tool_results}\n"
                 ),
             )
+        elif name == "usage":
+            messages = self._sessions.get(session_id, [])
+            total_chars = sum(
+                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
+            )
+            approx_tokens = total_chars // 4
+            user_msgs = [
+                m
+                for m in messages
+                if isinstance(m, dict) and m.get("role") == "user"
+            ]
+            asst_msgs = [
+                m
+                for m in messages
+                if isinstance(m, dict) and m.get("role") == "assistant"
+            ]
+            tool_msgs = [
+                m
+                for m in messages
+                if isinstance(m, dict) and m.get("role") == "tool"
+            ]
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    "**Token Usage**\n\n"
+                    "| Category | Count |\n"
+                    "|----------|-------|\n"
+                    f"| User turns | {len(user_msgs)} |\n"
+                    f"| Assistant turns | {len(asst_msgs)} |\n"
+                    f"| Tool results | {len(tool_msgs)} |\n"
+                    f"| ~Total chars | {total_chars:,} |\n"
+                    f"| ~Total tokens | {approx_tokens:,} |\n"
+                    f"| Model | `{self._override_model or '(auto)'}` |\n"
+                    f"| Mode | `{self._current_mode}` |\n"
+                    "\nTo see cost and savings: `/analytics`"
+                ),
+            )
+        elif name == "permissions":
+            mode = self._current_mode
+            perm_tools = self._active_tools or [
+                "read",
+                "edit",
+                "shell",
+                "grep",
+                "explore",
+            ]
+            perm_map = {
+                "edit": "ask" if not self._yolo else "allow",
+                "shell": "ask" if not self._yolo else "allow",
+                "read": "allow",
+                "grep": "allow",
+                "explore": "allow",
+            }
+            lines = [f"**Permissions** (mode: {mode})\n"]
+            for perm_tool in perm_tools:
+                perm = perm_map.get(perm_tool, "allow")
+                icon = "✓" if perm == "allow" else "?"
+                lines.append(f"- `{perm_tool}` {icon} {perm}")
+            lines.append(f"\nYOLO mode: {'on' if self._yolo else 'off'}")
+            lines.append("Use `--yolo` to skip all approval prompts.")
+            yield AssistantMessage(
+                type="assistant.message", text="\n".join(lines)
+            )
+        elif name == "yolo":
+            self._yolo = not self._yolo
+            yield AssistantMessage(
+                type="assistant.message",
+                text=(
+                    f"✓ YOLO mode {'enabled' if self._yolo else 'disabled'}. "
+                    + (
+                        "Tool calls auto-approved."
+                        if self._yolo
+                        else "Tool calls will ask for approval."
+                    )
+                ),
+            )
         elif name == "mode":
+            mode_name = args[0].lower() if args else ""
             mode_name = args[0].lower() if args else ""
             tools_by_mode = {
                 "code": ["read", "edit", "shell", "grep", "explore"],
@@ -718,7 +886,69 @@ class InteractiveRuntime:
                     yield RuntimeErrorEvent(type="error", message=f"Shell failed: {exc}")
             else:
                 yield RuntimeErrorEvent(type="error", message="Usage: !<command>")
-        elif name in ("verify", "background", "diff"):
+        elif name == "tasks":
+            if not self._background_tasks:
+                yield AssistantMessage(type="assistant.message", text="No background tasks.")
+                return
+            lines = ["**Background tasks:**\n"]
+            for t in self._background_tasks:
+                status_icon = {"running": "⟳", "done": "✓", "failed": "✗"}.get(t["status"], "?")
+                lines.append(f"- `{t['id']}` {status_icon} {t['name']}")
+            yield AssistantMessage(type="assistant.message", text="\n".join(lines))
+        elif name == "background":
+            task_id = f"bg-{uuid.uuid4().hex[:6]}"
+            self._background_tasks.append({
+                "id": task_id,
+                "name": f"session-{session_id[:8]}",
+                "status": "running",
+            })
+            yield AssistantMessage(
+                type="assistant.message",
+                text=f"Session backgrounded as task `{task_id}`. Use `/tasks` to check status.",
+            )
+        elif name == "plan":
+            task = " ".join(args) if args else ""
+            if task:
+                old_mode = self._current_mode
+                old_tools = self._active_tools
+                self._current_mode = "explore"
+                self._active_tools = ["read", "grep", "explore"]
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text=f"**Plan mode** — exploring (read-only):\n\n> {task}",
+                )
+                async for event in self.handle_user_message(session_id, task):
+                    yield event
+                self._current_mode = old_mode
+                self._active_tools = old_tools
+            else:
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text="Usage: `/plan <task description>`\n\nRuns exploration-only (read-only, no edits).",
+                )
+        elif name == "btw":
+            question = " ".join(args) if args else ""
+            if not question:
+                yield AssistantMessage(
+                    type="assistant.message",
+                    text="Usage: `/btw <question>`\n\nAsks an ephemeral question without adding to conversation history.",
+                )
+                return
+            ephemeral_messages = [
+                {"role": "system", "content": "Answer the following question concisely. This is a side question."},
+                {"role": "user", "content": question},
+            ]
+            from atelier.core.capabilities.owned_agent_session.phase_runner import (
+                _call_llm,
+            )
+
+            model = self._override_model or "gpt-4o-mini"
+            try:
+                content, *_ = _call_llm(ephemeral_messages, model=model, provider="openai")
+                yield AssistantMessage(type="assistant.message", text=f"**(btw)** {content}")
+            except Exception as exc:  # noqa: BLE001 - ephemeral call is best-effort
+                yield RuntimeErrorEvent(type="error", message=f"/btw failed: {exc}")
+        elif name in ("verify", "diff"):
             yield AssistantMessage(
                 type="assistant.message",
                 text=f"/{name} not yet wired. Use plain message instead.",
