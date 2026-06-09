@@ -182,15 +182,46 @@ def _exec_rust_tui(root: Path) -> None:
     binary = next((c for c in candidates if c and os.path.isfile(c) and os.access(c, os.X_OK)), None)
 
     if binary is None:
-        click.echo(
-            "atelier-tui binary not found.\n\n"
-            "Build it with:\n"
-            "  cd crates/atelier-tui && cargo build --release\n\n"
-            "Or install with:\n"
-            "  bash scripts/install_atelier_tui.sh",
-            err=True,
-        )
-        raise SystemExit(1)
+        import subprocess
+
+        click.echo("  Building atelier-tui (first run — this takes ~30 seconds)...")
+
+        crate_candidates = [
+            Path(__file__).parents[4] / "crates" / "atelier-tui",
+            Path.home() / ".local" / "share" / "atelier" / "crates" / "atelier-tui",
+        ]
+        crate_dir = next((c for c in crate_candidates if c.exists()), None)
+
+        if crate_dir is None:
+            click.echo(
+                "atelier-tui source not found. Install with:\n"
+                "  cargo install atelier-tui  (when available)\n"
+                "Or build from source:\n"
+                "  cd crates/atelier-tui && cargo build --release",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        if shutil.which("cargo") is None:
+            click.echo(
+                "cargo not found. Install Rust from https://rustup.rs/ to build atelier-tui.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        try:
+            subprocess.run(
+                ["cargo", "build", "--release"],
+                cwd=str(crate_dir),
+                check=True,
+            )
+            binary = str(crate_dir / "target" / "release" / "atelier-tui")
+            if not os.path.isfile(binary):
+                raise FileNotFoundError(f"Build succeeded but binary not found at {binary}")
+            click.echo("  ✓ atelier-tui built successfully")
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"  Build failed: {exc}", err=True)
+            raise SystemExit(1) from exc
 
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(root)
