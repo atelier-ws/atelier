@@ -60,12 +60,15 @@ pub struct App<'a> {
     pub session_id: String,
     pub project_root: String,
     pub current_model: String,
+    pub git_branch: String,
     pub streaming_text: String,
     pub is_streaming: bool,
     pub pending_diff: Option<String>,
     pub cache_efficiency: Option<f64>,
     pub cost_usd: f64,
     pub savings_usd: f64,
+    pub auto_scroll: bool,
+    pub needs_api_key: bool,
 }
 
 impl<'a> App<'a> {
@@ -82,12 +85,15 @@ impl<'a> App<'a> {
             session_id: String::new(),
             project_root,
             current_model: String::new(),
+            git_branch: String::new(),
             streaming_text: String::new(),
             is_streaming: false,
             pending_diff: None,
             cache_efficiency: None,
             cost_usd: 0.0,
             savings_usd: 0.0,
+            auto_scroll: true,
+            needs_api_key: false,
         }
     }
 
@@ -104,11 +110,22 @@ impl<'a> App<'a> {
             BackendEvent::SessionStarted {
                 session_id,
                 project_root,
+                model,
+                git_branch,
+                has_api_key,
+                ..
             } => {
                 self.session_id = session_id.clone();
                 if let Some(root) = project_root {
                     self.project_root = root;
                 }
+                if let Some(m) = model {
+                    self.current_model = m;
+                }
+                if let Some(b) = git_branch {
+                    self.git_branch = b;
+                }
+                self.needs_api_key = !has_api_key.unwrap_or(true);
                 self.push_system(format!("session started: {session_id}"));
             }
             BackendEvent::RouteSelected {
@@ -130,10 +147,12 @@ impl<'a> App<'a> {
             }
             BackendEvent::AssistantDelta { text } => {
                 self.is_streaming = true;
+                self.auto_scroll = true;
                 self.streaming_text.push_str(&text);
             }
             BackendEvent::AssistantMessage { text } => {
                 self.is_streaming = false;
+                self.auto_scroll = true;
                 self.streaming_text.clear();
                 self.conversation.push(ConversationEntry {
                     role: Role::Assistant,

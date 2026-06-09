@@ -50,6 +50,10 @@ fn backend_command() -> (String, Vec<String>) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if std::env::args().any(|a| a == "--mitm") {
+        std::env::set_var("ATELIER_MITM", "1");
+    }
+
     let (program, args) = backend_command();
 
     let mut child = tokio::process::Command::new(&program)
@@ -237,36 +241,63 @@ async fn handle_key(
             if text.is_empty() {
                 return Ok(());
             }
-            app.input = TextArea::default();
 
-            let cmd = if let Some(rest) = text.strip_prefix('/') {
+            // API-key setup mode: treat input as a model string override.
+            if app.needs_api_key {
+                app.current_model = text.clone();
+                app.needs_api_key = false;
+                app.input = TextArea::default();
+                send_command(
+                    writer,
+                    &FrontendCommand::UserCommand {
+                        name: "set-model".to_string(),
+                        args: vec![text],
+                    },
+                )
+                .await?;
+                return Ok(());
+            }
+
+            app.input = TextArea::default();
+            app.auto_scroll = true;
+
+            if let Some(rest) = text.strip_prefix('/') {
                 let mut parts = rest.splitn(2, ' ');
                 let name = parts.next().unwrap_or("").to_string();
                 let args = parts
                     .next()
                     .map(|s| vec![s.to_string()])
                     .unwrap_or_default();
-                FrontendCommand::UserCommand { name, args }
+                app.conversation.push(app::ConversationEntry {
+                    role: app::Role::System,
+                    text: format!("/{name} {}", args.join(" ")).trim_end().to_string(),
+                });
+                send_command(writer, &FrontendCommand::UserCommand { name, args }).await?;
             } else {
-                FrontendCommand::UserMessage { text: text.clone() }
-            };
-
-            app.conversation.push(app::ConversationEntry {
-                role: app::Role::User,
-                text,
-            });
-
-            send_command(writer, &cmd).await?;
+                app.conversation.push(app::ConversationEntry {
+                    role: app::Role::User,
+                    text: text.clone(),
+                });
+                send_command(writer, &FrontendCommand::UserMessage { text }).await?;
+            }
         }
-        KeyCode::Up => match app.focused_pane {
-            FocusedPane::Tools => app.tool_scroll_up(),
-            _ => app.scroll_up(),
-        },
+        KeyCode::End => {
+            app.auto_scroll = true;
+            app.scroll = u16::MAX;
+        }
+        KeyCode::Up => {
+            app.auto_scroll = false;
+            match app.focused_pane {
+                FocusedPane::Tools => app.tool_scroll_up(),
+                _ => app.scroll_up(),
+            }
+        }
         KeyCode::Down => match app.focused_pane {
             FocusedPane::Tools => app.tool_scroll_down(),
             _ => app.scroll_down(),
         },
         KeyCode::PageUp => {
+            app.auto_scroll = false;
             for _ in 0..10 {
                 app.scroll_up();
             }
