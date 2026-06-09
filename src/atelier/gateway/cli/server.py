@@ -19,7 +19,9 @@ def _write_event(event: AtelierEvent) -> None:
     sys.stdout.flush()
 
 
-async def run_ndjson_server(project_root: str | None = None) -> int:
+async def run_ndjson_server(
+    project_root: str | None = None, session_id: str | None = None
+) -> int:
     """Main NDJSON server loop.
 
     Reads ``user.message`` / ``user.command`` / ``permission.response`` /
@@ -27,7 +29,20 @@ async def run_ndjson_server(project_root: str | None = None) -> int:
     ``AtelierEvent`` objects to stdout as NDJSON.
     """
     runtime = InteractiveRuntime()
-    session_id = await runtime.start_session(project_root=project_root)
+    if session_id:
+        # Resume existing session — load its message history.
+        try:
+            from atelier.core.capabilities.owned_agent_session.session import (
+                OwnedAgentSession,
+            )
+
+            saved = OwnedAgentSession.load(session_id)
+            session_id = await runtime.start_session(project_root=project_root)
+            runtime._sessions[session_id] = list(saved.messages)
+        except FileNotFoundError:
+            session_id = await runtime.start_session(project_root=project_root)
+    else:
+        session_id = await runtime.start_session(project_root=project_root)
 
     _write_event(
         SessionStarted(

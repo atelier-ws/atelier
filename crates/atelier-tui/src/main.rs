@@ -1,6 +1,7 @@
 //! Atelier TUI entry point: spawns the Python NDJSON backend and runs the UI loop.
 
 mod app;
+mod highlight;
 mod protocol;
 mod ui;
 
@@ -21,13 +22,30 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{ChildStdin, ChildStdout};
 
 fn backend_command() -> (String, Vec<String>) {
+    let resume_id = {
+        let args: Vec<String> = std::env::args().collect();
+        args.windows(2)
+            .find(|w| w[0] == "--resume")
+            .map(|w| w[1].clone())
+    };
+
     if let Ok(raw) = std::env::var("ATELIER_TUI_BACKEND") {
         let mut parts = raw.split_whitespace().map(String::from);
         if let Some(program) = parts.next() {
-            return (program, parts.collect());
+            let mut args: Vec<String> = parts.collect();
+            if let Some(id) = &resume_id {
+                args.push("--session-id".to_string());
+                args.push(id.clone());
+            }
+            return (program, args);
         }
     }
-    ("atelier".to_string(), vec!["tui-backend".to_string()])
+    let mut args = vec!["tui-backend".to_string()];
+    if let Some(id) = &resume_id {
+        args.push("--session-id".to_string());
+        args.push(id.clone());
+    }
+    ("atelier".to_string(), args)
 }
 
 #[tokio::main]
@@ -171,6 +189,30 @@ async fn handle_key(
                     },
                 )
                 .await?;
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+    }
+
+    // Diff overlay takes priority next.
+    if app.pending_diff.is_some() {
+        match key.code {
+            KeyCode::Char('a') => {
+                app.pending_diff = None;
+                send_command(
+                    writer,
+                    &FrontendCommand::PermissionResponse {
+                        id: String::new(),
+                        approved: true,
+                        scope: "once".to_string(),
+                    },
+                )
+                .await?;
+                return Ok(());
+            }
+            KeyCode::Char('d') => {
+                app.pending_diff = None;
                 return Ok(());
             }
             _ => return Ok(()),
