@@ -43,26 +43,40 @@ Execute the plan you described above. \
 Make the file edits. Be precise and minimal."""
 
 
-def _provider_cache_style(provider: str) -> str:
-    """Return the cache-control strategy for *provider*.
+def _provider_cache_style(provider: str, model: str = "") -> str:
+    """Return cache strategy: 'anthropic', 'openai', 'gemini', or 'none'.
 
-    Returns one of: ``"anthropic"``, ``"openai"``, ``"gemini"``, ``"none"``.
+    When provider is 'openrouter', the upstream model string determines which
+    cache strategy applies (OpenRouter routes to the underlying provider).
     """
     p = provider.lower()
-    if "anthropic" in p:
+    m = model.lower()
+
+    # Direct Anthropic or Claude model
+    if "anthropic" in p or "claude" in m:
         return "anthropic"
+    # Bedrock Claude — same cache_control API
     if "bedrock" in p:
-        # Bedrock Claude models support the same cache_control API
-        return "anthropic"
-    if "openai" in p or "azure" in p:
-        # Azure OpenAI has automatic prefix caching like OpenAI
+        return "anthropic" if "claude" in m or "anthropic" in m else "none"
+    # OpenAI or Azure
+    if "openai" in p or "azure" in p or "gpt" in m or m.startswith("o1") or m.startswith("o3"):
         return "openai"
-    if "gemini" in p or "google" in p or "vertex" in p:
+    # Gemini / Vertex
+    if "gemini" in p or "google" in p or "vertex" in p or "gemini" in m:
         return "gemini"
+    # OpenRouter — inspect the sub-model
+    if "openrouter" in p:
+        if "claude" in m or "anthropic" in m:
+            return "anthropic"
+        if "gpt" in m or "openai" in m:
+            return "openai"
+        if "gemini" in m or "google" in m:
+            return "gemini"
+        return "none"
     return "none"
 
 
-def _system_message(provider: str) -> dict[str, Any]:
+def _system_message(provider: str, model: str = "") -> dict[str, Any]:
     """Build the stable system message.
 
     Anthropic gets ``cache_control`` embedded in the content list so
@@ -70,7 +84,7 @@ def _system_message(provider: str) -> dict[str, Any]:
     list, not a string — the existing guard skips double-patching).
     All other providers receive a plain string system message.
     """
-    cache_style = _provider_cache_style(provider)
+    cache_style = _provider_cache_style(provider, model)
     if cache_style == "anthropic":
         return {
             "role": "system",
@@ -85,9 +99,9 @@ def _system_message(provider: str) -> dict[str, Any]:
     return {"role": "system", "content": STEM_SYSTEM_PROMPT}
 
 
-def _assistant_with_breakpoint(content: str, *, provider: str) -> dict[str, Any]:
+def _assistant_with_breakpoint(content: str, *, provider: str, model: str = "") -> dict[str, Any]:
     """Return an assistant message; Anthropic gets an ephemeral breakpoint."""
-    if _provider_cache_style(provider) == "anthropic":
+    if _provider_cache_style(provider, model) == "anthropic":
         return {
             "role": "assistant",
             "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
@@ -123,7 +137,7 @@ def _call_llm(
       cache has been created for this session.
     - Others: litellm directly, stable prefix only.
     """
-    cache_style = _provider_cache_style(provider)
+    cache_style = _provider_cache_style(provider, model)
 
     if cache_style == "anthropic":
         from atelier.infra.internal_llm.litellm_client import chat_with_result
@@ -204,7 +218,7 @@ def run_phase_linear(
         model=session.model,
     )
 
-    working: list[dict[str, Any]] = [_system_message(session.provider)]
+    working: list[dict[str, Any]] = [_system_message(session.provider, session.model)]
     phases = ["survey", "plan"] + ([] if dry_run else ["implement"])
     phase_prompts = {
         "survey": f"Task: {task}\n\n{_SURVEY_PROMPT}",
@@ -230,9 +244,9 @@ def run_phase_linear(
         # After Survey: mark assistant response with breakpoint (Anthropic) or plain
         mark = phase == "survey" and session.phase_linear
         if mark:
-            turn = _assistant_with_breakpoint(content, provider=session.provider)
+            turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
             working.append(turn)
-            session.add_assistant_turn(content, mark_breakpoint=_provider_cache_style(session.provider) == "anthropic")
+            session.add_assistant_turn(content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic")
         else:
             working.append({"role": "assistant", "content": content})
             session.add_assistant_turn(content, mark_breakpoint=False)
@@ -264,7 +278,7 @@ def run_single_shot(
         model=session.model,
     )
     messages: list[dict[str, Any]] = [
-        _system_message(session.provider),
+        _system_message(session.provider, session.model),
         {"role": "user", "content": task},
     ]
     session.add_user_turn(task)

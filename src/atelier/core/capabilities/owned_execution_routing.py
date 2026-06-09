@@ -49,6 +49,7 @@ _PROVIDER_TRANSPORTS: dict[str, str] = {
     "bedrock": "litellm",
     "vertex": "litellm",
     "azure": "litellm",
+    "openrouter": "litellm",
 }
 _TIER_TO_ROUTE_TIER = {"cheap": "cheap_llm", "high": "frontier_llm"}
 

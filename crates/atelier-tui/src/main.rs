@@ -364,7 +364,42 @@ async fn handle_key(
                     role: app::Role::User,
                     text: text.clone(),
                 });
+                if !text.is_empty() {
+                    if app.message_history.last() != Some(&text) {
+                        app.message_history.push(text.clone());
+                        if app.message_history.len() > 50 {
+                            app.message_history.remove(0);
+                        }
+                    }
+                    app.history_cursor = None;
+                }
                 send_command(writer, &FrontendCommand::UserMessage { text }).await?;
+            }
+        }
+        KeyCode::Up if key.modifiers.contains(KeyModifiers::ALT) => {
+            if let Some(text) = app.history_up() {
+                app.input = TextArea::default();
+                for line in text.lines() {
+                    for ch in line.chars() {
+                        app.input.input(Event::Key(crossterm::event::KeyEvent::new(
+                            KeyCode::Char(ch),
+                            KeyModifiers::NONE,
+                        )));
+                    }
+                }
+            }
+        }
+        KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => {
+            if let Some(text) = app.history_down() {
+                app.input = TextArea::default();
+                if !text.is_empty() {
+                    for ch in text.chars() {
+                        app.input.input(Event::Key(crossterm::event::KeyEvent::new(
+                            KeyCode::Char(ch),
+                            KeyModifiers::NONE,
+                        )));
+                    }
+                }
             }
         }
         KeyCode::End => {
