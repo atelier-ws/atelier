@@ -7,15 +7,15 @@ use tokio::process::Command;
 /// Try to start a tunnel to the given local port.
 /// Returns the public URL if successful, or None.
 pub async fn try_start_tunnel(port: u16) -> Option<(String, tokio::process::Child)> {
-    // Try cloudflared first
-    if which_available("cloudflared").await {
-        if let Some(result) = start_cloudflared(port).await {
+    // Try bore first (simpler, no ToS friction)
+    if which_available("bore").await {
+        if let Some(result) = start_bore(port).await {
             return Some(result);
         }
     }
-    // Try bore
-    if which_available("bore").await {
-        if let Some(result) = start_bore(port).await {
+    // Try cloudflared
+    if which_available("cloudflared").await {
+        if let Some(result) = start_cloudflared(port).await {
             return Some(result);
         }
     }
@@ -143,7 +143,6 @@ async fn start_localtunnel(port: u16) -> Option<(String, tokio::process::Child)>
 }
 
 fn extract_url(line: &str) -> Option<String> {
-    // Find https?://[^\s]+ pattern
     let prefixes = ["https://", "http://"];
     for prefix in prefixes {
         if let Some(start) = line.find(prefix) {
@@ -152,7 +151,17 @@ fn extract_url(line: &str) -> Option<String> {
                 .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
                 .unwrap_or(rest.len());
             let url = &rest[..end];
-            if url.len() > prefix.len() + 3 {
+            if url.len() <= prefix.len() + 3 {
+                continue;
+            }
+            // Only accept real tunnel URLs — filter out cloudflare marketing/terms pages
+            let is_tunnel = url.contains("trycloudflare.com")
+                || url.contains("bore.pub")
+                || url.contains("loca.lt")
+                || url.contains("ngrok")
+                || url.contains("serveo.net");
+            let is_junk = url.contains("/terms") || url.contains("/tos") || url.contains("cloudflare.com/");
+            if is_tunnel && !is_junk {
                 return Some(url.to_string());
             }
         }
