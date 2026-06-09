@@ -71,6 +71,16 @@ pub enum BackendEvent {
         #[serde(default)]
         details: Option<String>,
     },
+    #[serde(rename = "cache.stats")]
+    CacheStats {
+        session_id: String,
+        cache_efficiency_pct: f64,
+        cost_usd: f64,
+        savings_usd: f64,
+        cache_read_tokens: u64,
+        cache_write_tokens: u64,
+        fresh_tokens: u64,
+    },
 }
 
 /// Commands sent to the Python backend (one JSON object per line on stdin).

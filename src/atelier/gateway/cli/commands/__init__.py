@@ -191,17 +191,13 @@ def register(cli: click.Group) -> None:
         )
         @_click.pass_obj
         def tui_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
-            """Start the interactive Atelier terminal (REPL with streaming agent)."""
+            """Start the interactive Atelier workspace (Rust frontend)."""
+            from pathlib import Path as _Path
+
             root = obj.get("root") if isinstance(obj, dict) else None
-            raise SystemExit(
-                asyncio.run(
-                    run_interactive(
-                        project_root=project_root,
-                        yolo=yolo,
-                        root=root if isinstance(root, Path) else None,
-                    )
-                )
-            )
+            from atelier.gateway.cli.app import _exec_rust_tui
+
+            _exec_rust_tui(root if isinstance(root, _Path) else _Path.home() / ".atelier")
 
         @_click.command("chat")
         @_click.option("--project-root", default=None)
@@ -220,8 +216,22 @@ def register(cli: click.Group) -> None:
                 )
             )
 
+        @_click.command("workspace")
+        @_click.option("--project-root", default=None)
+        @_click.option("--yolo", is_flag=True, default=False)
+        @_click.pass_obj
+        def workspace_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
+            """Start the interactive Atelier workspace (explicit alias for tui)."""
+            from pathlib import Path as _Path
+
+            root = obj.get("root") if isinstance(obj, dict) else None  # type: ignore[union-attr]
+            from atelier.gateway.cli.app import _exec_rust_tui
+
+            _exec_rust_tui(root if isinstance(root, _Path) else _Path.home() / ".atelier")
+
         cli.add_command(tui_cmd)
         cli.add_command(chat_cmd)
+        cli.add_command(workspace_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -232,12 +242,19 @@ def register(cli: click.Group) -> None:
 
         @_click.command("tui-backend")
         @_click.option("--project-root", default=None, help="Project root directory")
+        @_click.option("--session-id", default=None, help="Resume a saved session")
         @_click.pass_obj
-        def tui_backend_cmd(obj: object, project_root: str | None) -> None:
+        def tui_backend_cmd(
+            obj: object, project_root: str | None, session_id: str | None
+        ) -> None:
             """NDJSON backend server for the atelier-tui Rust frontend (internal)."""
             from atelier.gateway.cli.server import run_ndjson_server
 
-            raise SystemExit(_asyncio.run(run_ndjson_server(project_root=project_root)))
+            raise SystemExit(
+                _asyncio.run(
+                    run_ndjson_server(project_root=project_root, session_id=session_id)
+                )
+            )
 
         cli.add_command(tui_backend_cmd, name="tui-backend")
     except (ModuleNotFoundError, ImportError):

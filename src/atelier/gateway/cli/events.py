@@ -105,6 +105,18 @@ class RuntimeErrorEvent:
     details: str | None = None
 
 
+@dataclass(frozen=True)
+class CacheStats:
+    type: Literal["cache.stats"]
+    session_id: str
+    cache_efficiency_pct: float
+    cost_usd: float
+    savings_usd: float
+    cache_read_tokens: int
+    cache_write_tokens: int
+    fresh_tokens: int
+
+
 AtelierEvent = (
     SessionStarted
     | AssistantDelta
@@ -119,6 +131,7 @@ AtelierEvent = (
     | PermissionRequested
     | VerificationResult
     | RuntimeErrorEvent
+    | CacheStats
 )
 
 

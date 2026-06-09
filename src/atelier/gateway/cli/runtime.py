@@ -91,6 +91,8 @@ class InteractiveRuntime:
 
         tools = _get_litellm_tools()
 
+        total_input = total_output = total_cache_read = total_cache_write = 0
+
         for _ in range(max_iterations):
             accumulated_text = ""
             tool_calls_acc: dict[int, dict[str, Any]] = {}
@@ -104,6 +106,7 @@ class InteractiveRuntime:
                     tools=tools,
                     tool_choice="auto",
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
             except Exception as exc:  # noqa: BLE001 - fall back gracefully
                 err_str = str(exc)
@@ -146,6 +149,14 @@ class InteractiveRuntime:
                 return
 
             for chunk in stream:
+                usage = getattr(chunk, "usage", None)
+                if usage is not None:
+                    total_input += int(getattr(usage, "prompt_tokens", 0) or 0)
+                    total_output += int(getattr(usage, "completion_tokens", 0) or 0)
+                    details = getattr(usage, "prompt_tokens_details", None)
+                    cached = int(getattr(details, "cached_tokens", 0) or 0) if details else 0
+                    total_cache_read += cached
+                    total_input -= cached
                 choice = chunk.choices[0] if chunk.choices else None
                 if choice is None:
                     continue
@@ -251,6 +262,38 @@ class InteractiveRuntime:
                     {"role": "tool", "tool_call_id": tool_id, "content": result_str}
                 )
 
+        total_input = max(0, total_input)
+        denom = total_cache_read + total_cache_write + total_input
+        if denom > 0:
+            from atelier.core.capabilities.savings_summary import estimate_cost_usd
+            from atelier.gateway.cli.events import CacheStats
+
+            efficiency = round(total_cache_read / denom * 100, 1)
+            cost = estimate_cost_usd(
+                model_id=model,
+                input_tokens=total_input,
+                output_tokens=total_output,
+                cache_read_tokens=total_cache_read,
+                cache_write_tokens=total_cache_write,
+            )
+            naive = estimate_cost_usd(
+                model_id=model,
+                input_tokens=denom,
+                output_tokens=total_output,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+            )
+            yield CacheStats(
+                type="cache.stats",
+                session_id=session_id,
+                cache_efficiency_pct=efficiency,
+                cost_usd=cost,
+                savings_usd=max(0.0, naive - cost),
+                cache_read_tokens=total_cache_read,
+                cache_write_tokens=total_cache_write,
+                fresh_tokens=total_input,
+            )
+
         self._sessions[session_id] = messages
 
     async def handle_slash_command(
@@ -270,7 +313,20 @@ class InteractiveRuntime:
             yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "sessions":
             ids = list(self._sessions.keys())
-            text = "Sessions:\n" + "\n".join(f"  {s}" for s in ids) if ids else "No sessions."
+            past: list[str] = []
+            runs_dir = self._root / "runs"
+            if runs_dir.is_dir():
+                past = sorted(
+                    p.stem for p in runs_dir.glob("*.jsonl")
+                )
+            lines = []
+            if ids:
+                lines.append("Active sessions:")
+                lines.extend(f"  {s}" for s in ids)
+            if past:
+                lines.append("Saved sessions (resume with --resume <id>):")
+                lines.extend(f"  {s}" for s in past)
+            text = "\n".join(lines) if lines else "No sessions."
             yield AssistantMessage(type="assistant.message", text=text)
         elif name == "session":
             target = args[0] if args else ""
