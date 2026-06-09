@@ -389,11 +389,10 @@ else
 fi
 
 # ---- MCP config -------------------------------------------------------------
-# NOTE: Project-level .mcp.json is handled by scripts/install_agents.sh.
+# NOTE: Project-level .mcp.json is not needed when using the Claude plugin.
 # This installer only deals with Claude-specific global/user MCP and settings.
 if $WORKSPACE_SET; then
-    info "Project-level .mcp.json is managed by scripts/install_agents.sh — skipping"
-    info "  Run: scripts/install_agents.sh --workspace '${WORKSPACE}'"
+    info "Project-level .mcp.json is not needed with the Claude plugin — skipping"
 else
     if $DRY_RUN; then
         echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"

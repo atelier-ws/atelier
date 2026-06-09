@@ -31,6 +31,7 @@ from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
 EXPECTED_TOOLS = {
+    "agent",
     "memory",
     "read",
     "edit",
