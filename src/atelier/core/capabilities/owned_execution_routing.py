@@ -46,6 +46,9 @@ _PROVIDER_TRANSPORTS: dict[str, str] = {
     "anthropic": "litellm",
     "openai": "openai",
     "google": "litellm",
+    "bedrock": "litellm",
+    "vertex": "litellm",
+    "azure": "litellm",
 }
 _TIER_TO_ROUTE_TIER = {"cheap": "cheap_llm", "high": "frontier_llm"}
 

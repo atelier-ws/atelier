@@ -6,7 +6,7 @@ mod protocol;
 mod ui;
 
 use anyhow::Result;
-use app::{App, FocusedPane, PendingPermission};
+use app::{App, CompletionMode, FocusedPane, PendingPermission};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
@@ -223,10 +223,96 @@ async fn handle_key(
         }
     }
 
-    match key.code {
-        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.should_quit = true;
+    // --- Completion mode handling (slash commands / file refs) ---
+    if app.completion_mode != CompletionMode::None {
+        match key.code {
+            KeyCode::Esc => {
+                app.completion_mode = CompletionMode::None;
+                return Ok(());
+            }
+            KeyCode::Up => {
+                app.completion_select_up();
+                return Ok(());
+            }
+            KeyCode::Down => {
+                app.completion_select_down();
+                return Ok(());
+            }
+            KeyCode::Enter => {
+                match app.completion_mode.clone() {
+                    CompletionMode::SlashCommand { selected, filter } => {
+                        let commands = app.filtered_slash_commands(&filter);
+                        if let Some((name, _)) = commands.get(selected) {
+                            app.input = TextArea::default();
+                            for ch in format!("/{name} ").chars() {
+                                app.input.input(Event::Key(crossterm::event::KeyEvent::new(
+                                    KeyCode::Char(ch),
+                                    KeyModifiers::NONE,
+                                )));
+                            }
+                            app.completion_mode = CompletionMode::None;
+                        }
+                    }
+                    CompletionMode::FileRef { selected, filter, .. } => {
+                        let files = app.filtered_files(&filter);
+                        if let Some(file_path) = files.get(selected) {
+                            let current = app.input.lines().join("\n");
+                            let at_pos = current.rfind('@').unwrap_or(current.len());
+                            let before_at = current[..at_pos].to_string();
+                            app.input = TextArea::default();
+                            for ch in format!("{before_at}@{file_path}").chars() {
+                                app.input.input(Event::Key(crossterm::event::KeyEvent::new(
+                                    KeyCode::Char(ch),
+                                    KeyModifiers::NONE,
+                                )));
+                            }
+                            app.completion_mode = CompletionMode::None;
+                        }
+                    }
+                    CompletionMode::None => {}
+                }
+                return Ok(());
+            }
+            KeyCode::Char(c) => {
+                match &mut app.completion_mode {
+                    CompletionMode::SlashCommand { filter, selected } => {
+                        filter.push(c);
+                        *selected = 0;
+                    }
+                    CompletionMode::FileRef { filter, selected, .. } => {
+                        filter.push(c);
+                        *selected = 0;
+                    }
+                    CompletionMode::None => {}
+                }
+                app.input.input(Event::Key(key));
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                let still_active = match &mut app.completion_mode {
+                    CompletionMode::SlashCommand { filter, selected } => {
+                        filter.pop();
+                        *selected = 0;
+                        true
+                    }
+                    CompletionMode::FileRef { filter, selected, .. } => {
+                        filter.pop();
+                        *selected = 0;
+                        true
+                    }
+                    CompletionMode::None => false,
+                };
+                app.input.input(Event::Key(key));
+                if !still_active {
+                    app.completion_mode = CompletionMode::None;
+                }
+                return Ok(());
+            }
+            _ => {}
         }
+    }
+
+    match key.code {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             send_command(writer, &FrontendCommand::Interrupt {}).await?;
         }
@@ -307,6 +393,29 @@ async fn handle_key(
                 app.scroll_down();
             }
         }
+        KeyCode::Char('/') => {
+            let current = app.input.lines().join("");
+            if current.trim().is_empty() {
+                app.completion_mode = CompletionMode::SlashCommand {
+                    selected: 0,
+                    filter: String::new(),
+                };
+            }
+            if app.focused_pane == FocusedPane::Input {
+                app.input.input(Event::Key(key));
+            }
+        }
+        KeyCode::Char('@') => {
+            let files = collect_repo_files(&app.project_root);
+            app.completion_mode = CompletionMode::FileRef {
+                selected: 0,
+                filter: String::new(),
+                files,
+            };
+            if app.focused_pane == FocusedPane::Input {
+                app.input.input(Event::Key(key));
+            }
+        }
         _ => {
             if app.focused_pane == FocusedPane::Input {
                 app.input.input(Event::Key(key));
@@ -315,4 +424,47 @@ async fn handle_key(
     }
 
     Ok(())
+}
+
+fn collect_repo_files(root: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    let base = std::path::Path::new(root);
+    collect_files_recursive(base, base, &mut files, 0);
+    files.sort();
+    files.truncate(200);
+    files
+}
+
+fn collect_files_recursive(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    files: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > 3 || files.len() >= 200 {
+        return;
+    }
+    let skip = ["target", ".git", "node_modules", "__pycache__", ".venv", "dist"];
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if files.len() >= 200 {
+                return;
+            }
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') && name != ".env" {
+                continue;
+            }
+            if skip.contains(&name.as_str()) {
+                continue;
+            }
+            if path.is_dir() {
+                collect_files_recursive(base, &path, files, depth + 1);
+            } else if path.is_file() {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    files.push(rel.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
 }

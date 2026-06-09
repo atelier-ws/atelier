@@ -53,23 +53,26 @@ SETTINGS_SRC="${SCRIPT_DIR}/settings.json"
 MCP_DEST="${TARGET_DIR}/.mcp.json"
 AGENTS_DEST="${TARGET_DIR}/AGENTS.md"
 SETTINGS_DEST="${TARGET_DIR}/settings.json"
-BIN_DEST="${BIN_DIR}/atelier-workspace"
+BIN_DEST="${BIN_DIR}/atelier-tui"
 
 # ---- detect atelier-tui binary ---------------------------------------------
 BIN_SRC=""
 BIN_STATUS="already in PATH"
-if command -v atelier-workspace >/dev/null 2>&1; then
-    BIN_SRC="$(command -v atelier-workspace)"
-    BIN_STATUS="already in PATH"
-elif command -v atelier-tui >/dev/null 2>&1; then
+if command -v atelier-tui >/dev/null 2>&1; then
     BIN_SRC="$(command -v atelier-tui)"
     BIN_STATUS="already in PATH"
-elif [[ -x "${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-workspace" ]]; then
-    BIN_SRC="${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-workspace"
-    BIN_STATUS="${BIN_DEST}"
+elif command -v atelier-workspace >/dev/null 2>&1; then
+    BIN_SRC="$(command -v atelier-workspace)"
+    BIN_STATUS="already in PATH"
 elif [[ -x "${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-tui" ]]; then
     BIN_SRC="${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-tui"
     BIN_STATUS="${BIN_DEST}"
+elif [[ -x "${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-workspace" ]]; then
+    BIN_SRC="${ATELIER_REPO}/crates/atelier-tui/target/release/atelier-workspace"
+    BIN_STATUS="${BIN_DEST}"
+elif [[ -x "${HOME}/.atelier/bin/atelier-tui" ]]; then
+    BIN_SRC="${HOME}/.atelier/bin/atelier-tui"
+    BIN_STATUS="already in PATH"
 elif [[ -x "${HOME}/.atelier/bin/atelier-workspace" ]]; then
     BIN_SRC="${HOME}/.atelier/bin/atelier-workspace"
     BIN_STATUS="already in PATH"

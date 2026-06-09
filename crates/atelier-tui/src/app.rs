@@ -11,6 +11,37 @@ pub enum FocusedPane {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CompletionMode {
+    None,
+    SlashCommand {
+        selected: usize,
+        filter: String,
+    },
+    FileRef {
+        selected: usize,
+        filter: String,
+        files: Vec<String>,
+    },
+}
+
+pub const SLASH_COMMANDS: &[(&str, &str)] = &[
+    ("help", "Show available commands"),
+    ("tools", "List available tools"),
+    ("memory", "Search Atelier memory: /memory <query>"),
+    ("route", "Show routing decision: /route <task>"),
+    ("sessions", "List saved sessions"),
+    ("session", "Switch session: /session <id>"),
+    ("approve", "Approve pending permission request"),
+    ("deny", "Deny pending permission request"),
+    ("diff", "Show pending diff"),
+    ("verify", "Run verification"),
+    ("context", "Run context capability"),
+    ("background", "Show background service status"),
+    ("clear", "Clear conversation"),
+    ("exit", "Exit Atelier"),
+];
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum PendingPermission {
     Waiting {
         id: String,
@@ -69,6 +100,7 @@ pub struct App<'a> {
     pub savings_usd: f64,
     pub auto_scroll: bool,
     pub needs_api_key: bool,
+    pub completion_mode: CompletionMode,
 }
 
 impl<'a> App<'a> {
@@ -94,6 +126,7 @@ impl<'a> App<'a> {
             savings_usd: 0.0,
             auto_scroll: true,
             needs_api_key: false,
+            completion_mode: CompletionMode::None,
         }
     }
 
@@ -246,5 +279,85 @@ impl<'a> App<'a> {
 
     pub fn tool_scroll_down(&mut self) {
         self.tool_scroll = self.tool_scroll.saturating_add(1);
+    }
+
+    pub fn filtered_slash_commands(&self, filter: &str) -> Vec<(&'static str, &'static str)> {
+        let f = filter.to_lowercase();
+        SLASH_COMMANDS
+            .iter()
+            .filter(|(name, _)| f.is_empty() || name.contains(f.as_str()))
+            .copied()
+            .collect()
+    }
+
+    pub fn filtered_files(&self, filter: &str) -> Vec<String> {
+        if let CompletionMode::FileRef { files, .. } = &self.completion_mode {
+            let f = filter.to_lowercase();
+            files
+                .iter()
+                .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
+                .cloned()
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn completion_select_up(&mut self) {
+        match &mut self.completion_mode {
+            CompletionMode::SlashCommand { selected, filter } => {
+                let count = SLASH_COMMANDS
+                    .iter()
+                    .filter(|(name, _)| filter.is_empty() || name.contains(filter.to_lowercase().as_str()))
+                    .count();
+                if count > 0 {
+                    *selected = selected.saturating_sub(1);
+                }
+            }
+            CompletionMode::FileRef {
+                selected,
+                filter,
+                files,
+            } => {
+                let f = filter.to_lowercase();
+                let count = files
+                    .iter()
+                    .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
+                    .count();
+                if count > 0 {
+                    *selected = selected.saturating_sub(1);
+                }
+            }
+            CompletionMode::None => {}
+        }
+    }
+
+    pub fn completion_select_down(&mut self) {
+        match &mut self.completion_mode {
+            CompletionMode::SlashCommand { selected, filter } => {
+                let count = SLASH_COMMANDS
+                    .iter()
+                    .filter(|(name, _)| filter.is_empty() || name.contains(filter.to_lowercase().as_str()))
+                    .count();
+                if count > 0 && *selected + 1 < count {
+                    *selected += 1;
+                }
+            }
+            CompletionMode::FileRef {
+                selected,
+                filter,
+                files,
+            } => {
+                let f = filter.to_lowercase();
+                let count = files
+                    .iter()
+                    .filter(|p| f.is_empty() || p.to_lowercase().contains(&f))
+                    .count();
+                if count > 0 && *selected + 1 < count {
+                    *selected += 1;
+                }
+            }
+            CompletionMode::None => {}
+        }
     }
 }
