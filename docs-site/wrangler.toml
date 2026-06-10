@@ -11,3 +11,4 @@ compatibility_date = "2026-06-10"
 [pages]
 build_command = "npm ci && npm run build"
 build_output_dir = "build/"
+pages_build_output_dir = "build/"
