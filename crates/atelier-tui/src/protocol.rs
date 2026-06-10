@@ -5,6 +5,7 @@ use serde_json::Value;
 /// Events emitted by the Python backend (one JSON object per line on stdout).
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 pub enum BackendEvent {
     #[serde(rename = "session.started")]
     SessionStarted {

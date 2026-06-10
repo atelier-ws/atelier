@@ -2,16 +2,21 @@
 //!
 //! When `--web [PORT]` is passed, this starts a tiny HTTP server using only
 //! `tokio::net::TcpListener` + manual HTTP parsing that:
-//!   1. Serves an embedded single-page HTML client on `GET /`
-//!   2. Streams backend events to browsers via Server-Sent Events on `GET /events`
-//!   3. Accepts browser commands on `POST /command` and forwards them to the backend
-//!
-//! The HTML client uses the `EventSource` API for events and `fetch` for commands.
+//!   1. Serves the xterm.js terminal on `GET /` (auto-resumes current session)
+//!   2. Upgrades `GET /ws/terminal` to WebSocket → PTY bridge (same port as HTTP,
+//!      so cloudflare tunnels and reverse proxies work without separate port setup)
+//!   3. Streams backend events to browsers via Server-Sent Events on `GET /events`
+//!   4. Accepts browser commands on `POST /command` and forwards them to the backend
+//!   5. `/chat` keeps the legacy SSE chat UI
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 
+#[allow(dead_code)]
 pub const DEFAULT_WEB_PORT: u16 = 7777;
 
 /// Start the SSE bridge server. `event_tx` carries serialized backend event
@@ -48,6 +53,160 @@ pub async fn start_web_server(
     }
 }
 
+// ─── HeadedStream ────────────────────────────────────────────────────────────
+// Wraps a TcpStream and prepends already-read header bytes back onto the read
+// stream. Used so tokio-tungstenite can do its WebSocket handshake even though
+// we already consumed the HTTP headers from the socket.
+
+struct HeadedStream {
+    head: Vec<u8>,
+    pos: usize,
+    inner: tokio::net::TcpStream,
+}
+
+impl AsyncRead for HeadedStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        if self.pos < self.head.len() {
+            let available = &self.head[self.pos..];
+            let to_copy = available.len().min(buf.remaining());
+            buf.put_slice(&available[..to_copy]);
+            self.pos += to_copy;
+            return Poll::Ready(Ok(()));
+        }
+        Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for HeadedStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        data: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.inner).poll_write(cx, data)
+    }
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+impl Unpin for HeadedStream {}
+
+// ─── Inline WS PTY handler (same port as HTTP) ───────────────────────────────
+
+async fn handle_ws_pty_inline(
+    stream: HeadedStream,
+    session_id: Option<String>,
+    tui_binary: String,
+) -> anyhow::Result<()> {
+    use futures_util::{SinkExt, StreamExt};
+    use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+    use std::io::{Read, Write};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+
+    let mut resolved_session_id = session_id;
+    let ws_stream = accept_hdr_async(stream, |req: &Request, resp: Response| {
+        if let Some(query) = req.uri().query() {
+            for kv in query.split('&') {
+                if let Some(id) = kv.strip_prefix("s=") {
+                    if !id.is_empty() {
+                        resolved_session_id = Some(id.to_string());
+                    }
+                }
+            }
+        }
+        Ok(resp)
+    })
+    .await?;
+
+    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system.openpty(PtySize {
+        rows: 40,
+        cols: 120,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
+
+    let mut cmd_args = vec!["--no-web".to_string()];
+    if let Some(ref id) = resolved_session_id {
+        cmd_args.push("--resume".to_string());
+        cmd_args.push(id.clone());
+    }
+    let mut cmd = CommandBuilder::new(&tui_binary);
+    for arg in &cmd_args {
+        cmd.arg(arg);
+    }
+    let _child = pair.slave.spawn_command(cmd)?;
+
+    let master = pair.master;
+    let mut master_reader = master.try_clone_reader()?;
+    let master_writer = Arc::new(Mutex::new(master.take_writer()?));
+
+    let rt = tokio::runtime::Handle::current();
+    let sender_task = tokio::task::spawn_blocking(move || {
+        let mut buf = vec![0u8; 4096];
+        loop {
+            let n = match master_reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            let bytes = buf[..n].to_vec();
+            if rt
+                .block_on(ws_sender.send(Message::Binary(bytes.into())))
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
+    while let Some(Ok(msg)) = ws_receiver.next().await {
+        match msg {
+            Message::Binary(data) => {
+                let mut w = master_writer.lock().await;
+                let _ = w.write_all(&data);
+                let _ = w.flush();
+            }
+            Message::Text(text) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(text.as_str()) {
+                    if v["type"] == "resize" {
+                        let cols = v["cols"].as_u64().unwrap_or(120) as u16;
+                        let rows = v["rows"].as_u64().unwrap_or(40) as u16;
+                        let _ = master.resize(PtySize {
+                            rows,
+                            cols,
+                            pixel_width: 0,
+                            pixel_height: 0,
+                        });
+                    }
+                }
+            }
+            Message::Close(_) => break,
+            _ => {}
+        }
+    }
+    sender_task.abort();
+    Ok(())
+}
+
 async fn handle_connection(
     mut stream: tokio::net::TcpStream,
     port: u16,
@@ -80,6 +239,31 @@ async fn handle_connection(
     let mut parts = request_line.split_whitespace();
     let method = parts.next().unwrap_or("");
     let path = parts.next().unwrap_or("");
+
+    // Detect WebSocket upgrade requests — handle on the SAME port as HTTP
+    // so cloudflare tunnels and reverse proxies (single port) work correctly.
+    let is_ws_upgrade = header_part
+        .lines()
+        .any(|l| l.to_ascii_lowercase().starts_with("upgrade:") && l.to_ascii_lowercase().contains("websocket"));
+    if method == "GET" && is_ws_upgrade && (path == "/ws/terminal" || path.starts_with("/ws/terminal?")) {
+        let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+        let session_id: Option<String> = query
+            .split('&')
+            .find(|kv| kv.starts_with("s="))
+            .map(|kv| kv[2..].to_string())
+            .or_else(|| {
+                current_session_id.lock().ok().and_then(|g| {
+                    let s = g.clone();
+                    if s.is_empty() { None } else { Some(s) }
+                })
+            });
+        let tui_binary = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("atelier-tui"))
+            .to_string_lossy()
+            .to_string();
+        let headed = HeadedStream { head: buf[..filled].to_vec(), pos: 0, inner: stream };
+        return handle_ws_pty_inline(headed, session_id, tui_binary).await;
+    }
 
     if method == "GET" && (path == "/" || path.starts_with("/?") || path.starts_with("/share/")) {
         // Default: serve the xterm.js terminal auto-resumed to the current session.
@@ -333,13 +517,12 @@ connect();
 </body>
 </html>"#;
 
-/// xterm.js terminal page. Connects to the WS PTY bridge on `ws_port`
-/// (web_port + 1) and renders the exact backend terminal — like SSH.
-/// When `session_id` is set, the WebSocket URL carries `?s=<id>` so the
-/// bridge resumes that session.
-fn xterm_html(ws_port: u16, session_id: Option<String>) -> String {
+/// xterm.js terminal page. Connects to the WS PTY bridge on the SAME port via
+/// `/ws/terminal` so cloudflare tunnels and reverse proxies work with a single port.
+/// When `session_id` is set, the WebSocket URL carries `?s=<id>` to resume that session.
+fn xterm_html(_ws_port: u16, session_id: Option<String>) -> String {
     let ws_query = match session_id {
-        Some(ref id) if !id.is_empty() => format!("/?s={id}"),
+        Some(ref id) if !id.is_empty() => format!("?s={id}"),
         _ => String::new(),
     };
     format!(
@@ -368,22 +551,11 @@ const term = new Terminal({{
     foreground: '#c9d1d9',
     cursor: '#58a6ff',
     cursorAccent: '#0d1117',
-    black: '#484f58',
-    red: '#ff7b72',
-    green: '#3fb950',
-    yellow: '#d29922',
-    blue: '#58a6ff',
-    magenta: '#bc8cff',
-    cyan: '#39c5cf',
-    white: '#b1bac4',
-    brightBlack: '#6e7681',
-    brightRed: '#ffa198',
-    brightGreen: '#56d364',
-    brightYellow: '#e3b341',
-    brightBlue: '#79c0ff',
-    brightMagenta: '#d2a8ff',
-    brightCyan: '#56d4dd',
-    brightWhite: '#f0f6fc',
+    black: '#484f58', red: '#ff7b72', green: '#3fb950', yellow: '#d29922',
+    blue: '#58a6ff', magenta: '#bc8cff', cyan: '#39c5cf', white: '#b1bac4',
+    brightBlack: '#6e7681', brightRed: '#ffa198', brightGreen: '#56d364',
+    brightYellow: '#e3b341', brightBlue: '#79c0ff', brightMagenta: '#d2a8ff',
+    brightCyan: '#56d4dd', brightWhite: '#f0f6fc',
   }},
   allowProposedApi: true,
 }});
@@ -392,11 +564,14 @@ term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
 fitAddon.fit();
 
-const ws = new WebSocket('ws://' + location.hostname + ':{ws_port}{ws_query}');
+// Use same origin for WebSocket — works with cloudflare tunnels (single port)
+const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsUrl = wsProto + '//' + location.host + '/ws/terminal{ws_query}';
+const ws = new WebSocket(wsUrl);
 ws.binaryType = 'arraybuffer';
 
 ws.onopen = () => {{
-  term.write('\r\n  Connecting to Atelier...\r\n');
+  term.write('\r\n  \x1b[36m◆\x1b[0m Connecting to Atelier session...\r\n');
   ws.send(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
 }};
 
@@ -407,11 +582,11 @@ ws.onmessage = (e) => {{
 }};
 
 ws.onclose = () => {{
-  term.write('\r\n\r\n  [Connection closed]\r\n');
+  term.write('\r\n\r\n  \x1b[33m[Session ended — close this tab or reconnect]\x1b[0m\r\n');
 }};
 
 ws.onerror = () => {{
-  term.write('\r\n  [WebSocket error \u2014 is atelier-tui running?]\r\n');
+  term.write('\r\n  \x1b[31m[WebSocket error — is atelier-tui running?]\x1b[0m\r\n  Tried: ' + wsUrl + '\r\n');
 }};
 
 term.onData((data) => {{
@@ -430,7 +605,6 @@ window.addEventListener('resize', () => {{ fitAddon.fit(); }});
 </script>
 </body>
 </html>"#,
-        ws_port = ws_port,
         ws_query = ws_query
     )
 }
