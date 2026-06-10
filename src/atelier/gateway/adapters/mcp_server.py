@@ -2299,7 +2299,7 @@ _TIER_PRIORITY: dict[str, int] = {"cheap": 0, "medium": 1, "high": 2, "expensive
 
 def _get_available_models() -> list[dict[str, Any]]:
     """Return models the current session can access, ordered cheapest-first."""
-    from atelier.core.capabilities.counterfactual.pricing import _DEFAULT_CANDIDATES
+    from atelier.core.capabilities.counterfactual.pricing import load_pricing_table
     from atelier.core.capabilities.cross_vendor_routing.configuration import (
         detect_configured_vendors,
     )
@@ -2307,7 +2307,7 @@ def _get_available_models() -> list[dict[str, Any]]:
     configured = set(detect_configured_vendors())
     return [
         {"vendor": c.vendor, "model_id": c.model_id, "tier": c.tier}
-        for c in _DEFAULT_CANDIDATES
+        for c in load_pricing_table().candidates
         if c.vendor in configured
     ]
 

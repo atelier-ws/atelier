@@ -2912,7 +2912,7 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     project_root_candidate = resolve_workspace_root(root)
     if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
         project_root_candidate = Path.cwd()
-    from atelier.core.capabilities.optimization_audit import (
+    from atelier.core.capabilities.optimization.audit import (
         build_context_audit,
         build_session_quality_summary,
     )
