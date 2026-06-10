@@ -12,14 +12,6 @@ import {
 import { MetricCard } from "../components/WorkbenchUI";
 import { useTimeRange } from "../lib/TimeRangeContext";
 
-const AGENTS = ["Claude", "Codex", "Copilot", "Opencode", "Gemini"];
-const CATEGORIES = [
-  "Native / Unoptimized",
-  "Atelier Optimized",
-  "Other Third-Party / Minor",
-  "Miscellaneous",
-  "Token Usage",
-];
 const TABS = [
   "Overview",
   "Timeline",
@@ -1256,6 +1248,23 @@ export default function Analytics() {
     return Array.from(set).sort();
   }, [data]);
 
+  const agents = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((d) => {
+      const host = d.host || d.agent;
+      if (host) set.add(host);
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((d) => {
+      if (d.category) set.add(d.category);
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
   const stats = summary;
 
   const hostModelStats = dashboard?.host_model_overview ?? [];
@@ -1436,8 +1445,8 @@ export default function Analytics() {
               className="bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs text-neutral-300 focus:outline-none"
             >
               <option value="all">All Agents</option>
-              {AGENTS.map((a) => (
-                <option key={a} value={a.toLowerCase()}>
+              {agents.map((a) => (
+                <option key={a} value={a}>
                   {a}
                 </option>
               ))}
@@ -1470,7 +1479,7 @@ export default function Analytics() {
               className="bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs text-neutral-300 focus:outline-none"
             >
               <option value="all">All Categories</option>
-              {CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>

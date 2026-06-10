@@ -27,7 +27,6 @@ import {
   type MCPStatus,
   type Skill,
 } from "../api";
-import { getTelemetryConfig, type TelemetryConfig } from "../lib/insightsApi";
 import {
   Alert,
   Card,
@@ -375,23 +374,16 @@ function AgentCard({
 
 export function SkillsSection() {
   const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [config, setConfig] = useState<TelemetryConfig | null>(null);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
-  const hiddenSkillCount = config === null ? 0 : config.dev_mode ? 0 : 4;
   const visibleSkills = skills ?? [];
-  const totalSkillCount =
-    skills === null ? null : visibleSkills.length + hiddenSkillCount;
+  const totalSkillCount = skills === null ? null : visibleSkills.length;
 
   useEffect(() => {
     api
       .skills()
       .then(setSkills)
       .catch((e) => console.error("Failed to load skills:", e));
-
-    getTelemetryConfig()
-      .then(setConfig)
-      .catch(() => undefined);
   }, []);
 
   return (
@@ -402,34 +394,22 @@ export function SkillsSection() {
       <p className="text-xs text-neutral-400 mb-3">
         {totalSkillCount === null
           ? "Loading skill catalog..."
-          : `${totalSkillCount} common skills in the repo. Click to expand and see full documentation for the ones available in this mode.`}
+          : `${totalSkillCount} skills available on the public host surface.`}
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
-        {visibleSkills.length > 0 ? (
+        {visibleSkills.length === 0 ? (
+          <EmptyState title="Loading skills..." className="p-4 sm:col-span-2" />
+        ) : (
           visibleSkills.map((s) => (
             <SkillCard
               key={s.name}
-              skill={{
-                name: s.name,
-                desc: s.description,
-                icon: Check,
-              }}
+              skill={{ name: s.name, desc: s.description, icon: Check }}
               isExpanded={expandedSkill === s.name}
               onToggle={() =>
                 setExpandedSkill(expandedSkill === s.name ? null : s.name)
               }
             />
           ))
-        ) : (
-          <EmptyState title="Loading skills..." className="p-4 sm:col-span-2" />
-        )}
-        {hiddenSkillCount > 0 && (
-          <Card className="border-dashed bg-neutral-950/40 px-4 py-3 sm:col-span-2">
-            <p className="text-[11px] font-mono text-neutral-500">
-              {hiddenSkillCount} dev-only skills hidden. Enable dev mode with{" "}
-              <code>ATELIER_DEV_MODE=1</code> to install and inspect them.
-            </p>
-          </Card>
         )}
       </div>
     </section>
