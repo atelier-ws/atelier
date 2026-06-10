@@ -2,7 +2,7 @@
 
 > Last revised 2026-05-28. Cadence: review every 2 weeks.
 
-This roadmap is **execution-ordered**, not aspirational. Each item links to a spec in [`specs/`](./specs/README.md).
+This roadmap is **execution-ordered**, not aspirational. Detailed execution specs live in the internal archive (`docs-archive/specs/`).
 
 ## Phase 0 — Already shipped (May 2026)
 
@@ -17,13 +17,13 @@ This roadmap is **execution-ordered**, not aspirational. Each item links to a sp
 
 The minimum to launch with defensible differentiation. **Everything below ships in one binary, free, open source.**
 
-| # | Feature | Spec | Acceptance |
-|---|---------|------|------------|
-| 1 | Outcome capture (feedback loop foundation) | [01-outcome-capture.md](./specs/week2/01-outcome-capture.md) | Route + compact decisions write outcome windows 5–10 turns later |
-| 2 | Honest per-session cost report | [02-cost-report.md](./specs/week2/02-cost-report.md) | `atelier session report <id>` prints actual vs counterfactual costs |
-| 3 | Memory adapter — read Claude / Codex / Gemini | [03-memory-adapter.md](./specs/week2/03-memory-adapter.md) | `atelier memory list` shows facts from all three vendors |
-| 4 | `atelier insights` weekly summary | [04-insights-command.md](./specs/week2/04-insights-command.md) | Terminal dashboard of spend trends + counterfactuals |
-| 5 | Public benchmark publication pipeline | [05-benchmark-publication.md](./specs/week2/05-benchmark-publication.md) | One-command export to publishable JSON + markdown |
+| # | Feature | Acceptance |
+|   |---------|------------|
+| 1 | Outcome capture (feedback loop foundation) | Route + compact decisions write outcome windows 5–10 turns later |
+| 2 | Honest per-session cost report | `atelier session report <id>` prints actual vs counterfactual costs |
+| 3 | Memory adapter — read Claude / Codex / Gemini | `atelier memory list` shows facts from all three vendors |
+| 4 | `atelier insights` weekly summary | Terminal dashboard of spend trends + counterfactuals |
+| 5 | Public benchmark publication pipeline | One-command export to publishable JSON + markdown |
 
 **Definition of done for Phase 1:**
 - Launch HN post drafted with screenshots
@@ -35,29 +35,29 @@ The minimum to launch with defensible differentiation. **Everything below ships 
 
 Convert installers into paying users. Sync is the wedge.
 
-| # | Feature | Spec | Acceptance |
-|---|---------|------|------------|
-| 6 | Cross-machine sync (encrypted) | [06-cross-machine-sync.md](./specs/day30/06-cross-machine-sync.md) | `atelier sync up` / `sync down` works across 2 machines |
-| 7 | Counterfactual per-session report | [07-counterfactual-report.md](./specs/day30/07-counterfactual-report.md) | Per-session "what each vendor would have cost" output |
-| 8 | Memory audit viewer + rollback | [08-memory-audit-viewer.md](./specs/day30/08-memory-audit-viewer.md) | `atelier memory diff` + `atelier memory rollback` |
-| 9 | Cross-vendor live routing | [09-cross-vendor-routing.md](./specs/day30/09-cross-vendor-routing.md) | Router scores Claude vs GPT vs Gemini per turn, not just within Claude |
-| 10 | Web dashboard MVP | [10-web-dashboard.md](./specs/day30/10-web-dashboard.md) | atelier.dev/dashboard shows spend trends |
+| # | Feature | Acceptance |
+|   |---------|------------|
+| 6 | Cross-machine sync (encrypted) | `atelier sync up` / `sync down` works across 2 machines |
+| 7 | Counterfactual per-session report | Per-session "what each vendor would have cost" output |
+| 8 | Memory audit viewer + rollback | `atelier memory diff` + `atelier memory rollback` |
+| 9 | Cross-vendor live routing | Router scores Claude vs GPT vs Gemini per turn, not just within Claude |
+| 10 | Web dashboard MVP | atelier.dev/dashboard shows spend trends |
 
 ## Phase 3 — 90-day moat-deepening (ship by 2026-08-26)
 
 Build the things natives structurally can't.
 
-| # | Feature | Spec | Acceptance |
-|---|---------|------|------------|
-| 11 | Federated outcome learning (opt-in) | [11-federated-learning.md](./specs/day90/11-federated-learning.md) | Anonymised outcomes feed into community routing multipliers |
-| 12 | Public benchmark leaderboard | [13-public-leaderboard.md](./specs/day90/13-public-leaderboard.md) | Weekly auto-refreshed cross-vendor scoreboard |
-| 13 | Integration API for tool builders | [14-integration-api.md](./specs/day90/14-integration-api.md) | Documented public API, 1 partner integration live |
+| # | Feature | Acceptance |
+|   |---------|------------|
+| 11 | Federated outcome learning (opt-in) | Anonymised outcomes feed into community routing multipliers |
+| 12 | Public benchmark leaderboard | Weekly auto-refreshed cross-vendor scoreboard |
+| 13 | Integration API for tool builders | Documented public API, 1 partner integration live |
 
 ## Cross-phase: Optimization Advisor
 
 Tracked on its own branch (`feat/optimization-autopilot`). The feature spans Phase 2 (advisory mode + presets) and Phase 3 (continuous tuning + web Pareto UI).
 
-See [`specs/optimization-autopilot.md`](./specs/optimization-autopilot.md) for the full spec. Key idea: based on the last 7 days of real sessions, recommend the cheapest policy that preserves the quality floor. Splits compaction into 4 types (prompt-cache reorder, dedup, retrieval filter, lossy summary) and exposes them as separate savings. Always advisory, never silent.
+See the optimization autopilot spec in `docs-archive/specs/` for the full spec. Key idea: based on the last 7 days of real sessions, recommend the cheapest policy that preserves the quality floor. Splits compaction into 4 types (prompt-cache reorder, dedup, retrieval filter, lossy summary) and exposes them as separate savings. Always advisory, never silent.
 
 Phased delivery within the spec:
 

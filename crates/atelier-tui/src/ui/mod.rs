@@ -2,13 +2,17 @@
 
 use crate::app::{
     ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, PendingPermission, Role,
-    ToolStatus,
+    SessionTimelineEntry, ToolStatus, SLASH_COMMANDS,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
+
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SIDE_MIN_WIDTH: u16 = 110;
+const SIDE_WIDTH: u16 = 36;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
     if app.focused_pane == pane {
@@ -37,21 +41,31 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     let input_line_count = app.input.lines().len().max(1) as u16;
-    let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
+    let input_height = input_line_count.min(5) + 2;
 
-    // Simple 3-row layout: conversation + input + status bar.
     let vertical = Layout::vertical([
-        Constraint::Min(0),               // conversation
-        Constraint::Length(input_height), // input
-        Constraint::Length(1),            // status bar
+        Constraint::Min(0),
+        Constraint::Length(input_height),
+        Constraint::Length(1),
     ])
     .split(area);
 
     app.conv_rect = vertical[0];
     app.input_rect = vertical[1];
 
-    // Conversation pane — no border, full width, like Claude Code
-    draw_conversation_content(frame, app, vertical[0]);
+    // Optional side panel when wide enough
+    let show_panel = app.show_side_panel && area.width >= SIDE_MIN_WIDTH;
+    if show_panel {
+        let horiz = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(SIDE_WIDTH),
+        ])
+        .split(vertical[0]);
+        draw_conversation_content(frame, app, horiz[0]);
+        draw_side_panel(frame, app, horiz[1]);
+    } else {
+        draw_conversation_content(frame, app, vertical[0]);
+    }
 
     draw_input(frame, app, vertical[1]);
     draw_status_bar(frame, app, vertical[2]);
@@ -111,6 +125,18 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ActiveOverlay::AuthPicker { selected, providers } => {
             draw_auth_picker(frame, app, *selected, providers, area)
         }
+        ActiveOverlay::CommandPalette { query, selected } => {
+            let q = query.clone();
+            let sel = *selected;
+            draw_command_palette(frame, app, &q, sel, area);
+        }
+        ActiveOverlay::SessionTimeline { entries, selected } => {
+            draw_session_timeline(frame, app, entries, *selected, area)
+        }
+        ActiveOverlay::WhichKey {
+            leader_pressed,
+            pending_keys,
+        } => draw_which_key(frame, app, *leader_pressed, pending_keys, area),
     }
 
     // Context menu renders LAST, on top of everything else.
@@ -368,16 +394,40 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Exit"),
         ]),
         Line::from(vec![
-            Span::styled("  Ctrl+F       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Search conversation"),
+            Span::styled("  Ctrl+K       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Command palette (fuzzy search all commands)"),
         ]),
         Line::from(vec![
-            Span::styled("  Ctrl+M       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Cycle agent mode (code/explore/research/plan)"),
+            Span::styled("  Ctrl+L       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Toggle side panel (tools / context stats)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+X       ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("Which-key leader — shows all leader keybindings", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+\\       ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("Toggle selection mode — ENABLES native terminal text selection", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Space        ", Style::default().fg(Color::Cyan)),
+            Span::raw("Expand/collapse last tool output (in conversation focus)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  e            ", Style::default().fg(Color::Cyan)),
+            Span::raw("Expand tool output inline (in conversation focus)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  y            ", Style::default().fg(Color::Cyan)),
+            Span::raw("Copy last assistant response (in conversation focus)"),
         ]),
         Line::from(vec![
             Span::styled("  Ctrl+F       ", Style::default().fg(Color::Cyan)),
             Span::raw("Search conversation (type to filter, ↑↓ navigate, Esc close)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+M       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Cycle agent mode (code/explore/research/plan)"),
         ]),
         Line::from(vec![
             Span::styled("  y / n / a    ", Style::default().fg(Color::Cyan)),
@@ -530,6 +580,134 @@ fn draw_session_picker(frame: &mut Frame, app: &App, area: Rect) {
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(para, overlay);
+}
+
+fn draw_session_timeline(
+    frame: &mut Frame,
+    app: &App,
+    entries: &[SessionTimelineEntry],
+    selected: usize,
+    area: Rect,
+) {
+    let accent = app.agent_mode.accent_color();
+    let overlay = centered_rect(78, 70, area);
+    frame.render_widget(Clear, overlay);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if entries.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "  Loading sessions…",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (i, e) in entries.iter().enumerate() {
+            let is_sel = i == selected;
+            let (dot_style, text_style, dim_style) = if is_sel {
+                (
+                    Style::default().fg(Color::Black).bg(accent),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(accent)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Black).bg(accent),
+                )
+            } else {
+                (
+                    Style::default().fg(accent),
+                    Style::default().fg(Color::White),
+                    Style::default().fg(Color::DarkGray),
+                )
+            };
+            let summary: String = e.summary.chars().take(40).collect();
+            lines.push(Line::from(vec![
+                Span::styled("  \u{25cf} ", dot_style),
+                Span::styled(format!("{} ", e.id), text_style),
+                Span::styled(format!(" {} ", e.timestamp), dim_style),
+                Span::styled(format!(" {} msgs ", e.message_count), dim_style),
+                Span::styled(summary, dim_style),
+            ]));
+        }
+    }
+
+    let block = Block::bordered()
+        .title(" Session Timeline  \u{2191}\u{2193} navigate \u{b7} Enter resume \u{b7} d delete \u{b7} Esc close ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, overlay);
+}
+
+fn draw_which_key(
+    frame: &mut Frame,
+    app: &App,
+    leader_pressed: bool,
+    pending_keys: &[char],
+    area: Rect,
+) {
+    let accent = app.agent_mode.accent_color();
+    let popup = centered_rect(60, 45, area);
+    frame.render_widget(Clear, popup);
+
+    let header = if leader_pressed {
+        "  Leader key bindings (Ctrl+X + ...)"
+    } else {
+        "  Leader key bindings"
+    };
+
+    let bindings: [(char, &str); 8] = [
+        ('n', "New session"),
+        ('l', "Session list"),
+        ('g', "Session timeline"),
+        ('c', "Compact/summarize"),
+        ('m', "Model picker"),
+        ('a', "Auth/provider"),
+        ('b', "Toggle side panel"),
+        ('x', "Export conversation"),
+    ];
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            header,
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+    ];
+    for pair in bindings.chunks(2) {
+        let mut spans: Vec<Span> = Vec::new();
+        for (key, label) in pair {
+            spans.push(Span::styled(
+                format!("  {key}  "),
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                format!("{label:<20}"),
+                Style::default().fg(Color::White),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines.push(Line::raw(""));
+    if !pending_keys.is_empty() {
+        let pending: String = pending_keys.iter().collect();
+        lines.push(Line::from(Span::styled(
+            format!("  pending: {pending}"),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    lines.push(Line::from(Span::styled(
+        "  press a key \u{b7} Esc to cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let block = Block::bordered()
+        .title(" Which-key  Ctrl+X leader ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, popup);
 }
 
 fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
@@ -695,38 +873,201 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
 }
 
 fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
-    let popup_area = centered_rect(80, 70, area);
+    let popup_area = centered_rect(85, 75, area);
     frame.render_widget(Clear, popup_area);
 
     let diff_text = app.pending_diff.as_deref().unwrap_or("");
-    let lines: Vec<Line> = diff_text
-        .lines()
-        .map(|l| {
-            if l.starts_with('+') && !l.starts_with("+++") {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default().fg(Color::Green),
-                ))
-            } else if l.starts_with('-') && !l.starts_with("---") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
-            } else if l.starts_with("@@") {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default().fg(Color::Cyan),
-                ))
-            } else {
-                Line::from(Span::raw(l.to_string()))
-            }
-        })
-        .collect();
+    let raw_lines: Vec<&str> = diff_text.lines().collect();
 
+    // Diff stats for the title.
+    let mut adds = 0usize;
+    let mut dels = 0usize;
+    for l in &raw_lines {
+        if l.starts_with('+') && !l.starts_with("+++") {
+            adds += 1;
+        } else if l.starts_with('-') && !l.starts_with("---") {
+            dels += 1;
+        }
+    }
+
+    let green_fg = Color::Green;
+    let green_bg = Color::Rgb(0, 50, 0);
+    let red_fg = Color::Red;
+    let red_bg = Color::Rgb(50, 0, 0);
+    let gutter_fg = Color::Rgb(70, 75, 100);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Side-by-side style headers.
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  --- old --- ",
+            Style::default().fg(red_fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " +++ new +++ ",
+            Style::default().fg(green_fg).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::raw(""));
+
+    let mut old_no = 0usize;
+    let mut new_no = 0usize;
+
+    for (i, &line) in raw_lines.iter().enumerate() {
+        // The app prepends a "Files: ..." summary line before the raw diff.
+        if line.starts_with("Files:") {
+            lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        }
+        if line.starts_with("@@") {
+            if let Some((o, n)) = parse_hunk_header(line) {
+                old_no = o;
+                new_no = n;
+            }
+            lines.push(Line::from(vec![
+                Span::styled(DIFF_GUTTER_BLANK.to_string(), Style::default().fg(gutter_fg)),
+                Span::styled(line.to_string(), Style::default().fg(Color::Cyan)),
+            ]));
+            continue;
+        }
+        if line.starts_with("+++") || line.starts_with("---") {
+            lines.push(Line::from(vec![
+                Span::styled(DIFF_GUTTER_BLANK.to_string(), Style::default().fg(gutter_fg)),
+                Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            continue;
+        }
+        if let Some(content) = line.strip_prefix('+') {
+            // Bold the changed suffix relative to the preceding '-' line, if any.
+            let bold_from = i
+                .checked_sub(1)
+                .and_then(|p| raw_lines.get(p))
+                .filter(|prev| prev.starts_with('-') && !prev.starts_with("---"))
+                .map(|prev| first_diff_pos(&prev[1..], content));
+            let mut spans = vec![Span::styled(diff_gutter(new_no), Style::default().fg(gutter_fg))];
+            spans.extend(styled_diff_content(content, '+', green_fg, green_bg, bold_from));
+            lines.push(Line::from(spans));
+            new_no += 1;
+            continue;
+        }
+        if let Some(content) = line.strip_prefix('-') {
+            let bold_from = raw_lines
+                .get(i + 1)
+                .filter(|next| next.starts_with('+') && !next.starts_with("+++"))
+                .map(|next| first_diff_pos(content, &next[1..]));
+            let mut spans = vec![Span::styled(diff_gutter(old_no), Style::default().fg(gutter_fg))];
+            spans.extend(styled_diff_content(content, '-', red_fg, red_bg, bold_from));
+            lines.push(Line::from(spans));
+            old_no += 1;
+            continue;
+        }
+        // Context line.
+        let content = line.strip_prefix(' ').unwrap_or(line);
+        let gutter = if new_no > 0 {
+            diff_gutter(new_no)
+        } else {
+            DIFF_GUTTER_BLANK.to_string()
+        };
+        lines.push(Line::from(vec![
+            Span::styled(gutter, Style::default().fg(gutter_fg)),
+            Span::styled(format!("  {content}"), Style::default()),
+        ]));
+        if old_no > 0 {
+            old_no += 1;
+        }
+        if new_no > 0 {
+            new_no += 1;
+        }
+    }
+
+    let title = format!(" Changes: +{adds} -{dels}  ·  'a' apply · 'd' dismiss ");
     let block = Block::bordered()
-        .title(" Proposed Changes — press 'a' to apply, 'd' to dismiss ")
+        .title(title)
         .border_style(Style::default().fg(Color::Yellow));
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup_area);
+}
+
+const DIFF_GUTTER_BLANK: &str = "    \u{2502} ";
+
+/// Render a `  42│ ` style line-number gutter (│ stays aligned with the blank gutter).
+fn diff_gutter(n: usize) -> String {
+    format!(" {n:>3}\u{2502} ")
+}
+
+/// Index of the first character where `a` and `b` differ.
+fn first_diff_pos(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
+}
+
+/// Parse `@@ -old,n +new,n @@` into the 1-based (old_start, new_start) line numbers.
+fn parse_hunk_header(line: &str) -> Option<(usize, usize)> {
+    let body = line.trim_start_matches('@').trim();
+    let mut old_start = None;
+    let mut new_start = None;
+    for token in body.split_whitespace() {
+        if let Some(t) = token.strip_prefix('-') {
+            old_start = t.split(',').next().and_then(|n| n.parse::<usize>().ok());
+        } else if let Some(t) = token.strip_prefix('+') {
+            new_start = t.split(',').next().and_then(|n| n.parse::<usize>().ok());
+        }
+    }
+    match (old_start, new_start) {
+        (Some(o), Some(n)) => Some((o, n)),
+        _ => None,
+    }
+}
+
+/// Build colored spans for a `+`/`-` diff line, bolding the changed suffix from `bold_from`.
+fn styled_diff_content(
+    content: &str,
+    sign: char,
+    fg: Color,
+    bg: Color,
+    bold_from: Option<usize>,
+) -> Vec<Span<'static>> {
+    let base = Style::default().fg(fg).bg(bg);
+    let mut spans = vec![Span::styled(format!("{sign} "), base)];
+    match bold_from {
+        Some(pos) if pos < content.chars().count() => {
+            let unchanged: String = content.chars().take(pos).collect();
+            let changed: String = content.chars().skip(pos).collect();
+            if !unchanged.is_empty() {
+                spans.push(Span::styled(unchanged, base));
+            }
+            spans.push(Span::styled(changed, base.add_modifier(Modifier::BOLD)));
+        }
+        _ => spans.push(Span::styled(content.to_string(), base)),
+    }
+    spans
+}
+
+/// Hard-wrap text to `width` columns, preserving existing line breaks.
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let mut start = 0;
+        while start < chars.len() {
+            let end = (start + width).min(chars.len());
+            out.push(chars[start..end].iter().collect());
+            start = end;
+        }
+    }
+    out
 }
 
 fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -921,47 +1262,107 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if app.is_streaming && !app.streaming_text.is_empty() {
         let accent = app.agent_mode.accent_color();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        let elapsed = app.streaming_start
+            .map(|s| {
+                let ms = s.elapsed().as_millis();
+                if ms >= 1000 { format!(" {:.1}s", ms as f64 / 1000.0) } else { format!(" {}ms", ms) }
+            })
+            .unwrap_or_default();
         all_lines.push(Line::from(vec![
             Span::styled("▌ ", Style::default().fg(accent)),
             Span::styled(
                 "Atelier",
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
             ),
+            Span::styled(format!(" {spinner}"), Style::default().fg(Color::Yellow)),
+            Span::styled(elapsed, Style::default().fg(Color::Rgb(80, 85, 100))),
         ]));
         for mut hl_line in render_markdown_lines(&app.streaming_text) {
             let mut spans = vec![Span::styled("▌ ", Style::default().fg(accent))];
             spans.extend(hl_line.spans.drain(..));
             all_lines.push(Line::from(spans));
         }
+    } else if app.is_streaming {
+        // Show thinking spinner even when streaming_text is empty (early thinking phase)
+        let accent = app.agent_mode.accent_color();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        let elapsed = app.streaming_start
+            .map(|s| format!(" {:.1}s", s.elapsed().as_secs_f64()))
+            .unwrap_or_default();
+        all_lines.push(Line::from(vec![
+            Span::styled("▌ ", Style::default().fg(accent)),
+            Span::styled("Atelier ", Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+            Span::styled(spinner, Style::default().fg(Color::Yellow)),
+            Span::styled(" thinking…", Style::default().fg(Color::Rgb(80, 85, 100))),
+            Span::styled(elapsed, Style::default().fg(Color::Rgb(65, 70, 90))),
+        ]));
     }
 
-    // Compact inline tool timeline: show the last few tool calls below the stream.
+    // Compact inline tool timeline: collapsible tool calls below the stream.
+    // Collapsed shows a one-line header; press Space/e in conversation focus to
+    // expand the most recent tool's output inline.
     if !app.tools.is_empty() {
-        for tool in app.tools.iter().rev().take(5).rev() {
-            let (icon, color) = match tool.status {
-                ToolStatus::Requested => ("\u{25cc}", Color::DarkGray),
-                ToolStatus::Running => ("\u{27f3}", Color::Yellow),
-                ToolStatus::Done => ("\u{2713}", Color::Green),
-                ToolStatus::Failed => ("\u{2717}", Color::Red),
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        for tool in app.tools.iter().rev().take(6).rev() {
+            let (_icon, color) = match tool.status {
+                ToolStatus::Requested => ("◌", Color::DarkGray),
+                ToolStatus::Running => (spinner, Color::Yellow),
+                ToolStatus::Done => ("✓", Color::Green),
+                ToolStatus::Failed => ("✗", Color::Red),
             };
-            let detail = tool
+            let elapsed = tool.elapsed_ms
+                .map(|ms| {
+                    if ms >= 1000 { format!("  {:.1}s", ms as f64 / 1000.0) }
+                    else { format!("  {}ms", ms) }
+                })
+                .or_else(|| {
+                    if tool.status == ToolStatus::Running {
+                        tool.started_at.map(|s| {
+                            let ms = s.elapsed().as_millis();
+                            if ms >= 1000 { format!("  {:.1}s…", ms as f64 / 1000.0) }
+                            else { format!("  {}ms…", ms) }
+                        })
+                    } else { None }
+                })
+                .unwrap_or_default();
+            let expanded = app.tool_expanded.contains(&tool.id);
+            let has_output = tool
                 .output_preview
                 .as_deref()
-                .map(|p| p.trim())
-                .filter(|p| !p.is_empty())
-                .unwrap_or("");
-            all_lines.push(Line::from(vec![
-                Span::styled(format!("  {icon} "), Style::default().fg(color)),
+                .map(|p| !p.trim().is_empty())
+                .unwrap_or(false);
+            let triangle = if expanded { "▼" } else { "▶" };
+            let mut header = vec![
+                Span::styled(format!("  {triangle} "), Style::default().fg(color)),
                 Span::styled(tool.name.clone(), Style::default().fg(Color::Gray)),
-                Span::styled(
-                    if detail.is_empty() {
-                        String::new()
-                    } else {
-                        format!("  {detail}")
-                    },
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
+                Span::styled(elapsed, Style::default().fg(Color::Rgb(80, 85, 100))),
+            ];
+            if !expanded && has_output {
+                header.push(Span::styled(
+                    "  [press Space to expand]".to_string(),
+                    Style::default().fg(Color::Rgb(70, 75, 95)),
+                ));
+            }
+            all_lines.push(Line::from(header));
+
+            if expanded {
+                if let Some(preview) = tool.output_preview.as_deref() {
+                    for wrapped in wrap_text(preview, 80).into_iter().take(10) {
+                        all_lines.push(Line::from(vec![
+                            Span::raw("      "),
+                            Span::styled(wrapped, Style::default().fg(Color::DarkGray)),
+                        ]));
+                    }
+                }
+            }
+        }
+        // Summary line when more tools than visible
+        if app.tools.len() > 6 {
+            all_lines.push(Line::from(Span::styled(
+                format!("  … {} more tool calls", app.tools.len() - 6),
+                Style::default().fg(Color::Rgb(70, 75, 95)),
+            )));
         }
     }
 
@@ -1020,21 +1421,54 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let accent = app.agent_mode.accent_color();
-    let mode_badge = format!("{} \u{203a}", app.agent_mode.name());
+    // When in selection mode show a prominent indicator
+    if app.selection_mode {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    " ✂ SELECTION MODE ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "  click+drag to select text · Ctrl+\\ to exit · y to copy last response",
+                    Style::default().fg(Color::Yellow),
+                ),
+            ])),
+            area,
+        );
+        return;
+    }
 
-    // Short model name — take last segment after /
-    let model_text = if app.current_model.is_empty() {
-        " /model to set".to_string()
+    let accent = app.agent_mode.accent_color();
+    let mode_badge = format!(" {} ›", app.agent_mode.name());
+
+    let model_short = if app.current_model.is_empty() {
+        " /model".to_string()
     } else {
-        let short = app.current_model.split('/').last().unwrap_or(&app.current_model);
-        format!(" {}", short.chars().take(25).collect::<String>())
+        let s = app.current_model.split('/').last().unwrap_or(&app.current_model);
+        format!(" {}", &s[..s.len().min(24)])
     };
 
-    let cache = app
-        .cache_efficiency
+    let branch = if !app.git_branch.is_empty() {
+        format!(" ⎇ {}", &app.git_branch[..app.git_branch.len().min(18)])
+    } else {
+        String::new()
+    };
+
+    // Context bar: tiny progress indicator
+    let ctx_pct = app.context_stats.estimated_context_pct;
+    let ctx_bar = if ctx_pct > 0.0 {
+        let filled = ((ctx_pct / 100.0) * 8.0) as usize;
+        let empty = 8usize.saturating_sub(filled);
+        let col = if ctx_pct > 85.0 { Color::Red } else if ctx_pct > 65.0 { Color::Yellow } else { Color::Green };
+        Some((format!(" │ {}{} {:.0}%", "█".repeat(filled), "░".repeat(empty), ctx_pct), col))
+    } else {
+        None
+    };
+
+    let cache = app.cache_efficiency
         .filter(|&v| v > 0.0)
-        .map(|v| format!(" │ cache {v:.0}%"))
+        .map(|v| format!(" │ ⚡{v:.0}%"))
         .unwrap_or_default();
 
     let cost = if app.total_cost_usd > 0.001 {
@@ -1044,31 +1478,59 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let saved = if app.total_savings_usd > 0.001 {
-        format!(" │ saved ${:.4}", app.total_savings_usd)
+        format!(" │ ↓${:.4}", app.total_savings_usd)
     } else {
         String::new()
     };
 
-    let turns = if app.conversation.len() > 1 {
-        format!(" │ {} turns", app.conversation.len() / 2)
+    let tool_badge = if !app.tools.is_empty() {
+        let running = app.tools.iter().filter(|t| t.status == ToolStatus::Running).count();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        if running > 0 {
+            format!(" │ {spinner} {running} running")
+        } else {
+            format!(" │ ✓ {} tools", app.tools.len())
+        }
     } else {
         String::new()
     };
 
-    let line = Line::from(vec![
-        Span::styled(
-            format!(" {mode_badge}"),
-            Style::default().fg(accent).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(model_text, Style::default().fg(Color::DarkGray)),
-        Span::styled(cache, Style::default().fg(Color::DarkGray)),
-        Span::styled(cost, Style::default().fg(Color::DarkGray)),
-        Span::styled(saved, Style::default().fg(Color::Green)),
-        Span::styled(turns, Style::default().fg(Color::DarkGray)),
-        Span::styled(" │ ? help", Style::default().fg(Color::DarkGray)),
-    ]);
-    let para = Paragraph::new(line);
-    frame.render_widget(para, area);
+    let panel_hint = if area.width >= SIDE_MIN_WIDTH {
+        if app.show_side_panel { " │ Ctrl+L" } else { " │ Ctrl+L panel" }
+    } else {
+        ""
+    };
+
+    let mut spans = vec![
+        Span::styled(mode_badge, Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        Span::styled(model_short, Style::default().fg(Color::DarkGray)),
+    ];
+    if !branch.is_empty() {
+        spans.push(Span::styled(branch, Style::default().fg(Color::Rgb(100, 100, 130))));
+    }
+    if let Some((bar_text, bar_col)) = ctx_bar {
+        spans.push(Span::styled(bar_text, Style::default().fg(bar_col)));
+    }
+    if !cache.is_empty() {
+        spans.push(Span::styled(cache, Style::default().fg(Color::Green)));
+    }
+    if !cost.is_empty() {
+        spans.push(Span::styled(cost, Style::default().fg(Color::DarkGray)));
+    }
+    if !saved.is_empty() {
+        spans.push(Span::styled(saved, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+    }
+    if !tool_badge.is_empty() {
+        let tc = if tool_badge.contains("running") { Color::Yellow } else { Color::Green };
+        spans.push(Span::styled(tool_badge, Style::default().fg(tc)));
+    }
+    spans.push(Span::styled(" │ ? help", Style::default().fg(Color::Rgb(55, 60, 75))));
+    spans.push(Span::styled(" │ Ctrl+K cmds", Style::default().fg(Color::Rgb(55, 60, 75))));
+    if !panel_hint.is_empty() {
+        spans.push(Span::styled(panel_hint.to_string(), Style::default().fg(Color::Rgb(50, 55, 70))));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {
@@ -1178,4 +1640,272 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ])
     .split(vertical[1])[1]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Side panel: tools list + context stats
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_side_panel(frame: &mut Frame, app: &App, area: Rect) {
+    // Split vertically: top = tools, bottom = context stats (8 rows)
+    let ctx_height = 9u16;
+    let sections = if area.height > ctx_height + 4 {
+        Layout::vertical([
+            Constraint::Min(0),
+            Constraint::Length(ctx_height),
+        ])
+        .split(area)
+    } else {
+        // Tiny terminal — just show context
+        Layout::vertical([Constraint::Percentage(0), Constraint::Percentage(100)]).split(area)
+    };
+    draw_tools_panel(frame, app, sections[0]);
+    draw_context_panel(frame, app, sections[1]);
+}
+
+fn draw_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+    let accent = app.agent_mode.accent_color();
+    let name_w = (area.width as usize).saturating_sub(8).max(4);
+
+    let recent_tools: Vec<_> = app.tools.iter().rev().take(area.height.saturating_sub(2) as usize).collect();
+    let mut items: Vec<ListItem> = recent_tools
+        .iter()
+        .rev()
+        .map(|tool| {
+            let (icon, color) = match tool.status {
+                ToolStatus::Requested => ("◌", Color::DarkGray),
+                ToolStatus::Running => (spinner, Color::Yellow),
+                ToolStatus::Done => ("✓", Color::Green),
+                ToolStatus::Failed => ("✗", Color::Red),
+            };
+            let elapsed = tool.elapsed_ms
+                .map(|ms| if ms >= 1000 { format!(" {:.1}s", ms as f64 / 1000.0) } else { format!(" {}ms", ms) })
+                .unwrap_or_default();
+            let name: String = tool.name.chars().take(name_w.saturating_sub(elapsed.len())).collect();
+            ListItem::new(Line::from(vec![
+                Span::styled(format!(" {icon} "), Style::default().fg(color)),
+                Span::styled(name, Style::default().fg(Color::Gray)),
+                Span::styled(elapsed, Style::default().fg(Color::DarkGray)),
+            ]))
+        })
+        .collect();
+
+    // Show running task count in title
+    let running = app.tools.iter().filter(|t| t.status == ToolStatus::Running).count();
+    let title = if running > 0 {
+        format!(" {} Tools  {spinner} {} running ", app.tools.len(), running)
+    } else if app.tools.is_empty() {
+        " Tools ".to_string()
+    } else {
+        format!(" Tools  {} done ", app.tools.len())
+    };
+
+    if items.is_empty() {
+        items.push(ListItem::new(Line::from(Span::styled(
+            "  waiting…",
+            Style::default().fg(Color::DarkGray),
+        ))));
+    }
+
+    // Show background tasks too
+    for task in app.background_tasks.iter().rev().take(3) {
+        let (icon, color) = match task.status {
+            crate::app::TaskStatus::Running => (spinner, Color::Yellow),
+            crate::app::TaskStatus::Done => ("✓", Color::Green),
+            crate::app::TaskStatus::Failed => ("✗", Color::Red),
+        };
+        let name: String = task.name.chars().take(name_w).collect();
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!(" {icon} "), Style::default().fg(color)),
+            Span::styled(name, Style::default().fg(Color::DarkGray)),
+        ])));
+    }
+
+    let border_col = if running > 0 { Color::Yellow } else { Color::Rgb(55, 60, 80) };
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(Span::styled(title, Style::default().fg(accent)))
+            .border_style(Style::default().fg(border_col))
+            .border_type(BorderType::Plain),
+    );
+    frame.render_widget(list, area);
+}
+
+fn draw_context_panel(frame: &mut Frame, app: &App, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    let ctx = &app.context_stats;
+    let accent = app.agent_mode.accent_color();
+
+    // Context window bar
+    let used_pct = ctx.estimated_context_pct.min(100.0);
+    let bar_w = (area.width as usize).saturating_sub(6).min(24);
+    let filled = ((used_pct / 100.0) * bar_w as f64) as usize;
+    let empty = bar_w.saturating_sub(filled);
+    let bar_color = if used_pct > 85.0 {
+        Color::Red
+    } else if used_pct > 65.0 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+
+    // Short model name
+    let model_short: String = ctx.model
+        .rsplit('/')
+        .next()
+        .unwrap_or(&ctx.model)
+        .chars()
+        .take((area.width as usize).saturating_sub(4))
+        .collect();
+
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(bar, Style::default().fg(bar_color)),
+            Span::styled(
+                format!(" {:.0}%", used_pct),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+    ];
+
+    if !ctx.cache_efficiency.is_nan() && ctx.cache_efficiency > 0.0 {
+        lines.push(Line::from(vec![
+            Span::styled("  cache  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{:.1}%", ctx.cache_efficiency),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+    }
+    if ctx.total_cost_usd > 0.0 {
+        lines.push(Line::from(vec![
+            Span::styled("  cost   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", ctx.total_cost_usd),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+    }
+    if ctx.total_savings_usd > 0.001 {
+        lines.push(Line::from(vec![
+            Span::styled("  saved  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", ctx.total_savings_usd),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    if !model_short.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  model  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(model_short, Style::default().fg(accent)),
+        ]));
+    }
+    if !ctx.memory_hits.is_empty() {
+        let hit: String = ctx.memory_hits.last().unwrap().chars().take((area.width as usize).saturating_sub(12)).collect();
+        lines.push(Line::from(vec![
+            Span::styled("  mem    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(hit, Style::default().fg(Color::Magenta)),
+        ]));
+    }
+    // Ctrl+L hint
+    lines.push(Line::from(Span::styled(
+        "  Ctrl+L hide panel",
+        Style::default().fg(Color::Rgb(50, 55, 70)),
+    )));
+
+    let para = Paragraph::new(lines).block(
+        Block::bordered()
+            .title(Span::styled(" Context ", Style::default().fg(accent)))
+            .border_style(Style::default().fg(Color::Rgb(55, 60, 80)))
+            .border_type(BorderType::Plain),
+    );
+    frame.render_widget(para, area);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ctrl+K Command Palette
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_command_palette(frame: &mut Frame, app: &App, query: &str, selected: usize, area: Rect) {
+    let accent = app.agent_mode.accent_color();
+    let popup_w = (area.width as f32 * 0.65) as u16;
+    let popup_h = 20u16;
+    let popup = Rect {
+        x: (area.width.saturating_sub(popup_w)) / 2,
+        y: (area.height.saturating_sub(popup_h)) / 3,
+        width: popup_w,
+        height: popup_h,
+    };
+    frame.render_widget(Clear, popup);
+
+    // Split: search input (3) + results list
+    let inner = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(0),
+    ])
+    .split(popup);
+
+    // Search box
+    let search_block = Block::bordered()
+        .border_style(Style::default().fg(accent))
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " ⌘ Command Palette  Ctrl+K ",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ));
+    let search_text = Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(query, Style::default().fg(Color::White)),
+        Span::styled("█", Style::default().fg(accent)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(search_text).block(search_block),
+        inner[0],
+    );
+
+    // Results: slash commands matching query, then recent files
+    let q = query.to_lowercase();
+    let cmds: Vec<_> = SLASH_COMMANDS
+        .iter()
+        .filter(|(name, desc)| {
+            q.is_empty()
+                || name.contains(q.as_str())
+                || desc.to_lowercase().contains(q.as_str())
+        })
+        .take(12)
+        .collect();
+
+    let items: Vec<ListItem> = cmds
+        .iter()
+        .enumerate()
+        .map(|(i, (name, desc))| {
+            let is_sel = i == selected;
+            let bg = if is_sel { accent } else { Color::Reset };
+            let fg = if is_sel { Color::Black } else { Color::White };
+            let dfg = if is_sel { Color::Black } else { Color::DarkGray };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("  /{name:<18} "), Style::default().fg(fg).bg(bg)),
+                Span::styled(desc.to_string(), Style::default().fg(dfg).bg(bg)),
+            ]))
+        })
+        .collect();
+
+    let results_block = Block::bordered()
+        .border_style(Style::default().fg(Color::Rgb(55, 60, 80)))
+        .border_type(BorderType::Plain)
+        .title(Span::styled(
+            format!(" {} commands ", cmds.len()),
+            Style::default().fg(Color::DarkGray),
+        ));
+    frame.render_widget(List::new(items).block(results_block), inner[1]);
 }

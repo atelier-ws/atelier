@@ -39,6 +39,10 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "doc",
+          id: "hosts/host-capability-matrix",
+        },
+        {
+          type: "doc",
           id: "hosts/claude-code-install",
         },
         {
@@ -57,6 +61,14 @@ const sidebars: SidebarsConfig = {
           type: "doc",
           id: "hosts/opencode-install",
         },
+        {
+          type: "doc",
+          id: "hosts/cursor-install",
+        },
+        {
+          type: "doc",
+          id: "hosts/hermes-install",
+        },
       ],
     },
     {
@@ -71,51 +83,23 @@ const sidebars: SidebarsConfig = {
           type: "doc",
           id: "sdk/mcp",
         },
-      ],
-    },
-    {
-      label: "Contributing",
-      type: "category",
-      items: [
         {
           type: "doc",
-          id: "engineering/contributing",
+          id: "integrations/host-matrix",
         },
       ],
     },
     {
-      label: "Archive & Internal",
+      label: "Strategy & Roadmap",
       type: "category",
-      collapsed: true,
       items: [
         {
           type: "doc",
-          id: "archive/README",
-          label: "Archive Home",
+          id: "strategy",
         },
         {
           type: "doc",
-          id: "archive/authoring-and-packs",
-        },
-        {
-          type: "doc",
-          id: "archive/architecture-history",
-        },
-        {
-          type: "doc",
-          id: "archive/engineering-internals",
-        },
-        {
-          type: "doc",
-          id: "archive/legacy-integrations",
-        },
-        {
-          type: "doc",
-          id: "archive/benchmark-and-migration-history",
-        },
-        {
-          type: "doc",
-          id: "archive/internal-notes",
+          id: "roadmap",
         },
       ],
     },
