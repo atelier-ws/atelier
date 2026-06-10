@@ -1625,10 +1625,8 @@ async fn handle_key(
             }
         }
         KeyCode::Char('?') => {
-            let current = app.input.lines().join("");
-            if current.trim().is_empty() {
-                app.active_overlay = ActiveOverlay::Help;
-            } else if app.focused_pane == FocusedPane::Input {
+            // Always pass ? to the input — use /help for help
+            if app.focused_pane == FocusedPane::Input {
                 app.input.input(Event::Key(key));
             }
         }
