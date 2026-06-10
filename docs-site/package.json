@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "rsync -av --include='*/' --include='*.md' --exclude='*' ../docs/ docs/ && rsync -av --include='*/' --include='*.png' --include='*.svg' --include='*.jpg' --exclude='*' ../docs/ docs/ 2>/dev/null || true",
+    "prebuild": "node sync-docs.mjs",
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
