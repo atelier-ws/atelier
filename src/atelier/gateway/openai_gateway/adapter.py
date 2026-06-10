@@ -4,13 +4,14 @@ Two directions:
 1. openai_messages_to_atelier(): extract the last user turn + prior history
 2. atelier_events_to_sse(): stream AtelierEvents as OpenAI SSE delta chunks
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .schemas import (
     ChatCompletionChunk,
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
 
 def openai_messages_to_atelier(
     messages: list[ChatMessage],
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict[str, Any]]]:
     """Extract the last user message and return the prior conversation history.
 
     Returns:
@@ -47,15 +48,13 @@ def openai_messages_to_atelier(
         if isinstance(msg.content, str):
             return msg.content
         if isinstance(msg.content, list):
-            return " ".join(
-                part.get("text", "") for part in msg.content if isinstance(part, dict)
-            )
+            return " ".join(part.get("text", "") for part in msg.content if isinstance(part, dict))
         return ""
 
     last_user_text = _text(last_user)
 
     # Prior history excludes the last user message; map to plain dicts
-    prior: list[dict] = []
+    prior: list[dict[str, Any]] = []
     for i, msg in enumerate(messages):
         if i == len(messages) - 1 and msg is last_user:
             break
@@ -123,7 +122,7 @@ async def atelier_events_to_sse(
         elif ev_type == "tool.requested":
             tool_id: str = getattr(event, "id", f"call_{uuid.uuid4().hex[:8]}")
             name: str = getattr(event, "name", "unknown")
-            args: dict = getattr(event, "args", {}) or {}
+            args: dict[str, Any] = getattr(event, "args", {}) or {}
             tool_call_delta = {
                 "index": tool_index,
                 "id": tool_id,

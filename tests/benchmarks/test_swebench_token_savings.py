@@ -269,7 +269,7 @@ class TestTokenSavingsBenchmark:
     def test_overall_token_reduction_above_floor(self, benchmark_results: dict[str, Any]) -> None:
         """Overall token reduction must be ≥ 45% (RB target: -51.8%)."""
         pct = benchmark_results["overall_savings_pct"]
-        assert pct >= 45.0, f"Token reduction {pct:.1f}% is below the 45% floor. " f"RB target is 51.8%."
+        assert pct >= 45.0, f"Token reduction {pct:.1f}% is below the 45% floor. RB target is 51.8%."
 
     def test_compressions_fired(self, benchmark_results: dict[str, Any]) -> None:
         """At least 200 compression events across 75 runs."""
@@ -367,17 +367,17 @@ class TestMonitorBenchmark:
         """Looping trajectories must produce composite ≥ 0.15."""
         steps = self._make_looping_steps(8)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert result.composite >= 0.15, (
-            f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. " f"Fired: {result.fired}"
-        )
+        assert (
+            result.composite >= 0.15
+        ), f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. Fired: {result.fired}"
 
     def test_healthy_trajectory_below_threshold(self) -> None:
         """Healthy resolved trajectory should produce composite < 0.35."""
         steps = self._make_healthy_steps(5)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert result.composite < 0.35, (
-            f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. " f"Fired: {result.fired}"
-        )
+        assert (
+            result.composite < 0.35
+        ), f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. Fired: {result.fired}"
 
     def test_semantic_loop_fires_on_repeating_steps(self) -> None:
         """Near-duplicate steps (same word bigrams, minor variation) must fire semantic_loop."""

@@ -77,13 +77,21 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
     ],
     "atelier-serena": [
-        {"surface": "search_for_pattern:exact:compact", "family": "exact_search", "benchmarked": True},
+        {
+            "surface": "search_for_pattern:exact:compact",
+            "family": "exact_search",
+            "benchmarked": True,
+        },
         {
             "surface": "search_for_pattern:substring:compact",
             "family": "substring_search",
             "benchmarked": True,
         },
-        {"surface": "search_for_pattern:nohit:compact", "family": "nohit_search", "benchmarked": True},
+        {
+            "surface": "search_for_pattern:nohit:compact",
+            "family": "nohit_search",
+            "benchmarked": True,
+        },
     ],
     "serena": [
         {"surface": "find_symbol", "family": "exact_symbol", "benchmarked": True},
@@ -1248,7 +1256,7 @@ def run_case_matrix(
                     for iteration in range(iterations):
                         reporter.phase(
                             "running provider case",
-                            current=(f"{tool_name} {case.family}/{case.case_id} " f"iter {iteration + 1}/{iterations}"),
+                            current=(f"{tool_name} {case.family}/{case.case_id} iter {iteration + 1}/{iterations}"),
                         )
                         t0 = time.perf_counter()
                         last_input, last_output = runner.run_case(case)
@@ -1257,7 +1265,7 @@ def run_case_matrix(
                         scores.append(score_case(case, last_output))
                         reporter.step(
                             "running provider case",
-                            current=(f"{tool_name} {case.family}/{case.case_id} " f"iter {iteration + 1}/{iterations}"),
+                            current=(f"{tool_name} {case.family}/{case.case_id} iter {iteration + 1}/{iterations}"),
                         )
                     results.append(
                         CaseBenchResult(
@@ -1509,7 +1517,7 @@ def _render_provider_progress(
     if not statuses:
         return ""
     completed_cases = sum(_to_int(status.get("done")) for status in statuses)
-    parts = [f"shards {completed_shards}/{total_shards} | " f"cases {completed_cases}/{total_cases}"]
+    parts = [f"shards {completed_shards}/{total_shards} | cases {completed_cases}/{total_cases}"]
     for status in statuses:
         current = str(status.get("current") or "").strip()
         parts.append(

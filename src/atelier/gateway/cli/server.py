@@ -56,9 +56,7 @@ def _build_session_started(session_id: str, project_root: str | None) -> Session
 
         decision = select_owned_route(
             default_store_root(),
-            OwnedRouteRequest(
-                tool_name="tui", task_text="hi", mode="auto", budget="balanced"
-            ),
+            OwnedRouteRequest(tool_name="tui", task_text="hi", mode="auto", budget="balanced"),
         )
         resolved_model = decision.model
         resolved_provider = decision.provider
@@ -77,9 +75,7 @@ def _build_session_started(session_id: str, project_root: str | None) -> Session
     )
 
 
-async def run_ndjson_server(
-    project_root: str | None = None, session_id: str | None = None
-) -> int:
+async def run_ndjson_server(project_root: str | None = None, session_id: str | None = None) -> int:
     """Main NDJSON server loop.
 
     Reads ``user.message`` / ``user.command`` / ``permission.response`` /
@@ -138,8 +134,7 @@ async def run_ndjson_server(
             AssistantMessage(
                 type="assistant.message",
                 text=(
-                    f"🔍 mitmdump active — capturing to `{mitm_flow}`\n\n"
-                    f"Open with: `mitmweb --flow-file {mitm_flow}`"
+                    f"🔍 mitmdump active — capturing to `{mitm_flow}`\n\nOpen with: `mitmweb --flow-file {mitm_flow}`"
                 ),
             )
         )
@@ -173,18 +168,14 @@ async def run_ndjson_server(
                     args = [str(a) for a in cmd.get("args", [])]
                     parsed = parse_input("/" + (name + " " + " ".join(args)).strip())
                     if parsed.kind == "slash":
-                        async for event in runtime.handle_slash_command(
-                            session_id, parsed.name, parsed.args
-                        ):
+                        async for event in runtime.handle_slash_command(session_id, parsed.name, parsed.args):
                             _write_event(event)
 
                 elif cmd_type == "permission.response":
                     perm_id = str(cmd.get("id", ""))
                     approved = bool(cmd.get("approved", False))
                     scope = str(cmd.get("scope", "once"))
-                    async for event in runtime.respond_to_permission(
-                        session_id, perm_id, approved, scope
-                    ):
+                    async for event in runtime.respond_to_permission(session_id, perm_id, approved, scope):
                         _write_event(event)
 
                 elif cmd_type == "choice.response":
@@ -224,20 +215,8 @@ async def run_ndjson_server(
                 output_tokens=0,
                 cache_read_tokens=0,
                 cache_write_tokens=0,
-                turns=len(
-                    [
-                        m
-                        for m in messages
-                        if isinstance(m, dict) and m.get("role") == "user"
-                    ]
-                ),
-                tool_calls=len(
-                    [
-                        m
-                        for m in messages
-                        if isinstance(m, dict) and m.get("role") == "tool"
-                    ]
-                ),
+                turns=len([m for m in messages if isinstance(m, dict) and m.get("role") == "user"]),
+                tool_calls=len([m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]),
             )
         )
         analytics.close()

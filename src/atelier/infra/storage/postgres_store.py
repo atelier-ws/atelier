@@ -359,7 +359,7 @@ class PostgresStore:
     ) -> None:
         if _psycopg is None:
             raise RuntimeError(
-                "psycopg (v3) is required for Postgres storage. " "Install it with: uv add 'psycopg[binary]'"
+                "psycopg (v3) is required for Postgres storage. Install it with: uv add 'psycopg[binary]'"
             )
 
         self._url = database_url or os.environ.get("ATELIER_DATABASE_URL", "")

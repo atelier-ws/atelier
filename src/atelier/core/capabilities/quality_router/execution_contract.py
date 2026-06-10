@@ -47,7 +47,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": True,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "provider_enforced is future-only and disabled; " "full model-provider override is outside host surface"
+            "provider_enforced is future-only and disabled; full model-provider override is outside host surface"
         ),
         "host_native_owner": "model,agent_orchestration",
     },
@@ -59,7 +59,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": True,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "hook_enforced parity with Claude hooks is unsupported; " "provider_enforced is future-only and disabled"
+            "hook_enforced parity with Claude hooks is unsupported; provider_enforced is future-only and disabled"
         ),
         "host_native_owner": "model,edit,agent_orchestration",
     },
@@ -71,8 +71,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": False,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "host-level hard blocking of model/tool calls is unsupported; "
-            "provider_enforced is future-only and disabled"
+            "host-level hard blocking of model/tool calls is unsupported; provider_enforced is future-only and disabled"
         ),
         "host_native_owner": "model,edit,compact,agent_orchestration",
     },
@@ -94,8 +93,7 @@ _HOST_CONTRACTS: dict[str, dict[str, str | bool | list[str]]] = {
         "can_require_verification": False,
         "fallback_mode": "advisory",
         "unsupported_reason": (
-            "host-native hard enforcement beyond wrapper is unsupported; "
-            "provider_enforced is future-only and disabled"
+            "host-native hard enforcement beyond wrapper is unsupported; provider_enforced is future-only and disabled"
         ),
         "host_native_owner": "model,edit,compact,agent_orchestration",
     },

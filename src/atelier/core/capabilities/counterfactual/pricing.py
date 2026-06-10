@@ -49,41 +49,51 @@ class PricingTable:
 
 _CANDIDATE_SPECS: tuple[tuple[str, str, str, bool, float, int, float, float], ...] = (
     # Anthropic
-    ("anthropic", "claude-haiku-4-5",   "cheap", True,  1.0, 200_000,     0.80,  4.00),
-    ("anthropic", "claude-sonnet-4-5",  "high",  True,  1.0, 200_000,     3.00, 15.00),
-    ("anthropic", "claude-opus-4-5",    "high",  True,  1.5, 200_000,    15.00, 75.00),
-    ("anthropic", "claude-fable-5",     "high",  True,  1.0, 1_000_000,  10.00, 50.00),
+    ("anthropic", "claude-haiku-4-5", "cheap", True, 1.0, 200_000, 0.80, 4.00),
+    ("anthropic", "claude-sonnet-4-5", "high", True, 1.0, 200_000, 3.00, 15.00),
+    ("anthropic", "claude-opus-4-5", "high", True, 1.5, 200_000, 15.00, 75.00),
+    ("anthropic", "claude-fable-5", "high", True, 1.0, 1_000_000, 10.00, 50.00),
     # OpenAI
-    ("openai", "gpt-4o-mini",           "cheap", True,  1.0, 128_000,     0.15,  0.60),
-    ("openai", "gpt-4o",                "high",  True,  1.0, 128_000,     2.50, 10.00),
+    ("openai", "gpt-4o-mini", "cheap", True, 1.0, 128_000, 0.15, 0.60),
+    ("openai", "gpt-4o", "high", True, 1.0, 128_000, 2.50, 10.00),
     # Google
-    ("google", "gemini-2.0-flash",      "cheap", True,  1.0, 1_000_000,  0.10,  0.40),
-    ("google", "gemini-2.0-pro",        "high",  True,  1.0, 2_000_000,  1.25,  5.00),
+    ("google", "gemini-2.0-flash", "cheap", True, 1.0, 1_000_000, 0.10, 0.40),
+    ("google", "gemini-2.0-pro", "high", True, 1.0, 2_000_000, 1.25, 5.00),
     # AWS Bedrock
-    ("bedrock", "bedrock/anthropic.claude-haiku-4-5-v1:0",   "cheap", True,  1.0, 200_000,  0.80,  4.00),
-    ("bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0",  "high",  True,  1.0, 200_000,  3.00, 15.00),
+    ("bedrock", "bedrock/anthropic.claude-haiku-4-5-v1:0", "cheap", True, 1.0, 200_000, 0.80, 4.00),
+    ("bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0", "high", True, 1.0, 200_000, 3.00, 15.00),
+    ("bedrock", "bedrock/us.anthropic.claude-sonnet-4-6", "high", True, 1.0, 200_000, 3.00, 15.00),
     # GCP Vertex AI
-    ("vertex", "vertex_ai/gemini-2.0-flash",         "cheap", True, 1.0, 1_000_000, 0.075, 0.30),
-    ("vertex", "vertex_ai/claude-3-5-sonnet@20241022","high",  True, 1.0, 200_000,   3.00, 15.00),
+    ("vertex", "vertex_ai/gemini-2.0-flash", "cheap", True, 1.0, 1_000_000, 0.075, 0.30),
+    ("vertex", "vertex_ai/claude-3-5-sonnet@20241022", "high", True, 1.0, 200_000, 3.00, 15.00),
     # Azure OpenAI
-    ("azure", "azure/gpt-4o-mini", "cheap", True, 1.0, 128_000,  0.15,  0.60),
-    ("azure", "azure/gpt-4o",      "high",  True, 1.0, 128_000,  2.50, 10.00),
+    ("azure", "azure/gpt-4o-mini", "cheap", True, 1.0, 128_000, 0.15, 0.60),
+    ("azure", "azure/gpt-4o", "high", True, 1.0, 128_000, 2.50, 10.00),
     # OpenRouter
-    ("openrouter", "openrouter/anthropic/claude-haiku-4-5",  "cheap", True, 1.0, 200_000, 0.90,  4.50),
-    ("openrouter", "openrouter/anthropic/claude-sonnet-4-5", "high",  True, 1.0, 200_000, 3.30, 16.50),
+    ("openrouter", "openrouter/anthropic/claude-haiku-4-5", "cheap", True, 1.0, 200_000, 0.90, 4.50),
+    ("openrouter", "openrouter/anthropic/claude-sonnet-4-5", "high", True, 1.0, 200_000, 3.30, 16.50),
     # Groq
-    ("groq", "groq/llama-3.3-70b-versatile", "cheap", True,  1.0, 128_000, 0.59, 0.79),
-    ("groq", "groq/llama-3.1-8b-instant",    "cheap", False, 1.0, 128_000, 0.05, 0.08),
+    ("groq", "groq/llama-3.3-70b-versatile", "cheap", True, 1.0, 128_000, 0.59, 0.79),
+    ("groq", "groq/llama-3.1-8b-instant", "cheap", False, 1.0, 128_000, 0.05, 0.08),
     # Mistral
-    ("mistral", "mistral/mistral-large-latest", "high",  True, 1.0, 128_000, 2.00, 6.00),
+    ("mistral", "mistral/mistral-large-latest", "high", True, 1.0, 128_000, 2.00, 6.00),
     ("mistral", "mistral/mistral-small-latest", "cheap", True, 1.0, 128_000, 0.20, 0.60),
     # Ollama (local — near-zero cost for routing logic)
-    ("ollama", "ollama/llama3.2",          "cheap", False, 1.0, 128_000, 0.001, 0.001),
-    ("ollama", "ollama/qwen2.5-coder:7b",  "cheap", False, 1.0, 128_000, 0.001, 0.001),
+    ("ollama", "ollama/llama3.2", "cheap", False, 1.0, 128_000, 0.001, 0.001),
+    ("ollama", "ollama/qwen2.5-coder:7b", "cheap", False, 1.0, 128_000, 0.001, 0.001),
     # Together AI
     ("together", "together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "cheap", True, 1.0, 128_000, 0.88, 0.88),
     # Fireworks AI
-    ("fireworks", "fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct", "cheap", True, 1.0, 128_000, 0.90, 0.90),
+    (
+        "fireworks",
+        "fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct",
+        "cheap",
+        True,
+        1.0,
+        128_000,
+        0.90,
+        0.90,
+    ),
 )
 
 

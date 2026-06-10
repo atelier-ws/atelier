@@ -146,7 +146,7 @@ def benchmark_mcp_cmd(out: Path | None, jobs: int) -> None:
 @click.option(
     "--providers",
     default=(
-        "atelier,atelier-zoekt,zoekt,atelier-serena,serena," "atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"
+        "atelier,atelier-zoekt,zoekt,atelier-serena,serena,atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"
     ),
     show_default=True,
 )
@@ -1064,7 +1064,7 @@ def _resolve_miniswebench_config_path(repo_root: Path, configured_path: Path | N
             return candidate
     roots_text = ", ".join(str(root) for root in search_roots) or "<unknown>"
     raise click.ClickException(
-        "Could not find mini-SWE-agent's swebench.yaml under: " f"{roots_text}. Pass --swebench-config explicitly."
+        f"Could not find mini-SWE-agent's swebench.yaml under: {roots_text}. Pass --swebench-config explicitly."
     )
 
 

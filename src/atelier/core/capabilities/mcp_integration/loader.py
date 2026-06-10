@@ -1,10 +1,12 @@
 """Load and spawn MCP servers from .mcp.json configuration files."""
+
 from __future__ import annotations
 
 import json
 import logging
 import os
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -49,12 +51,14 @@ def discover_mcp_configs() -> list[MCPServerConfig]:
                     continue
                 seen_names.add(name)
                 if isinstance(cfg, dict) and cfg.get("command"):
-                    configs.append(MCPServerConfig(
-                        name=name,
-                        command=str(cfg["command"]),
-                        args=[str(a) for a in cfg.get("args", [])],
-                        env={str(k): str(v) for k, v in cfg.get("env", {}).items()},
-                    ))
+                    configs.append(
+                        MCPServerConfig(
+                            name=name,
+                            command=str(cfg["command"]),
+                            args=[str(a) for a in cfg.get("args", [])],
+                            env={str(k): str(v) for k, v in cfg.get("env", {}).items()},
+                        )
+                    )
         except Exception as exc:  # noqa: BLE001 - config load is best-effort
             logger.debug("Failed to load MCP config %s: %s", config_path, exc)
     return configs
@@ -68,6 +72,7 @@ class MCPServerProcess:
         self._proc: subprocess.Popen[bytes] | None = None
         self._tools: list[MCPTool] = []
         self._request_id = 0
+        self._rpc_lock = threading.Lock()
 
     def start(self) -> bool:
         """Start the server subprocess. Returns True if successful."""
@@ -90,29 +95,33 @@ class MCPServerProcess:
 
     def _rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
         """Send a JSON-RPC request and return the result."""
-        if self._proc is None or self._proc.stdin is None or self._proc.stdout is None:
-            return None
-        self._request_id += 1
-        request = {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params or {}}
-        try:
-            line = json.dumps(request) + "\n"
-            self._proc.stdin.write(line.encode())
-            self._proc.stdin.flush()
-            response_line = self._proc.stdout.readline()
-            if response_line:
-                resp = json.loads(response_line)
-                return resp.get("result")
-        except Exception as exc:  # noqa: BLE001 - rpc is best-effort
-            logger.debug("MCP RPC error for %s: %s", self.config.name, exc)
+        with self._rpc_lock:
+            if self._proc is None or self._proc.stdin is None or self._proc.stdout is None:
+                return None
+            self._request_id += 1
+            request = {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params or {}}
+            try:
+                line = json.dumps(request) + "\n"
+                self._proc.stdin.write(line.encode())
+                self._proc.stdin.flush()
+                response_line = self._proc.stdout.readline()
+                if response_line:
+                    resp = json.loads(response_line)
+                    return resp.get("result")
+            except Exception as exc:  # noqa: BLE001 - rpc is best-effort
+                logger.debug("MCP RPC error for %s: %s", self.config.name, exc)
         return None
 
     def _initialize(self) -> None:
         """Send initialize + notifications/initialized to complete handshake."""
-        result = self._rpc("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "atelier-tui", "version": "0.1.0"},
-        })
+        result = self._rpc(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "clientInfo": {"name": "atelier-mcp", "version": "0.1.0"},
+            },
+        )
         if result:
             self._rpc("notifications/initialized")
 
@@ -122,12 +131,14 @@ class MCPServerProcess:
         tools = []
         if result and isinstance(result, dict):
             for t in result.get("tools", []):
-                tools.append(MCPTool(
-                    server_name=self.config.name,
-                    name=str(t.get("name", "")),
-                    description=str(t.get("description", "")),
-                    input_schema=dict(t.get("inputSchema", {})),
-                ))
+                tools.append(
+                    MCPTool(
+                        server_name=self.config.name,
+                        name=str(t.get("name", "")),
+                        description=str(t.get("description", "")),
+                        input_schema=dict(t.get("inputSchema", {})),
+                    )
+                )
         self._tools = tools
         return tools
 
@@ -141,8 +152,7 @@ class MCPServerProcess:
             content = result.get("content", [])
             if isinstance(content, list):
                 return "\n".join(
-                    item.get("text", "") for item in content
-                    if isinstance(item, dict) and item.get("type") == "text"
+                    item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"
                 )
             return str(content)
         return str(result)

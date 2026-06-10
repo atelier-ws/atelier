@@ -26,15 +26,15 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "src" / "worker.py").write_text(
-        "def run_worker() -> str:\n" "    return 'worker'\n",
+        "def run_worker() -> str:\n    return 'worker'\n",
         encoding="utf-8",
     )
     (root / "scripts" / "cli.py").write_text(
-        "from src.app import main\n\n" "def cli() -> str:\n" "    return main()\n",
+        "from src.app import main\n\ndef cli() -> str:\n    return main()\n",
         encoding="utf-8",
     )
     (root / "web" / "index.ts").write_text(
-        "export function bootstrapApp(): string {\n" "  return 'ready';\n" "}\n",
+        "export function bootstrapApp(): string {\n  return 'ready';\n}\n",
         encoding="utf-8",
     )
 

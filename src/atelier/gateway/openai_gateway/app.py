@@ -10,13 +10,14 @@ Usage::
     from atelier.gateway.openai_gateway.app import create_app
     app = create_app(project_root="/path/to/project")
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -32,21 +33,24 @@ from .schemas import ChatCompletionRequest, ModelListResponse, ModelObject
 def create_app(
     project_root: str | None = None,
     yolo: bool = True,
+    model: str | None = None,
+    provider: str | None = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
     Args:
         project_root: Working directory for the Atelier runtime.
             Defaults to the process cwd.
-        yolo: When True, auto-approves all tool permission prompts
-            so the agent loop is never blocked waiting for user input.
-            Defaults to True for gateway mode.
+        yolo: Auto-approve edit and shell tools for unattended endpoint use.
+        model: Optional LiteLLM model override, such as
+            ``bedrock/us.anthropic.claude-sonnet-4-6``.
+        provider: Provider label paired with ``model`` for routing telemetry.
     """
-    runtime = InteractiveRuntime(root=Path(project_root) if project_root else None, yolo=yolo)
+    runtime = InteractiveRuntime(yolo=yolo, model=model, provider=provider)
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        await runtime.start_session()  # warm up session store, MCP servers, etc.
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await runtime.start_session(project_root)  # warm up tools in the configured workspace
         yield
         runtime.shutdown()
 
@@ -65,6 +69,13 @@ def create_app(
         allow_headers=["*"],
     )
 
+    # Routing tier → budget. Anything not in this dict is a direct model ID.
+    _TIER_BUDGET: dict[str, str] = {
+        "atelier": "balanced",
+        "atelier-cheap": "cheap",
+        "atelier-best": "best",
+    }
+
     # ── /health ──────────────────────────────────────────────────────────────
 
     @app.get("/health")
@@ -75,14 +86,18 @@ def create_app(
 
     @app.get("/v1/models")
     async def list_models() -> ModelListResponse:
-        return ModelListResponse(
-            data=[
-                ModelObject(id="atelier-default"),
-                ModelObject(id="atelier-auto"),
-                ModelObject(id="atelier-cheap"),
-                ModelObject(id="atelier-best"),
-            ]
-        )
+        from atelier.core.capabilities.providers.discovery import discover_models
+
+        model_ids = await discover_models()
+        return ModelListResponse(data=[ModelObject(id=m) for m in model_ids])
+
+    @app.get("/v1/models/refresh")
+    async def refresh_models() -> ModelListResponse:
+        from atelier.core.capabilities.providers.discovery import discover_models, invalidate_cache
+
+        invalidate_cache()
+        model_ids = await discover_models()
+        return ModelListResponse(data=[ModelObject(id=m) for m in model_ids])
 
     # ── /v1/chat/completions ─────────────────────────────────────────────────
 
@@ -96,16 +111,19 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        # Each HTTP request gets a fresh session ID so conversation histories
-        # from different clients are isolated inside the runtime.
         session_id = str(uuid.uuid4())
         runtime._sessions[session_id] = prior_history
 
         chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-        model = req.model or "atelier-default"
+        model = req.model or ""
+        model_override = model if model else None
 
-        events_gen = runtime.handle_user_message(session_id, last_user_text)
-        sse_gen = atelier_events_to_sse(events_gen, model=model, chunk_id=chunk_id)
+        events_gen = runtime.handle_user_message(
+            session_id,
+            last_user_text,
+            model_override=model_override,
+        )
+        sse_gen = atelier_events_to_sse(events_gen, model=model or "atelier", chunk_id=chunk_id)
 
         if req.stream:
             return StreamingResponse(sse_gen, media_type="text/event-stream")

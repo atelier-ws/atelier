@@ -39,6 +39,7 @@ class SessionReceipt:
     provider: str
     model: str
     phases: list[PhaseTokens] = field(default_factory=list)
+    turn_count: int = 0
 
     @property
     def total_input_tokens(self) -> int:
@@ -81,6 +82,7 @@ class SessionReceipt:
             "session_id": self.session_id,
             "provider": self.provider,
             "model": self.model,
+            "turn_count": self.turn_count or len(self.phases),
             "phases": [
                 {
                     "phase": p.phase,
@@ -108,6 +110,7 @@ class SessionReceipt:
         lines = [
             f"Session: {self.session_id}",
             f"Provider: {self.provider} / {self.model}",
+            f"Turns: {self.turn_count or len(self.phases)}",
             "",
             "Tokens by phase:",
         ]
@@ -119,7 +122,7 @@ class SessionReceipt:
             )
         lines += [
             "",
-            f"Cache efficiency: {self.cache_efficiency_pct:.1f}%" f"  (target: >60%, Vix benchmark: 60-80%)",
+            f"Cache efficiency: {self.cache_efficiency_pct:.1f}%  (target: >60%, Vix benchmark: 60-80%)",
             f"Cost:     ${self.cost_usd():.4f}",
             f"Naive:    ${self.naive_cost_usd():.4f}  (no cache, per-phase-cold baseline)",
             f"Saved:    ${self.savings_usd():.4f}",

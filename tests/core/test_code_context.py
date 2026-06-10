@@ -39,7 +39,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "tests" / "test_checkout.py").write_text(
-        "from src.checkout import checkout\n\n" "def test_checkout() -> None:\n" "    assert checkout([1, 2]) == 3\n",
+        "from src.checkout import checkout\n\ndef test_checkout() -> None:\n    assert checkout([1, 2]) == 3\n",
         encoding="utf-8",
     )
 
@@ -106,13 +106,13 @@ def _write_substring_search_fixture_repo(root: Path) -> None:
     lesson_dir = noise_dir / "lesson_promotion"
     lesson_dir.mkdir(parents=True, exist_ok=True)
     (lesson_dir / "models.py").write_text(
-        "class TypedLesson:\n" "    def applies_without_tiebreaker_at(self) -> bool:\n" "        return True\n",
+        "class TypedLesson:\n    def applies_without_tiebreaker_at(self) -> bool:\n        return True\n",
         encoding="utf-8",
     )
     context_reuse_dir = noise_dir / "context_reuse"
     context_reuse_dir.mkdir(parents=True, exist_ok=True)
     (context_reuse_dir / "capability.py").write_text(
-        "class _AdaptivePriorTracker:\n" "    pass\n",
+        "class _AdaptivePriorTracker:\n    pass\n",
         encoding="utf-8",
     )
 
@@ -753,7 +753,7 @@ def test_context_pack_ignores_commit_history_hits_for_current_code_blocks(
 def test_context_pack_uses_call_graph_to_add_same_file_helpers(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "worker.py").write_text(
-        "def helper() -> str:\n" "    return 'ok'\n" "\n" "def run_worker() -> str:\n" "    return helper()\n",
+        "def helper() -> str:\n    return 'ok'\n\ndef run_worker() -> str:\n    return helper()\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -1666,7 +1666,7 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
         encoding="utf-8",
     )
     (tmp_path / "tests" / "test_order_service_factory.py").write_text(
-        "class OrderServiceFactory:\n" "    pass\n\n" "def test_order_service_factory() -> None:\n" "    assert True\n",
+        "class OrderServiceFactory:\n    pass\n\ndef test_order_service_factory() -> None:\n    assert True\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")

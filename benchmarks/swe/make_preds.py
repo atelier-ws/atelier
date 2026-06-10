@@ -6,6 +6,7 @@ mini-SWE-agent writes one JSON file per instance under output/:
 This script collects all patches and writes a single preds.json suitable
 for `sb-cli submit`.
 """
+
 from __future__ import annotations
 
 import argparse

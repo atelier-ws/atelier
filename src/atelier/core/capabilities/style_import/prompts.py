@@ -45,10 +45,7 @@ def build_messages(*, file_path: str, chunk_range: tuple[int, int], text: str) -
         {
             "role": "user",
             "content": (
-                f"Source file: {file_path}\n"
-                f"Line range: {chunk_range[0]}-{chunk_range[1]}\n\n"
-                "Markdown chunk:\n"
-                f"{text}"
+                f"Source file: {file_path}\nLine range: {chunk_range[0]}-{chunk_range[1]}\n\nMarkdown chunk:\n{text}"
             ),
         },
     ]

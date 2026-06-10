@@ -531,9 +531,9 @@ def test_new_claude_plugin_json_author_is_object() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert isinstance(data.get("author"), dict), (
-        'plugin.json \'author\' must be an object like {"name": "Beseam"}, ' f"got: {data.get('author')!r}"
-    )
+    assert isinstance(
+        data.get("author"), dict
+    ), f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
 
 
 def test_new_claude_plugin_json_no_manifest_keys() -> None:
@@ -642,12 +642,10 @@ def test_new_claude_plugin_settings_uses_supported_keys() -> None:
     data = json.loads(settings.read_text())
     allowed = {"agent", "subagentStatusLine"}
     extra = set(data.keys()) - allowed
-    assert not extra, (
-        f"settings.json contains unsupported keys: {extra}. " f"Only {allowed} are honored by Claude Code."
-    )
-    assert data.get("agent") == "atelier:code", (
-        "settings.json must set `agent` to 'atelier:code' so it appears as " "the default agent for the atelier plugin."
-    )
+    assert not extra, f"settings.json contains unsupported keys: {extra}. Only {allowed} are honored by Claude Code."
+    assert (
+        data.get("agent") == "atelier:code"
+    ), "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
 
 
 def test_new_claude_plugin_subagent_statusline_wired() -> None:
@@ -667,9 +665,9 @@ def test_new_claude_plugin_subagent_statusline_wired() -> None:
 def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
     """scripts/statusline.sh must exist and be executable."""
     script = CLAUDE_PLUGIN_NEW / "scripts" / "statusline.sh"
-    assert script.exists(), (
-        "integrations/claude/plugin/scripts/statusline.sh must exist — " "wired by settings.json subagentStatusLine."
-    )
+    assert (
+        script.exists()
+    ), "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
     assert os.access(script, os.X_OK), f"{script} must be executable (chmod +x)"
 
 

@@ -46,7 +46,7 @@ def test_indexed_usages_callers_and_callees(tmp_path: Path) -> None:
 def test_native_python_pattern_search_without_ast_grep(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "server.py").write_text(
-        "from somewhere import mcp_tool\n\n" "@mcp_tool(name='code')\n" "def tool_code() -> None:\n" "    pass\n",
+        "from somewhere import mcp_tool\n\n@mcp_tool(name='code')\ndef tool_code() -> None:\n    pass\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path)
@@ -109,7 +109,7 @@ def test_src_layout_import_impact(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (tmp_path / "src" / "atelier" / "gateway.py").write_text(
-        "from atelier.core.bash_exec import run_command\n\n" "def go() -> int:\n    return run_command('x')\n",
+        "from atelier.core.bash_exec import run_command\n\ndef go() -> int:\n    return run_command('x')\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path)

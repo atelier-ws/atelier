@@ -777,10 +777,10 @@ def search_workspace(
     file_match_count = 0
     # For file_paths_with_* modes: accumulate into one block instead of
     # emitting individual {"type": "text", "text": "path\tN"} per file.
-    mc_hit_lines: list[str] = []   # rendered "path\tN" lines where N > 0
-    mc_hit_count: int = 0          # number of files with matches
-    mc_zero_count: int = 0         # number of files with 0 matches
-    fp_paths: list[str] = []       # accumulated paths for file_paths_only mode
+    mc_hit_lines: list[str] = []  # rendered "path\tN" lines where N > 0
+    mc_hit_count: int = 0  # number of files with matches
+    mc_zero_count: int = 0  # number of files with 0 matches
+    fp_paths: list[str] = []  # accumulated paths for file_paths_only mode
     for candidate, spec in candidates:
         if len(blocks) >= limit:
             break

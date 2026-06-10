@@ -35,7 +35,6 @@ Usage:
     # price/savings profile than the host-plugin "atelier" arm). Requires a real
     # provider key, e.g. ANTHROPIC_API_KEY, and an explicit --model:
     uv run python -m benchmarks.atelierbench.run --tasks task1 \
-        --cli-driver atelier-run --arms atelier-tui --model claude-sonnet-4-5
     """
 
 from __future__ import annotations
@@ -76,7 +75,7 @@ RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
-VALID_ARMS = ("baseline", "atelier", "atelier-tui", "woz", "vix")
+VALID_ARMS = ("baseline", "atelier", "woz", "vix")
 PERSISTENT_WORKSPACE_ROOT = Path(
     os.environ.get("ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces"))
 )
@@ -130,7 +129,6 @@ RUNTIME_ERROR_MARKERS = (
     "api error:",
     "permission denied",
     "timed out",
-    "error:",
 )
 STOPWORDS = frozenset(
     {
@@ -933,6 +931,8 @@ def _parse_atelier_run_result(
         cache_write += int(m.group(3).replace(",", ""))
         output_tokens += int(m.group(4).replace(",", ""))
     ok = bool(session_id) and "Session saved:" in text
+    turns_match = re.search(r"^Turns:\s*([\d,]+)", text, re.MULTILINE)
+    turn_count = int(turns_match.group(1).replace(",", "")) if turns_match else phase_lines
     return ArmResult(
         task=task,
         arm=arm,
@@ -941,7 +941,7 @@ def _parse_atelier_run_result(
         cost_usd=cost_usd,
         duration_ms=wall_duration_ms,
         duration_api_ms=wall_duration_ms,
-        num_turns=phase_lines,
+        num_turns=turn_count,
         input_tokens=input_tokens,
         cache_read_tokens=cache_read,
         cache_creation_tokens=cache_write,
@@ -1010,6 +1010,10 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]
     if lowered.startswith("harness error:"):
         return False, "harness/runtime error", True
     if any(marker in lowered for marker in RUNTIME_ERROR_MARKERS):
+        return False, "runtime/provider error surfaced in result", True
+    # "error:" only counts when line-anchored (real CLI/runtime errors), so prose
+    # like "...produces an immediate error:" in a legitimate summary never trips it.
+    if re.search(r"(?m)^\s*error:", lowered):
         return False, "runtime/provider error surfaced in result", True
     if any(marker in lowered for marker in PLACEHOLDER_RESPONSE_MARKERS):
         return False, "generic placeholder response", True
@@ -1139,7 +1143,7 @@ def _resolve_provider_env(provider: str | None) -> dict[str, str]:
         value = _resolve_host_env_value(source)
         if value is None:
             raise ValueError(
-                f"--provider {provider!r} requires {source!r} but it was not found " f"in the environment or .env files"
+                f"--provider {provider!r} requires {source!r} but it was not found in the environment or .env files"
             )
         result[dest] = value
     return result
@@ -1183,6 +1187,10 @@ def run_arm(
         ws = prepare_workspace(task, Path(str(row_state["workspace"])))
         persistent_workspace = True
         should_resume_session = resume_state and has_saved_state
+    elif transport == "cli" and cli_driver == "atelier-run":
+        workspace_path = out_dir / "workspaces" / f"{task.id}_{arm}_rep{rep}"
+        ws = prepare_workspace(task, workspace_path)
+        persistent_workspace = True
     else:
         ws = prepare_workspace(task)
     if transport == "api":
@@ -1206,7 +1214,7 @@ def run_arm(
     if cli_driver not in CLI_DRIVERS:
         raise ValueError(f"unsupported cli driver: {cli_driver}")
     flow_path = out_dir / f"{task.id}_{arm}_rep{rep}.flow"
-    proxy_supported = cli_driver == "claude"
+    proxy_supported = cli_driver in {"claude", "atelier-run"}
     port = _free_port() if proxy_supported else 0
     mitm = (
         subprocess.Popen(
@@ -1240,6 +1248,9 @@ def run_arm(
             env["HTTPS_PROXY"] = f"http://127.0.0.1:{port}"
             env["HTTP_PROXY"] = f"http://127.0.0.1:{port}"
             env["NODE_EXTRA_CA_CERTS"] = str(CA_CERT)
+            env["SSL_CERT_FILE"] = str(CA_CERT)
+            env["REQUESTS_CA_BUNDLE"] = str(CA_CERT)
+            env["AWS_CA_BUNDLE"] = str(CA_CERT)
         temp_paths: list[Path] = []
         if cli_driver == "claude":
             cmd = build_vix_cli_command(
@@ -1305,10 +1316,9 @@ def run_arm(
             if arm == "atelier":
                 (ws / _instruction_filename(cli_driver)).write_text(ATELIER_CLAUDE_MD)
         elif cli_driver == "atelier-run":
-            # Owned-agent arm: Atelier runs the whole loop headlessly on your own
-            # API credentials (ANTHROPIC_API_KEY / OPENAI_API_KEY / …). Pricing
-            # and savings differ from the host-plugin "atelier" arm because here
-            # Atelier owns context assembly, model routing, and caching end-to-end.
+            # Direct owned-session arm: Atelier owns prompt assembly, model routing,
+            # caching, and the executable tool loop on the caller's API credentials.
+            # The retained workspace is validated like every other coding arm.
             cmd = ["atelier", "run", "start", task.prompt(), "--yolo"]
             if model:
                 cmd += ["--model", model]
@@ -1340,8 +1350,12 @@ def run_arm(
         )
         wall_duration_ms = int((time.time() - started) * 1000)
         res = _parse_cli_result(proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms)
-        if not res.ok and not proc.stdout.strip():
-            res.result_excerpt = (proc.stderr or "")[:200]
+        if not res.ok and proc.stderr.strip():
+            diagnostics = proc.stderr.strip()
+            if res.result_excerpt:
+                res.result_excerpt = f"{res.result_excerpt}\n\n[stderr]\n{diagnostics}"[-4000:]
+            else:
+                res.result_excerpt = diagnostics[-4000:]
         return _apply_result_validity(task, res)
     finally:
         if mitm is not None:
@@ -1685,7 +1699,13 @@ def report(results: list[ArmResult]) -> str:
         if not model_usage:
             continue
 
-        total_breakdown = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "thinking": 0.0}
+        total_breakdown = {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0,
+            "thinking": 0.0,
+        }
         for model_id, usage in model_usage.items():
             breakdown = usage_cost_breakdown_usd(
                 model_id,
@@ -1725,11 +1745,27 @@ def report(results: list[ArmResult]) -> str:
     lines.append(row("duration_ms", [_as_float(aggregates[arm]["duration_ms"]) for arm in arms], ",.0f"))
     lines.append(row("num_turns", [_as_float(aggregates[arm]["num_turns"]) for arm in arms], ",.0f"))
     lines.append(row("input_tokens", [_as_float(aggregates[arm]["input_tokens"]) for arm in arms], ",.0f"))
-    lines.append(row("cache_read_tokens", [_as_float(aggregates[arm]["cache_read_tokens"]) for arm in arms], ",.0f"))
     lines.append(
-        row("cache_write_tokens", [_as_float(aggregates[arm]["cache_creation_tokens"]) for arm in arms], ",.0f")
+        row(
+            "cache_read_tokens",
+            [_as_float(aggregates[arm]["cache_read_tokens"]) for arm in arms],
+            ",.0f",
+        )
     )
-    lines.append(row("thinking_tokens", [_as_float(aggregates[arm]["thinking_tokens"]) for arm in arms], ",.0f"))
+    lines.append(
+        row(
+            "cache_write_tokens",
+            [_as_float(aggregates[arm]["cache_creation_tokens"]) for arm in arms],
+            ",.0f",
+        )
+    )
+    lines.append(
+        row(
+            "thinking_tokens",
+            [_as_float(aggregates[arm]["thinking_tokens"]) for arm in arms],
+            ",.0f",
+        )
+    )
     lines.append(row("output_tokens", [_as_float(aggregates[arm]["output_tokens"]) for arm in arms], ",.0f"))
     lines.append(row("saved_usd", [_as_float(aggregates[arm]["saved_usd"]) for arm in arms]))
     lines.append(row("saved_tokens", [_as_float(aggregates[arm]["saved_tokens"]) for arm in arms], ",.0f"))

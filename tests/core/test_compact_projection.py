@@ -29,7 +29,7 @@ def test_collapses_blank_runs() -> None:
 def test_python_semantics_preserved() -> None:
     """13-02-02: Python source remains parseable + AST-equivalent; leading
     indentation on every non-blank line is byte-preserved (D-10)."""
-    original = "def f(x):   \n" "    if x:\t\n" "        return x   \n" "\n" "\n" "\n" "    return 0\n"
+    original = "def f(x):   \n    if x:\t\n        return x   \n\n\n\n    return 0\n"
     out = build_compact_projection(original, "python").content
     # Compiles
     compile(out, "<test>", "exec")

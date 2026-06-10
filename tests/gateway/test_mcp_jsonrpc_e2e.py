@@ -568,7 +568,7 @@ def test_edit_atomic_rollback_e2e(mcp_env: Path) -> None:
 def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
     target = mcp_env / "service.py"
     target.write_text(
-        "class AuthService:\n" "    def verify(self, token: str) -> bool:\n" "        return token == 'ok'\n",
+        "class AuthService:\n    def verify(self, token: str) -> bool:\n        return token == 'ok'\n",
         encoding="utf-8",
     )
 
@@ -581,7 +581,7 @@ def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
                         "kind": "symbol",
                         "name": "AuthService.verify",
                         "mode": "replace",
-                        "new_body": ("def verify(self, token: str) -> bool:\n" "    return token.startswith('ok')"),
+                        "new_body": ("def verify(self, token: str) -> bool:\n    return token.startswith('ok')"),
                     }
                 ]
             },

@@ -104,12 +104,12 @@ class ProofGateConfig(BaseModel):
     )
     premium_only_baseline_cost_per_accepted_patch: float = Field(
         default=1.0,
-        description=("Baseline cost per accepted patch if all tasks used premium tier. " "Routing must beat this."),
+        description=("Baseline cost per accepted patch if all tasks used premium tier. Routing must beat this."),
     )
     premium_only_baseline_accepted_patch_rate: float = Field(
         default=0.80,
         description=(
-            "Baseline accepted-patch rate if all tasks used premium tier. " "Routing must stay within 0.03 of this."
+            "Baseline accepted-patch rate if all tasks used premium tier. Routing must stay within 0.03 of this."
         ),
     )
     routing_regression_rate_max: float = Field(default=0.02, description="Maximum routing regression rate (2%).")

@@ -50,7 +50,7 @@ from atelier.infra.runtime.stack_lifecycle import (
 )
 
 
-@click.group("background")
+@click.group("background", hidden=True)
 def background_group() -> None:
     """Manage Atelier background services (systemd on Linux, launchd on macOS)."""
 
@@ -76,6 +76,7 @@ def background_install(
     root = ctx.obj["root"]
     project_root = _project_root()
     atelier_bin = shutil.which("atelier") or str(Path(sys.argv[0]).resolve())
+    atelierd_bin = shutil.which("atelierd") or str(Path(atelier_bin).parent / "atelierd")
 
     if with_letta and not shutil.which("docker"):
         click.echo(
@@ -130,17 +131,16 @@ WantedBy=default.target
 
         if with_stack:
             stack_content = f"""[Unit]
-Description=Atelier Visualization Stack
+Description=Atelier HTTP Service
 After={CONTROLLER_UNIT}
 
 [Service]
 Type=simple
 WorkingDirectory={project_root}
-ExecStart={atelier_bin} --root {root} stack run
-ExecStop={atelier_bin} --root {root} stack stop
-Restart=always
+ExecStart={atelierd_bin} start
+Restart=on-failure
+RestartSec=5
 Environment=ATELIER_ROOT={root}
-Environment=ATELIER_STACK_ROOT={root}
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

@@ -1,4 +1,5 @@
 """Tests for MCP server config discovery and process lifecycle."""
+
 from __future__ import annotations
 
 import json

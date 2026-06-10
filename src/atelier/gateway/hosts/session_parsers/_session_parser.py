@@ -780,9 +780,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
             continue
         if et == "message" and str(ev.get("role") or "") == "assistant":
             model = str(ev.get("model") or current_model or "").strip()
-            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
-                ev.get("usage")
-            )
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
             if model or in_t or out_t or cached_t or cache_write_t:
                 saw_flat_usage = True
                 _record_usage_turn(
@@ -805,8 +803,8 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         total_usage = info.get("total_token_usage") or {}
         model = current_model or str(payload.get("model") or "").strip()
         model_key = model or "_default"
-        total_in, total_out, total_reason, total_think, cached_total, cache_write_total = (
-            _extract_codex_usage(total_usage)
+        total_in, total_out, total_reason, total_think, cached_total, cache_write_total = _extract_codex_usage(
+            total_usage
         )
         if model_key not in legacy_totals:
             legacy_totals[model_key] = {
@@ -1680,9 +1678,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
                 turns.append(_turn("thinking", t[:80], t, at=at, raw=ev))
         elif et == "message":
             role = ev.get("role", "")
-            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
-                ev.get("usage")
-            )
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
             tokens = {
                 "in": max(in_t - cached_t, 0),
                 "out": out_t,

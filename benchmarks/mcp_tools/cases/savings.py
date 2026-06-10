@@ -429,9 +429,9 @@ def _assert_outline(result: dict[str, Any]) -> None:
     if isinstance(outline, dict):
         symbols = outline.get("symbols") or []
         text = outline.get("text") or ""
-        assert len(symbols) > 0 or len(text) > 10, (
-            f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — " "likely a silent parse failure"
-        )
+        assert (
+            len(symbols) > 0 or len(text) > 10
+        ), f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — likely a silent parse failure"
 
 
 def _assert_range(result: dict[str, Any]) -> None:
