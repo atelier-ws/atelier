@@ -160,11 +160,17 @@ async fn run_app(
     // mpsc channel for commands arriving from browser clients (raw JSON lines).
     let (web_cmd_tx, mut web_cmd_rx) = tokio::sync::mpsc::channel::<String>(100);
 
+    // Shared current session ID — updated on SessionStarted so the web terminal
+    // auto-resumes the right session when a browser connects.
+    let current_session_id: std::sync::Arc<std::sync::Mutex<String>> =
+        std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+
     // Only spawn web/tunnel if we have a valid port (not --no-web mode).
     if web_port > 0 {
         let event_tx = event_bcast.clone();
+        let session_id_for_web = current_session_id.clone();
         tokio::spawn(async move {
-            let _ = web::start_web_server(web_port, event_tx, web_cmd_tx).await;
+            let _ = web::start_web_server(web_port, event_tx, web_cmd_tx, session_id_for_web).await;
         });
     }
 
@@ -296,6 +302,14 @@ async fn run_app(
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
         }
+        // Sync session_id to web bridge whenever it changes
+        if !app.session_id.is_empty() {
+            if let Ok(mut guard) = current_session_id.try_lock() {
+                if *guard != app.session_id {
+                    *guard = app.session_id.clone();
+                }
+            }
+        }
 
         // Forward commands from browser clients to the backend.
         while let Ok(raw) = web_cmd_rx.try_recv() {
@@ -348,13 +362,22 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
-    // Support BOTH Shift+Enter and Alt+Enter for multiline input — checked first
-    // so no other handler can swallow it. Alt+Enter reliably arrives as `ESC+\r`;
-    // Shift+Enter works in terminals that report the SHIFT modifier on Enter.
-    if key.code == KeyCode::Enter
-        && (key.modifiers.contains(KeyModifiers::SHIFT)
-            || key.modifiers.contains(KeyModifiers::ALT))
-    {
+    // Newline in multiline input — multiple shortcuts for cross-terminal compatibility:
+    //  • Shift+Enter  — works in kitty/WezTerm/foot with keyboard enhancement protocol
+    //  • Alt+Enter    — works in most terminals (sends ESC+CR)
+    //  • Ctrl+Enter   — works in some terminals
+    //  • Ctrl+J       — universal fallback (sends 0x0A in ALL terminals)
+    //  • Ctrl+O       — additional fallback
+    let is_newline_key = match key.code {
+        KeyCode::Enter => {
+            key.modifiers.contains(KeyModifiers::SHIFT)
+                || key.modifiers.contains(KeyModifiers::ALT)
+                || key.modifiers.contains(KeyModifiers::CONTROL)
+        }
+        KeyCode::Char('j') | KeyCode::Char('o') => key.modifiers.contains(KeyModifiers::CONTROL),
+        _ => false,
+    };
+    if is_newline_key {
         app.input.insert_newline();
         return Ok(());
     }
