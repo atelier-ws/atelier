@@ -581,12 +581,12 @@ impl<'a> App<'a> {
                         .filter(|b| !b.is_empty())
                         .map(|b| format!("  [{b}]"))
                         .unwrap_or_default();
-                    self.push_system(format!("\u{25c6} {project_name}{branch_str}"));
+                    self.push_system(format!("{project_name}{branch_str}"));
                 }
                 if let Some(m) = model {
                     self.current_model = m.clone();
                     let short = m.rsplit('/').next().unwrap_or(&m).to_string();
-                    self.push_system(format!("\u{25c6} model: {short}"));
+                    self.push_system(format!("model: {short}"));
                 }
                 if let Some(b) = git_branch {
                     self.git_branch = b;
@@ -594,7 +594,7 @@ impl<'a> App<'a> {
                 self.needs_api_key = !has_api_key.unwrap_or(true);
                 if let Some(port) = self.web_port {
                     self.push_system(format!(
-                        "\u{25c6} http://localhost:{port}  (Ctrl+L side panel · ? help)"
+                        "http://localhost:{port}  (? help · Ctrl+K commands)"
                     ));
                 }
             }
