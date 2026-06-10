@@ -201,6 +201,7 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ),
     ("rewind", "Restore to checkpoint: /rewind [id]"),
     ("resume", "Resume a saved session (alias: /sessions)"),
+    ("timeline", "Browse sessions in a navigable timeline overlay"),
     (
         "shell",
         "Run a shell command directly: !<cmd> or /shell <cmd>",
@@ -287,6 +288,32 @@ pub enum ActiveOverlay {
     ModelPicker { selected: usize, models: Vec<(String, String)> },
     AuthPicker { selected: usize, providers: Vec<String> },
     CommandPalette { query: String, selected: usize },
+    SessionTimeline { entries: Vec<SessionTimelineEntry>, selected: usize },
+    WhichKey { leader_pressed: bool, pending_keys: Vec<char> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionTimelineEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub message_count: usize,
+    pub size_kb: f32,
+    pub summary: String, // first 60 chars of first message
+}
+
+/// Convert a parsed session-list entry into a richer timeline entry.
+/// The flat session-list text only carries id/timestamp/size, so the message
+/// count is estimated from the on-disk size and the summary is left empty until
+/// the backend supplies one.
+fn session_entry_to_timeline(e: SessionListEntry) -> SessionTimelineEntry {
+    let message_count = (e.size_kb.round() as usize).max(1);
+    SessionTimelineEntry {
+        id: e.id,
+        timestamp: e.timestamp,
+        message_count,
+        size_kb: e.size_kb,
+        summary: String::new(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -417,6 +444,7 @@ pub struct App<'a> {
     pub tool_count: usize,
     pub selection_mode: bool,         // when true, mouse capture is OFF — native terminal selection works
     pub pending_mouse_toggle: Option<bool>, // Some(true)=enable capture, Some(false)=disable it
+    pub tool_expanded: std::collections::HashSet<String>, // ids of tools whose output is expanded inline
 }
 
 impl<'a> App<'a> {
@@ -475,6 +503,7 @@ impl<'a> App<'a> {
             tool_count: 0,
             selection_mode: false,
             pending_mouse_toggle: None,
+            tool_expanded: std::collections::HashSet::new(),
         }
     }
 
@@ -569,6 +598,14 @@ impl<'a> App<'a> {
                     if !parsed.is_empty() {
                         self.session_list = parsed;
                         self.session_picker_selected = 0;
+                        return;
+                    }
+                }
+                if let ActiveOverlay::SessionTimeline { entries, selected } = &mut self.active_overlay {
+                    let parsed = parse_session_list(&text);
+                    if !parsed.is_empty() {
+                        *entries = parsed.into_iter().map(session_entry_to_timeline).collect();
+                        *selected = 0;
                         return;
                     }
                 }
@@ -797,6 +834,16 @@ impl<'a> App<'a> {
             FocusedPane::Input => FocusedPane::Conversation,
             FocusedPane::Conversation => FocusedPane::Input,
         };
+    }
+
+    /// Expand/collapse the inline output of the most recent (last) tool call.
+    pub fn toggle_last_tool_expanded(&mut self) {
+        if let Some(tool) = self.tools.last() {
+            let id = tool.id.clone();
+            if !self.tool_expanded.remove(&id) {
+                self.tool_expanded.insert(id);
+            }
+        }
     }
 
     pub fn filtered_slash_commands(&self, filter: &str) -> Vec<(&'static str, &'static str)> {

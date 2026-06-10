@@ -553,6 +553,80 @@ async fn handle_key(
             }
             return Ok(());
         }
+        ActiveOverlay::SessionTimeline { .. } => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Up => {
+                    if let ActiveOverlay::SessionTimeline { selected, .. } =
+                        &mut app.active_overlay
+                    {
+                        *selected = selected.saturating_sub(1);
+                    }
+                }
+                KeyCode::Down => {
+                    if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &mut app.active_overlay
+                    {
+                        if *selected + 1 < entries.len() {
+                            *selected += 1;
+                        }
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &mut app.active_overlay
+                    {
+                        if *selected < entries.len() {
+                            entries.remove(*selected);
+                            if *selected >= entries.len() {
+                                *selected = entries.len().saturating_sub(1);
+                            }
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    let id = if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &app.active_overlay
+                    {
+                        entries.get(*selected).map(|e| e.id.clone())
+                    } else {
+                        None
+                    };
+                    if let Some(id) = id {
+                        app.active_overlay = ActiveOverlay::None;
+                        app.push_system_pub(format!("resuming session {id}"));
+                        send_command(
+                            writer,
+                            &FrontendCommand::UserMessage {
+                                text: format!("Resume session {id}"),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::WhichKey { .. } => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                // Ctrl+<anything> (including pressing the Ctrl+X leader again) dismisses.
+                KeyCode::Char(_) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Char(c) => {
+                    app.active_overlay = ActiveOverlay::None;
+                    execute_leader_action(app, c, writer).await?;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
         ActiveOverlay::None => {}
     }
 
@@ -1049,6 +1123,13 @@ async fn handle_key(
         KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.show_side_panel = !app.show_side_panel;
         }
+        // Ctrl+X: which-key leader — show discoverable leader keybindings
+        KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.active_overlay = ActiveOverlay::WhichKey {
+                leader_pressed: true,
+                pending_keys: Vec::new(),
+            };
+        }
         // Ctrl+\  — toggle selection mode: disables mouse capture so the terminal can
         // natively select / copy text with the mouse (click+drag). Press again to re-enable.
         KeyCode::Char('\\') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1176,27 +1257,28 @@ async fn handle_key(
                     app.active_overlay = ActiveOverlay::AgentPicker { selected: 0 };
                     return Ok(());
                 }
+                if name == "timeline" {
+                    app.active_overlay = ActiveOverlay::SessionTimeline {
+                        entries: Vec::new(),
+                        selected: 0,
+                    };
+                    send_command(
+                        writer,
+                        &FrontendCommand::UserCommand {
+                            name: "sessions".to_string(),
+                            args: vec![],
+                        },
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 if name == "model" {
-                    let models = vec![
-                        ("anthropic/claude-opus-4-8".to_string(), "Anthropic, frontier, $15/Mtok".to_string()),
-                        ("anthropic/claude-sonnet-4-5".to_string(), "Anthropic, balanced, $3/Mtok".to_string()),
-                        ("openai/gpt-4o".to_string(), "OpenAI, balanced, $2.5/Mtok".to_string()),
-                        ("openai/gpt-4o-mini".to_string(), "OpenAI, cheap, $0.15/Mtok".to_string()),
-                        ("groq/llama-3.3-70b-versatile".to_string(), "Groq, fast, $0.59/Mtok".to_string()),
-                        ("ollama/llama3.2".to_string(), "Local, free, needs Ollama".to_string()),
-                        ("openrouter/anthropic/claude-opus-4-8".to_string(), "OpenRouter \u{2192} Claude".to_string()),
-                        ("bedrock/anthropic.claude-sonnet-4-5-v1:0".to_string(), "AWS Bedrock Claude".to_string()),
-                    ];
+                    let models = default_model_list();
                     app.active_overlay = ActiveOverlay::ModelPicker { selected: 0, models };
                     return Ok(());
                 }
                 if name == "auth" {
-                    let providers = vec![
-                        "anthropic".to_string(), "openai".to_string(), "google".to_string(),
-                        "groq".to_string(), "mistral".to_string(), "openrouter".to_string(),
-                        "ollama".to_string(), "bedrock".to_string(), "azure".to_string(),
-                        "vertex".to_string(), "together".to_string(), "fireworks".to_string(),
-                    ];
+                    let providers = default_auth_providers();
                     app.active_overlay = ActiveOverlay::AuthPicker { selected: 0, providers };
                     return Ok(());
                 }
@@ -1338,6 +1420,16 @@ async fn handle_key(
             if app.focused_pane == FocusedPane::Input {
                 app.input.input(Event::Key(key));
             }
+        }
+        // Space / e in conversation focus expand/collapse the most recent tool's output.
+        KeyCode::Char(' ') if matches!(app.focused_pane, FocusedPane::Conversation) => {
+            app.toggle_last_tool_expanded();
+        }
+        KeyCode::Char('e')
+            if key.modifiers == KeyModifiers::NONE
+                && matches!(app.focused_pane, FocusedPane::Conversation) =>
+        {
+            app.toggle_last_tool_expanded();
         }
         _ => {
             if app.focused_pane == FocusedPane::Input {
@@ -1486,6 +1578,124 @@ async fn execute_context_action(
             )
             .await?;
         }
+    }
+    Ok(())
+}
+
+/// Built-in model list shown by the `/model` picker and the which-key leader.
+fn default_model_list() -> Vec<(String, String)> {
+    vec![
+        ("anthropic/claude-opus-4-8".to_string(), "Anthropic, frontier, $15/Mtok".to_string()),
+        ("anthropic/claude-sonnet-4-5".to_string(), "Anthropic, balanced, $3/Mtok".to_string()),
+        ("openai/gpt-4o".to_string(), "OpenAI, balanced, $2.5/Mtok".to_string()),
+        ("openai/gpt-4o-mini".to_string(), "OpenAI, cheap, $0.15/Mtok".to_string()),
+        ("groq/llama-3.3-70b-versatile".to_string(), "Groq, fast, $0.59/Mtok".to_string()),
+        ("ollama/llama3.2".to_string(), "Local, free, needs Ollama".to_string()),
+        ("openrouter/anthropic/claude-opus-4-8".to_string(), "OpenRouter \u{2192} Claude".to_string()),
+        ("bedrock/anthropic.claude-sonnet-4-5-v1:0".to_string(), "AWS Bedrock Claude".to_string()),
+    ]
+}
+
+/// Built-in provider list shown by the `/auth` picker and the which-key leader.
+fn default_auth_providers() -> Vec<String> {
+    vec![
+        "anthropic".to_string(), "openai".to_string(), "google".to_string(),
+        "groq".to_string(), "mistral".to_string(), "openrouter".to_string(),
+        "ollama".to_string(), "bedrock".to_string(), "azure".to_string(),
+        "vertex".to_string(), "together".to_string(), "fireworks".to_string(),
+    ]
+}
+
+/// Execute a which-key leader action chosen from the Ctrl+X overlay.
+async fn execute_leader_action(
+    app: &mut App<'_>,
+    key: char,
+    writer: &mut BufWriter<ChildStdin>,
+) -> Result<()> {
+    match key {
+        // n — New session
+        'n' => {
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "newtask".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // l — Session list
+        'l' => {
+            app.show_session_picker = true;
+            app.session_list.clear();
+            app.session_picker_selected = 0;
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "sessions".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // g — Session timeline
+        'g' => {
+            app.active_overlay = ActiveOverlay::SessionTimeline {
+                entries: Vec::new(),
+                selected: 0,
+            };
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "sessions".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // c — Compact / summarize
+        'c' => {
+            app.push_system_pub("/compact".to_string());
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "compact".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // m — Model picker
+        'm' => {
+            app.active_overlay = ActiveOverlay::ModelPicker {
+                selected: 0,
+                models: default_model_list(),
+            };
+        }
+        // a — Auth / provider
+        'a' => {
+            app.active_overlay = ActiveOverlay::AuthPicker {
+                selected: 0,
+                providers: default_auth_providers(),
+            };
+        }
+        // b — Toggle side panel
+        'b' => {
+            app.show_side_panel = !app.show_side_panel;
+        }
+        // x — Export conversation
+        'x' => {
+            app.push_system_pub("/export".to_string());
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "export".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        _ => {}
     }
     Ok(())
 }
