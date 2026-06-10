@@ -1603,7 +1603,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    "Type a message · Ctrl+J for newline · /command",
+                    "Type a message · Alt + Enter for newline · /command",
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));

@@ -307,6 +307,31 @@ async fn run_app(
 
     Ok(())
 }
+/// Standalone web server mode (`--web-server`):
+/// Runs the HTTP/WS terminal server without a TUI. Useful as a background daemon
+/// so the web terminal is always available even when atelier-tui isn't in the foreground.
+/// Each browser connection spawns a fresh TUI session via the PTY bridge.
+async fn run_web_server_only(port: u16) -> Result<()> {
+    let (event_tx, _) = tokio::sync::broadcast::channel::<String>(256);
+    let (web_cmd_tx, _web_cmd_rx) = tokio::sync::mpsc::channel::<String>(100);
+    let session_id = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+
+    // Try to start a cloudflare tunnel for remote access
+    let port_for_tunnel = port;
+    tokio::spawn(async move {
+        if let Some((url, mut child)) = tunnel::try_start_tunnel(port_for_tunnel).await {
+            eprintln!("  ◆ Atelier web terminal: {url}");
+            let _ = child.wait().await;
+        }
+    });
+
+    eprintln!("  ◆ Atelier web server: http://localhost:{port}");
+    eprintln!("  ◆ Connect at http://localhost:{port} — each visit spawns a new session");
+    eprintln!("  Press Ctrl+C to stop");
+
+    web::start_web_server(port, event_tx, web_cmd_tx, session_id).await
+}
+
 async fn find_available_port(start: u16) -> u16 {
     for port in start..start.saturating_add(100) {
         if tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
@@ -1270,6 +1295,23 @@ async fn handle_key(
         // Ctrl+L: toggle side panel
         KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.show_side_panel = !app.show_side_panel;
+        }
+        // F1 / Ctrl+Shift+D — key event inspector: shows exactly what crossterm sees
+        // Use this to diagnose Shift+Enter by pressing F1 then Shift+Enter
+        KeyCode::F(1) => {
+            app.conversation.push(ConversationEntry {
+                role: Role::System,
+                text: "Key inspector ON — press any key to see what crossterm reports (F1 again to test F1)".to_string(),
+            });
+            app.key_debug = true;
+        }
+        // Catch-all for key debug mode: show what any key looks like
+        _ if app.key_debug => {
+            app.conversation.push(ConversationEntry {
+                role: Role::System,
+                text: format!("key: code={:?}  modifiers={:?}  kind={:?}", key.code, key.modifiers, key.kind),
+            });
+            app.key_debug = false;
         }
         // Ctrl+X: which-key leader — show discoverable leader keybindings
         KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
