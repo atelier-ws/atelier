@@ -56,7 +56,7 @@ def render_run_summary(result: Any) -> str:
     verdict_str = result.grader_verdict if result.grader_verdict is not None else "unknown"
 
     lines = [
-        f"{_BOLD}{_CYAN}● {result.task_id}{_RESET}  " f"[mode={result.mode}  rep={result.rep}]",
+        f"{_BOLD}{_CYAN}● {result.task_id}{_RESET}  [mode={result.mode}  rep={result.rep}]",
         f"  Verdict: {vc}{_BOLD}{verdict_str.upper()}{_RESET}",
         (
             f"  tokens={result.input_tokens}in/{result.output_tokens}out  "

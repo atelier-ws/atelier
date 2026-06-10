@@ -62,7 +62,7 @@ def test_search_reranker_reorders_top_window_and_preserves_tail() -> None:
         hits,
         mode="hybrid",
         scope="repo",
-        source_loader=lambda symbol: (f"def {symbol.symbol_name}() -> str:\n    return '{symbol.symbol_name}'\n"),
+        source_loader=lambda symbol: f"def {symbol.symbol_name}() -> str:\n    return '{symbol.symbol_name}'\n",
     )
 
     assert [symbol.symbol_id for symbol in reranked] == ["s6", "s5", "s4", "s2", "s3", "s1", "s7"]

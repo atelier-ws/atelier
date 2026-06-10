@@ -100,7 +100,6 @@ host_is_detected() {
         copilot) command -v code >/dev/null 2>&1 ;;
         hermes) [[ -n "${HERMES_HOME:-}" ]] || [[ -n "${HERMES_SESSION_ID:-}" ]] || command -v hermes >/dev/null 2>&1 ;;
         antigravity) command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1 ;;
-        atelier-tui) command -v atelier-tui >/dev/null 2>&1 || [[ -f "${HOME}/.atelier/bin/atelier-tui" ]] ;;
         *) return 1 ;;
     esac
 }
@@ -113,7 +112,6 @@ enable_detected_hosts_by_default() {
     host_is_detected copilot && DO_COPILOT=true
     host_is_detected hermes && DO_HERMES=true
     host_is_detected antigravity && DO_ANTIGRAVITY=true
-    host_is_detected atelier-tui && DO_ATELIER_TUI=true
 }
 
 run_host_installer() {
@@ -221,14 +219,13 @@ DO_OPENCODE=false
 DO_COPILOT=false
 DO_HERMES=false
 DO_ANTIGRAVITY=false
-DO_ATELIER_TUI=false
 EXPLICIT=false
 PASSTHROUGH=()
 CLAUDE_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true; DO_ATELIER_TUI=true ;;
+        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true ;;
         --claude)    EXPLICIT=true; DO_CLAUDE=true ;;
         --codex)     EXPLICIT=true; DO_CODEX=true ;;
         --cursor)    EXPLICIT=true; DO_CURSOR=true ;;
@@ -236,7 +233,6 @@ while [[ $# -gt 0 ]]; do
         --copilot)   EXPLICIT=true; DO_COPILOT=true ;;
         --hermes)    EXPLICIT=true; DO_HERMES=true ;;
         --antigravity) EXPLICIT=true; DO_ANTIGRAVITY=true ;;
-        --atelier-tui) EXPLICIT=true; DO_ATELIER_TUI=true ;;
         --dry-run|--print-only|--strict) PASSTHROUGH+=("$1") ;;
         --workspace)
             if [ $# -lt 2 ]; then
@@ -277,7 +273,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
     echo "  ${C_PURPLE}5${C_RESET}) GitHub Copilot"
     echo "  ${C_PURPLE}6${C_RESET}) Hermes Agent"
     echo "  ${C_PURPLE}7${C_RESET}) Antigravity / agy"
-    echo "  ${C_PURPLE}8${C_RESET}) Atelier TUI"
     echo "  ${C_PURPLE}a${C_RESET}) All"
     echo "  ${C_PURPLE}n${C_RESET}) None (skip agent installs)"
     echo ""
@@ -286,11 +281,10 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
     runtime_answer="${runtime_answer:-a}"
 
     # Reset all to false — user picks explicitly
-    DO_CLAUDE=false; DO_CODEX=false; DO_CURSOR=false; DO_OPENCODE=false; DO_COPILOT=false; DO_HERMES=false; DO_ANTIGRAVITY=false; DO_ATELIER_TUI=false
-
+    DO_CLAUDE=false; DO_CODEX=false; DO_CURSOR=false; DO_OPENCODE=false; DO_COPILOT=false; DO_HERMES=false; DO_ANTIGRAVITY=false 
     case "$runtime_answer" in
         a|A|all|ALL)
-            DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true; DO_ATELIER_TUI=true
+            DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true
             echo "  → All agents"
             ;;
         n|N|none|NONE|skip|SKIP|0)
@@ -308,7 +302,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
                     5) DO_COPILOT=true ;;
                     6) DO_HERMES=true ;;
                     7) DO_ANTIGRAVITY=true ;;
-                    8) DO_ATELIER_TUI=true ;;
                     *) echo "  ${C_YELLOW}Unknown choice: $choice${C_RESET}" ;;
                 esac
             done
@@ -320,7 +313,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
             $DO_COPILOT   && selected="$selected copilot"
             $DO_HERMES    && selected="$selected hermes"
             $DO_ANTIGRAVITY && selected="$selected antigravity"
-            $DO_ATELIER_TUI && selected="$selected atelier-tui"
             echo "  → Selected:${selected:- none}"
             ;;
     esac
@@ -329,7 +321,7 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
 
     # ── Scope selection ────────────────────────────────────────────────────
     # Only prompt for scope if at least one runtime was selected
-    if $DO_CLAUDE || $DO_CODEX || $DO_CURSOR || $DO_OPENCODE || $DO_COPILOT || $DO_HERMES || $DO_ANTIGRAVITY || $DO_ATELIER_TUI; then
+    if $DO_CLAUDE || $DO_CODEX || $DO_CURSOR || $DO_OPENCODE || $DO_COPILOT || $DO_HERMES || $DO_ANTIGRAVITY; then
         echo "  ${C_YELLOW}Install scope:${C_RESET}"
         echo ""
         echo "  ${C_PURPLE}1${C_RESET}) Global — available in all projects"
@@ -459,7 +451,6 @@ run_installer() {
 
     case "$host" in
         claude) script="${SCRIPT_DIR}/install_claude.sh" ;;
-        atelier-tui) script="${SCRIPT_DIR}/install_atelier_tui.sh" ;;
         *) script="${SCRIPT_DIR}/install_${host}.sh" ;;
     esac
 
@@ -572,7 +563,6 @@ $DO_OPENCODE  && run_installer opencode
 $DO_COPILOT   && run_installer copilot
 $DO_HERMES    && run_installer hermes
 $DO_ANTIGRAVITY && run_installer antigravity
-$DO_ATELIER_TUI && run_installer atelier-tui
 
 echo ""
 print_message "$C_PURPLE" "══════════════════════════════════════════════"

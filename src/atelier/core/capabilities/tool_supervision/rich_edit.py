@@ -92,6 +92,7 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     matched_lines = matched.splitlines()
     if len(new_lines) <= 1 or not old_lines or not matched_lines:
         return new
+    trailing_newline = "\n" if new.endswith("\n") else ""
     base_indent_text = _leading_whitespace(matched_lines[0]) if matched_lines else ""
     if not base_indent_text and len(old_lines) > 1:
         base_indent_text = _leading_whitespace(old_lines[1])
@@ -113,9 +114,9 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     matched_indent = len(matched_lines[0]) - len(matched_lines[0].lstrip())
     delta = matched_indent - old_indent
     if delta <= 0:
-        return "\n".join(new_lines)
+        return "\n".join(new_lines) + trailing_newline
     prefix = " " * delta
-    return "\n".join((prefix + line if line.strip() else line) for line in new_lines)
+    return "\n".join((prefix + line if line.strip() else line) for line in new_lines) + trailing_newline
 
 
 def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_string: str) -> tuple[str, int, int]:

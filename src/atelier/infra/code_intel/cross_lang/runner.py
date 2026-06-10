@@ -104,7 +104,7 @@ class CrossLangRunner:
                 f"""
                 SELECT symbol_id, file_path
                 FROM symbols
-                WHERE {' AND '.join(clauses)}
+                WHERE {" AND ".join(clauses)}
                 ORDER BY file_path, start_line
                 LIMIT 1
                 """,

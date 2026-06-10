@@ -400,7 +400,7 @@ class ContextStore:
         from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
 
         conn.executescript(
-            "CREATE TABLE IF NOT EXISTS _schema_migrations" " (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS _schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
         )
         applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
         for name in SQLITE_MIGRATIONS:
@@ -416,7 +416,7 @@ class ContextStore:
                     if "duplicate column name" not in msg and "already exists" not in msg:
                         raise
             conn.execute(
-                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at)" " VALUES (?, datetime('now'))",
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES (?, datetime('now'))",
                 (name,),
             )
             conn.commit()

@@ -90,6 +90,19 @@ not compete with host-native edit tools for ordinary coding.
    - Backup directory cleaned up on success
    - Host integration docs still state native edit tools are the default path
 
+## Confirmed follow-up defect
+
+On 2026-06-10, rich line-scoped edits repeatedly corrupted adjacent Python
+newlines and indentation while reporting a successful write. The defect
+reproduced in both a large production function and a test module, including
+single block replacements used to repair earlier corruption.
+
+A dedicated edit-tool fix must add a regression fixture with adjacent function
+boundaries and multiple replacements, assert the exact resulting bytes, and
+reject or roll back any write whose output differs from the requested patch.
+Until that lands, use the host-native patch flow after the first malformed
+Atelier edit result.
+
 ## Acceptance tests
 
 ```bash

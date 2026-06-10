@@ -82,7 +82,7 @@ class ContextDedup:
         if force or seen_ordinal is None:
             self._record(st, content_hash)
             return None
-        stub = "[atelier dedup] read #" f"{seen_ordinal} — {len(content)} chars omitted. " "force=true re-emits."
+        stub = f"[atelier dedup] read #{seen_ordinal} — {len(content)} chars omitted. force=true re-emits."
         return stub, len(content) - len(stub)
 
 

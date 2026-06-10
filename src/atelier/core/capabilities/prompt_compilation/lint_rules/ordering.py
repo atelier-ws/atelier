@@ -61,8 +61,7 @@ def _stability_override(compiled: CompiledPrompt, _previous: CompiledPrompt | No
                     "severity": "warn",
                     "block_id": block.id,
                     "message": (
-                        f"Block {block.id!r} overrides default stability; "
-                        f"reason={block.stability_override_reason!r}."
+                        f"Block {block.id!r} overrides default stability; reason={block.stability_override_reason!r}."
                     ),
                     "fix_hint": "Confirm this override is required for cache safety.",
                 }

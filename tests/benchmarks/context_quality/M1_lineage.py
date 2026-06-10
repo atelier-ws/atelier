@@ -250,9 +250,9 @@ def test_m1_commit_chunks_populated() -> None:
         chunk_count = int(count_row["n"]) if count_row else 0
     if chunk_count == 0:
         pytest.skip("commit_chunks empty — run bootstrap: code op=search on this repo first")
-    assert chunk_count >= 100, (
-        f"Only {chunk_count} commit chunks found. " f"Bootstrap may be incomplete (target: ~425 for the atelier repo)."
-    )
+    assert (
+        chunk_count >= 100
+    ), f"Only {chunk_count} commit chunks found. Bootstrap may be incomplete (target: ~425 for the atelier repo)."
     print(f"commit_chunks populated: {chunk_count} rows")
 
 

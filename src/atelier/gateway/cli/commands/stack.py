@@ -47,7 +47,7 @@ from atelier.infra.runtime.stack_lifecycle import (
 )
 
 
-@click.group("stack")
+@click.group("stack", hidden=True)
 def stack_group() -> None:
     """Manage the optional visualization stack (service + frontend)."""
 

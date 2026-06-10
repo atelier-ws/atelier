@@ -979,6 +979,97 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
     assert target.read_text(encoding="utf-8") == "hello atelier"
 
 
+def test_smart_edit_flags_existing_test_contract_changes(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.rs")
+    target.parent.mkdir()
+    target.write_text('assert_eq!(message, "old");\n', encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": 'assert_eq!(message, "old");',
+                        "new_string": 'assert_eq!(message, "new");',
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["rolled_back"] is True
+    assert payload["writes"] == 0
+    assert payload["contract_review"]["required"] is True
+    assert payload["contract_review"]["paths"] == ["tests/test_parser.rs"]
+    assert 'assert_eq!(message, "old");' in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_reviewed_existing_test_contract_change(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.rs")
+    target.parent.mkdir()
+    target.write_text('assert_eq!(message, "old");\n', encoding="utf-8")
+    evidence = "The user explicitly requested changing the parser error contract."
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": 'assert_eq!(message, "old");',
+                        "new_string": 'assert_eq!(message, "new");',
+                    }
+                ],
+                "post_edit_hooks": False,
+                "allow_test_contract_change": True,
+                "contract_change_evidence": evidence,
+            },
+        )
+    )
+
+    assert payload["rolled_back"] is False
+    assert payload["contract_review"]["evidence"] == evidence
+    assert 'assert_eq!(message, "new");' in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_does_not_flag_new_regression_test(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/regression/issue.rs")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "new_string": "#[test]\nfn regression() {}\n",
+                        "overwrite": True,
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert "contract_review" not in payload
+
+
 def test_smart_edit_rejects_mixed_descriptor_families(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     target = tmp_path / "mixed.txt"
@@ -1315,9 +1406,7 @@ def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root:
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "tests" / "test_orders.py").write_text(
@@ -1583,9 +1672,7 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "checkout.py").write_text(
@@ -1676,9 +1763,7 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
 
@@ -1909,9 +1994,7 @@ def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "line-299" in stdout, f"tail not preserved for failing command; stdout tail:\n{stdout[-500:]}"
 
 
-def test_shell_timeout_terminates_child_process_group(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.gateway.adapters.mcp_server import _run_shell_tool
 
     marker = tmp_path / "child-finished"
@@ -1926,3 +2009,125 @@ def test_shell_timeout_terminates_child_process_group(
     assert result["exit_code"] == -1
     assert "timed out after 1s" in result["stderr"]
     assert not marker.exists()
+
+
+def test_shell_long_timeout_auto_detaches_and_can_be_polled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "1")
+
+    # Fast command with a long timeout budget: completes inside the sync
+    # window and returns a plain finished result in a single turn — no poll.
+    fast = _run_shell_tool(
+        "python3 -c \"import time; time.sleep(0.1); print('done')\"",
+        timeout=10,
+    )
+    assert fast.get("status") != "running"
+    assert "session_id" not in fast
+    assert fast["exit_code"] == 0
+    assert fast["stdout"] == "done"
+
+    # Slow command: still running at the sync-window edge — detaches into a
+    # managed session that can be polled to completion.
+    started = _run_shell_tool(
+        "python3 -c \"import time; time.sleep(2); print('done')\"",
+        timeout=10,
+    )
+    assert started["status"] == "running"
+    assert started["session_id"]
+
+    deadline = time.monotonic() + 5
+    completed = started
+    while time.monotonic() < deadline:
+        time.sleep(0.2)
+        completed = _run_shell_tool(session_id=started["session_id"], action="poll")
+        if completed["status"] != "running":
+            break
+    assert completed["status"] == "completed"
+    assert completed["exit_code"] == 0
+    assert completed["stdout"] == "done"
+
+
+def test_shell_sync_wait_runs_long_timeout_synchronously(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # With sync_wait, a long timeout must not detach: completed result, no session.
+    result = _run_shell_tool("echo hi", timeout=1800, sync_wait=True)
+    assert result.get("status") != "running"
+    assert "session_id" not in result
+    assert result["exit_code"] == 0
+    assert result["stdout"] == "hi"
+
+    # Without sync_wait, a fast command still completes within the sync
+    # window in a single turn (detach only happens when still running at
+    # the window edge).
+    inline = _run_shell_tool("echo hi", timeout=1800)
+    assert inline.get("status") != "running"
+    assert "session_id" not in inline
+    assert inline["exit_code"] == 0
+    assert inline["stdout"] == "hi"
+
+
+def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    marker = tmp_path / "background-child-finished"
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_shell_tool(
+        f"python3 -c \"import time; time.sleep(2); open({str(marker)!r}, 'w').write('done')\"",
+        timeout=10,
+        background=True,
+    )
+    cancelled = _run_shell_tool(session_id=started["session_id"], action="cancel")
+    time.sleep(0.1)
+
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["exit_code"] == -1
+    assert "cancelled" in cancelled["stderr"].lower()
+    assert not marker.exists()
+
+
+def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    marker = tmp_path / "timed-out-child-finished"
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_shell_tool(
+        f"python3 -c \"import time; time.sleep(2); open({str(marker)!r}, 'w').write('done')\"",
+        timeout=1,
+        background=True,
+    )
+    time.sleep(1.2)
+    completed = _run_shell_tool(session_id=started["session_id"], action="poll")
+
+    assert completed["status"] == "timed_out"
+    assert completed["exit_code"] == -1
+    assert "timed out after 1s" in completed["stderr"]
+    assert not marker.exists()
+
+
+def test_shell_mcp_call_returns_managed_session_for_long_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "1")
+
+    response = _call(
+        "shell",
+        {
+            "command": 'python3 -c "import time; time.sleep(10)"',
+            "timeout": 30,
+        },
+    )
+    text = response["result"]["content"][0]["text"]
+    match = re.search(r"session_id=([a-f0-9]+)", text)
+
+    assert "status=running" in text
+    assert match is not None
+    cancelled = mcp_server._run_shell_tool(session_id=match.group(1), action="cancel")
+    assert cancelled["status"] == "cancelled"

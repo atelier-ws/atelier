@@ -229,7 +229,7 @@ def analyze_python(source: str) -> tuple[list[SymbolInfo], list[ImportInfo], str
     imp_count = len(imports)
     total_complexity = sum(s.complexity for s in symbols)
     ast_summary = (
-        f"python_ast:functions={fn_count};classes={cls_count};" f"imports={imp_count};complexity={total_complexity}"
+        f"python_ast:functions={fn_count};classes={cls_count};imports={imp_count};complexity={total_complexity}"
     )
     return symbols, imports, ast_summary, module_doc, total_complexity
 

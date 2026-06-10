@@ -44,7 +44,7 @@ def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GOOGLE_API_KEY", "google-key")
     monkeypatch.setattr(
         "shutil.which",
-        lambda command: (f"/usr/bin/{command}" if command in {"claude", "codex", "copilot"} else None),
+        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "copilot"} else None,
     )
     save_route_config(root, RouteConfig(enabled_vendors=["anthropic", "openai", "google"]))
 

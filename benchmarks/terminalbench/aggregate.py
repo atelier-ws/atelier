@@ -58,14 +58,11 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def summarize_cell(
-    records: list[dict[str, Any]], *, task_id: str, mode: str, confidence: float = 0.95
-) -> CellSummary:
+def summarize_cell(records: list[dict[str, Any]], *, task_id: str, mode: str, confidence: float = 0.95) -> CellSummary:
     filtered = [
         record
         for record in records
-        if str(record.get("task_id") or "") == task_id
-        and str(record.get("mode") or "").lower() == mode.lower()
+        if str(record.get("task_id") or "") == task_id and str(record.get("mode") or "").lower() == mode.lower()
     ]
     if not filtered:
         raise ValueError(f"no TerminalBench rows found for task_id={task_id!r} mode={mode!r}")
@@ -131,45 +128,32 @@ def summarize_runs(records: list[dict[str, Any]], *, confidence: float = 0.95) -
             matching = [
                 record
                 for record in records
-                if str(record.get("task_id") or "") == task_id
-                and str(record.get("mode") or "").lower() == mode
+                if str(record.get("task_id") or "") == task_id and str(record.get("mode") or "").lower() == mode
             ]
             if not matching:
                 continue
-            task_cells[mode] = summarize_cell(
-                records, task_id=task_id, mode=mode, confidence=confidence
-            ).to_dict()
+            task_cells[mode] = summarize_cell(records, task_id=task_id, mode=mode, confidence=confidence).to_dict()
         if task_cells:
             cells[task_id] = task_cells
 
     by_mode: dict[str, Any] = {}
     for mode in modes:
         arm = summarize_terminalbench_arm(records, mode=mode, confidence=confidence)
-        mode_records = [
-            record for record in records if str(record.get("mode") or "").lower() == mode
-        ]
+        mode_records = [record for record in records if str(record.get("mode") or "").lower() == mode]
         by_mode[mode] = {
             **arm.to_dict(),
             "counts": {"passed": arm.passed, "total": arm.total},
             "wilson_95": {"lower": arm.wilson_lower, "upper": arm.wilson_upper},
-            "input_tokens_sum": int(
-                sum(float(record.get("input_tokens") or 0) for record in mode_records)
-            ),
-            "output_tokens_sum": int(
-                sum(float(record.get("output_tokens") or 0) for record in mode_records)
-            ),
+            "input_tokens_sum": int(sum(float(record.get("input_tokens") or 0) for record in mode_records)),
+            "output_tokens_sum": int(sum(float(record.get("output_tokens") or 0) for record in mode_records)),
             "cache_creation_input_tokens_sum": int(
                 sum(float(record.get("cache_creation_input_tokens") or 0) for record in mode_records)
             ),
             "cache_read_input_tokens_sum": int(
                 sum(float(record.get("cache_read_input_tokens") or 0) for record in mode_records)
             ),
-            "latency_ms_mean": _mean(
-                [float(record.get("latency_ms") or 0) for record in mode_records]
-            ),
-            "latency_api_ms_mean": _mean(
-                [float(record.get("latency_api_ms") or 0) for record in mode_records]
-            ),
+            "latency_ms_mean": _mean([float(record.get("latency_ms") or 0) for record in mode_records]),
+            "latency_api_ms_mean": _mean([float(record.get("latency_api_ms") or 0) for record in mode_records]),
             "cost_usd_sum": sum(float(record.get("cost_usd") or 0) for record in mode_records),
         }
 
@@ -190,9 +174,7 @@ def summarize_runs(records: list[dict[str, Any]], *, confidence: float = 0.95) -
             "record_count": len(records),
             "tasks": tasks,
             "modes": modes,
-            "models": sorted(
-                {str(record.get("model") or "") for record in records if record.get("model")}
-            ),
+            "models": sorted({str(record.get("model") or "") for record in records if record.get("model")}),
         },
         "cells": cells,
         "by_mode": by_mode,

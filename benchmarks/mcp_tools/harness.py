@@ -172,9 +172,7 @@ def run_case(
             baseline_tokens = _tokens(measurement)
 
     if isinstance(response, dict):
-        probe_failure, spill_probe_tokens, spill_probe_hits = _probe_spilled_artifact(
-            response, case
-        )
+        probe_failure, spill_probe_tokens, spill_probe_hits = _probe_spilled_artifact(response, case)
         atelier_tokens += spill_probe_tokens
     else:
         probe_failure = ""
@@ -182,11 +180,7 @@ def run_case(
     failure = _check(case, response)
     if failure == "" and probe_failure:
         failure = probe_failure
-    if (
-        failure == ""
-        and case.min_baseline_tokens > 0
-        and baseline_tokens < case.min_baseline_tokens
-    ):
+    if failure == "" and case.min_baseline_tokens > 0 and baseline_tokens < case.min_baseline_tokens:
         failure = (
             f"measured baseline too small: baseline_tokens={baseline_tokens} "
             f"< min_baseline_tokens={case.min_baseline_tokens}"
@@ -292,11 +286,7 @@ def _run_spill_probe(artifact_path: Path, pattern: str) -> tuple[int, int, str]:
     probe_tokens = _tokens(probe_text)
     if proc.returncode not in {0, 1}:
         return 0, probe_tokens, f"spill probe failed with exit={proc.returncode}"
-    hit_count = (
-        0
-        if proc.returncode == 1
-        else len([line for line in probe_text.splitlines() if line.strip()])
-    )
+    hit_count = 0 if proc.returncode == 1 else len([line for line in probe_text.splitlines() if line.strip()])
     if hit_count == 0:
         return 0, probe_tokens, f"spill probe found no matches for pattern={pattern!r}"
     return hit_count, probe_tokens, ""
@@ -316,9 +306,7 @@ def _check(case: BenchCase, response: Any | None) -> str:
         return ""
     if not isinstance(response, dict):
         if case.assert_keys or case.assert_values:
-            return (
-                f"response is non-dict; cannot assert keys/values: type={type(response).__name__}"
-            )
+            return f"response is non-dict; cannot assert keys/values: type={type(response).__name__}"
     else:
         for key in case.assert_keys:
             if key not in response:

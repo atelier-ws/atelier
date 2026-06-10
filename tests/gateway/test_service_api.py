@@ -73,6 +73,22 @@ def test_health_returns_ok(app_no_auth: TestClient) -> None:
     assert resp.json()["status"] == "ok"
 
 
+def test_openai_models_route_available_on_main_service(app_no_auth: TestClient) -> None:
+    resp = app_no_auth.get("/v1/models")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["object"] == "list"
+    # When API keys are configured models appear; each must have a string id
+    for item in data["data"]:
+        assert isinstance(item["id"], str) and item["id"]
+
+
+def test_openai_chat_route_rejects_invalid_payload(app_no_auth: TestClient) -> None:
+    resp = app_no_auth.post("/v1/chat/completions", json={"messages": []})
+    assert resp.status_code == 422
+    assert "invalid chat-completions payload" in str(resp.json().get("detail"))
+
+
 def test_config_returns_runtime_settings(app_no_auth: TestClient) -> None:
     resp = app_no_auth.get("/config")
     assert resp.status_code == 200

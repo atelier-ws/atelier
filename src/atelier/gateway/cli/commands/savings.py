@@ -150,7 +150,7 @@ def savings_wire_cmd(
     """Compare provider-billed usage from mitmproxy .flow captures."""
     if not captures:
         raise click.ClickException(
-            "Provide captures as LABEL=PATH. Example: " "atelier savings wire baseline=off.flow atelier=on.flow"
+            "Provide captures as LABEL=PATH. Example: atelier savings wire baseline=off.flow atelier=on.flow"
         )
     repo_root = Path.cwd().resolve()
     run_dir = _wire_report_dir(out)
@@ -299,8 +299,7 @@ def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, 
     _render_optimization_summary(result)
     click.echo("")
     click.echo(
-        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, "
-        f"${report['estimated_usd_saved']:.4f}"
+        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, ${report['estimated_usd_saved']:.4f}"
     )
     if not report["recommendations"]:
         click.echo("No legacy trace recommendations found for this window.")

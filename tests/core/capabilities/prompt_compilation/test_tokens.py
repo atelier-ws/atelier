@@ -43,4 +43,4 @@ class TestCharFallbackWithin15Percent:
         tiktoken_n = estimate_tokens(self.SAMPLE)
         fallback_n = self._char_fallback(self.SAMPLE)
         ratio = abs(tiktoken_n - fallback_n) / tiktoken_n
-        assert ratio < 0.15, f"char/4 fallback ({fallback_n}) deviates {ratio:.1%} from " f"tiktoken ({tiktoken_n})"
+        assert ratio < 0.15, f"char/4 fallback ({fallback_n}) deviates {ratio:.1%} from tiktoken ({tiktoken_n})"
