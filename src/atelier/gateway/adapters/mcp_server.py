@@ -3792,8 +3792,26 @@ def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, str | None]
     return snap
 
 
-def _compute_and_record_diffs(
+def _looks_like_test_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lower()
+    parts = normalized.split("/")
+    name = parts[-1]
+    return (
+        any(part in {"test", "tests", "spec", "specs", "__tests__"} for part in parts[:-1])
+        or name.startswith("test_")
+        or "_test." in name
+        or ".test." in name
+        or ".spec." in name
+    )
+
+
+def _existing_test_contract_paths(
     snapshots: dict[str, tuple[Path, str | None]],
+    ) -> list[str]:
+    return sorted(path for path, (_fp, old_content) in snapshots.items() if old_content is not None and _looks_like_test_path(path))
+
+
+def _compute_and_record_diffs(    snapshots: dict[str, tuple[Path, str | None]],
 ) -> None:
     """Compute unified diffs from *snapshots* vs current file content and record them in the ledger."""
     import difflib
@@ -4039,9 +4057,18 @@ def tool_smart_edit(
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
         _compute_and_record_diffs(snapshots)
+        contract_paths = _existing_test_contract_paths(snapshots)
+        if contract_paths:
+            result["contract_review"] = {
+                "required": True,
+                "paths": contract_paths,
+                "guidance": (
+                    "Existing tests are behavioral-contract evidence. Do not change them merely to make a failure pass; "
+                    "verify that the task or another repository source of truth explicitly requires the contract change."
+                ),
+            }
     result.pop("diagnostics", None)
-    result.pop("hooks", None)
-    # Batched edits collapse N would-be individual edit calls into 1.
+    result.pop("hooks", None)    # Batched edits collapse N would-be individual edit calls into 1.
     # Use successful applies as the count; the dispatcher reads this and
     # writes it into the response's content[].saved.calls field.
     applied_count = len(result.get("applied") or [])
@@ -5578,13 +5605,21 @@ def tool_pattern(
 
 
 def _run_shell_tool(
-    command: str,
+    command: str = "",
     timeout: int = 30,
     cwd: str | None = None,
     max_lines: int = 200,
+    background: bool = False,
+    session_id: str | None = None,
+    action: Literal["run", "poll", "cancel"] = "run",
 ) -> dict[str, Any]:
     """Execute a shell command and return compact structured output."""
-    from atelier.core.capabilities.tool_supervision.bash_exec import classify_command, run_command
+    from atelier.core.capabilities.tool_supervision.bash_exec import (
+        classify_command,
+        poll_managed_command,
+        run_command,
+        start_managed_command,
+    )
 
     def _render_grep_stdout(payload: dict[str, Any]) -> str:
         blocks = payload.get("content", [])
@@ -5609,6 +5644,14 @@ def _run_shell_tool(
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     effective_cwd = cwd or workspace
+
+    if action in {"poll", "cancel"}:
+        if not session_id:
+            raise ValueError(f"session_id is required for shell action={action}")
+        return poll_managed_command(session_id, cancel=action == "cancel")
+    if not command.strip():
+        raise ValueError("command is required for shell action=run")
+
     policy = classify_command(command)
 
     if policy.action == "rewrite" and policy.rewrite_target == "read" and policy.rewrite_payload:
@@ -5669,6 +5712,15 @@ def _run_shell_tool(
             "duration_ms": 0,
         }
 
+    sync_limit = max(1, int(os.environ.get("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "90")))
+    if background or timeout > sync_limit:
+        return start_managed_command(
+            command,
+            cwd=effective_cwd,
+            timeout=timeout,
+            max_lines=max_lines,
+        )
+
     result = run_command(
         command,
         cwd=effective_cwd,
@@ -5701,8 +5753,16 @@ def _render_shell_text(result: dict[str, Any]) -> str:
     blocked_reason = str(result.get("blocked_reason") or "")
     truncated = bool(result.get("truncated"))
     lines_omitted = result.get("lines_omitted")
+    status = str(result.get("status") or "")
+    session_id = str(result.get("session_id") or "")
 
     parts: list[str] = []
+    if status == "running":
+        parts.append(f"status=running session_id={session_id}")
+        if result.get("pid") is not None:
+            parts.append(f"pid={result['pid']}")
+    elif status:
+        parts.append(f"status={status} session_id={session_id}")
     if blocked:
         header = "blocked"
         if exit_code is not None:
@@ -6218,25 +6278,50 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": 200,
             "description": "Max output lines. Excess lines are head+tail truncated; check truncated=true in response.",
         },
+        "background": {
+            "type": "boolean",
+            "default": False,
+            "description": "Start immediately as a managed session. Commands whose timeout exceeds the synchronous MCP window are detached automatically.",
+        },
+        "session_id": {
+            "type": "string",
+            "description": "Managed shell session returned by a background or automatically detached run.",
+        },
+        "action": {
+            "type": "string",
+            "enum": ["run", "poll", "cancel"],
+            "default": "run",
+            "description": "Run a command, poll a managed session, or cancel it.",
+        },
     },
-    "required": ["command"],
     "additionalProperties": False,
 }
 
 
 @mcp_tool(name="shell", input_schema=SHELL_TOOL_INPUT_SCHEMA)
 def tool_shell(
-    command: str,
+    command: str = "",
     timeout: int = 30,
     cwd: str | None = None,
     max_lines: int = 200,
+    background: bool = False,
+    session_id: str | None = None,
+    action: Literal["run", "poll", "cancel"] = "run",
 ) -> str:
     """Execute a shell command and return compact text output.
 
     Prefer Atelier read/grep/search tools directly — they are faster and cheaper.
     Use shell only for commands that have no Atelier equivalent (git, make, uv, npm, etc.).
     """
-    result = _run_shell_tool(command, timeout=timeout, cwd=cwd, max_lines=max_lines)
+    result = _run_shell_tool(
+        command,
+        timeout=timeout,
+        cwd=cwd,
+        max_lines=max_lines,
+        background=background,
+        session_id=session_id,
+        action=action,
+    )
     return _render_shell_text(result)
 
 
