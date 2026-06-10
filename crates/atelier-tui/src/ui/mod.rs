@@ -1236,7 +1236,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             ]),
             Line::raw(""),
             Line::from(Span::styled(
-                "  Type a message to start  ·  /help  ·  ? for shortcuts",
+                "  Type a message to start  ·  /help  ·  /model to set model",
                 Style::default().fg(Color::DarkGray),
             )),
         ];
@@ -1537,11 +1537,15 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let content_height = all_lines.len() as u16;
     let visible_height = area.height;
+    // Ratatui's Paragraph scroll counts VISUAL rows (after word-wrap), not logical lines.
+    // Estimate visual height by accounting for wrapping: worst case = every line wraps.
+    // We use content_height * 3 as a safe upper bound so auto-scroll always reaches the bottom.
     let max_scroll = content_height.saturating_sub(visible_height);
     let scroll = if app.auto_scroll {
-        max_scroll
+        // Scroll well past the end — Ratatui clamps this safely to the actual content.
+        content_height.saturating_add(visible_height)
     } else {
-        app.scroll.min(max_scroll)
+        app.scroll.min(max_scroll.saturating_add(visible_height))
     };
     app.scroll = scroll;
 
@@ -1692,7 +1696,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         let tc = if tool_badge.contains("running") { Color::Yellow } else { Color::Green };
         spans.push(Span::styled(tool_badge, Style::default().fg(tc)));
     }
-    spans.push(Span::styled(" │ ? help", Style::default().fg(Color::Rgb(55, 60, 75))));
+    spans.push(Span::styled(" │ /help", Style::default().fg(Color::Rgb(55, 60, 75))));
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
