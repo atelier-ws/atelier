@@ -21,8 +21,9 @@ const config: Config = {
       "classic",
       {
         docs: {
+          routeBasePath: "/",
           sidebarPath: "./sidebars.ts",
-          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/",
+          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/docs/",
         },
         blog: {
           showReadingTime: true,
@@ -79,19 +80,19 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            { label: "Home", to: "/docs" },
-            { label: "Installation", to: "/docs/installation" },
-            { label: "CLI Reference", to: "/docs/cli" },
-            { label: "Troubleshooting", to: "/docs/troubleshooting" },
+            { label: "Home", to: "/" },
+            { label: "Installation", to: "/installation" },
+            { label: "CLI Reference", to: "/cli" },
+            { label: "Troubleshooting", to: "/troubleshooting" },
           ],
         },
         {
           title: "Hosts",
           items: [
-            { label: "All Hosts", to: "/docs/hosts/all-agent-clis" },
-            { label: "Claude Code", to: "/docs/hosts/claude-code-install" },
-            { label: "Codex CLI", to: "/docs/hosts/codex-install" },
-            { label: "Copilot", to: "/docs/hosts/copilot-install" },
+            { label: "All Hosts", to: "/hosts/all-agent-clis" },
+            { label: "Claude Code", to: "/hosts/claude-code-install" },
+            { label: "Codex CLI", to: "/hosts/codex-install" },
+            { label: "Copilot", to: "/hosts/copilot-install" },
           ],
         },
         {
