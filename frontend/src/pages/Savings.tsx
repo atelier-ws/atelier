@@ -119,11 +119,9 @@ export default function Savings() {
   const topSources = data.top_sources ?? [];
   const trackedToolCalls = data.tracked_tool_calls ?? 0;
   const headlineLabel =
-    verification?.headline_kind === "estimated_tool_compression"
-      ? "Estimated Tool Compression"
-      : verification?.headline_kind === "tracked_proof_reduction"
-        ? "Tracked Proof Reduction"
-        : "Token Reduction";
+    verification?.headline_kind === "tracked_proof_reduction"
+      ? "Tracked Proof Reduction"
+      : "Token Reduction";
   const loadLedger = (runId: string) => {
     const nextExpanded = !expandedRuns[runId];
     setExpandedRuns((prev) => ({ ...prev, [runId]: nextExpanded }));
