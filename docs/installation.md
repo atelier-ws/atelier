@@ -329,3 +329,14 @@ After installation, use the host-specific guides if you want to inspect or custo
 - [hosts/codex-install.md](hosts/codex-install.md)
 - [hosts/opencode-install.md](hosts/opencode-install.md)
 - [hosts/antigravity-install.md](hosts/antigravity-install.md)
+
+### Optional Zoekt Backend
+
+Zoekt is not bootstrapped by default. Atelier uses its internal code index,
+local embeddings, and ripgrep unless an existing Zoekt runtime is detected.
+
+- `ATELIER_ZOEKT_MODE=off` (default): never probe or route to Zoekt.
+- `ATELIER_ZOEKT_MODE=installed`: use Zoekt only when its binaries are already
+  installed or provided through `ATELIER_ZOEKT_BIN`.
+- `ATELIER_ZOEKT_MODE=managed`: allow Atelier to provision and run the pinned
+  Zoekt container through Docker for large repositories.

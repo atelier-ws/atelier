@@ -259,6 +259,6 @@ is command-specific rather than universal.
 
 ## Related References
 
-- [README.md](../README.md)
+- [README.md](https://github.com/atelier-runtime/atelier#readme)
 - [docs/installation.md](installation.md)
 - [docs/sdk/mcp.md](sdk/mcp.md)

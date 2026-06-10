@@ -10,6 +10,7 @@ import math
 import os
 import re
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -25,6 +26,7 @@ from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.storage.vector import cosine_similarity
 
 SearchMode = Literal["chunks", "full", "map"]
+IndexedSearch = Callable[..., dict[str, Any]]
 
 _CLAUDE_GREP_FILE_LIMIT = 100
 _CLAUDE_READ_LINE_LIMIT = 2000
@@ -308,6 +310,174 @@ def _rendered_bytes_for_matches(matches: list[dict[str, Any]]) -> int:
         return 0
 
 
+def _fallback_terms(query: str, *, limit: int = 6) -> list[str]:
+    terms: list[str] = []
+    for term in re.findall(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", query):
+        if len(term) < 3 or term.lower() in {"and", "for", "from", "the", "this", "with"}:
+            continue
+        if term not in terms:
+            terms.append(term)
+        if len(terms) >= limit:
+            break
+    return terms
+
+
+def _indexed_matches(
+    payload: dict[str, Any],
+    *,
+    repo_root: Path,
+    max_files: int,
+    max_chars_per_file: int,
+) -> dict[str, Any] | None:
+    matches_by_path: dict[str, dict[str, Any]] = {}
+    for item in payload.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        raw_path = str(item.get("file_path") or "")
+        if not raw_path:
+            continue
+        resolved = Path(raw_path)
+        if not resolved.is_absolute():
+            resolved = repo_root / resolved
+        path = str(resolved.resolve())
+        snippet = str(item.get("snippet") or "").strip()
+        if not snippet:
+            try:
+                snippet = resolved.read_text(encoding="utf-8", errors="replace")[:max_chars_per_file]
+            except OSError:
+                snippet = ""
+        entry = matches_by_path.setdefault(
+            path,
+            {
+                "path": path,
+                "lang": str(item.get("language") or ""),
+                "snippets": [],
+                "outline": None,
+            },
+        )
+        snippets = entry["snippets"]
+        if isinstance(snippets, list) and snippet:
+            snippets.append(
+                {
+                    "line_start": int(item.get("start_line") or 1),
+                    "line_end": int(item.get("end_line") or item.get("start_line") or 1),
+                    "text": snippet[:max_chars_per_file],
+                }
+            )
+        if len(matches_by_path) >= max_files:
+            break
+    if not matches_by_path:
+        return None
+    matches = list(matches_by_path.values())
+    return {
+        "matches": matches,
+        "match_paths": list(matches_by_path),
+        "backend": "code_index",
+        "index_age_seconds": None,
+        "total_tokens": int(payload.get("total_tokens", 0) or 0),
+        "fallback": {
+            "reason": "empty_primary_result",
+            "strategy": "indexed_hybrid",
+        },
+    }
+
+
+def _search_index(
+    indexed_search: IndexedSearch | None,
+    *,
+    query: str,
+    path: str,
+    max_files: int,
+    max_chars_per_file: int,
+    budget_tokens: int,
+    repo_root: Path,
+) -> dict[str, Any] | None:
+    if indexed_search is None:
+        return None
+    try:
+        payload = indexed_search(
+            query=query,
+            path=path,
+            max_files=max_files,
+            budget_tokens=budget_tokens,
+        )
+    except Exception:
+        logging.exception("Indexed smart-search fallback failed")
+        return None
+    return _indexed_matches(
+        payload,
+        repo_root=repo_root,
+        max_files=max_files,
+        max_chars_per_file=max_chars_per_file,
+    )
+
+
+def _relaxed_search(
+    *,
+    query: str,
+    search_path: Path,
+    max_files: int,
+    max_chars_per_file: int,
+    include_outline: bool,
+) -> dict[str, Any] | None:
+    matches_by_path: dict[str, dict[str, Any]] = {}
+    total_tokens = 0
+    attempted_terms: list[str] = []
+    for term in _fallback_terms(query):
+        attempted_terms.append(term)
+        result = search_read(
+            query=re.escape(term),
+            path=str(search_path),
+            max_files=max_files,
+            max_chars_per_file=max_chars_per_file,
+            include_outline=include_outline,
+        )
+        total_tokens += result.total_tokens
+        for match in search_read_to_dict(result, include_metadata=False).get("matches", []):
+            if isinstance(match, dict) and match.get("path"):
+                matches_by_path.setdefault(str(match["path"]), match)
+        if len(matches_by_path) >= max_files:
+            break
+    if not matches_by_path:
+        return None
+    matches = list(matches_by_path.values())[:max_files]
+    return {
+        "matches": matches,
+        "match_paths": [str(match["path"]) for match in matches],
+        "backend": "ripgrep",
+        "index_age_seconds": None,
+        "total_tokens": total_tokens,
+        "fallback": {
+            "reason": "empty_primary_result",
+            "strategy": "query_terms",
+            "terms": attempted_terms,
+        },
+    }
+
+
+def _file_preview(
+    *,
+    search_path: Path,
+    max_chars_per_file: int,
+    budget_tokens: int,
+) -> dict[str, Any] | None:
+    if not search_path.is_file() or search_path.suffix.lower() not in _TEXT_SUFFIXES:
+        return None
+    try:
+        content = search_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    content = content[: min(max_chars_per_file, max(1, budget_tokens) * 4)]
+    return {
+        "matches": [{"path": str(search_path), "content": content, "snippets": []}],
+        "match_paths": [str(search_path)],
+        "backend": "file_preview",
+        "index_age_seconds": None,
+        "total_tokens": max(1, len(content) // 4),
+        "fallback": {"reason": "empty_relaxed_result", "strategy": "scoped_file_preview"},
+    }
+
+
 def smart_search(
     *,
     query: str,
@@ -318,6 +488,7 @@ def smart_search(
     include_outline: bool = True,
     seed_files: list[str] | None = None,
     budget_tokens: int = 2000,
+    indexed_search: IndexedSearch | None = None,
 ) -> dict[str, Any]:
     """Search with lexical, semantic, and graph ranking signals."""
     _assert_safe_query(query, path)
@@ -357,6 +528,7 @@ def smart_search(
                 "cache_hit": True,
                 "total_tokens": int(cached.get("total_tokens", 0) or 0),
                 "tokens_saved": int(cached.get("tokens_saved", 0) or 0),
+                **({"fallback": cached["fallback"]} if isinstance(cached.get("fallback"), dict) else {}),
             }
     else:
         cache = {}
@@ -380,6 +552,31 @@ def smart_search(
         payload = search_read_to_dict(chunk_result, include_metadata=False)
         payload["match_paths"] = [match.path for match in chunk_result.matches]
         payload["total_tokens"] = chunk_result.total_tokens
+    if not payload.get("matches"):
+        payload = (
+            _search_index(
+                indexed_search,
+                query=query,
+                path=path,
+                max_files=max_files,
+                max_chars_per_file=max_chars_per_file,
+                budget_tokens=budget_tokens,
+                repo_root=repo_root,
+            )
+            or _relaxed_search(
+                query=query,
+                search_path=search_path,
+                max_files=max_files,
+                max_chars_per_file=max_chars_per_file,
+                include_outline=include_outline,
+            )
+            or _file_preview(
+                search_path=search_path,
+                max_chars_per_file=max_chars_per_file,
+                budget_tokens=budget_tokens,
+            )
+            or payload
+        )
     backend = str(payload.get("backend") or "ripgrep")
     matches = [match for match in payload.get("matches", []) if isinstance(match, dict)]
     if backend == "zoekt":
@@ -405,6 +602,7 @@ def smart_search(
             "total_tokens": payload.get("total_tokens", 0),
             "cache_hit": False,
             "tokens_saved": max(0, (zoekt_naive - zoekt_rendered) // 4),
+            **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
         }
         if os.environ.get("ATELIER_CACHE_DISABLED") != "1":
             cache[cache_key] = response
@@ -460,6 +658,7 @@ def smart_search(
         "total_tokens": int(payload.get("total_tokens", 0) or 0),
         "cache_hit": False,
         "tokens_saved": max(0, (final_naive - final_rendered) // 4),
+        **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
     }
 
     if os.environ.get("ATELIER_CACHE_DISABLED") != "1":
@@ -468,4 +667,4 @@ def smart_search(
     return response
 
 
-__all__ = ["SearchMode", "smart_search"]
+__all__ = ["IndexedSearch", "SearchMode", "smart_search"]

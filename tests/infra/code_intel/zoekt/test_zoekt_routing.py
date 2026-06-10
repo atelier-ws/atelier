@@ -8,7 +8,7 @@ import pytest
 
 from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 from atelier.infra.code_intel.zoekt.adapter import reset_zoekt_supervisors
-from atelier.infra.code_intel.zoekt.binary import discover_zoekt_binary
+from atelier.infra.code_intel.zoekt.binary import ZoektBinaryResolution, discover_zoekt_binary
 from atelier.infra.code_intel.zoekt.client import ZoektClient
 from atelier.infra.code_intel.zoekt.server import get_zoekt_server
 
@@ -56,6 +56,7 @@ class TestZoektRouting:
         monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
         monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
         monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+        monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
         resolution = discover_zoekt_binary(repo_root)
 
@@ -83,6 +84,7 @@ def test_zoekt_managed_bootstrap_provisions_manifest_when_env_is_absent(
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
     resolution = discover_zoekt_binary(repo_root)
 
@@ -108,6 +110,7 @@ def test_zoekt_lifecycle_reuses_one_server_per_workspace(tmp_path: Path, monkeyp
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
     resolution = discover_zoekt_binary(repo_root)
 
     first = get_zoekt_server(repo_root, resolution=resolution)
@@ -127,6 +130,7 @@ def test_zoekt_byte_range_client_preserves_offsets(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(repo_root))
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
     resolution = discover_zoekt_binary(repo_root)
 
     server = get_zoekt_server(repo_root, resolution=resolution)
@@ -150,6 +154,7 @@ def test_zoekt_search_routes_large_repos_with_backend_metadata(tmp_path: Path, m
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
     payload = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
 
@@ -166,6 +171,7 @@ def test_zoekt_search_falls_back_for_small_repos(tmp_path: Path, monkeypatch: py
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "10000")
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
     payload = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
 
@@ -181,6 +187,7 @@ def test_zoekt_search_falls_back_when_backend_is_unhealthy(tmp_path: Path, monke
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
     monkeypatch.setenv("ATELIER_ZOEKT_BIN", str(tmp_path / "missing-zoekt-webserver"))
     monkeypatch.setenv("ATELIER_ZOEKT_BIN_SHA256", "deadbeef")
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "installed")
 
     payload = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
 
@@ -189,7 +196,7 @@ def test_zoekt_search_falls_back_when_backend_is_unhealthy(tmp_path: Path, monke
 
 
 @skip_docker
-def test_zoekt_search_routes_large_repos_with_managed_bootstrap_by_default(
+def test_zoekt_search_routes_large_repos_with_managed_bootstrap_when_enabled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo_root = tmp_path / "repo"
@@ -198,6 +205,7 @@ def test_zoekt_search_routes_large_repos_with_managed_bootstrap_by_default(
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
     payload = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
 
@@ -214,6 +222,7 @@ def test_zoekt_search_keeps_backend_metadata_on_warm_repeat(tmp_path: Path, monk
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
     monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "20")
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "managed")
 
     first = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
     second = smart_search(query="needle token", path=str(repo_root), max_files=5, budget_tokens=4000)
@@ -223,3 +232,49 @@ def test_zoekt_search_keeps_backend_metadata_on_warm_repeat(tmp_path: Path, monk
     assert isinstance(first["index_age_seconds"], int)
     assert isinstance(second["index_age_seconds"], int)
     assert second["index_age_seconds"] >= first["index_age_seconds"]
+
+
+def test_default_mode_disables_zoekt_without_runtime_probes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.infra.code_intel.zoekt import binary
+
+    repo_root = tmp_path / "repo"
+    _write_fixture_repo(repo_root)
+    monkeypatch.delenv("ATELIER_ZOEKT_MODE", raising=False)
+    monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
+    monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
+    monkeypatch.setattr(
+        binary.shutil,
+        "which",
+        lambda _name: (_ for _ in ()).throw(AssertionError("default mode must not probe PATH")),
+    )
+
+    resolution = discover_zoekt_binary(repo_root)
+
+    assert resolution.available is False
+    assert resolution.reason == "ATELIER_ZOEKT_MODE=off"
+    assert not (repo_root / ".atelier" / "bin" / "MANIFEST.json").exists()
+
+
+def test_supervisor_caches_missing_runtime_and_route_decision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.infra.code_intel.zoekt import adapter
+
+    repo_root = tmp_path / "repo"
+    _write_large_repo(repo_root)
+    calls = {"discover": 0, "lines": 0}
+
+    def unavailable(_repo_root: Path) -> ZoektBinaryResolution:
+        calls["discover"] += 1
+        return ZoektBinaryResolution(available=False, reason="not installed")
+
+    supervisor = adapter.ZoektSupervisor(repo_root)
+    monkeypatch.setenv("ATELIER_ZOEKT_MODE", "installed")
+    monkeypatch.setattr(adapter, "discover_zoekt_binary", unavailable)
+    monkeypatch.setattr(
+        supervisor._indexer,
+        "line_count",
+        lambda _path: calls.__setitem__("lines", calls["lines"] + 1) or 1_000_000,
+    )
+
+    assert supervisor.should_route(repo_root) is False
+    assert supervisor.should_route(repo_root) is False
+    assert calls == {"discover": 1, "lines": 0}

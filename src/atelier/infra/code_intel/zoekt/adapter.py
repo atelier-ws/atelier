@@ -18,7 +18,7 @@ from atelier.core.capabilities.tool_supervision.search_read import (
     _file_outline,
 )
 
-from .binary import ZoektBinaryResolution, discover_zoekt_binary
+from .binary import ZoektBinaryResolution, discover_zoekt_binary, zoekt_mode
 from .client import ZoektClient, ZoektFileResult
 from .indexer import ZoektIndexer
 from .server import ZoektServer, get_zoekt_server, reset_zoekt_servers
@@ -64,6 +64,7 @@ class ZoektSupervisor:
         self._client: ZoektClient | None = None
         self._indexer = ZoektIndexer(self.repo_root)
         self._lock = threading.Lock()
+        self._route_cache: dict[tuple[str, int], bool] = {}
 
     @property
     def server(self) -> ZoektServer:
@@ -79,11 +80,27 @@ class ZoektSupervisor:
             return _DEFAULT_LOC_THRESHOLD
 
     def should_route(self, search_path: str | Path) -> bool:
-        return self._indexer.line_count(search_path) >= self.threshold_lines()
+        mode = zoekt_mode()
+        if mode == "off":
+            return False
+        if mode == "installed" and not self._resolution().available:
+            return False
+        threshold = self.threshold_lines()
+        cache_key = (str(Path(search_path).resolve()), threshold)
+        cached = self._route_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        should_route = self._indexer.line_count(search_path) >= threshold
+        self._route_cache[cache_key] = should_route
+        return should_route
+
+    def _resolution(self) -> ZoektBinaryResolution:
+        if self._binary_resolution is None:
+            self._binary_resolution = discover_zoekt_binary(self.repo_root)
+        return self._binary_resolution
 
     def health(self) -> ZoektBackendHealth:
-        resolution = discover_zoekt_binary(self.repo_root)
-        self._binary_resolution = resolution
+        resolution = self._resolution()
         if not resolution.available or resolution.path is None:
             return ZoektBackendHealth(
                 ok=False,
@@ -116,7 +133,7 @@ class ZoektSupervisor:
         with self._lock:
             if self._client is not None:
                 return self._client
-            resolution = discover_zoekt_binary(self.repo_root)
+            resolution = self._resolution()
             if not resolution.available:
                 raise RuntimeError(resolution.reason or "zoekt binary unavailable")
             self._binary_resolution = resolution
