@@ -1191,105 +1191,88 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         .next()
         .unwrap_or("project");
 
-    // Always show a compact header at top: logo + project/model + separator
-    // Then conversation fills the rest below.
-    let header_height: u16 = 3; // logo row + info row + separator
-    let (header_area, conv_area) = if area.height > header_height + 3 {
-        let split = Layout::vertical([
-            Constraint::Length(header_height),
-            Constraint::Min(0),
-        ])
-        .split(area);
-        (split[0], split[1])
-    } else {
-        (Rect { height: 0, ..area }, area)
-    };
+    // No sticky header: the conversation (or the welcome) flows through the full
+    // `area` as one continuous, scrollable page — like a plain text chat.
+    let has_chat = app
+        .conversation
+        .iter()
+        .any(|e| matches!(e.role, Role::User | Role::Assistant));
 
-    // Draw compact header
-    if header_area.height > 0 {
+    // Minimal welcome while there is no real conversation yet. System-only state
+    // (session start, web URL, tunnel URL + QR) still shows the welcome below.
+    if !has_chat && !app.is_streaming {
         let branch_str = if !app.git_branch.is_empty() {
-            format!("  [{}]", app.git_branch)
+            format!(" [{}]", app.git_branch)
         } else {
             String::new()
         };
         let model_str = if app.current_model.is_empty() {
-            "  /model to set".to_string()
+            "\u{2014}".to_string()
         } else {
-            let s = app.current_model.rsplit('/').next().unwrap_or(&app.current_model);
-            format!("  {}", &s[..s.len().min(28)])
+            let s = app
+                .current_model
+                .rsplit('/')
+                .next()
+                .unwrap_or(&app.current_model);
+            s[..s.len().min(28)].to_string()
         };
-
-        let mut header_lines = vec![
-            Line::from(vec![
-                Span::styled("  ◆ ATELIER", Style::default().fg(agent_color).add_modifier(Modifier::BOLD)),
-                Span::styled("  —  Agent Coding Workspace", Style::default().fg(Color::DarkGray)),
-            ]),
-            Line::from(vec![
-                Span::styled("  project: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(project_name.to_string(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-                Span::styled(branch_str, Style::default().fg(agent_color)),
-                Span::styled(model_str, Style::default().fg(agent_color)),
-            ]),
-            // Separator line
-            Line::from(Span::styled(
-                format!("  {}", "─".repeat(area.width.saturating_sub(4) as usize)),
-                Style::default().fg(Color::Rgb(50, 55, 70)),
-            )),
-        ];
-
-        frame.render_widget(Paragraph::new(header_lines), header_area);
-    }
-
-    // Full welcome screen when empty (shown in conv_area)
-    if app.conversation.is_empty() && !app.is_streaming {
-        let logo_lines = [
-            "  ╭───────────────────────────────────────────────────╮",
-            "  │   ◆  A T E L I E R  —  Agent Coding Workspace     │",
-            "  ╰───────────────────────────────────────────────────╯",
-        ];
 
         let mut welcome_lines: Vec<Line> = vec![
             Line::raw(""),
-            Line::from(Span::styled(logo_lines[0], Style::default().fg(agent_color))),
-            Line::from(Span::styled(logo_lines[1], Style::default().fg(agent_color).add_modifier(Modifier::BOLD))),
-            Line::from(Span::styled(logo_lines[2], Style::default().fg(agent_color))),
+            Line::from(vec![
+                Span::styled(
+                    "  ◆  ",
+                    Style::default().fg(agent_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "atelier",
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("  · project: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(project_name.to_string(), Style::default().fg(Color::Gray)),
+                Span::styled(branch_str, Style::default().fg(agent_color)),
+                Span::styled("  · model: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(model_str, Style::default().fg(agent_color)),
+            ]),
             Line::raw(""),
+            Line::from(Span::styled(
+                "  Type a message to start  ·  /help  ·  ? for shortcuts",
+                Style::default().fg(Color::DarkGray),
+            )),
         ];
 
-        if let Some(ref url) = app.tunnel_url {
-            welcome_lines.push(Line::from(vec![
-                Span::styled("  Access    ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    url.clone(),
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("  (scan below)", Style::default().fg(Color::DarkGray)),
-            ]));
-        } else if let Some(port) = app.web_port {
-            welcome_lines.push(Line::from(vec![
-                Span::styled("  Web       ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    format!("http://localhost:{port}"),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
-            welcome_lines.push(Line::from(Span::styled(
-                "  \u{27f3} Tunnel starting... (cloudflared / bore)",
-                Style::default().fg(Color::Yellow),
-            )));
-        }
-
-        if !app.qr_lines.is_empty() {
+        // Session messages (startup info, web URL, tunnel URL + QR) flow inline
+        // below the welcome, exactly as they will once the chat begins.
+        let has_system = app
+            .conversation
+            .iter()
+            .any(|e| matches!(e.role, Role::System));
+        if has_system {
             welcome_lines.push(Line::raw(""));
+        }
+        for entry in app
+            .conversation
+            .iter()
+            .filter(|e| matches!(e.role, Role::System))
+        {
             welcome_lines.push(Line::from(Span::styled(
-                "  \u{1f4f1} Scan to open on your phone",
-                Style::default().fg(Color::Green),
+                format!("  ◆ {}", entry.text),
+                Style::default().fg(Color::DarkGray),
             )));
-            for qr_line in &app.qr_lines {
-                welcome_lines.push(Line::from(Span::styled(
-                    format!("     {qr_line}"),
-                    Style::default().fg(Color::White),
-                )));
+            // Render the QR inline right after the public tunnel URL message.
+            if entry.text.contains("http") && !app.qr_lines.is_empty() {
+                if let Some(ref url) = app.tunnel_url {
+                    if entry.text.contains(url.as_str()) {
+                        welcome_lines.push(Line::raw(""));
+                        for qr_line in &app.qr_lines {
+                            welcome_lines.push(Line::from(Span::styled(
+                                format!("    {qr_line}"),
+                                Style::default().fg(Color::White),
+                            )));
+                        }
+                        welcome_lines.push(Line::raw(""));
+                    }
+                }
             }
         }
 
@@ -1350,12 +1333,6 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             welcome_lines.push(Line::from(spans));
         }
 
-        welcome_lines.push(Line::raw(""));
-        welcome_lines.push(Line::from(Span::styled(
-            "  Type a message to start · /help for commands · /agents to switch mode",
-            Style::default().fg(Color::DarkGray),
-        )));
-
         // Debug builds are noticeably slower to start — nudge toward release mode.
         #[cfg(debug_assertions)]
         {
@@ -1367,7 +1344,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         }
 
         welcome_lines.push(Line::raw(""));
-        frame.render_widget(Paragraph::new(welcome_lines), conv_area);
+        frame.render_widget(Paragraph::new(welcome_lines), area);
         return;
     }
 
@@ -1571,7 +1548,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
     let paragraph = Paragraph::new(all_lines)
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
-    frame.render_widget(paragraph, conv_area);
+    frame.render_widget(paragraph, area);
 }
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -1692,12 +1669,6 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
-    let panel_hint = if area.width >= SIDE_MIN_WIDTH {
-        if app.show_side_panel { " │ Ctrl+L" } else { " │ Ctrl+L panel" }
-    } else {
-        ""
-    };
-
     let mut spans = vec![
         Span::styled(mode_badge, Style::default().fg(accent).add_modifier(Modifier::BOLD)),
         Span::styled(model_short, Style::default().fg(Color::DarkGray)),
@@ -1722,12 +1693,6 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled(tool_badge, Style::default().fg(tc)));
     }
     spans.push(Span::styled(" │ ? help", Style::default().fg(Color::Rgb(55, 60, 75))));
-    spans.push(Span::styled(" │ Ctrl+K cmds", Style::default().fg(Color::Rgb(55, 60, 75))));
-    // Show scroll toggle hint — makes it discoverable since selection is default
-    spans.push(Span::styled(" │ Ctrl+\\ scroll", Style::default().fg(Color::Rgb(50, 55, 70))));
-    if !panel_hint.is_empty() {
-        spans.push(Span::styled(panel_hint.to_string(), Style::default().fg(Color::Rgb(50, 55, 70))));
-    }
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
