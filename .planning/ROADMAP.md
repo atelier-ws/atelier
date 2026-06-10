@@ -87,6 +87,7 @@ Phases execute in numeric order: 1 → … → 9 → 10 → 11 → 12 → 13
 | 11. Provider Authentication Wizard | 0/TBD | Not started | - |
 | 12. UX Polish: Tunnel + Selection + QR | 0/TBD | Not started | - |
 | 13. Stem Agent + Shared Context Engine | 0/TBD | Not started | - |
+| 14. OpenAI-Compatible Gateway | 0/TBD | Not started | - |
 
 ---
 
@@ -192,4 +193,17 @@ Phases execute in numeric order: 1 → … → 9 → 10 → 11 → 12 → 13
   3. Savings panel shows cache hits, VFS savings, routing savings vs naive baseline
   4. Ctrl+R opens reverse search over prompt history
   5. Prompt suggestions appear after warm-cache responses
+**Plans**: TBD
+
+
+### Phase 14: OpenAI-Compatible Gateway
+**Goal**: Atelier exposes a standards-compliant `/v1/chat/completions` streaming endpoint so any TUI (OpenCode, Crush, Codex, Claude Code) can use Atelier as its execution brain — routing, caching, subagents, verification, and memory all controlled by Atelier while the TUI is just a view layer.
+**Depends on**: Nothing (standalone gateway module, builds on existing InteractiveRuntime)
+**Success Criteria** (what must be TRUE):
+  1. `atelier serve-openai [--port 8787]` starts an HTTP server serving `POST /v1/chat/completions` and `GET /v1/models` on the configured port.
+  2. Any standard OpenAI client (httpx, OpenCode, Crush) can stream a chat completion and receive tokens via SSE in the exact OpenAI delta format.
+  3. Atelier's full execution loop runs for each request: route selection, agent loop, tool calls, cache stats — the caller gets the assistant's final response as streamed tokens.
+  4. Tool calls made by Atelier during execution are either (a) silently executed server-side and only the final response returned, OR (b) forwarded to the client as OpenAI function-call deltas if the client sends `tools`.
+  5. Crash-safe: any per-request error returns a proper JSON error response, never silently hangs.
+  6. OpenCode pointed at `http://localhost:8787` with `@ai-sdk/openai-compatible` provider works end-to-end.
 **Plans**: TBD
