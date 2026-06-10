@@ -415,6 +415,8 @@ pub struct App<'a> {
     pub spinner_tick: u8,
     pub streaming_start: Option<std::time::Instant>,
     pub tool_count: usize,
+    pub selection_mode: bool,         // when true, mouse capture is OFF — native terminal selection works
+    pub pending_mouse_toggle: Option<bool>, // Some(true)=enable capture, Some(false)=disable it
 }
 
 impl<'a> App<'a> {
@@ -471,6 +473,8 @@ impl<'a> App<'a> {
             spinner_tick: 0,
             streaming_start: None,
             tool_count: 0,
+            selection_mode: false,
+            pending_mouse_toggle: None,
         }
     }
 
