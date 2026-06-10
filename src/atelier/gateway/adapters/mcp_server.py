@@ -7,6 +7,7 @@ Codex / Claude Code to discover and call the runtime tools.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import inspect
 import json
 import logging
@@ -199,6 +200,65 @@ _last_plan_by_session: dict[str, dict[str, Any]] = {}
 _last_blocked_plan_hash_by_session: dict[str, str] = {}
 _client_sampling_supported: bool = False
 _sampling_seq: int = 0
+
+# --------------------------------------------------------------------------- #
+# Trajectory monitor state (per session)                                      #
+# --------------------------------------------------------------------------- #
+
+
+@dataclasses.dataclass
+class _MonitorSession:
+    """Per-session DifficultyFSM + step history for trajectory monitoring."""
+
+    fsm: Any = dataclasses.field(default=None)
+    steps: list[str] = dataclasses.field(default_factory=list)
+    composite: float = 0.0
+    _call_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.fsm is None:
+            from atelier.core.capabilities.monitors.fsm import DifficultyFSM
+
+            self.fsm = DifficultyFSM()
+
+
+_monitor_sessions: dict[str, _MonitorSession] = {}
+_MAX_MONITOR_STEPS = 25
+
+
+def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[float, bool]:
+    """Advance per-session trajectory monitors; return (composite, skip_etraces).
+
+    Guards itself behind the bench kill-switch so monitors don't interfere with
+    benchmark runs.  Runs ``evaluate_all`` once every ``monitor_cooldown_steps``
+    calls (as determined by the FSM state) to amortise the regex cost.
+    """
+    try:
+        from atelier.bench.mode import is_off as _bench_is_off
+
+        if _bench_is_off():
+            return 0.0, False
+
+        from atelier.core.capabilities.monitors import evaluate_all
+        from atelier.core.capabilities.monitors.fsm import score_step
+
+        ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
+        ms.steps.append(task)
+        if len(ms.steps) > _MAX_MONITOR_STEPS:
+            ms.steps = ms.steps[-20:]
+        ms.fsm.transition(score_step(task))
+        ms._call_count += 1
+
+        cooldown = ms.fsm.monitor_cooldown_steps
+        if ms._call_count % cooldown == 0 or ms._call_count == 1:
+            result = evaluate_all(ms.steps, task=original_task)
+            ms.composite = result.composite
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return 0.0, False
+
+    return ms.composite, ms.fsm.skip_etraces
+
 
 # Atelier-internal MCP process identity — generated once at import, never changes.
 # SessionStart hook finds this file and writes the Claude session UUID + model into it.
@@ -2197,6 +2257,12 @@ def tool_get_context(
     workspace_root = str(_workspace_root().resolve())
     previous_workspace_root = os.environ.get("ATELIER_WORKSPACE_ROOT")
     os.environ["ATELIER_WORKSPACE_ROOT"] = workspace_root
+
+    # Advance trajectory monitors and obtain FSM-derived retrieval hints.
+    _monitor_composite, _fsm_skip_etraces = _advance_monitors(
+        _get_product_session_id(), task, led.task or task
+    )
+
     try:
         payload = rt.get_context(
             task=task,
@@ -2209,6 +2275,8 @@ def tool_get_context(
             dedup=dedup,
             agent_id=agent_id,
             recall=recall,
+            monitor_composite=_monitor_composite,
+            fsm_skip_etraces=_fsm_skip_etraces,
         )
     finally:
         if previous_workspace_root is None:
