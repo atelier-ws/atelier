@@ -396,6 +396,8 @@ class ContextRuntime:
         include_telemetry: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> str | dict[str, Any]:
         return self.core_runtime.get_context(
             task=task,
@@ -409,6 +411,8 @@ class ContextRuntime:
             include_telemetry=include_telemetry,
             agent_id=agent_id,
             recall=recall,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
 
     def rescue_failure(

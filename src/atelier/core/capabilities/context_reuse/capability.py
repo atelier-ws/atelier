@@ -393,6 +393,8 @@ class ContextReuseCapability:
         limit: int = 5,
         token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
         dedup: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> list[Any]:
         """
         Rank blocks using Reciprocal Rank Fusion of BM25 + FTS + base retriever.
@@ -509,6 +511,8 @@ class ContextReuseCapability:
             use_vector_weights=True,
             dedup=dedup,
             token_budget=token_budget,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         base_scores: dict[str, float] = {item.block.id: item.score for item in learned}
         direct_match_scores = {block.id: score_block(block, ctx).score for block in all_blocks}
@@ -808,6 +812,8 @@ class ContextReuseCapability:
         limit: int = 5,
         token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
         dedup: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> list[ScoredBlock]:
         """Return ScoredBlock list for engine.get_context."""
         ranked = self.rank_reusable_procedures(
@@ -819,6 +825,8 @@ class ContextReuseCapability:
             limit=limit,
             token_budget=token_budget,
             dedup=dedup,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         return [
             ScoredBlock(
