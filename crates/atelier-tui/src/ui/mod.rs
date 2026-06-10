@@ -2,7 +2,7 @@
 
 use crate::app::{
     ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, PendingPermission, Role,
-    ToolStatus, SLASH_COMMANDS,
+    SessionTimelineEntry, ToolStatus, SLASH_COMMANDS,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -130,6 +130,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             let sel = *selected;
             draw_command_palette(frame, app, &q, sel, area);
         }
+        ActiveOverlay::SessionTimeline { entries, selected } => {
+            draw_session_timeline(frame, app, entries, *selected, area)
+        }
+        ActiveOverlay::WhichKey {
+            leader_pressed,
+            pending_keys,
+        } => draw_which_key(frame, app, *leader_pressed, pending_keys, area),
     }
 
     // Context menu renders LAST, on top of everything else.
@@ -395,8 +402,20 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Toggle side panel (tools / context stats)"),
         ]),
         Line::from(vec![
+            Span::styled("  Ctrl+X       ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("Which-key leader — shows all leader keybindings", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
             Span::styled("  Ctrl+\\       ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::styled("Toggle selection mode — ENABLES native terminal text selection", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Space        ", Style::default().fg(Color::Cyan)),
+            Span::raw("Expand/collapse last tool output (in conversation focus)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  e            ", Style::default().fg(Color::Cyan)),
+            Span::raw("Expand tool output inline (in conversation focus)"),
         ]),
         Line::from(vec![
             Span::styled("  y            ", Style::default().fg(Color::Cyan)),
@@ -563,6 +582,134 @@ fn draw_session_picker(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(para, overlay);
 }
 
+fn draw_session_timeline(
+    frame: &mut Frame,
+    app: &App,
+    entries: &[SessionTimelineEntry],
+    selected: usize,
+    area: Rect,
+) {
+    let accent = app.agent_mode.accent_color();
+    let overlay = centered_rect(78, 70, area);
+    frame.render_widget(Clear, overlay);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if entries.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "  Loading sessions…",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (i, e) in entries.iter().enumerate() {
+            let is_sel = i == selected;
+            let (dot_style, text_style, dim_style) = if is_sel {
+                (
+                    Style::default().fg(Color::Black).bg(accent),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(accent)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Black).bg(accent),
+                )
+            } else {
+                (
+                    Style::default().fg(accent),
+                    Style::default().fg(Color::White),
+                    Style::default().fg(Color::DarkGray),
+                )
+            };
+            let summary: String = e.summary.chars().take(40).collect();
+            lines.push(Line::from(vec![
+                Span::styled("  \u{25cf} ", dot_style),
+                Span::styled(format!("{} ", e.id), text_style),
+                Span::styled(format!(" {} ", e.timestamp), dim_style),
+                Span::styled(format!(" {} msgs ", e.message_count), dim_style),
+                Span::styled(summary, dim_style),
+            ]));
+        }
+    }
+
+    let block = Block::bordered()
+        .title(" Session Timeline  \u{2191}\u{2193} navigate \u{b7} Enter resume \u{b7} d delete \u{b7} Esc close ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, overlay);
+}
+
+fn draw_which_key(
+    frame: &mut Frame,
+    app: &App,
+    leader_pressed: bool,
+    pending_keys: &[char],
+    area: Rect,
+) {
+    let accent = app.agent_mode.accent_color();
+    let popup = centered_rect(60, 45, area);
+    frame.render_widget(Clear, popup);
+
+    let header = if leader_pressed {
+        "  Leader key bindings (Ctrl+X + ...)"
+    } else {
+        "  Leader key bindings"
+    };
+
+    let bindings: [(char, &str); 8] = [
+        ('n', "New session"),
+        ('l', "Session list"),
+        ('g', "Session timeline"),
+        ('c', "Compact/summarize"),
+        ('m', "Model picker"),
+        ('a', "Auth/provider"),
+        ('b', "Toggle side panel"),
+        ('x', "Export conversation"),
+    ];
+
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            header,
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+    ];
+    for pair in bindings.chunks(2) {
+        let mut spans: Vec<Span> = Vec::new();
+        for (key, label) in pair {
+            spans.push(Span::styled(
+                format!("  {key}  "),
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                format!("{label:<20}"),
+                Style::default().fg(Color::White),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines.push(Line::raw(""));
+    if !pending_keys.is_empty() {
+        let pending: String = pending_keys.iter().collect();
+        lines.push(Line::from(Span::styled(
+            format!("  pending: {pending}"),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    lines.push(Line::from(Span::styled(
+        "  press a key \u{b7} Esc to cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let block = Block::bordered()
+        .title(" Which-key  Ctrl+X leader ")
+        .border_style(Style::default().fg(accent));
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, popup);
+}
+
 fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
     match &app.completion_mode {
         CompletionMode::None => {}
@@ -726,38 +873,201 @@ fn draw_completion_popup(frame: &mut Frame, app: &App, anchor: Rect) {
 }
 
 fn draw_diff_overlay(frame: &mut Frame, app: &App, area: Rect) {
-    let popup_area = centered_rect(80, 70, area);
+    let popup_area = centered_rect(85, 75, area);
     frame.render_widget(Clear, popup_area);
 
     let diff_text = app.pending_diff.as_deref().unwrap_or("");
-    let lines: Vec<Line> = diff_text
-        .lines()
-        .map(|l| {
-            if l.starts_with('+') && !l.starts_with("+++") {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default().fg(Color::Green),
-                ))
-            } else if l.starts_with('-') && !l.starts_with("---") {
-                Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Red)))
-            } else if l.starts_with("@@") {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default().fg(Color::Cyan),
-                ))
-            } else {
-                Line::from(Span::raw(l.to_string()))
-            }
-        })
-        .collect();
+    let raw_lines: Vec<&str> = diff_text.lines().collect();
 
+    // Diff stats for the title.
+    let mut adds = 0usize;
+    let mut dels = 0usize;
+    for l in &raw_lines {
+        if l.starts_with('+') && !l.starts_with("+++") {
+            adds += 1;
+        } else if l.starts_with('-') && !l.starts_with("---") {
+            dels += 1;
+        }
+    }
+
+    let green_fg = Color::Green;
+    let green_bg = Color::Rgb(0, 50, 0);
+    let red_fg = Color::Red;
+    let red_bg = Color::Rgb(50, 0, 0);
+    let gutter_fg = Color::Rgb(70, 75, 100);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Side-by-side style headers.
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  --- old --- ",
+            Style::default().fg(red_fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " +++ new +++ ",
+            Style::default().fg(green_fg).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::raw(""));
+
+    let mut old_no = 0usize;
+    let mut new_no = 0usize;
+
+    for (i, &line) in raw_lines.iter().enumerate() {
+        // The app prepends a "Files: ..." summary line before the raw diff.
+        if line.starts_with("Files:") {
+            lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        }
+        if line.starts_with("@@") {
+            if let Some((o, n)) = parse_hunk_header(line) {
+                old_no = o;
+                new_no = n;
+            }
+            lines.push(Line::from(vec![
+                Span::styled(DIFF_GUTTER_BLANK.to_string(), Style::default().fg(gutter_fg)),
+                Span::styled(line.to_string(), Style::default().fg(Color::Cyan)),
+            ]));
+            continue;
+        }
+        if line.starts_with("+++") || line.starts_with("---") {
+            lines.push(Line::from(vec![
+                Span::styled(DIFF_GUTTER_BLANK.to_string(), Style::default().fg(gutter_fg)),
+                Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            continue;
+        }
+        if let Some(content) = line.strip_prefix('+') {
+            // Bold the changed suffix relative to the preceding '-' line, if any.
+            let bold_from = i
+                .checked_sub(1)
+                .and_then(|p| raw_lines.get(p))
+                .filter(|prev| prev.starts_with('-') && !prev.starts_with("---"))
+                .map(|prev| first_diff_pos(&prev[1..], content));
+            let mut spans = vec![Span::styled(diff_gutter(new_no), Style::default().fg(gutter_fg))];
+            spans.extend(styled_diff_content(content, '+', green_fg, green_bg, bold_from));
+            lines.push(Line::from(spans));
+            new_no += 1;
+            continue;
+        }
+        if let Some(content) = line.strip_prefix('-') {
+            let bold_from = raw_lines
+                .get(i + 1)
+                .filter(|next| next.starts_with('+') && !next.starts_with("+++"))
+                .map(|next| first_diff_pos(content, &next[1..]));
+            let mut spans = vec![Span::styled(diff_gutter(old_no), Style::default().fg(gutter_fg))];
+            spans.extend(styled_diff_content(content, '-', red_fg, red_bg, bold_from));
+            lines.push(Line::from(spans));
+            old_no += 1;
+            continue;
+        }
+        // Context line.
+        let content = line.strip_prefix(' ').unwrap_or(line);
+        let gutter = if new_no > 0 {
+            diff_gutter(new_no)
+        } else {
+            DIFF_GUTTER_BLANK.to_string()
+        };
+        lines.push(Line::from(vec![
+            Span::styled(gutter, Style::default().fg(gutter_fg)),
+            Span::styled(format!("  {content}"), Style::default()),
+        ]));
+        if old_no > 0 {
+            old_no += 1;
+        }
+        if new_no > 0 {
+            new_no += 1;
+        }
+    }
+
+    let title = format!(" Changes: +{adds} -{dels}  ·  'a' apply · 'd' dismiss ");
     let block = Block::bordered()
-        .title(" Proposed Changes — press 'a' to apply, 'd' to dismiss ")
+        .title(title)
         .border_style(Style::default().fg(Color::Yellow));
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup_area);
+}
+
+const DIFF_GUTTER_BLANK: &str = "    \u{2502} ";
+
+/// Render a `  42│ ` style line-number gutter (│ stays aligned with the blank gutter).
+fn diff_gutter(n: usize) -> String {
+    format!(" {n:>3}\u{2502} ")
+}
+
+/// Index of the first character where `a` and `b` differ.
+fn first_diff_pos(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
+}
+
+/// Parse `@@ -old,n +new,n @@` into the 1-based (old_start, new_start) line numbers.
+fn parse_hunk_header(line: &str) -> Option<(usize, usize)> {
+    let body = line.trim_start_matches('@').trim();
+    let mut old_start = None;
+    let mut new_start = None;
+    for token in body.split_whitespace() {
+        if let Some(t) = token.strip_prefix('-') {
+            old_start = t.split(',').next().and_then(|n| n.parse::<usize>().ok());
+        } else if let Some(t) = token.strip_prefix('+') {
+            new_start = t.split(',').next().and_then(|n| n.parse::<usize>().ok());
+        }
+    }
+    match (old_start, new_start) {
+        (Some(o), Some(n)) => Some((o, n)),
+        _ => None,
+    }
+}
+
+/// Build colored spans for a `+`/`-` diff line, bolding the changed suffix from `bold_from`.
+fn styled_diff_content(
+    content: &str,
+    sign: char,
+    fg: Color,
+    bg: Color,
+    bold_from: Option<usize>,
+) -> Vec<Span<'static>> {
+    let base = Style::default().fg(fg).bg(bg);
+    let mut spans = vec![Span::styled(format!("{sign} "), base)];
+    match bold_from {
+        Some(pos) if pos < content.chars().count() => {
+            let unchanged: String = content.chars().take(pos).collect();
+            let changed: String = content.chars().skip(pos).collect();
+            if !unchanged.is_empty() {
+                spans.push(Span::styled(unchanged, base));
+            }
+            spans.push(Span::styled(changed, base.add_modifier(Modifier::BOLD)));
+        }
+        _ => spans.push(Span::styled(content.to_string(), base)),
+    }
+    spans
+}
+
+/// Hard-wrap text to `width` columns, preserving existing line breaks.
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let mut start = 0;
+        while start < chars.len() {
+            let end = (start + width).min(chars.len());
+            out.push(chars[start..end].iter().collect());
+            start = end;
+        }
+    }
+    out
 }
 
 fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -989,11 +1299,13 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
         ]));
     }
 
-    // Compact inline tool timeline: show the last few tool calls below the stream.
+    // Compact inline tool timeline: collapsible tool calls below the stream.
+    // Collapsed shows a one-line header; press Space/e in conversation focus to
+    // expand the most recent tool's output inline.
     if !app.tools.is_empty() {
         let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
         for tool in app.tools.iter().rev().take(6).rev() {
-            let (icon, color) = match tool.status {
+            let (_icon, color) = match tool.status {
                 ToolStatus::Requested => ("◌", Color::DarkGray),
                 ToolStatus::Running => (spinner, Color::Yellow),
                 ToolStatus::Done => ("✓", Color::Green),
@@ -1014,21 +1326,36 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                     } else { None }
                 })
                 .unwrap_or_default();
-            let detail = tool.output_preview
+            let expanded = app.tool_expanded.contains(&tool.id);
+            let has_output = tool
+                .output_preview
                 .as_deref()
-                .map(|p| p.trim())
-                .filter(|p| !p.is_empty())
-                .map(|p| {
-                    let s: String = p.chars().take(50).collect();
-                    format!("  {s}")
-                })
-                .unwrap_or_default();
-            all_lines.push(Line::from(vec![
-                Span::styled(format!("  {icon} "), Style::default().fg(color)),
+                .map(|p| !p.trim().is_empty())
+                .unwrap_or(false);
+            let triangle = if expanded { "▼" } else { "▶" };
+            let mut header = vec![
+                Span::styled(format!("  {triangle} "), Style::default().fg(color)),
                 Span::styled(tool.name.clone(), Style::default().fg(Color::Gray)),
                 Span::styled(elapsed, Style::default().fg(Color::Rgb(80, 85, 100))),
-                Span::styled(detail, Style::default().fg(Color::DarkGray)),
-            ]));
+            ];
+            if !expanded && has_output {
+                header.push(Span::styled(
+                    "  [press Space to expand]".to_string(),
+                    Style::default().fg(Color::Rgb(70, 75, 95)),
+                ));
+            }
+            all_lines.push(Line::from(header));
+
+            if expanded {
+                if let Some(preview) = tool.output_preview.as_deref() {
+                    for wrapped in wrap_text(preview, 80).into_iter().take(10) {
+                        all_lines.push(Line::from(vec![
+                            Span::raw("      "),
+                            Span::styled(wrapped, Style::default().fg(Color::DarkGray)),
+                        ]));
+                    }
+                }
+            }
         }
         // Summary line when more tools than visible
         if app.tools.len() > 6 {
