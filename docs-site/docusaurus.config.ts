@@ -23,7 +23,7 @@ const config: Config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: "./sidebars.ts",
-          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/docs/",
+          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/",
         },
         blog: {
           showReadingTime: true,
