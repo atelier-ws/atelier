@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+from atelier.core.capabilities.tool_supervision.smart_search import IndexedSearch, smart_search
 
 
 def _match_paths(matches: list[dict[str, Any]]) -> list[str]:
@@ -29,6 +29,7 @@ def search_first(
     max_chars_per_file: int = 1600,
     include_outline: bool = True,
     budget_tokens: int = 2000,
+    indexed_search: IndexedSearch | None = None,
 ) -> dict[str, Any]:
     payload = smart_search(
         query=query,
@@ -38,6 +39,7 @@ def search_first(
         max_chars_per_file=max_chars_per_file,
         include_outline=include_outline,
         budget_tokens=budget_tokens,
+        indexed_search=indexed_search,
     )
     matches = [match for match in payload.get("matches", []) if isinstance(match, dict)]
     match_paths = [path for path in payload.get("match_paths", []) if isinstance(path, str) and path]
@@ -77,6 +79,7 @@ def search_first(
         "cache_hit": bool(payload.get("cache_hit", False)),
         "total_tokens": int(payload.get("total_tokens", 0) or 0),
         "tokens_saved": int(payload.get("tokens_saved", 0) or 0),
+        **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
     }
 
 

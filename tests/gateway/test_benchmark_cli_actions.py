@@ -198,6 +198,10 @@ def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> Non
     manifest = json.loads((tmp_path / "atelierbench" / "benchmark-manifest.json").read_text("utf-8"))
     assert manifest["suite"] == "atelierbench"
     assert manifest["protocol"]["baseline_arm"] == "baseline"
+    assert manifest["protocol"]["arm_agents"] == {
+        "atelier": "atelier:code",
+        "baseline": "host-default",
+    }
     assert manifest["corpus"]["tasks"][0]["id"] == "task1"
     evidence = json.loads((tmp_path / "atelierbench" / "benchmark-evidence.json").read_text("utf-8"))
     assert evidence["suite"] == "atelierbench"

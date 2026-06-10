@@ -43,6 +43,9 @@ def build_atelierbench_manifest(
             "baseline_arm": baseline_arm,
             "treatment_arms": treatment_arms,
             "reps": reps,
+            "arm_agents": {
+                arm: "atelier:code" if arm == "atelier" and cli_driver == "claude" else "host-default" for arm in arms
+            },
             "matched_fields": {
                 "model": model,
                 "cli_driver": cli_driver,

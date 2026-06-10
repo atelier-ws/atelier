@@ -504,6 +504,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
         "routing_usd": 0.0,
         "tokens_saved": 0,
         "calls_avoided": 0,
+        "carry_usd": 0.0,
         "estimated": False,
     }
     if not session_id:
@@ -517,6 +518,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
             "routing_usd": float(summary.routing_saved_usd),
             "tokens_saved": int(summary.ctx_saved),
             "calls_avoided": int(summary.smart_calls),
+            "carry_usd": float(summary.carry_usd),
             "estimated": False,
         }
     except Exception:
@@ -584,6 +586,9 @@ def _format_stats(
     calls_avoided = int(savings.get("calls_avoided", 0) or 0)
     routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
     lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
+    carry_usd = float(savings.get("carry_usd", 0.0) or 0.0)
+    if carry_usd > 0:
+        lines.append(f"context carry: ${carry_usd:.4f} (cache re-reads avoided on later turns)")
     if routing_usd > 0:
         lines.append(f"routing savings: ${routing_usd:.4f}")
 
