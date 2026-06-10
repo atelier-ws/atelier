@@ -1,0 +1,13 @@
+name = "atelier-docs"
+main = "build/index.html"
+compatibility_date = "2025-06-01"
+
+# Cloudflare Pages config
+# Build from this subdirectory: docs-site/
+# Build command: npm ci && npm run build
+# Build output directory: build/
+# Node version: 18+
+
+[pages]
+build_command = "npm ci && npm run build"
+build_output_dir = "build/"

@@ -94,66 +94,7 @@ Generated files must never be edited directly — edit the source and regenerate
 
 ## Coding Guidelines
 
-### 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-### 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-### 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-### 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+The full guidelines (think before coding, simplicity first, surgical changes, goal-driven execution) are embedded in every Atelier persona. Source of truth: `integrations/shared/coding-guidelines.md` — do not restate them here.
 
 ## Validation by Change Surface
 
@@ -168,31 +109,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Agent Spawning Rules
 
-When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
-
-| Role                                                     | subagent_type     | When                                                    |
-| -------------------------------------------------------- | ----------------- | ------------------------------------------------------- |
-| Code-review**finder** (read, search, grep — never edits) | `atelier:explore` | All Phase 1 / Angle A–G finder agents in `/code-review` |
-| Code-review**verifier** (applies rubric, never edits)    | `atelier:review`  | All Phase 2 verifier agents in `/code-review`           |
-| Read-only research / exploration                         | `atelier:explore` | Any agent that only reads files, symbols, or web pages  |
-| Coding, edits, fixes                                     | `atelier:code`    | Any agent that writes or modifies files                 |
-
-**Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
+The atelier:code persona carries the role table. `/code-review` specifics: Phase-1 finders → `atelier:explore`, Phase-2 verifiers → `atelier:review`. Never use the default `claude` agent for a task that fits a typed role — it has write access it doesn't need and costs more.
 
 ## Code Intelligence
 
-Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
-
-| Need                                       | Tool                                              |
-| ------------------------------------------ | ------------------------------------------------- |
-| Find a symbol definition by name           | `mcp__atelier__symbols`                           |
-| Read the full source of one symbol         | `mcp__atelier__node`                              |
-| Who calls a function / what it calls       | `mcp__atelier__callers` / `mcp__atelier__callees` |
-| All references to a symbol                 | `mcp__atelier__usages`                            |
-| Blast radius before refactoring            | `mcp__atelier__impact`                            |
-| Match/rewrite code by AST shape            | `mcp__atelier__pattern`                           |
-| Grouped source + relationships in one call | `mcp__atelier__explore`                           |
-
-There is no `mcp__atelier__code` tool — it was split into the focused tools
-above for discoverability. The multiplexer is still registered as
-`mcp__atelier__symbols` (its `op=` parameter is an internal detail).
+Prefer the focused SCIP-backed tools (`symbols`, `node`, `callers`/`callees`, `usages`, `impact`, `pattern`, `explore`) over grep. There is no `mcp__atelier__code` tool — the multiplexer is registered as `mcp__atelier__symbols` (its `op=` parameter is an internal detail).
