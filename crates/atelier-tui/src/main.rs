@@ -96,6 +96,14 @@ async fn main() -> Result<()> {
         PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
     );
 
+    // Also enable XTerm modifyOtherKeys for VTE/GNOME Terminal (different from kitty protocol).
+    // VTE-based terminals report Shift+Enter via modifyOtherKeys level 2 rather than the kitty
+    // CSI-u protocol, so enabling both maximizes where Shift+Enter inserts a newline.
+    use std::io::Write;
+    let _ = std::io::stdout()
+        .write_all(b"\x1b[>4;2m")
+        .and_then(|_| std::io::stdout().flush());
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
