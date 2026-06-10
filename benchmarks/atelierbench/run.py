@@ -181,6 +181,7 @@ API_DEFAULT_BASE_URLS = {
     "ollama": "http://localhost:11434/v1",
 }
 WOZ_PLUGIN_ROOT = Path("/home/pankaj/.claude/plugins/cache/wozcode-marketplace/woz/0.3.75")
+ATELIER_CLAUDE_PLUGIN_ROOT = REPO_ROOT / "integrations" / "claude" / "plugin"
 WOZ_CLAUDE_MD = ""
 ATELIER_CLAUDE_MD = """\
 # Benchmark Instructions
@@ -256,6 +257,15 @@ def _atelier_mcp_config(host: str) -> dict[str, object]:
             }
         }
     }
+
+
+def _atelier_claude_agent_args() -> list[str]:
+    return [
+        "--plugin-dir",
+        str(ATELIER_CLAUDE_PLUGIN_ROOT),
+        "--agent",
+        "atelier:code",
+    ]
 
 
 def _free_port() -> int:
@@ -1260,21 +1270,10 @@ def run_arm(
                 (ws / "CLAUDE.md").write_text(BASELINE_CLAUDE_MD)
                 cmd.extend(["--mcp-config", json.dumps(EMPTY_MCP), "--strict-mcp-config"])
             if arm == "atelier":
-                (ws / "CLAUDE.md").write_text(ATELIER_CLAUDE_MD)
-                # Wire the Atelier MCP server explicitly (do not rely on a
-                # globally installed plugin) and disable the native Bash/Write/
-                # Edit tools so the agent uses mcp__atelier__* (including
-                # mcp__atelier__shell) instead of falling back to Bash heredocs.
-                # Workflow/Agent stay enabled — Atelier has no in-host replacement
-                # for subagent spawning / deterministic orchestration.
-                cmd.extend(
-                    [
-                        "--mcp-config",
-                        json.dumps(_atelier_mcp_config("claude")),
-                        "--strict-mcp-config",
-                    ]
-                )
-                cmd.extend(["--disallowedTools", "Bash", "Write", "Edit"])
+                # Load the generated Claude plugin and run its real coding
+                # agent. The agent definition owns its prompt, MCP wiring, hooks,
+                # and native-tool restrictions.
+                cmd.extend(_atelier_claude_agent_args())
         elif cli_driver == "copilot":
             cmd = build_vix_cli_command(
                 cli_driver=cli_driver,

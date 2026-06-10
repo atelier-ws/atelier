@@ -113,7 +113,7 @@ SAVED_FIELD_COUNT=$(printf '%s' "${SAVED_LINE:-}" | awk -F'|' '{print NF}' 2>/de
 if [ "${SAVED_FIELD_COUNT:-0}" -lt 10 ] 2>/dev/null; then
   SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
-IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK <<<"${SAVED_LINE:-}"
+IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD <<<"${SAVED_LINE:-}"
 [ -z "${SAVED_USD:-}" ] && SAVED_USD="\$0.000"
 [ -z "${SAVED_CTX:-}" ] && SAVED_CTX="0"
 [ -z "${SAVED_CALLS:-}" ] && SAVED_CALLS="0"
@@ -123,6 +123,7 @@ IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${DISPLAY_IN_TOK:-}" ] && DISPLAY_IN_TOK="0"
 [ -z "${DISPLAY_CACHE_TOK:-}" ] && DISPLAY_CACHE_TOK="0"
 [ -z "${DISPLAY_OUT_TOK:-}" ] && DISPLAY_OUT_TOK="0"
+[ -z "${CARRY_USD:-}" ] && CARRY_USD="\$0.000"
 # Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
 # we snapshot the cumulative live cost at that moment and subtract it from then
 # on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
@@ -214,13 +215,21 @@ fi
 
 if [ "$ROUTING_USD" != "\$0.000" ]; then
   ROUTING_SEG=" ${SEP} routing: ${ROUTING_USD}"
-else
+  else
   ROUTING_SEG=""
-fi
+  fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s%s)%s%s\n' \
+  # Context-carry credit (cache re-reads avoided on later turns); shown only
+  # when nonzero and kept out of the headline saved figure.
+  if [ -n "${CARRY_USD:-}" ] && [ "$CARRY_USD" != "\$0.000" ]; then
+  CARRY_SEG=" ${SEP} carry: ${CARRY_USD}"
+  else
+  CARRY_SEG=""
+  fi
+
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s%s)%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
   "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$SAVED_PCT_SEG" "$C_RESET" \
-  "$ROUTING_SEG"
+  "$ROUTING_SEG" "$CARRY_SEG"

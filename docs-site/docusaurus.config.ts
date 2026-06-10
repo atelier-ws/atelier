@@ -5,18 +5,13 @@ import type * as Preset from "@docusaurus/preset-classic";
 const config: Config = {
   title: "Atelier",
   tagline:
-    "Agent Reasoning Runtime — agent procedures, traces, cost & verification",
+    "Open-Source Runtime Engineering for Agents",
   favicon: "img/favicon.svg",
-  url: "https://atelier.beseam.com",
+  url: "https://docs.atelier.ws",
   baseUrl: "/",
-  organizationName: "pankaj4u4m",
+  organizationName: "atelier-runtime",
   projectName: "atelier",
-  onBrokenLinks: "throw",
-  markdown: {
-    hooks: {
-      onBrokenMarkdownLinks: "warn",
-    },
-  },
+  onBrokenLinks: "warn",
   i18n: {
     defaultLocale: "en",
     locales: ["en"],
@@ -27,7 +22,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: "./sidebars.ts",
-          editUrl: undefined,
+          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/",
         },
         blog: {
           showReadingTime: true,
@@ -43,7 +38,7 @@ const config: Config = {
     ],
   ],
   themeConfig: {
-    image: "img/docusaurus-social-card.jpg",
+    image: "img/atelier-logo.svg",
     colorMode: {
       respectPrefersColorScheme: true,
       disableSwitch: false,
@@ -67,7 +62,12 @@ const config: Config = {
           position: "left",
         },
         {
-          href: "https://github.com/pankaj4u4m/atelier",
+          href: "https://atelier.ws",
+          label: "Website",
+          position: "right",
+        },
+        {
+          href: "https://github.com/atelier-runtime/atelier",
           label: "GitHub",
           position: "right",
         },
@@ -79,44 +79,31 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            {
-              label: "Installation",
-              to: "/docs/installation",
-            },
+            { label: "Home", to: "/docs" },
+            { label: "Installation", to: "/docs/installation" },
+            { label: "CLI Reference", to: "/docs/cli" },
+            { label: "Troubleshooting", to: "/docs/troubleshooting" },
           ],
         },
         {
-          title: "Community",
+          title: "Hosts",
           items: [
-            {
-              label: "Stack Overflow",
-              href: "https://stackoverflow.com/questions/tagged/docusaurus",
-            },
-            {
-              label: "Discord",
-              href: "https://discordapp.com/invite/docusaurus",
-            },
-            {
-              label: "Twitter",
-              href: "https://twitter.com/docusaurus",
-            },
+            { label: "All Hosts", to: "/docs/hosts/all-agent-clis" },
+            { label: "Claude Code", to: "/docs/hosts/claude-code-install" },
+            { label: "Codex CLI", to: "/docs/hosts/codex-install" },
+            { label: "Copilot", to: "/docs/hosts/copilot-install" },
           ],
         },
         {
           title: "More",
           items: [
-            {
-              label: "Blog",
-              to: "/blog",
-            },
-            {
-              label: "GitHub",
-              href: "https://github.com/pankaj4u4m/atelier",
-            },
+            { label: "Atelier Website", href: "https://atelier.ws" },
+            { label: "GitHub", href: "https://github.com/atelier-runtime/atelier" },
+            { label: "Contact", href: "mailto:contact@atelier.ws" },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Atelier. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Atelier. Open source under MIT License.`,
     },
     prism: {
       theme: prismThemes.github,
