@@ -473,7 +473,8 @@ pub struct App<'a> {
     pub tool_count: usize,
     pub selection_mode: bool,         // when true, mouse capture is OFF — native terminal selection works
     pub pending_mouse_toggle: Option<bool>,
-    pub pending_esc: Option<std::time::Instant>, // for ESC+Enter → Alt+Enter detection // Some(true)=enable capture, Some(false)=disable it
+    pub pending_esc: Option<std::time::Instant>,
+    pub key_debug: bool, // when true, next key shows its raw crossterm event // Some(true)=enable capture, Some(false)=disable it
     pub tool_expanded: std::collections::HashSet<String>, // ids of tools whose output is expanded inline
     // Desktop-notification bookkeeping
     pub last_activity_time: std::time::Instant, // updated on every keypress
@@ -537,6 +538,7 @@ impl<'a> App<'a> {
             selection_mode: false,
             pending_mouse_toggle: None,
             pending_esc: None,
+            key_debug: false,
             tool_expanded: std::collections::HashSet::new(),
             last_activity_time: std::time::Instant::now(),
             notification_pending: None,
