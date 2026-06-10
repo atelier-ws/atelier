@@ -123,20 +123,15 @@ prompt_templates:
 - name: session-optimization
   template: 'Atelier budget optimizer is active for OpenCode.
 
-    Use Atelier MCP tools first for file I/O, search, edits, and shell work.
-
     Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel
-    work.
-
-    Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.
+    work; use native host tools only when Atelier returns `noop`, is hidden, or is
+    unavailable.
 
     Before changing files, name the deliverable and summarize the smallest viable
     plan.
 
-    Keep context narrow: use only the current goal, relevant files, failing command/output,
-    and known constraints.
-
-    Restate working context in under 10 bullets before editing or after compaction.
+    Keep context narrow: the current goal, relevant files, failing command/output,
+    and known constraints; restate it in under 10 bullets after compaction.
 
     If more than 10 minutes pass without an edit, name the expected deliverable or
     check with the user.
