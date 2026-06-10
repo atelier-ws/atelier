@@ -6,7 +6,7 @@ from __future__ import annotations
 
 
 def serve(
-    port: int = 8787,
+    port: int = 8790,
     host: str = "0.0.0.0",
     project_root: str | None = None,
     yolo: bool = True,
