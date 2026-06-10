@@ -86,11 +86,11 @@ async fn main() -> Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // NO EnableMouseCapture by default — this allows native terminal text selection
+    // (click+drag, Shift+click). Use Ctrl+\ to toggle mouse capture if you want scroll wheel.
+    execute!(stdout, EnterAlternateScreen)?;
 
-    // Enable kitty keyboard protocol — DISAMBIGUATE_ESCAPE_CODES is enough for
-    // Shift+Enter to be reported as Enter+SHIFT (not the same as plain Enter).
-    // Terminals that don't support it silently ignore the sequence.
+    // Enable kitty keyboard protocol for Shift+Enter support in VTE >= 0.72 / WezTerm / kitty.
     let _ = execute!(
         stdout,
         PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
@@ -101,14 +101,9 @@ async fn main() -> Result<()> {
 
     let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
-    // Always pop — safe no-op on terminals that ignored the push.
     let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
     child.kill().await.ok();
 
@@ -246,14 +241,12 @@ async fn run_app(
             execute!(
                 terminal.backend_mut(),
                 LeaveAlternateScreen,
-                DisableMouseCapture
             )?;
             let status = std::process::Command::new(&editor).arg(&file).status();
             enable_raw_mode()?;
             execute!(
                 terminal.backend_mut(),
                 EnterAlternateScreen,
-                EnableMouseCapture
             )?;
             terminal.clear()?;
             let msg = match status {
@@ -1285,16 +1278,16 @@ async fn handle_key(
                 pending_keys: Vec::new(),
             };
         }
-        // Ctrl+\  — toggle selection mode: disables mouse capture so the terminal can
-        // natively select / copy text with the mouse (click+drag). Press again to re-enable.
+        // Ctrl+\  — toggle mouse capture ON/OFF.
+        // Default (selection_mode=false): no mouse capture → native selection works.
+        // Mouse mode (selection_mode=true): mouse capture ON → scroll wheel works, Shift+drag to select.
         KeyCode::Char('\\') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.selection_mode = !app.selection_mode;
-            // Signal main loop to toggle mouse capture
-            app.pending_mouse_toggle = Some(!app.selection_mode);
+            app.pending_mouse_toggle = Some(app.selection_mode); // true=enable capture, false=disable
             let msg = if app.selection_mode {
-                "  SELECTION MODE — click+drag to select, Ctrl+\\ to exit"
+                "  \u{1F5B1}  Mouse scroll ON — Shift+drag to select text · Ctrl+\\ to turn off"
             } else {
-                "  Mouse mode restored"
+                "  \u{270C}  Selection mode — click+drag to select · Ctrl+\\ for scroll wheel"
             };
             app.conversation.push(ConversationEntry {
                 role: Role::System,
