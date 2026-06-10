@@ -5,6 +5,11 @@ to content already returned earlier in the *same* session, emit a short stub
 pointer instead of re-paying to put the same bytes back into the context window.
 The model still has the original earlier in the transcript, so nothing is lost.
 
+**Scope**: MCP tool-output level, within one session, exact SHA-256 hash match.
+Do not confuse with ``context_compression.deduplication``, which runs inside
+the compression pipeline and uses edit-distance / MinHash for *near*-duplicate
+collapsing of tool outputs during sleeptime summarisation.
+
 Correctness hinges on one invariant: in a Claude Code session, returned content
 stays in context until a **compaction** (or /clear) drops it. So the only reset
 signal we need is the session's ``compaction_epoch`` (bumped by the PostCompact

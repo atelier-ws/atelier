@@ -1,3 +1,31 @@
+"""Owned-execution routing orchestrator.
+
+This is the top-level entry point for routing agent sessions that Atelier
+controls directly (as opposed to advisory routing for host CLIs).
+
+Routing pipeline — four layers:
+
+    Layer 1 — model_routing.ModelRouter
+        Scores the current tool call + task text into a cheap/medium/expensive
+        tier *within* the current vendor.  Advisory to the host CLI.
+
+    Layer 2 — cross_vendor_routing.CrossVendorRouter  (wraps Layer 1)
+        Picks the best vendor + model pair across all configured providers.
+        Applies lesson-based preferences and per-session cost caps.
+
+    Layer 3 — quality_router  (parallel to Layers 1-2)
+        Issues execution contracts and quality-gate checks for a given route.
+        Used here via ``route_execution_contract``; also used by the engine's
+        ``QualityRouterCapability``.
+
+    Layer 4 — this module (OwnedExecutionRouter)
+        Orchestrates Layers 2-3 plus:
+        * counterfactual simulation (what would each candidate cost / deliver?)
+        * provider catalog construction (runner profiles, transports)
+        * cache-affinity injection
+        * runner + transport resolution for actual execution
+"""
+
 from __future__ import annotations
 
 import shutil
