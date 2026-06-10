@@ -82,8 +82,7 @@ def flow_records(path: str) -> Iterator[tuple[str, bytes]]:
         from mitmproxy.io import FlowReader
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise SystemExit(
-            "mitmproxy is required to read .flow files. Install it with:\n"
-            "    uv pip install mitmproxy"
+            "mitmproxy is required to read .flow files. Install it with:\n    uv pip install mitmproxy"
         ) from exc
 
     with open(path, "rb") as fh:
@@ -153,8 +152,7 @@ def format_report(runs: list[RunStats], pricing: dict[str, float]) -> str:
             "",
             f"delta ({cand.label} vs {base.label}; negative = saved):",
             f"  total tokens : {tok_delta:+,} ({_signed_pct(base.usage.total, cand.usage.total)})",
-            f"  est. cost    : ${cost_delta:+.4f} "
-            f"({_signed_pct(base.cost_usd(pricing), cand.cost_usd(pricing))})",
+            f"  est. cost    : ${cost_delta:+.4f} ({_signed_pct(base.cost_usd(pricing), cand.cost_usd(pricing))})",
         ]
     return "\n".join(out)
 
@@ -173,9 +171,7 @@ def _parse_args(argv: list[str]) -> tuple[list[tuple[str, str]], dict[str, float
         help="captures to compare, e.g. atelier_off=off.flow atelier_on=on.flow",
     )
     p.add_argument("--in", dest="input_per_m", type=float, default=_DEFAULT_PRICING["input_per_m"])
-    p.add_argument(
-        "--out", dest="output_per_m", type=float, default=_DEFAULT_PRICING["output_per_m"]
-    )
+    p.add_argument("--out", dest="output_per_m", type=float, default=_DEFAULT_PRICING["output_per_m"])
     p.add_argument(
         "--cache-read",
         dest="cache_read_per_m",

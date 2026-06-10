@@ -13,6 +13,7 @@ cache breakpoints so each phase can cache-hit the previous phase's context:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -146,7 +147,11 @@ def _call_llm(
     if cache_style == "anthropic":
         from atelier.infra.internal_llm.litellm_client import chat_with_result
 
-        result = chat_with_result(messages, model=model)
+        result = chat_with_result(
+            messages,
+            model=model,
+            api_key=os.environ.get("AWS_BEARER_TOKEN_BEDROCK") if provider.lower() == "bedrock" else None,
+        )
         return (
             result.content,
             result.input_tokens,
@@ -245,7 +250,9 @@ def run_phase_linear(
         if mark:
             turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
             working.append(turn)
-            session.add_assistant_turn(content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic")
+            session.add_assistant_turn(
+                content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic"
+            )
         else:
             working.append({"role": "assistant", "content": content})
             session.add_assistant_turn(content, mark_breakpoint=False)

@@ -40,6 +40,30 @@ def test_explicit_owned_route_selects_requested_provider_model_and_runner(tmp_pa
     assert decision.transport == "openai"
 
 
+def test_explicit_owned_route_supports_bedrock_sonnet_4_6_with_bearer_token(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("shutil.which", lambda _command: None)
+    save_route_config(tmp_path, RouteConfig(enabled_vendors=["bedrock"]))
+
+    selector = OwnedExecutionRouteSelector(
+        tmp_path,
+        env={"AWS_BEARER_TOKEN_BEDROCK": "bedrock-token"},
+    )
+    decision = selector.select(
+        OwnedRouteRequest(
+            tool_name="run",
+            task_text="Implement the fix.",
+            mode="explicit",
+            provider="bedrock",
+            model="bedrock/us.anthropic.claude-sonnet-4-6",
+        )
+    )
+
+    assert decision.provider == "bedrock"
+    assert decision.model == "bedrock/us.anthropic.claude-sonnet-4-6"
+    assert decision.runner == "litellm"
+    assert decision.transport == "litellm"
+
+
 def test_explicit_owned_route_rejects_unavailable_requested_runner(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("shutil.which", lambda _command: None)
     save_route_config(tmp_path, RouteConfig(enabled_vendors=["openai"]))
@@ -62,7 +86,7 @@ def test_explicit_owned_route_rejects_unavailable_requested_runner(tmp_path, mon
 def test_auto_owned_route_filters_unhealthy_provider_before_budget_choice(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         "shutil.which",
-        lambda command: (f"/usr/bin/{command}" if command in {"claude", "codex", "copilot"} else None),
+        lambda command: f"/usr/bin/{command}" if command in {"claude", "codex", "copilot"} else None,
     )
     save_route_config(tmp_path, RouteConfig(enabled_vendors=["anthropic", "openai"]))
 

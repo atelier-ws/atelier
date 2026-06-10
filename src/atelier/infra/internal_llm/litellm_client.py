@@ -102,6 +102,7 @@ def chat_with_result(
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
     cache_metadata: dict[str, Any] | None = None,
+    api_key: str | None = None,
 ) -> InternalLLMChatResult:
     """Call LiteLLM and optionally parse a JSON response.
 
@@ -112,18 +113,20 @@ def chat_with_result(
     litellm = _litellm_module()
     chosen_model = _resolve_model(model)
     request_messages = _apply_cache_control(messages, chosen_model=chosen_model, cache_metadata=cache_metadata)
+    request_kwargs: dict[str, Any] = {"model": chosen_model, "messages": request_messages}
+    if api_key:
+        request_kwargs["api_key"] = api_key
     try:
         if json_schema is None:
-            response = litellm.completion(model=chosen_model, messages=request_messages)
+            response = litellm.completion(**request_kwargs)
         else:
             try:
                 response = litellm.completion(
-                    model=chosen_model,
-                    messages=request_messages,
+                    **request_kwargs,
                     response_format={"type": "json_object"},
                 )
             except Exception:  # noqa: BLE001 - provider may reject response_format; retry plain
-                response = litellm.completion(model=chosen_model, messages=request_messages)
+                response = litellm.completion(**request_kwargs)
     except Exception as exc:
         if isinstance(exc, LiteLLMUnavailable):
             raise

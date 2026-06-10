@@ -21,9 +21,7 @@ def _write_fixture_repo(root: Path) -> None:
     (root / "src").mkdir()
     (root / "src" / "__init__.py").write_text("", encoding="utf-8")
     (root / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (root / "src" / "checkout.py").write_text(
@@ -452,7 +450,7 @@ def test_scip_artifact_watcher_treats_branch_switch_as_change(tmp_path: Path, mo
     monkeypatch.setattr("atelier.infra.code_intel.scip.watcher.resolve_git_repo_state", fake_state)
     watcher = ScipArtifactWatcher(
         repo_root=tmp_path,
-        cache_root=lambda: (tmp_path / ".atelier" / "cache" / "scip" / "repo" / f"{branch['name']}-key"),
+        cache_root=lambda: tmp_path / ".atelier" / "cache" / "scip" / "repo" / f"{branch['name']}-key",
         state_sync=state_sync,
     )
     first_path = tmp_path / ".atelier" / "cache" / "scip" / "repo" / "main-key" / "python.scip"

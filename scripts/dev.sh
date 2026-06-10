@@ -131,11 +131,13 @@ ORIGINAL_STDOUT_IS_TTY=0
 if [[ -t 1 ]]; then
     ORIGINAL_STDOUT_IS_TTY=1
 fi
+# Save real terminal FD before tee redirect so spinner output never goes through the pipe buffer.
+exec 7>&1
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all|--claude|--codex|--cursor|--opencode|--copilot|--hermes|--antigravity|--atelier-tui)
+        --all|--claude|--codex|--cursor|--opencode|--copilot|--hermes|--antigravity)
             HOST_FLAGS+=("$1")
             ;;
         --local) ATELIER_LOCAL=1 ;;
@@ -212,8 +214,8 @@ _spinner_run() {
     (
         local _i=0
         while true; do
-            printf "\r%b%s%b  %b%s%b  %b%s%b " \
-                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$C_PURPLE" "$_SPINNER_MSG" "$C_RESET"
+            printf "\r\033[2K%b%s%b  %b%s%b  %b%s%b " \
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_i % 10))]}" "$C_RESET" "$C_PURPLE" "$_SPINNER_MSG" "$C_RESET" >&7
             sleep 0.08
             _i=$((_i + 1))
         done
@@ -228,7 +230,7 @@ _spinner_pause() {
     wait "$_SPINNER_PID" 2>/dev/null || true
     _SPINNER_PID=""
     echo "" > "$ATELIER_SPINNER_PID_FILE"
-    printf "\r\033[2K"
+    printf "\r\033[2K" >&7
 }
 _spinner_resume() { if [[ "${_SPINNER_ACTIVE:-0}" == "1" ]]; then _spinner_run; fi; }
 _spinner_stop() {
@@ -283,13 +285,13 @@ spin_tail() {
             if [[ $_printed_lines -gt 0 ]]; then
                 local _j
                 for ((_j = 0; _j < _printed_lines; _j++)); do
-                    printf "\033[1A\033[2K"
+                    printf "\033[1A\033[2K" >&7
                 done
-                printf "\r"
+                printf "\r" >&7
             fi
 
             printf "%b%s%b  %b%s%b  %b%s%b\n" \
-                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_fi % 10))]}" "$C_RESET" "$C_PURPLE" "$_msg" "$C_RESET"
+                "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "${_frames[$((_fi % 10))]}" "$C_RESET" "$C_PURPLE" "$_msg" "$C_RESET" >&7
             _printed_lines=1
             _fi=$((_fi + 1))
 
@@ -300,7 +302,7 @@ spin_tail() {
                 if ((${#_tail_line} > 140)); then
                     _tail_line="${_tail_line:0:137}..."
                 fi
-                printf "%b│%b    %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_PURPLE" "$_tail_line" "$C_RESET"
+                printf "%b│%b    %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_PURPLE" "$_tail_line" "$C_RESET" >&7
                 _printed_lines=$((_printed_lines + 1))
             done < <(tail -n 2 "$_out_file")
 
@@ -312,9 +314,9 @@ spin_tail() {
         if [[ $_printed_lines -gt 0 ]]; then
             local _j
             for ((_j = 0; _j < _printed_lines; _j++)); do
-                printf "\033[1A\033[2K"
+                printf "\033[1A\033[2K" >&7
             done
-            printf "\r"
+            printf "\r" >&7
         fi
 
         if [[ $_ret -eq 0 ]]; then
@@ -377,15 +379,15 @@ spin_progress() {
             local _i
             for ((_i = 0; _i < _filled; _i++)); do _bar_fill+="${_fill_char}"; done
             for ((_i = 0; _i < _empty; _i++)); do _bar_empty+="${_empty_char}"; done
-            printf "\r%b%s%b  %b%s%b  %s  %b▕%b%b%b%b%b▏%b  %b%3d%%%b" \
+            printf "\r\033[2K%b%s%b  %b%s%b  %s  %b▕%b%b%b%b%b▏%b  %b%3d%%%b" \
                 "$C_PURPLE" "$ACTIVE_BAR" "$C_RESET" "$C_PURPLE" "$_spin" "$C_RESET" "$_msg" \
                 "$C_DIM" "$C_RESET" "$C_CYAN" "$_bar_fill" "$C_DIM" "$_bar_empty" "$C_RESET" \
-                "$C_CYAN" "$_pct" "$C_RESET"
+                "$C_CYAN" "$_pct" "$C_RESET" >&7
             sleep 0.12
         done
 
         wait "$_pid" || _ret=$?
-        printf "\r\033[2K"
+        printf "\r\033[2K" >&7
         if [[ $_ret -eq 0 ]]; then
             local _bar_done
             _bar_done=""
@@ -872,7 +874,6 @@ contains_any_host_flag() {
     has_flag "--copilot" && return 0
     has_flag "--hermes" && return 0
     has_flag "--antigravity" && return 0
-    has_flag "--atelier-tui" && return 0
     return 1
 }
 
@@ -903,12 +904,12 @@ detect_hosts() {
     fi
 
     if command -v opencode >/dev/null 2>&1; then
-        HOST_SUMMARY+=("opencode (detected)")
-        HOST_CHOICES+=("opencode|detected")
+        HOST_SUMMARY+=("OpenCode (Ink Atelier provider) (detected)")
+        HOST_CHOICES+=("OpenCode (Ink Atelier provider)|detected")
         HOST_DEFAULT_SELECTION+=(1)
     else
-        HOST_SUMMARY+=("opencode (not found)")
-        HOST_CHOICES+=("opencode|not found")
+        HOST_SUMMARY+=("OpenCode (Ink Atelier provider) (not found)")
+        HOST_CHOICES+=("OpenCode (Ink Atelier provider)|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
@@ -949,16 +950,6 @@ detect_hosts() {
     else
         HOST_SUMMARY+=("Hermes Agent (global-only, not found)")
         HOST_CHOICES+=("Hermes Agent (global-only)|not found")
-        HOST_DEFAULT_SELECTION+=(0)
-    fi
-
-    if command -v atelier-tui >/dev/null 2>&1 || [[ -f "${HOME}/.atelier/bin/atelier-tui" ]]; then
-        HOST_SUMMARY+=("Atelier TUI (detected)")
-        HOST_CHOICES+=("Atelier TUI|detected")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_SUMMARY+=("Atelier TUI (not found)")
-        HOST_CHOICES+=("Atelier TUI|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
@@ -1011,7 +1002,6 @@ host_wizard() {
                     4) HOST_FLAGS+=(--antigravity) ;;
                     5) HOST_FLAGS+=(--cursor) ;;
                     6) HOST_FLAGS+=(--hermes) ;;
-                    7) HOST_FLAGS+=(--atelier-tui) ;;
                 esac
             done
             [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1052,7 +1042,6 @@ host_wizard() {
                         5) HOST_FLAGS+=(--antigravity) ;;
                         6) HOST_FLAGS+=(--cursor) ;;
                         7) HOST_FLAGS+=(--hermes) ;;
-                        8) HOST_FLAGS+=(--atelier-tui) ;;
                     esac
                 done
                 [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1131,7 +1120,6 @@ host_target_for_name() {
         copilot)     printf "%s" "~/.config/Code" ;;
         hermes)      printf "%s" "~/.hermes" ;;
         antigravity) printf "%s" "~/.config/Antigravity" ;;
-        atelier-tui) printf "%s" "~/.atelier/tui" ;;
         *)           printf "%s" "~/.config" ;;
     esac
 }
@@ -1926,7 +1914,9 @@ main() {
         spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
-            if ! spin_progress "Bootstrapping code index" "$atelier_cli" code index --repo-root "$index_target"; then
+            if "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│    " 2>&7; then
+                printf "%b│%b  %b✓%b  Code index ready\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET"
+            else
                 degrade "Initial code indexing failed; Atelier will continue and autosync will retry."
             fi
         else
@@ -1974,13 +1964,12 @@ main() {
             fi
 
             if [[ "$stack_available" == "1" ]]; then
-                verbose "Starting Atelier visualization stack (service + frontend)..."
+                verbose "Starting Atelier HTTP service..."
                 if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-                    echo "[dry-run] $ATELIER_BIN_DIR/atelier stack start"
+                    echo "[dry-run] $ATELIER_BIN_DIR/atelierd start"
                 else
-                    "$ATELIER_BIN_DIR/atelier" stack start \
-                        && STACK_STARTED=1 \
-                        || degrade "Visualization stack did not start cleanly"
+                    "$ATELIER_BIN_DIR/atelierd" start &
+                    STACK_STARTED=1
                 fi
             fi
         fi
@@ -2019,11 +2008,11 @@ main() {
     printf "   Code:          %s\n\n" "$code_display"    
     printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
     printf "%b🚀 Commands:%b\n\n" "$C_PURPLE" "$C_RESET"
-    printf "   %batelier%b status              View active reasoning run\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b status              View active runs\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b import              Import past agent sessions\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b memory recall       Search memory\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b code index          Index current repository\n" "$C_PURPLE" "$C_RESET"
-    printf "   %batelier%b stack status        Check frontend/service status\n\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelierd%b status             Check service status\n\n" "$C_PURPLE" "$C_RESET"
     if [[ ${#WARNINGS[@]} -gt 0 || ${#ERRORS[@]} -gt 0 ]]; then
         printf "   installer log: %s\n\n" "$ATELIER_INSTALL_LOG_FILE"
     fi

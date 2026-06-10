@@ -2,6 +2,7 @@
 
 Starts the Atelier OpenAI-compatible HTTP server via uvicorn.
 """
+
 from __future__ import annotations
 
 

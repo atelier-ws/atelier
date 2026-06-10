@@ -27,11 +27,7 @@ def _reset_supervisors() -> Iterator[None]:
 def _write_fixture_repo(repo_root: Path) -> None:
     (repo_root / "src").mkdir(parents=True, exist_ok=True)
     (repo_root / "src" / "main.py").write_text(
-        "def alpha() -> str:\n"
-        "    return 'needle token'\n"
-        "\n"
-        "def beta() -> str:\n"
-        "    return 'needle token again'\n",
+        "def alpha() -> str:\n    return 'needle token'\n\ndef beta() -> str:\n    return 'needle token again'\n",
         encoding="utf-8",
     )
 

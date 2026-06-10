@@ -27,9 +27,7 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
 def test_list_checkpoints_sorted(tmp_path: Path) -> None:
     cp1 = save_checkpoint("sess-1", [{"role": "user", "content": "a"}], root=tmp_path)
     time.sleep(0.01)
-    cp2 = save_checkpoint(
-        "sess-1", [{"role": "user", "content": "b"}], root=tmp_path
-    )
+    cp2 = save_checkpoint("sess-1", [{"role": "user", "content": "b"}], root=tmp_path)
     # Different session should not appear.
     save_checkpoint("sess-2", [{"role": "user", "content": "c"}], root=tmp_path)
 

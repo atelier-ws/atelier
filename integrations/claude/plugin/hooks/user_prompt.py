@@ -50,11 +50,7 @@ def _session_state_path() -> Path:
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -317,11 +313,7 @@ def _humanize_tokens(n: int) -> str:
 
 
 def _topic_tokens(text: str) -> list[str]:
-    return [
-        t
-        for t in re.split(r"[^a-z0-9]+", text.lower())
-        if len(t) >= 3 and t not in _DRIFT_STOPWORDS
-    ]
+    return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 3 and t not in _DRIFT_STOPWORDS]
 
 
 def _cosine_drift(current: list[str], history: list[list[str]]) -> float | None:
@@ -492,17 +484,12 @@ def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
         return False
     if any(term in lowered for term in _GROUNDED_TERMS):
         return False
-    file_mentions = (
-        lowered.count(".py") + lowered.count(".ts") + lowered.count(".tsx") + lowered.count(".js")
-    )
+    file_mentions = lowered.count(".py") + lowered.count(".ts") + lowered.count(".tsx") + lowered.count(".js")
     return file_mentions >= 2 or " files " in lowered
 
 
 def _emit_grounded_batching_nudge() -> None:
-    msg = (
-        "[Atelier] Ground multi-file changes with search or read first, then batch "
-        "related edits in one edit call."
-    )
+    msg = "[Atelier] Ground multi-file changes with search or read first, then batch related edits in one edit call."
     sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
     sys.stdout.flush()
 

@@ -1,4 +1,5 @@
 """Tests for the analytics session store (dashboard now served via FastAPI + React)."""
+
 from __future__ import annotations
 
 import json

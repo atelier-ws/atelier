@@ -1,4 +1,5 @@
 """Interactive provider authentication wizard."""
+
 from __future__ import annotations
 
 import os
@@ -51,7 +52,14 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
     "ollama": {
         "name": "Ollama (Local models, free)",
         "link": "https://ollama.ai",
-        "fields": [{"name": "OLLAMA_HOST", "label": "Host URL (default: http://localhost:11434)", "secret": False, "default": "http://localhost:11434"}],
+        "fields": [
+            {
+                "name": "OLLAMA_HOST",
+                "label": "Host URL (default: http://localhost:11434)",
+                "secret": False,
+                "default": "http://localhost:11434",
+            }
+        ],
         "test_model": "llama3.2",
         "litellm_prefix": "ollama/",
     },
@@ -68,7 +76,12 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "fields": [
             {"name": "AWS_ACCESS_KEY_ID", "label": "AWS Access Key ID", "secret": True},
             {"name": "AWS_SECRET_ACCESS_KEY", "label": "AWS Secret Access Key", "secret": True},
-            {"name": "AWS_REGION_NAME", "label": "AWS Region (e.g. us-east-1)", "secret": False, "default": "us-east-1"},
+            {
+                "name": "AWS_REGION_NAME",
+                "label": "AWS Region (e.g. us-east-1)",
+                "secret": False,
+                "default": "us-east-1",
+            },
         ],
         "test_model": "bedrock/anthropic.claude-haiku-4-5-v1:0",
         "litellm_prefix": "bedrock/",
@@ -78,8 +91,17 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "link": "https://portal.azure.com",
         "fields": [
             {"name": "AZURE_API_KEY", "label": "Azure API Key", "secret": True},
-            {"name": "AZURE_API_BASE", "label": "Azure Endpoint URL (e.g. https://xxx.openai.azure.com/)", "secret": False},
-            {"name": "AZURE_API_VERSION", "label": "API Version (e.g. 2024-02-01)", "secret": False, "default": "2024-02-01"},
+            {
+                "name": "AZURE_API_BASE",
+                "label": "Azure Endpoint URL (e.g. https://xxx.openai.azure.com/)",
+                "secret": False,
+            },
+            {
+                "name": "AZURE_API_VERSION",
+                "label": "API Version (e.g. 2024-02-01)",
+                "secret": False,
+                "default": "2024-02-01",
+            },
         ],
         "test_model": "azure/gpt-4o-mini",
         "litellm_prefix": "azure/",
@@ -89,7 +111,12 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "link": "https://cloud.google.com/vertex-ai",
         "fields": [
             {"name": "VERTEXAI_PROJECT", "label": "GCP Project ID", "secret": False},
-            {"name": "VERTEXAI_LOCATION", "label": "Region (e.g. us-central1)", "secret": False, "default": "us-central1"},
+            {
+                "name": "VERTEXAI_LOCATION",
+                "label": "Region (e.g. us-central1)",
+                "secret": False,
+                "default": "us-central1",
+            },
             {"name": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account JSON path", "secret": False},
         ],
         "test_model": "vertex_ai/gemini-2.0-flash",

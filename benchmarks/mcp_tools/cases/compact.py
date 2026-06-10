@@ -31,12 +31,12 @@ def _assert_compact(result: dict[str, object], expected_tokens_before: int) -> N
     assert result["prompt_block"], "compact response must return a non-empty prompt block"
     tokens_before = _result_int(result, "tokens_before")
     tokens_after_estimate = _result_int(result, "tokens_after_estimate")
-    assert tokens_before == expected_tokens_before, (
-        f"tokens_before must match seeded ledger state ({expected_tokens_before}), got {result['tokens_before']}"
-    )
-    assert tokens_after_estimate <= expected_tokens_before, (
-        f"tokens_after_estimate must not exceed tokens_before, got {result['tokens_after_estimate']}"
-    )
+    assert (
+        tokens_before == expected_tokens_before
+    ), f"tokens_before must match seeded ledger state ({expected_tokens_before}), got {result['tokens_before']}"
+    assert (
+        tokens_after_estimate <= expected_tokens_before
+    ), f"tokens_after_estimate must not exceed tokens_before, got {result['tokens_after_estimate']}"
 
 
 def _compact_assert(expected_tokens_before: int) -> Callable[[dict[str, object]], None]:
@@ -73,7 +73,10 @@ def _build_compact_cases() -> list[BenchCase]:
             "tests_run": [f"tests::{symbol.name}"],
             "errors_seen": [f"{symbol.name} validation warning"] if index % 5 == 0 else [],
             "repeated_failures": [f"{symbol.name} repeated failure"] if index % 7 == 0 else [],
-            "verified_facts": [f"{symbol.name} lives in {symbol.path}", f"anchor file is {anchor.path}"],
+            "verified_facts": [
+                f"{symbol.name} lives in {symbol.path}",
+                f"anchor file is {anchor.path}",
+            ],
             "open_questions": [f"Should {symbol.name} move out of {symbol.path}?"],
             "active_reasonblocks": [symbol.name, anchor.path],
             "current_plan": [
@@ -97,7 +100,13 @@ def _build_compact_cases() -> list[BenchCase]:
                     "session_id": f"bench-compact-{index:03d}",
                     "_seed": seed,
                 },
-                assert_keys=["prompt_block", "tokens_before", "tokens_after_estimate", "tokens_freed", "cost_saved_usd"],
+                assert_keys=[
+                    "prompt_block",
+                    "tokens_before",
+                    "tokens_after_estimate",
+                    "tokens_freed",
+                    "cost_saved_usd",
+                ],
                 custom_assert=_compact_assert(tokens_before),
                 baseline_tokens=1400,
             )

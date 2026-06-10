@@ -225,8 +225,7 @@ class ZoektServer:
                     self._container_id,
                     "sh",
                     "-lc",
-                    "wget -qO- http://127.0.0.1:6070/healthz >/dev/null || "
-                    "wget -qO- http://127.0.0.1:6070/ >/dev/null",
+                    "wget -qO- http://127.0.0.1:6070/healthz >/dev/null || wget -qO- http://127.0.0.1:6070/ >/dev/null",
                 ],
                 check=False,
                 timeout=10,

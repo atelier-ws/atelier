@@ -32,6 +32,13 @@ def test_detect_configured_vendors_uses_supported_env_aliases() -> None:
         )
 
 
+def test_detect_configured_vendors_accepts_bedrock_bearer_token() -> None:
+    from unittest import mock
+
+    with mock.patch("shutil.which", return_value=None):
+        assert detect_configured_vendors({"AWS_BEARER_TOKEN_BEDROCK": "token"}) == ("bedrock",)
+
+
 def test_detect_configured_vendors_uses_installed_host_clis(monkeypatch) -> None:
     monkeypatch.setattr(
         "shutil.which",

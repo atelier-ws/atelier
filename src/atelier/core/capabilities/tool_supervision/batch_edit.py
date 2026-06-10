@@ -101,8 +101,7 @@ def _apply_replace_range(content: str, line_start: int, line_end: int, new_strin
     lines = content.splitlines(keepends=True)
     if line_start < 1 or line_end > len(lines) or line_start > line_end:
         raise ValueError(
-            f"replace_range: line_start={line_start}, line_end={line_end} out of range "
-            f"(file has {len(lines)} lines)"
+            f"replace_range: line_start={line_start}, line_end={line_end} out of range (file has {len(lines)} lines)"
         )
     replacement = new_string if new_string.endswith("\n") else new_string + "\n"
     new_lines = [*lines[: line_start - 1], replacement, *lines[line_end:]]

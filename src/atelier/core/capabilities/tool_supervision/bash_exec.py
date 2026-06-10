@@ -9,7 +9,10 @@ import re
 import shlex
 import signal
 import subprocess
+import tempfile
+import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -55,6 +58,22 @@ class CommandPolicyDecision:
     reason: str = ""
     rewrite_target: str | None = None
     rewrite_payload: dict[str, Any] | None = None
+
+
+@dataclass
+class _ManagedCommand:
+    command: str
+    proc: subprocess.Popen[str]
+    stdout_file: Any
+    stderr_file: Any
+    started: float
+    timeout: int
+    max_lines: int
+    state: str = "running"
+
+
+_MANAGED_COMMANDS: dict[str, _ManagedCommand] = {}
+_MANAGED_COMMANDS_LOCK = threading.Lock()
 
 
 def _rewrite_cat(tokens: list[str]) -> CommandPolicyDecision:
@@ -190,6 +209,186 @@ def classify_command(command: str) -> CommandPolicyDecision:
     return CommandPolicyDecision(category="generic", action="allow")
 
 
+def _terminate_process_group(proc: subprocess.Popen[str]) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGTERM)
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+
+
+def _compact_result(
+    *,
+    command: str,
+    raw_stdout: str,
+    raw_stderr: str,
+    exit_code: int,
+    duration_ms: int,
+    max_lines: int,
+) -> RunResult:
+    if exit_code != 0:
+        head = 20
+        tail = max(max_lines - head, 50)
+    else:
+        head = max(20, max_lines // 4)
+        tail = max_lines - head
+    stdout_compact, lines_omitted, chars_omitted = _head_tail_lines(_strip_ansi(raw_stdout).splitlines(), head, tail)
+    stderr_compact, _, _ = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
+    return RunResult(
+        stdout=stdout_compact,
+        stderr=stderr_compact,
+        exit_code=exit_code,
+        duration_ms=duration_ms,
+        truncated=lines_omitted > 0,
+        lines_omitted=lines_omitted,
+        chars_omitted=chars_omitted,
+        command=command,
+    )
+
+
+def _watch_managed_command(session_id: str) -> None:
+    with _MANAGED_COMMANDS_LOCK:
+        managed = _MANAGED_COMMANDS.get(session_id)
+    if managed is None:
+        return
+    try:
+        managed.proc.wait(timeout=managed.timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(managed.proc)
+        with _MANAGED_COMMANDS_LOCK:
+            if managed.state == "running":
+                managed.state = "timed_out"
+    else:
+        with _MANAGED_COMMANDS_LOCK:
+            if managed.state == "running":
+                managed.state = "completed"
+
+
+def start_managed_command(
+    command: str,
+    *,
+    cwd: str | None = None,
+    timeout: int = 30,
+    max_lines: int = 200,
+) -> dict[str, Any]:
+    """Start a command without blocking the MCP request."""
+    policy = classify_command(command)
+    if policy.action == "block":
+        return {
+            "status": "blocked",
+            "stderr": policy.reason,
+            "exit_code": -1,
+            "blocked": True,
+            "blocked_reason": policy.reason,
+        }
+
+    stdout_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+    stderr_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+    try:
+        proc = subprocess.Popen(
+            ["bash", "-c", command],
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            cwd=cwd,
+            start_new_session=True,
+        )
+    except Exception:
+        stdout_file.close()
+        stderr_file.close()
+        raise
+
+    session_id = uuid.uuid4().hex
+    managed = _ManagedCommand(
+        command=command,
+        proc=proc,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        started=time.perf_counter(),
+        timeout=timeout,
+        max_lines=max_lines,
+    )
+    with _MANAGED_COMMANDS_LOCK:
+        _MANAGED_COMMANDS[session_id] = managed
+    threading.Thread(
+        target=_watch_managed_command,
+        args=(session_id,),
+        daemon=True,
+        name=f"atelier-shell-{session_id[:8]}",
+    ).start()
+    return {
+        "status": "running",
+        "session_id": session_id,
+        "pid": proc.pid,
+        "timeout": timeout,
+    }
+
+
+def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, Any]:
+    """Poll or cancel a managed command."""
+    with _MANAGED_COMMANDS_LOCK:
+        managed = _MANAGED_COMMANDS.get(session_id)
+        if managed is None:
+            raise KeyError(f"unknown shell session: {session_id}")
+        if cancel and managed.state == "running":
+            managed.state = "cancelled"
+
+    if cancel and managed.proc.poll() is None:
+        _terminate_process_group(managed.proc)
+
+    if managed.proc.poll() is None:
+        return {
+            "status": "running",
+            "session_id": session_id,
+            "pid": managed.proc.pid,
+            "duration_ms": int((time.perf_counter() - managed.started) * 1000),
+        }
+
+    with _MANAGED_COMMANDS_LOCK:
+        if managed.state == "running":
+            managed.state = "completed"
+        _MANAGED_COMMANDS.pop(session_id, None)
+    managed.stdout_file.flush()
+    managed.stderr_file.flush()
+    managed.stdout_file.seek(0)
+    managed.stderr_file.seek(0)
+    raw_stdout = managed.stdout_file.read()
+    raw_stderr = managed.stderr_file.read()
+    managed.stdout_file.close()
+    managed.stderr_file.close()
+
+    if managed.state == "timed_out":
+        exit_code = -1
+        raw_stderr = f"Command timed out after {managed.timeout}s"
+    elif managed.state == "cancelled":
+        exit_code = -1
+        raw_stderr = "Command cancelled"
+    else:
+        exit_code = managed.proc.returncode
+    result = _compact_result(
+        command=managed.command,
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
+        exit_code=exit_code,
+        duration_ms=int((time.perf_counter() - managed.started) * 1000),
+        max_lines=managed.max_lines,
+    )
+    return {
+        "status": managed.state,
+        "session_id": session_id,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "exit_code": result.exit_code,
+        "duration_ms": result.duration_ms,
+        "truncated": result.truncated,
+        "lines_omitted": result.lines_omitted,
+        "chars_omitted": result.chars_omitted,
+    }
+
+
 def run_command(
     command: str,
     *,
@@ -239,14 +438,8 @@ def run_command(
         raw_stderr = _strip_ansi(stderr)
     except subprocess.TimeoutExpired:
         if proc is not None:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGTERM)
-            try:
-                proc.communicate(timeout=2)
-            except subprocess.TimeoutExpired:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(proc.pid, signal.SIGKILL)
-                proc.communicate()
+            _terminate_process_group(proc)
+            proc.communicate()
         exit_code = -1
         raw_stdout = ""
         raw_stderr = f"Command timed out after {timeout}s"
@@ -258,33 +451,27 @@ def run_command(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
 
-    if exit_code != 0:
-        # For failing commands maximise the tail — that's where tracebacks,
-        # test failure lines, and assertion messages live.  Keep a minimal
-        # head (20 lines) just for collection / invocation context.
-        head = 20
-        tail = max(max_lines - head, 50)
-    else:
-        head = max(20, max_lines // 4)
-        tail = max_lines - head
-    stdout_compact, lines_omitted, chars_omitted = _head_tail_lines(raw_stdout.splitlines(), head, tail)
-    stderr_compact, _, _ = _head_tail_lines(raw_stderr.splitlines(), 100, 100)
-
-    return RunResult(
-        stdout=stdout_compact,
-        stderr=stderr_compact,
+    result = _compact_result(
+        command=command,
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
         exit_code=exit_code,
         duration_ms=duration_ms,
-        truncated=lines_omitted > 0,
-        lines_omitted=lines_omitted,
-        chars_omitted=chars_omitted,
-        command=command,
-        policy_category=policy.category,
-        policy_action=policy.action,
-        policy_reason=policy.reason,
-        rewrite_target=policy.rewrite_target,
-        rewrite_payload=policy.rewrite_payload,
+        max_lines=max_lines,
     )
+    result.policy_category = policy.category
+    result.policy_action = policy.action
+    result.policy_reason = policy.reason
+    result.rewrite_target = policy.rewrite_target
+    result.rewrite_payload = policy.rewrite_payload
+    return result
 
 
-__all__ = ["CommandPolicyDecision", "RunResult", "classify_command", "run_command"]
+__all__ = [
+    "CommandPolicyDecision",
+    "RunResult",
+    "classify_command",
+    "poll_managed_command",
+    "run_command",
+    "start_managed_command",
+]

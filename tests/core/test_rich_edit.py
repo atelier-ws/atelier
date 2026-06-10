@@ -23,6 +23,25 @@ def test_rich_edit_sequential_same_file_and_line_range(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == "first\nSECOND\nthird\n"
 
 
+def test_rich_edit_multiline_replacement_preserves_terminal_newline(tmp_path: Path) -> None:
+    path = tmp_path / "guide.md"
+    path.write_text("before\nold one\nold two\nafter\n", encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "guide.md",
+                "old_string": "old one\nold two\n",
+                "new_string": "new one\nnew two\n",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert path.read_text(encoding="utf-8") == "before\nnew one\nnew two\nafter\n"
+
+
 def test_rich_edit_typography_placeholder_fuzzy_and_indent(tmp_path: Path) -> None:
     path = tmp_path / "code.py"
     path.write_text("def f():\n    value = “old”\n    keep = 1\n", encoding="utf-8")

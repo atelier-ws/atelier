@@ -75,9 +75,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "tests" / "test_auth.py").write_text(
-        "from src.auth import login\n\n"
-        "def test_login() -> None:\n"
-        "    assert login('x', 'y').startswith('session:')\n",
+        "from src.auth import login\n\ndef test_login() -> None:\n    assert login('x', 'y').startswith('session:')\n",
         encoding="utf-8",
     )
 

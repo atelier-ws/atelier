@@ -66,11 +66,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "src" / "urls.py").write_text(
-        "from django.urls import path\n"
-        "from . import views\n\n"
-        "urlpatterns = [\n"
-        "    path('admin/', views.admin),\n"
-        "]\n",
+        "from django.urls import path\nfrom . import views\n\nurlpatterns = [\n    path('admin/', views.admin),\n]\n",
         encoding="utf-8",
     )
     (root / "src" / "server.ts").write_text(

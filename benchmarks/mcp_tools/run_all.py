@@ -23,9 +23,7 @@ def _suite_files() -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run all pytest-backed MCP tool benchmarks.")
-    parser.add_argument(
-        "--list", action="store_true", help="List benchmark files without running them."
-    )
+    parser.add_argument("--list", action="store_true", help="List benchmark files without running them.")
     parser.add_argument(
         "pytest_args",
         nargs=argparse.REMAINDER,

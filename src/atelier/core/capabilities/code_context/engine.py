@@ -7506,8 +7506,7 @@ class CodeContextEngine:
 
     def _persist_lineage_embedder_metadata(self, conn: sqlite3.Connection, *, name: str, dim: int) -> None:
         conn.executemany(
-            "INSERT INTO engine_state(key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            "INSERT INTO engine_state(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [
                 ("commit_lineage_embedder_name", name),
                 ("commit_lineage_embedder_dim", str(dim)),

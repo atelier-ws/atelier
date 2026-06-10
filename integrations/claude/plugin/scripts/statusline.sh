@@ -26,10 +26,9 @@ if command -v jq >/dev/null 2>&1; then
       (.session_id // ""),
       # MODEL_ID = canonical id ("claude-opus-4-7") for pricing lookups
       (.model.id // .model.display_name // "")
-    ] | map(tostring) | join("\u001f")
+    ] | map(tostring) | join("")
   ' 2>/dev/null)"
-  else
-  read_field() {
+else  read_field() {
     python3 -c "
 import json, sys
 try:
@@ -110,10 +109,10 @@ fi
 # local project entrypoint so statusline development picks up the new fields
 # before the global binary is upgraded.
 SAVED_FIELD_COUNT=$(printf '%s' "${SAVED_LINE:-}" | awk -F'|' '{print NF}' 2>/dev/null || echo 0)
-if [ "${SAVED_FIELD_COUNT:-0}" -lt 10 ] 2>/dev/null; then
+if [ "${SAVED_FIELD_COUNT:-0}" -lt 14 ] 2>/dev/null; then
   SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
-IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD <<<"${SAVED_LINE:-}"
+IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD CARRY_TOK CARRY_PCT SAVED_PCT <<<"${SAVED_LINE:-}"
 [ -z "${SAVED_USD:-}" ] && SAVED_USD="\$0.000"
 [ -z "${SAVED_CTX:-}" ] && SAVED_CTX="0"
 [ -z "${SAVED_CALLS:-}" ] && SAVED_CALLS="0"
@@ -124,6 +123,9 @@ IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${DISPLAY_CACHE_TOK:-}" ] && DISPLAY_CACHE_TOK="0"
 [ -z "${DISPLAY_OUT_TOK:-}" ] && DISPLAY_OUT_TOK="0"
 [ -z "${CARRY_USD:-}" ] && CARRY_USD="\$0.000"
+[ -z "${CARRY_TOK:-}" ] && CARRY_TOK="0"
+[ -z "${CARRY_PCT:-}" ] && CARRY_PCT="0%"
+[ -z "${SAVED_PCT:-}" ] && SAVED_PCT="0%"
 # Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
 # we snapshot the cumulative live cost at that moment and subtract it from then
 # on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
@@ -147,15 +149,11 @@ fi
 TOTAL_COST=$(awk "BEGIN { a=${SESSION_BASE_COST:-0}; b=${COST:-0}; printf \"%.3f\", (a>b?a:b) }" 2>/dev/null || echo "0")
 COST_FMT=$(printf '$%.3f' "$TOTAL_COST" 2>/dev/null || echo "\$0.000")
 
-# Savings as a percent of the would-be-naive baseline (actual cost + saved).
-# Both inputs are already in hand, so this needs no new savings-line field.
-SAVED_NUM=${SAVED_USD#\$}
-SAVE_PCT=$(awk "BEGIN { s=${SAVED_NUM:-0}+0; c=${TOTAL_COST:-0}+0; b=s+c; if (b>0) printf \"%.0f\", s*100/b; else printf \"0\" }" 2>/dev/null || echo "0")
-if [ "${SAVE_PCT:-0}" -gt 0 ] 2>/dev/null; then
-  SAVED_PCT_SEG=" · ${SAVE_PCT}%"
+if [ "${SAVED_PCT:-0%}" != "0%" ]; then
+  SAVED_PCT_SEG=" · ${SAVED_PCT}"
 else
   SAVED_PCT_SEG=""
-fi
+  fi
 
 if [ -n "${ATELIER_NO_COLOR:-}" ]; then
   C_BRAND=""; C_PIPE=""; C_DIM=""; C_GREEN=""; C_RESET=""
@@ -222,14 +220,14 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
   # Context-carry credit (cache re-reads avoided on later turns); shown only
   # when nonzero and kept out of the headline saved figure.
   if [ -n "${CARRY_USD:-}" ] && [ "$CARRY_USD" != "\$0.000" ]; then
-  CARRY_SEG=" ${SEP} carry: ${CARRY_USD}"
+    CARRY_SEG=" ${SEP} ${C_BRAND}♻ ${CARRY_USD}(${CARRY_TOK})${C_RESET}"
   else
-  CARRY_SEG=""
+    CARRY_SEG=""
   fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s%s)%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s)%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
-  "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$SAVED_PCT_SEG" "$C_RESET" \
-  "$ROUTING_SEG" "$CARRY_SEG"
+  "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
+  "$CARRY_SEG" "$ROUTING_SEG"

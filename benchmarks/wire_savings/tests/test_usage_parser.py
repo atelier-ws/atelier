@@ -66,8 +66,7 @@ def test_sse_anthropic_direct() -> None:
 
 def test_json_non_streaming_snake_case() -> None:
     body = (
-        b'{"usage":{"input_tokens":12,"output_tokens":8,'
-        b'"cache_read_input_tokens":3,"cache_creation_input_tokens":1}}'
+        b'{"usage":{"input_tokens":12,"output_tokens":8,"cache_read_input_tokens":3,"cache_creation_input_tokens":1}}'
     )
     u = extract_usage("application/json", body)
     assert (u.input_tokens, u.output_tokens) == (12, 8)
@@ -75,10 +74,7 @@ def test_json_non_streaming_snake_case() -> None:
 
 
 def test_json_camel_case_bedrock_converse() -> None:
-    body = (
-        b'{"usage":{"inputTokens":12,"outputTokens":8,'
-        b'"cacheReadInputTokenCount":3,"cacheWriteInputTokenCount":1}}'
-    )
+    body = b'{"usage":{"inputTokens":12,"outputTokens":8,"cacheReadInputTokenCount":3,"cacheWriteInputTokenCount":1}}'
     u = extract_usage("application/json", body)
     assert u.input_tokens == 12
     assert u.output_tokens == 8

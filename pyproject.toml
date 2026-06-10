@@ -94,6 +94,7 @@ dev = [
 [project.scripts]
 atelier = "atelier.gateway.cli:main"
 atl = "atelier.gateway.cli:main"
+atelierd = "atelier.core.service.daemon:main"
 atelier-mcp = "atelier.gateway.adapters.mcp_server:main"
 
 [build-system]
@@ -109,7 +110,7 @@ packages = ["src/atelier", "src/benchmarks"]
 "integrations" = "atelier/integrations"
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 exclude = ["benchmarks/mcp_tools/fixtures/downloaded"]
 force-exclude = true

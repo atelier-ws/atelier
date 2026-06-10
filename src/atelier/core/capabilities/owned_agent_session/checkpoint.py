@@ -57,9 +57,7 @@ def save_checkpoint(
     )
 
 
-def load_checkpoint(
-    cp_id: str, session_id: str, root: Path | None = None
-) -> list[dict[str, Any]]:
+def load_checkpoint(cp_id: str, session_id: str, root: Path | None = None) -> list[dict[str, Any]]:
     store = root or default_store_root()
     cp_dir = store / "checkpoints"
     path = cp_dir / f"{session_id}_{cp_id}.json"
