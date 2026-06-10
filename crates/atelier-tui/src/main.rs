@@ -110,6 +110,8 @@ async fn main() -> Result<()> {
     let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
     let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
+    // Reset modifyOtherKeys so the shell after exit isn't affected
+    let _ = execute!(terminal.backend_mut(), crossterm::style::Print("\x1b[>4;0m"));
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
@@ -276,7 +278,7 @@ async fn run_app(
                     app.qr_lines = qr::render_qr(url);
                     app.conversation.push(app::ConversationEntry {
                         role: app::Role::System,
-                        text: format!("\u{25c6} {url}"),
+                        text: url.clone(), // ◆ prefix added by renderer
                     });
                     app.auto_scroll = true;
                 }
