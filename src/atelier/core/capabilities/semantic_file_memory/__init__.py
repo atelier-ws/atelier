@@ -1,4 +1,13 @@
-"""Semantic file memory capability — public API."""
+"""Semantic file memory — AST-based code structure indexing.
+
+Despite the "memory" in the name, this package is about **code structure**,
+not session or fact memory.  It parses source files (Python, TypeScript, Rust,
+SQL, …) into outlines and symbol maps, caches them on disk, and powers the
+``smart_read`` MCP tool and the code-intel engine.
+
+For session passage memory see ``archival_recall``.
+For named user facts see ``memory.service.MemoryService``.
+"""
 
 from .capability import SemanticFileMemoryCapability
 from .models import (
