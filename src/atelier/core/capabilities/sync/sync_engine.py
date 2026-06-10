@@ -229,6 +229,14 @@ def sync_status(root: Path) -> dict[str, Any]:
                 "backend_state": "ok",
             }
         )
+
+        # Include usage and savings summary
+        from atelier.core.capabilities.plugin_runtime import load_live_savings_summary
+        from atelier.core.capabilities.savings_summary import load_usage_breakdown
+
+        status["savings"] = load_live_savings_summary(root)
+        status["usage"] = load_usage_breakdown(root)
+
     except CloudAccessError as exc:
         status.update(
             {
@@ -260,6 +268,23 @@ def render_sync_status_text(status: dict[str, Any]) -> str:
     ]
     if status.get("last_error"):
         lines.append(f"Last error: {status['last_error']}")
+
+    if "usage" in status and "savings" in status:
+        u = status["usage"]
+        s = status["savings"]
+        lines.append("")
+        lines.append("=== Atelier Project Summary ===")
+        lines.append(f"Total Market Value: ${u.get('cost_usd', 0.0):.4f}")
+        b = u.get("breakdown", {})
+        if any(b.values()):
+            lines.append(f"  - input        : ${b.get('input', 0.0):>10.4f}")
+            lines.append(f"  - output       : ${b.get('output', 0.0):>10.4f}")
+            lines.append(f"  - cache_read   : ${b.get('cache_read', 0.0):>10.4f}")
+            lines.append(f"  - cache_write  : ${b.get('cache_write', 0.0):>10.4f}")
+        lines.append(f"Total Saved       : ${s.get('saved_usd', 0.0):.4f}")
+        if s.get("routing_saved_usd", 0.0) > 0:
+            lines.append(f"  - routing      : ${s.get('routing_saved_usd'):>10.4f}")
+
     return "\n".join(lines)
 
 

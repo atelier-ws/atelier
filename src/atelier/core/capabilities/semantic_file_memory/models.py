@@ -25,7 +25,7 @@ class FileOutline(BaseModel):
     loc: int
     symbols: list[SymbolOutline]
     imports: list[str]
-    hint: str = "Pass range=L1-L2 or expand=true for full body"
+    hint: str = "Pass range=L1-L2 or expand=true for untransformed body text"
 
 
 @dataclass

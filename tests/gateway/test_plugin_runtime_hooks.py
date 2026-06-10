@@ -48,7 +48,6 @@ def test_tool_redirect_outputs_pretooluse_nudge_for_shell_reads() -> None:
     result = _run_hook(
         "tool_redirect.py",
         {"tool_name": "Bash", "tool_input": {"command": "cat src/app.ts"}},
-        env={"ATELIER_DEV_MODE": "1"},
     )
 
     output = json.loads(result.stdout)
@@ -62,7 +61,6 @@ def test_tool_redirect_is_quiet_without_pythonpath() -> None:
     payload = {"tool_name": "Bash", "tool_input": {"command": "rg -n foo ."}}
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
-    env.pop("ATELIER_DEV_MODE", None)
 
     result = subprocess.run(
         [sys.executable, str(HOOKS / "tool_redirect.py")],
@@ -156,6 +154,13 @@ def test_session_telemetry_tracks_workflow_and_task_progress(tmp_path: Path) -> 
                 "completed_tasks": 2,
                 "remaining_tasks": 1,
             },
+            "spawn_summary": {
+                "step_count": 2,
+                "eligible_for_reuse": 2,
+                "reuse_observed": 1,
+                "spawn_latency_ms": 120,
+                "host_dropped_fields": {"cache_scope_id": 1},
+            },
         },
     )
 
@@ -166,6 +171,14 @@ def test_session_telemetry_tracks_workflow_and_task_progress(tmp_path: Path) -> 
         "task_id": "02-02/task-1",
         "completed_tasks": 2,
         "remaining_tasks": 1,
+    }
+    assert stats["spawn_summary"] == {
+        "step_count": 2,
+        "eligible_for_reuse": 2,
+        "reuse_observed": 1,
+        "spawn_latency_ms": 120,
+        "cache_capability_counts": {},
+        "host_dropped_fields": {"cache_scope_id": 1},
     }
 
     output = build_session_progress_optimization_output(
@@ -180,11 +193,63 @@ def test_session_telemetry_tracks_workflow_and_task_progress(tmp_path: Path) -> 
                 "completed_tasks": 2,
                 "remaining_tasks": 1,
             },
+            "spawn_summary": {
+                "step_count": 2,
+                "eligible_for_reuse": 2,
+                "reuse_observed": 1,
+                "spawn_latency_ms": 120,
+                "host_dropped_fields": {"cache_scope_id": 1},
+            },
         },
     )
     assert "workflow=review" in output["additionalContext"]
     assert "review=approve" in output["additionalContext"]
     assert "02-02/task-1 (2 done/1 remaining)" in output["additionalContext"]
+    assert "spawn=reuse 1/2" in output["additionalContext"]
+    assert "drop=cache_scope_id:1" in output["additionalContext"]
+
+
+def test_session_telemetry_tracks_spawn_cache_signals(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+
+    update_session_stats(
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "s1",
+            "tool_name": "Agent",
+            "spawn_telemetry": {
+                "eligible_for_reuse": True,
+                "reuse_observed": False,
+                "spawn_latency_ms": 120,
+                "cache_capability": "hint_only",
+                "host_dropped_fields": ["cache_scope_id", "stable_prefix_hash"],
+            },
+        },
+    )
+    update_session_stats(
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "s2",
+            "tool_name": "Agent",
+            "spawn_telemetry": {
+                "eligible_for_reuse": True,
+                "reuse_observed": True,
+                "spawn_latency_ms": 80,
+                "cache_capability": "explicit",
+                "host_dropped_fields": ["cache_scope_id"],
+            },
+        },
+    )
+
+    aggregate = aggregate_session_stats(root)
+
+    assert aggregate["spawn_telemetry"]["eligible_for_reuse"] == 2
+    assert aggregate["spawn_telemetry"]["reuse_observed"] == 1
+    assert aggregate["spawn_telemetry"]["spawn_latency_ms"] == 200
+    assert aggregate["spawn_telemetry"]["cache_capability_counts"] == {"hint_only": 1, "explicit": 1}
+    assert aggregate["spawn_telemetry"]["host_dropped_fields"] == {"cache_scope_id": 2, "stable_prefix_hash": 1}
 
 
 def test_context_window_snapshot_overwrites_not_accumulates(tmp_path: Path) -> None:

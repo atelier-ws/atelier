@@ -14,6 +14,8 @@ class InternalLLMChatResult:
     output_tokens: int = 0
     cache_read_input_tokens: int = 0
     cache_write_input_tokens: int = 0
+    cache_capability: str = "none"
+    request_metadata: dict[str, Any] | None = None
 
 
 __all__ = ["InternalLLMChatResult"]

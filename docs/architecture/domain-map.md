@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | Product positioning and roadmap | `docs/product/` | Strategic docs and execution priorities |
 | Feature execution specs | `docs/specs/` | Task-ready briefs for implementation work |
-| Agent operating rules | `docs/agent-os/` | Shared rules, workflow, validation, host overrides |
+| Agent operating rules | `integrations/agents/`, `integrations/shared/` | Mode docs, shared rules, workflow, validation, tool substitution |
 | Runtime architecture | `src/atelier/core/`, `src/atelier/infra/`, `src/atelier/gateway/` | Python runtime layers |
 | Host install surfaces | `integrations/`, `scripts/install_*.sh`, `docs/hosts/` | Must stay aligned |
 | Frontend behavior | `frontend/`, `frontend/src/api.ts` | Verify data shapes explicitly |

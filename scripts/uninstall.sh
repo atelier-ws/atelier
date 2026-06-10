@@ -238,8 +238,7 @@ fi
 
 # ---- stop Zoekt sidecar (before background controller) ---------------------
 if command -v atelier &>/dev/null && [[ "$ATELIER_ZOEKT" == "1" ]]; then
-    info "Stopping Zoekt code-search sidecar..."
-    run "atelier zoekt down 2>/dev/null || true"
+    info "Skipping Zoekt CLI teardown; Zoekt management commands are no longer exposed."
 fi
 
 # ---- stop running services --------------------------------------------------

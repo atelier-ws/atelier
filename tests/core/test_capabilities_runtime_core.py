@@ -3,23 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from click.testing import CliRunner
-
 from atelier.core.foundation.models import Trace
 from atelier.core.runtime import AtelierRuntimeCore
-from atelier.gateway.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
-
-
-def _init_root(root: Path) -> None:
-    runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "init"])
-    assert res.exit_code == 0, res.output
+from tests.helpers import init_store_at
 
 
 def test_context_reuse_returns_ranked_procedures(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     context = rt.get_context(
@@ -34,7 +26,7 @@ def test_context_reuse_returns_ranked_procedures(tmp_path: Path) -> None:
 
 def test_semantic_memory_read_and_search(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     target = tmp_path / "sample.py"
@@ -61,7 +53,7 @@ def test_semantic_memory_read_and_search(tmp_path: Path) -> None:
 
 def test_loop_detection_and_context_compression(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     ledger = RunLedger(root=root, agent="test", task="t", domain="d")
@@ -77,7 +69,7 @@ def test_loop_detection_and_context_compression(tmp_path: Path) -> None:
 
 def test_failure_analysis_clusters_and_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     rt.store.record_trace(
@@ -119,7 +111,7 @@ def test_failure_analysis_clusters_and_matches(tmp_path: Path) -> None:
 
 def test_tool_supervision_and_smart_edit(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     rt.smart_search("shopify", limit=3)
@@ -142,7 +134,7 @@ def test_tool_supervision_and_smart_edit(tmp_path: Path) -> None:
 
 def test_smart_edit_fuzzy_and_bash_intercept(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     file_path = tmp_path / "fuzzy.txt"
@@ -168,7 +160,7 @@ def test_smart_edit_fuzzy_and_bash_intercept(tmp_path: Path) -> None:
 
 def test_sql_inspect_and_runtime_benchmark_metrics(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     rt = AtelierRuntimeCore(root)
 
     sql = "SELECT * FROM catalog.products JOIN sales.orders ON products.id = orders.product_id"

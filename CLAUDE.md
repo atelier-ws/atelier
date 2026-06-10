@@ -33,7 +33,7 @@ make typecheck      # mypy --strict src
 make pre-commit     # format + lint + typecheck + docs + test
 
 # Docs governance
-make sync-agent-context   # regenerate host instruction files from docs/agent-os/
+make sync-agent-context   # regenerate host instruction files from integrations/shared/
 make check-agent-context  # verify generated files are up to date
 
 # Install Claude plugin (after changing integrations/claude/plugin/)
@@ -89,7 +89,7 @@ Generated files must never be edited directly — edit the source and regenerate
 
 | Generated file                                                 | Source                        | Regenerate with                  |
 | -------------------------------------------------------------- | ----------------------------- | -------------------------------- |
-| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `docs/agent-os/*.md`          | `make sync-agent-context`        |
+| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `integrations/agents/`, `integrations/shared/` | `make sync-agent-context`        |
 | Plugin staging dir `~/.atelier/claude-plugin-*/`               | `integrations/claude/plugin/` | `bash scripts/install_claude.sh` |
 
 ## Coding Guidelines
@@ -176,7 +176,6 @@ When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
 | Code-review**verifier** (applies rubric, never edits)    | `atelier:review`  | All Phase 2 verifier agents in `/code-review`           |
 | Read-only research / exploration                         | `atelier:explore` | Any agent that only reads files, symbols, or web pages  |
 | Coding, edits, fixes                                     | `atelier:code`    | Any agent that writes or modifies files                 |
-| Repeated failure / rescue                                | `atelier:repair`  | When the same approach fails twice                      |
 
 **Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
 

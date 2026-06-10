@@ -6,6 +6,7 @@ from .configuration import (
     RouteConfigError,
     detect_configured_vendors,
     load_route_config,
+    load_route_config_or_default,
     route_config_path,
     save_route_config,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "RouteConfigError",
     "detect_configured_vendors",
     "load_route_config",
+    "load_route_config_or_default",
     "route_config_path",
     "save_route_config",
 ]

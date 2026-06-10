@@ -28,7 +28,7 @@ def memory_block_is_visible(
     block_workspace_id = str(metadata.get("workspace_id") or workspace_id)
     if block_workspace_id != workspace_id:
         return False
-    scope = str(metadata.get("scope") or "private")
+    scope = str(metadata.get("visibility_scope") or metadata.get("scope") or "private")
     owner_user_id = str(metadata.get("owner_user_id") or "")
     if shared_only:
         return scope == "shared"

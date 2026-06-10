@@ -233,8 +233,104 @@ class AtelierClaudeAgent(AbstractInstalledAgent):
 
 
 # ---------------------------------------------------------------------------
-# AtelierOwnedSolverAgent — AbstractInstalledAgent subclass
+# AtelierBedrockAgent — AbstractInstalledAgent subclass
 # ---------------------------------------------------------------------------
+
+
+class AtelierBedrockAgent(AtelierClaudeAgent):
+    """TerminalBench agent that runs ``claude`` CLI via Bedrock inside Docker."""
+
+    @staticmethod
+    def name() -> str:  # type: ignore[override]
+        return "atelier-bedrock"
+
+    @property
+    def _env(self) -> dict[str, str]:
+        """Forward Bedrock-specific environment variables."""
+        env = super()._env
+        # Ensure Bedrock is used
+        env["CLAUDE_CODE_USE_BEDROCK"] = "1"
+        # Forward AWS credentials
+        for key in [
+            "AWS_REGION",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_BEARER_TOKEN_BEDROCK",
+        ]:
+            if key in os.environ:
+                env[key] = os.environ[key]
+        return env
+
+    def _run_agent_commands(self, instruction: str) -> list[TerminalCommand]:
+        """Build the claude CLI command with rate limiting."""
+        # Rate limit: 10 messages/min -> 1 message every 6 seconds.
+        # We can implement a simple rate limiter using a lock file and a timestamp check.
+        # However, a simpler approach for a benchmark wrapper is to just sleep 6s before each turn.
+        # Since this is running in a benchmark loop, we might not have control over turn granularity.
+        # Let's wrap the claude command in a script that enforces a 6s minimum gap between runs.
+
+        #         rate_limit_script = """
+        # #!/bin/bash
+        # LOCKFILE=/tmp/claude_bedrock_rate_limit.lock
+        # LAST_RUN_FILE=/tmp/claude_bedrock_last_run.ts
+        # MIN_GAP=6
+
+        # if [ -f "$LAST_RUN_FILE" ]; then
+        #     LAST_RUN=$(cat "$LAST_RUN_FILE")
+        #     NOW=$(date +%s)
+        #     GAP=$((NOW - LAST_RUN))
+        #     if [ "$GAP" -lt "$MIN_GAP" ]; then
+        #         SLEEP_TIME=$((MIN_GAP - GAP))
+        #         sleep "$SLEEP_TIME"
+        #     fi
+        # fi
+
+        # # Run the original command
+        # "$@"
+        # RET=$?
+
+        # # Update last run
+        # date +%s > "$LAST_RUN_FILE"
+        # exit $RET
+        # """
+        # Save rate limit script to container
+        # We can do this in the `_run_agent_commands` method? No, that's not ideal.
+        # Better: create it in the install script or during setup.
+        # For now, inline it in the command.
+
+        escaped = shlex.quote(instruction)
+        allowed = "Bash Edit Write Read Glob Grep LS"
+
+        # Wrapped command
+        claude_cmd = (
+            f"claude --verbose --output-format stream-json -p {escaped} "
+            f"--allowedTools {allowed} --dangerously-skip-permissions "
+            f"2>&1 | tee {CONTAINER_STREAM_LOG}"
+        )
+
+        # Wrapped with the script logic (simplified inline)
+        cmd = (
+            f"LAST_RUN_FILE=/tmp/last_run.ts; "
+            f"NOW=$(date +%s); "
+            f"if [ -f $LAST_RUN_FILE ]; then "
+            f"LAST_RUN=$(cat $LAST_RUN_FILE); "
+            f"GAP=$((NOW - LAST_RUN)); "
+            f"if [ $GAP -lt 6 ]; then sleep $((6 - GAP)); fi; "
+            f"fi; "
+            f"{claude_cmd}; "
+            f"date +%s > $LAST_RUN_FILE"
+        )
+
+        return [
+            TerminalCommand(
+                command=cmd,
+                min_timeout_sec=0.0,
+                max_timeout_sec=float("inf"),
+                block=True,
+                append_enter=True,
+            )
+        ]
 
 
 class AtelierOwnedSolverAgent(AtelierClaudeAgent):
@@ -436,7 +532,7 @@ class AtelierOllamaAgent(AbstractInstalledAgent):
 # ---------------------------------------------------------------------------
 
 
-Provider = Literal["claude", "ollama", "owned"]
+Provider = Literal["claude", "ollama", "owned", "bedrock"]
 
 
 def _agent_import_path(provider: Provider) -> str:
@@ -445,6 +541,8 @@ def _agent_import_path(provider: Provider) -> str:
         return "terminalbench.agent_adapter:AtelierOllamaAgent"
     if provider == "owned":
         return "terminalbench.agent_adapter:AtelierOwnedSolverAgent"
+    if provider == "bedrock":
+        return "terminalbench.agent_adapter:AtelierBedrockAgent"
     return "terminalbench.agent_adapter:AtelierClaudeAgent"
 
 

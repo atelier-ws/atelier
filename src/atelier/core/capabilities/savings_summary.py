@@ -376,6 +376,16 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
             # shown to the user — silently drop the row.
             if t > 2_000_000:
                 continue
+            # Compaction-credit rows carry a pre-computed USD value priced at the
+            # cache-read rate (the per-turn cost of the context that compaction
+            # dropped). Add it directly — never re-price at the input rate, which
+            # would over-credit ~10x. Tokens still count toward ctx_saved.
+            if str(ev.get("kind") or "") == "compaction":
+                comp_usd = float(ev.get("usd") or 0.0)
+                if comp_usd > 0:
+                    priced_tokens += t
+                    usd_total += comp_usd
+                continue
             model_raw = str(ev.get("model") or "").strip()
             pricing = get_model_pricing(resolve_model_id(model_raw)) if model_raw else None
             if pricing is not None and pricing.known and pricing.input > 0:
@@ -570,6 +580,82 @@ def _fmt_tok(n: int) -> str:
     if n >= 1000:
         return f"{n // 1000}k"
     return str(n)
+
+
+def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
+    """Aggregate project-wide token usage and cost from atelier.db."""
+    root_path = Path(root)
+    db_path = root_path / "atelier.db"
+    if not db_path.exists():
+        return {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "cost_usd": 0.0,
+            "breakdown": {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0},
+        }
+
+    from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
+
+    input_tokens = 0
+    output_tokens = 0
+    cache_read_tokens = 0
+    cache_write_tokens = 0
+    total_cost = 0.0
+    breakdown = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0}
+
+    try:
+        import sqlite3
+
+        with sqlite3.connect(str(db_path)) as conn:
+            # traces table
+            for row in conn.execute(
+                "SELECT json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), "
+                "json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host, "
+                "json_extract(payload, '$.model') FROM traces"
+            ):
+                inp, out, cr, _th, _host, model = row
+                inp = int(inp or 0)
+                out = int(out or 0)
+                cr = int(cr or 0)
+                model_id = resolve_model_id(model) or "claude-sonnet-4-5"
+
+                input_tokens += inp
+                output_tokens += out
+                cache_read_tokens += cr
+
+                total_cost += usage_cost_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
+                b = usage_cost_breakdown_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
+                breakdown["input"] += b["input"]
+                breakdown["output"] += b["output"]
+                breakdown["cache_read"] += b["cache_read"]
+                breakdown["cache_write"] += b["cache_write"]
+
+            # context_budget table (aggregates for sessions)
+            for row in conn.execute(
+                "SELECT SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) FROM context_budget"
+            ):
+                inp, out, cr = row
+                if inp is None:
+                    continue
+                # Note: context_budget doesn't store model, so we use Sonnet 4.5 as proxy for these aggregates
+                # if they weren't already captured in traces (usually they are).
+                # To avoid double counting, we'd need to link them, but context_budget is often
+                # a redundant high-level log. Dashboard uses it as a fallback.
+                pass
+
+    except Exception:
+        logging.exception("Failed to load usage breakdown from DB")
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_write_tokens": cache_write_tokens,
+        "cost_usd": round(total_cost, 6),
+        "breakdown": {k: round(v, 6) for k, v in breakdown.items()},
+    }
 
 
 def savings_line(

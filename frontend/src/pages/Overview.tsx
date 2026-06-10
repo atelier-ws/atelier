@@ -6,9 +6,10 @@ import type {
   OverviewStats,
   SavingsSummaryV2,
   TraceListResponse,
+  TUIAnalytics,
 } from "../api";
 import { api } from "../api";
-import { Card, SectionHeader } from "../components/WorkbenchUI";
+import { Card, MetricCard, SectionHeader } from "../components/WorkbenchUI";
 import { getTelemetrySummary, type TelemetrySummary } from "../lib/insightsApi";
 import { useTimeRange } from "../lib/TimeRangeContext";
 
@@ -267,7 +268,12 @@ function InsightCard({
 export default function Overview() {
   const [data, setData] = useState<OverviewData>(EMPTY_DATA);
   const [err, setErr] = useState<string | null>(null);
+  const [tuiData, setTuiData] = useState<TUIAnalytics | null>(null);
   const { days, seconds, range } = useTimeRange();
+
+  useEffect(() => {
+    api.getTuiSessions().then(setTuiData).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -830,6 +836,61 @@ export default function Overview() {
               </Card>
             )}
           </div>
+        </section>
+      )}
+
+      {tuiData && tuiData.sessions.length > 0 && (
+        <section className="space-y-3">
+          <SectionHeader title="TUI Coding Sessions" />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard
+              label="Sessions"
+              value={String(tuiData.summary.total_sessions)}
+            />
+            <MetricCard
+              label="Total Cost"
+              value={`$${tuiData.summary.total_cost_usd.toFixed(4)}`}
+            />
+            <MetricCard
+              label="Avg Cache"
+              value={`${tuiData.summary.avg_cache_efficiency_pct.toFixed(0)}%`}
+            />
+          </div>
+          <Card className="overflow-hidden p-0">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-neutral-800 text-neutral-500">
+                  <th className="p-2 text-left font-medium">Session</th>
+                  <th className="p-2 text-left font-medium">Model</th>
+                  <th className="p-2 text-left font-medium">Mode</th>
+                  <th className="p-2 text-right font-medium">Cache</th>
+                  <th className="p-2 text-right font-medium">Cost</th>
+                  <th className="p-2 text-right font-medium">Turns</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tuiData.sessions.slice(0, 10).map((s) => (
+                  <tr
+                    key={s.session_id}
+                    className="border-b border-neutral-800 last:border-0 hover:bg-neutral-800/40"
+                  >
+                    <td className="p-2 font-mono text-sky-400">
+                      {s.session_id.slice(0, 18)}
+                    </td>
+                    <td className="p-2">{s.model.split("/").pop() || "-"}</td>
+                    <td className="p-2">{s.mode}</td>
+                    <td className="p-2 text-right">
+                      {s.cache_efficiency_pct.toFixed(0)}%
+                    </td>
+                    <td className="p-2 text-right">
+                      ${s.total_cost_usd.toFixed(4)}
+                    </td>
+                    <td className="p-2 text-right">{s.turns}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         </section>
       )}
     </div>

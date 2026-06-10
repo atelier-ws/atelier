@@ -289,6 +289,7 @@ def test_tool_code_schema_exposes_explore_operation() -> None:
     assert TOOLS["explore"]["inputSchema"]["properties"]["query"]["type"] == "string"
 
 
+@pytest.mark.slow
 def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")

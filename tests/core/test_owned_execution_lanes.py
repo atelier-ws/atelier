@@ -168,3 +168,49 @@ def test_execute_owned_prompt_explicit_route_fails_without_fallback(monkeypatch,
 
     assert exc_info.value.receipt.status == "failed"
     assert exc_info.value.receipt.rerouted is False
+
+
+def test_execute_owned_prompt_records_spawn_scope_and_cache_capability(monkeypatch, tmp_path) -> None:
+    def fake_openai(messages, model=None, cache_metadata=None):
+        return InternalLLMChatResult(
+            content="owned result",
+            model=model or "gpt-4o",
+            request_id="req-scope",
+            input_tokens=20,
+            output_tokens=6,
+            cache_read_input_tokens=4,
+            cache_capability="explicit",
+            request_metadata=dict(cache_metadata or {}),
+        )
+
+    monkeypatch.setattr("atelier.core.capabilities.owned_execution_lanes.openai_chat_with_result", fake_openai)
+
+    result = execute_owned_prompt(
+        "Keep the prompt prefix stable.\n\nCurrent phase prompt:\nImplement the fix.",
+        root=tmp_path,
+        tool_name="agent",
+        task_text="Implement the fix.",
+        decision=_decision(),
+        compiled_prompt={
+            "prompt": "Keep the prompt prefix stable.\n\nCurrent phase prompt:\nImplement the fix.",
+            "stable_prefix": "Keep the prompt prefix stable.",
+            "dynamic_tail": "Current phase prompt:\nImplement the fix.",
+            "stable_prefix_hash": "prefix-123",
+            "stable_prefix_tokens": 120,
+            "dynamic_tokens": 30,
+            "total_tokens": 150,
+        },
+        spawn_metadata={
+            "spawn_group_id": "wave-1",
+            "cache_scope_id": "scope-1",
+            "requested_fields": ["prompt", "cache_scope_id", "spawn_group_id"],
+        },
+    )
+
+    assert result.receipt.cache_capability == "explicit"
+    assert result.receipt.spawn_group_id == "wave-1"
+    assert result.receipt.cache_scope_id == "scope-1"
+    assert result.receipt.eligible_for_reuse is True
+    assert result.receipt.reuse_observed is True
+    assert result.receipt.requested_fields == ("prompt", "cache_scope_id", "spawn_group_id")
+    assert result.receipt.honored_fields == ("prompt", "cache_scope_id", "spawn_group_id")

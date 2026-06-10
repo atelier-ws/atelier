@@ -7,7 +7,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from benchmarks.code_intel.zoekt_bench import run_zoekt_bench
 
 pytestmark = pytest.mark.slow

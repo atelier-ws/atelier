@@ -9,9 +9,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from benchmarks.swe.savings_bench import _SUITE_YAML, _load_suite, run_savings_bench
 
 
+@pytest.mark.slow
 def test_context_savings_harness_smoke(tmp_path: Path) -> None:
     result = run_savings_bench(tmp_path)
     assert result.reduction_pct >= 0.0

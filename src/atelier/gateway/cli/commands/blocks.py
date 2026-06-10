@@ -26,7 +26,7 @@ def _load_domain_manager(root: Path) -> Any:
     return DomainManager(root)
 
 
-@_dev_command("reembed")
+@_dev_command("reembed")  # type: ignore[untyped-decorator]
 @click.option("--dry-run", is_flag=True, help="Count legacy rows without writing vectors.")
 @click.option("--batch-size", default=100, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
@@ -90,7 +90,7 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
     _emit(counts, as_json=as_json)
 
 
-@_dev_command("add-block")
+@_dev_command("add-block")  # type: ignore[untyped-decorator]
 @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.pass_context
 def add_block(ctx: click.Context, path: Path) -> None:
@@ -208,7 +208,7 @@ def import_style_guide_cmd(
         click.echo(candidate.id)
 
 
-@_dev_group("block")
+@_dev_group("block")  # type: ignore[untyped-decorator]
 def block_group() -> None:
     """ReasonBlock curation commands."""
 

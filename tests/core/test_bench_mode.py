@@ -153,18 +153,16 @@ def test_mcp_tools_hidden_bench_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_mcp_tools_visible_bench_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    """mcp_tool_visible_to_llm('compact') returns True when bench is on with ATELIER_DEV_MODE=1."""
+    """bench-on restores the normal hidden/public policy for MCP tools."""
     monkeypatch.setenv("ATELIER_BENCH_MODE", "on")
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     from atelier.core.environment import mcp_tool_visible_to_llm
 
-    assert mcp_tool_visible_to_llm("compact") is True
+    assert mcp_tool_visible_to_llm("compact") is False
 
 
 def test_bench_off_overrides_dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """bench-off takes priority over ATELIER_DEV_MODE=1 (MODE-04)."""
+    """bench-off hides the public MCP surface (MODE-04)."""
     monkeypatch.setenv("ATELIER_BENCH_MODE", "off")
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     from atelier.core.environment import mcp_tool_visible_to_llm
 
     assert mcp_tool_visible_to_llm("compact") is False

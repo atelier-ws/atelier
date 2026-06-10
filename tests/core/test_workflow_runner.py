@@ -247,3 +247,46 @@ def test_workflow_runner_pauses_before_review_gated_execution_and_resumes(tmp_pa
     assert second.step_order == ["plan", "execute"]
     assert state.step_results["execute"].output == "applied"
     assert calls == [("plan", "Draft the implementation plan."), ("execute", "echo apply")]
+
+
+def test_parallel_safe_agent_steps_share_spawn_group_but_fresh_context_gets_new_scope(tmp_path: Path) -> None:
+    definition = WorkflowDefinition(
+        workflow_id="parallel-agents",
+        steps=(
+            WorkflowStepDefinition(
+                step_id="plan_a",
+                kind="agent",
+                role_id="plan",
+                parallel_safe=True,
+                prompt="Draft plan A.",
+            ),
+            WorkflowStepDefinition(
+                step_id="plan_b",
+                kind="agent",
+                role_id="plan",
+                parallel_safe=True,
+                context_mode="fresh",
+                prompt="Draft plan B.",
+            ),
+        ),
+    )
+    state = WorkflowContextState()
+    seen: dict[str, dict[str, Any]] = {}
+
+    def agent_executor(step: WorkflowStepDefinition, prompt: str, context: WorkflowContextState) -> dict[str, Any]:
+        seen[step.step_id] = context.spawn_plan_for_step(step.step_id)
+        return {"output": prompt}
+
+    runner = WorkflowRunner(
+        agent_executor=agent_executor,
+        tool_executor=lambda step, args, context: {"output": "unused"},
+        shell_executor=lambda step, command, forked: {"output": "unused"},
+    )
+
+    result = runner.run(definition, context_state=state)
+
+    assert result.status == "success"
+    assert seen["plan_a"]["spawn_group_id"] == seen["plan_b"]["spawn_group_id"]
+    assert seen["plan_a"]["cache_scope_id"] != seen["plan_b"]["cache_scope_id"]
+    assert seen["plan_a"]["cache_policy"] == "inherit"
+    assert seen["plan_b"]["cache_policy"] == "fresh"
