@@ -99,6 +99,8 @@ class AtelierRuntimeCore:
         include_telemetry: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> str | dict[str, Any]:
         scored = self.context_reuse.retrieve(
             task=task,
@@ -109,6 +111,8 @@ class AtelierRuntimeCore:
             limit=max_blocks,
             token_budget=token_budget,
             dedup=dedup,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         should_return_payload = include_telemetry or agent_id is not None
         reasonblock_context = render_context_for_agent([item.block for item in scored])
