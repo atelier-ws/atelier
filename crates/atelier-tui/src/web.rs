@@ -271,7 +271,7 @@ async fn handle_connection(
             let s = g.clone();
             if s.is_empty() { None } else { Some(s) }
         });
-        let html = xterm_html(port + 1, session_id);
+        let html = xterm_html(port, session_id);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             html.len(),
@@ -289,14 +289,12 @@ async fn handle_connection(
         stream.write_all(response.as_bytes()).await?;
         stream.flush().await?;
     } else if method == "GET" && (path == "/terminal" || path.starts_with("/terminal?")) {
-        // Real terminal page: xterm.js connects to the WS PTY bridge on web_port+1.
-        // Extract an optional `s=<session_id>` from the query string to resume a session.
         let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
         let session_id: Option<String> = query
             .split('&')
             .find(|kv| kv.starts_with("s="))
             .map(|kv| kv[2..].to_string());
-        let html = xterm_html(port + 1, session_id);
+        let html = xterm_html(port, session_id);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             html.len(),
@@ -593,6 +591,19 @@ term.onData((data) => {{
   if (ws.readyState === WebSocket.OPEN) {{
     ws.send(new TextEncoder().encode(data));
   }}
+}});
+
+// Intercept Shift+Enter at the browser level — sends ESC+CR which the TUI
+// reads as Alt+Enter (newline), same as pressing ESC then Enter quickly.
+term.attachCustomKeyEventHandler((e) => {{
+  if (e.type === 'keydown' && e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey) {{
+    if (ws.readyState === WebSocket.OPEN) {{
+      // Send ESC then CR — TUI's ESC-buffering detects this as newline within 200ms
+      ws.send(new TextEncoder().encode('\x1b\r'));
+    }}
+    return false; // prevent default xterm.js handling
+  }}
+  return true;
 }});
 
 term.onResize(( cols, rows ) => {{
