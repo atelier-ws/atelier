@@ -85,6 +85,7 @@ def chat_with_result(
     *,
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
+    cache_metadata: dict[str, Any] | None = None,
 ) -> InternalLLMChatResult:
     """Call an OpenAI-compatible chat endpoint and return content plus usage metadata."""
     client = _resolve_client()
@@ -93,6 +94,9 @@ def chat_with_result(
         kwargs: dict[str, Any] = {"model": chosen_model, "messages": messages}
         if json_schema is not None:
             kwargs["response_format"] = {"type": "json_object"}
+        prompt_cache_key = str((cache_metadata or {}).get("prompt_cache_key") or "").strip()
+        if prompt_cache_key:
+            kwargs["extra_body"] = {"prompt_cache_key": prompt_cache_key}
         response = client.chat.completions.create(**kwargs)
     except Exception as exc:
         raise OpenAIClientUnavailable(f"OpenAI-compatible API unavailable: {exc}") from exc
@@ -115,6 +119,8 @@ def chat_with_result(
         cache_read_input_tokens=_usage_detail(usage, "prompt_tokens_details", "cached_tokens"),
         cache_write_input_tokens=_token_value(usage, "cache_creation_input_tokens")
         or _usage_detail(usage, "prompt_tokens_details", "cache_creation_tokens"),
+        cache_capability="explicit" if prompt_cache_key else ("hint_only" if cache_metadata else "none"),
+        request_metadata={"prompt_cache_key": prompt_cache_key} if prompt_cache_key else dict(cache_metadata or {}),
     )
 
 

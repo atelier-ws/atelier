@@ -167,9 +167,12 @@ jobs:
       - name: Verify bash version
         run: bash --version | head -1
 
-      - name: Run install.sh syntax check with macOS bash
+      - name: Run dev installer syntax check with macOS bash
+        run: bash -n scripts/dev.sh
+
+      - name: Run install.sh syntax check
         run: bash -n scripts/install.sh
 
-      - name: Run install.sh dry-run
+      - name: Run dev installer dry-run
         run: |
-          bash scripts/install.sh --dry-run --no-hosts --no-stack --non-interactive --verbose
+          bash scripts/dev.sh --dry-run --no-hosts --no-stack --non-interactive --verbose

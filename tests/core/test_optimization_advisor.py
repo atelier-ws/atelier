@@ -80,9 +80,14 @@ def test_optimizer_requires_enough_history_before_recommending() -> None:
 def test_optimizer_recommends_with_confidence_and_all_compaction_types() -> None:
     traces = [_trace(i, task="Fix a regression", cost_usd=1.0 + (i * 0.01)) for i in range(20)]
     result = optimize_from_traces(traces, current_policy=preset_policy("balanced"), days=7)
+    payload = result.to_dict()
 
     assert result.has_recommendation is True
     assert result.confidence in {"medium", "high"}
+    assert payload["estimation"]["source"] == "stored_atelier_traces"
+    assert payload["estimation"]["replay"] == "not_replayed"
+    assert payload["estimation"]["savings_are_estimates"] is True
+    assert "does not prove that a cheaper model would solve the same task" in payload["estimation"]["limitations"]
     recommended = min(
         [candidate for candidate in result.candidates if candidate.id != "current"],
         key=lambda candidate: candidate.weekly_cost_usd,

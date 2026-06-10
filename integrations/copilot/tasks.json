@@ -7,7 +7,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "atelier tools call context --dev --args \"{\\\"task\\\":\\\"$1\\\"}\" --json",
+        "atelier tools call context --args \"{\\\"task\\\":\\\"$1\\\"}\" --json",
         "bash",
         "${input:atelierTask}",
         "${input:atelierStep1}",
@@ -21,7 +21,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "atelier tools call context --dev --args \"{\\\"task\\\":\\\"$1\\\"}\" --json",
+        "atelier tools call context --args \"{\\\"task\\\":\\\"$1\\\"}\" --json",
         "bash",
         "${input:atelierTask}",
         "${input:atelierStep1}",

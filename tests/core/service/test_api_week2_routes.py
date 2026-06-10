@@ -19,10 +19,27 @@ from fastapi.testclient import TestClient
 
 from atelier.core.foundation.models import RawArtifact, Trace
 from atelier.core.foundation.store import ContextStore
+from atelier.core.service import api as service_api
 
 # ---------------------------------------------------------------------------
 # Helpers to build fake on-disk data
 # ---------------------------------------------------------------------------
+
+
+def test_reasoning_output_tokens_are_non_additive_for_totals_and_cost() -> None:
+    usage = {
+        "model": "gpt-5-mini",
+        "input_tokens": 100,
+        "output_tokens": 40,
+        "reasoning_output_tokens": 12,
+        "thinking_tokens": 0,
+        "cached_input_tokens": 20,
+        "cache_creation_input_tokens": 0,
+    }
+    without_reasoning = {**usage, "reasoning_output_tokens": 0}
+
+    assert service_api._usage_total_tokens(usage) == 160
+    assert service_api._model_usage_cost(usage) == service_api._model_usage_cost(without_reasoning)
 
 
 def _run_snapshot(session_id: str, cost: float = 0.5) -> dict[str, Any]:

@@ -87,7 +87,7 @@ def evaluate_terminalbench_gate(
     }
 
 
-def evaluate_vix_gate(
+def evaluate_atelierbench_gate(
     run_dir: Path,
     *,
     baseline_arm: str = "baseline",
@@ -98,7 +98,7 @@ def evaluate_vix_gate(
     results_path = run_dir / "results.jsonl"
     if not results_path.is_file():
         return _failed_gate(
-            suite="eval",
+            suite="atelierbench",
             reasons=["results.jsonl is missing, so no paired benchmark evidence is available"],
         )
     results = _load_jsonl(results_path)
@@ -110,7 +110,7 @@ def evaluate_vix_gate(
     if not candidate_rows:
         reasons.append(f"candidate arm {candidate_arm!r} is missing from results.jsonl")
     if reasons:
-        return _failed_gate(suite="eval", reasons=reasons)
+        return _failed_gate(suite="atelierbench", reasons=reasons)
     baseline_judged = sum(1 for row in baseline_rows if row.get("correct") is not None)
     candidate_judged = sum(1 for row in candidate_rows if row.get("correct") is not None)
     if baseline_judged != len(baseline_rows) or candidate_judged != len(candidate_rows):
@@ -130,7 +130,7 @@ def evaluate_vix_gate(
     if candidate_cost >= baseline_cost:
         reasons.append("candidate did not reduce measured cost versus baseline")
     return {
-        "suite": "eval",
+        "suite": "atelierbench",
         "evaluated_at": datetime.now(UTC).isoformat(),
         "passed": not reasons,
         "reasons": reasons,
@@ -143,10 +143,10 @@ def evaluate_vix_gate(
             "candidate_arm": candidate_arm,
         },
         "details": {
-            "baseline": _vix_arm_summary(
+            "baseline": _atelierbench_arm_summary(
                 baseline_rows, correct=baseline_correct, lower=baseline_lower, upper=baseline_upper
             ),
-            "candidate": _vix_arm_summary(
+            "candidate": _atelierbench_arm_summary(
                 candidate_rows,
                 correct=candidate_correct,
                 lower=candidate_lower,
@@ -190,7 +190,9 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _vix_arm_summary(rows: list[dict[str, Any]], *, correct: int, lower: float, upper: float) -> dict[str, Any]:
+def _atelierbench_arm_summary(
+    rows: list[dict[str, Any]], *, correct: int, lower: float, upper: float
+) -> dict[str, Any]:
     total = len(rows)
     return {
         "total": total,
@@ -205,8 +207,8 @@ def _vix_arm_summary(rows: list[dict[str, Any]], *, correct: int, lower: float, 
 
 
 __all__ = [
+    "evaluate_atelierbench_gate",
     "evaluate_terminalbench_gate",
-    "evaluate_vix_gate",
     "load_benchmark_gate",
     "require_benchmark_gate_pass",
     "write_benchmark_gate",

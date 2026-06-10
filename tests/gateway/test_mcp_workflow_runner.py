@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from click.testing import CliRunner
 
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.cli import cli
+from tests.helpers import init_store_at
 
 
 def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -35,20 +35,18 @@ def _result(response: dict[str, Any]) -> dict[str, Any]:
 @pytest.fixture()
 def workflow_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / ".atelier"
-    runner = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert runner.exit_code == 0, runner.output
+    init_store_at(str(root))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = None
     return root
 
 
-def test_workflow_run_tool_delegates_to_owned_runner(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workflow_tool_run_delegates_to_owned_runner(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
 
     def fake_run_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -59,8 +57,9 @@ def test_workflow_run_tool_delegates_to_owned_runner(workflow_env: Path, monkeyp
 
     payload = _result(
         _call(
-            "workflow_run",
+            "workflow",
             {
+                "op": "run",
                 "workflow": {
                     "workflow_id": "owned-review-loop",
                     "steps": [
@@ -71,7 +70,7 @@ def test_workflow_run_tool_delegates_to_owned_runner(workflow_env: Path, monkeyp
                             "args": {"path": "README.md"},
                         }
                     ],
-                }
+                },
             },
         )
     )
@@ -85,7 +84,7 @@ def test_workflow_run_tool_delegates_to_owned_runner(workflow_env: Path, monkeyp
     assert seen["arguments"]["workflow"]["workflow_id"] == "owned-review-loop"
 
 
-def test_workflow_run_tool_returns_runner_receipt_shape(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workflow_tool_run_returns_runner_receipt_shape(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         mcp_server,
         "_run_owned_workflow",
@@ -100,8 +99,9 @@ def test_workflow_run_tool_returns_runner_receipt_shape(workflow_env: Path, monk
 
     payload = _result(
         _call(
-            "workflow_run",
+            "workflow",
             {
+                "op": "run",
                 "workflow": {
                     "workflow_id": "owned-review-loop",
                     "steps": [
@@ -112,7 +112,7 @@ def test_workflow_run_tool_returns_runner_receipt_shape(workflow_env: Path, monk
                             "args": {"path": "README.md"},
                         }
                     ],
-                }
+                },
             },
         )
     )
@@ -122,6 +122,64 @@ def test_workflow_run_tool_returns_runner_receipt_shape(workflow_env: Path, monk
     assert payload["step_count"] == 3
     assert payload["failed_step_id"] == "review"
     assert payload["artifact_ids"] == ["trace-1"]
+
+
+def test_workflow_tool_status_pause_resume_and_stop(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        mcp_server,
+        "resolve_swarm_runner_command",
+        lambda **_kwargs: ["fake-runner", _kwargs["prompt_template"]],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: Path,
+        text: bool,
+        capture_output: bool,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        prompt = command[-1]
+        calls.append(prompt)
+        if "Draft the implementation plan." in prompt:
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="plan ready", stderr="")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="applied", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    workflow = {
+        "workflow_id": "review-gated",
+        "steps": [
+            {"step_id": "plan", "kind": "agent", "prompt": "Draft the implementation plan."},
+            {
+                "step_id": "execute",
+                "kind": "agent",
+                "prompt": "Apply the approved plan.",
+                "requires_plan_review": True,
+            },
+        ],
+    }
+
+    started = _result(_call("workflow", {"op": "run", "workflow": workflow}))
+    assert started["status"] == "awaiting_review"
+
+    status = _result(_call("workflow", {"op": "status"}))
+    assert status["status"] == "awaiting_review"
+    assert status["paused_step_id"] == "execute"
+
+    paused = _result(_call("workflow", {"op": "pause", "pause_reason": "waiting on approval"}))
+    assert paused["status"] == "paused"
+    assert paused["pause_reason"] == "waiting on approval"
+
+    resumed = _result(_call("workflow", {"op": "resume", "plan_review": {"decision": "approve"}}))
+    assert resumed["status"] == "success"
+
+    stopped = _result(_call("workflow", {"op": "stop", "stop_reason": "user cancelled future follow-up"}))
+    assert stopped["status"] == "stopped"
+    assert stopped["stop_reason"] == "user cancelled future follow-up"
+    assert calls == ["Draft the implementation plan.", "Apply the approved plan."]
 
 
 def test_workflow_run_executes_agent_steps_by_default(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,9 +236,65 @@ def test_workflow_run_executes_agent_steps_by_default(workflow_env: Path, monkey
     assert payload["status"] == "success"
     assert payload["step_count"] == 1
     assert seen["runner"] == mcp_server._workflow_runner_profile()
-    assert seen["runner_model"] == "claude-opus-4.8"
+    assert seen["runner_model"] == mcp_server._workflow_runner_model(
+        mcp_server.build_default_registry(Path(__file__).resolve().parents[2]),
+        role_id="general",
+        workspace=Path(os.environ["CLAUDE_WORKSPACE_ROOT"]),
+        runner=seen["runner"],
+    )
     assert seen["cwd"].name == "workspace"
     assert "Inspect README.md" in seen["prompt"]
+
+
+def test_workflow_run_uses_workspace_host_model_when_configured(
+    workflow_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = Path(os.environ["CLAUDE_WORKSPACE_ROOT"])
+    settings_dir = workspace / ".atelier"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(
+        json.dumps({"models": {"hosts": {"claude": {"roles": {"*": "claude-opus-4.8"}}}}}),
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_resolve_swarm_runner_command(
+        *,
+        runner: str | None,
+        runner_model: str | None,
+        runner_args: list[str] | tuple[str, ...],
+        child_command: list[str] | tuple[str, ...],
+        prompt_template: str,
+    ) -> list[str]:
+        seen["runner_model"] = runner_model
+        return ["fake-runner", prompt_template]
+
+    monkeypatch.setattr(mcp_server, "resolve_swarm_runner_command", fake_resolve_swarm_runner_command)
+    monkeypatch.setattr(mcp_server, "_workflow_runner_profile", lambda: "claude")
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout='{"verdict":"PASS","checklist":["done"],"missing":[]}',
+            stderr="",
+        ),
+    )
+
+    payload = mcp_server._run_owned_workflow(
+        {
+            "workflow": {
+                "workflow_id": "owned-review-loop",
+                "steps": [
+                    {"step_id": "agent_step", "kind": "agent", "role_id": "code", "prompt": "Inspect README.md."}
+                ],
+            }
+        }
+    )
+
+    assert payload["status"] == "success"
+    assert seen["runner_model"] == "claude-opus-4-8"
 
 
 def test_workflow_run_applies_explicit_owned_route(workflow_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -360,6 +474,6 @@ def test_workflow_run_pauses_for_plan_review_and_resumes_on_approval(
     assert paused["status"] == "awaiting_review"
     assert paused["paused_step_id"] == "execute"
 
-    resumed = mcp_server._run_owned_workflow({"workflow": workflow, "plan_review": {"decision": "approve"}})
+    resumed = mcp_server._run_owned_workflow({"resume": True, "plan_review": {"decision": "approve"}})
     assert resumed["status"] == "success"
     assert calls == ["Draft the implementation plan.", "Apply the approved plan."]

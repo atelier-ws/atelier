@@ -295,6 +295,7 @@ class TestTokenSavingsBenchmark:
                 arm_result["compressions"] == 0
             ), f"Short-only run {arm_result['name']} got compressed — threshold bug."
 
+    @pytest.mark.slow
     def test_recent_messages_exempt(self) -> None:
         """The last keep_recent=2 tool messages must not be compressed."""
         msgs = [
