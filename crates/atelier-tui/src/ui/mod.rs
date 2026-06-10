@@ -2,13 +2,17 @@
 
 use crate::app::{
     ActiveOverlay, App, CompletionMode, ContextMenu, FocusedPane, PendingPermission, Role,
-    ToolStatus,
+    ToolStatus, SLASH_COMMANDS,
 };
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
+
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SIDE_MIN_WIDTH: u16 = 110;
+const SIDE_WIDTH: u16 = 36;
 
 fn border_color(app: &App, pane: FocusedPane) -> Color {
     if app.focused_pane == pane {
@@ -37,21 +41,31 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     let input_line_count = app.input.lines().len().max(1) as u16;
-    let input_height = input_line_count.min(5) + 2; // +2 for border, max 5 lines
+    let input_height = input_line_count.min(5) + 2;
 
-    // Simple 3-row layout: conversation + input + status bar.
     let vertical = Layout::vertical([
-        Constraint::Min(0),               // conversation
-        Constraint::Length(input_height), // input
-        Constraint::Length(1),            // status bar
+        Constraint::Min(0),
+        Constraint::Length(input_height),
+        Constraint::Length(1),
     ])
     .split(area);
 
     app.conv_rect = vertical[0];
     app.input_rect = vertical[1];
 
-    // Conversation pane — no border, full width, like Claude Code
-    draw_conversation_content(frame, app, vertical[0]);
+    // Optional side panel when wide enough
+    let show_panel = app.show_side_panel && area.width >= SIDE_MIN_WIDTH;
+    if show_panel {
+        let horiz = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(SIDE_WIDTH),
+        ])
+        .split(vertical[0]);
+        draw_conversation_content(frame, app, horiz[0]);
+        draw_side_panel(frame, app, horiz[1]);
+    } else {
+        draw_conversation_content(frame, app, vertical[0]);
+    }
 
     draw_input(frame, app, vertical[1]);
     draw_status_bar(frame, app, vertical[2]);
@@ -110,6 +124,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         ActiveOverlay::AuthPicker { selected, providers } => {
             draw_auth_picker(frame, app, *selected, providers, area)
+        }
+        ActiveOverlay::CommandPalette { query, selected } => {
+            let q = query.clone();
+            let sel = *selected;
+            draw_command_palette(frame, app, &q, sel, area);
         }
     }
 
@@ -921,47 +940,90 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if app.is_streaming && !app.streaming_text.is_empty() {
         let accent = app.agent_mode.accent_color();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        let elapsed = app.streaming_start
+            .map(|s| {
+                let ms = s.elapsed().as_millis();
+                if ms >= 1000 { format!(" {:.1}s", ms as f64 / 1000.0) } else { format!(" {}ms", ms) }
+            })
+            .unwrap_or_default();
         all_lines.push(Line::from(vec![
             Span::styled("▌ ", Style::default().fg(accent)),
             Span::styled(
                 "Atelier",
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
             ),
+            Span::styled(format!(" {spinner}"), Style::default().fg(Color::Yellow)),
+            Span::styled(elapsed, Style::default().fg(Color::Rgb(80, 85, 100))),
         ]));
         for mut hl_line in render_markdown_lines(&app.streaming_text) {
             let mut spans = vec![Span::styled("▌ ", Style::default().fg(accent))];
             spans.extend(hl_line.spans.drain(..));
             all_lines.push(Line::from(spans));
         }
+    } else if app.is_streaming {
+        // Show thinking spinner even when streaming_text is empty (early thinking phase)
+        let accent = app.agent_mode.accent_color();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        let elapsed = app.streaming_start
+            .map(|s| format!(" {:.1}s", s.elapsed().as_secs_f64()))
+            .unwrap_or_default();
+        all_lines.push(Line::from(vec![
+            Span::styled("▌ ", Style::default().fg(accent)),
+            Span::styled("Atelier ", Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+            Span::styled(spinner, Style::default().fg(Color::Yellow)),
+            Span::styled(" thinking…", Style::default().fg(Color::Rgb(80, 85, 100))),
+            Span::styled(elapsed, Style::default().fg(Color::Rgb(65, 70, 90))),
+        ]));
     }
 
     // Compact inline tool timeline: show the last few tool calls below the stream.
     if !app.tools.is_empty() {
-        for tool in app.tools.iter().rev().take(5).rev() {
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        for tool in app.tools.iter().rev().take(6).rev() {
             let (icon, color) = match tool.status {
-                ToolStatus::Requested => ("\u{25cc}", Color::DarkGray),
-                ToolStatus::Running => ("\u{27f3}", Color::Yellow),
-                ToolStatus::Done => ("\u{2713}", Color::Green),
-                ToolStatus::Failed => ("\u{2717}", Color::Red),
+                ToolStatus::Requested => ("◌", Color::DarkGray),
+                ToolStatus::Running => (spinner, Color::Yellow),
+                ToolStatus::Done => ("✓", Color::Green),
+                ToolStatus::Failed => ("✗", Color::Red),
             };
-            let detail = tool
-                .output_preview
+            let elapsed = tool.elapsed_ms
+                .map(|ms| {
+                    if ms >= 1000 { format!("  {:.1}s", ms as f64 / 1000.0) }
+                    else { format!("  {}ms", ms) }
+                })
+                .or_else(|| {
+                    if tool.status == ToolStatus::Running {
+                        tool.started_at.map(|s| {
+                            let ms = s.elapsed().as_millis();
+                            if ms >= 1000 { format!("  {:.1}s…", ms as f64 / 1000.0) }
+                            else { format!("  {}ms…", ms) }
+                        })
+                    } else { None }
+                })
+                .unwrap_or_default();
+            let detail = tool.output_preview
                 .as_deref()
                 .map(|p| p.trim())
                 .filter(|p| !p.is_empty())
-                .unwrap_or("");
+                .map(|p| {
+                    let s: String = p.chars().take(50).collect();
+                    format!("  {s}")
+                })
+                .unwrap_or_default();
             all_lines.push(Line::from(vec![
                 Span::styled(format!("  {icon} "), Style::default().fg(color)),
                 Span::styled(tool.name.clone(), Style::default().fg(Color::Gray)),
-                Span::styled(
-                    if detail.is_empty() {
-                        String::new()
-                    } else {
-                        format!("  {detail}")
-                    },
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(elapsed, Style::default().fg(Color::Rgb(80, 85, 100))),
+                Span::styled(detail, Style::default().fg(Color::DarkGray)),
             ]));
+        }
+        // Summary line when more tools than visible
+        if app.tools.len() > 6 {
+            all_lines.push(Line::from(Span::styled(
+                format!("  … {} more tool calls", app.tools.len() - 6),
+                Style::default().fg(Color::Rgb(70, 75, 95)),
+            )));
         }
     }
 
@@ -1021,20 +1083,35 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let accent = app.agent_mode.accent_color();
-    let mode_badge = format!("{} \u{203a}", app.agent_mode.name());
+    let mode_badge = format!(" {} ›", app.agent_mode.name());
 
-    // Short model name — take last segment after /
-    let model_text = if app.current_model.is_empty() {
-        " /model to set".to_string()
+    let model_short = if app.current_model.is_empty() {
+        " /model".to_string()
     } else {
-        let short = app.current_model.split('/').last().unwrap_or(&app.current_model);
-        format!(" {}", short.chars().take(25).collect::<String>())
+        let s = app.current_model.split('/').last().unwrap_or(&app.current_model);
+        format!(" {}", &s[..s.len().min(24)])
     };
 
-    let cache = app
-        .cache_efficiency
+    let branch = if !app.git_branch.is_empty() {
+        format!(" ⎇ {}", &app.git_branch[..app.git_branch.len().min(18)])
+    } else {
+        String::new()
+    };
+
+    // Context bar: tiny progress indicator
+    let ctx_pct = app.context_stats.estimated_context_pct;
+    let ctx_bar = if ctx_pct > 0.0 {
+        let filled = ((ctx_pct / 100.0) * 8.0) as usize;
+        let empty = 8usize.saturating_sub(filled);
+        let col = if ctx_pct > 85.0 { Color::Red } else if ctx_pct > 65.0 { Color::Yellow } else { Color::Green };
+        Some((format!(" │ {}{} {:.0}%", "█".repeat(filled), "░".repeat(empty), ctx_pct), col))
+    } else {
+        None
+    };
+
+    let cache = app.cache_efficiency
         .filter(|&v| v > 0.0)
-        .map(|v| format!(" │ cache {v:.0}%"))
+        .map(|v| format!(" │ ⚡{v:.0}%"))
         .unwrap_or_default();
 
     let cost = if app.total_cost_usd > 0.001 {
@@ -1044,31 +1121,59 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let saved = if app.total_savings_usd > 0.001 {
-        format!(" │ saved ${:.4}", app.total_savings_usd)
+        format!(" │ ↓${:.4}", app.total_savings_usd)
     } else {
         String::new()
     };
 
-    let turns = if app.conversation.len() > 1 {
-        format!(" │ {} turns", app.conversation.len() / 2)
+    let tool_badge = if !app.tools.is_empty() {
+        let running = app.tools.iter().filter(|t| t.status == ToolStatus::Running).count();
+        let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+        if running > 0 {
+            format!(" │ {spinner} {running} running")
+        } else {
+            format!(" │ ✓ {} tools", app.tools.len())
+        }
     } else {
         String::new()
     };
 
-    let line = Line::from(vec![
-        Span::styled(
-            format!(" {mode_badge}"),
-            Style::default().fg(accent).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(model_text, Style::default().fg(Color::DarkGray)),
-        Span::styled(cache, Style::default().fg(Color::DarkGray)),
-        Span::styled(cost, Style::default().fg(Color::DarkGray)),
-        Span::styled(saved, Style::default().fg(Color::Green)),
-        Span::styled(turns, Style::default().fg(Color::DarkGray)),
-        Span::styled(" │ ? help", Style::default().fg(Color::DarkGray)),
-    ]);
-    let para = Paragraph::new(line);
-    frame.render_widget(para, area);
+    let panel_hint = if area.width >= SIDE_MIN_WIDTH {
+        if app.show_side_panel { " │ Ctrl+L" } else { " │ Ctrl+L panel" }
+    } else {
+        ""
+    };
+
+    let mut spans = vec![
+        Span::styled(mode_badge, Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        Span::styled(model_short, Style::default().fg(Color::DarkGray)),
+    ];
+    if !branch.is_empty() {
+        spans.push(Span::styled(branch, Style::default().fg(Color::Rgb(100, 100, 130))));
+    }
+    if let Some((bar_text, bar_col)) = ctx_bar {
+        spans.push(Span::styled(bar_text, Style::default().fg(bar_col)));
+    }
+    if !cache.is_empty() {
+        spans.push(Span::styled(cache, Style::default().fg(Color::Green)));
+    }
+    if !cost.is_empty() {
+        spans.push(Span::styled(cost, Style::default().fg(Color::DarkGray)));
+    }
+    if !saved.is_empty() {
+        spans.push(Span::styled(saved, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+    }
+    if !tool_badge.is_empty() {
+        let tc = if tool_badge.contains("running") { Color::Yellow } else { Color::Green };
+        spans.push(Span::styled(tool_badge, Style::default().fg(tc)));
+    }
+    spans.push(Span::styled(" │ ? help", Style::default().fg(Color::Rgb(55, 60, 75))));
+    spans.push(Span::styled(" │ Ctrl+K cmds", Style::default().fg(Color::Rgb(55, 60, 75))));
+    if !panel_hint.is_empty() {
+        spans.push(Span::styled(panel_hint.to_string(), Style::default().fg(Color::Rgb(50, 55, 70))));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn draw_api_key_setup(frame: &mut Frame, app: &App, area: Rect) {
@@ -1178,4 +1283,272 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ])
     .split(vertical[1])[1]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Side panel: tools list + context stats
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_side_panel(frame: &mut Frame, app: &App, area: Rect) {
+    // Split vertically: top = tools, bottom = context stats (8 rows)
+    let ctx_height = 9u16;
+    let sections = if area.height > ctx_height + 4 {
+        Layout::vertical([
+            Constraint::Min(0),
+            Constraint::Length(ctx_height),
+        ])
+        .split(area)
+    } else {
+        // Tiny terminal — just show context
+        Layout::vertical([Constraint::Percentage(0), Constraint::Percentage(100)]).split(area)
+    };
+    draw_tools_panel(frame, app, sections[0]);
+    draw_context_panel(frame, app, sections[1]);
+}
+
+fn draw_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    let spinner = SPINNER[app.spinner_tick as usize % SPINNER.len()];
+    let accent = app.agent_mode.accent_color();
+    let name_w = (area.width as usize).saturating_sub(8).max(4);
+
+    let recent_tools: Vec<_> = app.tools.iter().rev().take(area.height.saturating_sub(2) as usize).collect();
+    let mut items: Vec<ListItem> = recent_tools
+        .iter()
+        .rev()
+        .map(|tool| {
+            let (icon, color) = match tool.status {
+                ToolStatus::Requested => ("◌", Color::DarkGray),
+                ToolStatus::Running => (spinner, Color::Yellow),
+                ToolStatus::Done => ("✓", Color::Green),
+                ToolStatus::Failed => ("✗", Color::Red),
+            };
+            let elapsed = tool.elapsed_ms
+                .map(|ms| if ms >= 1000 { format!(" {:.1}s", ms as f64 / 1000.0) } else { format!(" {}ms", ms) })
+                .unwrap_or_default();
+            let name: String = tool.name.chars().take(name_w.saturating_sub(elapsed.len())).collect();
+            ListItem::new(Line::from(vec![
+                Span::styled(format!(" {icon} "), Style::default().fg(color)),
+                Span::styled(name, Style::default().fg(Color::Gray)),
+                Span::styled(elapsed, Style::default().fg(Color::DarkGray)),
+            ]))
+        })
+        .collect();
+
+    // Show running task count in title
+    let running = app.tools.iter().filter(|t| t.status == ToolStatus::Running).count();
+    let title = if running > 0 {
+        format!(" {} Tools  {spinner} {} running ", app.tools.len(), running)
+    } else if app.tools.is_empty() {
+        " Tools ".to_string()
+    } else {
+        format!(" Tools  {} done ", app.tools.len())
+    };
+
+    if items.is_empty() {
+        items.push(ListItem::new(Line::from(Span::styled(
+            "  waiting…",
+            Style::default().fg(Color::DarkGray),
+        ))));
+    }
+
+    // Show background tasks too
+    for task in app.background_tasks.iter().rev().take(3) {
+        let (icon, color) = match task.status {
+            crate::app::TaskStatus::Running => (spinner, Color::Yellow),
+            crate::app::TaskStatus::Done => ("✓", Color::Green),
+            crate::app::TaskStatus::Failed => ("✗", Color::Red),
+        };
+        let name: String = task.name.chars().take(name_w).collect();
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!(" {icon} "), Style::default().fg(color)),
+            Span::styled(name, Style::default().fg(Color::DarkGray)),
+        ])));
+    }
+
+    let border_col = if running > 0 { Color::Yellow } else { Color::Rgb(55, 60, 80) };
+    let list = List::new(items).block(
+        Block::bordered()
+            .title(Span::styled(title, Style::default().fg(accent)))
+            .border_style(Style::default().fg(border_col))
+            .border_type(BorderType::Plain),
+    );
+    frame.render_widget(list, area);
+}
+
+fn draw_context_panel(frame: &mut Frame, app: &App, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    let ctx = &app.context_stats;
+    let accent = app.agent_mode.accent_color();
+
+    // Context window bar
+    let used_pct = ctx.estimated_context_pct.min(100.0);
+    let bar_w = (area.width as usize).saturating_sub(6).min(24);
+    let filled = ((used_pct / 100.0) * bar_w as f64) as usize;
+    let empty = bar_w.saturating_sub(filled);
+    let bar_color = if used_pct > 85.0 {
+        Color::Red
+    } else if used_pct > 65.0 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+
+    // Short model name
+    let model_short: String = ctx.model
+        .rsplit('/')
+        .next()
+        .unwrap_or(&ctx.model)
+        .chars()
+        .take((area.width as usize).saturating_sub(4))
+        .collect();
+
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(bar, Style::default().fg(bar_color)),
+            Span::styled(
+                format!(" {:.0}%", used_pct),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+    ];
+
+    if !ctx.cache_efficiency.is_nan() && ctx.cache_efficiency > 0.0 {
+        lines.push(Line::from(vec![
+            Span::styled("  cache  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{:.1}%", ctx.cache_efficiency),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+    }
+    if ctx.total_cost_usd > 0.0 {
+        lines.push(Line::from(vec![
+            Span::styled("  cost   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", ctx.total_cost_usd),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+    }
+    if ctx.total_savings_usd > 0.001 {
+        lines.push(Line::from(vec![
+            Span::styled("  saved  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("${:.4}", ctx.total_savings_usd),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    if !model_short.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  model  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(model_short, Style::default().fg(accent)),
+        ]));
+    }
+    if !ctx.memory_hits.is_empty() {
+        let hit: String = ctx.memory_hits.last().unwrap().chars().take((area.width as usize).saturating_sub(12)).collect();
+        lines.push(Line::from(vec![
+            Span::styled("  mem    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(hit, Style::default().fg(Color::Magenta)),
+        ]));
+    }
+    // Ctrl+L hint
+    lines.push(Line::from(Span::styled(
+        "  Ctrl+L hide panel",
+        Style::default().fg(Color::Rgb(50, 55, 70)),
+    )));
+
+    let para = Paragraph::new(lines).block(
+        Block::bordered()
+            .title(Span::styled(" Context ", Style::default().fg(accent)))
+            .border_style(Style::default().fg(Color::Rgb(55, 60, 80)))
+            .border_type(BorderType::Plain),
+    );
+    frame.render_widget(para, area);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ctrl+K Command Palette
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_command_palette(frame: &mut Frame, app: &App, query: &str, selected: usize, area: Rect) {
+    let accent = app.agent_mode.accent_color();
+    let popup_w = (area.width as f32 * 0.65) as u16;
+    let popup_h = 20u16;
+    let popup = Rect {
+        x: (area.width.saturating_sub(popup_w)) / 2,
+        y: (area.height.saturating_sub(popup_h)) / 3,
+        width: popup_w,
+        height: popup_h,
+    };
+    frame.render_widget(Clear, popup);
+
+    // Split: search input (3) + results list
+    let inner = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(0),
+    ])
+    .split(popup);
+
+    // Search box
+    let search_block = Block::bordered()
+        .border_style(Style::default().fg(accent))
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " ⌘ Command Palette  Ctrl+K ",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ));
+    let search_text = Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(query, Style::default().fg(Color::White)),
+        Span::styled("█", Style::default().fg(accent)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(search_text).block(search_block),
+        inner[0],
+    );
+
+    // Results: slash commands matching query, then recent files
+    let q = query.to_lowercase();
+    let cmds: Vec<_> = SLASH_COMMANDS
+        .iter()
+        .filter(|(name, desc)| {
+            q.is_empty()
+                || name.contains(q.as_str())
+                || desc.to_lowercase().contains(q.as_str())
+        })
+        .take(12)
+        .collect();
+
+    let items: Vec<ListItem> = cmds
+        .iter()
+        .enumerate()
+        .map(|(i, (name, desc))| {
+            let is_sel = i == selected;
+            let bg = if is_sel { accent } else { Color::Reset };
+            let fg = if is_sel { Color::Black } else { Color::White };
+            let dfg = if is_sel { Color::Black } else { Color::DarkGray };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("  /{name:<18} "), Style::default().fg(fg).bg(bg)),
+                Span::styled(desc.to_string(), Style::default().fg(dfg).bg(bg)),
+            ]))
+        })
+        .collect();
+
+    let results_block = Block::bordered()
+        .border_style(Style::default().fg(Color::Rgb(55, 60, 80)))
+        .border_type(BorderType::Plain)
+        .title(Span::styled(
+            format!(" {} commands ", cmds.len()),
+            Style::default().fg(Color::DarkGray),
+        ));
+    frame.render_widget(List::new(items).block(results_block), inner[1]);
 }

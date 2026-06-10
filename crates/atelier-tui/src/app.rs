@@ -286,6 +286,7 @@ pub enum ActiveOverlay {
     AgentPicker { selected: usize },
     ModelPicker { selected: usize, models: Vec<(String, String)> },
     AuthPicker { selected: usize, providers: Vec<String> },
+    CommandPalette { query: String, selected: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -329,6 +330,8 @@ pub struct ToolEntry {
     pub name: String,
     pub status: ToolStatus,
     pub output_preview: Option<String>,
+    pub elapsed_ms: Option<u64>,
+    pub started_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -401,15 +404,17 @@ pub struct App<'a> {
     pub background_tasks: Vec<BackgroundTask>,
     pub reverse_search: Option<ReverseSearch>,
     pub prompt_suggestions: Vec<String>,
-    // URL/QR header
     pub local_url: Option<String>,
     pub term_width: u16,
-    // Mouse hit-testing rectangles for the conversation + input rows.
     pub conv_rect: Rect,
     pub input_rect: Rect,
-    // Mouse-driven context menu (right-click on conversation).
     pub context_menu: Option<ContextMenu>,
     pub pending_context_action: Option<ContextAction>,
+    // Professional grade additions
+    pub show_side_panel: bool,
+    pub spinner_tick: u8,
+    pub streaming_start: Option<std::time::Instant>,
+    pub tool_count: usize,
 }
 
 impl<'a> App<'a> {
@@ -462,6 +467,10 @@ impl<'a> App<'a> {
             input_rect: Rect::default(),
             context_menu: None,
             pending_context_action: None,
+            show_side_panel: true,
+            spinner_tick: 0,
+            streaming_start: None,
+            tool_count: 0,
         }
     }
 
@@ -539,12 +548,16 @@ impl<'a> App<'a> {
                 self.push_system(format!("memory[{key}]: {s}"));
             }
             BackendEvent::AssistantDelta { text } => {
+                if !self.is_streaming {
+                    self.streaming_start = Some(std::time::Instant::now());
+                }
                 self.is_streaming = true;
                 self.auto_scroll = true;
                 self.streaming_text.push_str(&text);
             }
             BackendEvent::AssistantMessage { text } => {
                 self.is_streaming = false;
+                self.streaming_start = None;
                 self.auto_scroll = true;
                 self.streaming_text.clear();
                 if self.show_session_picker {
@@ -566,18 +579,25 @@ impl<'a> App<'a> {
                     name,
                     status: ToolStatus::Requested,
                     output_preview: None,
+                    elapsed_ms: None,
+                    started_at: None,
                 });
+                self.tool_count += 1;
             }
             BackendEvent::ToolStarted { id, name } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
                     t.status = ToolStatus::Running;
+                    t.started_at = Some(std::time::Instant::now());
                 } else {
                     self.tools.push(ToolEntry {
                         id,
                         name,
                         status: ToolStatus::Running,
                         output_preview: None,
+                        elapsed_ms: None,
+                        started_at: Some(std::time::Instant::now()),
                     });
+                    self.tool_count += 1;
                 }
             }
             BackendEvent::ToolOutput { id, chunk } => {
@@ -598,6 +618,9 @@ impl<'a> App<'a> {
                     } else {
                         ToolStatus::Failed
                     };
+                    if let Some(start) = t.started_at {
+                        t.elapsed_ms = Some(start.elapsed().as_millis() as u64);
+                    }
                 }
                 if ok && (name == "read" || name == "edit") {
                     if let Some(path) = extract_path_from_result(&result) {
@@ -651,6 +674,8 @@ impl<'a> App<'a> {
                         name: format!("\u{26a0} {message}"),
                         status: ToolStatus::Failed,
                         output_preview: None,
+                        elapsed_ms: None,
+                        started_at: None,
                     });
                 }
                 let d = details.map(|d| format!(" — {d}")).unwrap_or_default();
@@ -704,7 +729,10 @@ impl<'a> App<'a> {
                     name: format!("shell: {command}"),
                     status: ToolStatus::Running,
                     output_preview: None,
+                    elapsed_ms: None,
+                    started_at: Some(std::time::Instant::now()),
                 });
+                self.tool_count += 1;
             }
             BackendEvent::ShellOutput { id, chunk } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
@@ -719,6 +747,9 @@ impl<'a> App<'a> {
                     } else {
                         ToolStatus::Failed
                     };
+                    if let Some(start) = t.started_at {
+                        t.elapsed_ms = Some(start.elapsed().as_millis() as u64);
+                    }
                 }
             }
             BackendEvent::TaskCreated { id, name } => {
