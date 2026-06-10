@@ -242,9 +242,7 @@ def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
 
@@ -342,9 +340,7 @@ def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> Non
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
 
@@ -374,9 +370,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "tests").mkdir()
@@ -503,9 +497,7 @@ def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "checkout.py").write_text(
@@ -1165,9 +1157,7 @@ def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
 

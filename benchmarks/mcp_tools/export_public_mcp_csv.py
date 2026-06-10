@@ -858,7 +858,7 @@ def _render_shard_progress(
     if not statuses:
         return ""
     completed_cases = sum(_to_int(status.get("done")) for status in statuses)
-    parts = [f"shards {completed_shards}/{total_shards} | " f"cases {completed_cases}/{total_cases}"]
+    parts = [f"shards {completed_shards}/{total_shards} | cases {completed_cases}/{total_cases}"]
     for status in statuses:
         suite_names = ",".join(status.get("suite_names") or [])
         current = str(status.get("current") or "").strip()

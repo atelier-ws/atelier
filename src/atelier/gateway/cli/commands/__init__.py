@@ -8,6 +8,13 @@ if TYPE_CHECKING:
     import click
 
 
+def _h(cmd: object) -> object:
+    """Mark a click command/group hidden (used for internal commands)."""
+    if cmd is not None and hasattr(cmd, "hidden"):
+        cmd.hidden = True  # type: ignore[union-attr]
+    return cmd
+
+
 def register(cli: click.Group) -> None:
     """Register relocated command modules onto the root ``cli`` group."""
     try:
@@ -15,10 +22,12 @@ def register(cli: click.Group) -> None:
 
         cli.add_command(admin_commands.init)
         cli.add_command(admin_commands.uninstall)
+        _h(admin_commands.env_group)  # internal validation
         cli.add_command(admin_commands.env_group)
         cli.add_command(admin_commands.login_cmd)
         cli.add_command(admin_commands.logout_cmd)
-        cli.add_command(admin_commands.status_cmd)
+        # status_cmd is registered as 'dashboard' later (with 'status' as hidden alias)
+        _h(admin_commands.share_cmd)
         cli.add_command(admin_commands.share_cmd)
         cli.add_command(admin_commands.plugin_settings_group)
         doctor_cmd = getattr(admin_commands, "doctor_cmd", None)
@@ -28,8 +37,10 @@ def register(cli: click.Group) -> None:
         if reset_cmd is not None:
             cli.add_command(cast("click.Command", reset_cmd))
         cli.add_command(admin_commands.team_group)
+        _h(admin_commands.governance_group)
         cli.add_command(admin_commands.governance_group)
         cli.add_command(admin_commands.audit_group)
+        _h(admin_commands.insights_cmd)
         cli.add_command(admin_commands.insights_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -37,7 +48,9 @@ def register(cli: click.Group) -> None:
     try:
         from .blocks import domain_group, report_cmd
 
+        _h(domain_group)
         cli.add_command(domain_group)
+        _h(report_cmd)
         cli.add_command(report_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -50,27 +63,20 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
-        from .stack import stack_group
+        from .servicectl import servicectl_group, worker_group
 
-        cli.add_command(stack_group)
-    except (ModuleNotFoundError, ImportError):
-        pass
-
-    try:
-        from .servicectl import logs_cmd, service_group, servicectl_group, worker_group
-
-        cli.add_command(service_group)
+        _h(worker_group)
         cli.add_command(worker_group)
+        _h(servicectl_group)
         cli.add_command(servicectl_group)
-        cli.add_command(logs_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
 
+    # ── hidden internal commands (used by dev.sh, not user-facing) ───────────
     try:
-        from .background import background_group, systemd_alias_group
+        from .background import background_group
 
-        cli.add_command(background_group)
-        cli.add_command(systemd_alias_group)
+        cli.add_command(background_group, name="background")
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -80,7 +86,18 @@ def register(cli: click.Group) -> None:
 
         tools_group.add_command(tool_mode, name="mode")
         tools_group.add_command(admin_commands.tool_report_cmd, name="report")
+        # Hide the 'tools' name; expose only the canonical 'mcp' alias
+        _h(tools_group)
         cli.add_command(tools_group)
+        # Add 'mcp' as the canonical alias (Claude Code uses 'claude mcp')
+        try:
+            import click as _c
+
+            mcp_alias = _c.CommandCollection(name="mcp", sources=[tools_group])
+            mcp_alias.help = "Configure and inspect Atelier MCP tools."
+            cli.add_command(mcp_alias)
+        except Exception:  # noqa: BLE001
+            pass
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -90,6 +107,7 @@ def register(cli: click.Group) -> None:
             savings_cmd,
         )
 
+        _h(savings_cmd)
         cli.add_command(savings_cmd)
         cli.add_command(optimize_group)
     except (ModuleNotFoundError, ImportError):
@@ -98,6 +116,7 @@ def register(cli: click.Group) -> None:
     try:
         from .benchmark import benchmark_group
 
+        _h(benchmark_group)
         cli.add_command(benchmark_group)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -105,6 +124,7 @@ def register(cli: click.Group) -> None:
     try:
         from .defaults import defaults_group
 
+        _h(defaults_group)
         cli.add_command(defaults_group)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -139,9 +159,12 @@ def register(cli: click.Group) -> None:
             lesson,
         )
 
+        _h(ledger)
         cli.add_command(ledger)
         cli.add_command(checkpoint)
+        _h(failure)
         cli.add_command(failure)
+        _h(lesson)
         cli.add_command(lesson)
         cli.add_command(eval_)
     except (ModuleNotFoundError, ImportError):
@@ -151,6 +174,7 @@ def register(cli: click.Group) -> None:
         from .sessions import runs_group, session_group
 
         cli.add_command(runs_group)
+        _h(session_group)
         cli.add_command(session_group)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -177,132 +201,69 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
-        import asyncio
-        from pathlib import Path
-
         import click as _click
 
-        from atelier.gateway.cli.interactive import run_interactive
+        from . import admin as admin_commands
 
-        @_click.command("tui")
-        @_click.option("--project-root", default=None, help="Project root directory")
-        @_click.option(
-            "--yolo", is_flag=True, default=False, help="Skip edit/shell approval prompts"
-        )
-        @_click.pass_obj
-        def tui_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
-            """Start the interactive Atelier workspace (Rust frontend)."""
-            from pathlib import Path as _Path
+        @_click.group("dashboard", invoke_without_command=True)
+        @_click.pass_context
+        def dashboard_group(ctx: _click.Context) -> None:
+            """Show Atelier runs dashboard, costs, and service status.
 
-            root = obj.get("root") if isinstance(obj, dict) else None
-            from atelier.gateway.cli.app import _exec_rust_tui
+            Run with no arguments for the terminal overview.
+            Use ``atelier dashboard open`` to open the browser analytics UI.
+            """
+            if ctx.invoked_subcommand is None:
+                # Forward to the underlying status_cmd
+                ctx.invoke(admin_commands.status_cmd)
 
-            _exec_rust_tui(root if isinstance(root, _Path) else _Path.home() / ".atelier")
-
-        @_click.command("chat")
-        @_click.option("--project-root", default=None)
-        @_click.option("--yolo", is_flag=True, default=False)
-        @_click.pass_obj
-        def chat_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
-            """Alias for ``atelier tui``."""
-            root = obj.get("root") if isinstance(obj, dict) else None
-            raise SystemExit(
-                asyncio.run(
-                    run_interactive(
-                        project_root=project_root,
-                        yolo=yolo,
-                        root=root if isinstance(root, Path) else None,
-                    )
-                )
-            )
-
-        @_click.command("workspace")
-        @_click.option("--project-root", default=None)
-        @_click.option("--yolo", is_flag=True, default=False)
-        @_click.pass_obj
-        def workspace_cmd(obj: object, project_root: str | None, yolo: bool) -> None:
-            """Start the interactive Atelier workspace (explicit alias for tui)."""
-            from pathlib import Path as _Path
-
-            root = obj.get("root") if isinstance(obj, dict) else None  # type: ignore[union-attr]
-            from atelier.gateway.cli.app import _exec_rust_tui
-
-            _exec_rust_tui(root if isinstance(root, _Path) else _Path.home() / ".atelier")
-
-        cli.add_command(tui_cmd)
-        cli.add_command(chat_cmd)
-        cli.add_command(workspace_cmd)
-    except (ModuleNotFoundError, ImportError):
-        pass
-
-    try:
-        import click as _click
-
-        @_click.command("dashboard")
-        @_click.option("--port", default=8787, show_default=True, help="Atelier service port (default: 8787)")
-        @_click.option("--dev", is_flag=True, default=False, help="Open the Vite dev server (port 3125) instead")
-        def dashboard_cmd(port: int, dev: bool) -> None:
+        @dashboard_group.command("open")
+        @_click.option("--port", default=8787, show_default=True, help="Atelier service port")
+        @_click.option("--dev", is_flag=True, default=False, help="Open Vite dev server (port 3125)")
+        def dashboard_open_cmd(port: int, dev: bool) -> None:
             """Open the Atelier analytics dashboard in your browser."""
             import urllib.request
             import webbrowser
 
             target_port = 3125 if dev else port
             url = f"http://localhost:{target_port}/analytics"
-
-            # Check if service is running
             try:
                 urllib.request.urlopen(f"http://localhost:{target_port}/health", timeout=2)
-                _click.echo(f"  \u25c6 Opening Atelier dashboard: {url}")
+                _click.echo(f"  ◆ Opening Atelier dashboard: {url}")
                 webbrowser.open(url)
-            except Exception:
-                # Service not running
-                dev_hint = "\n  Dev mode: cd frontend && npm run dev" if not dev else ""
+            except Exception:  # noqa: BLE001
                 _click.echo(
                     f"  Atelier service not running on port {target_port}.\n\n"
                     f"  Start it with:\n"
-                    f"    atelier service start\n"
-                    f"  Or in Docker:\n"
-                    f"    docker compose up{dev_hint}\n\n"
-                    f"  Then run: atelier dashboard"
+                    f"    atelierd start\n"
+                    f"  Or as background service:\n"
+                    f"    atelierd install && atelierd restart\n\n"
+                    f"  Then run: atelier dashboard open"
                 )
 
-        cli.add_command(dashboard_cmd)
+        cli.add_command(dashboard_group)
+        # Keep 'status' as a hidden alias for backward compatibility
+        _h(admin_commands.status_cmd)
+        cli.add_command(admin_commands.status_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
-
-    try:
-        import asyncio as _asyncio
-
-        import click as _click
-
-        @_click.command("tui-backend")
-        @_click.option("--project-root", default=None, help="Project root directory")
-        @_click.option("--session-id", default=None, help="Resume a saved session")
-        @_click.pass_obj
-        def tui_backend_cmd(
-            obj: object, project_root: str | None, session_id: str | None
-        ) -> None:
-            """NDJSON backend server for the atelier-tui Rust frontend (internal)."""
-            from atelier.gateway.cli.server import run_ndjson_server
-
-            raise SystemExit(
-                _asyncio.run(
-                    run_ndjson_server(project_root=project_root, session_id=session_id)
-                )
-            )
-
-        cli.add_command(tui_backend_cmd, name="tui-backend")
-    except (ModuleNotFoundError, ImportError):
         pass
 
     try:
         import click as _click
 
         @_click.command("serve-openai")
-        @_click.option("--port", default=8790, show_default=True, help="Port to listen on (8787 is the Atelier service port)")
+        @_click.option(
+            "--port", default=8790, show_default=True, help="Port to listen on (8787 is the Atelier service port)"
+        )
         @_click.option("--host", default="0.0.0.0", show_default=True, help="Bind address")
         @_click.option("--project-root", default=None, help="Project root directory")
-        @_click.option("--no-yolo", is_flag=True, default=False, help="Require manual approval for tool calls (default: auto-approve)")
+        @_click.option(
+            "--no-yolo",
+            is_flag=True,
+            default=False,
+            help="Require manual approval for tool calls (default: auto-approve)",
+        )
         def serve_openai_cmd(port: int, host: str, project_root: str | None, no_yolo: bool) -> None:
             """Start the OpenAI-compatible chat completions gateway.
 
@@ -326,6 +287,7 @@ def register(cli: click.Group) -> None:
 
             serve(port=port, host=host, project_root=project_root, yolo=not no_yolo)
 
+        serve_openai_cmd.hidden = True  # internal: integrated into atelier service
         cli.add_command(serve_openai_cmd, name="serve-openai")
     except (ModuleNotFoundError, ImportError):
         pass
@@ -348,7 +310,7 @@ def register(cli: click.Group) -> None:
             _click.echo(scripts[shell])
 
         cli.add_command(completions_cmd)
-    except (ModuleNotFoundError, ImportError):
+    except ImportError:  # noqa: B025
         pass
 
 

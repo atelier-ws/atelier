@@ -1,6 +1,6 @@
 # Installing Atelier into opencode
 
-**Support level**: MCP + workspace agent profile
+**Support level**: MCP + OpenAI-compatible provider + workspace agent profile
 
 ---
 
@@ -16,6 +16,12 @@ By default this installs opencode user/global config. For a project-local instal
 bash scripts/install_opencode.sh --workspace /path/to/workspace
 ```
 
+One-command run (auto-start service, install config, launch opencode):
+
+```bash
+bash scripts/run_opencode_with_atelier.sh --workspace /path/to/workspace
+```
+
 ---
 
 ## What Gets Installed
@@ -25,7 +31,12 @@ bash scripts/install_opencode.sh --workspace /path/to/workspace
 | MCP server config | `~/.config/opencode/opencode.json`     | `<workspace>/opencode.json`               |
 | Agent profile     | `~/.config/opencode/agents/atelier.md` | `<workspace>/.opencode/agents/atelier.md` |
 
-The installer merges an `atelier` entry into the `mcp` key:
+The installer merges:
+1. `mcp.atelier` for `atelier-mcp`
+2. `provider.atelier` for OpenAI-compatible chat completions (`http://127.0.0.1:8787/v1`)
+3. `model: "atelier/atelier-default"`
+
+MCP entry:
 
 ```json
 &#123;
@@ -45,6 +56,12 @@ The installer merges an `atelier` entry into the `mcp` key:
 
 ```bash
 make verify
+```
+
+Manual smoke command:
+
+```bash
+bash scripts/run_opencode_with_atelier.sh --dry-run --workspace /path/to/workspace
 ```
 
 ## Expected Behavior

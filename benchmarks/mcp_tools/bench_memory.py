@@ -103,6 +103,6 @@ def test_memory_op_saves_tokens(
     result = _find(memory_bench_results, case.label)
     if not result.passed:
         pytest.skip(f"skipping savings check — op failed: {result.failure}")
-    assert result.atelier_tokens < case.baseline_tokens, (
-        f"[{case.label}] no savings: atelier={result.atelier_tokens} " f">= baseline={case.baseline_tokens}"
-    )
+    assert (
+        result.atelier_tokens < case.baseline_tokens
+    ), f"[{case.label}] no savings: atelier={result.atelier_tokens} >= baseline={case.baseline_tokens}"

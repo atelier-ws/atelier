@@ -2,6 +2,7 @@
 
 We define these locally so the gateway has no hard dep on the ``openai`` package.
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -339,6 +339,8 @@ class SavingsSummary:
     display_cache_tokens: int = 0  # cumulative cache reads
     display_output_tokens: int = 0  # cumulative output
     status_text: str = ""
+    saved_pct: float = 0.0
+    carry_pct: float = 0.0
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -618,6 +620,11 @@ def compute_savings_summary(
     result.ctx_saved = priced_tokens + extra_tokens
     result.saved_usd = row_usd + extra_usd
 
+    total_baseline = result.saved_usd + result.carry_usd + result.est_cost_usd
+    if total_baseline > 0:
+        result.saved_pct = (result.saved_usd / total_baseline) * 100
+        result.carry_pct = (result.carry_usd / total_baseline) * 100
+
     return result
 
 
@@ -747,7 +754,7 @@ def savings_line(
     """Return the pipe-delimited savings line consumed by statusline.sh.
 
     Format:
-    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>``
+    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%``
     """
     summary = compute_savings_summary(session_id, atelier_root=atelier_root, workspace=workspace)
     summary.status_text = _resolve_status_text(atelier_root)
@@ -756,5 +763,6 @@ def savings_line(
         f"|{summary.status_text}|${summary.routing_saved_usd:.3f}"
         f"|{summary.est_cost_usd:.3f}|{summary.total_tokens}"
         f"|{summary.display_input_tokens}|{summary.display_cache_tokens}|{summary.display_output_tokens}"
-        f"|${summary.carry_usd:.3f}"
+        f"|${summary.carry_usd:.3f}|{_fmt_tok(summary.carry_tokens)}|{summary.carry_pct:.0f}%"
+        f"|{summary.saved_pct:.0f}%"
     )

@@ -39,11 +39,7 @@ from typing import Any
 def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -113,7 +109,7 @@ def _initialize_session_stats(payload: dict[str, Any]) -> None:
         from atelier.core.capabilities.plugin_runtime import update_session_stats
 
         update_session_stats(_atelier_root(), payload)
-    except (OSError, json.JSONDecodeError, TypeError):
+    except (ImportError, OSError, json.JSONDecodeError, TypeError):
         pass
 
 
@@ -232,7 +228,7 @@ def main() -> int:
         from atelier.core.capabilities.autopilot.factory import run_and_emit
 
         run_and_emit("session_start", {"cwd": cwd})
-    except (OSError, json.JSONDecodeError, TypeError):
+    except (ImportError, OSError, json.JSONDecodeError, TypeError):
         pass
 
     return 0

@@ -44,11 +44,7 @@ def _session_state_path() -> Path:
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 

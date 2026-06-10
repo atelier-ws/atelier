@@ -274,7 +274,7 @@ class RemoteClient(AtelierClient):
     def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
         payload = self._ensure_ok(
             self._client._get(
-                "/v1/memory/blocks" f"?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
+                f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
             )
         )
         return MemoryBlock.model_validate(payload) if payload else None

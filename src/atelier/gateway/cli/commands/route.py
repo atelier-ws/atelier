@@ -31,7 +31,7 @@ def route_configure_public_cmd(
     try:
         payload = CrossVendorRouteAdvisor(ctx.obj["root"]).configure(
             enabled_vendors=list(vendors) or None,
-            risk_class=risk_class,
+            risk_class=risk_class,  # type: ignore[arg-type]
         )
     except RouteConfigError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -125,7 +125,7 @@ def proof_group() -> None:
     type=float,
     default=None,
     help=(
-        "Context reduction percentage from WP-19 savings bench. " "When omitted, the benchmark is re-run automatically."
+        "Context reduction percentage from WP-19 savings bench. When omitted, the benchmark is re-run automatically."
     ),
 )
 @click.option("--json", "as_json", is_flag=True)

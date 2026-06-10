@@ -325,10 +325,10 @@ def _write_copilot_vscode_settings(workspace_root: Path) -> Path:
 
 def _render_codex_agent_toml(role_id: str, description: str, instructions: str, model: str | None) -> str:
     body = instructions.strip().replace('"""', '\\"\\"\\"')
-    rendered = f'name = "atelier.{role_id}"\n' f'description = "{description}"\n'
+    rendered = f'name = "atelier.{role_id}"\ndescription = "{description}"\n'
     if model:
         rendered += f'model = "{model}"\n'
-    rendered += 'developer_instructions = """\n' f"{body}\n" '"""\n'
+    rendered += f'developer_instructions = """\n{body}\n"""\n'
     return rendered
 
 

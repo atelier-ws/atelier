@@ -655,7 +655,7 @@ def _parse_since_arg(value: str) -> datetime:
         pass
 
     raise click.ClickException(
-        f"Cannot parse --since value {value!r}. " "Use a duration like '7d', '24h', or a date like '2026-05-01'."
+        f"Cannot parse --since value {value!r}. Use a duration like '7d', '24h', or a date like '2026-05-01'."
     )
 
 
@@ -1497,7 +1497,7 @@ def insights_cmd(
     if vendor and not as_json:
         vendor_key = vendor.capitalize()
         filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
-        click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}" f" of ${window.total_cost_usd:.2f} total")
+        click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f} of ${window.total_cost_usd:.2f} total")
 
     display_window = window
     if group_by == "vendor" and not as_json:

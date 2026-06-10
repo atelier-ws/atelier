@@ -154,99 +154,6 @@ def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[...
     return _module_dev_group(name, **kwargs)
 
 
-def _exec_rust_tui(root: Path) -> None:
-    """Find and exec the atelier-tui Rust binary.
-
-    Forwarded CLI flags (passed through ``sys.argv``):
-    - ``--resume [<session-id>]`` — resume a saved session, or show an
-      interactive session picker when no id is given.
-    - ``--mitm`` — capture LLM traffic via mitmdump.
-
-    The web browser bridge and public tunnel are started automatically by the
-    Rust binary on an available port; no flags are required.
-    """
-    import os
-    import shutil
-
-    # Search order: PATH, ~/.atelier/bin/, crates build dir
-    candidates = [
-        shutil.which("atelier-tui"),
-        shutil.which("atelier-workspace"),
-        str(Path.home() / ".atelier" / "bin" / "atelier-tui"),
-        str(Path.home() / ".atelier" / "bin" / "atelier-workspace"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "release" / "atelier-tui"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "release" / "atelier-workspace"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "debug" / "atelier-tui"),
-        str(Path(__file__).parents[4] / "crates" / "atelier-tui" / "target" / "debug" / "atelier-workspace"),
-    ]
-    binary = next((c for c in candidates if c and os.path.isfile(c) and os.access(c, os.X_OK)), None)
-
-    if binary is None:
-        import subprocess
-
-        click.echo("  Building atelier-tui (first run — this takes ~30 seconds)...")
-
-        crate_candidates = [
-            Path(__file__).parents[4] / "crates" / "atelier-tui",
-            Path.home() / ".local" / "share" / "atelier" / "crates" / "atelier-tui",
-        ]
-        crate_dir = next((c for c in crate_candidates if c.exists()), None)
-
-        if crate_dir is None:
-            click.echo(
-                "atelier-tui source not found. Install with:\n"
-                "  cargo install atelier-tui  (when available)\n"
-                "Or build from source:\n"
-                "  cd crates/atelier-tui && cargo build --release",
-                err=True,
-            )
-            raise SystemExit(1)
-
-        if shutil.which("cargo") is None:
-            click.echo(
-                "cargo not found. Install Rust from https://rustup.rs/ to build atelier-tui.",
-                err=True,
-            )
-            raise SystemExit(1)
-
-        try:
-            subprocess.run(
-                ["cargo", "build", "--release"],
-                cwd=str(crate_dir),
-                check=True,
-            )
-            binary = str(crate_dir / "target" / "release" / "atelier-tui")
-            if not os.path.isfile(binary):
-                raise FileNotFoundError(f"Build succeeded but binary not found at {binary}")
-            click.echo("  ✓ atelier-tui built successfully")
-        except subprocess.CalledProcessError as exc:
-            click.echo(f"  Build failed: {exc}", err=True)
-            raise SystemExit(1) from exc
-
-    env = os.environ.copy()
-    env["ATELIER_ROOT"] = str(root)
-
-    # Forward TUI passthrough flags (handled by the Rust binary's own argv parsing).
-    import sys
-
-    forwarded: list[str] = []
-    argv = sys.argv[1:]
-    i = 0
-    while i < len(argv):
-        arg = argv[i]
-        if arg == "--resume":
-            forwarded.append(arg)
-            nxt = argv[i + 1] if i + 1 < len(argv) else None
-            if nxt is not None and not nxt.startswith("--"):
-                forwarded.append(nxt)
-                i += 1
-        elif arg == "--mitm":
-            forwarded.append(arg)
-        i += 1
-
-    os.execvpe(binary, [binary, *forwarded], env)
-
-
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"]},
     invoke_without_command=True,
@@ -265,20 +172,7 @@ def cli(ctx: click.Context, root: Path) -> None:
     ctx.ensure_object(dict)
     ctx.obj["root"] = root
     if ctx.invoked_subcommand is None:
-        import sys
-
-        if sys.stdout.isatty() and sys.stdin.isatty():
-            _exec_rust_tui(root)
-        else:
-            click.echo(
-                "Atelier interactive mode requires a TTY.\n\n"
-                "Try:\n"
-                '  atelier run "<task>"     # one-shot task\n'
-                "  atelier mcp              # MCP server\n"
-                "  atelier --help           # all commands",
-                err=True,
-            )
-            raise SystemExit(1)
+        click.echo(ctx.get_help())
 
 
 @cli.command("help", context_settings={"ignore_unknown_options": True})
@@ -391,7 +285,6 @@ __all__ = [
     "_dev_group",
     "_emit_cli_interrupted",
     "_ensure_import_progress_logging",
-    "_exec_rust_tui",
     "_finish_cli_telemetry",
     "_project_root",
     "_telemetry_session",

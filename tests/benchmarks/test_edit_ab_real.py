@@ -66,7 +66,7 @@ def test_edit_ab_real(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     src = tmp_path / "src"
     src.mkdir(parents=True, exist_ok=True)
     target = src / "app.py"
-    before = "VALUE = 1\n" "def run() -> int:\n" "    return VALUE\n"
+    before = "VALUE = 1\ndef run() -> int:\n    return VALUE\n"
     target.write_text(before, encoding="utf-8")
     after = before.replace("VALUE = 1", "VALUE = 2")
 

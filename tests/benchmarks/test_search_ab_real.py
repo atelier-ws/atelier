@@ -97,10 +97,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "src" / "payments.py").write_text(
-        "from src.checkout import checkout\n"
-        "\n"
-        "def charge(items: list[int]) -> int:\n"
-        "    return checkout(items)\n",
+        "from src.checkout import checkout\n\ndef charge(items: list[int]) -> int:\n    return checkout(items)\n",
         encoding="utf-8",
     )
     (root / "src" / "ledger.py").write_text(
@@ -121,7 +118,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "docs" / "release.md").write_text(
-        "alpha\n" "NEEDLE_TOKEN appears in release notes\n" "omega\n",
+        "alpha\nNEEDLE_TOKEN appears in release notes\nomega\n",
         encoding="utf-8",
     )
 
@@ -133,7 +130,7 @@ def _write_fixture_repo(root: Path) -> None:
         )
     else:
         (root / "frontend" / "sample.ts").write_text(
-            "export function issueAccessToken(userId: string): string {\n" "  return `session:${userId}`;\n" "}\n",
+            "export function issueAccessToken(userId: string): string {\n  return `session:${userId}`;\n}\n",
             encoding="utf-8",
         )
 
