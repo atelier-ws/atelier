@@ -387,16 +387,28 @@ fn draw_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("Exit"),
         ]),
         Line::from(vec![
-            Span::styled("  Ctrl+F       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Search conversation"),
+            Span::styled("  Ctrl+K       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Command palette (fuzzy search all commands)"),
         ]),
         Line::from(vec![
-            Span::styled("  Ctrl+M       ", Style::default().fg(Color::Cyan)),
-            Span::raw("Cycle agent mode (code/explore/research/plan)"),
+            Span::styled("  Ctrl+L       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Toggle side panel (tools / context stats)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+\\       ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("Toggle selection mode — ENABLES native terminal text selection", Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  y            ", Style::default().fg(Color::Cyan)),
+            Span::raw("Copy last assistant response (in conversation focus)"),
         ]),
         Line::from(vec![
             Span::styled("  Ctrl+F       ", Style::default().fg(Color::Cyan)),
             Span::raw("Search conversation (type to filter, ↑↓ navigate, Esc close)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+M       ", Style::default().fg(Color::Cyan)),
+            Span::raw("Cycle agent mode (code/explore/research/plan)"),
         ]),
         Line::from(vec![
             Span::styled("  y / n / a    ", Style::default().fg(Color::Cyan)),
@@ -1082,6 +1094,24 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    // When in selection mode show a prominent indicator
+    if app.selection_mode {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    " ✂ SELECTION MODE ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "  click+drag to select text · Ctrl+\\ to exit · y to copy last response",
+                    Style::default().fg(Color::Yellow),
+                ),
+            ])),
+            area,
+        );
+        return;
+    }
+
     let accent = app.agent_mode.accent_color();
     let mode_badge = format!(" {} ›", app.agent_mode.name());
 
