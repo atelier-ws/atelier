@@ -132,6 +132,19 @@ export default function Sessions() {
     return m;
   }, [summaries]);
 
+  // Deduplicate traces by session_id — one entry per real session.
+  // Prefer traces that have a task description when multiple share the same session_id.
+  const displayTraces = useMemo(() => {
+    if (!traces) return null;
+    const seen = new Map<string, Trace>();
+    for (const t of traces) {
+      const sid = t.session_id || t.id;
+      const existing = seen.get(sid);
+      if (!existing || (!existing.task && t.task)) seen.set(sid, t);
+    }
+    return Array.from(seen.values());
+  }, [traces]);
+
   const fetchTracesPage = useCallback(
     (offset: number) => {
       const requestSeq = ++tracesRequestSeq.current;
@@ -292,7 +305,7 @@ export default function Sessions() {
                 <div className="p-4 text-xs text-red-500 font-mono">{err}</div>
               )}
 
-              {traces
+              {displayTraces
                 ?.slice()
                 .sort((a, b) => {
                   const sa = sessionsMap?.get(a.session_id || a.id);
