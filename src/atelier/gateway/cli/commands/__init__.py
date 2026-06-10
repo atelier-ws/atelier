@@ -298,6 +298,38 @@ def register(cli: click.Group) -> None:
     try:
         import click as _click
 
+        @_click.command("serve-openai")
+        @_click.option("--port", default=8787, show_default=True, help="Port to listen on")
+        @_click.option("--host", default="0.0.0.0", show_default=True, help="Bind address")
+        @_click.option("--project-root", default=None, help="Project root directory")
+        @_click.option("--no-yolo", is_flag=True, default=False, help="Require manual approval for tool calls (default: auto-approve)")
+        def serve_openai_cmd(port: int, host: str, project_root: str | None, no_yolo: bool) -> None:
+            """Start the OpenAI-compatible chat completions gateway.
+
+            Any TUI that supports custom OpenAI-compatible endpoints can connect.
+
+            \b
+            OpenCode  (opencode.json):
+              "provider": {"atelier": {"npm": "@ai-sdk/openai-compatible",
+                "options": {"baseURL": "http://localhost:8787/v1", "apiKey": "local"}}}
+
+            Crush  (crush.json):
+              "providers": {"atelier": {"type": "openai-compat",
+                "base_url": "http://localhost:8787/v1", "api_key": "local"}}
+
+            Codex  (~/.codex/config.toml):
+              [model_providers.atelier]
+              base_url = "http://localhost:8787/v1"
+              wire_api = "chat"
+            """
+            from atelier.gateway.openai_gateway.serve import serve
+
+            serve(port=port, host=host, project_root=project_root, yolo=not no_yolo)
+
+        cli.add_command(serve_openai_cmd, name="serve-openai")
+    except (ModuleNotFoundError, ImportError):
+        pass
+
         @_click.command("completions")
         @_click.argument("shell", type=_click.Choice(["zsh", "bash", "fish"]))
         def completions_cmd(shell: str) -> None:
