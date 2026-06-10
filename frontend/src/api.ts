@@ -48,12 +48,9 @@ export interface OverviewStats {
   total_rubrics: number;
   total_clusters: number;
   total_raw_tokens_estimate: number;
-  total_saved_tokens_estimate: number;
-  total_compressed_tokens_estimate: number;
   average_compression_ratio: number;
   estimated_total_cost_usd: number;
   estimated_saved_cost_usd: number;
-  usd_per_1k_tokens: number;
   is_estimate: boolean;
 }
 
@@ -1265,7 +1262,6 @@ export interface MemoryRecallPassage {
 
 export interface MemoryRecallResult {
   passages: MemoryRecallPassage[];
-  recall_id: string;
 }
 
 export interface RunInspectorData {
