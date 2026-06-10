@@ -81,22 +81,19 @@ async fn main() -> Result<()> {
     // WS PTY bridge is now handled on the same port as HTTP (port 7700) via
     // the /ws/terminal route — no separate server needed.
     if !no_web {
-        eprintln!("  \u{25c6} Terminal:  http://localhost:{web_port}  (xterm.js \u{2014} same session, works via cloudflare)");
-        eprintln!("  \u{25c6} Chat UI:   http://localhost:{web_port}/chat  (SSE-based fallback)");
+        eprintln!("  atelier-tui web: http://localhost:{web_port}");
     }
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
-    // Always attempt the kitty keyboard protocol — terminals that don't support it
-    // silently ignore the escape sequence. This is required for Shift+Enter to work.
+    // Enable kitty keyboard protocol — DISAMBIGUATE_ESCAPE_CODES is enough for
+    // Shift+Enter to be reported as Enter+SHIFT (not the same as plain Enter).
+    // Terminals that don't support it silently ignore the sequence.
     let _ = execute!(
         stdout,
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES,
-        )
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
     );
 
     let backend = CrosstermBackend::new(stdout);
