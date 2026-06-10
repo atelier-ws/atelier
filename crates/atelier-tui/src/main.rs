@@ -78,25 +78,11 @@ async fn main() -> Result<()> {
     // Always start the web bridge on an available port (unless --no-web).
     let web_port = if no_web { 0u16 } else { find_available_port(7700).await };
 
-    // Start the WebSocket PTY bridge on web_port + 1: serves a REAL terminal
-    // (xterm.js) over WebSocket, spawning the TUI itself in a PTY like SSH.
+    // WS PTY bridge is now handled on the same port as HTTP (port 7700) via
+    // the /ws/terminal route — no separate server needed.
     if !no_web {
-        let ws_pty_port = web_port + 1;
-        // Spawn the TUI binary (not the backend) in the PTY so the browser sees the full
-        // visual Ratatui TUI — identical to SSH. Pass --no-web to avoid recursive web spawning.
-        let tui_binary = std::env::current_exe()
-            .unwrap_or_else(|_| std::path::PathBuf::from("atelier-tui"));
-        let tui_cmd: Vec<String> = vec![
-            tui_binary.to_string_lossy().to_string(),
-            "--no-web".to_string(),
-        ];
-        tokio::spawn(async move {
-            if let Err(e) = terminal_bridge::start_ws_pty_server(ws_pty_port, tui_cmd).await {
-                eprintln!("WS PTY server error: {e}");
-            }
-        });
-        eprintln!("  \u{25c6} Chat UI:     http://localhost:{web_port}");
-        eprintln!("  \u{25c6} Terminal UI: http://localhost:{web_port}/terminal  (xterm.js \u{2014} like SSH)");
+        eprintln!("  \u{25c6} Terminal:  http://localhost:{web_port}  (xterm.js \u{2014} same session, works via cloudflare)");
+        eprintln!("  \u{25c6} Chat UI:   http://localhost:{web_port}/chat  (SSE-based fallback)");
     }
 
     enable_raw_mode()?;
@@ -301,6 +287,10 @@ async fn run_app(
 
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
+            // The agent may have queued a desktop notification (terminal blurred).
+            if let Some(body) = app.notification_pending.take() {
+                send_desktop_notification(&body).await;
+            }
         }
         // Sync session_id to web bridge whenever it changes
         if !app.session_id.is_empty() {
@@ -346,6 +336,69 @@ async fn send_command(writer: &mut BufWriter<ChildStdin>, cmd: &FrontendCommand)
     Ok(())
 }
 
+/// Fire a best-effort desktop notification when the agent finishes while the user
+/// is likely looking elsewhere. Uses `notify-send` on Linux and `osascript` on
+/// macOS — both standard OS commands, no extra crates. No-ops without a display
+/// server so headless / SSH sessions stay silent.
+async fn send_desktop_notification(body: &str) {
+    let has_display =
+        std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
+    if !has_display {
+        return;
+    }
+    if cfg!(target_os = "macos") {
+        let script = format!("display notification \"{body}\" with title \"Atelier\"");
+        let _ = tokio::process::Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    } else {
+        let _ = tokio::process::Command::new("notify-send")
+            .arg("Atelier")
+            .arg(body)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+}
+
+/// Write the current conversation to `~/.atelier/exports/session-<id>-<ts>.md`,
+/// returning the path on success.
+fn export_session_markdown(app: &App<'_>) -> std::io::Result<std::path::PathBuf> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no home directory"))?;
+    let dir = home.join(".atelier").join("exports");
+    std::fs::create_dir_all(&dir)?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let id = if app.session_id.is_empty() {
+        "session".to_string()
+    } else {
+        app.session_id.clone()
+    };
+    let path = dir.join(format!("session-{id}-{ts}.md"));
+
+    let mut md = format!("# Session {id}\n\n");
+    for entry in &app.conversation {
+        let heading = match entry.role {
+            Role::User => "## User",
+            Role::Assistant => "## Atelier",
+            Role::System => "## System",
+        };
+        md.push_str(heading);
+        md.push_str("\n\n");
+        md.push_str(entry.text.trim_end());
+        md.push_str("\n\n");
+    }
+    std::fs::write(&path, md)?;
+    Ok(path)
+}
+
 /// Replace the entire textarea contents with the given string.
 fn set_input_text(input: &mut TextArea<'_>, text: &str) {
     *input = TextArea::default();
@@ -362,22 +415,41 @@ async fn handle_key(
     key: crossterm::event::KeyEvent,
     writer: &mut BufWriter<ChildStdin>,
 ) -> Result<()> {
+    // Any keystroke counts as user activity — used to decide whether the terminal
+    // is likely blurred when the agent finishes (see desktop-notification logic).
+    app.last_activity_time = std::time::Instant::now();
+
     // Newline in multiline input — multiple shortcuts for cross-terminal compatibility:
-    //  • Shift+Enter  — works in kitty/WezTerm/foot with keyboard enhancement protocol
-    //  • Alt+Enter    — works in most terminals (sends ESC+CR)
+    //  • Shift+Enter  — works in kitty/WezTerm/foot (kitty keyboard protocol)
+    //  • Alt+Enter    — works in terminals that send ESC+CR as a single event
     //  • Ctrl+Enter   — works in some terminals
-    //  • Ctrl+J       — universal fallback (sends 0x0A in ALL terminals)
-    //  • Ctrl+O       — additional fallback
+    //  • ESC then Enter (within 200ms) — manual ESC-sequence buffering for terminals
+    //    that split ESC+Enter into two events (most common terminals)
+
+    // If we have a pending ESC and now see Enter, treat it as Alt+Enter (newline).
+    if key.code == KeyCode::Enter
+        && key.modifiers == KeyModifiers::NONE
+        && app.pending_esc.map(|t| t.elapsed().as_millis() < 200).unwrap_or(false)
+    {
+        app.pending_esc = None;
+        app.input.insert_newline();
+        return Ok(());
+    }
+    // Clear stale pending ESC
+    if app.pending_esc.map(|t| t.elapsed().as_millis() >= 200).unwrap_or(false) {
+        app.pending_esc = None;
+    }
+
     let is_newline_key = match key.code {
         KeyCode::Enter => {
             key.modifiers.contains(KeyModifiers::SHIFT)
                 || key.modifiers.contains(KeyModifiers::ALT)
                 || key.modifiers.contains(KeyModifiers::CONTROL)
         }
-        KeyCode::Char('j') | KeyCode::Char('o') => key.modifiers.contains(KeyModifiers::CONTROL),
         _ => false,
     };
     if is_newline_key {
+        app.pending_esc = None;
         app.input.insert_newline();
         return Ok(());
     }
@@ -417,10 +489,9 @@ async fn handle_key(
         }
     }
 
-    // Interactive overlays (agent/model/auth pickers + help) capture keys first.
+    // Interactive overlays (agent/auth pickers + help) capture keys first.
     match &app.active_overlay {
         ActiveOverlay::AgentPicker { .. }
-        | ActiveOverlay::ModelPicker { .. }
         | ActiveOverlay::AuthPicker { .. } => {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => {
@@ -430,11 +501,6 @@ async fn handle_key(
                 KeyCode::Up => {
                     match &mut app.active_overlay {
                         ActiveOverlay::AgentPicker { selected } => {
-                            if *selected > 0 {
-                                *selected -= 1;
-                            }
-                        }
-                        ActiveOverlay::ModelPicker { selected, .. } => {
                             if *selected > 0 {
                                 *selected -= 1;
                             }
@@ -452,9 +518,6 @@ async fn handle_key(
                     match &mut app.active_overlay {
                         ActiveOverlay::AgentPicker { selected } => {
                             *selected = (*selected + 1).min(3);
-                        }
-                        ActiveOverlay::ModelPicker { selected, models } => {
-                            *selected = (*selected + 1).min(models.len().saturating_sub(1));
                         }
                         ActiveOverlay::AuthPicker { selected, providers } => {
                             *selected = (*selected + 1).min(providers.len().saturating_sub(1));
@@ -485,19 +548,6 @@ async fn handle_key(
                                 .await?;
                             }
                         }
-                        ActiveOverlay::ModelPicker { selected, models } => {
-                            if let Some((model_id, _)) = models.get(selected) {
-                                app.current_model = model_id.clone();
-                                send_command(
-                                    writer,
-                                    &FrontendCommand::UserCommand {
-                                        name: "model".to_string(),
-                                        args: vec![model_id.clone()],
-                                    },
-                                )
-                                .await?;
-                            }
-                        }
                         ActiveOverlay::AuthPicker { selected, providers } => {
                             if let Some(provider) = providers.get(selected) {
                                 send_command(
@@ -517,6 +567,76 @@ async fn handle_key(
                 }
                 _ => return Ok(()),
             }
+        }
+        // Model picker: like the others, but typing live-filters the list. The
+        // selection indexes the grouped+filtered view (see filter_grouped_models),
+        // so the renderer and this handler must agree on that ordering.
+        ActiveOverlay::ModelPicker { .. } => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Up => {
+                    if let ActiveOverlay::ModelPicker { selected, .. } = &mut app.active_overlay {
+                        *selected = selected.saturating_sub(1);
+                    }
+                }
+                KeyCode::Down => {
+                    if let ActiveOverlay::ModelPicker {
+                        selected,
+                        models,
+                        filter,
+                    } = &mut app.active_overlay
+                    {
+                        let count = app::filter_grouped_models(models, filter).len();
+                        if *selected + 1 < count {
+                            *selected += 1;
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    if let ActiveOverlay::ModelPicker {
+                        selected,
+                        models,
+                        filter,
+                    } = app.active_overlay.clone()
+                    {
+                        let filtered = app::filter_grouped_models(&models, &filter);
+                        if let Some((model_id, _)) = filtered.get(selected) {
+                            app.current_model = model_id.clone();
+                            send_command(
+                                writer,
+                                &FrontendCommand::UserCommand {
+                                    name: "model".to_string(),
+                                    args: vec![model_id.clone()],
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Backspace => {
+                    if let ActiveOverlay::ModelPicker {
+                        filter, selected, ..
+                    } = &mut app.active_overlay
+                    {
+                        filter.pop();
+                        *selected = 0;
+                    }
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if let ActiveOverlay::ModelPicker {
+                        filter, selected, ..
+                    } = &mut app.active_overlay
+                    {
+                        filter.push(c);
+                        *selected = 0;
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
         }
         ActiveOverlay::Help => {
             match key.code {
@@ -1062,6 +1182,21 @@ async fn handle_key(
     }
 
     match key.code {
+        // ESC when no overlay/prompt is open: buffer for potential Alt+Enter (ESC+Enter) detection.
+        // When a second Esc arrives quickly (or the overlay is already closed), clear the buffer.
+        KeyCode::Esc if key.modifiers == KeyModifiers::NONE
+            && app.active_overlay == ActiveOverlay::None
+            && !app.show_session_picker
+            && app.pending_choice.is_none()
+            && app.pending_permission.is_none()
+            && app.pending_diff.is_none()
+            && app.search.is_none()
+            && app.reverse_search.is_none() =>
+        {
+            app.pending_esc = Some(std::time::Instant::now());
+            return Ok(());
+        }
+
         // y — copy last assistant response via OSC-52 (works in most terminals, no clipboard lib needed)
         // Also works when arboard is not available.
         KeyCode::Char('y') if key.modifiers == KeyModifiers::NONE
@@ -1297,12 +1432,34 @@ async fn handle_key(
                 }
                 if name == "model" {
                     let models = default_model_list();
-                    app.active_overlay = ActiveOverlay::ModelPicker { selected: 0, models };
+                    app.active_overlay = ActiveOverlay::ModelPicker { selected: 0, models, filter: String::new() };
                     return Ok(());
                 }
                 if name == "auth" {
                     let providers = default_auth_providers();
                     app.active_overlay = ActiveOverlay::AuthPicker { selected: 0, providers };
+                    return Ok(());
+                }
+
+                // Handle export locally: write the conversation to a Markdown file.
+                if name == "export" {
+                    match export_session_markdown(app) {
+                        Ok(path) => {
+                            app.conversation.push(app::ConversationEntry {
+                                role: app::Role::System,
+                                text: format!(
+                                    "\u{2713} Exported conversation to {}",
+                                    path.display()
+                                ),
+                            });
+                        }
+                        Err(e) => {
+                            app.conversation.push(app::ConversationEntry {
+                                role: app::Role::System,
+                                text: format!("\u{2717} Export failed: {e}"),
+                            });
+                        }
+                    }
                     return Ok(());
                 }
 
@@ -1693,6 +1850,7 @@ async fn execute_leader_action(
             app.active_overlay = ActiveOverlay::ModelPicker {
                 selected: 0,
                 models: default_model_list(),
+                filter: String::new(),
             };
         }
         // a — Auth / provider
@@ -1706,17 +1864,15 @@ async fn execute_leader_action(
         'b' => {
             app.show_side_panel = !app.show_side_panel;
         }
-        // x — Export conversation
+        // x — Export conversation to Markdown (handled locally, same as /export)
         'x' => {
-            app.push_system_pub("/export".to_string());
-            send_command(
-                writer,
-                &FrontendCommand::UserCommand {
-                    name: "export".to_string(),
-                    args: vec![],
-                },
-            )
-            .await?;
+            match export_session_markdown(app) {
+                Ok(path) => app.push_system_pub(format!(
+                    "\u{2713} Exported conversation to {}",
+                    path.display()
+                )),
+                Err(e) => app.push_system_pub(format!("\u{2717} Export failed: {e}")),
+            }
         }
         _ => {}
     }

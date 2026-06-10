@@ -14,6 +14,7 @@ const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧
 const SIDE_MIN_WIDTH: u16 = 110;
 const SIDE_WIDTH: u16 = 36;
 
+#[allow(dead_code)]
 fn border_color(app: &App, pane: FocusedPane) -> Color {
     if app.focused_pane == pane {
         app.agent_mode.accent_color()
@@ -23,12 +24,93 @@ fn border_color(app: &App, pane: FocusedPane) -> Color {
 }
 
 /// Rounded border for the focused pane, plain (thin) for inactive panes.
+#[allow(dead_code)]
 fn border_type_for_pane(app: &App, pane: FocusedPane) -> BorderType {
     if app.focused_pane == pane {
         BorderType::Rounded
     } else {
         BorderType::Plain
     }
+}
+
+/// Whether the host terminal is known to support OSC-8 hyperlinks.
+/// kitty / WezTerm / iTerm2 / VS Code integrated terminal all do.
+fn supports_osc8() -> bool {
+    if let Ok(tp) = std::env::var("TERM_PROGRAM") {
+        let tp = tp.to_lowercase();
+        if tp.contains("wezterm") || tp.contains("iterm") || tp.contains("vscode") {
+            return true;
+        }
+    }
+    if std::env::var("KITTY_WINDOW_ID").is_ok() {
+        return true;
+    }
+    if let Ok(term) = std::env::var("TERM") {
+        if term.contains("kitty") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Byte offset of the next `http://` / `https://` occurrence in *text*.
+fn find_url_start(text: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find("http") {
+        let idx = from + rel;
+        if text[idx..].starts_with("http://") || text[idx..].starts_with("https://") {
+            return Some(idx);
+        }
+        from = idx + 4; // "http" is ASCII, so this stays on a char boundary
+    }
+    None
+}
+
+/// Split *text* into spans, rendering `https?://…` URLs as clickable links.
+///
+/// On terminals with OSC-8 support the URL span carries the
+/// `\x1b]8;;URL\x1b\\TEXT\x1b]8;;\x1b\\` escape so the text is clickable; on
+/// everything else it falls back to a plain cyan-underlined span.
+pub fn render_with_links(text: &str) -> Vec<Span<'static>> {
+    let osc8 = supports_osc8();
+    let link_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::UNDERLINED);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut rest = text;
+
+    while let Some(start) = find_url_start(rest) {
+        if start > 0 {
+            spans.push(Span::raw(rest[..start].to_string()));
+        }
+        let tail = &rest[start..];
+        let end = tail.find(char::is_whitespace).unwrap_or(tail.len());
+        // Trim trailing punctuation that is almost never part of the URL.
+        let url = tail[..end].trim_end_matches(|c: char| {
+            matches!(c, '.' | ',' | ')' | ']' | '}' | '!' | '?' | ';' | ':' | '"' | '\'')
+        });
+        if url.is_empty() {
+            spans.push(Span::raw(tail[..1].to_string()));
+            rest = &tail[1..];
+            continue;
+        }
+        if osc8 {
+            spans.push(Span::styled(
+                format!("\x1b]8;;{url}\x1b\\{url}\x1b]8;;\x1b\\"),
+                link_style,
+            ));
+        } else {
+            spans.push(Span::styled(url.to_string(), link_style));
+        }
+        rest = &rest[start + url.len()..];
+    }
+    if !rest.is_empty() {
+        spans.push(Span::raw(rest.to_string()));
+    }
+    if spans.is_empty() {
+        spans.push(Span::raw(String::new()));
+    }
+    spans
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -119,8 +201,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ActiveOverlay::None => {}
         ActiveOverlay::Help => draw_help_overlay(frame, app, area),
         ActiveOverlay::AgentPicker { selected } => draw_agent_picker(frame, app, *selected, area),
-        ActiveOverlay::ModelPicker { selected, models } => {
-            draw_model_picker(frame, app, *selected, models, area)
+        ActiveOverlay::ModelPicker { selected, models, filter } => {
+            draw_model_picker(frame, app, *selected, models, filter, area)
         }
         ActiveOverlay::AuthPicker { selected, providers } => {
             draw_auth_picker(frame, app, *selected, providers, area)
@@ -240,42 +322,70 @@ fn draw_model_picker(
     app: &App,
     selected: usize,
     models: &[(String, String)],
+    filter: &str,
     area: Rect,
 ) {
-    let popup = centered_rect(70, 60, area);
+    let popup = centered_rect(70, 70, area);
     frame.render_widget(Clear, popup);
 
-    let items: Vec<ListItem> = models
-        .iter()
-        .enumerate()
-        .map(|(i, (model_id, desc))| {
-            let current = model_id == &app.current_model;
-            let bg = if i == selected {
-                app.agent_mode.accent_color()
-            } else {
-                Color::Reset
-            };
-            let fg = if i == selected { Color::Black } else { Color::White };
-            let desc_fg = if i == selected {
-                Color::Black
-            } else {
-                Color::DarkGray
-            };
-            let marker = if current { " \u{25cf}" } else { "  " };
-            ListItem::new(Line::from(vec![
-                Span::styled(
-                    format!("{marker} {model_id:45} "),
-                    Style::default().fg(fg).bg(bg),
-                ),
-                Span::styled(desc.to_string(), Style::default().fg(desc_fg).bg(bg)),
-            ]))
-        })
-        .collect();
+    let accent = app.agent_mode.accent_color();
+    let filtered = crate::app::filter_grouped_models(models, filter);
 
+    // Build list items: a non-selectable provider header before each group, then
+    // each model. `selected` indexes the flat filtered list (headers excluded).
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut last_provider: Option<String> = None;
+    for (i, (model_id, desc)) in filtered.iter().enumerate() {
+        let provider = crate::app::model_provider(model_id).to_string();
+        if last_provider.as_deref() != Some(provider.as_str()) {
+            let label = format!("  \u{2500}\u{2500} {provider} ");
+            let pad_len = 44usize.saturating_sub(label.chars().count());
+            items.push(ListItem::new(Line::from(Span::styled(
+                format!("{label}{}", "\u{2500}".repeat(pad_len)),
+                Style::default()
+                    .fg(Color::Rgb(90, 95, 130))
+                    .add_modifier(Modifier::BOLD),
+            ))));
+            last_provider = Some(provider);
+        }
+        let current = model_id == &app.current_model;
+        let is_sel = i == selected;
+        let bg = if is_sel { accent } else { Color::Reset };
+        let fg = if is_sel { Color::Black } else { Color::White };
+        let desc_fg = if is_sel { Color::Black } else { Color::DarkGray };
+        let star_fg = if is_sel {
+            Color::Black
+        } else {
+            Color::Yellow
+        };
+        let star = if current { "\u{2605} " } else { "  " };
+        // Drop the provider prefix — the group header already shows it.
+        let short = model_id.splitn(2, '/').nth(1).unwrap_or(model_id);
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!("   {star}"), Style::default().fg(star_fg).bg(bg)),
+            Span::styled(format!("{short:38} "), Style::default().fg(fg).bg(bg)),
+            Span::styled(desc.to_string(), Style::default().fg(desc_fg).bg(bg)),
+        ])));
+    }
+    if filtered.is_empty() {
+        items.push(ListItem::new(Line::from(Span::styled(
+            "  no models match — Backspace to clear filter",
+            Style::default().fg(Color::DarkGray),
+        ))));
+    }
+
+    let title = if filter.is_empty() {
+        " Model Picker  type to filter \u{b7} \u{2191}\u{2193} \u{b7} Enter \u{b7} Esc ".to_string()
+    } else {
+        format!(
+            " Model Picker  filter: {filter}\u{2588}  \u{b7} {} match ",
+            filtered.len()
+        )
+    };
     let list = List::new(items).block(
         Block::bordered()
-            .title(" Model Picker  \u{2191}\u{2193} select \u{b7} Enter switch \u{b7} Esc close ")
-            .border_style(Style::default().fg(app.agent_mode.accent_color())),
+            .title(title)
+            .border_style(Style::default().fg(accent)),
     );
     frame.render_widget(list, popup);
 }
@@ -1082,9 +1192,10 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             .next()
             .unwrap_or("project");
         let logo_lines = [
-            "  ┌─────────────────────────────────────────────────┐",
-            "  │  ◆  ATELIER  —  Agent Coding Workspace          │",
-            "  └─────────────────────────────────────────────────┘",
+            "  ╭───────────────────────────────────────────────────╮",
+            "  │   ◆  A T E L I E R                                 │",
+            "  │      Agent Coding Workspace                        │",
+            "  ╰───────────────────────────────────────────────────╯",
         ];
 
         let mut welcome_lines: Vec<Line> = vec![
@@ -1094,7 +1205,11 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                 logo_lines[1],
                 Style::default().fg(agent_color).add_modifier(Modifier::BOLD),
             )),
-            Line::from(Span::styled(logo_lines[2], Style::default().fg(agent_color))),
+            Line::from(Span::styled(
+                logo_lines[2],
+                Style::default().fg(agent_color),
+            )),
+            Line::from(Span::styled(logo_lines[3], Style::default().fg(agent_color))),
             Line::raw(""),
             Line::from(vec![
                 Span::styled("  Project   ", Style::default().fg(Color::DarkGray)),
@@ -1144,6 +1259,7 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
                     url.clone(),
                     Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
                 ),
+                Span::styled("  (scan below)", Style::default().fg(Color::DarkGray)),
             ]));
         } else if let Some(port) = app.web_port {
             welcome_lines.push(Line::from(vec![
@@ -1161,6 +1277,10 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
 
         if !app.qr_lines.is_empty() {
             welcome_lines.push(Line::raw(""));
+            welcome_lines.push(Line::from(Span::styled(
+                "  \u{1f4f1} Scan to open on your phone",
+                Style::default().fg(Color::Green),
+            )));
             for qr_line in &app.qr_lines {
                 welcome_lines.push(Line::from(Span::styled(
                     format!("     {qr_line}"),
@@ -1169,11 +1289,79 @@ fn draw_conversation_content(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         }
 
+        // Quick-start sample prompts — type the number-tagged prompt to begin.
+        let samples = [
+            "Explain the architecture of this project",
+            "Find and fix a bug in the codebase",
+            "Write tests for the module I'm working on",
+            "Refactor this file for readability",
+        ];
+        welcome_lines.push(Line::raw(""));
+        welcome_lines.push(Line::from(Span::styled(
+            "  Quick start",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+        for (i, sample) in samples.iter().enumerate() {
+            welcome_lines.push(Line::from(vec![
+                Span::styled(
+                    format!("    {} ", i + 1),
+                    Style::default()
+                        .fg(agent_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("\u{203a} {sample}"),
+                    Style::default().fg(Color::Gray),
+                ),
+            ]));
+        }
+
+        // Compact two-column keyboard cheat sheet.
+        welcome_lines.push(Line::raw(""));
+        welcome_lines.push(Line::from(Span::styled(
+            "  Shortcuts",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+        let key_style = Style::default().fg(agent_color);
+        let desc_style = Style::default().fg(Color::DarkGray);
+        let shortcut_rows: [(&str, &str, &str, &str); 4] = [
+            ("Enter", "send", "Ctrl+\\", "selection mode"),
+            ("Ctrl+J", "newline", "y", "copy last response"),
+            ("Ctrl+K", "commands", "?", "help"),
+            ("Ctrl+L", "toggle panel", "", ""),
+        ];
+        for (lk, ld, rk, rd) in shortcut_rows {
+            let mut spans = vec![
+                Span::styled(format!("    {lk:<8}"), key_style),
+                Span::styled(format!("{ld:<18}"), desc_style),
+            ];
+            if !rk.is_empty() {
+                spans.push(Span::styled(format!("{rk:<8}"), key_style));
+                spans.push(Span::styled(rd.to_string(), desc_style));
+            }
+            welcome_lines.push(Line::from(spans));
+        }
+
         welcome_lines.push(Line::raw(""));
         welcome_lines.push(Line::from(Span::styled(
             "  Type a message to start · /help for commands · /agents to switch mode",
             Style::default().fg(Color::DarkGray),
         )));
+
+        // Debug builds are noticeably slower to start — nudge toward release mode.
+        #[cfg(debug_assertions)]
+        {
+            welcome_lines.push(Line::raw(""));
+            welcome_lines.push(Line::from(Span::styled(
+                "  \u{26a1} Run 'cargo build --release' for 10\u{d7} faster startup",
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+
         welcome_lines.push(Line::raw(""));
         frame.render_widget(Paragraph::new(welcome_lines), area);
         return;
