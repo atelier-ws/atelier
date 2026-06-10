@@ -71,6 +71,14 @@ _DEFAULT_CANDIDATES: tuple[CandidateModel, ...] = (
         supports_tool_use=True,
         output_multiplier=1.5,
     ),
+    CandidateModel(
+        vendor="anthropic",
+        model_id="claude-fable-5",
+        tier="high",
+        pricing=ModelPricing(input=10.00, output=50.00),
+        supports_tool_use=True,
+        context_window=1_000_000,
+    ),
     # OpenAI
     CandidateModel(
         vendor="openai",
@@ -224,7 +232,7 @@ _DEFAULT_CANDIDATES: tuple[CandidateModel, ...] = (
     ),
 )
 
-_DEFAULT_TABLE = PricingTable(version="2026-06-09-c", candidates=_DEFAULT_CANDIDATES)
+_DEFAULT_TABLE = PricingTable(version="2026-06-10", candidates=_DEFAULT_CANDIDATES)
 
 
 def load_pricing_table(_version: str | None = None) -> PricingTable:
