@@ -13,8 +13,10 @@ from typing import Any, cast
 
 _ENV_VAR = "ATELIER_ZOEKT_BIN"
 _SHA_ENV_VAR = "ATELIER_ZOEKT_BIN_SHA256"
+_MODE_ENV_VAR = "ATELIER_ZOEKT_MODE"
 _DOCKER_BINARY = "docker"
 _LOCAL_REQUIRED = ("zoekt", "zoekt-index", "zoekt-git-index", "zoekt-webserver")
+_VALID_MODES = frozenset({"off", "installed", "managed"})
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,12 @@ class ZoektBinaryResolution:
     reason: str | None = None
     runtime: str = "binary"
     image_ref: str | None = None
+
+
+def zoekt_mode() -> str:
+    """Return the configured Zoekt policy."""
+    mode = os.environ.get(_MODE_ENV_VAR, "off").strip().lower()
+    return mode if mode in _VALID_MODES else "off"
 
 
 def _is_executable(path: Path) -> bool:
@@ -114,10 +122,16 @@ def _validate(path: Path, expected_sha256: str | None) -> bool:
 
 
 def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
-    """Resolve Zoekt runtime with local-native priority, then managed Docker fallback."""
+    """Resolve Zoekt according to the configured installed/managed/off policy."""
 
     root = Path(repo_root).resolve()
     checked: list[str] = []
+    mode = zoekt_mode()
+    if mode == "off":
+        return ZoektBinaryResolution(
+            available=False,
+            reason=f"{_MODE_ENV_VAR}=off",
+        )
 
     env_candidate = os.environ.get(_ENV_VAR)
     env_sha256 = os.environ.get(_SHA_ENV_VAR)
@@ -151,6 +165,13 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
             source="system-local",
             checked=tuple(checked),
             runtime="binary",
+        )
+
+    if mode != "managed":
+        return ZoektBinaryResolution(
+            available=False,
+            checked=tuple(checked),
+            reason="zoekt is not installed; managed Docker bootstrap is disabled",
         )
 
     docker_binary = shutil.which(_DOCKER_BINARY)
@@ -189,4 +210,4 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
     )
 
 
-__all__ = ["ZoektBinaryResolution", "discover_zoekt_binary"]
+__all__ = ["ZoektBinaryResolution", "discover_zoekt_binary", "zoekt_mode"]
