@@ -318,6 +318,16 @@ def build_trace_optimization_report(
         "recommendations": recommendations,
         "estimated_tokens_saved": total_tokens,
         "estimated_usd_saved": round(total_usd, 6),
+        "estimation": {
+            "source": "stored_atelier_traces",
+            "basis": "heuristic_patterns_for_outliers_context_heavy_and_low_delivery_sessions",
+            "savings_are_estimates": True,
+            "limitations": [
+                "does not replay sessions",
+                "does not prove the same task would complete with fewer tokens",
+                "unknown model pricing can understate dollar estimates",
+            ],
+        },
         "guidance": render_session_optimizer_guidance(host),
     }
 

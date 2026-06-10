@@ -39,7 +39,11 @@ from typing import Any
 def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
+    root = Path(
+        os.environ.get("ATELIER_ROOT")
+        or os.environ.get("ATELIER_STORE_ROOT")
+        or Path.home() / ".atelier"
+    )
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -202,6 +206,16 @@ def main() -> int:
                 state_update["transcript_path"] = transcript_path
             _write_session_state(state_update)
 
+        # On /clear, drop a marker so the statusline snapshots the current
+        # cumulative live cost as a baseline and shows only post-clear spend.
+        # Claude's cost.total_cost_usd is process-cumulative and does NOT reset
+        # on /clear; the hook can't see it, but the statusline can. We do this
+        # for clear only — /compact continues the same task, so its cost stands.
+        if source == "clear" and session_id_raw:
+            with suppress(Exception):
+                reset_dir = _atelier_root() / "statusline_cost_reset"
+                reset_dir.mkdir(parents=True, exist_ok=True)
+                (reset_dir / session_id_raw).write_text("", encoding="utf-8")
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
 

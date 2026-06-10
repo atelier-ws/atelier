@@ -101,9 +101,130 @@ _DEFAULT_CANDIDATES: tuple[CandidateModel, ...] = (
         pricing=ModelPricing(input=1.25, output=5.00),
         supports_tool_use=True,
     ),
+    # AWS Bedrock (Claude models via Bedrock — same pricing as direct but through AWS)
+    CandidateModel(
+        vendor="bedrock",
+        model_id="bedrock/anthropic.claude-haiku-4-5-v1:0",
+        tier="cheap",
+        pricing=ModelPricing(input=0.80, output=4.00),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="bedrock",
+        model_id="bedrock/anthropic.claude-sonnet-4-5-v1:0",
+        tier="high",
+        pricing=ModelPricing(input=3.00, output=15.00),
+        supports_tool_use=True,
+    ),
+    # GCP Vertex AI (Claude and Gemini on Vertex)
+    CandidateModel(
+        vendor="vertex",
+        model_id="vertex_ai/gemini-2.0-flash",
+        tier="cheap",
+        pricing=ModelPricing(input=0.075, output=0.30),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="vertex",
+        model_id="vertex_ai/claude-3-5-sonnet@20241022",
+        tier="high",
+        pricing=ModelPricing(input=3.00, output=15.00),
+        supports_tool_use=True,
+    ),
+    # Azure OpenAI
+    CandidateModel(
+        vendor="azure",
+        model_id="azure/gpt-4o-mini",
+        tier="cheap",
+        pricing=ModelPricing(input=0.15, output=0.60),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="azure",
+        model_id="azure/gpt-4o",
+        tier="high",
+        pricing=ModelPricing(input=2.50, output=10.00),
+        supports_tool_use=True,
+    ),
+    # OpenRouter — access to multiple providers with one key
+    CandidateModel(
+        vendor="openrouter",
+        model_id="openrouter/anthropic/claude-haiku-4-5",
+        tier="cheap",
+        pricing=ModelPricing(input=0.90, output=4.50),  # slight markup over direct
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="openrouter",
+        model_id="openrouter/anthropic/claude-sonnet-4-5",
+        tier="high",
+        pricing=ModelPricing(input=3.30, output=16.50),
+        supports_tool_use=True,
+    ),
+    # Groq (ultra-fast inference, very cheap)
+    CandidateModel(
+        vendor="groq",
+        model_id="groq/llama-3.3-70b-versatile",
+        tier="cheap",
+        pricing=ModelPricing(input=0.59, output=0.79),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="groq",
+        model_id="groq/llama-3.1-8b-instant",
+        tier="cheap",
+        pricing=ModelPricing(input=0.05, output=0.08),
+        supports_tool_use=False,
+    ),
+    # Mistral
+    CandidateModel(
+        vendor="mistral",
+        model_id="mistral/mistral-large-latest",
+        tier="high",
+        pricing=ModelPricing(input=2.00, output=6.00),
+        supports_tool_use=True,
+    ),
+    CandidateModel(
+        vendor="mistral",
+        model_id="mistral/mistral-small-latest",
+        tier="cheap",
+        pricing=ModelPricing(input=0.20, output=0.60),
+        supports_tool_use=True,
+    ),
+    # Ollama (local — pricing is $0 but has GPU cost; use near-zero for routing logic)
+    CandidateModel(
+        vendor="ollama",
+        model_id="ollama/llama3.2",
+        tier="cheap",
+        pricing=ModelPricing(input=0.001, output=0.001),
+        supports_tool_use=False,
+    ),
+    CandidateModel(
+        vendor="ollama",
+        model_id="ollama/qwen2.5-coder:7b",
+        tier="cheap",
+        pricing=ModelPricing(input=0.001, output=0.001),
+        supports_tool_use=False,
+    ),
+    # Together AI
+    CandidateModel(
+        vendor="together",
+        model_id="together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        tier="cheap",
+        pricing=ModelPricing(input=0.88, output=0.88),
+        supports_tool_use=True,
+    ),
+    # Fireworks AI
+    CandidateModel(
+        vendor="fireworks",
+        model_id="fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct",
+        tier="cheap",
+        pricing=ModelPricing(input=0.90, output=0.90),
+        supports_tool_use=True,
+    ),
 )
 
-_DEFAULT_TABLE = PricingTable(version="2026-05-20", candidates=_DEFAULT_CANDIDATES)
+_DEFAULT_TABLE = PricingTable(version="2026-06-09-c", candidates=_DEFAULT_CANDIDATES)
 
 
 def load_pricing_table(_version: str | None = None) -> PricingTable:

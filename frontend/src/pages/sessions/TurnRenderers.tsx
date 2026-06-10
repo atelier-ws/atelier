@@ -389,14 +389,29 @@ function AttachmentCard({
                   </span>
                 )}
                 {fileUrl && (
-                  <a
-                    href={fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="border border-neutral-800 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
-                  >
-                    Open
-                  </a>
+                  <>
+                    {attachment.path && (
+                      <a
+                        href={api.fileProjectionInspectUrl(attachment.path, {
+                          view: "compact",
+                        })}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="border border-neutral-800 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
+                        title="Inspect compact projection metadata"
+                      >
+                        Projection
+                      </a>
+                    )}
+                    <a
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="border border-neutral-800 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
+                    >
+                      Open
+                    </a>
+                  </>
                 )}
               </div>
             </div>

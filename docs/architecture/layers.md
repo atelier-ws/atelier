@@ -15,7 +15,7 @@ Atelier is organized around a small set of durable layers:
 - `core` must not depend on `gateway`.
 - `infra` should not depend on `gateway`.
 - Host-specific behavior belongs under `gateway/hosts` or `integrations/`.
-- Repository policy and agent workflow live in `docs/agent-os/`, not in random comments.
+- Repository policy and agent workflow live in `integrations/shared/` and `integrations/agents/`, not in random comments.
 
 ## Source of truth rules
 

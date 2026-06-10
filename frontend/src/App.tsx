@@ -37,6 +37,8 @@ import Watchdogs from "./pages/Watchdogs";
 import Analytics from "./pages/Analytics";
 import Optimizations from "./pages/Optimizations";
 import Swarm from "./pages/Swarm";
+import Workflow from "./pages/Workflow";
+import ProjectionInspector from "./pages/ProjectionInspector";
 import {
   acknowledgeTelemetry,
   getTelemetryConfig,
@@ -58,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/memory", label: "Memory", icon: Database },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/optimizations", label: "Optimizations", icon: Zap },
+  { to: "/workflow", label: "Workflow", icon: Command },
   { to: "/swarm", label: "Swarm", icon: GitBranch },
 ];
 
@@ -273,10 +276,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/overview" replace />} />
             <Route path="/overview" element={<Overview />} />
-            <Route
-              path="/quickstart"
-              element={<Navigate to="/system/hosts" replace />}
-            />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:id" element={<Sessions />} />
             <Route path="/runs" element={<Navigate to="/sessions" replace />} />
@@ -369,6 +368,8 @@ export default function App() {
               element={<Navigate to="/overview" replace />}
             />
             <Route path="/optimizations" element={<Optimizations />} />
+            <Route path="/workflow" element={<Workflow />} />
+            <Route path="/projection" element={<ProjectionInspector />} />
             <Route path="/swarm" element={<Swarm />} />
           </Routes>
         </div>

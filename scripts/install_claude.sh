@@ -164,13 +164,8 @@ configure_project_enforcement() {
     }
 
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:claude"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
 uv run python "$MODE_RENDERER" >/dev/null || python3 "$MODE_RENDERER" >/dev/null
-STAGING_DIR="${HOME}/.atelier/claude-plugin-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/claude-plugin"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".
 run "rm -rf '$STAGING_DIR'"
@@ -178,25 +173,14 @@ run "mkdir -p '$STAGING_DIR/.claude-plugin'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/plugin.json' '$STAGING_DIR/.claude-plugin/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.claude-plugin/marketplace.json' '$STAGING_DIR/.claude-plugin/'"
 run "mkdir -p '$STAGING_DIR/agents'"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full plugin with task loop"
-    for agent in code explore plan execute review research solve; do
-        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.dev.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
-    done
-else
-    info "Install profile: stable; staging stable plugin without dev-only task loop"
-    for agent in code explore plan execute review research solve; do
-        atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
-    done
-fi
+info "Staging Claude plugin"
+for agent in code explore plan execute review research solve; do
+    atelier_write_managed_copy "${SOURCE_PLUGIN_DIR}/agents/${agent}.md" "$STAGING_DIR/agents/${agent}.md" "$DRY_RUN"
+done
 run "cp -r '${SOURCE_PLUGIN_DIR}/hooks' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/scripts' '$STAGING_DIR/'"
 run "cp -r '${SOURCE_PLUGIN_DIR}/workflows' '$STAGING_DIR/'"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills' --include-dev"
-else
-    run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills'"
-fi
+run "bash '$SKILL_BUILDER' --host claude --dest '$STAGING_DIR/skills'"
 run "cp '${SOURCE_PLUGIN_DIR}/settings.json' '$STAGING_DIR/'"
 run "cp '${SOURCE_PLUGIN_DIR}/.mcp.json' '$STAGING_DIR/'"
 # Ensure runnable bits on hook + script entrypoints, even if source perms got
@@ -223,8 +207,7 @@ if $PRINT_ONLY; then
         echo "Step 3 - Ensure project-level MCP and agent rules (run once per project):"
         echo "  bash scripts/install_agents.sh --workspace '${WORKSPACE}'"
         echo ""
-        echo "Step 4 - Optional project setting:"
-        echo "  set env.CLAUDE_WORKSPACE_ROOT=${WORKSPACE} in ${CLAUDE_LOCAL_SETTINGS}"
+        echo "Step 4 - Project local Claude agents are projected into ${WORKSPACE}/.claude/agents"
     else
         echo "Step 3 - Register MCP in Claude user scope:"
         echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
@@ -340,7 +323,7 @@ refresh_atelier_tool() {
 
     if $DRY_RUN; then
         echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
-        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper (exports ATELIER_DEV_MODE)"
+        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper"
         return 0
     fi
 
@@ -352,8 +335,7 @@ refresh_atelier_tool() {
         }
 
     # uv replaces atelier-mcp with the raw Python entry point. Restore the
-    # bash wrapper that exports ATELIER_DEV_MODE so the MCP server's
-    # dev-mode flag stays the default-off it shipped with.
+    # bash wrapper so local installs keep a stable entrypoint path.
     local mcp_path="${bin_dir}/atelier-mcp"
     local wrapped_path="${bin_dir}/atelier-mcp.real"
     local real_target="${tool_dir}/atelier/bin/atelier-mcp"
@@ -362,7 +344,6 @@ refresh_atelier_tool() {
         ln -s "$real_target" "$wrapped_path"
         cat > "$mcp_path" <<EOF
 #!/usr/bin/env bash
-export ATELIER_DEV_MODE="\${ATELIER_DEV_MODE:-0}"
 exec "$wrapped_path" "\$@"
 EOF
         chmod +x "$mcp_path"
@@ -408,11 +389,10 @@ else
 fi
 
 # ---- MCP config -------------------------------------------------------------
-# NOTE: Project-level .mcp.json is handled by scripts/install_agents.sh.
+# NOTE: Project-level .mcp.json is not needed when using the Claude plugin.
 # This installer only deals with Claude-specific global/user MCP and settings.
 if $WORKSPACE_SET; then
-    info "Project-level .mcp.json is managed by scripts/install_agents.sh — skipping"
-    info "  Run: scripts/install_agents.sh --workspace '${WORKSPACE}'"
+    info "Project-level .mcp.json is not needed with the Claude plugin — skipping"
 else
     if $DRY_RUN; then
         echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"
@@ -445,7 +425,17 @@ print("[atelier:claude] CLAUDE_WORKSPACE_ROOT written to ${CLAUDE_LOCAL_SETTINGS
 PYEOF
     fi
 
-    # Workspace installs are managed separately by install_agents.sh
+    if $DRY_RUN; then
+        echo "  [dry-run] project workspace-local Claude agents into ${WORKSPACE}/.claude/agents"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_claude_overrides
+
+written = write_workspace_claude_overrides(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:claude] projected {len(written)} workspace-local Claude files into ${WORKSPACE}/.claude")
+PYEOF
+    fi
 fi
 
 # ---- Claude hook settings ---------------------------------------------------
@@ -517,7 +507,7 @@ data["agent"] = "atelier:code"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 print("[atelier:claude] statusLine set → ${STATUSLINE_SCRIPT}")
 print("[atelier:claude] subagentStatusLine set → ${STATUSLINE_SCRIPT}")
-print("[atelier:claude] default agent set → atelier-code")
+print("[atelier:claude] default agent set → atelier:code")
 PYEOF2
 else
     warn "statusline.sh not found at ${STATUSLINE_SCRIPT} — skipping statusLine"

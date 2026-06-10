@@ -61,27 +61,23 @@ class CompressionResult:
 
 
 @dataclass
-class MinificationDelta:
-    """Per-read minification telemetry.
-
-    Emitted for every minified read so token savings can be attributed
-    independently from any cache reuse.
-    """
+class ProjectionDelta:
+    """Compatibility telemetry model for read-side compact projections."""
 
     path: str
     lang: str
     original_tokens: int
-    minified_tokens: int
+    projected_tokens: int
 
     @property
     def saved_tokens(self) -> int:
-        return max(0, self.original_tokens - self.minified_tokens)
+        return max(0, self.original_tokens - self.projected_tokens)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "path": self.path,
             "lang": self.lang,
             "original_tokens": self.original_tokens,
-            "minified_tokens": self.minified_tokens,
+            "projected_tokens": self.projected_tokens,
             "saved_tokens": self.saved_tokens,
         }

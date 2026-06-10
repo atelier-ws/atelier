@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from atelier.core.capabilities.owned_execution_routing import (
     OwnedRouteRequest,
     select_owned_route,
 )
+from atelier.core.capabilities.workflow_spawn import compile_prompt_text, scope_break_reason
 from atelier.infra.internal_llm.exceptions import InternalLLMError
 from atelier.infra.internal_llm.litellm_client import chat_with_result as litellm_chat_with_result
 from atelier.infra.internal_llm.openai_client import chat_with_result as openai_chat_with_result
@@ -99,6 +101,16 @@ class OwnedExecutionReceipt:
     dynamic_tokens: int = 0
     prefix_invalidated_reason: str = ""
     cache_evidence: str = "none"
+    cache_capability: str = "none"
+    spawn_group_id: str = ""
+    cache_scope_id: str = ""
+    eligible_for_reuse: bool = False
+    reuse_observed: bool = False
+    spawn_latency_ms: int = 0
+    requested_fields: tuple[str, ...] = ()
+    honored_fields: tuple[str, ...] = ()
+    dropped_fields: tuple[str, ...] = ()
+    scope_break_reason: str = ""
     cost_usd: float = 0.0
     rerouted: bool = False
     error: str = ""
@@ -130,6 +142,16 @@ class OwnedExecutionReceipt:
             "dynamic_tokens": self.dynamic_tokens,
             "prefix_invalidated_reason": self.prefix_invalidated_reason,
             "cache_evidence": self.cache_evidence,
+            "cache_capability": self.cache_capability,
+            "spawn_group_id": self.spawn_group_id,
+            "cache_scope_id": self.cache_scope_id,
+            "eligible_for_reuse": self.eligible_for_reuse,
+            "reuse_observed": self.reuse_observed,
+            "spawn_latency_ms": self.spawn_latency_ms,
+            "requested_fields": list(self.requested_fields),
+            "honored_fields": list(self.honored_fields),
+            "dropped_fields": list(self.dropped_fields),
+            "scope_break_reason": self.scope_break_reason,
             "cost_usd": self.cost_usd,
             "rerouted": self.rerouted,
             "error": self.error,
@@ -161,8 +183,12 @@ def execute_owned_prompt(
     session_state: Mapping[str, Any] | None = None,
     allow_fallback: bool = True,
     cache_policy: OwnedCachePolicy = "inherit",
+    compiled_prompt: Mapping[str, Any] | None = None,
+    spawn_metadata: Mapping[str, Any] | None = None,
 ) -> OwnedExecutionResult:
     base_state = dict(session_state or {})
+    compiled = dict(compiled_prompt) if isinstance(compiled_prompt, Mapping) else compile_prompt_text(prompt).to_dict()
+    spawn = dict(spawn_metadata) if isinstance(spawn_metadata, Mapping) else {}
     normalized_cache_policy: OwnedCachePolicy = "fresh" if cache_policy == "fresh" else "inherit"
     prior_affinity = cache_affinity_for_route(base_state) if normalized_cache_policy == "inherit" else {}
     selected = decision
@@ -174,6 +200,7 @@ def execute_owned_prompt(
         try:
             response = _execute_transport(
                 prompt,
+                compiled_prompt=compiled,
                 provider=current.provider,
                 model=current.model,
                 transport=current.transport,
@@ -231,6 +258,9 @@ def execute_owned_prompt(
                 model=current.model,
                 transport=current.transport,
                 prior_state=prior_affinity,
+                compiled_prompt=compiled,
+                cache_scope_id=str(spawn.get("cache_scope_id") or ""),
+                spawn_group_id=str(spawn.get("spawn_group_id") or ""),
                 actual_cache_read_input_tokens=response.cache_read_input_tokens,
                 actual_cache_write_input_tokens=response.cache_write_input_tokens,
             )
@@ -288,6 +318,27 @@ def execute_owned_prompt(
             dynamic_tokens=int(cache_affinity.get("dynamic_tokens") or 0),
             prefix_invalidated_reason=str(cache_affinity.get("prefix_invalidated_reason") or ""),
             cache_evidence=str(cache_affinity.get("cache_evidence") or "none"),
+            cache_capability=str(response.cache_capability or _cache_capability(compiled, current.transport)),
+            spawn_group_id=str(spawn.get("spawn_group_id") or ""),
+            cache_scope_id=str(spawn.get("cache_scope_id") or ""),
+            eligible_for_reuse=bool(compiled.get("stable_prefix_hash") and normalized_cache_policy == "inherit"),
+            reuse_observed=response.cache_read_input_tokens > 0,
+            spawn_latency_ms=int(duration_seconds * 1000),
+            requested_fields=tuple(str(field) for field in spawn.get("requested_fields", ()) if str(field).strip()),
+            honored_fields=tuple(str(field) for field in spawn.get("requested_fields", ()) if str(field).strip()),
+            dropped_fields=(),
+            scope_break_reason=scope_break_reason(
+                cache_policy=normalized_cache_policy,
+                prior_scope_id=str(prior_affinity.get("cache_scope_id") or ""),
+                prior_prefix_hash=str(prior_affinity.get("stable_prefix_hash") or ""),
+                current_prefix_hash=str(cache_affinity.get("stable_prefix_hash") or ""),
+                selected_model=selected.model,
+                executed_model=current.model,
+                selected_provider=selected.provider,
+                executed_provider=current.provider,
+                selected_transport=selected.transport,
+                executed_transport=current.transport,
+            ),
             rerouted=attempt_index > 1,
             cache_affinity=cache_affinity,
             attempts=tuple(attempts),
@@ -307,14 +358,21 @@ def execute_owned_prompt(
 def _execute_transport(
     prompt: str,
     *,
+    compiled_prompt: Mapping[str, Any] | None = None,
     provider: str,
     model: str,
     transport: str,
 ) -> InternalLLMChatResult:
-    messages = [{"role": "user", "content": prompt}]
+    messages, cache_metadata = _transport_payload(
+        prompt, compiled_prompt=compiled_prompt, transport=transport, provider=provider
+    )
     if transport == "openai":
+        if _supports_cache_metadata(openai_chat_with_result):
+            return openai_chat_with_result(messages, model=model, cache_metadata=cache_metadata)
         return openai_chat_with_result(messages, model=model)
     if transport == "litellm":
+        if _supports_cache_metadata(litellm_chat_with_result):
+            return litellm_chat_with_result(messages, model=model, cache_metadata=cache_metadata)
         return litellm_chat_with_result(messages, model=model)
     raise InternalLLMError(f"provider {provider!r} has no owned execution transport for model {model!r}")
 
@@ -377,6 +435,8 @@ def _failure_receipt(
         dynamic_tokens=0,
         prefix_invalidated_reason="",
         cache_evidence="none",
+        cache_capability="none",
+        spawn_latency_ms=int(sum(attempt.duration_seconds for attempt in attempts) * 1000),
         cost_usd=sum(attempt.cost_usd for attempt in attempts),
         rerouted=len(attempts) > 1,
         error=last.error_message if last is not None else "",
@@ -416,3 +476,41 @@ __all__ = [
     "OwnedExecutionResult",
     "execute_owned_prompt",
 ]
+
+
+def _transport_payload(
+    prompt: str,
+    *,
+    compiled_prompt: Mapping[str, Any] | None,
+    transport: str,
+    provider: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    compiled = dict(compiled_prompt or {})
+    stable_prefix = str(compiled.get("stable_prefix") or "").strip()
+    dynamic_tail = str(compiled.get("dynamic_tail") or "").strip() or prompt
+    cache_metadata: dict[str, Any] = {}
+    if stable_prefix:
+        messages = [{"role": "system", "content": stable_prefix}, {"role": "user", "content": dynamic_tail}]
+        if transport == "openai":
+            cache_metadata["prompt_cache_key"] = str(compiled.get("stable_prefix_hash") or "")
+        elif transport == "litellm":
+            cache_metadata["stable_prefix_hash"] = str(compiled.get("stable_prefix_hash") or "")
+    else:
+        messages = [{"role": "user", "content": prompt}]
+    if provider in {"anthropic", "openai", "google"} and stable_prefix:
+        cache_metadata["stable_prefix"] = stable_prefix
+        cache_metadata["dynamic_tail"] = dynamic_tail
+    return messages, cache_metadata
+
+
+def _cache_capability(compiled_prompt: Mapping[str, Any], transport: str) -> str:
+    if not str(compiled_prompt.get("stable_prefix_hash") or ""):
+        return "none"
+    return "explicit" if transport == "openai" else "hint_only"
+
+
+def _supports_cache_metadata(func: Any) -> bool:
+    try:
+        return "cache_metadata" in inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False

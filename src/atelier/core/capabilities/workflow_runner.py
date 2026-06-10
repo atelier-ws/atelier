@@ -17,6 +17,7 @@ from atelier.core.capabilities.workflow_schema import (
     step_is_safe_parallel,
     validate_workflow_definition,
 )
+from atelier.core.capabilities.workflow_spawn import new_wave_spawn_plan
 from atelier.infra.runtime.run_ledger import RunLedger
 
 AgentExecutor = Callable[[WorkflowStepDefinition, str, WorkflowContextState], Any]
@@ -75,9 +76,11 @@ class WorkflowRunner:
                 {
                     "step_id": step.step_id,
                     "kind": step.kind,
+                    "role_id": step.role_id,
                     "next_steps": list(step.next_steps),
                     "fork_from": step.fork_from,
                     "context_mode": step.context_mode,
+                    "parallel_safe": step.parallel_safe,
                     "requires_plan_review": step.requires_plan_review,
                     "prompt": step.prompt,
                     "tool": step.tool,
@@ -207,6 +210,7 @@ class WorkflowRunner:
             )
             if not pending_wave:
                 continue
+            self._plan_wave_spawn_context(pending_wave, by_id, state)
             gated_step = next(
                 (step_id for step_id in pending_wave if by_id[step_id].requires_plan_review),
                 None,
@@ -262,6 +266,29 @@ class WorkflowRunner:
             step_order=list(state.step_order),
             step_results=dict(state.step_results),
         )
+
+    def _plan_wave_spawn_context(
+        self,
+        pending_wave: tuple[str, ...],
+        by_id: dict[str, WorkflowStepDefinition],
+        state: WorkflowContextState,
+    ) -> None:
+        agent_steps = [step_id for step_id in pending_wave if by_id[step_id].kind == "agent"]
+        if not agent_steps:
+            return
+        parallel = len(agent_steps) > 1
+        shared_scope = new_wave_spawn_plan(cache_policy="inherit", parallel=parallel)
+        for step_id in agent_steps:
+            step = by_id[step_id]
+            cache_policy = "fresh" if step.context_mode == "fresh" else "inherit"
+            if cache_policy == "fresh":
+                fresh_scope = new_wave_spawn_plan(cache_policy=cache_policy, parallel=parallel)
+                plan_payload = fresh_scope.to_dict()
+                plan_payload["wave_id"] = shared_scope.wave_id
+                plan_payload["spawn_group_id"] = shared_scope.spawn_group_id
+            else:
+                plan_payload = shared_scope.to_dict()
+            state.set_wave_spawn_plan(step_id, plan_payload)
 
 
 __all__ = ["WorkflowRunResult", "WorkflowRunner", "build_execution_waves"]

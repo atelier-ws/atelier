@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlparse
 import urllib3
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3.response import BaseHTTPResponse
 from urllib3.util.connection import _set_socket_options
 
 logger = logging.getLogger(__name__)
@@ -87,9 +88,9 @@ def _resolve_host_safe(hostname: str, timeout: float) -> str:
     if not infos:
         raise ValueError(f"web_fetch could not resolve host: {hostname}")
     for info in infos:
-        raw_ip = info[4][0]
+        raw_ip = str(info[4][0])
         _assert_public_ip(raw_ip)
-    return infos[0][4][0]
+    return str(infos[0][4][0])
 
 
 def _assert_public_ip(raw_ip: str) -> None:
@@ -106,7 +107,7 @@ def _assert_public_ip(raw_ip: str) -> None:
 class _ValidatingHTTPConnection(HTTPConnection):
     """HTTPConnection that resolves DNS with timeout and rejects private IPs."""
 
-    def _new_conn(self):
+    def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
         if not _is_ip_address(host):
@@ -124,7 +125,7 @@ class _ValidatingHTTPConnection(HTTPConnection):
 class _ValidatingHTTPSConnection(HTTPSConnection):
     """HTTPSConnection that resolves DNS with timeout and rejects private IPs."""
 
-    def _new_conn(self):
+    def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
         if not _is_ip_address(host):
@@ -150,7 +151,14 @@ class _ValidatingHTTPSConnectionPool(HTTPSConnectionPool):
 class _ValidatingPoolManager(urllib3.PoolManager):
     """PoolManager that uses validating connection classes for HTTP/HTTPS."""
 
-    def _new_pool(self, scheme, host, port, request_context=None):
+    def _new_pool(
+        self,
+        scheme: str,
+        host: str,
+        port: int | None,
+        request_context: dict[str, Any] | None = None,
+    ) -> HTTPConnectionPool | HTTPSConnectionPool:
+        pool_cls: type[Any]
         if scheme == "http":
             pool_cls = _ValidatingHTTPConnectionPool
         elif scheme == "https":
@@ -363,7 +371,7 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
     raise ValueError("web_fetch failed: too many redirects")
 
 
-def _read_limited_body(response: urllib3.HTTPResponse) -> tuple[bytes, bool]:
+def _read_limited_body(response: BaseHTTPResponse) -> tuple[bytes, bool]:
     chunks: list[bytes] = []
     total = 0
     truncated = False
@@ -505,7 +513,7 @@ def _remove_noise(soup: Any) -> None:
 
 
 def _normalize_links_and_images(soup: Any, *, base_url: str) -> None:
-    from bs4 import NavigableString
+    from bs4.element import NavigableString
 
     for tag in soup.find_all("a"):
         href = str(tag.get("href") or "").strip()
@@ -552,34 +560,35 @@ def _content_score(node: Any) -> int:
 def _markdownify_html(html: str) -> str:
     import markdownify
 
-    kwargs: dict[str, Any] = {
-        "heading_style": "ATX",
-        "bullets": "-",
-        "strip": [
-            "script",
-            "style",
-            "noscript",
-            "template",
-            "svg",
-            "canvas",
-            "iframe",
-            "form",
-            "input",
-            "button",
-            "select",
-            "textarea",
-        ],
-        "code_language_callback": _code_language_callback,
-        "table_infer_header": True,
-        "wrap": False,
-        "autolinks": False,
-        "default_title": False,
-    }
     try:
-        return str(markdownify.markdownify(html, **kwargs))
+        return str(
+            markdownify.markdownify(
+                html,
+                heading_style="ATX",
+                bullets="-",
+                strip=[
+                    "script",
+                    "style",
+                    "noscript",
+                    "template",
+                    "svg",
+                    "canvas",
+                    "iframe",
+                    "form",
+                    "input",
+                    "button",
+                    "select",
+                    "textarea",
+                ],
+                code_language_callback=_code_language_callback,
+                table_infer_header=True,
+                wrap=False,
+                autolinks=False,
+                default_title=False,
+            )
+        )
     except TypeError:
-        safe_kwargs = {"heading_style": "ATX", "bullets": "-", "strip": ["script", "style"]}
-        return str(markdownify.markdownify(html, **safe_kwargs))
+        return str(markdownify.markdownify(html, heading_style="ATX", bullets="-", strip=["script", "style"]))
 
 
 def _code_language_callback(el: Any) -> str | None:

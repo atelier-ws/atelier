@@ -24,7 +24,7 @@ bash scripts/install_agent_clis.sh --workspace /path/to/workspace
 | Codex CLI   | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`    |
 | Cursor      | MCP server config + rules                  | `scripts/install_cursor.sh`   |
 | opencode    | MCP + workspace agent profile              | `scripts/install_opencode.sh` |
-| Copilot     | MCP + instructions + chat mode + tasks     | `scripts/install_copilot.sh`  |
+| Copilot     | MCP + instructions + agent + tasks     | `scripts/install_copilot.sh`  |
 | Hermes Agent| MCP server config + toolset                | `scripts/install_hermes.sh`   |
 | Antigravity | MCP + generated AGENTS surface             | `scripts/install_antigravity.sh` |
 

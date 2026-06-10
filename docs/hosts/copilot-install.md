@@ -1,6 +1,6 @@
 # Installing Atelier into Copilot
 
-**Support level**: MCP config + Copilot instructions + chat mode + tasks
+**Support level**: MCP config + Copilot instructions + agent + tasks
 
 ---
 
@@ -16,20 +16,44 @@ By default this installs VS Code user/global MCP, instructions, and task presets
 bash scripts/install_copilot.sh --workspace /path/to/workspace
 ```
 
+To configure project-specific role models after the global install, run:
+
+```bash
+uv run atelier init --configure-models
+```
+
+Inside a git workspace, the init wizard writes `<workspace>/.atelier/settings.json`
+and refreshes the workspace Copilot agent at
+`<workspace>/.github/agents/atelier.code.agent.md`. Those workspace role agents are the
+surface Copilot uses for the current project, so it can carry explicit model
+pins even when the global install stays neutral.
+
 ---
 
 ## What Gets Installed
 
-| Artifact             | Global install                                    | `--workspace DIR` install                           |
-| -------------------- | ------------------------------------------------- | --------------------------------------------------- |
-| MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                      |
-| Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md`       |
-| Chat mode            | not installed globally                            | `<workspace>/.github/chatmodes/atelier.chatmode.md` |
-| Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)           |
+| Artifact             | Global install                                    | `--workspace DIR` install                     |
+| -------------------- | ------------------------------------------------- | --------------------------------------------- |
+| MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                |
+| Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md` |
+| Agent                | not installed globally                            | `<workspace>/.github/agents/atelier.code.agent.md` plus the other `atelier.<role>.agent.md` files |
+| Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)     |
 
 The MCP config registers Atelier as a stdio server:
 
-```json
+```
+
+## Project-local model config
+
+The intended flow is:
+
+1. Install Atelier globally so Copilot can see the MCP server and default instructions.
+2. Run `uv run atelier init --configure-models` inside a repository.
+3. Let the wizard write `.atelier/settings.json` plus a workspace-local
+   `.github/agents/atelier.code.agent.md` and the other `atelier.<role>.agent.md` files.
+
+`"auto"` means omit an explicit model pin for that host surface. Concrete values
+write the selected model directly into the workspace agent frontmatter.json
 &#123;
   "servers": &#123;
     "atelier": {
@@ -69,12 +93,13 @@ Additional workspace helpers:
 
 - Copilot Chat can invoke Atelier MCP tools through the local Atelier MCP wrapper
 - `copilot-instructions.md` provides Atelier context to every Copilot session
-- `atelier` chat mode is available from the chat mode selector
-- The installed Copilot instructions and chat mode explicitly map native `codebase`, `search`, `editFiles`, and `runCommands` back to Atelier MCP equivalents
+- `atelier` agent is available from the agent picker
+- The installed Copilot instructions and agent explicitly map native `search/codebase`, `search`, `edit/editFiles`, and `execute/runInTerminal` back to Atelier MCP equivalents
 - `Atelier: Copilot Preflight` runs the shell-based preflight before you continue in Copilot Chat
 - `Atelier: Worktree Bootstrap` makes local stacks easier to boot from multiple worktrees
 - `Atelier: Runtime Evidence` provides a repeatable validation artifact for service behavior
 - Active context/retrieval/verify tools require `ATELIER_DEV_MODE=1`; otherwise some tools may be visible but return passive `noop`
+- Projection links in the session UI open `/projection?path=...`, where Copilot users can inspect compact vs exact views, token savings, and mapping segments before retrying an edit
 
 ## Why Tasks Still Use Shell
 
@@ -82,6 +107,12 @@ Copilot's MCP support applies to chat/tool calls inside the Copilot session. VS 
 `tasks.json` entries are shell tasks, so the preflight task has to spawn the
 `atelier` CLI rather than invoke MCP directly. The MCP server remains the primary
 integration surface for in-chat `context`, `trace`, `memory`, and related Atelier tools.
+
+## Projection Workflow
+
+When Copilot reads code through Atelier, compact reads can carry `projection_mapping`
+metadata. If a projection edit is ambiguous, the failure now returns machine-readable
+`retry_with` guidance. Follow that reread instead of guessing a transformed span.
 
 ## Reload Required
 

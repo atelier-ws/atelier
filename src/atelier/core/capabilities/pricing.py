@@ -212,6 +212,23 @@ class ModelPricing:
 
         return total
 
+    def cost_breakdown_usd(
+        self,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cache_read_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        thinking_tokens: int = 0,
+    ) -> dict[str, float]:
+        """Compute USD cost breakdown for the given token counts."""
+        return {
+            "input": self._cost_for_tokens(input_tokens, self.input, self.input_tiers),
+            "output": self._cost_for_tokens(output_tokens, self.output, self.output_tiers),
+            "cache_read": self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers),
+            "cache_write": self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers),
+            "thinking": self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
+        }
+
     def cost_usd(
         self,
         input_tokens: int = 0,
@@ -514,6 +531,25 @@ def usage_cost_usd(
 ) -> float:
     """Compute usage cost for a model via the shared pricing catalog."""
     return get_model_pricing(model_id).cost_usd(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        thinking_tokens=thinking_tokens,
+    )
+
+
+def usage_cost_breakdown_usd(
+    model_id: str,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    thinking_tokens: int = 0,
+) -> dict[str, float]:
+    """Compute usage cost breakdown for a model via the shared pricing catalog."""
+    return get_model_pricing(model_id).cost_breakdown_usd(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,

@@ -239,6 +239,8 @@ class ModelUsage(BaseModel):
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
+    # Provider-reported subset of output_tokens; never add to token or cost totals.
+    reasoning_output_tokens: int = 0
     thinking_tokens: int = 0
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
@@ -252,6 +254,8 @@ class UsageEntry(BaseModel):
     tool_name: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
+    # Provider-reported subset of output_tokens; never add to token or cost totals.
+    reasoning_output_tokens: int = 0
     thinking_tokens: int = 0
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
@@ -295,6 +299,8 @@ class Trace(BaseModel):
     input_tokens: int = 0
     user_prompt_tokens: int = 0
     output_tokens: int = 0
+    # Provider-reported subset of output_tokens; never add to token or cost totals.
+    reasoning_output_tokens: int = 0
     thinking_tokens: int = 0
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0

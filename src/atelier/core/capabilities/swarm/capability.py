@@ -2626,16 +2626,27 @@ def _run_validation_command(
 
 
 def format_swarm_summary(state: SwarmRunState) -> str:
+    current_wave = next((wave for wave in state.waves if wave.wave_index == state.current_wave), None)
+    planned_runs = current_wave.planned_runs if current_wave is not None else len(state.accepted_child_ids)
+    planned_total = current_wave.max_runs if current_wave is not None else len(state.children)
     lines = [
         f"run_id: {state.run_id}",
         f"status: {state.status}",
         f"mode: {state.mode}",
         f"runner: {state.runner_name} ({state.runner_model or 'default'})",
+        f"runner_model: {state.runner_model or 'default'}",
         f"evaluator: {state.evaluator_backend} ({state.evaluator_model or 'default'})",
+        f"evaluator_backend: {state.evaluator_backend}",
         f"current_wave: {state.current_wave}",
         f"accepted_children: {len(state.accepted_child_ids)}",
         f"total_children: {len(state.children)}",
+        f"planned={planned_runs}/{planned_total}",
     ]
+    primary_winner = state.primary_winner_child_id or state.winner_child_id
+    if primary_winner is None and state.accepted_child_ids:
+        primary_winner = state.accepted_child_ids[0]
+    if primary_winner:
+        lines.append(f"primary_winner: {primary_winner}")
 
     if state.base_ref:
         lines.append(f"base_ref: {state.base_ref}")
@@ -2647,9 +2658,12 @@ def format_swarm_summary(state: SwarmRunState) -> str:
     if state.stop_reason:
         lines.append(f"stop_reason: {state.stop_reason}")
     if state.convergence_status and state.convergence_status != "continue":
+        lines.append(f"convergence_status: {state.convergence_status}")
         lines.append(f"convergence: {state.convergence_status}")
     if state.convergence_summary:
         lines.append(f"convergence_summary: {state.convergence_summary}")
+    failed_children = sum(1 for child in state.children if child.status == "failed")
+    lines.append(f"failed_children: {failed_children}")
 
     if state.accepted_commits:
         lines.append("\nACCEPTED COMMITS:")

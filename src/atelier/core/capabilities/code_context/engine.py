@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import concurrent.futures
 import contextlib
 import difflib
 import fnmatch
 import hashlib
 import json
 import logging
+import multiprocessing
 import os
 import re
 import shutil
@@ -16,11 +18,13 @@ import sqlite3
 import subprocess
 import threading
 import time
+import warnings
 import weakref
 from bisect import bisect_right
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
@@ -82,6 +86,21 @@ if TYPE_CHECKING:
 
 _MAX_FILE_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
+
+_DB_LOCKS_GUARD = threading.Lock()
+_DB_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _shared_db_lock(db_path: Path) -> threading.RLock:
+    key = str(db_path.resolve())
+    with _DB_LOCKS_GUARD:
+        lock = _DB_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _DB_LOCKS[key] = lock
+        return lock
+
+
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _PRECISE_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -413,6 +432,21 @@ class _IndexedCallEdge:
     snippet: str
 
 
+@dataclass
+class _FileIndexData:
+    """Pure extraction result for one file — no DB handles."""
+
+    rel: str
+    language: str
+    content_hash: str
+    size_bytes: int
+    symbols: list[_ExtractedSymbol]
+    symbol_sources: list[str]  # source slices for FTS (parallel to symbols)
+    imports: list[tuple[str, str | None]]
+    references: list[_IndexedReference]
+    call_edges: list[_IndexedCallEdge]
+
+
 def _repo_id(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
 
@@ -487,6 +521,15 @@ def _matches_file_glob(path: str, pattern: str) -> bool:
     if pure_path.match(normalized_pattern):
         return True
     if "**/" in normalized_pattern and pure_path.match(normalized_pattern.replace("**/", "")):
+        return True
+    if fnmatch.fnmatch(normalized_path, normalized_pattern):
+        return True
+    regex = re.escape(normalized_pattern)
+    regex = regex.replace(r"\*\*/", r"(?:.*/)?")
+    regex = regex.replace(r"\*\*", r".*")
+    regex = regex.replace(r"\*", r"[^/]*")
+    regex = regex.replace(r"\?", r"[^/]")
+    if re.fullmatch(regex, normalized_path):
         return True
     return False
 
@@ -604,6 +647,374 @@ def _git_repo_class() -> Any:
     return Repo
 
 
+def _process_one_file(
+    repo_root_str: str,
+    path_str: str,
+    source_bytes: bytes | None = None,
+) -> _FileIndexData | None:
+    """Worker entry-point for ``ProcessPoolExecutor`` — pure extraction, no DB.
+
+    Standalone module-level function (pickleable) that does all the extraction
+    work for a single file in a subprocess.
+    """
+    repo_root = Path(repo_root_str)
+    path = Path(path_str)
+
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    if st.st_size > _MAX_FILE_BYTES:
+        return None
+
+    payload = source_bytes if source_bytes is not None else path.read_bytes()
+    source = payload.decode("utf-8", errors="replace")
+    language = detect_language(path) or "text"
+    rel = _safe_relpath(repo_root, path)
+    content_hash = _sha256_bytes(payload)
+
+    # ---- pre-parse AST for Python (parsed once, reused below) ----
+    py_tree: ast.Module | None = None
+    if language == "python":
+        try:
+            py_tree = ast.parse(source)
+        except SyntaxError:
+            py_tree = None
+
+    # ---- extract symbols ----
+    if language == "python":
+        if py_tree is not None:
+            extracted = _extract_python_symbols(source, tree=py_tree)
+        else:
+            extracted = []
+    else:
+        extracted = _extract_tag_symbols_worker(path, source, language)
+
+    # Pre-read symbol source slices for FTS5 (avoids re-reading during write)
+    symbol_sources: list[str] = []
+    for sym in extracted:
+        s = payload[sym.start_byte : sym.end_byte].decode("utf-8", errors="replace")
+        symbol_sources.append(s[:20_000])
+
+    # ---- extract imports ----
+    imports_list: list[tuple[str, str | None]] = []
+    if language == "python":
+        if py_tree is not None:
+            imports_list.extend(_python_imports_worker(repo_root, path, source, tree=py_tree))
+    elif language in {"typescript", "javascript"}:
+        imports_list.extend(_javascript_imports_worker(repo_root, path, source))
+    elif language == "rust":
+        for match in _RUST_MOD_RE.finditer(source):
+            raw = match.group(1)
+            imports_list.append((raw, _resolve_relative_module_worker(repo_root, path.parent, raw, [".rs"])))
+    elif language == "go":
+        for match in _GO_IMPORT_RE.finditer(source):
+            raw_block = match.group(1) or match.group(2) or ""
+            for raw in re.findall(r"\"([^\"]+)\"", raw_block) or [raw_block]:
+                imports_list.append((raw, None))
+    imports_list = sorted(set((raw, target) for raw, target in imports_list if raw and target != rel))
+
+    # ---- extract references / call edges (Python only) ----
+    references: list[_IndexedReference] = []
+    call_edges: list[_IndexedCallEdge] = []
+    if language == "python" and py_tree is not None:
+        references, call_edges = _extract_python_reference_index_worker(rel, source, extracted, tree=py_tree)
+
+    return _FileIndexData(
+        rel=rel,
+        language=language,
+        content_hash=content_hash,
+        size_bytes=st.st_size,
+        symbols=extracted,
+        symbol_sources=symbol_sources,
+        imports=imports_list,
+        references=references,
+        call_edges=call_edges,
+    )
+
+
+def _extract_python_symbols(source: str, tree: ast.Module | None = None) -> list[_ExtractedSymbol]:
+    """Extract Python symbols from source (module-level, pickleable).
+
+    If *tree* is provided (pre-parsed AST), it is used instead of parsing *source*.
+    """
+    if tree is None:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return []
+    offsets = _line_offsets(source)
+    lines = source.splitlines()
+    symbols: list[_ExtractedSymbol] = []
+
+    def line_text(line_no: int) -> str:
+        if 1 <= line_no <= len(lines):
+            return lines[line_no - 1].strip()
+        return ""
+
+    def add_node(node: ast.AST, name: str, kind: str, parent: str | None) -> None:
+        start_line = int(getattr(node, "lineno", 1))
+        end_line = int(getattr(node, "end_lineno", start_line))
+        col = int(getattr(node, "col_offset", 0))
+        end_col = int(getattr(node, "end_col_offset", 0))
+        start_byte = offsets[max(0, start_line - 1)] + col
+        end_byte = offsets[max(0, end_line - 1)] + end_col if end_col else offsets[min(end_line, len(offsets) - 1)]
+        qualified = f"{parent}.{name}" if parent else name
+        doc = (
+            ast.get_docstring(node) if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) else None
+        )
+        symbols.append(
+            _ExtractedSymbol(
+                name=name,
+                qualified_name=qualified,
+                kind=kind,
+                signature=line_text(start_line),
+                start_byte=start_byte,
+                end_byte=max(start_byte, end_byte),
+                start_line=start_line,
+                end_line=end_line,
+                parent_symbol=parent,
+                doc_summary=doc.strip().splitlines()[0][:200] if doc else None,
+            )
+        )
+
+    def walk_body(body: list[ast.stmt], parent: str | None = None) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                add_node(node, node.name, "class", parent)
+                walk_body(node.body, node.name if parent is None else f"{parent}.{node.name}")
+            elif isinstance(node, ast.AsyncFunctionDef):
+                add_node(node, node.name, "method" if parent else "async_function", parent)
+            elif isinstance(node, ast.FunctionDef):
+                add_node(node, node.name, "method" if parent else "function", parent)
+            elif parent is None and isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        add_node(node, target.id, "variable", None)
+            elif parent is None and isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                add_node(node, node.target.id, "variable", None)
+
+    walk_body(tree.body)
+    return sorted(symbols, key=lambda item: (item.start_line, item.qualified_name))
+
+
+def _kind_from_signature_worker(signature: str) -> str:
+    stripped = signature.lstrip()
+    if stripped.startswith("class "):
+        return "class"
+    if stripped.startswith(("interface ", "type ")):
+        return "type"
+    if stripped.startswith(("function ", "func ", "fn ")):
+        return "function"
+    if stripped.startswith(("struct ", "enum ", "trait ")):
+        return "class"
+    return "variable"
+
+
+def _extract_tag_symbols_worker(path: Path, source: str, language: str) -> list[_ExtractedSymbol]:
+    del language
+    try:
+        tags = [tag for tag in extract_tags(path) if tag.kind == "definition"]
+    except (OSError, SyntaxError):
+        return []
+    offsets = _line_offsets(source)
+    lines = source.splitlines()
+    sorted_tags = sorted(tags, key=lambda tag: (tag.line, tag.name))
+    symbols: list[_ExtractedSymbol] = []
+    for index, tag in enumerate(sorted_tags):
+        start_line = max(1, tag.line)
+        next_line = sorted_tags[index + 1].line - 1 if index + 1 < len(sorted_tags) else start_line
+        end_line = max(start_line, min(next_line, len(lines)))
+        start_byte = offsets[start_line - 1] if start_line - 1 < len(offsets) else tag.byte_range[0]
+        end_byte = offsets[end_line] if end_line < len(offsets) else tag.byte_range[1]
+        signature = lines[start_line - 1].strip() if start_line <= len(lines) else tag.name
+        symbols.append(
+            _ExtractedSymbol(
+                name=tag.name,
+                qualified_name=tag.name,
+                kind=_kind_from_signature_worker(signature),
+                signature=signature,
+                start_byte=start_byte,
+                end_byte=max(start_byte, end_byte),
+                start_line=start_line,
+                end_line=end_line,
+            )
+        )
+    return symbols
+
+
+def _python_call_name_worker(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _python_call_name_worker(node.value)
+        return f"{base}.{node.attr}" if base else node.attr
+    if isinstance(node, ast.Call):
+        return _python_call_name_worker(node.func)
+    return None
+
+
+def _extract_python_reference_index_worker(
+    rel: str,
+    source: str,
+    symbols: list[_ExtractedSymbol],
+    tree: ast.Module | None = None,
+) -> tuple[list[_IndexedReference], list[_IndexedCallEdge]]:
+    if tree is None:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return [], []
+
+    lines = source.splitlines()
+    references: list[_IndexedReference] = []
+    call_edges: list[_IndexedCallEdge] = []
+    seen_refs: set[tuple[str, int, int, str | None]] = set()
+    seen_edges: set[tuple[str, int, int, str]] = set()
+
+    def snippet_for(line: int) -> str:
+        return lines[line - 1].strip() if 1 <= line <= len(lines) else ""
+
+    def containing_symbol(line: int) -> _ExtractedSymbol | None:
+        candidates = [
+            sym
+            for sym in symbols
+            if sym.start_line <= line <= sym.end_line and sym.kind in {"function", "async_function", "method", "class"}
+        ]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda item: (item.end_line - item.start_line, -item.start_line))[0]
+
+    def add_reference(name: str, node: ast.AST) -> None:
+        line = int(getattr(node, "lineno", 0) or 0)
+        if line <= 0:
+            return
+        column = int(getattr(node, "col_offset", 0) or 0) + 1
+        end_column = int(getattr(node, "end_col_offset", column + len(name) - 1) or (column + len(name) - 1))
+        enclosing = containing_symbol(line)
+        key = (name, line, column, enclosing.qualified_name if enclosing else None)
+        if key in seen_refs:
+            return
+        seen_refs.add(key)
+        references.append(
+            _IndexedReference(
+                file_path=rel,
+                symbol_name=name,
+                line=line,
+                column=column,
+                end_column=max(column, end_column),
+                enclosing_symbol_name=enclosing.name if enclosing else None,
+                enclosing_qualified_name=enclosing.qualified_name if enclosing else None,
+                snippet=snippet_for(line),
+            )
+        )
+
+    class _Visitor(ast.NodeVisitor):
+        def visit_Name(self, node: ast.Name) -> None:
+            if isinstance(node.ctx, ast.Load):
+                add_reference(node.id, node)
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            add_reference(node.attr, node)
+            self.generic_visit(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            callee = _python_call_name_worker(node.func)
+            caller = containing_symbol(int(getattr(node, "lineno", 0) or 0))
+            if callee and caller is not None:
+                line = int(getattr(node, "lineno", caller.start_line) or caller.start_line)
+                column = int(getattr(node, "col_offset", 0) or 0) + 1
+                edge_key = (caller.qualified_name, line, column, callee)
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    call_edges.append(
+                        _IndexedCallEdge(
+                            caller_symbol_name=caller.name,
+                            caller_qualified_name=caller.qualified_name,
+                            caller_file_path=rel,
+                            caller_start_line=caller.start_line,
+                            caller_end_line=caller.end_line,
+                            callee_name=callee,
+                            call_line=line,
+                            call_column=column,
+                            snippet=snippet_for(line),
+                        )
+                    )
+            self.generic_visit(node)
+
+    _Visitor().visit(tree)
+    return references, call_edges
+
+
+@cache
+def _resolve_python_module_worker(repo_root: Path, base: Path, module: str) -> str | None:
+    parts = module.split(".")
+    search_bases: list[Path] = []
+    for candidate in [base, *base.parents, repo_root, repo_root / "src"]:
+        resolved = candidate.resolve()
+        if resolved not in search_bases:
+            search_bases.append(resolved)
+    for search_base in search_bases:
+        candidate = search_base / Path(*parts).with_suffix(".py")
+        if candidate.is_file():
+            return _safe_relpath(repo_root, candidate)
+        package = search_base / Path(*parts) / "__init__.py"
+        if package.is_file():
+            return _safe_relpath(repo_root, package)
+        src_candidate = repo_root / "src" / Path(*parts).with_suffix(".py")
+        if src_candidate.is_file():
+            return _safe_relpath(repo_root, src_candidate)
+        src_package = repo_root / "src" / Path(*parts) / "__init__.py"
+        if src_package.is_file():
+            return _safe_relpath(repo_root, src_package)
+    return None
+
+
+def _resolve_relative_module_worker(repo_root: Path, base: Path, raw: str, suffixes: list[str]) -> str | None:
+    candidate_base = (base / raw).resolve()
+    candidates: list[Path] = []
+    if candidate_base.suffix:
+        candidates.append(candidate_base)
+    else:
+        candidates.extend(candidate_base.with_suffix(suffix) for suffix in suffixes)
+        candidates.extend(candidate_base / f"index{suffix}" for suffix in suffixes)
+        candidates.extend(candidate_base / f"mod{suffix}" for suffix in suffixes)
+    for candidate in candidates:
+        if candidate.is_file():
+            return _safe_relpath(repo_root, candidate)
+    return None
+
+
+def _python_imports_worker(
+    repo_root: Path, path: Path, source: str, tree: ast.Module | None = None
+) -> list[tuple[str, str | None]]:
+    if tree is None:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return []
+    imports: list[tuple[str, str | None]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append((alias.name, _resolve_python_module_worker(repo_root, path.parent, alias.name)))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append((node.module, _resolve_python_module_worker(repo_root, path.parent, node.module)))
+    return imports
+
+
+def _javascript_imports_worker(repo_root: Path, path: Path, source: str) -> list[tuple[str, str | None]]:
+    imports: list[tuple[str, str | None]] = []
+    for match in _JS_IMPORT_RE.finditer(source):
+        raw = next(group for group in match.groups() if group)
+        target = None
+        if raw.startswith("."):
+            target = _resolve_relative_module_worker(repo_root, path.parent, raw, [".ts", ".tsx", ".js", ".jsx"])
+        imports.append((raw, target))
+    return imports
+
+
 class CodeContextEngine:
     """Local code intelligence using tree-sitter tags, SQLite FTS5, rg, and repo-map ranking."""
 
@@ -611,6 +1022,7 @@ class CodeContextEngine:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
+        self._db_lock = _shared_db_lock(self.db_path)
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
@@ -666,13 +1078,196 @@ class CodeContextEngine:
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
-        with self._autosync_lock:
+        with self._db_lock, self._autosync_lock:
             return self._index_repo_unsafe(
                 include_globs=include_globs,
                 exclude_globs=exclude_globs,
                 force=force,
                 progress_callback=progress_callback,
             )
+
+    def _apply_file_data_batch(
+        self,
+        conn: sqlite3.Connection,
+        results: list[_FileIndexData],
+    ) -> None:
+        """Batch-insert all extracted data using ``executemany`` (single writer)."""
+        # --- files ---
+        conn.executemany(
+            """
+            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, indexed_at)
+            VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            ON CONFLICT(repo_id, file_path) DO UPDATE SET
+                language = excluded.language,
+                content_hash = excluded.content_hash,
+                size_bytes = excluded.size_bytes,
+                indexed_at = excluded.indexed_at
+            """,
+            [(self.repo_id, d.rel, d.language, d.content_hash, d.size_bytes) for d in results],
+        )
+
+        # --- symbols + FTS ---
+        symbol_rows: list[
+            tuple[
+                str,
+                str,
+                str,
+                str,
+                str,
+                str,
+                str,
+                str,
+                int,
+                int,
+                int,
+                int,
+                str | None,
+                str | None,
+                str,
+            ]
+        ] = []
+        fts_rows: list[tuple[str, str, str, str, str, str]] = []
+        for d in results:
+            for i, sym in enumerate(d.symbols):
+                raw_id = f"{self.repo_id}:{d.rel}:{sym.qualified_name}:{sym.start_byte}:{d.content_hash}"
+                sid = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:24]
+                symbol_rows.append(
+                    (
+                        sid,
+                        self.repo_id,
+                        d.rel,
+                        d.language,
+                        sym.name,
+                        sym.qualified_name,
+                        sym.kind,
+                        sym.signature,
+                        sym.start_byte,
+                        sym.end_byte,
+                        sym.start_line,
+                        sym.end_line,
+                        sym.parent_symbol,
+                        sym.doc_summary,
+                        d.content_hash,
+                    )
+                )
+                fts_rows.append((sid, sym.name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
+
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO symbols(
+                symbol_id, repo_id, file_path, language, symbol_name, qualified_name, kind,
+                signature, start_byte, end_byte, start_line, end_line, parent_symbol,
+                doc_summary, content_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            symbol_rows,
+        )
+        conn.executemany(
+            "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
+            fts_rows,
+        )
+
+        # --- imports ---
+        rows: list[tuple[str, str, str, str | None]] = []
+        for d in results:
+            rows.extend((self.repo_id, d.rel, raw, target) for raw, target in d.imports)
+        conn.executemany(
+            "INSERT OR IGNORE INTO imports(repo_id, source_file, raw_import, target_file) VALUES (?, ?, ?, ?)",
+            rows,
+        )
+
+        # --- references ---
+        ref_rows: list[tuple[str, str, str, int, int, int, str | None, str | None, str]] = []
+        for d in results:
+            ref_rows.extend(
+                (
+                    self.repo_id,
+                    r.symbol_name,
+                    r.file_path,
+                    r.line,
+                    r.column,
+                    r.end_column,
+                    r.enclosing_symbol_name,
+                    r.enclosing_qualified_name,
+                    r.snippet,
+                )
+                for r in d.references
+            )
+        conn.executemany(
+            """INSERT OR IGNORE INTO "references"(
+                repo_id, symbol_name, file_path, line, column, end_column,
+                enclosing_symbol_name, enclosing_qualified_name, snippet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ref_rows,
+        )
+
+        # --- call_edges ---
+        edge_rows: list[tuple[str, str, str, str, int, int, str, int, int, str]] = []
+        for d in results:
+            edge_rows.extend(
+                (
+                    self.repo_id,
+                    e.caller_symbol_name,
+                    e.caller_qualified_name,
+                    e.caller_file_path,
+                    e.caller_start_line,
+                    e.caller_end_line,
+                    e.callee_name,
+                    e.call_line,
+                    e.call_column,
+                    e.snippet,
+                )
+                for e in d.call_edges
+            )
+        conn.executemany(
+            """INSERT OR IGNORE INTO call_edges(
+                repo_id, caller_symbol_name, caller_qualified_name, caller_file_path,
+                caller_start_line, caller_end_line, callee_name, call_line, call_column, snippet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            edge_rows,
+        )
+
+    def _parallel_extract(
+        self,
+        files: list[Path],
+        *,
+        total: int = 0,
+        progress_callback: Callable[[int, int], None] | None = None,
+        source_bytes_map: dict[str, bytes] | None = None,
+    ) -> list[_FileIndexData]:
+        """Extract index data from *files* using ``ProcessPoolExecutor``.
+
+        Each file is processed in a subprocess (true CPU parallelism).
+        Results are sorted deterministically by relative path.
+        *total* is the denominator for *progress_callback* (defaults to ``len(files)``).
+        """
+        max_workers = os.cpu_count() or 1
+        total_count = total or len(files)
+
+        # Build argument tuples for the pickleable worker function
+        args_list: list[tuple[str, str, bytes | None]] = []
+        for path in files:
+            sb = source_bytes_map.get(str(path)) if source_bytes_map else None
+            args_list.append((str(self.repo_root), str(path), sb))
+
+        # fork is safe here: _autosync_lock is held during indexing so no
+        # background thread runs at fork time; suppress the deprecation warning
+        # from multiprocessing's os.fork() call (Python 3.13+).
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*fork.*", category=DeprecationWarning)
+            mp_ctx = multiprocessing.get_context("fork")
+            results: list[_FileIndexData] = []
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as executor:
+                future_map = {executor.submit(_process_one_file, *args): args for args in args_list}
+                for completed, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+                    data = future.result()
+                    if data is not None:
+                        results.append(data)
+                    if progress_callback is not None:
+                        progress_callback(completed, total_count)
+
+        results.sort(key=lambda r: r.rel)
+        return results
 
     def _index_repo_unsafe(
         self,
@@ -684,34 +1279,35 @@ class CodeContextEngine:
     ) -> IndexStats:
         """Unlocked inner — callers must hold ``self._autosync_lock``."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        files = [
+        all_files = [
             path
             for path in iter_source_files(self.repo_root, include_globs=include_globs)
             if not self._excluded(path, exclude_globs or [])
         ]
-        files_indexed = 0
-        symbols_indexed = 0
-        imports_indexed = 0
+        total = len(all_files)
+
         with self._connect() as conn:
             self._init_schema(conn)
+
             if force:
+                # --- Full rebuild: wipe everything, then parallel-extract + batch-write ---
                 conn.execute("DELETE FROM symbol_fts")
                 conn.execute("DELETE FROM symbols")
                 conn.execute("DELETE FROM imports")
                 conn.execute('DELETE FROM "references"')
                 conn.execute("DELETE FROM call_edges")
                 conn.execute("DELETE FROM files")
-                for idx, path in enumerate(files):
-                    indexed, symbol_count, import_count = self._index_single_file(conn, path)
-                    if not indexed:
-                        continue
-                    files_indexed += 1
-                    symbols_indexed += symbol_count
-                    imports_indexed += import_count
-                    if progress_callback is not None:
-                        progress_callback(idx + 1, len(files))
+
+                results = self._parallel_extract(all_files, total=total, progress_callback=progress_callback)
+                self._apply_file_data_batch(conn, results)
+
                 index_version = self._bump_index_version(conn)
+                files_indexed = len(results)
+                symbols_indexed = sum(len(r.symbols) for r in results)
+                imports_indexed = sum(len(r.imports) for r in results)
+
             else:
+                # --- Incremental: detect changes, then parallel-extract + batch-write ---
                 existing_rows = conn.execute(
                     "SELECT file_path, content_hash, size_bytes FROM files WHERE repo_id = ?",
                     (self.repo_id,),
@@ -719,48 +1315,56 @@ class CodeContextEngine:
                 existing = {
                     str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
                 }
+
+                to_extract: list[tuple[Path, bytes]] = []  # (path, source_bytes)
                 current_paths: set[str] = set()
-                for idx, path in enumerate(files):
+
+                for path in all_files:
                     rel = _safe_relpath(self.repo_root, path)
                     current_paths.add(rel)
                     try:
                         stat = path.stat()
                     except OSError:
-                        if progress_callback is not None:
-                            progress_callback(idx + 1, len(files))
                         continue
                     if stat.st_size > _MAX_FILE_BYTES:
                         if rel in existing:
                             self._delete_file_index(conn, rel)
-                        if progress_callback is not None:
-                            progress_callback(idx + 1, len(files))
                         continue
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
                     previous = existing.get(rel)
                     if previous == (content_hash, int(stat.st_size)):
-                        if progress_callback is not None:
-                            progress_callback(idx + 1, len(files))
-                        continue
+                        continue  # unchanged
                     self._delete_file_index(conn, rel)
-                    indexed, symbol_count, import_count = self._index_single_file(conn, path, source_bytes=source_bytes)
-                    if not indexed:
-                        if progress_callback is not None:
-                            progress_callback(idx + 1, len(files))
-                        continue
-                    files_indexed += 1
-                    symbols_indexed += symbol_count
-                    imports_indexed += import_count
-                    if progress_callback is not None:
-                        progress_callback(idx + 1, len(files))
+                    to_extract.append((path, source_bytes))
+
                 removed_paths = set(existing.keys()) - current_paths
                 for rel in sorted(removed_paths):
                     self._delete_file_index(conn, rel)
-                if files_indexed > 0 or removed_paths:
+
+                if to_extract:
+                    paths = [item[0] for item in to_extract]
+                    source_map = {str(p): b for p, b in to_extract}
+                    results = self._parallel_extract(
+                        paths,
+                        total=total,
+                        progress_callback=progress_callback,
+                        source_bytes_map=source_map,
+                    )
+                    self._apply_file_data_batch(conn, results)
+                else:
+                    results = []
+
+                if to_extract or removed_paths:
                     index_version = self._bump_index_version(conn)
                 else:
                     row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
                     index_version = int(row["value"]) if row is not None else 0
+
+                files_indexed = len(to_extract)
+                symbols_indexed = sum(len(r.symbols) for r in results)
+                imports_indexed = sum(len(r.imports) for r in results)
+
         emit_product_local(
             "code_index_completed",
             repo_id=self.repo_id,
@@ -776,90 +1380,6 @@ class CodeContextEngine:
             imports_indexed=imports_indexed,
             index_version=index_version,
         )
-
-    def _index_single_file(
-        self,
-        conn: sqlite3.Connection,
-        path: Path,
-        *,
-        source_bytes: bytes | None = None,
-    ) -> tuple[bool, int, int]:
-        try:
-            stat = path.stat()
-        except OSError:
-            return False, 0, 0
-        if stat.st_size > _MAX_FILE_BYTES:
-            return False, 0, 0
-        payload = source_bytes if source_bytes is not None else path.read_bytes()
-        source = payload.decode("utf-8", errors="replace")
-        language = detect_language(path) or "text"
-        rel = _safe_relpath(self.repo_root, path)
-        content_hash = _sha256_bytes(payload)
-        conn.execute(
-            """
-            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, indexed_at)
-            VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-            ON CONFLICT(repo_id, file_path) DO UPDATE SET
-                language = excluded.language,
-                content_hash = excluded.content_hash,
-                size_bytes = excluded.size_bytes,
-                indexed_at = excluded.indexed_at
-            """,
-            (self.repo_id, rel, language, content_hash, stat.st_size),
-        )
-        extracted = self._extract_symbols(path, rel, language, source, content_hash)
-        for symbol in extracted:
-            self._insert_symbol(conn, rel, language, content_hash, symbol)
-        imports = self._extract_imports(path, rel, language, source)
-        for raw_import, target_file in imports:
-            conn.execute(
-                "INSERT INTO imports(repo_id, source_file, raw_import, target_file) VALUES (?, ?, ?, ?)",
-                (self.repo_id, rel, raw_import, target_file),
-            )
-        if language == "python":
-            references, call_edges = self._extract_python_reference_index(rel, source, extracted)
-            for reference in references:
-                conn.execute(
-                    """
-                    INSERT INTO "references"(
-                        repo_id, symbol_name, file_path, line, column, end_column,
-                        enclosing_symbol_name, enclosing_qualified_name, snippet
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        self.repo_id,
-                        reference.symbol_name,
-                        reference.file_path,
-                        reference.line,
-                        reference.column,
-                        reference.end_column,
-                        reference.enclosing_symbol_name,
-                        reference.enclosing_qualified_name,
-                        reference.snippet,
-                    ),
-                )
-            for edge in call_edges:
-                conn.execute(
-                    """
-                    INSERT INTO call_edges(
-                        repo_id, caller_symbol_name, caller_qualified_name, caller_file_path,
-                        caller_start_line, caller_end_line, callee_name, call_line, call_column, snippet
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        self.repo_id,
-                        edge.caller_symbol_name,
-                        edge.caller_qualified_name,
-                        edge.caller_file_path,
-                        edge.caller_start_line,
-                        edge.caller_end_line,
-                        edge.callee_name,
-                        edge.call_line,
-                        edge.call_column,
-                        edge.snippet,
-                    ),
-                )
-        return True, len(extracted), len(imports)
 
     def _delete_file_index(self, conn: sqlite3.Connection, rel: str) -> None:
         conn.execute(
@@ -889,13 +1409,14 @@ class CodeContextEngine:
         self._sync_symbol_intel()
         stats = self.index_repo(include_globs=include_globs, exclude_globs=exclude_globs, force=force)
         stats_payload = stats.model_dump(mode="json")
+        snapshot = self._index_snapshot()
         return self._pack_single_payload(
             {
                 "repo_id": stats_payload["repo_id"],
                 "index_version": stats_payload["index_version"],
-                "files_indexed": stats_payload["files_indexed"],
-                "symbols_indexed": stats_payload["symbols_indexed"],
-                "imports_indexed": stats_payload["imports_indexed"],
+                "files_indexed": snapshot["files_indexed"],
+                "symbols_indexed": snapshot["symbols_indexed"],
+                "imports_indexed": snapshot["imports_indexed"],
                 "provenance": _LOCAL_PROVENANCE,
             },
             budget_tokens=effective_budget_tokens,
@@ -4109,6 +4630,7 @@ class CodeContextEngine:
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA busy_timeout = 30000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -4118,8 +4640,9 @@ class CodeContextEngine:
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
-            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS engine_state (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -4212,59 +4735,8 @@ class CodeContextEngine:
             """)
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
 
-    def _insert_symbol(
-        self,
-        conn: sqlite3.Connection,
-        rel: str,
-        language: str,
-        content_hash: str,
-        symbol: _ExtractedSymbol,
-    ) -> None:
-        raw_id = f"{self.repo_id}:{rel}:{symbol.qualified_name}:{symbol.start_byte}:{content_hash}"
-        symbol_id = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:24]
-        cursor = conn.execute(
-            """
-            INSERT OR IGNORE INTO symbols(
-                symbol_id, repo_id, file_path, language, symbol_name, qualified_name, kind,
-                signature, start_byte, end_byte, start_line, end_line, parent_symbol,
-                doc_summary, content_hash
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                symbol_id,
-                self.repo_id,
-                rel,
-                language,
-                symbol.name,
-                symbol.qualified_name,
-                symbol.kind,
-                symbol.signature,
-                symbol.start_byte,
-                symbol.end_byte,
-                symbol.start_line,
-                symbol.end_line,
-                symbol.parent_symbol,
-                symbol.doc_summary,
-                content_hash,
-            ),
-        )
-        if cursor.rowcount > 0:
-            source = self._read_file_slice(rel, symbol.start_byte, symbol.end_byte)
-            conn.execute(
-                "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    symbol_id,
-                    symbol.name,
-                    symbol.qualified_name,
-                    symbol.signature,
-                    rel,
-                    source[:20_000],
-                ),
-            )
-
     def _ensure_indexed(self) -> None:
-        with self._autosync_lock:
+        with self._db_lock, self._autosync_lock:
             with self._connect() as conn:
                 self._init_schema(conn)
                 row = conn.execute("SELECT COUNT(*) AS n FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()

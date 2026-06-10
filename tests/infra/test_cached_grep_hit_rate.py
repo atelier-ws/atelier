@@ -2,16 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from click.testing import CliRunner
 from pytest import MonkeyPatch
 
 from atelier.core.runtime import AtelierRuntimeCore
-from atelier.gateway.cli import cli
-
-
-def _init_root(root: Path) -> None:
-    result = CliRunner().invoke(cli, ["--root", str(root), "init"])
-    assert result.exit_code == 0, result.output
+from tests.helpers import init_store_at
 
 
 def test_smart_read_cache_disabled_env_bypasses_hits(
@@ -19,7 +13,7 @@ def test_smart_read_cache_disabled_env_bypasses_hits(
     monkeypatch: MonkeyPatch,
 ) -> None:
     root = tmp_path / ".atelier"
-    _init_root(root)
+    init_store_at(str(root))
     target = tmp_path / "module.py"
     target.write_text("def stable_gid():\n    return 'gid'\n", encoding="utf-8")
 

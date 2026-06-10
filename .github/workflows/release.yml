@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,10 +17,13 @@ defaults:
     shell: bash
 
 jobs:
-  build:
-    name: Build sdist + wheel
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  binary-build:
+    name: Build release archive (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -29,34 +32,44 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Build package
-        run: uv build
+      - name: Install dependencies
+        run: uv sync
 
-      - name: Upload artifacts
+      - name: Build release archive
+        run: bash scripts/bundle-prod.sh
+
+      - name: Upload release archive
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: binaries-${{ matrix.os }}
+          path: dist/atelier-binaries-*.tar.gz
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
-    needs: [build]
+    needs: [binary-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
-      - name: Download built artifacts
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download release archives
         uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          pattern: binaries-*
+          merge-multiple: true
+          path: binaries/
 
       - name: Generate release notes
         id: release_notes
@@ -66,22 +79,39 @@ jobs:
           cat <<EOF > RELEASE_NOTES.md
           ## Atelier ${VERSION}
 
-          **Full changelog:** https://github.com/atelier-runtime/atelier/compare/${TAG}
-
           ### Installation
 
           \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
+          curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
           \`\`\`
 
           ### Assets
-          - \`atelier-${VERSION}.tar.gz\` — source distribution
-          - \`atelier-${VERSION}-py3-none-any.whl\` — pure Python wheel
+          - \`install.sh\` — public installer script
+          - \`atelier-binaries-*.tar.gz\` — bundled production binaries for supported platforms
           EOF
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: RELEASE_NOTES.md
-          files: dist/*
-          generate_release_notes: true
+      - name: Create Release in Public Repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_PAT is required to create releases in atelier-runtime/atelier. Use a fine-grained PAT with Contents: read/write on atelier-runtime/atelier."
+            exit 1
+          fi
+
+          shopt -s nullglob
+          assets=(binaries/* scripts/install.sh)
+
+          if (( ${#assets[@]} == 0 )); then
+            echo "::error::No release assets were found."
+            exit 1
+          fi
+
+          gh release create "${TAG}" \
+            --repo atelier-runtime/atelier \
+            --target main \
+            --title "Atelier ${TAG}" \
+            --notes-file RELEASE_NOTES.md \
+            "${assets[@]}"

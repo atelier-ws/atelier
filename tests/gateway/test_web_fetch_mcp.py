@@ -1,15 +1,28 @@
 from __future__ import annotations
 
-import importlib
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from atelier.gateway.adapters import mcp_server
+from tests.helpers import init_store_at
 
 
-def test_web_fetch_wrapper_renders_content_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    wrapper = importlib.reload(importlib.import_module("atelier.gateway.adapters.web_fetch_mcp_server"))
+@pytest.fixture()
+def mcp_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    mcp_server._current_ledger = None
+    mcp_server._realtime_ctx = None
+    mcp_server._remote_client = None
+    return tmp_path
+
+
+def test_web_fetch_renders_content_only(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = mcp_env
 
     def fake_fetch_url(
         url: str,
@@ -25,7 +38,7 @@ def test_web_fetch_wrapper_renders_content_only(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("atelier.core.capabilities.web_fetch.fetch_url", fake_fetch_url)
     monkeypatch.setattr(mcp_server, "_append_workspace_savings", lambda *args, **kwargs: None)
 
-    response = wrapper._handle(
+    response = mcp_server._handle(
         {
             "jsonrpc": "2.0",
             "id": 1,
@@ -40,11 +53,10 @@ def test_web_fetch_wrapper_renders_content_only(monkeypatch: pytest.MonkeyPatch)
     assert content_item["saved"] == {"tokens": 12, "calls": 0}
 
 
-def test_web_fetch_wrapper_lists_tool_in_stable_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    wrapper = importlib.reload(importlib.import_module("atelier.gateway.adapters.web_fetch_mcp_server"))
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
+def test_web_fetch_listed_in_tool_surface(mcp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = mcp_env
 
-    response = wrapper._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    response = mcp_server._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
     assert "web_fetch" in names

@@ -11,7 +11,6 @@ and `indexer.py::available_binaries` only *discovers* what's already on `PATH`.
 - `src/atelier/infra/code_intel/scip/binaries.py` — search Atelier-managed
   install dirs, not just `PATH`.
 - Possibly a new `scip/bootstrap.py` for lazy on-demand install.
-- Docs: `docs/installation.md`, `docs/quickstart.md`.
 
 ## Decision: bundle vs. fetch (resolve open question #1)
 
@@ -19,8 +18,7 @@ and `indexer.py::available_binaries` only *discovers* what's already on `PATH`.
 keeping that, tiered by toolchain cost:
 
 - **Tier 1 (install-time, cheap, no extra toolchain):** `scip-python`,
-  `scip-typescript` via the existing `npm install -g --prefix
-  "$ATELIER_NODE_DIR"` block in `install.sh`. These reuse the Node that Atelier
+  `scip-typescript` via the existing `npm install -g --prefix "$ATELIER_NODE_DIR"` block in `install.sh`. These reuse the Node that Atelier
   already provisions — lowest-friction win.
 - **Tier 2 (lazy, on first index of that language):** `scip-go`, `scip-ruby`,
   `scip-clang` (single-binary or single-package installs). Fetch into

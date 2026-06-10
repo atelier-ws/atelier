@@ -19,11 +19,8 @@ from atelier.core.capabilities.swarm.models import (
     SwarmRunState,
     SwarmWaveState,
 )
-from atelier.core.environment import (
-    DEV_LLM_TOOLS,
-    NON_DEV_LLM_TOOLS,
-    STABLE_LLM_TOOLS,
-)
+from atelier.core.environment import HIDDEN_LLM_TOOLS
+from atelier.core.foundation.paths import resolve_session_state_path
 from atelier.core.service.api import create_app
 from atelier.infra.storage.sqlite_store import SQLiteStore
 
@@ -118,29 +115,131 @@ def test_overview_accessible_no_auth(app_no_auth: TestClient) -> None:
 
 def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
-    monkeypatch.delenv("ATELIER_DEV_MODE", raising=False)
     app = create_app(store_root=store.root)
     route = next(route for route in app.routes if getattr(route, "path", "") == "/mcp/status")
 
     tools = route.endpoint()
 
     names = {tool["tool_name"] for tool in tools}
-    assert names == NON_DEV_LLM_TOOLS
-    assert names == STABLE_LLM_TOOLS
-    assert not (names & DEV_LLM_TOOLS)
-    assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == STABLE_LLM_TOOLS
+    assert not (names & HIDDEN_LLM_TOOLS)
+    assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == names
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
-    assert "trace" in names
     assert "read" in names
     assert "grep" in names
     assert "search" in names
-    assert "compact" in names
     assert "memory" in names
-    assert "route" in names
     assert "shell" in names
     symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
     enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
     assert "mode" in enum_param_names
+
+
+def test_workflow_current_and_snapshot_actions(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "false")
+    monkeypatch.setenv("ATELIER_ROOT", str(store.root))
+    workspace = store.root / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_WORKSPACE_ROOT", str(workspace))
+    state_path = resolve_session_state_path(workspace)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "workflow": {
+                    "current_step": "review",
+                    "session_phase": "review",
+                    "current_task": {
+                        "workflow_id": "owned-execute-review-loop",
+                        "run_id": "wf-123",
+                        "step_id": "execute",
+                    },
+                    "task_outputs": {
+                        "plan": {
+                            "step_id": "plan",
+                            "kind": "agent",
+                            "status": "done",
+                            "output": "plan ready",
+                            "output_json": {},
+                            "execution_receipt": {"mode": "native"},
+                            "duration_seconds": 1.2,
+                            "cost_usd": 0.0,
+                            "error": "",
+                        }
+                    },
+                    "plan_review": {
+                        "decision": "pending",
+                        "paused_step_id": "execute",
+                        "workflow_id": "owned-execute-review-loop",
+                    },
+                },
+                "workflow_runtime": {
+                    "run_id": "wf-123",
+                    "workflow_id": "owned-execute-review-loop",
+                    "status": "awaiting_review",
+                    "step_order": ["plan", "execute"],
+                    "current_step": "execute",
+                    "paused_step_id": "execute",
+                    "failed_step_id": "",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:05:00Z",
+                    "workflow": {
+                        "workflow_id": "owned-execute-review-loop",
+                        "steps": [
+                            {"step_id": "plan", "kind": "agent", "prompt": "Draft"},
+                            {"step_id": "execute", "kind": "agent", "prompt": "Apply"},
+                        ],
+                    },
+                    "route": {"mode": "native"},
+                    "plan_review": {
+                        "decision": "pending",
+                        "paused_step_id": "execute",
+                        "workflow_id": "owned-execute-review-loop",
+                    },
+                    "runner": {
+                        "run_id": "wf-123",
+                        "status": "awaiting_review",
+                        "definition_hash": "abc",
+                        "step_results": {
+                            "plan": {
+                                "step_id": "plan",
+                                "kind": "agent",
+                                "status": "done",
+                                "output": "plan ready",
+                                "output_json": {},
+                                "execution_receipt": {"mode": "native"},
+                                "duration_seconds": 1.2,
+                                "cost_usd": 0.0,
+                                "error": "",
+                            }
+                        },
+                        "step_order": ["plan"],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = cast("TestClient", FastAPITestClient(create_app(store_root=store.root)))
+
+    current = client.get("/v1/workflow/current")
+    assert current.status_code == 200
+    current_payload = current.json()
+    assert current_payload["summary"]["run_id"] == "wf-123"
+    assert current_payload["summary"]["status"] == "awaiting_review"
+    assert current_payload["available_actions"]["can_resume"] is True
+    assert current_payload["control_payloads"]["resume_approve"]["plan_review"]["decision"] == "approve"
+
+    paused = client.post("/v1/workflow/current/pause", json={"reason": "waiting on review"})
+    assert paused.status_code == 200
+    paused_payload = paused.json()
+    assert paused_payload["summary"]["status"] == "paused"
+    assert paused_payload["summary"]["pause_reason"] == "waiting on review"
+
+    stopped = client.post("/v1/workflow/current/stop", json={"reason": "user cancelled"})
+    assert stopped.status_code == 200
+    stopped_payload = stopped.json()
+    assert stopped_payload["summary"]["status"] == "stopped"
+    assert stopped_payload["summary"]["stop_reason"] == "user cancelled"
 
 
 def test_hosts_endpoint_lists_supported_integrations(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1134,6 +1233,34 @@ def test_file_content_endpoint_serves_local_file(
     assert resp.status_code == 200
     assert resp.text == "hello rich sessions\n"
     assert resp.headers["content-type"].startswith("text/plain")
+
+
+def test_file_projection_endpoint_returns_compact_projection_metadata(
+    app_no_auth: TestClient,
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "main.go"
+    sample.write_text('package   main\n\nfunc   main()   {\n    println("x")\n}\n', encoding="utf-8")
+
+    resp = app_no_auth.get("/v1/files/projection", params={"path": str(sample), "view": "compact"})
+    assert resp.status_code == 200
+    payload = resp.json()
+
+    assert payload["projection"]["view"] == "compact"
+    assert payload["projection_mapping"]["projection_kind"] == "compact"
+    assert payload["projection_delta"]["saved_tokens"] > 0
+
+
+def test_file_projection_endpoint_requires_range_for_range_view(
+    app_no_auth: TestClient,
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "note.txt"
+    sample.write_text("hello\n", encoding="utf-8")
+
+    resp = app_no_auth.get("/v1/files/projection", params={"path": str(sample), "view": "range"})
+    assert resp.status_code == 400
+    assert "range is required" in resp.json()["detail"]
 
 
 def test_compat_ledger_keeps_copilot_tool_result_content(

@@ -9,10 +9,6 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "doc",
-      id: "quickstart",
-    },
-    {
-      type: "doc",
       id: "installation",
     },
     {

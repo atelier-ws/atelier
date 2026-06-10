@@ -112,6 +112,7 @@ class OptimizationResult:
             "message": self.message,
             "bucket_counts": dict(self.bucket_counts),
             "golden": self.golden.to_dict(),
+            "estimation": _estimation_metadata(),
         }
 
 
@@ -271,6 +272,23 @@ def _confidence(replayable_tasks: int, bucket_counts: dict[str, int]) -> tuple[s
         "high",
         f"{replayable_tasks} replayable tasks classified across simple, medium, and hard buckets.",
     )
+
+
+def _estimation_metadata() -> dict[str, Any]:
+    return {
+        "source": "stored_atelier_traces",
+        "replay": "not_replayed",
+        "cost_basis": "recorded_usage_costs_or_model_pricing_fallback",
+        "savings_basis": "simulated_policy_costs_using_fixed_tier_and_compaction_factors",
+        "quality_basis": "trace_status_and_complexity_heuristics_with_golden_corpus_check",
+        "savings_are_estimates": True,
+        "quality_is_estimated": True,
+        "limitations": [
+            "does not prove that a cheaper model would solve the same task",
+            "does not measure per-session compaction savings by replaying sessions",
+            "unknown model pricing can understate cost until pricing is mapped",
+        ],
+    }
 
 
 def optimize_from_traces(

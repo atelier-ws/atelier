@@ -56,7 +56,7 @@ if $WORKSPACE_SET; then
     MCP_JSON="${VSCODE_DIR}/mcp.json"
     INSTRUCTIONS="${WORKSPACE}/.github/copilot-instructions.md"
     AGENTS_DEST_DIR="${WORKSPACE}/.github/agents"
-    AGENT_VERIFY="${AGENTS_DEST_DIR}/atelier.agent.md"
+    AGENT_VERIFY="${AGENTS_DEST_DIR}/atelier.code.agent.md"
     TASKS_DEST="${WORKSPACE}/.vscode/tasks.json"
 else
     INSTALL_SCOPE="global"
@@ -142,8 +142,8 @@ if $PRINT_ONLY; then
     echo "   (contents of ${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md)"
     if $WORKSPACE_SET; then
         echo ""
-        echo "3. Copy Copilot agents to ${AGENTS_DEST_DIR}:"
-        echo "   (contents of ${ATELIER_REPO}/integrations/copilot/agents/*.agent.md)"
+        echo "3. Project Copilot role agents into ${AGENTS_DEST_DIR}:"
+        echo "   (atelier.code.agent.md, atelier.execute.agent.md, ... from workspace settings)"
     fi
     echo ""
     echo "Tasks target: ${TASKS_DEST}"
@@ -184,21 +184,11 @@ fi
 # ---- install Copilot instructions ------------------------------------------
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:copilot"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
-STAGING_DIR="${HOME}/.atelier/copilot-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/copilot"
 run "mkdir -p '$STAGING_DIR'"
 COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full instructions with task loop"
-    atelier_write_managed_copy "${COPILOT_SRC/.md/.dev.md}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
-else
-    info "Install profile: stable; staging stable instructions"
-    atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
-fi
+info "Staging Copilot instructions"
+atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
 
 if [ -f "$ATELIER_INSTRUCTIONS" ]; then
@@ -232,22 +222,17 @@ else
 fi
 
 # ---- install workspace Copilot agents --------------------------------------
-AGENTS_SRC_DIR="${ATELIER_REPO}/integrations/copilot/agents"
 if $WORKSPACE_SET; then
-    if compgen -G "${AGENTS_SRC_DIR}/*.agent.md" > /dev/null; then
-        run "mkdir -p '$AGENTS_DEST_DIR'"
-        for src in "$AGENTS_SRC_DIR"/*.agent.md; do
-            base="$(basename "$src")"
-            dest="${AGENTS_DEST_DIR}/${base}"
-            if [ -f "$dest" ]; then
-                info "$dest already exists - not overwriting"
-            else
-                run "cp '$src' '$dest'"
-                info "created agent: $dest"
-            fi
-        done
+    if $DRY_RUN; then
+        echo "  [dry-run] project Copilot role agents into ${AGENTS_DEST_DIR}"
     else
-        warn "agent sources missing: ${AGENTS_SRC_DIR}/*.agent.md"
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_copilot_agents
+
+written = write_workspace_copilot_agents(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:copilot] projected {len(written)} Copilot role agents into ${AGENTS_DEST_DIR}")
+PYEOF
     fi
 else
     info "global agent install skipped; use --workspace DIR for project agents"

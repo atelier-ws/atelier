@@ -62,11 +62,8 @@ def _mcp_cli_args(raw: str) -> dict[str, Any]:
 
 def _prepare_mcp_cli(ctx: click.Context, *, dev: bool, workspace: Path | None = None) -> Callable[[], None]:
     old_root = os.environ.get("ATELIER_ROOT")
-    old_dev = os.environ.get("ATELIER_DEV_MODE")
     old_workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
     os.environ["ATELIER_ROOT"] = str(ctx.obj["root"])
-    if dev:
-        os.environ["ATELIER_DEV_MODE"] = "1"
     if workspace is not None:
         os.environ["CLAUDE_WORKSPACE_ROOT"] = str(workspace)
 
@@ -75,10 +72,6 @@ def _prepare_mcp_cli(ctx: click.Context, *, dev: bool, workspace: Path | None = 
             os.environ.pop("ATELIER_ROOT", None)
         else:
             os.environ["ATELIER_ROOT"] = old_root
-        if old_dev is None:
-            os.environ.pop("ATELIER_DEV_MODE", None)
-        else:
-            os.environ["ATELIER_DEV_MODE"] = old_dev
         if old_workspace is None:
             os.environ.pop("CLAUDE_WORKSPACE_ROOT", None)
         else:
@@ -93,12 +86,12 @@ def tools_group() -> None:
 
 
 @tools_group.command("list")
-@click.option("--dev", is_flag=True, help="List the full development MCP surface.")
+@click.option("--dev", is_flag=True, hidden=True, expose_value=False)
 @click.option("--json", "as_json", is_flag=True, help="Emit tool metadata as JSON.")
 @click.pass_context
-def tools_list_cmd(ctx: click.Context, dev: bool, as_json: bool) -> None:
+def tools_list_cmd(ctx: click.Context, as_json: bool) -> None:
     """List tools visible through MCP tools/list."""
-    restore = _prepare_mcp_cli(ctx, dev=dev)
+    restore = _prepare_mcp_cli(ctx, dev=False)
     try:
         from atelier.gateway.adapters.mcp_server import (
             TOOLS,
@@ -127,7 +120,7 @@ def tools_list_cmd(ctx: click.Context, dev: bool, as_json: bool) -> None:
 @tools_group.command("call")
 @click.argument("name")
 @click.option("--args", "args_json", default="{}", show_default=True, help="JSON object or @path.")
-@click.option("--dev", is_flag=True, help="Enable development tools for this call.")
+@click.option("--dev", is_flag=True, hidden=True, expose_value=False)
 @click.option(
     "--workspace",
     type=click.Path(file_okay=False, path_type=Path),
@@ -136,11 +129,9 @@ def tools_list_cmd(ctx: click.Context, dev: bool, as_json: bool) -> None:
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the decoded MCP payload as JSON.")
 @click.pass_context
-def tools_call_cmd(
-    ctx: click.Context, name: str, args_json: str, dev: bool, workspace: Path | None, as_json: bool
-) -> None:
+def tools_call_cmd(ctx: click.Context, name: str, args_json: str, workspace: Path | None, as_json: bool) -> None:
     """Call one MCP tool by name."""
-    restore = _prepare_mcp_cli(ctx, dev=dev, workspace=workspace)
+    restore = _prepare_mcp_cli(ctx, dev=False, workspace=workspace)
     try:
         args = _mcp_cli_args(args_json)
         if name == "memory" and isinstance(args, dict):
@@ -167,12 +158,17 @@ def tools_call_cmd(
             raise click.ClickException("tool call returned no response")
         if "error" in response:
             raise click.ClickException(str(response["error"].get("message") or response["error"]))
-        content = response.get("result", {}).get("content", [])
-        text = str(content[0].get("text", "")) if content else ""
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            payload = text
+        result_payload = response.get("result", {})
+        structured = result_payload.get("structuredContent")
+        if structured is not None:
+            payload = structured
+        else:
+            content = result_payload.get("content", [])
+            text = str(content[0].get("text", "")) if content else ""
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                payload = text
         if as_json:
             _emit(payload, as_json=True)
             return
