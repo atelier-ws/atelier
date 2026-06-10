@@ -30,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from atelier.core.capabilities.host_router_bridge import evaluate_host_router_request
 from atelier.core.capabilities.pricing import usage_cost_usd
@@ -3984,9 +3984,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         "output_tokens": out_t,
                         "reasoning_output_tokens": reasoning_out_t,
                         "visible_output_tokens": max(out_t - reasoning_out_t, 0),
-                        "reasoning_output_ratio": (
-                            round(reasoning_out_t / out_t, 4) if out_t else 0.0
-                        ),
+                        "reasoning_output_ratio": (round(reasoning_out_t / out_t, 4) if out_t else 0.0),
                         "thinking_tokens": think_t,
                         "cached_tokens": cache_r,
                         "cache_write_tokens": cache_w,
@@ -5649,7 +5647,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
+                        else "shell"
+                        if turn.get("kind") == "shell_command"
+                        else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5793,7 +5793,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
+            else trace_total_turns
+            if trace_total_turns > 0
+            else reconstructed_total_turns
         )
 
         input_token_cost_usd = (
@@ -5881,6 +5883,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 read_total_savings_from_events(session_id, root) if root is not None else 0.0
             ),
             "label": None,
+            "task": str(trace.task or ""),
+            "host": str(trace.host or ""),
+            "domain": str(trace.domain or ""),
+            "status": str(trace.status or ""),
             "models_used": models_used,
             "started_model": started_model,
             "cost_status": (
@@ -5979,6 +5985,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "total_cost_usd": total_cost_usd,
             "total_atelier_savings_usd": report.total_atelier_savings_usd,
             "label": None,
+            "task": str(active_trace.task or "") if active_trace else "",
+            "host": str(active_trace.host or "") if active_trace else "",
+            "domain": str(active_trace.domain or "") if active_trace else "",
+            "status": str(active_trace.status or "") if active_trace else "",
             "models_used": models_used,
             "started_model": started_model,
             "cost_status": cost_status,
@@ -6653,6 +6663,149 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         state = stop_swarm_run(root=Path(cfg.atelier_root), state_path=state_path, cleanup=cleanup)
         return state.model_dump(mode="json")
 
+    # ── OpenAI-compatible chat completions gateway ────────────────────────────
+    # Adds /v1/chat/completions and /v1/models to the existing service so
+    # OpenCode/Crush/Codex can use Atelier as their model provider without
+    # running a separate server.
+    import asyncio as _asyncio
+    import uuid as _gw_uuid
+
+    from fastapi.responses import JSONResponse as _JSONResponse
+    from fastapi.responses import StreamingResponse as _StreamingResponse
+
+    from atelier.gateway.cli.runtime import InteractiveRuntime as _Runtime
+    from atelier.gateway.openai_gateway.adapter import (
+        atelier_events_to_sse as _sse,
+    )
+    from atelier.gateway.openai_gateway.adapter import (
+        openai_messages_to_atelier as _msgs,
+    )
+    from atelier.gateway.openai_gateway.schemas import (
+        ChatCompletionRequest as _CCReq,
+    )
+    from atelier.gateway.openai_gateway.schemas import (
+        ModelListResponse as _ModResp,
+    )
+    from atelier.gateway.openai_gateway.schemas import (
+        ModelObject as _ModObj,
+    )
+
+    _gw_runtime: _Runtime | None = None
+    _gw_runtime_lock = _asyncio.Lock()
+    _gw_rl_init_done = False
+
+    async def _ensure_rl_init() -> None:
+        nonlocal _gw_rl_init_done
+        if _gw_rl_init_done:
+            return
+        _gw_rl_init_done = True
+        from atelier.core.capabilities.providers.config import load_providers_config
+        from atelier.core.capabilities.providers.ratelimit import init_from_config
+        cfg = load_providers_config(store_path)
+        await init_from_config(cfg._raw)
+
+    async def _get_runtime() -> _Runtime:
+        nonlocal _gw_runtime
+        async with _gw_runtime_lock:
+            if _gw_runtime is None:
+                _gw_runtime = _Runtime(root=store_path, yolo=True)
+                await _gw_runtime.start_session()
+                await _ensure_rl_init()
+        return _gw_runtime
+
+    @app.get("/v1/models", tags=["openai-gateway"])
+    async def gw_list_models() -> dict[str, Any]:
+        from atelier.core.capabilities.providers.discovery import discover_models
+        model_ids = await discover_models(store_path)
+        return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
+
+    @app.get("/v1/models/refresh", tags=["openai-gateway"])
+    async def gw_refresh_models() -> dict[str, Any]:
+        from atelier.core.capabilities.providers.discovery import discover_models, invalidate_cache
+        invalidate_cache()
+        model_ids = await discover_models(store_path)
+        return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
+
+    @app.get("/v1/rate-limits", tags=["openai-gateway"])
+    async def gw_rate_limits() -> dict[str, Any]:
+        from atelier.core.capabilities.providers.ratelimit import get_status
+        return get_status()
+
+    @app.post("/v1/chat/completions", tags=["openai-gateway"])
+    async def gw_chat_completions(payload: dict[str, Any]) -> Any:
+        try:
+            req = _CCReq.model_validate(payload)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid chat-completions payload: {exc}") from exc
+        if not req.messages:
+            raise HTTPException(status_code=422, detail="messages must not be empty")
+
+        try:
+            last_text, prior = _msgs(req.messages)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        rt = await _get_runtime()
+        model = req.model or ""
+        model_override = model if model else None
+
+        # Apply rate limit before starting the request
+        from atelier.core.capabilities.providers.ratelimit import acquire
+        try:
+            await _asyncio.wait_for(acquire(model), timeout=30.0)
+        except TimeoutError:
+            raise HTTPException(status_code=429, detail=f"rate limit exceeded for model '{model}': timed out after 30s")
+
+        session_id = str(_gw_uuid.uuid4())
+        rt._sessions[session_id] = prior
+        chunk_id = f"chatcmpl-{_gw_uuid.uuid4().hex[:12]}"
+
+        events_gen = rt.handle_user_message(
+            session_id, last_text,
+            model_override=model_override,
+        )
+        sse_gen = _sse(events_gen, model=model or "atelier", chunk_id=chunk_id)
+
+        if req.stream:
+            return _StreamingResponse(sse_gen, media_type="text/event-stream")
+
+        content_parts: list[str] = []
+        finish_reason = "stop"
+        async for line in sse_gen:
+            if not line.startswith("data: "):
+                continue
+            payload = line[6:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                obj = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            choices = obj.get("choices", [])
+            if choices:
+                delta = choices[0].get("delta", {})
+                content_parts.append(delta.get("content") or "")
+                finish_reason = choices[0].get("finish_reason") or finish_reason
+            if "error" in obj:
+                raise HTTPException(status_code=500, detail=obj["error"].get("message"))
+
+        return _JSONResponse(
+            {
+                "id": chunk_id,
+                "object": "chat.completion",
+                "created": int(datetime.now(tz=UTC).timestamp()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "".join(content_parts)},
+                        "finish_reason": finish_reason,
+                    }
+                ],
+                "usage": None,
+            }
+        )
+
     return app
 
 
@@ -6664,6 +6817,31 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 def _is_loopback(host: str) -> bool:
     return host.strip().lower() in _LOOPBACK_HOSTS
+
+
+def _load_atelier_env_file(root: Path | None = None) -> None:
+    """Load provider API keys from ~/.atelier/.env (or <root>/.env).
+
+    Keys already set in the environment take precedence (env vars always win).
+    Format: KEY=value, KEY="value", or KEY='value'; # for comments.
+    """
+    import os
+    from pathlib import Path as _Path
+
+    env_file = (_Path(root) if root else _Path.home() / ".atelier") / ".env"
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def main(
@@ -6684,6 +6862,10 @@ def main(
 
     import uvicorn
 
+    _load_atelier_env_file()
+    # Load ~/.atelier/providers.json and push keys to env so litellm can find them
+    from atelier.core.capabilities.providers.config import load_providers_config
+    load_providers_config().export_env()
     _host = host or cfg.host
     _port = port or cfg.port
 
@@ -6709,4 +6891,26 @@ def main(
         host=_host,
         port=_port,
         reload=reload,
+    )
+
+
+def atelierd_main() -> None:
+    """Entrypoint for the ``atelierd`` console script.
+
+    Starts the Atelier HTTP service. Reads configuration from environment
+    variables and ``~/.atelier/providers.json``.
+
+    Environment overrides::
+
+        ATELIER_HOST   — bind host  (default: 127.0.0.1)
+        ATELIER_PORT   — bind port  (default: 8787)
+        ATELIER_ROOT   — data root  (default: ~/.atelier)
+
+    Equivalent to ``atelier service start``.
+    """
+    import os
+
+    main(
+        host=os.environ.get("ATELIER_HOST"),
+        port=int(os.environ["ATELIER_PORT"]) if os.environ.get("ATELIER_PORT") else None,
     )

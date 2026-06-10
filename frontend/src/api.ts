@@ -1322,6 +1322,10 @@ export interface SessionSummary {
   total_cost_usd: number;
   total_atelier_savings_usd: number;
   label: string | null;
+  task?: string | null;
+  host?: string | null;
+  domain?: string | null;
+  status?: string | null;
   models_used: Record<string, number>;
   input_tokens?: number;
   output_tokens?: number;
