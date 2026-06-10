@@ -38,15 +38,15 @@ def _assert_matched_rescue(
 
 def _assert_unmatched_rescue(result: dict[str, Any]) -> None:
     rescue = str(result.get("rescue") or "")
-    assert rescue.startswith("No matching ReasonBlock found."), (
-        f"unmatched rescue must return fallback text, got: {rescue[:200]!r}"
-    )
-    assert result.get("matched_blocks") == [], f"unmatched rescue must not match blocks, got: {result.get('matched_blocks')!r}"
+    assert rescue.startswith(
+        "No matching ReasonBlock found."
+    ), f"unmatched rescue must return fallback text, got: {rescue[:200]!r}"
+    assert (
+        result.get("matched_blocks") == []
+    ), f"unmatched rescue must not match blocks, got: {result.get('matched_blocks')!r}"
 
 
-def _matched_assert(
-    expected_block_id: str, expected_procedure_fragment: str
-) -> Callable[[dict[str, Any]], None]:
+def _matched_assert(expected_block_id: str, expected_procedure_fragment: str) -> Callable[[dict[str, Any]], None]:
     def _assert(result: dict[str, Any]) -> None:
         _assert_matched_rescue(result, expected_block_id, expected_procedure_fragment)
 

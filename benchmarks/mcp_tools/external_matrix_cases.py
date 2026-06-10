@@ -166,7 +166,7 @@ def generate_case_manifest(
             continue
         if required.get(family, quota) < quota:
             raise ValueError(
-                f"not enough repository facts to satisfy {family}: " f"need {quota}, have {required.get(family, 0)}"
+                f"not enough repository facts to satisfy {family}: need {quota}, have {required.get(family, 0)}"
             )
 
     cases: list[ExternalBenchCase] = []

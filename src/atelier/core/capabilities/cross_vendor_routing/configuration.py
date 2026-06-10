@@ -32,7 +32,7 @@ _VENDOR_ENV_VARS: dict[str, tuple[str, ...]] = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
-    "bedrock": ("AWS_ACCESS_KEY_ID", "AWS_PROFILE"),
+    "bedrock": ("AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_BEARER_TOKEN_BEDROCK"),
     "vertex": ("VERTEXAI_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT"),
     "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
     "openrouter": ("OPENROUTER_API_KEY",),
@@ -109,9 +109,7 @@ def detect_configured_vendors(env: Mapping[str, str] | None = None) -> tuple[str
     enabled: list[str] = []
     for vendor in SUPPORTED_ROUTE_VENDORS:
         has_env = any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
-        has_host_surface = any(
-            shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor]
-        )
+        has_host_surface = any(shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor])
         if has_env or has_host_surface:
             enabled.append(vendor)
     return tuple(enabled)
@@ -140,9 +138,7 @@ def detect_api_key_vendors(env: Mapping[str, str] | None = None) -> tuple[str, .
     return tuple(enabled)
 
 
-def load_route_config(
-    root: Path | str | None = None, *, path: Path | str | None = None
-) -> RouteConfig:
+def load_route_config(root: Path | str | None = None, *, path: Path | str | None = None) -> RouteConfig:
     config_path = Path(path).expanduser().resolve() if path is not None else route_config_path(root)
     if not config_path.exists():
         raise RouteConfigError(f"route config not found: {config_path}")
@@ -157,9 +153,7 @@ def load_route_config(
     except ValidationError as exc:
         raise RouteConfigError(f"route config is invalid: {exc}") from exc
     if config.version != ROUTE_CONFIG_VERSION:
-        raise RouteConfigError(
-            f"unsupported route config version {config.version}; expected {ROUTE_CONFIG_VERSION}"
-        )
+        raise RouteConfigError(f"unsupported route config version {config.version}; expected {ROUTE_CONFIG_VERSION}")
     return config
 
 
@@ -183,9 +177,7 @@ def load_route_config_or_default(
     try:
         return load_route_config(root, path=path)
     except RouteConfigError:
-        config_path = (
-            Path(path).expanduser().resolve() if path is not None else route_config_path(root)
-        )
+        config_path = Path(path).expanduser().resolve() if path is not None else route_config_path(root)
         if config_path.exists():
             raise  # file present but invalid — surface the real error
         vendors = list(detect_api_key_vendors(env))

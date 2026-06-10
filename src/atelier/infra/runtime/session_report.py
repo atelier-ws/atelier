@@ -701,7 +701,7 @@ def render_text(report: SessionReport, *, no_color: bool = False) -> str:
         )
     if report.cost_cap_fired_turns:
         lines.append(
-            f"  Cost cap fired: {report.cost_cap_fired_turns} turn" f"{'s' if report.cost_cap_fired_turns != 1 else ''}"
+            f"  Cost cap fired: {report.cost_cap_fired_turns} turn{'s' if report.cost_cap_fired_turns != 1 else ''}"
         )
 
     if report.compact_events:
@@ -714,7 +714,7 @@ def render_text(report: SessionReport, *, no_color: bool = False) -> str:
         lines.append("  Compaction: none this session")
 
     lines.append("  " + "─" * 37)
-    lines.append(f"  {'Total saved this session:':<32}" f"{_fmt_cost(report.total_atelier_savings_usd).rjust(cost_w)}")
+    lines.append(f"  {'Total saved this session:':<32}{_fmt_cost(report.total_atelier_savings_usd).rjust(cost_w)}")
     lines.append("")
 
     # top tools
@@ -723,7 +723,7 @@ def render_text(report: SessionReport, *, no_color: bool = False) -> str:
         lines.append(f"Top {n} costliest tool{'s' if n != 1 else ''} this session")
         for tool_name, count, cost in report.top_tools_by_cost:
             lines.append(
-                f"  {tool_name:<16}{count:>5} call{'s' if count != 1 else ''}" f"   {_fmt_cost(cost).rjust(cost_w)}"
+                f"  {tool_name:<16}{count:>5} call{'s' if count != 1 else ''}   {_fmt_cost(cost).rjust(cost_w)}"
             )
 
     return "\n".join(lines)

@@ -1535,7 +1535,7 @@ def run_provider_swarm_worker() -> int:
             messages.append(
                 {
                     "role": "user",
-                    "content": (f"Previous response was invalid: {exc}. " "Return a corrected JSON object only."),
+                    "content": (f"Previous response was invalid: {exc}. Return a corrected JSON object only."),
                 }
             )
             continue

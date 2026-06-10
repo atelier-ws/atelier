@@ -28,7 +28,7 @@ def render_tool_report(report: ToolReport) -> str:
     # Header
     status_color = _GREEN if report.failed == 0 else _RED
     lines.append(
-        f"\n{_BOLD}{_CYAN}● {report.tool_name}{_RESET}  " f"{status_color}{report.passed}/{report.total} passed{_RESET}"
+        f"\n{_BOLD}{_CYAN}● {report.tool_name}{_RESET}  {status_color}{report.passed}/{report.total} passed{_RESET}"
     )
     lines.append(
         f"  {_DIM}avg savings {report.avg_savings_pct:.0f}%  "

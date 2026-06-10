@@ -135,6 +135,7 @@ def mcp_tool(
     name: str | None = None,
     description: str | None = None,
     input_schema: dict[str, Any] | None = None,
+    hidden_params: tuple[str, ...] = (),
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema."""
 
@@ -163,6 +164,13 @@ def mcp_tool(
             # Clean up Pydantic-isms for MCP clients
             if "title" in schema:
                 del schema["title"]
+            # Pydantic emits a "title" per property — pure token noise for LLM clients.
+            for prop in schema.get("properties", {}).values():
+                if isinstance(prop, dict):
+                    prop.pop("title", None)
+            # Niche params stay accepted by the handler but are not published to LLMs.
+            for hidden in hidden_params:
+                schema.get("properties", {}).pop(hidden, None)
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
@@ -2162,36 +2170,15 @@ def tool_get_context(
 ) -> dict[str, Any]:
     """Record task context and retrieve relevant ReasonBlocks for the task.
 
-    Call this at the start of every task to seed your context with prior
-    procedures, bootstrap repo knowledge, and per-agent memory.
+    Call at task start to seed context with prior procedures, repo bootstrap
+    knowledge, and per-agent memory. mode="symbols" returns the most relevant
+    code symbols/files from the SCIP index instead; mode="pull" returns scoped
+    subtask context (files/keywords/excluded_paths scope it).
 
-    Pass mode="symbols" to surface the most relevant code symbols and files
-    for the task (powered by the SCIP code index) instead of procedure blocks.
-
-    Args:
-        task:         Current task description (required). Drives block retrieval ranking.
-        domain:       Optional domain tag (e.g. "python", "infra") to narrow retrieval.
-        files:        File paths relevant to the task — boosts blocks associated with those files.
-                      In mode="pull", these become the scoped subtask's affected_paths.
-        keywords:     Optional explicit retrieval keywords. In mode="pull", these seed keyword retrieval.
-        excluded_paths:
-                      Optional path prefixes/globs to exclude. In mode="pull", these become
-                      the scoped subtask's excluded_paths.
-        tools:        Tools you plan to use — helps rank procedure blocks that match.
-        errors:       Recent error messages — triggers rescue-mode block retrieval.
-        max_blocks:   Maximum number of ReasonBlocks to inject (default 5).
-        token_budget: Token cap for injected procedures (default 2000). Pass None for unlimited.
-        dedup:        Deduplicate near-identical blocks before returning (default True).
-        agent_id:     When set, loads per-agent archival memory passages via recall.
-        recall:       Set False to skip archival memory recall entirely (default True).
-        mode:         "procedures" (default) returns ReasonBlocks. "symbols" returns relevant
-                      code symbols and files from the SCIP index for the given task.
-
-    Returns a dict with:
-        context:            Full context string ready to prepend to your prompt.
-        bootstrap:          Repo bootstrap status (status, repo_id, queued, missing_labels).
-        recalled_passages:  Per-agent memory passages (empty list when agent_id is None).
-        tokens_breakdown:   Token counts by source (reasonblocks / bootstrap / memory / total).
+    Args: task (required) drives ranking; domain narrows retrieval; files boost
+    related blocks; tools/errors rank matching procedure and rescue blocks;
+    max_blocks (default 5); token_budget (default 2000, None = unlimited);
+    dedup; agent_id loads per-agent memory; recall=False skips memory recall.
     """
     if mode == "symbols":
         engine = _code_context_engine(".")
@@ -2259,9 +2246,7 @@ def tool_get_context(
     os.environ["ATELIER_WORKSPACE_ROOT"] = workspace_root
 
     # Advance trajectory monitors and obtain FSM-derived retrieval hints.
-    _monitor_composite, _fsm_skip_etraces = _advance_monitors(
-        _get_product_session_id(), task, led.task or task
-    )
+    _monitor_composite, _fsm_skip_etraces = _advance_monitors(_get_product_session_id(), task, led.task or task)
 
     try:
         payload = rt.get_context(
@@ -3619,34 +3604,14 @@ def tool_smart_read(
 ) -> dict[str, Any]:
     """Read a file with automatic source projection for large files.
 
-    Returns less context than native `Read` / `cat` for files >200 LOC:
-      - outline mode: signatures, imports, structure -- no bodies.
-        Measured token savings (tiktoken cl100k_base, median):
-        Python 85%, Markdown 85%, Go 77%, Java 77%, Rust 65%.
-        Tree-sitter outlines for: python, typescript, javascript, go, rust,
-        java, ruby, c, c++, c#, kotlin, php, swift, scala, bash.
-        Generic structural skeleton (column-0 declarations + signature lines)
-        as a fallback for any other text-like language.
-      - range mode (when range="42-118", range="L42-L118", or open-ended like "L42-"): exact line slice,
-        cheaper than reading the whole file when you already know the range.
-      - full mode: untransformed file text (for tiny files or expand=True).
-      - compact projection: safe whitespace-only transformation on default full
-        reads when it saves tokens; preserves strings and indentation-sensitive
-        languages, but is not identical to the original text.
+    Modes: outline (structure only — default for files >200 LOC), range
+    (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
+    full (small files, or any file with expand=true), and compact (safe
+    whitespace-only transformation of full reads — not byte-identical source).
 
-    Prefer over native `Read` whenever you don't already know the file is small.
-    For files <200 LOC the cost is the same; for larger files outline mode
-    typically saves 50-90% of the tokens you'd consume with `Read` / `cat`.
-
-    Returns: {
-      mode: "outline" | "range" | "full",
-      language: str,                     # detected language (python, go, typescript, ...)
-      outline: {kind, language, ...},    # only when mode == "outline"
-      content: str,                      # only when mode in {range, full}
-      path: str,
-      range: str,                        # only when mode == "range"
-      projection: {view, transformed, body_complete, untransformed_text, ...},
-    }
+    Prefer over native `Read`/`cat` unless the file is known to be small;
+    outline mode typically saves 50-90% of tokens on large files. Re-read with
+    expand=true (or a range) before editing against an outline/compact view.
     """
     target_path = path
     if not target_path:
@@ -3807,11 +3772,16 @@ def _looks_like_test_path(path: str) -> bool:
 
 def _existing_test_contract_paths(
     snapshots: dict[str, tuple[Path, str | None]],
-    ) -> list[str]:
-    return sorted(path for path, (_fp, old_content) in snapshots.items() if old_content is not None and _looks_like_test_path(path))
+) -> list[str]:
+    return sorted(
+        path
+        for path, (_fp, old_content) in snapshots.items()
+        if old_content is not None and _looks_like_test_path(path)
+    )
 
 
-def _compute_and_record_diffs(    snapshots: dict[str, tuple[Path, str | None]],
+def _compute_and_record_diffs(
+    snapshots: dict[str, tuple[Path, str | None]],
 ) -> None:
     """Compute unified diffs from *snapshots* vs current file content and record them in the ledger."""
     import difflib
@@ -3975,6 +3945,15 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "minimum": 0,
             "description": "Maximum total timeout for post-edit hooks in milliseconds.",
         },
+        "allow_test_contract_change": {
+            "type": "boolean",
+            "default": False,
+            "description": "Explicitly allow edits to already-existing test files after reviewing the behavioral contract.",
+        },
+        "contract_change_evidence": {
+            "type": "string",
+            "description": "Required with allow_test_contract_change=true. Cite the user request or repository source of truth that independently requires changing the existing test contract.",
+        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -3987,6 +3966,8 @@ def tool_smart_edit(
     atomic: bool = True,
     post_edit_hooks: bool = True,
     post_edit_timeout_ms: int = 30_000,
+    allow_test_contract_change: bool = False,
+    contract_change_evidence: str | None = None,
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
@@ -4012,6 +3993,25 @@ def tool_smart_edit(
 
     paths = _collect_touched_paths(edits, repo_root=repo_root)
     snapshots = _snapshot_paths(paths)
+    contract_paths = _existing_test_contract_paths(snapshots)
+    evidence = (contract_change_evidence or "").strip()
+    if contract_paths and (not allow_test_contract_change or len(evidence) < 20):
+        return {
+            "applied": [],
+            "failed": [
+                {
+                    "paths": contract_paths,
+                    "error": (
+                        "Existing test contract edit requires explicit review before writing. Reconsider the production "
+                        "change first. If the contract truly must change, retry with allow_test_contract_change=true "
+                        "and contract_change_evidence citing the user request or repository source of truth."
+                    ),
+                }
+            ],
+            "rolled_back": True,
+            "writes": 0,
+            "contract_review": {"required": True, "paths": contract_paths},
+        }
 
     if family == "rich":
         from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
@@ -4057,18 +4057,17 @@ def tool_smart_edit(
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
         _compute_and_record_diffs(snapshots)
-        contract_paths = _existing_test_contract_paths(snapshots)
         if contract_paths:
             result["contract_review"] = {
                 "required": True,
                 "paths": contract_paths,
-                "guidance": (
-                    "Existing tests are behavioral-contract evidence. Do not change them merely to make a failure pass; "
-                    "verify that the task or another repository source of truth explicitly requires the contract change."
-                ),
+                "evidence": evidence,
             }
+
     result.pop("diagnostics", None)
-    result.pop("hooks", None)    # Batched edits collapse N would-be individual edit calls into 1.
+    result.pop("hooks", None)
+
+    # Batched edits collapse N would-be individual edit calls into 1.
     # Use successful applies as the count; the dispatcher reads this and
     # writes it into the response's content[].saved.calls field.
     applied_count = len(result.get("applied") or [])
@@ -4830,7 +4829,7 @@ def _code_search_graph_view(
             for item in cast(list[Any], search_payload.get("items", []))
         ]
         payload["explanation"] = (
-            "items are primary search targets; related contains graph evidence from usages, " "callers, and callees."
+            "items are primary search targets; related contains graph evidence from usages, callers, and callees."
         )
         payload["suggested_next"] = _code_search_suggested_next(query)
     return payload
@@ -5612,12 +5611,12 @@ def _run_shell_tool(
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
+    sync_wait: bool = False,
 ) -> dict[str, Any]:
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import (
         classify_command,
         poll_managed_command,
-        run_command,
         start_managed_command,
     )
 
@@ -5712,36 +5711,57 @@ def _run_shell_tool(
             "duration_ms": 0,
         }
 
+    # One execution model: every command runs as a managed session; the only
+    # variable is how long we block inline before returning a poll handle.
+    #   background → 0s (return the handle immediately)
+    #   sync_wait  → full timeout (in-process callers with no MCP stdio window)
+    #   default    → min(timeout, sync window)
     sync_limit = max(1, int(os.environ.get("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "90")))
-    if background or timeout > sync_limit:
-        return start_managed_command(
-            command,
-            cwd=effective_cwd,
-            timeout=timeout,
-            max_lines=max_lines,
-        )
+    if background:
+        inline_wait = 0.0
+    elif sync_wait:
+        inline_wait = float(timeout)
+    else:
+        inline_wait = float(min(timeout, sync_limit))
 
-    result = run_command(
+    started = start_managed_command(
         command,
         cwd=effective_cwd,
         timeout=timeout,
         max_lines=max_lines,
     )
-    response: dict[str, Any] = {
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "exit_code": result.exit_code,
-        "truncated": result.truncated,
-        "lines_omitted": result.lines_omitted,
-        "duration_ms": result.duration_ms,
-    }
-    if result.policy_action == "block":
-        response["blocked"] = True
-        response["blocked_reason"] = result.policy_reason
-    if result.lines_omitted > 0:
+    managed_id = str(started.get("session_id") or "")
+    if started.get("status") != "running" or not managed_id:
+        return started  # blocked by policy
+
+    # When the inline wait covers the full timeout budget, the watcher kills
+    # the command at that deadline; allow a short grace so we return the
+    # reaped terminal result (timed_out) instead of a handle to a dying run.
+    if inline_wait >= float(timeout):
+        inline_wait = float(timeout) + 10.0
+    deadline = time.monotonic() + inline_wait
+    delay = 0.02
+    polled: dict[str, Any] = started
+    while True:
+        polled = poll_managed_command(managed_id)
+        if polled.get("status") != "running":
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return polled  # still running at the window edge — poll later
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, 0.5)
+
+    # Finished inline: present as a plain synchronous result. The managed
+    # session is already reaped, so status/session_id would only invite a
+    # useless poll turn; exit_code/stderr carry the terminal state.
+    polled.pop("session_id", None)
+    polled.pop("status", None)
+    chars_omitted = int(polled.pop("chars_omitted", 0) or 0)
+    if chars_omitted > 0:
         # chars_omitted / 4 is the standard chars-per-token estimate.
-        _tool_call_tokens_saved.value = result.chars_omitted // 4
-    return response
+        _tool_call_tokens_saved.value = chars_omitted // 4
+    return polled
 
 
 def _render_shell_text(result: dict[str, Any]) -> str:
@@ -5846,6 +5866,7 @@ def _run_native_grep(
         "Search files with regex, glob, and type filters. Use this instead of `search` for "
         "grep-style matching, path listing, context lines, summaries, or incremental reruns."
     ),
+    hidden_params=("include_meta",),
 )
 def tool_grep(
     path: Annotated[
@@ -5856,16 +5877,11 @@ def tool_grep(
     ] = ".",
     content_regex: Annotated[
         str | None,
-        Field(
-            description=(
-                "Regular expression to match file contents. Leave unset when you only want "
-                "globbed file paths or type-filtered file listings."
-            )
-        ),
+        Field(description="Regex to match file contents. Omit for pure path/type listings."),
     ] = None,
     file_glob_patterns: Annotated[
         list[str] | None,
-        Field(description="Glob patterns that constrain candidate files, such as `src/**/*.py`."),
+        Field(description="Globs constraining candidate files, e.g. `src/**/*.py`."),
     ] = None,
     output_mode: Annotated[
         Literal[
@@ -5876,42 +5892,36 @@ def tool_grep(
         ],
         Field(
             description=(
-                "`ranked_file_map` (default): token-budgeted pointers with line ranges and symbols — best for navigation. "
-                "`file_paths_with_content`: matched lines with context — best for reading content. "
-                "`file_paths_only`: just paths — best for listings. "
-                "`file_paths_with_match_count`: paths with hit counts — best for frequency analysis."
+                "`ranked_file_map` (default): ranked navigation pointers. "
+                "`file_paths_with_content`: matched lines with context. "
+                "`file_paths_only`: just paths. "
+                "`file_paths_with_match_count`: paths with hit counts."
             )
         ),
     ] = "ranked_file_map",
     lines_before: Annotated[
         int,
-        Field(description="Number of context lines to include before each content match."),
+        Field(description="Context lines before each match."),
     ] = 0,
     lines_after: Annotated[
         int,
-        Field(description="Number of context lines to include after each content match."),
+        Field(description="Context lines after each match."),
     ] = 0,
     ignore_case: Annotated[
         bool,
-        Field(description="Ignore case while matching `content_regex`."),
+        Field(description="Case-insensitive matching."),
     ] = False,
     type: Annotated[
         str | None,
-        Field(
-            description=(
-                "Language or file-type filter, such as `python`, `markdown`, or another " "supported type alias."
-            )
-        ),
+        Field(description="Language/file-type filter, e.g. `python` or `markdown`."),
     ] = None,
     file_limit: Annotated[
         int | None,
-        Field(description="Maximum number of matching files to render."),
+        Field(description="Max matching files to render."),
     ] = None,
     lines_per_file: Annotated[
         int | None,
-        Field(
-            description="Cap the number of matched lines rendered per file (applies to `file_paths_with_content` mode)."
-        ),
+        Field(description="Max matched lines per file (content mode)."),
     ] = 500,
     if_modified_since: Annotated[
         str | None,
@@ -5924,28 +5934,20 @@ def tool_grep(
     ] = None,
     multiline: Annotated[
         bool,
-        Field(description=("Enable multiline regex matching so `.` spans newlines and `^` / `$` work per line.")),
+        Field(description="Let the regex span newlines."),
     ] = False,
     summary: Annotated[
         bool | None,
         Field(
             description=(
-                "Control structural summarization of matched files. "
-                "Omit (default): auto — summarizes Python/JS/TS files over 500 LOC. "
-                "`true`: always summarize (signatures and imports only). "
-                "`false`: never summarize (always return raw matched lines)."
+                "Omit: auto-summarize large Python/JS/TS files. "
+                "`true`: always signatures-only. `false`: always raw lines."
             )
         ),
     ] = None,
     context_budget_tokens: Annotated[
         int,
-        Field(
-            description=(
-                "Token budget that caps output size. For `ranked_file_map` mode this limits "
-                "the number of file handles returned; for `file_paths_with_content` it caps "
-                "total rendered characters. Default 6000 is suitable for most queries."
-            )
-        ),
+        Field(description="Token budget capping output size (default 6000)."),
     ] = 6000,
     include_meta: Annotated[
         bool,
@@ -6008,7 +6010,7 @@ def tool_grep(
                 "enum": ["chunks", "map"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`."
+                    "`chunks` returns ranked snippets per file, and `map` builds a repo map from `seed_files`."
                 ),
             },
             "max_files": {
@@ -6052,7 +6054,7 @@ def tool_smart_search(
     mode: Annotated[
         Literal["chunks", "map"],
         Field(
-            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map " "from `seed_files`.")
+            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map from `seed_files`.")
         ),
     ] = "chunks",
     max_files: Annotated[
@@ -6061,9 +6063,7 @@ def tool_smart_search(
     ] = 10,
     max_chars_per_file: Annotated[
         int,
-        Field(
-            description=("Cap the returned characters per ranked file before the overall token " "budget is applied.")
-        ),
+        Field(description=("Cap the returned characters per ranked file before the overall token budget is applied.")),
     ] = 2000,
     include_outline: Annotated[
         bool,
@@ -6270,8 +6270,8 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         },
         "timeout": {
             "type": "integer",
-            "default": 30,
-            "description": "Seconds before the command is killed. Increase for slow builds.",
+            "default": 1800,
+            "description": "Seconds before the command is killed. Defaults to 30 minutes for builds and test suites.",
         },
         "max_lines": {
             "type": "integer",
@@ -6281,7 +6281,7 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "background": {
             "type": "boolean",
             "default": False,
-            "description": "Start immediately as a managed session. Commands whose timeout exceeds the synchronous MCP window are detached automatically.",
+            "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and detaches only if still running when the synchronous MCP window closes.",
         },
         "session_id": {
             "type": "string",
@@ -6301,12 +6301,13 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 @mcp_tool(name="shell", input_schema=SHELL_TOOL_INPUT_SCHEMA)
 def tool_shell(
     command: str = "",
-    timeout: int = 30,
+    timeout: int = 1800,
     cwd: str | None = None,
     max_lines: int = 200,
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
+    sync_wait: bool = False,
 ) -> str:
     """Execute a shell command and return compact text output.
 
@@ -6321,6 +6322,7 @@ def tool_shell(
         background=background,
         session_id=session_id,
         action=action,
+        sync_wait=sync_wait,
     )
     return _render_shell_text(result)
 

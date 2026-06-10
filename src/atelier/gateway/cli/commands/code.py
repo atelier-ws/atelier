@@ -261,6 +261,7 @@ def _index_repo_with_progress(
     exclude_globs: list[str] | None = None,
     description: str = "Indexing code",
     success_description: str | None = None,
+    frame_prefix: str = "",
 ) -> dict[str, Any]:
     try:
         from rich.console import Console
@@ -271,9 +272,10 @@ def _index_repo_with_progress(
             TimeRemainingColumn,
         )
 
+        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
         console = Console(stderr=True)
         progress = Progress(
-            TextColumn("[bold magenta]{task.description}[/bold magenta]"),
+            TextColumn(f"{prefix_markup}[bold magenta]{{task.description}}[/bold magenta]"),
             BarColumn(
                 bar_width=32,
                 style="bright_black",
@@ -329,11 +331,13 @@ def code_group() -> None:
 @click.option("--include", "include_globs", multiple=True)
 @click.option("--exclude", "exclude_globs", multiple=True)
 @click.option("--json", "as_json", is_flag=True)
+@click.option("--frame-prefix", default="", hidden=True, help="Prefix for progress output (used by dev.sh)")
 def code_index_cmd(
     repo_root: str,
     include_globs: tuple[str, ...],
     exclude_globs: tuple[str, ...],
     as_json: bool,
+    frame_prefix: str,
 ) -> None:
     """Index a repository into the SQLite FTS5 symbol store."""
     engine = _code_context_engine(repo_root)
@@ -351,12 +355,14 @@ def code_index_cmd(
         exclude_globs=list(exclude_globs) or None,
         description="Indexing code",
         success_description="Indexed code",
+        frame_prefix=frame_prefix,
     )
 
-    click.echo(
+    stats_line = (
         f"indexed {payload['files_indexed']} files, {payload['symbols_indexed']} symbols "
         f"({payload['imports_indexed']} imports)"
     )
+    click.echo(f"{frame_prefix}{stats_line}" if frame_prefix else stats_line)
 
 
 __all__ = ["_code_context_engine", "_index_repo_with_progress", "code_group", "zoekt_group"]

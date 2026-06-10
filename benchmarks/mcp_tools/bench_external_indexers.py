@@ -109,9 +109,7 @@ class SerenaRunner:
         if self.home_dir.exists():
             shutil.rmtree(self.home_dir)
         self.home_dir.mkdir(parents=True, exist_ok=True)
-        init = run_cmd(
-            ["serena", "init", "-b", "LSP"], cwd=self.project_root, timeout=300, env=self._env()
-        )
+        init = run_cmd(["serena", "init", "-b", "LSP"], cwd=self.project_root, timeout=300, env=self._env())
         if init.returncode != 0:
             raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
         create = run_cmd(
@@ -143,9 +141,7 @@ class SerenaRunner:
         )
         for _ in range(80):
             try:
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{self.port}/heartbeat", timeout=2
-                ) as res:
+                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/heartbeat", timeout=2) as res:
                     if res.status == 200:
                         return
             except Exception:
@@ -232,9 +228,7 @@ print(json.dumps(result, ensure_ascii=False))
         tool_workspace = external_workspace_root(self.workspace_root)
         self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
         self.python_bin = ensure_code_index_runtime(self.code_index_repo)
-        self.project_root = prepare_repo_snapshot(
-            self.repo_root, tool_workspace, "code-index-target"
-        )
+        self.project_root = prepare_repo_snapshot(self.repo_root, tool_workspace, "code-index-target")
         proc = run_cmd(
             [
                 str(self.python_bin),
@@ -444,9 +438,7 @@ def ensure_code_index_runtime(code_index_repo: Path) -> Path:
     return python_bin
 
 
-def bench_atelier(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools._env import configure_benchmark_runtime
@@ -492,9 +484,7 @@ def bench_atelier(
     )
 
 
-def bench_atelier_zoekt(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_atelier_zoekt(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools._env import configure_benchmark_runtime
@@ -549,9 +539,7 @@ def bench_atelier_zoekt(
     )
 
 
-def bench_serena(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_serena(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     tool_workspace = external_workspace_root(workspace_root)
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "serena-repo")
     runner = SerenaRunner(
@@ -605,9 +593,7 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     sample = ""
     for _ in range(iterations):
         t0 = time.perf_counter()
-        proc = run_cmd(
-            ["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300
-        )
+        proc = run_cmd(["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300)
         elapsed = (time.perf_counter() - t0) * 1000
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
@@ -636,9 +622,7 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
 def bench_code_index(
     repo_root: Path, workspace_root: Path, code_index_repo: Path, query: str, iterations: int
 ) -> ToolBenchResult:
-    runner = CodeIndexRunner(
-        repo_root=repo_root, workspace_root=workspace_root, code_index_repo=code_index_repo
-    )
+    runner = CodeIndexRunner(repo_root=repo_root, workspace_root=workspace_root, code_index_repo=code_index_repo)
     runner.start()
     times: list[float] = []
     toks: list[int] = []
@@ -676,9 +660,7 @@ def bench_code_index(
     )
 
 
-def bench_ccc(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_ccc(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     tool_workspace = external_workspace_root(workspace_root)
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "ccc-repo")
     init = run_cmd(["ccc", "init", "--force"], cwd=snapshot_root, timeout=300)
@@ -869,9 +851,7 @@ def main() -> None:
     repo_root = Path(args.repo_root).resolve()
     workspace_root = Path(args.workspace_root).resolve()
     code_index_repo = (
-        Path(args.code_index_repo).resolve()
-        if args.code_index_repo
-        else (workspace_root / "code-index-mcp").resolve()
+        Path(args.code_index_repo).resolve() if args.code_index_repo else (workspace_root / "code-index-mcp").resolve()
     )
     ensure_workspace(workspace_root)
 

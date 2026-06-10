@@ -251,7 +251,7 @@ def _rule_error_pattern(
     return Opportunity(
         kind="error_pattern",
         message=(
-            f"{top_tool} has high error rate across {affected} sessions" " — consider stronger routing for that tool"
+            f"{top_tool} has high error rate across {affected} sessions — consider stronger routing for that tool"
         ),
         estimated_savings_usd=0.0,
         sessions_affected=affected,

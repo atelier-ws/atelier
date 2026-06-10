@@ -140,8 +140,9 @@ def test_chat_with_result_preserves_structured_messages_and_prompt_cache_usage(
         {"role": "user", "content": "Use the cached prefix."},
     ]
 
-    result = litellm_client.chat_with_result(messages)
+    result = litellm_client.chat_with_result(messages, api_key="bedrock-token")
 
     assert fake.calls[0]["messages"] == messages
+    assert fake.calls[0]["api_key"] == "bedrock-token"
     assert result.cache_read_input_tokens == 900
     assert result.cache_write_input_tokens == 300

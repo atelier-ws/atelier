@@ -71,7 +71,7 @@ def report(baseline_path: Path, atelier_path: Path, savings_log: Path, output: P
         "## Patch Similarity",
         f"- Instances with patches in **both** runs: {both_patched}",
         f"- **Identical patches**: {identical} / {both_patched}"
-        + (f" ({100*identical//max(1,both_patched)}%)" if both_patched else ""),
+        + (f" ({100 * identical // max(1, both_patched)}%)" if both_patched else ""),
         "",
         "## Token Savings (Atelier proxy log)",
         "| Metric | Value |",

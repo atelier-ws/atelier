@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -36,12 +37,20 @@ logger = logging.getLogger(__name__)
 class InteractiveRuntime:
     """Own the agent loop, sessions, routing, and tool supervision for the CLI."""
 
-    def __init__(self, *, root: Path | None = None, yolo: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        root: Path | None = None,
+        yolo: bool = False,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> None:
         self._root = root or Path.home() / ".atelier"
         self._yolo = yolo
+        self._provider_override = provider
+        self._override_model = model
         self._sessions: dict[str, list[dict[str, Any]]] = {}
         self._pending_permissions: dict[str, dict[str, Any]] = {}
-        self._override_model: str | None = None
         self._active_tools: list[str] | None = None
         self._current_mode: str = "code"
         self._mcp_servers: list[MCPServerProcess] = []
@@ -49,8 +58,13 @@ class InteractiveRuntime:
         self._background_tasks: list[dict[str, Any]] = []  # {id, name, status, result}
         self._share_tokens: dict[str, str] = {}
 
-    async def start_session(self, project_root: str | None = None) -> str:
-        session_id = uuid.uuid4().hex
+    async def start_session(
+        self,
+        project_root: str | None = None,
+        *,
+        session_id: str | None = None,
+    ) -> str:
+        session_id = session_id or uuid.uuid4().hex
         self._sessions[session_id] = []
         if project_root:
             os.environ["CLAUDE_WORKSPACE_ROOT"] = project_root
@@ -87,6 +101,89 @@ class InteractiveRuntime:
         self._mcp_servers.clear()
         self._mcp_tools.clear()
 
+    def _messages_with_cache_breakpoint(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+    ) -> list[dict[str, Any]]:
+        """Move the Anthropic cache boundary to the latest completed message."""
+        from atelier.core.capabilities.owned_agent_session.phase_runner import _provider_cache_style
+
+        if _provider_cache_style(self._provider_override or "", model) != "anthropic":
+            return messages
+        request_messages = copy.deepcopy(messages)
+        # Static breakpoint on the system message: pins the tools+system prefix
+        # so every call gets a cache hit there regardless of how far the moving
+        # trailing breakpoint has advanced (Anthropic's automatic prefix lookback
+        # only scans a bounded number of blocks before each explicit breakpoint).
+        first = request_messages[0] if request_messages else None
+        if (
+            first is not None
+            and first.get("role") == "system"
+            and isinstance(first.get("content"), str)
+            and first["content"]
+        ):
+            first["content"] = [
+                {
+                    "type": "text",
+                    "text": first["content"],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        # Moving breakpoint on the latest completed message.
+        for message in reversed(request_messages):
+            if message is first:
+                break
+            content = message.get("content")
+            if not isinstance(content, str) or not content:
+                continue
+            message["content"] = [
+                {
+                    "type": "text",
+                    "text": content,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+            break
+        return request_messages
+
+    async def _completion_with_backoff(self, request_kwargs: dict[str, Any]) -> Any:
+        """Call LiteLLM with bounded exponential backoff for provider throttling."""
+        import litellm
+
+        max_retries = max(0, int(os.environ.get("ATELIER_LLM_MAX_RETRIES", "6")))
+        base_delay = max(1.0, float(os.environ.get("ATELIER_LLM_RETRY_BASE_SECONDS", "8")))
+        for attempt in range(max_retries + 1):
+            try:
+                return await asyncio.to_thread(litellm.completion, **request_kwargs)
+            except Exception as exc:
+                lowered = str(exc).lower()
+                retryable = (
+                    "ratelimit" in lowered
+                    or "rate limit" in lowered
+                    or "too many requests" in lowered
+                    or "429" in lowered
+                )
+                if not retryable or attempt >= max_retries:
+                    raise
+                await asyncio.sleep(min(120.0, base_delay * (2**attempt)))
+        raise RuntimeError("unreachable retry state")
+
+    async def _execute_tool_call(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+    ) -> tuple[str, bool]:
+        """Execute one built-in or external MCP tool without blocking the event loop."""
+        try:
+            if tool_name.startswith("mcp__"):
+                result_str = await asyncio.to_thread(self._dispatch_mcp_tool, tool_name, tool_args)
+                return result_str, not result_str.startswith("Error:")
+            result = await asyncio.to_thread(_dispatch_tool, tool_name, tool_args)
+            return str(result), True
+        except Exception as exc:  # noqa: BLE001 - tool failures are model-visible results
+            return f"Error: {exc}", False
+
     def _dispatch_mcp_tool(self, tool_name: str, tool_args: dict[str, Any]) -> str:
         """Route an ``mcp__<server>__<tool>`` call to the right MCP server."""
         parts = tool_name.split("__", 2)
@@ -102,10 +199,17 @@ class InteractiveRuntime:
     def session_ids(self) -> list[str]:
         return list(self._sessions.keys())
 
+    def session_messages(self, session_id: str) -> list[dict[str, Any]]:
+        """Return a copy of the normalized conversation for persistence or APIs."""
+        return list(self._sessions.get(session_id, ()))
+
     async def handle_user_message(
         self,
         session_id: str,
         text: str,
+        *,
+        model_override: str | None = None,
+        budget_hint: str = "balanced",
     ) -> AsyncIterator[AtelierEvent]:
         messages = self._sessions.setdefault(session_id, [])
 
@@ -120,15 +224,15 @@ class InteractiveRuntime:
         prefixed_text = f"{mode_prefix} {text}".strip() if mode_prefix else text
         messages.append({"role": "user", "content": prefixed_text})
 
-        if self._override_model:
-            model = self._override_model
+        if model_override or self._override_model:
+            model = model_override or self._override_model  # type: ignore[assignment]
             yield RouteSelected(
                 type="route.selected",
-                provider=None,
+                provider=self._provider_override if not model_override else None,
                 model=model,
-                reason="user override (/set-model)",
+                reason="api model override" if model_override else "user override (/set-model)",
             )
-            async for event in self._agent_loop(session_id, messages, model=model):
+            async for event in self._agent_loop(session_id, messages, model=model or ""):  # type: ignore[arg-type]
                 yield event
             return
 
@@ -141,7 +245,7 @@ class InteractiveRuntime:
 
             decision = select_owned_route(
                 self._root,
-                OwnedRouteRequest(tool_name="tui", task_text=text, mode="auto", budget="balanced"),
+                OwnedRouteRequest(tool_name="tui", task_text=text, mode="auto", budget=budget_hint),  # type: ignore[arg-type]
             )
             model = _resolve_litellm_model(decision.provider, decision.model)
             yield RouteSelected(
@@ -162,25 +266,18 @@ class InteractiveRuntime:
         messages: list[dict[str, Any]],
         *,
         model: str,
-        max_iterations: int = 20,
+        max_iterations: int = 100,
     ) -> AsyncIterator[AtelierEvent]:
-        import litellm
-
-        from atelier.core.capabilities.owned_agent_session.stem_prompt import (
-            stem_prompt_for_mode,
-        )
+        from atelier.core.capabilities.owned_agent_session.phase_runner import _system_message
 
         # Stable, immutable generic system prompt shared across ALL modes and turns.
         # The mode is injected as a user-message prefix (see handle_user_message),
         # never here — this keeps the system prefix byte-identical for cache reuse.
         if not messages or messages[0].get("role") != "system":
-            system_content = stem_prompt_for_mode(self._current_mode)
-            messages.insert(0, {"role": "system", "content": system_content})
+            messages.insert(0, _system_message(self._provider_override or "", model))
 
         tools = [
-            t
-            for t in _get_litellm_tools()
-            if self._active_tools is None or t["function"]["name"] in self._active_tools
+            t for t in _get_litellm_tools() if self._active_tools is None or t["function"]["name"] in self._active_tools
         ]
 
         # Add MCP tools as litellm-compatible tool defs
@@ -198,7 +295,7 @@ class InteractiveRuntime:
         tools = tools + mcp_litellm_tools
 
         total_input = total_output = total_cache_read = total_cache_write = 0
-        tool_call_counts: dict[str, int] = {}  # name -> count
+        tool_call_counts: dict[str, int] = {}  # normalized name+arguments -> count
 
         for _ in range(max_iterations):
             accumulated_text = ""
@@ -206,15 +303,20 @@ class InteractiveRuntime:
             finish_reason = ""
 
             try:
-                stream = await asyncio.to_thread(
-                    litellm.completion,
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
+                request_kwargs: dict[str, Any] = {
+                    "model": model,
+                    "messages": self._messages_with_cache_breakpoint(messages, model),
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                }
+                if model.startswith("bedrock/"):
+                    bearer_token = os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+                    if bearer_token:
+                        os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+                        request_kwargs["api_key"] = bearer_token
+                stream = await self._completion_with_backoff(request_kwargs)
             except Exception as exc:  # noqa: BLE001 - fall back gracefully
                 err_str = str(exc)
                 if "API_KEY_SERVICE_BLOCKED" in err_str or "PERMISSION_DENIED" in err_str or "403" in err_str:
@@ -251,9 +353,20 @@ class InteractiveRuntime:
                     total_input += int(getattr(usage, "prompt_tokens", 0) or 0)
                     total_output += int(getattr(usage, "completion_tokens", 0) or 0)
                     details = getattr(usage, "prompt_tokens_details", None)
-                    cached = int(getattr(details, "cached_tokens", 0) or 0) if details else 0
+                    cached = int(
+                        getattr(usage, "cache_read_input_tokens", 0)
+                        or (getattr(details, "cached_tokens", 0) if details else 0)
+                        or 0
+                    )
+                    cache_write = int(
+                        getattr(usage, "cache_creation_input_tokens", 0)
+                        or getattr(usage, "cache_write_input_tokens", 0)
+                        or (getattr(details, "cache_creation_tokens", 0) if details else 0)
+                        or 0
+                    )
                     total_cache_read += cached
-                    total_input -= cached
+                    total_cache_write += cache_write
+                    total_input -= cached + cache_write
                 choice = chunk.choices[0] if chunk.choices else None
                 if choice is None:
                     continue
@@ -284,34 +397,41 @@ class InteractiveRuntime:
                             if tc.function.arguments:
                                 tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
 
-            if accumulated_text:
-                yield AssistantMessage(type="assistant.message", text=accumulated_text)
-                messages.append({"role": "assistant", "content": accumulated_text})
-
             if not tool_calls_acc or finish_reason == "stop":
+                if accumulated_text:
+                    messages.append({"role": "assistant", "content": accumulated_text})
+                    yield AssistantMessage(type="assistant.message", text=accumulated_text)
                 break
 
             tool_calls_list = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
-            messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls_list})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": accumulated_text or None,
+                    "tool_calls": tool_calls_list,
+                }
+            )
 
             looping = False
             for tc in tool_calls_list:
                 tool_name = tc["function"]["name"]
-                tool_call_counts[tool_name] = tool_call_counts.get(tool_name, 0) + 1
-                if tool_call_counts[tool_name] > 3:
+                fingerprint = f"{tool_name}:{tc['function']['arguments']}"
+                tool_call_counts[fingerprint] = tool_call_counts.get(fingerprint, 0) + 1
+                if tool_call_counts[fingerprint] > 3:
                     yield RuntimeErrorEvent(
                         type="error",
                         message=(
                             f"⚠ Loop detected: '{tool_name}' called "
-                            f"{tool_call_counts[tool_name]} times. "
+                            f"{tool_call_counts[fingerprint]} times with identical arguments. "
                             "Consider interrupting with Ctrl+C."
                         ),
                     )
-                    if tool_call_counts[tool_name] > 6:
+                    if tool_call_counts[fingerprint] > 6:
                         looping = True
             if looping:
                 break
 
+            prepared_calls: list[tuple[str, str, dict[str, Any]]] = []
             for tc in tool_calls_list:
                 tool_id = tc["id"]
                 tool_name = tc["function"]["name"]
@@ -345,55 +465,71 @@ class InteractiveRuntime:
                             result=result_str,
                         )
                         continue
+                prepared_calls.append((tool_id, tool_name, tool_args))
 
-                yield ToolStarted(type="tool.started", id=tool_id, name=tool_name)
+            parallel_tools = {
+                "read",
+                "search",
+                "grep",
+                "symbols",
+                "node",
+                "callers",
+                "usages",
+                "explore",
+            }
+            index = 0
+            while index < len(prepared_calls):
+                tool_id, tool_name, tool_args = prepared_calls[index]
+                if tool_name in parallel_tools or tool_name.startswith("mcp__"):
+                    end = index + 1
+                    while end < len(prepared_calls) and (
+                        prepared_calls[end][1] in parallel_tools or prepared_calls[end][1].startswith("mcp__")
+                    ):
+                        end += 1
+                    batch = prepared_calls[index:end]
+                else:
+                    end = index + 1
+                    batch = [prepared_calls[index]]
 
-                try:
-                    if tool_name.startswith("mcp__"):
-                        result_str = await asyncio.to_thread(
-                            self._dispatch_mcp_tool, tool_name, tool_args
-                        )
-                        ok = not result_str.startswith("Error:")
-                    else:
-                        result = await asyncio.to_thread(_dispatch_tool, tool_name, tool_args)
-                        result_str = str(result)
-                        ok = True
-                except Exception as exc:  # noqa: BLE001 - fall back gracefully
-                    result_str = f"Error: {exc}"
-                    ok = False
-
-                output_preview = result_str[:2000] + ("…" if len(result_str) > 2000 else "")
-                yield ToolOutput(type="tool.output", id=tool_id, chunk=output_preview)
-                yield ToolFinished(
-                    type="tool.finished",
-                    id=tool_id,
-                    name=tool_name,
-                    ok=ok,
-                    result=result_str[:500],
+                for batch_id, batch_name, _batch_args in batch:
+                    yield ToolStarted(type="tool.started", id=batch_id, name=batch_name)
+                results = await asyncio.gather(
+                    *(self._execute_tool_call(batch_name, batch_args) for _, batch_name, batch_args in batch)
                 )
-                messages.append({"role": "tool", "tool_call_id": tool_id, "content": result_str})
 
-                if tool_name == "edit" and ok:
-                    try:
-                        diff = subprocess.check_output(
-                            ["git", "diff", "--no-color"],
-                            cwd=os.getcwd(),
-                            stderr=subprocess.DEVNULL,
-                        ).decode(errors="replace")[:5000]
-                        if diff.strip():
-                            from atelier.gateway.cli.events import PatchProposed
+                for (batch_id, batch_name, batch_args), (result_str, ok) in zip(batch, results, strict=True):
+                    output_preview = result_str[:2000] + ("…" if len(result_str) > 2000 else "")
+                    yield ToolOutput(type="tool.output", id=batch_id, chunk=output_preview)
+                    yield ToolFinished(
+                        type="tool.finished",
+                        id=batch_id,
+                        name=batch_name,
+                        ok=ok,
+                        result=result_str[:500],
+                    )
+                    messages.append({"role": "tool", "tool_call_id": batch_id, "content": result_str})
 
-                            yield PatchProposed(
-                                type="patch.proposed",
-                                id=tool_id,
-                                files=[
-                                    str(e.get("file_path", "?"))
-                                    for e in tool_args.get("edits", [])
-                                ],
-                                diff=diff,
-                            )
-                    except Exception:  # noqa: BLE001 - diff is best-effort
-                        pass
+                    if batch_name == "edit" and ok:
+                        try:
+                            diff = subprocess.check_output(
+                                ["git", "diff", "--no-color"],
+                                cwd=os.getcwd(),
+                                stderr=subprocess.DEVNULL,
+                            ).decode(errors="replace")[:5000]
+                            if diff.strip():
+                                from atelier.gateway.cli.events import PatchProposed
+
+                                yield PatchProposed(
+                                    type="patch.proposed",
+                                    id=batch_id,
+                                    files=[str(e.get("file_path", "?")) for e in batch_args.get("edits", [])],
+                                    diff=diff,
+                                )
+                        except Exception:  # noqa: BLE001 - diff is best-effort
+                            pass
+                index = end
+
+        total_input = max(0, total_input)
 
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
@@ -450,9 +586,7 @@ class InteractiveRuntime:
                 (
                     m["content"]
                     for m in reversed(messages)
-                    if isinstance(m, dict)
-                    and m.get("role") == "assistant"
-                    and isinstance(m.get("content"), str)
+                    if isinstance(m, dict) and m.get("role") == "assistant" and isinstance(m.get("content"), str)
                 ),
                 "",
             )
@@ -507,19 +641,14 @@ class InteractiveRuntime:
             if not session_files:
                 yield AssistantMessage(
                     type="assistant.message",
-                    text=(
-                        "No saved TUI sessions found.\n\n"
-                        "Sessions are saved when you start a task in the TUI."
-                    ),
+                    text=("No saved TUI sessions found.\n\nSessions are saved when you start a task in the TUI."),
                 )
                 return
 
             lines = ["**Saved sessions** (use `/resume <id>` to load one):\n"]
             for f in session_files[:20]:
                 sid = f.stem
-                mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
+                mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
                 size_kb = round(f.stat().st_size / 1024, 1)
                 lines.append(f"- `{sid}` — {mtime} ({size_kb}KB)")
 
@@ -548,13 +677,7 @@ class InteractiveRuntime:
             # Replace the current session's conversation with the loaded messages.
             loaded_messages = self._sessions.get(target, [])
             self._sessions[session_id] = list(loaded_messages)
-            turn_count = len(
-                [
-                    m
-                    for m in loaded_messages
-                    if isinstance(m, dict) and m.get("role") == "user"
-                ]
-            )
+            turn_count = len([m for m in loaded_messages if isinstance(m, dict) and m.get("role") == "user"])
             yield AssistantMessage(
                 type="assistant.message",
                 text=f"\u2713 Loaded session `{target}` ({turn_count} turns). Conversation replaced.",
@@ -614,13 +737,9 @@ class InteractiveRuntime:
         elif name == "context":
             messages = self._sessions.get(session_id, [])
             turns = len(messages) // 2
-            total_chars = sum(
-                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
-            )
+            total_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, dict))
             approx_tokens = total_chars // 4
-            tool_results = len(
-                [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
-            )
+            tool_results = len([m for m in messages if isinstance(m, dict) and m.get("role") == "tool"])
             yield AssistantMessage(
                 type="assistant.message",
                 text=(
@@ -633,25 +752,11 @@ class InteractiveRuntime:
             )
         elif name == "usage":
             messages = self._sessions.get(session_id, [])
-            total_chars = sum(
-                len(str(m.get("content", ""))) for m in messages if isinstance(m, dict)
-            )
+            total_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, dict))
             approx_tokens = total_chars // 4
-            user_msgs = [
-                m
-                for m in messages
-                if isinstance(m, dict) and m.get("role") == "user"
-            ]
-            asst_msgs = [
-                m
-                for m in messages
-                if isinstance(m, dict) and m.get("role") == "assistant"
-            ]
-            tool_msgs = [
-                m
-                for m in messages
-                if isinstance(m, dict) and m.get("role") == "tool"
-            ]
+            user_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
+            asst_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "assistant"]
+            tool_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
             yield AssistantMessage(
                 type="assistant.message",
                 text=(
@@ -691,20 +796,14 @@ class InteractiveRuntime:
                 lines.append(f"- `{perm_tool}` {icon} {perm}")
             lines.append(f"\nYOLO mode: {'on' if self._yolo else 'off'}")
             lines.append("Use `--yolo` to skip all approval prompts.")
-            yield AssistantMessage(
-                type="assistant.message", text="\n".join(lines)
-            )
+            yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "yolo":
             self._yolo = not self._yolo
             yield AssistantMessage(
                 type="assistant.message",
                 text=(
                     f"✓ YOLO mode {'enabled' if self._yolo else 'disabled'}. "
-                    + (
-                        "Tool calls auto-approved."
-                        if self._yolo
-                        else "Tool calls will ask for approval."
-                    )
+                    + ("Tool calls auto-approved." if self._yolo else "Tool calls will ask for approval.")
                 ),
             )
         elif name in ("mode", "agents"):
@@ -720,10 +819,7 @@ class InteractiveRuntime:
                 self._current_mode = mode_name
                 yield AssistantMessage(
                     type="assistant.message",
-                    text=(
-                        f"Switched to **{mode_name.upper()}** mode. "
-                        f"Tools: {', '.join(self._active_tools)}"
-                    ),
+                    text=(f"Switched to **{mode_name.upper()}** mode. Tools: {', '.join(self._active_tools)}"),
                 )
             else:
                 yield AssistantMessage(
@@ -744,27 +840,17 @@ class InteractiveRuntime:
                 lines.append("|--------|-------|")
                 lines.append(f"| Total sessions | {stats.get('total_sessions', 0)} |")
                 lines.append(f"| Total cost | ${stats.get('total_cost_usd', 0):.4f} |")
-                lines.append(
-                    f"| Total savings | ${stats.get('total_savings_usd', 0):.4f} |"
-                )
-                lines.append(
-                    f"| Avg cache efficiency | {stats.get('avg_cache_efficiency_pct', 0):.1f}% |"
-                )
+                lines.append(f"| Total savings | ${stats.get('total_savings_usd', 0):.4f} |")
+                lines.append(f"| Avg cache efficiency | {stats.get('avg_cache_efficiency_pct', 0):.1f}% |")
                 lines.append(f"| Total turns | {stats.get('total_turns', 0)} |")
                 lines.append("")
                 if recent_sessions:
                     lines.append("**Recent sessions:**")
                     for sess in recent_sessions:
-                        lines.append(
-                            f"- `{sess.session_id}` — {sess.mode} — ${sess.total_cost_usd:.4f}"
-                        )
-                yield AssistantMessage(
-                    type="assistant.message", text="\n".join(lines)
-                )
+                        lines.append(f"- `{sess.session_id}` — {sess.mode} — ${sess.total_cost_usd:.4f}")
+                yield AssistantMessage(type="assistant.message", text="\n".join(lines))
             except Exception as exc:  # noqa: BLE001 - analytics is best-effort
-                yield AssistantMessage(
-                    type="assistant.message", text=f"Analytics unavailable: {exc}"
-                )
+                yield AssistantMessage(type="assistant.message", text=f"Analytics unavailable: {exc}")
         elif name == "mcp":
             import json as _json
 
@@ -791,12 +877,8 @@ class InteractiveRuntime:
                     cfg = info["config"]
                     cmd = cfg.get("command", "?")
                     cmd_args = " ".join(str(a) for a in cfg.get("args", []))
-                    lines.append(
-                        f"- **{srv_name}** — `{cmd} {cmd_args}` _(from {info['source']})_"
-                    )
-                lines.append(
-                    "\nTo use MCP tools in conversations, start the server and reference its tools."
-                )
+                    lines.append(f"- **{srv_name}** — `{cmd} {cmd_args}` _(from {info['source']})_")
+                lines.append("\nTo use MCP tools in conversations, start the server and reference its tools.")
                 yield AssistantMessage(type="assistant.message", text="\n".join(lines))
             else:
                 yield AssistantMessage(
@@ -838,9 +920,7 @@ class InteractiveRuntime:
 
             vendors = detect_api_key_vendors()
             lines = ["**Atelier Health Check**\n"]
-            lines.append(
-                f"- API keys: {', '.join(vendors) if vendors else 'none configured ⚠'}"
-            )
+            lines.append(f"- API keys: {', '.join(vendors) if vendors else 'none configured ⚠'}")
             try:
                 from atelier import __version__
 
@@ -873,13 +953,9 @@ class InteractiveRuntime:
             try:
                 from atelier import __version__
 
-                yield AssistantMessage(
-                    type="assistant.message", text=f"Atelier `{__version__}`"
-                )
+                yield AssistantMessage(type="assistant.message", text=f"Atelier `{__version__}`")
             except Exception:  # noqa: BLE001 - version is best-effort
-                yield AssistantMessage(
-                    type="assistant.message", text="Atelier (version unknown)"
-                )
+                yield AssistantMessage(type="assistant.message", text="Atelier (version unknown)")
         elif name == "newtask":
             self._sessions[session_id] = []
             yield AssistantMessage(
@@ -896,10 +972,7 @@ class InteractiveRuntime:
             cp = save_checkpoint(session_id, messages, label=label)
             yield AssistantMessage(
                 type="assistant.message",
-                text=(
-                    f"✓ Checkpoint saved: `{cp.id}` — {cp.message_count} messages\n\n"
-                    f"Restore: `/rewind {cp.id}`"
-                ),
+                text=(f"✓ Checkpoint saved: `{cp.id}` — {cp.message_count} messages\n\nRestore: `/rewind {cp.id}`"),
             )
         elif name == "rewind":
             cp_id = args[0] if args else ""
@@ -912,13 +985,9 @@ class InteractiveRuntime:
                 if cps:
                     lines = ["**Checkpoints:**\n"]
                     for cp in cps:
-                        lines.append(
-                            f"- `{cp.id}` — {cp.label} ({cp.message_count} messages) — {cp.created_at[:16]}"
-                        )
+                        lines.append(f"- `{cp.id}` — {cp.label} ({cp.message_count} messages) — {cp.created_at[:16]}")
                     lines.append("\nRestore: `/rewind <id>`")
-                    yield AssistantMessage(
-                        type="assistant.message", text="\n".join(lines)
-                    )
+                    yield AssistantMessage(type="assistant.message", text="\n".join(lines))
                 else:
                     yield AssistantMessage(
                         type="assistant.message",
@@ -937,9 +1006,7 @@ class InteractiveRuntime:
                         text=f"✓ Rewound to checkpoint `{cp_id}` — {len(messages)} messages restored",
                     )
                 except FileNotFoundError:
-                    yield RuntimeErrorEvent(
-                        type="error", message=f"Checkpoint `{cp_id}` not found"
-                    )
+                    yield RuntimeErrorEvent(type="error", message=f"Checkpoint `{cp_id}` not found")
         elif name == "shell":
             cmd = " ".join(args) if args else ""
             if cmd:
@@ -947,9 +1014,7 @@ class InteractiveRuntime:
 
                 try:
                     result = await asyncio.to_thread(tool_shell, {"command": cmd, "timeout": 30})
-                    yield AssistantMessage(
-                        type="assistant.message", text=f"```\n{result}\n```"
-                    )
+                    yield AssistantMessage(type="assistant.message", text=f"```\n{result}\n```")
                 except Exception as exc:  # noqa: BLE001 - shell is best-effort
                     yield RuntimeErrorEvent(type="error", message=f"Shell failed: {exc}")
             else:
@@ -965,11 +1030,13 @@ class InteractiveRuntime:
             yield AssistantMessage(type="assistant.message", text="\n".join(lines))
         elif name == "background":
             task_id = f"bg-{uuid.uuid4().hex[:6]}"
-            self._background_tasks.append({
-                "id": task_id,
-                "name": f"session-{session_id[:8]}",
-                "status": "running",
-            })
+            self._background_tasks.append(
+                {
+                    "id": task_id,
+                    "name": f"session-{session_id[:8]}",
+                    "status": "running",
+                }
+            )
             yield AssistantMessage(
                 type="assistant.message",
                 text=f"Session backgrounded as task `{task_id}`. Use `/tasks` to check status.",
@@ -1003,7 +1070,10 @@ class InteractiveRuntime:
                 )
                 return
             ephemeral_messages = [
-                {"role": "system", "content": "Answer the following question concisely. This is a side question."},
+                {
+                    "role": "system",
+                    "content": "Answer the following question concisely. This is a side question.",
+                },
                 {"role": "user", "content": question},
             ]
             from atelier.core.capabilities.owned_agent_session.phase_runner import (
@@ -1027,8 +1097,8 @@ class InteractiveRuntime:
             from atelier.gateway.cli.events import ChoiceRequested
 
             if not args:
-                saved = load_saved_credentials()
-                configured_keys = set(saved.keys())
+                creds = load_saved_credentials()
+                configured_keys = set(creds.keys())
                 lines = ["**Provider Authentication**\n"]
                 lines.append("| Provider | Status | Keys |")
                 lines.append("|----------|--------|------|")
@@ -1067,9 +1137,7 @@ class InteractiveRuntime:
             for field_cfg in cfg["fields"]:
                 field_name = field_cfg["name"]
                 default = field_cfg.get("default", "")
-                prompt_text = f"{field_cfg['label']}" + (
-                    f" [default: {default}]" if default else ""
-                )
+                prompt_text = f"{field_cfg['label']}" + (f" [default: {default}]" if default else "")
                 choice_id = f"auth-{field_name}"
                 self._pending_permissions[choice_id] = {"approved": None, "response": None}
                 yield ChoiceRequested(
@@ -1084,10 +1152,7 @@ class InteractiveRuntime:
                     resp = self._pending_permissions.get(choice_id, {}).get("response")
                     if resp is not None:
                         break
-                val = str(
-                    self._pending_permissions.get(choice_id, {}).get("response", default)
-                    or default
-                )
+                val = str(self._pending_permissions.get(choice_id, {}).get("response", default) or default)
                 if val:
                     collected[field_name] = val
 
@@ -1120,9 +1185,7 @@ class InteractiveRuntime:
             token = secrets.token_urlsafe(12)
             self._share_tokens[session_id] = token
 
-            local_url = (
-                f"http://localhost:{os.environ.get('ATELIER_WEB_PORT', '7700')}/share/{token}"
-            )
+            local_url = f"http://localhost:{os.environ.get('ATELIER_WEB_PORT', '7700')}/share/{token}"
             yield AssistantMessage(
                 type="assistant.message",
                 text=(
@@ -1241,148 +1304,76 @@ Commands:
 
 Type any message to start a coding session.
 """.strip()
+_OWNED_TOOL_NAMES = (
+    "read",
+    "search",
+    "grep",
+    "symbols",
+    "node",
+    "callers",
+    "usages",
+    "explore",
+    "edit",
+    "shell",
+)
+
+# Params the owned runtime neither publishes to nor accepts from its inner model.
+# The MCP host surface still exposes these (user-authorized overrides); hiding
+# them here is owned-loop policy only. Single source of truth for both
+# _get_litellm_tools (schema) and _dispatch_tool (args).
+_OWNED_HIDDEN_PARAMS: dict[str, tuple[str, ...]] = {
+    "edit": ("allow_test_contract_change", "contract_change_evidence"),
+}
 
 
 def _get_litellm_tools() -> list[dict[str, Any]]:
-    """Return litellm-compatible tool definitions for core Atelier tools."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "read",
-                "description": (
-                    "Read a file from the workspace. Returns file contents, with "
-                    "automatic outline mode for large files."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Workspace-relative file path",
-                        },
-                        "range": {
-                            "type": "string",
-                            "description": "Line range, e.g. '10-50'",
-                        },
-                    },
-                    "required": ["path"],
+    """Return canonical MCP tool definitions for the owned coding runtime."""
+    from atelier.gateway.adapters.mcp_server import TOOLS
+
+    tools: list[dict[str, Any]] = []
+    for name in _OWNED_TOOL_NAMES:
+        spec = TOOLS.get(name)
+        if spec is None:
+            raise RuntimeError(
+                f"Owned tool {name!r} is missing from the MCP registry; "
+                "update _OWNED_TOOL_NAMES to match the registered tool names."
+            )
+        parameters = copy.deepcopy(spec.get("inputSchema") or {})
+        properties = parameters.get("properties")
+        if isinstance(properties, dict):
+            for hidden in _OWNED_HIDDEN_PARAMS.get(name, ()):
+                properties.pop(hidden, None)
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": str(spec.get("description") or ""),
+                    "parameters": parameters,
                 },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "edit",
-                "description": ("Apply edits to files. Use {file_path, old_string, new_string} " "descriptors."),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "edits": {
-                            "type": "array",
-                            "items": {"type": "object"},
-                            "description": ("List of edit descriptors. Each: " "{file_path, old_string, new_string}"),
-                        },
-                    },
-                    "required": ["edits"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "shell",
-                "description": ("Run a shell command. Use sparingly — prefer read/grep/edit " "where possible."),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "Shell command to run",
-                        },
-                        "timeout": {"type": "integer", "default": 30},
-                    },
-                    "required": ["command"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "grep",
-                "description": "Search for a pattern in the workspace codebase.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "pattern": {
-                            "type": "string",
-                            "description": "Regex pattern to search",
-                        },
-                        "path": {
-                            "type": "string",
-                            "description": "Directory or file to search in",
-                        },
-                        "glob": {
-                            "type": "string",
-                            "description": "File glob filter, e.g. '*.py'",
-                        },
-                    },
-                    "required": ["pattern"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "explore",
-                "description": ("Explore a symbol or module: source, callers, callees, " "related symbols."),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Symbol name or concept to explore",
-                        },
-                        "path": {
-                            "type": "string",
-                            "description": "Optional file to scope exploration",
-                        },
-                    },
-                    "required": ["query"],
-                },
-            },
-        },
-    ]
+            }
+        )
+    return tools
 
 
 def _dispatch_tool(name: str, args: dict[str, Any]) -> Any:
-    """Dispatch a tool call to the corresponding Atelier MCP tool handler.
+    """Dispatch through the canonical MCP registry used by plugin integrations."""
+    from atelier.gateway.adapters.mcp_server import TOOLS
 
-    The MCP tool functions are ``@mcp_tool``-decorated handlers that take a
-    single ``dict`` argument and validate it internally.
-    """
-    from atelier.gateway.adapters.mcp_server import (
-        tool_explore,
-        tool_grep,
-        tool_shell,
-        tool_smart_edit,
-        tool_smart_read,
-    )
-
-    if name == "read":
-        payload = {k: v for k, v in args.items() if k in ("path", "range", "expand", "max_lines")}
-        return tool_smart_read(payload)
-    if name == "edit":
-        return tool_smart_edit({"edits": args.get("edits", [])})
+    spec = TOOLS.get(name)
+    if spec is None or name not in _OWNED_TOOL_NAMES:
+        raise ValueError(f"Unknown tool: {name!r}")
+    hidden = _OWNED_HIDDEN_PARAMS.get(name, ())
+    if hidden:
+        args = {key: value for key, value in args.items() if key not in hidden}
     if name == "shell":
-        return tool_shell({"command": args["command"], "timeout": args.get("timeout", 30)})
-    if name == "grep":
-        payload = {"content_regex": args["pattern"]}
-        if args.get("path"):
-            payload["path"] = args["path"]
-        if args.get("glob"):
-            payload["file_glob_patterns"] = [args["glob"]]
-        return tool_grep(payload)
-    if name == "explore":
-        return tool_explore({"query": args["query"]})
-    raise ValueError(f"Unknown tool: {name!r}")
+        args = dict(args)
+        if not args.get("background"):
+            # In-process dispatch has no MCP stdio sync window: wait for
+            # completion instead of detaching long-timeout commands, which
+            # would force the model to burn poll turns.
+            args["sync_wait"] = True
+    handler = spec.get("handler")
+    if not callable(handler):
+        raise ValueError(f"Tool has no callable handler: {name!r}")
+    return handler(args)

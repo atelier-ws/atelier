@@ -1,0 +1,64 @@
+{
+  "_comment": "Copy to ~/.atelier/providers.json. Values supplement (but never override) environment variables.",
+  "anthropic": {
+    "api_key": "sk-ant-...",
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 100000
+    }
+  },
+  "openai": {
+    "api_key": "sk-...",
+    "base_url": "https://api.openai.com/v1",
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 100000
+    }
+  },
+  "google": {
+    "api_key": "AIza..."
+  },
+  "bedrock": {
+    "aws_bearer_token_bedrock": "ABSKQm...",
+    "aws_region": "us-east-1",
+    "_alt_standard_keys": "use the fields below if you have IAM key/secret instead of bearer token",
+    "aws_access_key_id": "AKIA...",
+    "aws_secret_access_key": "...",
+    "aws_default_region": "us-east-1",
+    "aws_profile": "my-aws-profile"
+  },
+  "vertex": {
+    "project": "my-gcp-project",
+    "application_credentials": "/path/to/service-account.json"
+  },
+  "azure": {
+    "api_key": "...",
+    "endpoint": "https://my-resource.openai.azure.com"
+  },
+  "openrouter": {
+    "api_key": "sk-or-..."
+  },
+  "groq": {
+    "api_key": "gsk_..."
+  },
+  "mistral": {
+    "api_key": "..."
+  },
+  "ollama": {
+    "base_url": "http://localhost:11434"
+  },
+  "together": {
+    "api_key": "..."
+  },
+  "fireworks": {
+    "api_key": "..."
+  },
+  "_rate_limit_per_model_example": {
+    "_doc": "override rate limit for a specific model using provider/model as the key",
+    "openai/gpt-4o": {
+      "rate_limit": {
+        "requests_per_minute": 10
+      }
+    }
+  }
+}

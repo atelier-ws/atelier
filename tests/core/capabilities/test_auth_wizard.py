@@ -1,4 +1,5 @@
 """Tests for the provider authentication wizard."""
+
 from __future__ import annotations
 
 import os

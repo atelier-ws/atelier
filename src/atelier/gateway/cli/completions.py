@@ -33,9 +33,7 @@ class AtelierCompleter(Completer):
     def __init__(self, session_ids: list[str] | None = None) -> None:
         self._session_ids = session_ids if session_ids is not None else []
 
-    def get_completions(
-        self, document: Document, complete_event: object
-    ) -> Iterable[Completion]:
+    def get_completions(self, document: Document, complete_event: object) -> Iterable[Completion]:
         text = document.text_before_cursor
         if not text.startswith("/"):
             return

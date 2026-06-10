@@ -4,6 +4,9 @@
 # What it does:
 #   Global mode: installs opencode user config and user agent under ~/.config/opencode.
 #   Workspace mode (--workspace DIR): installs project-local opencode artifacts under DIR.
+#   Config merge includes both:
+#     - MCP server entry (atelier-mcp)
+#     - OpenAI-compatible provider entry (Atelier service /v1 endpoint)
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
@@ -57,9 +60,22 @@ else
     AGENT_DEST_DIR="${OPENCODE_CONFIG_HOME}/agents"
 fi
 
+ATELIER_SERVICE_BASE="${ATELIER_SERVICE_URL:-http://127.0.0.1:8787}"
+ATELIER_SERVICE_BASE="${ATELIER_SERVICE_BASE%/}"
+if [[ "$ATELIER_SERVICE_BASE" == */v1 ]]; then
+    ATELIER_OPENAI_BASE="$ATELIER_SERVICE_BASE"
+else
+    ATELIER_OPENAI_BASE="${ATELIER_SERVICE_BASE}/v1"
+fi
+
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:opencode] $*" || true; }
 warn()  { echo "[atelier:opencode] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+if command -v uv >/dev/null 2>&1; then
+    PYTHON_CMD=(uv run python)
+else
+    PYTHON_CMD=(python3)
+fi
 backup_file() {
     local f="$1"
     if $WORKSPACE_SET; then
@@ -79,6 +95,16 @@ if $WORKSPACE_SET; then
   "permission": {
     "atelier_*": "allow"
   },
+  "provider": {
+    "atelier": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Atelier",
+      "options": {
+        "baseURL": "${ATELIER_OPENAI_BASE}",
+        "apiKey": "local"
+      }
+    }
+  },
   "mcp": {
       "atelier": {
         "type": "local",
@@ -97,6 +123,16 @@ else
   "default_agent": "atelier",
   "permission": {
     "atelier_*": "allow"
+  },
+  "provider": {
+    "atelier": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Atelier",
+      "options": {
+        "baseURL": "${ATELIER_OPENAI_BASE}",
+        "apiKey": "local"
+      }
+    }
   },
   "mcp": {
     "atelier": {
@@ -143,7 +179,7 @@ if [ -f "$OC_FILE" ]; then
     if $DRY_RUN; then
         echo "  [dry-run] merge atelier into $OC_FILE"
     else
-        python3 - <<PYEOF
+        "${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -154,7 +190,9 @@ stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
 existing = json.loads(stripped) if stripped.strip() else {}
 new_entry = json.loads('''$NEW_ENTRY''')
 existing.setdefault('mcp', {}).update(new_entry['mcp'])
+existing.setdefault('provider', {}).update(new_entry['provider'])
 existing['default_agent'] = new_entry['default_agent']
+existing.pop('model', None)
 existing.setdefault('permission', {}).update(new_entry['permission'])
 path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
 print("[atelier:opencode] merged atelier entry into $OC_FILE")
@@ -174,7 +212,7 @@ if $WORKSPACE_SET; then
     if $DRY_RUN; then
         echo "  [dry-run] project workspace-local OpenCode agents into '$AGENT_DEST_DIR'"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "${PYTHON_CMD[@]}" - <<PYEOF
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_workspace_opencode_agents
 
@@ -228,7 +266,7 @@ vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:opencode] FAIL: $*" >&2; VFAIL=1; }
 
 if [ -f "$OC_FILE" ]; then
-    HAS=$(python3 - <<PYEOF
+    HAS=$("${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -250,7 +288,7 @@ PYEOF
         vfail "opencode config missing atelier entry"
     fi
 
-    DEFAULT_AGENT=$(python3 - <<PYEOF
+    DEFAULT_AGENT=$("${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -268,6 +306,30 @@ PYEOF
         vpass "opencode default_agent = atelier"
     else
         vfail "opencode default_agent is '$DEFAULT_AGENT' (expected 'atelier')"
+    fi
+
+    HAS_PROVIDER=$("${PYTHON_CMD[@]}" - <<PYEOF
+import json
+import re
+from pathlib import Path
+
+content = Path('$OC_FILE').read_text(encoding='utf-8')
+stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
+try:
+    d = json.loads(stripped)
+    provider = d.get('provider', {}).get('atelier', {})
+    base_url = provider.get('options', {}).get('baseURL')
+    print('yes' if provider and base_url else 'no')
+except Exception:
+    print('parse-error')
+PYEOF
+)
+    if [ "$HAS_PROVIDER" = "yes" ]; then
+        vpass "opencode provider.atelier and model are configured for Atelier OpenAI gateway"
+    elif [ "$HAS_PROVIDER" = "parse-error" ]; then
+        vfail "opencode config parse error while validating provider settings"
+    else
+        vfail "opencode provider/model config for Atelier gateway is missing"
     fi
 else
     vfail "opencode config not found: $OC_FILE"

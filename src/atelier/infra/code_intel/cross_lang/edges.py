@@ -213,7 +213,7 @@ class CrossLangEdgeStore:
                     edge_kind,
                     confidence
                 FROM cross_lang_edges
-                WHERE {' OR '.join(clauses)}
+                WHERE {" OR ".join(clauses)}
                 ORDER BY src_file_path, src_line, tgt_symbol_name
                 """,
                 tuple(params),

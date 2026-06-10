@@ -449,8 +449,7 @@ def _render_optimization_summary(result: Any) -> None:
     click.echo("Optimization Autopilot")
     click.echo("─────────────────────────────────────────────────")
     click.echo(
-        f"Analysed your last 7 days: {result.sessions_analysed} sessions, "
-        f"{result.replayable_tasks} replayable tasks"
+        f"Analysed your last 7 days: {result.sessions_analysed} sessions, {result.replayable_tasks} replayable tasks"
     )
     click.echo("")
     click.echo(f"Current setting: {result.current_policy.name}")
@@ -474,7 +473,7 @@ def _render_optimization_summary(result: Any) -> None:
     click.echo(f"Confidence: {result.confidence.title()}")
     click.echo(f"  {result.confidence_reason}")
     click.echo(
-        f"Golden corpus: {result.golden.passed}/{result.golden.total} well-formed tasks " f"({result.golden.score:.0%})"
+        f"Golden corpus: {result.golden.passed}/{result.golden.total} well-formed tasks ({result.golden.score:.0%})"
     )
 
 

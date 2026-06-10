@@ -76,7 +76,10 @@ CASES: list[Case] = [
             "budget_tokens": 4000,
         },
         serena_tool="get_symbols_overview",
-        serena_params={"relative_path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py", "depth": 0},
+        serena_params={
+            "relative_path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
+            "depth": 0,
+        },
         code_index_kind="summary",
         code_index_params={"file_path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py"},
         expect_text="_strip_ansi",
@@ -97,7 +100,11 @@ CASES: list[Case] = [
             "restrict_search_to_code_files": True,
         },
         code_index_kind="search",
-        code_index_params={"pattern": "classify_command", "file_pattern": "*.py", "max_results": 50},
+        code_index_params={
+            "pattern": "classify_command",
+            "file_pattern": "*.py",
+            "max_results": 50,
+        },
         expect_text="classify_command",
     ),
 ]

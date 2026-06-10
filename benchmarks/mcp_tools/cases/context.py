@@ -41,32 +41,20 @@ def _assert_cold_start_context(result: dict[str, Any]) -> None:
     _assert_context(result)
 
 
-def _assert_symbols_context(
-    result: dict[str, Any], expected_symbol: str, expected_path: str
-) -> None:
-    assert isinstance(result, dict), (
-        f"symbols-mode response must be a dict, got: {type(result).__name__}"
-    )
-    assert isinstance(result.get("symbols"), list) and result["symbols"], (
-        "symbols-mode must return ranked symbols"
-    )
-    assert isinstance(result.get("entry_points"), list) and result["entry_points"], (
-        "symbols-mode must return entry points"
-    )
+def _assert_symbols_context(result: dict[str, Any], expected_symbol: str, expected_path: str) -> None:
+    assert isinstance(result, dict), f"symbols-mode response must be a dict, got: {type(result).__name__}"
+    assert isinstance(result.get("symbols"), list) and result["symbols"], "symbols-mode must return ranked symbols"
+    assert (
+        isinstance(result.get("entry_points"), list) and result["entry_points"]
+    ), "symbols-mode must return entry points"
     assert int(result.get("total_tokens", 0)) > 0, "symbols-mode must report total_tokens"
     assert int(result.get("tokens_saved", 0)) >= 0, "symbols-mode must report tokens_saved"
     text = str(result)
-    assert expected_symbol in text, (
-        f"symbols-mode should surface symbol {expected_symbol!r}, got: {text[:400]!r}"
-    )
-    assert expected_path in text, (
-        f"symbols-mode should surface path {expected_path!r}, got: {text[:400]!r}"
-    )
+    assert expected_symbol in text, f"symbols-mode should surface symbol {expected_symbol!r}, got: {text[:400]!r}"
+    assert expected_path in text, f"symbols-mode should surface path {expected_path!r}, got: {text[:400]!r}"
 
 
-def _symbols_assert(
-    expected_symbol: str, expected_path: str
-) -> Callable[[dict[str, Any]], None]:
+def _symbols_assert(expected_symbol: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
     def _assert(result: dict[str, Any]) -> None:
         _assert_symbols_context(result, expected_symbol, expected_path)
 
@@ -76,9 +64,7 @@ def _symbols_assert(
 def _build_context_cases() -> list[BenchCase]:
     symbol_facts, _ = collect_symbol_facts(benchmark_repo_root())
     unique_symbols = unique_symbol_facts(symbol_facts)[:_TARGET_WARM_CASES]
-    assert len(unique_symbols) == _TARGET_WARM_CASES, (
-        "not enough unique symbols for warm context benchmark"
-    )
+    assert len(unique_symbols) == _TARGET_WARM_CASES, "not enough unique symbols for warm context benchmark"
 
     cases: list[BenchCase] = [
         BenchCase(
