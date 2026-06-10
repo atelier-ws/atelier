@@ -322,5 +322,8 @@ fn render_prose_line(line: &str) -> Line<'static> {
         }
     }
     // Regular prose with inline formatting
+    if line.contains("http://") || line.contains("https://") {
+        return Line::from(crate::ui::render_with_links(line));
+    }
     Line::from(parse_inline_spans(line))
 }
